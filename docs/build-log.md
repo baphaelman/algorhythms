@@ -478,3 +478,11 @@ The four tests are:
 1. **fflate is not used for the zip** (§12 names it): it can't write ZIP64 (above). The plan's own fallback was taken.
 2. **Mono stems apply to voices and FX only**; `mix.wav` stays stereo.
 3. **The size estimate is exact**, not approximate: every entry's size follows from the frame count, and `zipSize` computes headers and the directory.
+
+## M3d2a: Generate panel (2026-11-20)
+
+- **Files:** `src/app/generate-options.ts` (pure: `parseSeed`, `checkForm`, `generateFromRequest`, ranges), `src/app/ui/GeneratePanel.tsx` (native modal `<dialog class="dialog generate">`; `openGenerate()`, `runGenerate()`), `.dialog` styles in `styles.css` (the class is generic, so the Export dialog can reuse it). Tests: `tests/unit/app/generate-options.test.ts`, `tests/e2e/generate.spec.ts`.
+- **Mount:** `<GeneratePanel />` in `App.tsx`; the menu's Generate item (was a disabled placeholder) calls `openGenerate()`.
+- **Controls:** seed (text; digits are taken mod 2^32, other text is FNV-1a hashed, so any text works), "New seed", mode (radios), length (100–900 s slider, or "natural length" = core's default proportions, on by default), voices 2–32, walk density 0–100%. Choices persist while the page is open. Generate calls `generate(seed, opts)` with `now` = the current time and `loadPiece`s the result (stopped, overview).
+- **Deviations:** tests live in `tests/unit/app/` (the Vitest include is `tests/{unit,…}`; there is no `tests/app`). No share-link change: `share.ts` encodes the whole piece, which already carries `seed`, so there is nothing to add for generated pieces. Because `now` goes into `meta.created`, two runs differ in `meta` only; the tests compare the piece without `meta`.
+- **Key handling:** `canvas-input.ts` already ignores keys while a `dialog[open]` exists, so Space in the seed field doesn't toggle playback.
