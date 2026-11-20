@@ -4,7 +4,7 @@ This is for the Claude session that orchestrates AlgoRhythms. Read it top to bot
 
 Also read `CLAUDE.md` (rules and the status table) and `docs/build-log.md`, which records every decision, deviation and owner ruling. `PLAN.md` is the spec; read only the sections a task needs.
 
-Last updated: 2026-11-20, end of the third integrator session (handoff at ~180k tokens).
+Last updated: 2026-11-20, fourth integrator session (M4 done).
 
 ## Your role (the owner's standing instructions)
 - **Don't write project code yourself.** Delegate all coding to builder subagents. You:
@@ -63,18 +63,16 @@ Last updated: 2026-11-20, end of the third integrator session (handoff at ~180k 
 | M1 compiler | Done; the owner said the generated pieces "sound lovely". Open: compile ~8–10 ms against 5 ms after M4a (strict test: 9.7 ms at load 9.5); incremental compile is the next step; about 2 unresolved crossings per thousands of pieces, both involving newborns from a split (reported as diagnostics, written up in the build log); the compiler should extend the final hold to `died` (noticed by the MIDI builder). |
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
 | M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: announce the first public release (the iPhone check is not a blocker). Next milestone: M4 editor. |
-| M4 | In progress. Merged locally (M4a–M4i, see build log): compiler speed-up (≈2× fewer instructions, output byte-identical), editor API (`src/app/editor/`), persistence (`src/app/persist/`, My pieces, New, Save as file, Download all, Chromium file link), lane, inspector, palette + shortcuts, voices drawer, selection highlight + hover readout. The owner has the local demo (http://localhost:5180/algorhythms/, `preview_start algorhythms-dev`). |
+| M4 | Done (2026-11-20). M4a–M4k merged and pushed: compiler speed-up, editor API, persistence, lane, inspector, palette + shortcuts + drag from palette, voices drawer, selection highlight, incremental compile (M4j), polish (M4k). All §15 acceptance checks pass (build log "M4 acceptance checks"; edit → swap 12–43 ms). |
 | M5–M7 | Not started. |
 
-Last pushed: `f77952c`, verified in a clean worktree (745/745 tests, lint, typecheck, build, 170 e2e on Chromium + Firefox); CI green on all three engines and deployed (bundle `main-RYkdSH3g.js`).
+Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871/871 tests, lint, typecheck, build, 224 e2e on Chromium + Firefox, 0 failed). CI: see `gh run list`.
 
 ## Next tasks
 - **Push state:** see the build log tail / `git log origin/main`. If local main is ahead, verify HEAD in a clean worktree and push (routine above).
-- **M4 left:**
-  1. **Incremental compile** (Opus high; core only, then a few lines in `store.ts` `recompileNow`). M4a's verdict and the state to snapshot are in the build log "M4a" entry. Must equal a full compile (property test: random edit sequences, incremental == full). A reordered moment list, voice-definition change or setup diagnostics fall back to a full compile. If drags still stutter after that, compile in a worker.
-  2. **Acceptance checks (PLAN §15 M4):** a 1-minute piece from New with the mouse alone (try it in the browser pane); every action undoable; an edit during playback heard within 50 ms with no clicks (measure: setPiece → swap posted, plus engine swap latency); persistent storage status shown; Download all.
-  3. **Small polish noted by builders:** the canvas draws a moment's line at its span start, the lane at `moment.at` (≈0.15 s apart; make them agree); focusing an off-screen lane item doesn't pan; Escape with the menu open also clears the selection; drag-from-palette skipped; `canvas-input.ts` key guards have no unit test.
-  4. Run the whole e2e suite on the merged tree before pushing app work.
+- **M4 follow-ups (optional):** compile in a worker if edit latency on long pieces gets tight (worst ≈ 46 ms); incremental compile could stop early once the resumed state re-converges; palette drag has no touch path (M5 touch work).
+- **Next milestone: M5** (PLAN §15). Confirm with the owner whether tablet touch editing is in scope (phones are not a priority).
+- **E2E ports:** give every builder distinct `E2E_DEV_PORT`/`E2E_PROD_PORT`/`E2E_OUT_DIR` in its brief; Playwright reuses whatever is on 5180 (the integrator's dev server).
 - **Builder Alt rule (integrator call):** Alt at press duplicates; Alt held disables snapping (PLAN gives Alt both meanings).
 - **Machine load:** parallel builders push load to 40–60, so their full `pnpm test` runs fail timing tests (rtf, compiler-perf, dsp export, stems). Rerun those alone; don't treat them as regressions.
 - **Watch items:** the unison lock is getting intricate (group pass + glide warp, stems 6× slower); plan a consolidation pass in M6. Hard DSP briefs must be narrow.
