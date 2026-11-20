@@ -4,6 +4,82 @@ Newest milestone first. Each entry says what departs from (or fills a gap in) PL
 
 ---
 
+## M1a: rng, scales, chords, math, tuning, file format, defaults, generate (2026-11-19)
+
+### `core/rng.ts` (§7.7)
+- `mix32` is murmur3_32 over four little-endian words with seed 0 (checked against a reference implementation). `hash32` uses murmur3 rounds with a type tag per part (string, uint32, int32, float) plus the length, so `hash32('a')` ≠ `hash32(97)` and part boundaries count. Strings hash their UTF-16 code units; integers in [−2³¹, 2³²) hash as one word; other numbers hash their IEEE 754 bits through a DataView; NaN hashes a fixed word, because `setFloat64` may write any NaN pattern. `toUnit` = u / 2³² (32-bit resolution).
+- `Purpose` keeps codes 1–10 as specified and adds **11–14 for `generate()`** (GenTiming, GenChord, GenRegister, GenId). The list is append-only.
+- Extras: `fmix32`, `randHashed` (pre-hashed voice id), `randInt`, `base62Id` (each of the 6 characters is drawn separately, so even the first one is uniform). Use `''` as the voice id for moment-level draws.
+- `flat.ts`'s `hashVoiceId` stays FNV-1a (M0). It belongs to the DSP, and switching would change existing pieces' seeded detune for no gain.
+
+### `core/scales.ts` (§7.8)
+- **Global degree index:** index k·n + j is degree j (0 = tonic) of the octave starting at tonicPc + 12k. It is monotone in pitch, and index mod n is the scale degree.
+- `snapToScale` works for fractional pitches, returns integers, and sends ties down. `stepByScale` snaps, then steps.
+- `degreesToPcs` is positional (one pc per input degree, not deduplicated) and wraps both ways: in A dorian, degree 9 is degree 2 (C) an octave up.
+- Custom scales are normalised (mod 12, rounded, sorted, deduplicated, 0 added; an empty one becomes [0]); the schema rejects malformed ones before they get here.
+- Extras: `parsePitchClass` (also Cb, E#, double accidentals, Unicode ♯/♭), `noteName` (60 = C4), `scaleIntervals`, `isScaleTone`, `pitchesWithPcs` (the candidate list for §7.3 voicings), `SCALE_NAMES`, `SHARP_NAMES`/`FLAT_NAMES`.
+
+### `core/chords.ts` (§7.3)
+- **Roman numerals are measured on major-scale degrees from the tonic, whatever the key's scale** (I = 0, II = 2, III = 4, IV = 5, V = 7, VI = 9, VII = 11 semitones; b/# move the root a semitone). So `bVII` is a whole tone below the tonic in every mode (the convention the plan's `bVII` example belongs to), and numerals work in pentatonic and custom scales. Consequence: in minor-type modes, write `bIII`, `bVI` and `bVII` for the diatonic chords; `III` in A dorian is C♯ major.
+- Case sets the default quality (lower-case = minor); suffixes override it (`vii°7`, `viiø7`, `III+`). After a lower-case numeral, `M7`/`maj7`/`Δ` adds a major seventh to the minor triad (`iM7` = mM7).
+- After a numeral, `/` plus a numeral is an applied chord (`V7/V`); `/` plus a note name is a slash bass. After a letter chord, `/` is always a bass.
+- `pcs` are in stacking order from the root, without duplicates; a slash bass that is not a chord tone is appended last.
+- Lead-sheet conventions: `11` on a major-quality chord omits the 3rd; `13` on a major-quality chord omits the 11th; `alt` = 1 3 b7 b9 #9 #11 b13; `6/9` is accepted.
+- Not supported: figured-bass inversions (`I6` means an added sixth), `C2`/`C4`, and lower-case letter roots (the error suggests the capital).
+
+### `core/math.ts`, `core/tuning.ts`
+- `math.ts` re-exports `sinPi`, `cosPi` and `exp2` from `ease.ts`. It adds a portable `log2` (an atanh series after splitting off the exponent bits; exact on powers of two, about 1 ulp elsewhere), plus `clamp`, `lerp` and `mod`.
+- `tuning.ts`: `hzOf(p, referenceHz = 440)`, `pitchOfHz` and `DEFAULT_REFERENCE_HZ`.
+
+### File format: `core/schema.ts`, `core/migrations.ts`, `core/defaults.ts` (§5)
+- **Required in a file:** `format`, `version`, voice ids, each moment's `id`, `type` and `at`, and each moment's essential fields (`split`/`merge` `count`, `chord.notes`, `shift.by`, `spread.factor`, `walk.until`, `pin.voice` and `pin.pitch`, `key.key`, `level.gain`), plus `timbre.harmonics`. **Everything else defaults** (values in `core/defaults.ts`, listed in docs/file-format.md):
+  - `meta`: title `'Untitled'`, created and modified `'1970-01-01T00:00:00.000Z'` (core has no clock; the app stamps real times);
+  - `seed` 0; `tuning` 440 Hz, 12-TET; `key` A dorian; `defaults.glide` {3, 0.2, 0.8, random, smootherstep} (the §5 example);
+  - `voices`: the default 12-voice pool v1–v12 (glass, pan auto, gain 1, range [38, 84], the prototype's register); `start` []; `moments` []; `timbres` {}; `end.fade` 6;
+  - `mix`: reverb {size 0.7, decay 3.2 s, damping 0.45, pre-delay 0.02 s, return 0.35}, delay {0.375 s, feedback 0.35, **return 0 = off**}, sends {reverb 0.5, delay 0.25}, tone {tilt 0, low-pass 20 kHz}, limiter −1 dBFS, panAuto 'index'. M2 may retune the reverb by ear;
+  - `view`: window 20 s, colors 'voice', HUD on;
+  - moments: chord voicing 'even', assign 'ordered'; unison pitch 'center', octaves false; split voicing 'even'; merge which 'top', fade 2 s; shift unit 'semitones'; spread around 'mean', snap 'scale'; walk grid 1 s, density 0.45, steps [−2, −1, 1, 2], stepGlide 0.3 s; level over 1 s;
+  - timbres: neutral values for everything but `harmonics`.
+- **Errors:** duplicate moment ids, duplicate voice ids, more than 32 voices, `start` naming a voice that is not in the pool or naming one twice, a range with low > high, malformed custom intervals, negative times. References inside moments (`pin.voice`, `{ voices: [...] }`) are left to compiler diagnostics.
+- **Newer versions:** the file opens with a warning and `newerVersion: true`. Its `version` is kept as written, so at runtime `piece.version` can exceed PIECE_VERSION even though the type says `1`; rewriting it to 1 would make a newer build re-migrate data that is already in its format. Moments of unknown types in a newer file are kept in place, untouched, with a warning. **M1b: `compile` must skip moments whose type it doesn't know.** In a current-version file, an unknown type is an error.
+- Unknown fields survive everywhere except a key named `__proto__`, which Zod drops (a prototype-pollution guard). A property test found and fixed a bug where unknown fields named `valueOf`, `constructor` and so on were dropped on save.
+- `parsePiece(json, { migrations? })` accepts JSON text or a value, never throws, works on a private copy, and adds `migratedFrom` to the success result. Error lines read `moments[3].count: …`; for unions it reports the branch the author evidently meant.
+- `serializePiece`: known keys in schema order, unknown keys alphabetically, Prettier-like layout (width 100, short values inline, number arrays filled), final newline. Idempotent.
+- Migrations: a `Map` keyed by the version a step reads; `migratePiece` runs v → v + 1 until current. Empty for v1; tested with a fake v0 → v1 step.
+- **`pnpm docs:schema`** (`scripts/docs-schema.mjs`) loads `scripts/file-format-doc.ts` through Vite's `runnerImport` (no new dependency) and writes docs/file-format.md: rules, the defaults table, and `z.toJSONSchema` in input form. A unit test fails when the file is stale. `package.json` gains the script entry (additive).
+- `newPiece` copies the voices' built-in timbre into `piece.timbres`, so a file is self-contained (as in the §5 example); M5's share links strip unchanged built-ins (§11.4). `defaults.ts` also exports the frozen `DEFAULT_*` constants, `MOMENT_DEFAULTS`, `TIMBRE_DEFAULTS`, copy factories, `cloneJson`, `setOwn` and `builtinTimbresFor`, for M5's default stripping.
+
+### `core/generate.ts` (§11.3, §15)
+| Prototype section | Moments |
+|---|---|
+| Seed | `start`: v1 at A3 (57) |
+| Split | 4 × `split` (3, 5, 8, 12) with explicit `pitches` (the prototype's voicing) |
+| Drift | 6 × `chord`: `degrees` [c, c+2, c+4, c+6], `register` = the prototype's span around a drifting centre, voicing 'even' |
+| Gather | `unison` on the chord tone nearest the centre |
+| Burst | `chord` with explicit `pitches`: the bass on degree c, plus an (n − 1)-note fan |
+| Walk | `walk`: 24 ticks on a 1 s grid, density 0.45, steps ±1–2, stepGlide 0.27 s, bass leaps [5, 12] |
+| Thin | 2 × `chord` with explicit `pitches`: three notes, the voices in three equal groups |
+| Home | `unison` on A3; `end` = 13.5 s later, fade 6 s |
+
+- The first moment of each section is labelled with the section name. Ids are 6 base62 characters from `mix32(seed, index, attempt, GenId)`, re-drawn on a collision. Draws are keyed by stream and index, and the mode is not part of the key, so changing density changes only the walk, and the 7-note modes share timing and chord degrees, as in the prototype.
+- **Musical differences from the prototype:**
+  - The prototype's per-voice durations, uniform in [a, b], become glide length (a + b)/2 and jitter (b − a)/(a + b); its stagger stays the stagger. The compiler draws the actual values (order 'random').
+  - Split, Burst and Thin use explicit pitches: `split` has no `register` field, and the bass-plus-fan and equal-group voicings cannot be expressed otherwise. Drift uses degrees, so it stays editable; M1b's 'even' uses the prototype's index formula, so the notes are the same.
+  - The walk grid is a fixed 1 s; the prototype picked 0.75, 1, 1 or 1.5 s per tick. The prototype's start offsets (≤ 0.1 s) and step lengths (0.22–0.32 s) become `glide: { stagger: 0.1, jitter: 0.185 }`; whether that applies depends on how M1b treats `glide` on walks.
+  - Births fade in over max(0.5 s, length/2) = 1.6 s, where the prototype used 1.4 s. Crossing enforcement (§7.2) may merge timings.
+  - A different RNG, so a given seed gives different timings and chords than in the prototype; the structure is the same.
+  - Thin keeps every voice (no `merge`), because the acceptance criterion asks for the prototype's active counts.
+- Options: `voices` 2..32 (split stages round(k·n/12) for k in 3, 5, 8, 12); `length` (more or fewer drift chords and walk ticks; never below about 100 s, since every section is kept); `density` (walk); `now` (timestamps). `generateWithSections` also returns the section start times.
+- **Tests:** the prototype's own `compose()` is cut out of the HTML and run in `node:vm`, instrumented to record the active count after every retarget and at every section end. For 20 seeds in all four modes, those match what the generated moments imply. `compile()` (M1b, e44e9f5) gives no error diagnostics for those 80 pieces, and the compiled lives give the expected active counts at every section boundary.
+
+### Deviations from the task text
+- Roman numerals follow the major-scale convention above, not the key's own scale.
+- A newer file keeps its `version` as written (see above).
+- `scripts/` and the `docs:schema` entry in package.json are outside the listed paths; the task asked for them.
+- `generate`'s `opts` defaults to `{ mode: 'dorian' }`, and gains `now`.
+
+---
+
 ## M1b: compiler, voice leading, interruption, query API (2026-11-19, in progress)
 
 ### Contract change (additive): cut segments, `Segment.curve`, flat layout v2
