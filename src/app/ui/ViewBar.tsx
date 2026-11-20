@@ -1,5 +1,6 @@
 import { sliderToWindow, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
+import { Palette } from './Palette';
 import { setColors, setHud, setTheme, setWindow, usePlayer, type ThemePref } from '../store';
 
 const COLORS = [
@@ -23,6 +24,7 @@ export function ViewBar() {
 
   return (
     <div className="viewbar" data-region="view">
+      <Palette />
       <label className="ctl">
         <span>Window</span>
         <input
