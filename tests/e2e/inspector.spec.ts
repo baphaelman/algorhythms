@@ -127,6 +127,7 @@ test('dragging a number label is one undo entry', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [CHORD]);
   const label = insp.locator('label.scrub-label', { hasText: 'Length' });
+  await label.scrollIntoViewIfNeeded();
   const box = (await label.boundingBox())!;
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 10, y);
@@ -163,4 +164,64 @@ test('keyboard: degree picker toggles with Space', async ({ page }) => {
       return h.store.getState().piece.moments.find((m) => m.id === id)?.notes?.degrees;
     }, CHORD),
   ).toEqual([0, 1, 2, 4, 6]);
+});
+
+test('chord picker: diatonic chord, quality, bass and voicing; each pick undoes', async ({
+  page,
+}) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [CHORD]);
+  const picker = insp.getByTestId('insp-chord-picker');
+  const group = (name: string) => picker.getByRole('group', { name });
+  const notes = async () => (await moment(page, CHORD))?.notes;
+
+  // A degrees chord: "Other notes" is open, the header shows the compiled chord and live notes.
+  await expect(insp.getByTestId('insp-degrees')).toBeVisible();
+  await expect(insp.getByTestId('insp-chord-live')).toHaveText(/^[A-G]/);
+
+  // The key at 0:40.7 is A dorian: IV is D.
+  await group('From the key').getByRole('button', { name: 'IV D', exact: true }).click();
+  expect(await notes()).toEqual({ kind: 'chord', symbol: 'D' });
+  await expect(insp.getByTestId('insp-chord-name')).toHaveText('D');
+  await expect(insp.getByTestId('insp-chord-numeral')).toHaveText('IV');
+  await expect(insp.locator('details.insp-other')).not.toHaveAttribute('open', '');
+  expect(await undoLabel(page)).toBe('Pick chord');
+
+  await group('Quality').getByRole('button', { name: 'm7', exact: true }).click();
+  expect((await notes())?.symbol).toBe('Dm7');
+  await expect(insp.getByTestId('insp-chord-numeral')).toHaveText('iv7');
+
+  await group('Bass').getByRole('button', { name: '3rd' }).click();
+  expect((await notes())?.symbol).toBe('Dm7/F');
+  await expect(insp.getByTestId('insp-chord-name')).toHaveText('Dm7/F');
+
+  await group('Bass').getByRole('button', { name: 'Root' }).click();
+  expect((await notes())?.symbol).toBe('Dm7/D');
+  await expect(group('Bass').getByRole('button', { name: 'Root' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await group('Voicing').getByRole('button', { name: 'Close' }).click();
+  expect(
+    await page.evaluate((i) => {
+      const h = window.__algorhythms as unknown as {
+        store: { getState(): { piece: { moments: { id: string; voicing?: string }[] } } };
+      };
+      return h.store.getState().piece.moments.find((m) => m.id === i)?.voicing;
+    }, CHORD),
+  ).toBe('close');
+  await expect(insp.getByTestId('insp-chord-live')).toHaveText(/^[A-G]/);
+
+  // Undo walks back one pick at a time.
+  await hook(page, 'undo');
+  await hook(page, 'undo');
+  expect((await notes())?.symbol).toBe('Dm7/F');
+  await hook(page, 'undo');
+  expect((await notes())?.symbol).toBe('Dm7');
+  await hook(page, 'undo');
+  expect((await notes())?.symbol).toBe('D');
+  await hook(page, 'undo');
+  expect((await notes())?.kind).toBe('degrees');
+  await expect(insp.getByTestId('insp-degrees')).toBeVisible();
 });

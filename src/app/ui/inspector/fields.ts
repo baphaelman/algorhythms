@@ -13,7 +13,16 @@ import {
   pitchOfDegreeIndex,
   scaleIntervals,
 } from '../../../core/scales';
-import type { CompiledScore, EaseRef, Key, Pitch, Seconds } from '../../../core/types';
+import { segmentAt } from '../../../core/query';
+import type {
+  CompiledScore,
+  EaseRef,
+  Key,
+  MomentId,
+  Pitch,
+  Seconds,
+  Segment,
+} from '../../../core/types';
 
 /** Shortest decimal text for `x`, at most `digits` decimals ("3", "0.25", "-1.5"). */
 export function formatNum(x: number, digits = 3): string {
@@ -176,4 +185,29 @@ export function easePath(ref: EaseRef, w: number, h: number, n = 48): string {
         `${i === 0 ? 'M' : 'L'}${formatNum((i / n) * w, 2)} ${formatNum(h - ((y - lo) / span) * h, 2)}`,
     )
     .join(' ');
+}
+
+/**
+ * The notes sounding once a moment lands, low to high: each voice's destination from the moment's
+ * own segments, else (a voice it held still, or didn't target) the destination of the segment
+ * sounding at the end of the moment's span. Empty if the moment has no span.
+ */
+export function liveNotes(
+  score: Pick<CompiledScore, 'voices' | 'momentSpans'>,
+  momentId: MomentId,
+): Pitch[] {
+  const span = score.momentSpans.find((s) => s.id === momentId);
+  if (!span) return [];
+  const dest = (s: Segment): Pitch => (s.curve ? s.curve.p1 : s.p1);
+  const out: Pitch[] = [];
+  for (const v of score.voices) {
+    let p: Pitch | null = null;
+    for (const s of v.segments) if (s.momentId === momentId) p = dest(s);
+    if (p === null) {
+      const s = segmentAt(v, span.end);
+      if (s) p = dest(s);
+    }
+    if (p !== null) out.push(p);
+  }
+  return out.sort((a, b) => a - b);
 }

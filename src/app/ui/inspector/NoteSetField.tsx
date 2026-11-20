@@ -1,10 +1,11 @@
 /**
- * NoteSet editor (§5, §11.3): chord symbol with live parse feedback, degree picker, pitch list,
- * or "current notes".
+ * NoteSet editor (§5, §11.3): the chord picker, a chord symbol with live parse feedback, and under
+ * "Other notes" the kind selector with the degree picker, pitch list or "current notes".
  */
 
 import { parseChord } from '../../../core/chords';
-import type { Key, NoteSet } from '../../../core/types';
+import type { Key, MomentId, NoteSet, Voicing } from '../../../core/types';
+import { ChordPicker } from './ChordPicker';
 import { SelectField, TextField } from './controls';
 import {
   chordFeedback,
@@ -40,25 +41,33 @@ function defaultOf(kind: Kind): NoteSet {
 export function NoteSetField({
   value,
   keyAtMoment,
+  momentId,
+  voicing,
   onChange,
+  onVoicing,
 }: {
   value: NoteSet;
   /** The key in effect at the moment's time (Roman numerals and degrees read it). */
   keyAtMoment: Key;
+  momentId: MomentId;
+  voicing: Voicing;
   onChange: (v: NoteSet, label: string) => void;
+  onVoicing: (v: Voicing) => void;
 }) {
+  const chord = value.kind === 'chord';
   return (
     <>
-      <SelectField
-        label="Notes"
-        value={value.kind}
-        options={KIND_OPTIONS}
-        testId="insp-notes-kind"
-        onChange={(k) => k !== value.kind && onChange(defaultOf(k), 'Change notes')}
+      <ChordPicker
+        value={value}
+        keyAtMoment={keyAtMoment}
+        momentId={momentId}
+        voicing={voicing}
+        onChange={onChange}
+        onVoicing={onVoicing}
       />
       {value.kind === 'chord' && (
         <TextField
-          label="Chord"
+          label="Symbol"
           value={value.symbol}
           testId="insp-chord"
           placeholder="Dm9, F#m7b5, ii7"
@@ -70,32 +79,43 @@ export function NoteSetField({
           onCommit={(t) => onChange({ kind: 'chord', symbol: t.trim() }, 'Change chord')}
         />
       )}
-      {value.kind === 'degrees' && (
-        <DegreePicker
-          degrees={value.degrees}
-          keyAtMoment={keyAtMoment}
-          onChange={(d) => onChange({ kind: 'degrees', degrees: d }, 'Change degrees')}
+      {/* Remounts when the kind changes: open for degrees, pitches and current; closed for chords. */}
+      <details key={value.kind} className="insp-other" open={!chord}>
+        <summary>Other notes</summary>
+        <SelectField
+          label="Notes"
+          value={value.kind}
+          options={KIND_OPTIONS}
+          testId="insp-notes-kind"
+          onChange={(k) => k !== value.kind && onChange(defaultOf(k), 'Change notes')}
         />
-      )}
-      {value.kind === 'pitches' && (
-        <TextField
-          label="Pitches"
-          value={formatPitchList(value.pitches)}
-          testId="insp-pitches"
-          placeholder="C4 E4 G4 or 60 64 67"
-          parse={(t) =>
-            parsePitchList(t)
-              ? { ok: true }
-              : {
-                  ok: false,
-                  error: 'Enter note names (C4, F#3) or MIDI numbers, separated by spaces.',
-                }
-          }
-          onCommit={(t) =>
-            onChange({ kind: 'pitches', pitches: parsePitchList(t) ?? [] }, 'Change pitches')
-          }
-        />
-      )}
+        {value.kind === 'degrees' && (
+          <DegreePicker
+            degrees={value.degrees}
+            keyAtMoment={keyAtMoment}
+            onChange={(d) => onChange({ kind: 'degrees', degrees: d }, 'Change degrees')}
+          />
+        )}
+        {value.kind === 'pitches' && (
+          <TextField
+            label="Pitches"
+            value={formatPitchList(value.pitches)}
+            testId="insp-pitches"
+            placeholder="C4 E4 G4 or 60 64 67"
+            parse={(t) =>
+              parsePitchList(t)
+                ? { ok: true }
+                : {
+                    ok: false,
+                    error: 'Enter note names (C4, F#3) or MIDI numbers, separated by spaces.',
+                  }
+            }
+            onCommit={(t) =>
+              onChange({ kind: 'pitches', pitches: parsePitchList(t) ?? [] }, 'Change pitches')
+            }
+          />
+        )}
+      </details>
     </>
   );
 }

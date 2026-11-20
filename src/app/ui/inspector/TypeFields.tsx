@@ -17,7 +17,6 @@ import type {
   SplitMoment,
   SpreadMoment,
   UnisonMoment,
-  Voicing,
   WalkMoment,
 } from '../../../core/types';
 import { updateMoment } from '../../editor/actions';
@@ -44,12 +43,6 @@ interface Ctx {
 function field<V>(id: string, field: string, label: string): Setter<V> {
   return fieldSetter<V>(id, label, (_m, v) => ({ [field]: v }) as MomentPatch);
 }
-
-const VOICINGS: readonly (readonly [Voicing, string])[] = [
-  ['even', 'Even'],
-  ['close', 'Close'],
-  ['nearest', 'Nearest'],
-];
 
 const pitchProps = { format: formatPitch, parse: parsePitch, step: 1, min: 0, max: 127 } as const;
 
@@ -90,13 +83,10 @@ function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
       <NoteSetField
         value={m.notes}
         keyAtMoment={ctx.keyAt}
+        momentId={m.id}
+        voicing={m.voicing}
         onChange={(notes, l) => updateMoment(m.id, { notes }, l)}
-      />
-      <SelectField
-        label="Voicing"
-        value={m.voicing}
-        options={VOICINGS}
-        onChange={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
+        onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
       />
       <SelectField
         label="Assign"
@@ -181,15 +171,12 @@ function SplitFields({ m, ctx }: { m: SplitMoment; ctx: Ctx }) {
       <NoteSetField
         value={m.notes ?? { kind: 'current' }}
         keyAtMoment={ctx.keyAt}
+        momentId={m.id}
+        voicing={m.voicing}
         onChange={(notes, l) =>
           updateMoment(m.id, { notes: notes.kind === 'current' ? undefined : notes }, l)
         }
-      />
-      <SelectField
-        label="Voicing"
-        value={m.voicing}
-        options={VOICINGS}
-        onChange={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
+        onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
       />
     </>
   );

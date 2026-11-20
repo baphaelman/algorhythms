@@ -8,6 +8,7 @@ import {
   formatPitchList,
   formatTime,
   keyAt,
+  liveNotes,
   parseIntList,
   parseNum,
   parsePitch,
@@ -103,5 +104,36 @@ describe('inspector fields', () => {
       expect(Number(m[2])).toBeGreaterThanOrEqual(0);
       expect(Number(m[2])).toBeLessThanOrEqual(50);
     }
+  });
+});
+
+describe('liveNotes', () => {
+  it('lists the destinations sounding once the moment lands, low to high', () => {
+    const seg = (
+      t0: number,
+      t1: number,
+      p1: number,
+      momentId?: string,
+      curve?: { t1: number; p1: number },
+    ) => ({ t0, t1, p0: 60, p1, ease: 'smooth' as const, momentId, curve });
+    const lives = [{ born: 0, fadeIn: 0, fadeOut: 0 }];
+    const score = {
+      momentSpans: [
+        { id: 'a', start: 0, end: 1 },
+        { id: 'b', start: 1, end: 2 },
+      ],
+      voices: [
+        { lives, segments: [seg(0, 1, 67, 'a'), seg(1, 2, 69, 'b')] },
+        // Truncated glide: the planned destination counts.
+        { lives, segments: [seg(0, 1, 60, 'a', { t1: 2, p1: 59 }), seg(1, 3, 59)] },
+        // Held by 'b' (no segment of its own): the hold's pitch counts.
+        { lives, segments: [seg(0, 3, 72)] },
+        // Dormant at the span's end.
+        { lives: [], segments: [] },
+      ],
+    } as unknown as Parameters<typeof liveNotes>[0];
+    expect(liveNotes(score, 'a')).toEqual([59, 67, 72]);
+    expect(liveNotes(score, 'b')).toEqual([59, 69, 72]);
+    expect(liveNotes(score, 'z')).toEqual([]);
   });
 });
