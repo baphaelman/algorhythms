@@ -1,13 +1,27 @@
 import { useEffect, useRef } from 'react';
 import { xToTime, type View } from '../../render';
 import { onScoreFrame } from '../loop';
-import { beatPx, rulerLabel, rulerStep, tickTimes } from '../ruler';
-import { camera, scrubEnd, scrubTo, usePlayer } from '../store';
+import { snapToGrid } from '../editor/shortcuts';
+import {
+  LOOP_BAND_PX,
+  LOOP_DRAG_PX,
+  beatPx,
+  dragLoopEdge,
+  loopEdgeAt,
+  loopFromDrag,
+  rulerLabel,
+  rulerStep,
+  tickTimes,
+  type LoopSpan,
+} from '../ruler';
+import { camera, loopDraft, loopRegion, scrubEnd, scrubTo, setLoop, usePlayer } from '../store';
 
 /**
  * The time ruler above the score (PLAN.md §11.2 "Time" row): labelled ticks, and the BPM grid when
  * the piece has one, on the shared axis (§10). Click or drag seeks (silent while dragging, like the
- * player's scrubber); the view holds still during the drag. Placed every frame from the loop's
+ * player's scrubber); the view holds still during the drag. Its top strip is the loop band
+ * (§11.3 revision 6): drag there, or Shift-drag anywhere, to set the loop region; drag a region
+ * edge to move it; double-click the band to clear it (Alt skips grid snapping). Placed every frame from the loop's
  * camera (`onScoreFrame`) by direct DOM writes; its content box lines up with the score canvas.
  */
 export function Ruler() {
@@ -75,38 +89,88 @@ export function Ruler() {
     };
     const off = onScoreFrame(layout);
 
-    let dragging: number | null = null;
+    // A press seeks (silent scrub), or on the loop band / with Shift sets the loop region.
+    type Drag =
+      | { id: number; kind: 'seek' }
+      | { id: number; kind: 'new'; t0: number; x0: number }
+      | { id: number; kind: 'edge'; edge: 'start' | 'end'; span: LoopSpan };
+    let drag: Drag | null = null;
     const timeAt = (clientX: number): number | null => {
       if (!view) return null;
       return xToTime(view, clientX - box.getBoundingClientRect().left);
     };
+    const inBand = (clientY: number): boolean =>
+      clientY - el.getBoundingClientRect().top - el.clientTop < LOOP_BAND_PX;
+    const snapped = (t: number, e: PointerEvent): number =>
+      e.altKey ? Math.max(0, t) : snapToGrid(t, usePlayer.getState().piece.view.gridBpm);
+    const pieceLength = (): number => usePlayer.getState().compiled.duration;
+    const edgeAt = (t: number): 'start' | 'end' | null =>
+      view ? loopEdgeAt(loopRegion(), t, view.pps) : null;
     const onDown = (e: PointerEvent): void => {
-      if (e.button !== 0 || dragging !== null) return;
+      if (e.button !== 0 || drag !== null) return;
       const t = timeAt(e.clientX);
       if (t === null) return;
       e.preventDefault();
-      dragging = e.pointerId;
       el.setPointerCapture?.(e.pointerId);
       camera.hold = true;
       camera.release = false;
+      if (inBand(e.clientY) || e.shiftKey) {
+        const r = loopRegion();
+        const edge = edgeAt(t);
+        if (r && edge) {
+          drag = { id: e.pointerId, kind: 'edge', edge, span: { start: r.start, end: r.end } };
+          loopDraft.span = drag.span;
+        } else {
+          drag = { id: e.pointerId, kind: 'new', t0: snapped(t, e), x0: e.clientX };
+        }
+        return;
+      }
+      drag = { id: e.pointerId, kind: 'seek' };
       scrubTo(t);
     };
     const onMove = (e: PointerEvent): void => {
-      if (e.pointerId !== dragging) return;
+      if (!drag) {
+        const t = timeAt(e.clientX);
+        const band = inBand(e.clientY) || e.shiftKey;
+        el.dataset.hover = !band ? '' : t !== null && edgeAt(t) ? 'edge' : 'band';
+        return;
+      }
+      if (e.pointerId !== drag.id) return;
       const t = timeAt(e.clientX);
-      if (t !== null) scrubTo(t);
+      if (t === null) return;
+      if (drag.kind === 'seek') scrubTo(t);
+      else if (drag.kind === 'edge') {
+        loopDraft.span = dragLoopEdge(drag.span, drag.edge, snapped(t, e), pieceLength());
+      } else if (Math.abs(e.clientX - drag.x0) >= LOOP_DRAG_PX) {
+        loopDraft.span = loopFromDrag(drag.t0, snapped(t, e), pieceLength());
+      }
     };
     const onUp = (e: PointerEvent): void => {
-      if (e.pointerId !== dragging) return;
-      dragging = null;
-      scrubEnd();
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag;
+      drag = null;
       camera.release = true;
+      if (d.kind === 'seek') {
+        scrubEnd();
+        return;
+      }
+      const span = loopDraft.span;
+      if (span && e.type !== 'pointercancel') setLoop(span);
+      else loopDraft.span = null;
+    };
+    const onDouble = (e: MouseEvent): void => {
+      if (inBand(e.clientY)) setLoop(null);
+    };
+    const onLeave = (): void => {
+      if (!drag) el.dataset.hover = '';
     };
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointercancel', onUp);
     el.addEventListener('lostpointercapture', onUp);
+    el.addEventListener('dblclick', onDouble);
+    el.addEventListener('pointerleave', onLeave);
     return () => {
       off();
       el.removeEventListener('pointerdown', onDown);
@@ -114,6 +178,9 @@ export function Ruler() {
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onUp);
       el.removeEventListener('lostpointercapture', onUp);
+      el.removeEventListener('dblclick', onDouble);
+      el.removeEventListener('pointerleave', onLeave);
+      loopDraft.span = null;
       camera.hold = camera.release = false;
     };
   }, []);
@@ -125,10 +192,14 @@ export function Ruler() {
       data-testid="ruler"
       role="slider"
       tabIndex={0}
-      aria-label="Position in the piece (click or drag to seek; arrow keys step)"
+      aria-label="Position in the piece (click or drag to seek; arrow keys step; drag the top strip to loop)"
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
     >
+      <div
+        className="ruler-band"
+        title="Loop: drag here to set a region, drag its edges, double-click to clear"
+      />
       <div ref={grid} className="ruler-grid" hidden />
       <div ref={ticks} className="ruler-ticks" />
     </div>

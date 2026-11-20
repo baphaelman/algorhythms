@@ -93,6 +93,12 @@ describe('key mapping', () => {
     expect(editorKey(key('Escape', { ctrlKey: true }))).toBeNull();
   });
 
+  it('maps \\ to the loop toggle, not with ⌘/Ctrl/Alt', () => {
+    expect(editorKey(key('\\'))).toEqual({ kind: 'loop' });
+    expect(editorKey(key('\\', { metaKey: true }))).toBeNull();
+    expect(editorKey({ ...key('\\'), target: { tagName: 'INPUT', type: 'text' } })).toBeNull();
+  });
+
   it('leaves text fields alone, not buttons or sliders', () => {
     const text = [
       { tagName: 'INPUT', type: 'text' },

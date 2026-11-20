@@ -9,6 +9,7 @@ import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
 import { Notices, SilentHint } from './ui/Notices';
+import { LoopRegion } from './ui/LoopRegion';
 import { Playhead } from './ui/Playhead';
 import { Ruler } from './ui/Ruler';
 import { ScoreView } from './ui/ScoreView';
@@ -63,6 +64,7 @@ export function App() {
           {wide && <Ruler />}
           <ScoreView />
           {wide && <Lane />}
+          {wide && <LoopRegion />}
           {wide && <Playhead />}
         </div>
         {!wide && <Scrubber />}

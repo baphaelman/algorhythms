@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { live } from '../dom';
-import { scrubEnd, scrubTo, togglePlay, usePlayer } from '../store';
+import { clampLoop } from '../ruler';
+import { scrubEnd, scrubTo, toggleLoop, togglePlay, usePlayer } from '../store';
 
 /** Play/pause, the time readout, the meter and the key and voice status. */
 export function Transport({ children }: { children?: React.ReactNode }) {
   const status = usePlayer((s) => s.transport.status);
   const title = usePlayer((s) => s.piece.meta.title);
   const playing = status === 'playing';
+  const loopOn = usePlayer((s) => s.piece.view.loop?.on !== false);
+  const hasLoop = usePlayer((s) => clampLoop(s.piece.view.loop, s.compiled.duration) !== null);
+  const looping = hasLoop && loopOn;
 
   const time = useCallback((el: HTMLElement | null) => (live.time = el), []);
   const duration = useCallback((el: HTMLElement | null) => (live.duration = el), []);
@@ -23,6 +27,22 @@ export function Transport({ children }: { children?: React.ReactNode }) {
         onClick={togglePlay}
       >
         {playing ? 'Pause' : 'Play'}
+      </button>
+      <button
+        type="button"
+        className="loop-toggle"
+        data-testid="loop-toggle"
+        aria-pressed={looping}
+        aria-keyshortcuts="\"
+        disabled={!hasLoop}
+        title={
+          hasLoop
+            ? 'Loop the region (\\)'
+            : 'Loop: drag on the top strip of the ruler to set a region first'
+        }
+        onClick={() => toggleLoop()}
+      >
+        Loop
       </button>
       <div className="readout" role="timer" aria-label="Playback time">
         <span ref={time} data-testid="time" />

@@ -1,6 +1,7 @@
 /**
  * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the ten letters add a
- * moment at the playhead, Delete/Backspace delete the selection, Escape clears it.
+ * moment at the playhead, Delete/Backspace delete the selection, Escape clears it, `\` toggles
+ * the loop region (revision 6).
  */
 
 import type { MomentId, MomentType, Seconds } from '../../core/types';
@@ -67,7 +68,8 @@ export function deleteSelection(): boolean {
 }
 
 /** What an editor key does. */
-export type EditorKey = { kind: 'add'; type: MomentType } | { kind: 'delete' } | { kind: 'escape' };
+export type EditorKey =
+  { kind: 'add'; type: MomentType } | { kind: 'delete' } | { kind: 'escape' } | { kind: 'loop' };
 
 /** Input types that take no typed text, so letters and Delete stay global there. */
 const NON_TEXT_INPUTS = new Set([
@@ -100,6 +102,7 @@ export function editorKey(e: KeyLike & { target?: unknown }): EditorKey | null {
     return e.metaKey || e.ctrlKey || e.altKey ? null : { kind: 'delete' };
   }
   if (e.key === 'Escape') return e.metaKey || e.ctrlKey || e.altKey ? null : { kind: 'escape' };
+  if (e.key === '\\') return e.metaKey || e.ctrlKey || e.altKey ? null : { kind: 'loop' };
   const type = momentTypeForKey(e);
   return type ? { kind: 'add', type } : null;
 }
