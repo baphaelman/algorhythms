@@ -386,3 +386,72 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* Sliders, chips and the frozen walk (§11.3, revision 5: M4.5-6). */
+
+.insp-ctl.with-slider input[type='text'] {
+  flex: 0 0 4.2em;
+}
+
+.insp-ctl.with-slider .unit {
+  min-width: 1.6em;
+}
+
+.insp-gen {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.insp-gen:disabled {
+  opacity: 0.55;
+}
+
+.insp-gen:disabled .insp-row .scrub-label {
+  cursor: default;
+}
+
+.insp-note {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.insp-frozen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.insp-frozen .badge {
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chips.steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 4px;
+}
+
+.chips.steps button {
+  min-width: 0;
+  padding: 2px 0;
+  font-family: var(--f-mono);
+}
+
+.insp-target {
+  margin-top: 4px;
+}
+
+.insp-preview {
+  margin-top: 4px;
+}

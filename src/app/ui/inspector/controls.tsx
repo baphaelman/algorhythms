@@ -104,11 +104,15 @@ interface NumberFieldProps {
   /** Extra validation; returns an error message or null. */
   check?: (v: number) => string | null;
   testId?: string;
+  /** Adds a range slider over [min, max] (may be narrower than the typed range). */
+  slider?: { min: number; max: number; step?: number };
 }
 
 /**
  * A number field. Type and press Enter (or leave the field) to commit; ↑/↓ step by `step`
- * (Shift ×10). Drag the label sideways to scrub: one undo entry per drag, Escape cancels.
+ * (Shift ×10). Drag the label sideways to scrub: one undo entry per drag, Escape cancels. With
+ * `slider`, a range slider sits before the text box; each slider drag is one undo entry too.
+ * Disabled with its enclosing `<fieldset disabled>`.
  */
 export function NumberField(props: NumberFieldProps) {
   const {
@@ -171,6 +175,7 @@ export function NumberField(props: NumberFieldProps) {
   const drag = useRef<{ x: number; v0: number; moved: boolean } | null>(null);
   const onPointerDown = (e: React.PointerEvent<HTMLLabelElement>): void => {
     if (e.button !== 0) return;
+    if (document.getElementById(id)?.matches(':disabled')) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { x: e.clientX, v0: value, moved: false };
@@ -210,7 +215,19 @@ export function NumberField(props: NumberFieldProps) {
       >
         {label}
       </label>
-      <div className="insp-ctl">
+      <div className={props.slider ? 'insp-ctl with-slider' : 'insp-ctl'}>
+        {props.slider && (
+          <RangeInput
+            label={label}
+            value={value}
+            set={set}
+            min={props.slider.min}
+            max={props.slider.max}
+            step={props.slider.step ?? step}
+            filter={(v) => (props.check?.(v) ? null : v)}
+            testId={props.testId ? `${props.testId}-slider` : undefined}
+          />
+        )}
         <input
           id={id}
           type="text"
@@ -271,30 +288,96 @@ interface SliderProps {
   testId?: string;
 }
 
-/** A range slider: a pointer drag is one undo entry; each key press is one. */
-export function Slider({ label, value, set, min, max, step, format, testId }: SliderProps) {
-  const id = useId();
+/**
+ * A bare range input on a `Setter`: a pointer drag is one undo entry (one gesture from pointer
+ * down to up); a held arrow key is one entry per key release. `filter` may reject a value (null).
+ */
+function RangeInput({
+  id,
+  label,
+  value,
+  set,
+  min,
+  max,
+  step,
+  filter,
+  testId,
+}: {
+  id?: string;
+  label?: string;
+  value: number;
+  set: Setter<number>;
+  min: number;
+  max: number;
+  step: number;
+  filter?: (v: number) => number | null;
+  testId?: string;
+}) {
   const end = (): void => set.end();
   return (
+    <input
+      id={id}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={Math.min(max, Math.max(min, value))}
+      aria-label={id ? undefined : label}
+      data-testid={testId}
+      onPointerDown={() => set.begin()}
+      onChange={(e) => {
+        const v = filter ? filter(Number(e.target.value)) : Number(e.target.value);
+        if (v !== null) set.drag(v);
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onKeyUp={end}
+      onBlur={end}
+    />
+  );
+}
+
+/** A range slider with its value shown: a pointer drag is one undo entry; each key press is one. */
+export function Slider({ label, value, set, min, max, step, format, testId }: SliderProps) {
+  const id = useId();
+  return (
     <Row label={label} htmlFor={id}>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        data-testid={testId}
-        onPointerDown={() => set.begin()}
-        onChange={(e) => set.drag(Number(e.target.value))}
-        onPointerUp={end}
-        onKeyUp={end}
-        onBlur={end}
-      />
+      <RangeInput id={id} value={value} set={set} min={min} max={max} step={step} testId={testId} />
       <output htmlFor={id} className="unit">
         {format ? format(value) : formatNum(value, 2)}
       </output>
     </Row>
+  );
+}
+
+/**
+ * A row of toggle chips (`aria-pressed` buttons) in a labelled group. `pressed` decides each
+ * chip's state; `onPick` runs on click. Disabled with its enclosing `<fieldset disabled>`.
+ */
+export function Chips<T extends string | number>({
+  legend,
+  options,
+  pressed,
+  onPick,
+  className,
+  testId,
+}: {
+  legend: string;
+  options: readonly (readonly [T, string])[];
+  pressed: (v: T) => boolean;
+  onPick: (v: T) => void;
+  className?: string;
+  testId?: string;
+}) {
+  return (
+    <fieldset className={className ? `chips ${className}` : 'chips'} data-testid={testId}>
+      <legend>{legend}</legend>
+      {options.map(([v, text]) => (
+        <button key={v} type="button" aria-pressed={pressed(v)} onClick={() => onPick(v)}>
+          {text}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 

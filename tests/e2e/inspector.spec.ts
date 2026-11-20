@@ -225,3 +225,184 @@ test('chord picker: diatonic chord, quality, bass and voicing; each pick undoes'
   expect((await notes())?.kind).toBe('degrees');
   await expect(insp.getByTestId('insp-degrees')).toBeVisible();
 });
+
+// --- Transition, level, walk and voices controls (M4.5-6) ------------------------------------
+
+/** The walk in the featured example. */
+const WALK = '6nVoFa';
+
+interface WalkM {
+  density: number;
+  steps: number[];
+  fixed?: { tick: number; voice: string; pitch: number }[];
+  target?: unknown;
+  glide?: { ease?: unknown; order?: string };
+}
+
+const walk = (page: Page) => moment(page, WALK) as Promise<(M & WalkM) | undefined>;
+
+/** A fingerprint of the compiled walk steps, to see the score change. */
+const walkSteps = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      store: {
+        getState(): { compiled: { walkSteps: { t: number; voice: string; to: number }[] } };
+      };
+    };
+    return JSON.stringify(h.store.getState().compiled.walkSteps.map((s) => [s.t, s.voice, s.to]));
+  });
+
+const canUndo = (page: Page): Promise<boolean> =>
+  page.evaluate(
+    () => (window.__algorhythms as unknown as EditorHook).editor.state.getState().canUndo,
+  );
+
+test('walk: density and allowed steps change the score; each undoes', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [WALK]);
+  await expect(insp.getByRole('heading')).toContainText('Walk');
+  const steps = insp.getByTestId('insp-walk-steps');
+  await expect(steps.getByRole('button')).toHaveText(['−3', '−2', '−1', '+1', '+2', '+3']);
+  await expect(steps.getByRole('button', { name: '+3' })).toHaveAttribute('aria-pressed', 'false');
+
+  const before = await walkSteps(page);
+  await steps.getByRole('button', { name: '+3' }).click();
+  expect((await walk(page))?.steps).toEqual([-2, -1, 1, 2, 3]);
+  await expect(steps.getByRole('button', { name: '+3' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => walkSteps(page)).not.toBe(before);
+  const withThree = await walkSteps(page);
+
+  const density = insp.getByTestId('insp-walk-density');
+  await expect(density).toHaveValue('45');
+  await density.fill('90');
+  await density.press('Enter');
+  expect((await walk(page))?.density).toBe(0.9);
+  await expect.poll(() => walkSteps(page)).not.toBe(withThree);
+
+  expect(await undoLabel(page)).toBe('Edit density');
+  await hook(page, 'undo');
+  expect((await walk(page))?.density).toBe(0.45);
+  await hook(page, 'undo');
+  expect((await walk(page))?.steps).toEqual([-2, -1, 1, 2]);
+  await expect.poll(() => walkSteps(page)).toBe(before);
+});
+
+test('a slider drag is one undo entry', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [WALK]);
+  const slider = insp.getByTestId('insp-walk-density-slider');
+  await slider.scrollIntoViewIfNeeded();
+  const box = (await slider.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.45, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + box.width * (0.45 + i * 0.05), y);
+  await page.mouse.up();
+  const after = (await walk(page))?.density ?? 0;
+  expect(after).toBeGreaterThan(0.7);
+  await expect(insp.getByTestId('insp-walk-density')).toHaveValue(String(Math.round(after * 100)));
+  expect(await undoLabel(page)).toBe('Edit density');
+  await hook(page, 'undo');
+  expect((await walk(page))?.density).toBe(0.45);
+  expect(await canUndo(page)).toBe(false);
+});
+
+test('a frozen walk shows its badge, locks the generator and unfreezes', async ({ page }) => {
+  // Load the featured piece with its walk frozen to two notes.
+  await page.evaluate((id) => {
+    const h = window.__algorhythms as unknown as {
+      store: { getState(): { piece: { voices: { id: string }[]; moments: { id: string }[] } } };
+      actions: { loadPiece(p: unknown): void };
+    };
+    const p = structuredClone(h.store.getState().piece);
+    const v = p.voices[0].id;
+    p.moments = p.moments.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            fixed: [
+              { tick: 0, voice: v, pitch: 50 },
+              { tick: 2, voice: v, pitch: 52 },
+            ],
+          }
+        : m,
+    );
+    h.actions.loadPiece(p);
+  }, WALK);
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [WALK]);
+  await expect(insp.getByTestId('insp-walk-frozen')).toContainText('Frozen');
+  await expect(insp.getByText('Unfreeze to change')).toBeVisible();
+  await expect(insp.getByTestId('insp-walk-density')).toBeDisabled();
+  await expect(
+    insp.getByTestId('insp-walk-steps').getByRole('button', { name: '+3' }),
+  ).toBeDisabled();
+  await expect(insp.getByTestId('insp-reroll')).toBeDisabled();
+  // Grid still applies to a frozen walk.
+  await expect(insp.getByTestId('insp-walk-grid')).toBeEnabled();
+  const frozen = await walkSteps(page);
+
+  await insp.getByTestId('insp-unfreeze').click();
+  expect((await walk(page))?.fixed).toBeUndefined();
+  await expect(insp.getByTestId('insp-walk-frozen')).toHaveCount(0);
+  await expect(insp.getByTestId('insp-walk-density')).toBeEnabled();
+  await expect.poll(() => walkSteps(page)).not.toBe(frozen);
+  expect(await undoLabel(page)).toBe('Unfreeze walk');
+  await hook(page, 'undo');
+  expect((await walk(page))?.fixed).toHaveLength(2);
+  await expect(insp.getByTestId('insp-walk-frozen')).toBeVisible();
+});
+
+test('voices, transition and level controls', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [WALK]);
+  const modes = insp.getByTestId('insp-target');
+  await expect(modes.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+
+  await modes.getByRole('button', { name: 'Bottom n' }).click();
+  expect((await walk(page))?.target).toEqual({ rank: [0, 0] });
+  const n = insp.getByTestId('insp-target-n');
+  await n.fill('3');
+  await n.press('Enter');
+  expect((await walk(page))?.target).toEqual({ rank: [0, 2] });
+
+  await modes.getByRole('button', { name: 'Top n' }).click();
+  const top = (await walk(page))?.target as { rank: [number, number] };
+  expect(top.rank[1]).toBe(11);
+  await expect(modes.getByRole('button', { name: 'Top n' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(n).toHaveValue('1');
+
+  await modes.getByRole('button', { name: 'Pick…' }).click();
+  await expect(insp.locator('.insp-voices input[type=checkbox]')).toHaveCount(12);
+
+  // Transition chips.
+  const tr = insp.getByTestId('insp-transition');
+  await tr.getByRole('group', { name: 'Curve' }).getByRole('button', { name: 'Expo' }).click();
+  expect((await walk(page))?.glide?.ease).toBe('expo');
+  await tr.getByRole('group', { name: 'Curve' }).getByRole('button', { name: 'Custom' }).click();
+  expect((await walk(page))?.glide?.ease).toMatchObject({ kind: 'bezier' });
+  await expect(tr.getByRole('img', { name: 'bézier easing curve' })).toBeVisible();
+  await tr
+    .getByRole('group', { name: 'Order' })
+    .getByRole('button', { name: 'Centre out' })
+    .click();
+  expect((await walk(page))?.glide?.order).toBe('center-out');
+
+  // Level: Ramp.
+  await hook(page, 'select', ['TwLvl1']);
+  const ramp = insp.getByTestId('insp-level-ramp');
+  await expect(ramp).toHaveValue('4');
+  await ramp.fill('7.5');
+  await ramp.press('Enter');
+  expect(
+    await page.evaluate(() => {
+      const h = window.__algorhythms as unknown as {
+        store: { getState(): { piece: { moments: { id: string; over?: number }[] } } };
+      };
+      return h.store.getState().piece.moments.find((m) => m.id === 'TwLvl1')?.over;
+    }),
+  ).toBe(7.5);
+});

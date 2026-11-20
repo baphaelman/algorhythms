@@ -23,6 +23,7 @@ import { updateMoment } from '../../editor/actions';
 import type { MomentPatch } from '../../editor/ops';
 import {
   CheckField,
+  Chips,
   NumberField,
   SelectField,
   Slider,
@@ -30,7 +31,15 @@ import {
   fieldSetter,
   type Setter,
 } from './controls';
-import { formatIntList, formatNum, formatPitch, parseIntList, parsePitch } from './fields';
+import {
+  formatIntList,
+  formatNum,
+  formatPitch,
+  parseIntList,
+  parsePitch,
+  stepChips,
+  toggleStep,
+} from './fields';
 import { NoteSetField } from './NoteSetField';
 
 interface Ctx {
@@ -276,9 +285,9 @@ function SpreadFields({ m }: { m: SpreadMoment }) {
 }
 
 function WalkFields({ m }: { m: WalkMoment }) {
-  const until = field<number>(m.id, 'until', 'Edit walk end');
+  const region = fieldSetter<number>(m.id, 'Edit walk region', (x, v) => ({ until: x.at + v }));
   const grid = field<number>(m.id, 'grid', 'Edit grid');
-  const density = field<number>(m.id, 'density', 'Edit density');
+  const density = fieldSetter<number>(m.id, 'Edit density', (_x, v) => ({ density: v / 100 }));
   const stepGlide = field<number>(m.id, 'stepGlide', 'Edit step glide');
   const leapLo = fieldSetter<number>(m.id, 'Edit bass leap', (x, v) => ({
     bass: { leap: [v, Math.max(v, (x as WalkMoment).bass?.leap[1] ?? v)] },
@@ -286,16 +295,30 @@ function WalkFields({ m }: { m: WalkMoment }) {
   const leapHi = fieldSetter<number>(m.id, 'Edit bass leap', (x, v) => ({
     bass: { leap: [Math.min(v, (x as WalkMoment).bass?.leap[0] ?? v), v] },
   }));
+  const frozen = m.fixed !== undefined;
   return (
     <>
+      {frozen && (
+        <div className="insp-frozen" data-testid="insp-walk-frozen">
+          <span className="badge">Frozen</span>
+          <button
+            type="button"
+            data-testid="insp-unfreeze"
+            onClick={() => updateMoment(m.id, { fixed: undefined }, 'Unfreeze walk')}
+          >
+            Unfreeze
+          </button>
+        </div>
+      )}
       <NumberField
-        label="Until"
+        label="Region"
         unit="s"
-        value={m.until}
-        set={until}
-        min={0}
+        value={m.until - m.at}
+        set={region}
+        min={0.05}
         step={0.5}
-        check={(v) => (v <= m.at ? 'The walk must end after it starts.' : null)}
+        slider={{ min: 1, max: Math.max(60, Math.ceil((m.until - m.at) / 10) * 10) }}
+        testId="insp-walk-region"
       />
       <NumberField
         label="Grid"
@@ -305,18 +328,8 @@ function WalkFields({ m }: { m: WalkMoment }) {
         min={0.05}
         max={30}
         step={0.05}
-      />
-      <Slider label="Density" value={m.density} set={density} min={0} max={1} step={0.01} />
-      <TextField
-        label="Steps"
-        value={formatIntList(m.steps)}
-        placeholder="-2 -1 1 2"
-        parse={(t) =>
-          parseIntList(t)
-            ? { ok: true }
-            : { ok: false, error: 'Enter whole scale steps, e.g. -2 -1 1 2.' }
-        }
-        onCommit={(t) => updateMoment(m.id, { steps: parseIntList(t) ?? m.steps }, 'Edit steps')}
+        slider={{ min: 0.05, max: 4 }}
+        testId="insp-walk-grid"
       />
       <NumberField
         label="Step glide"
@@ -326,38 +339,77 @@ function WalkFields({ m }: { m: WalkMoment }) {
         min={0}
         max={10}
         step={0.05}
+        slider={{ min: 0, max: 2 }}
+        testId="insp-walk-step-glide"
       />
-      <CheckField
-        label="Bass leaps"
-        checked={!!m.bass}
-        onChange={(on) =>
-          updateMoment(m.id, { bass: on ? { leap: [5, 12] } : undefined }, 'Toggle bass leaps')
-        }
-      />
-      {m.bass && (
-        <>
-          <NumberField
-            label="Leap min"
-            unit="st"
-            value={m.bass.leap[0]}
-            set={leapLo}
-            integer
-            step={1}
-            min={0}
-            max={24}
-          />
-          <NumberField
-            label="Leap max"
-            unit="st"
-            value={m.bass.leap[1]}
-            set={leapHi}
-            integer
-            step={1}
-            min={0}
-            max={24}
-          />
-        </>
-      )}
+      <fieldset
+        className="insp-gen"
+        disabled={frozen}
+        aria-describedby={frozen ? `${m.id}-frozen-note` : undefined}
+      >
+        <legend className="sr-only">Walk generator</legend>
+        {frozen && (
+          <p className="insp-note" id={`${m.id}-frozen-note`}>
+            Unfreeze to change
+          </p>
+        )}
+        <NumberField
+          label="Density"
+          unit="%"
+          value={Math.round(m.density * 100)}
+          set={density}
+          integer
+          step={1}
+          min={0}
+          max={100}
+          slider={{ min: 0, max: 100 }}
+          testId="insp-walk-density"
+        />
+        <Chips
+          legend="Allowed steps"
+          className="steps"
+          testId="insp-walk-steps"
+          options={stepChips(m.steps).map((s) => [s, s > 0 ? `+${s}` : `−${-s}`] as const)}
+          pressed={(s) => m.steps.includes(s)}
+          onPick={(s) => {
+            const steps = toggleStep(m.steps, s);
+            if (steps) updateMoment(m.id, { steps }, 'Edit steps');
+          }}
+        />
+        <CheckField
+          label="Bass leaps"
+          checked={!!m.bass}
+          onChange={(on) =>
+            updateMoment(m.id, { bass: on ? { leap: [5, 12] } : undefined }, 'Toggle bass leaps')
+          }
+        />
+        {m.bass && (
+          <>
+            <NumberField
+              label="Leap min"
+              unit="st"
+              value={m.bass.leap[0]}
+              set={leapLo}
+              integer
+              step={1}
+              min={0}
+              max={24}
+              slider={{ min: 0, max: 24 }}
+            />
+            <NumberField
+              label="Leap max"
+              unit="st"
+              value={m.bass.leap[1]}
+              set={leapHi}
+              integer
+              step={1}
+              min={0}
+              max={24}
+              slider={{ min: 0, max: 24 }}
+            />
+          </>
+        )}
+      </fieldset>
     </>
   );
 }
@@ -449,8 +501,19 @@ function LevelFields({ m }: { m: LevelMoment }) {
         max={2}
         step={0.01}
         format={(v) => `${formatNum(v, 2)}×`}
+        testId="insp-level"
       />
-      <NumberField label="Over" unit="s" value={m.over} set={over} min={0} max={120} step={0.1} />
+      <NumberField
+        label="Ramp"
+        unit="s"
+        value={m.over}
+        set={over}
+        min={0}
+        max={120}
+        step={0.1}
+        slider={{ min: 0, max: 20 }}
+        testId="insp-level-ramp"
+      />
     </>
   );
 }
