@@ -2,6 +2,8 @@
 
 **PLAN.md is the spec.** Read the sections your task names before writing code. If you must deviate from it, record the deviation and the reason in `docs/build-log.md` and mention it in your final report. Never change PLAN.md yourself; the integrator owns it.
 
+**If you are the integrator,** read `docs/integrator-handoff.md` before doing anything else.
+
 ## Roles
 - The **owner** decides product questions (PLAN.md §2, §16).
 - The **integrator** (the main Claude session) assigns milestones and verifies their acceptance criteria. It does not write code.
@@ -47,17 +49,22 @@
 
 ## Git
 - Commit locally at sensible checkpoints, with clear messages.
-- Do not push or create remotes unless your task says so.
-- End commit messages with:
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+- The remote is `origin`: https://github.com/baphaelman/algorhythms, which is public. The site deploys to https://baphaelman.github.io/algorhythms/ from `main`.
+- **Only the integrator pushes.** Builders commit locally and never push.
+- Commit as the placeholder author, whom the owner chose to keep:
+  `git -c user.name="AlgoRhythms builder" -c user.email="builder@algorhythms.invalid" commit …`
+  Don't change the git config.
+- End commit messages with a trailer that names **your own** model, for example:
+  - `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+  - `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`
 
 ## Status
 | Milestone | State |
 |---|---|
-| M0 Scaffold + shared contracts | done locally; awaiting remote, first CI run and Pages deploy |
-| M1 Core compiler | not started |
-| M2 Sound engine + WAV | not started |
-| M3 Player, Generate, exports (first public release) | not started |
+| M0 Scaffold + shared contracts | **done** 2026-11-20. CI green on all three engines; site live |
+| M1 Core compiler | **done** 2026-11-20. The owner's listening test passed. Open: the strict §7.10 5 ms target is missed (about 16 ms on a loaded Mac); address it in M4 with a worker or incremental compile |
+| M2 Sound engine + WAV | built and verified 2026-11-20; awaiting the owner's listening check on fixtures.html. Known gap: expo and bezier glides allocate on the audio thread (fix planned for M6) |
+| M3 Player, Generate, exports (first public release) | in progress: M3a renderer, M3b MIDI. Next: stems export, app shell and wiring |
 | M4 Editor core | not started |
 | M5 Editor completion | not started |
 | M6 Timbre depth | not started |
