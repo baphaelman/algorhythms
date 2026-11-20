@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type LaunchOptions } from '@playwright/test';
 
 /**
  * Every browser runs against two servers:
@@ -15,11 +15,23 @@ const OUT_DIR = process.env.E2E_OUT_DIR ?? 'dist';
 const devURL = `http://localhost:${DEV_PORT}/`;
 const prodURL = `http://localhost:${PROD_PORT}${base}`;
 
-const engines = [
-  { name: 'chromium', device: devices['Desktop Chrome'] },
-  { name: 'firefox', device: devices['Desktop Firefox'] },
-  { name: 'webkit', device: devices['Desktop Safari'] },
-] as const;
+// Local runs must be silent (headless browsers on macOS still play to the speakers), without
+// touching Web Audio behaviour: the graph and clock keep running, only the output is muted.
+// Playwright's WebKit has no mute option, so WebKit runs only on CI or with E2E_WEBKIT=1.
+const runWebkit = !!process.env.CI || process.env.E2E_WEBKIT === '1';
+const engines: { name: string; device: (typeof devices)[string]; launch: LaunchOptions }[] = [
+  {
+    name: 'chromium',
+    device: devices['Desktop Chrome'],
+    launch: { args: ['--mute-audio'] },
+  },
+  {
+    name: 'firefox',
+    device: devices['Desktop Firefox'],
+    launch: { firefoxUserPrefs: { 'media.volume_scale': '0.0' } },
+  },
+  ...(runWebkit ? [{ name: 'webkit', device: devices['Desktop Safari'], launch: {} }] : []),
+];
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -29,9 +41,9 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   timeout: 30_000,
   use: { trace: 'retain-on-failure' },
-  projects: engines.flatMap(({ name, device }) => [
-    { name: `${name}-dev`, use: { ...device, baseURL: devURL } },
-    { name: `${name}-prod`, use: { ...device, baseURL: prodURL } },
+  projects: engines.flatMap(({ name, device, launch }) => [
+    { name: `${name}-dev`, use: { ...device, launchOptions: launch, baseURL: devURL } },
+    { name: `${name}-prod`, use: { ...device, launchOptions: launch, baseURL: prodURL } },
   ]),
   webServer: [
     {
