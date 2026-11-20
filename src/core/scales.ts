@@ -13,6 +13,7 @@
  * Integer and exact floating-point operations only (§7.11).
  */
 
+import { mod } from './math';
 import type { Key, Pitch, PitchClass, ScaleName, ScaleRef } from './types';
 
 /**
@@ -44,12 +45,6 @@ export const SCALES: Readonly<Record<string, readonly number[]>> = (() => {
 
 /** Every built-in scale name, in display order. */
 export const SCALE_NAMES = Object.keys(SCALES) as readonly ScaleName[];
-
-/** Floored modulo: the result has the sign of `n` (so mod(−1, 12) = 11). */
-function mod(x: number, n: number): number {
-  const r = x % n;
-  return r < 0 ? r + n : r === 0 ? 0 : r; // `=== 0` folds −0 to 0
-}
 
 const LETTER_PC: Readonly<Record<string, number>> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 

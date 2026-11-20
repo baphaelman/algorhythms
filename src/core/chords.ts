@@ -27,6 +27,7 @@
  * note name is a slash bass.
  */
 
+import { mod } from './math';
 import { parsePitchClass, pitchClassOf } from './scales';
 import type { Key } from './types';
 
@@ -55,7 +56,7 @@ const ROMAN_RE = /^([#b]?)(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)/;
 type Quality = 'maj' | 'min' | 'dim' | 'aug' | 'hdim';
 
 function mod12(x: number): number {
-  return ((x % 12) + 12) % 12;
+  return mod(x, 12);
 }
 
 function fail(error: string): ChordParse {
