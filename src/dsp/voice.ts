@@ -1,6 +1,7 @@
 /**
  * One voice of the DSP graph (PLAN.md §8.4): pitch from flat segment records, always-on detune,
- * vibrato after arrival, band-limited wavetable oscillator with mip crossfade, articulation,
+ * vibrato after arrival (optionally jittered), seeded slow drift of pitch and amplitude,
+ * band-limited wavetable oscillator with mip crossfade, articulation,
  * motion accent, loudness tilt, life fades, level ramps, equal-power pan and FX sends.
  *
  * Evaluation is at control rate: once per CONTROL_PERIOD frames the voice computes its frequency,
@@ -60,7 +61,7 @@ import {
   SWAP_CROSSFADE_SEMITONES,
   VOICE_BASE_GAIN,
 } from './constants';
-import { hash2, unit } from './rng';
+import { hash2, Prng, unit } from './rng';
 import { SINE, SINE_TABLE_SIZE, cos2pi, sin2pi } from './sine';
 import type { TimbreSlot } from './timbre-slot';
 import { MIP_BASE_HZ, MIP_COUNT, WAVETABLE_SIZE, WAVETABLE_STRIDE } from './wavetable';
@@ -91,6 +92,25 @@ const DETUNE_FLOOR = 1;
 const SALT_DETUNE = 0x0de7;
 const SALT_SPREAD = 0x5bd1;
 const SALT_LFO = 0x1f0c;
+const SALT_DRIFT = 0xd71f;
+const SALT_VJ_RATE = 0x7a7e;
+const SALT_VJ_DEPTH = 0xde97;
+
+/**
+ * Drift and vibrato jitter read smooth value noise: Catmull-Rom interpolation through DRIFT_KNOTS
+ * seeded random knots in [−1, 1] per voice (a ring; with the incommensurate rates below it does not
+ * audibly repeat). The noise phase advances at the timbre's drift rate, or DEFAULT_WANDER_RATE.
+ */
+const DRIFT_KNOTS = 64;
+const DEFAULT_WANDER_RATE = 0.3;
+/** Noise streams: phase scale and offset (in knots) of each, read off the same knot ring. */
+const NOISE_SCALE = new Float64Array([1, 2.13, 0.61, 0.83, 1.37]);
+const NOISE_OFFSET = new Float64Array([0, 23.5, 40.3, 11.7, 52.9]);
+/** Vibrato jitter at jitter = 1: fixed per-voice spread and slow wobble, as fractions. */
+const VJ_RATE_SPREAD = 0.12;
+const VJ_RATE_WOBBLE = 0.08;
+const VJ_DEPTH_SPREAD = 0.25;
+const VJ_DEPTH_WOBBLE = 0.3;
 
 /** Crossfade modes. */
 const XF_NONE = 0;
@@ -350,7 +370,7 @@ const S_CUR_GL = 10;
 const S_PREV_GR = 11;
 const S_CUR_GR = 12;
 const S_PITCH = 13;
-const S_MIP_W = 14;
+const S_NOISE_RATE = 14;
 const S_SEND_REV = 15;
 const S_SEND_DLY = 16;
 const S_XF_FROM = 17;
@@ -361,7 +381,12 @@ const S_DET_SIGN = 21;
 const S_DET_MAG = 22;
 const S_DET_U = 23;
 const S_PAN_INDEX = 24;
-const STATE_SIZE = 25;
+const S_NOISE_PH = 25;
+/** Five noise streams (S_NOISE_0 + j for NOISE_SCALE[j]): pitch ×2, vib rate, vib depth, amp. */
+const S_NOISE_0 = 26;
+const S_VJ_RATE_U = 31;
+const S_VJ_DEPTH_U = 32;
+const STATE_SIZE = 33;
 
 /**
  * One synthesis voice (or ghost).
@@ -400,8 +425,7 @@ export class Voice {
   private lifeCur = -1;
   private levelCur = -1;
   private timbreCur = 0;
-  /** Mip index and timbre slot at the last tick. */
-  private curMip = 0;
+  /** Timbre slot at the last tick. */
   private curSlot = -1;
   /** Re-initialise smoothers and interpolation at the next tick. */
   private fresh = true;
@@ -412,6 +436,13 @@ export class Voice {
   private readonly roleG0 = new Float64Array(4);
   private readonly roleG1 = new Float64Array(4);
   private readonly roleClaim = new Uint8Array(4);
+  /** Each role's mip spacing, and its mip index and crossfade weight at the last tick. */
+  private readonly roleMpo = new Int32Array([1, 1, 1, 1]);
+  private readonly roleMip = new Int32Array(4);
+  private readonly roleW = new Float64Array(4);
+  /** Seeded drift knots (set in setIdentity) and the PRNG that fills them (reused, no allocation). */
+  private readonly knots = new Float64Array(DRIFT_KNOTS);
+  private readonly prng = new Prng(0);
 
   // Crossfade (seek, loop, swap) and slew (swap), counted in frames.
   private xfMode = XF_NONE;
@@ -444,6 +475,12 @@ export class Voice {
     st[S_DET_U] = unit(hash2(hash, SALT_SPREAD));
     st[S_PHASE] = unit(hash2(hash, seed));
     st[S_LFO] = unit(hash2(hash, (seed ^ SALT_LFO) >>> 0));
+    st[S_VJ_RATE_U] = 2 * unit(hash2(hash, (seed ^ SALT_VJ_RATE) >>> 0)) - 1;
+    st[S_VJ_DEPTH_U] = 2 * unit(hash2(hash, (seed ^ SALT_VJ_DEPTH) >>> 0)) - 1;
+    const prng = this.prng;
+    prng.state = hash2(hash, (seed ^ SALT_DRIFT) >>> 0);
+    const knots = this.knots;
+    for (let i = 0; i < DRIFT_KNOTS; i++) knots[i] = 2 * prng.next() - 1;
     st[S_PAN_INDEX] =
       (index % 2 === 1 ? 1 : -1) * (0.12 + (0.5 * index) / Math.max(1, poolSize - 1));
   }
@@ -452,6 +489,11 @@ export class Voice {
   detuneCents(spread: number): number {
     const m = this.st[S_DET_MAG] + spread * this.st[S_DET_U];
     return this.st[S_DET_SIGN] * (m > DETUNE_FLOOR ? m : DETUNE_FLOOR);
+  }
+
+  /** Drift noise knot i (tests: drift is a pure function of the voice hash and piece seed). */
+  driftKnot(i: number): number {
+    return this.knots[i & (DRIFT_KNOTS - 1)];
   }
 
   /** Current oscillator phase in cycles (tests). */
@@ -578,8 +620,11 @@ export class Voice {
     this.lifeCur = v.lifeCur;
     this.levelCur = v.levelCur;
     this.timbreCur = v.timbreCur;
-    this.curMip = v.curMip;
     this.curSlot = v.curSlot;
+    this.roleMpo.set(v.roleMpo);
+    this.roleMip.set(v.roleMip);
+    this.roleW.set(v.roleW);
+    this.knots.set(v.knots);
     this.fresh = v.fresh;
     for (let r = 0; r < 4; r++) {
       this.roleTab[r] = v.roleTab[r];
@@ -711,6 +756,7 @@ export class Voice {
             if (role < 0) continue;
             R[role] = tab;
             this.roleSame[role] = useNew ? slot.same : slot.prevSame;
+            this.roleMpo[role] = useNew ? slot.mipsPerOctave : slot.prevMipsPerOctave;
             G0[role] = 0;
             G1[role] = g;
           }
@@ -769,15 +815,37 @@ export class Voice {
             st[S_MOTION] += (motion - st[S_MOTION]) * ctx.motionCoeff;
             st[S_VIB] += (vibTarget - st[S_VIB]) * ctx.vibratoCoeff;
           }
+          // Drift and vibrato jitter: slow seeded noise per voice (see noiseTick).
+          let vibRate = A.vibRate * xa + B.vibRate * x;
+          let vibDepthNow = vibDepth;
+          let driftCents = 0;
+          let driftGain = 1;
+          const jitter = A.vibJitter * xa + B.vibJitter * x;
+          const driftDepth = A.driftCents * xa + B.driftCents * x;
+          const driftAmp = A.driftAmp * xa + B.driftAmp * x;
+          if (jitter > 0 || driftDepth > 0 || driftAmp > 0) {
+            const dr = A.driftRate * xa + B.driftRate * x;
+            st[S_NOISE_RATE] = dr > 0 ? dr : DEFAULT_WANDER_RATE;
+            this.noiseTick(frame, this.fresh);
+            driftCents = driftDepth * (0.75 * st[S_NOISE_0] + 0.35 * st[S_NOISE_0 + 1]);
+            driftGain = 1 + driftAmp * st[S_NOISE_0 + 4];
+            vibRate *=
+              1 + jitter * (VJ_RATE_SPREAD * st[S_VJ_RATE_U] + VJ_RATE_WOBBLE * st[S_NOISE_0 + 2]);
+            const df =
+              1 +
+              jitter * (VJ_DEPTH_SPREAD * st[S_VJ_DEPTH_U] + VJ_DEPTH_WOBBLE * st[S_NOISE_0 + 3]);
+            vibDepthNow *= df > 0 ? df : 0;
+          }
+
           let vibCents = 0;
           if (st[S_VIB] > 1e-6) {
-            let lfo = st[S_LFO] + (A.vibRate * xa + B.vibRate * x) * ctx.tickSeconds;
+            let lfo = st[S_LFO] + vibRate * ctx.tickSeconds;
             lfo -= Math.floor(lfo);
             st[S_LFO] = lfo;
             const pos = lfo * SINE_TABLE_SIZE;
             const i0 = pos | 0;
             const a = SINE[i0];
-            vibCents = vibDepth * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
+            vibCents = vibDepthNow * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
           }
 
           // Articulation: attack from the decaying envelope, then exponential decay to 1 %.
@@ -828,22 +896,28 @@ export class Voice {
           const spread = A.detuneSpread * xa + B.detuneSpread * x;
           const mag = st[S_DET_MAG] + spread * st[S_DET_U];
           const detune = st[S_DET_SIGN] * (mag > DETUNE_FLOOR ? mag : DETUNE_FLOOR);
-          const oct = ctx.refOct + (p - 69) / 12 + (detune + vibCents) / 1200;
+          const oct = ctx.refOct + (p - 69) / 12 + (detune + vibCents + driftCents) / 1200;
           if (oct === oct && oct < 40 && oct > -40) {
             let inc = MIP_BASE_HZ * Math.exp(oct * LN2) * ctx.invSampleRate;
             if (inc > 0.5) inc = 0.5;
             st[S_CUR_INC] = inc;
-            let m = Math.floor(oct);
-            let w = oct - m;
-            if (m < 0) {
-              m = 0;
-              w = 0;
-            } else if (m >= MIP_COUNT - 1) {
-              m = MIP_COUNT - 2;
-              w = 1;
+            // Mip index and crossfade weight per role (formant timbres use finer mips).
+            for (let r = 0; r < 4; r++) {
+              const mpo = this.roleMpo[r];
+              const mpos = oct * mpo;
+              let m = Math.floor(mpos);
+              let w = mpos - m;
+              const last = (MIP_COUNT - 1) * mpo; // index of the top mip
+              if (m < 0) {
+                m = 0;
+                w = 0;
+              } else if (m >= last) {
+                m = last - 1;
+                w = 1;
+              }
+              this.roleMip[r] = m;
+              this.roleW[r] = w;
             }
-            this.curMip = m;
-            st[S_MIP_W] = w;
 
             // Amplitude (§8.4).
             const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
@@ -854,6 +928,7 @@ export class Voice {
               d.gain *
               lw *
               level *
+              driftGain *
               (1 + accent * st[S_MOTION]) *
               artic *
               loud *
@@ -911,6 +986,35 @@ export class Voice {
     }
   }
 
+  /**
+   * Advances the drift noise phase to piece frame `frame` (re-derived from the piece time when
+   * `fresh`, so a seek lands where playing through would) and evaluates the five noise streams into
+   * st[S_NOISE_0 + j]. Integer and boolean arguments only (no boxing); allocation-free.
+   */
+  private noiseTick(frame: number, fresh: boolean): void {
+    const st = this.st;
+    const rate = st[S_NOISE_RATE];
+    if (fresh) st[S_NOISE_PH] = frame * this.invRate * rate;
+    else st[S_NOISE_PH] += rate * CONTROL_PERIOD * this.invRate;
+    const ph = st[S_NOISE_PH];
+    const kn = this.knots;
+    const mask = DRIFT_KNOTS - 1;
+    for (let j = 0; j < 5; j++) {
+      const y = ph * NOISE_SCALE[j] + NOISE_OFFSET[j];
+      const fi = Math.floor(y);
+      const f = y - fi;
+      const i = fi | 0;
+      const p0 = kn[(i - 1) & mask];
+      const p1 = kn[i & mask];
+      const p2 = kn[(i + 1) & mask];
+      const p3 = kn[(i + 2) & mask];
+      // Catmull-Rom through the knots: smooth (C¹) and passes through every knot.
+      st[S_NOISE_0 + j] =
+        p1 +
+        0.5 * f * (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
+    }
+  }
+
   /** Synthesises one control period at buffer offset `off`. */
   private synth(ctx: VoiceContext, off: number): void {
     const K = CONTROL_PERIOD;
@@ -941,9 +1045,6 @@ export class Voice {
     const revIn = ctx.revIn;
     const dlyIn = ctx.dlyIn;
     const N = WAVETABLE_SIZE;
-    const lo = this.curMip * WAVETABLE_STRIDE;
-    const hi = lo + WAVETABLE_STRIDE;
-    const w = st[S_MIP_W];
     let phase = st[S_PHASE];
     const end = off + K;
 
@@ -952,7 +1053,11 @@ export class Voice {
       let amp = st[S_PREV_AMP] * G0[r0];
       const dAmp = (st[S_CUR_AMP] * G1[r0] - amp) * invK;
       const same = this.roleSame[r0];
-      if (w === 0 || w === 1 || (same !== null && same[this.curMip] === 1)) {
+      const mip = this.roleMip[r0];
+      const lo = mip * WAVETABLE_STRIDE;
+      const hi = lo + WAVETABLE_STRIDE;
+      const w = this.roleW[r0];
+      if (w === 0 || w === 1 || (same !== null && same[mip] === 1)) {
         const base = w === 1 ? hi : lo;
         for (let i = off; i < end; i++) {
           phase += inc;
@@ -1010,6 +1115,9 @@ export class Voice {
         const g1 = G1[r];
         if (g0 === 0 && g1 === 0) continue;
         const tab = this.roleTab[r] as Float32Array;
+        const lo = this.roleMip[r] * WAVETABLE_STRIDE;
+        const hi = lo + WAVETABLE_STRIDE;
+        const w = this.roleW[r];
         let g = g0;
         const dg = (g1 - g0) * invK;
         for (let i = 0; i < K; i++) {

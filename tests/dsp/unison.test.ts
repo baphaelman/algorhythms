@@ -33,22 +33,26 @@ const single = stereoRms(
 );
 
 describe('unison level', () => {
-  it.each([2, 4, 8, 16, 32])('%i converged voices stay near the incoherent sum', (n) => {
-    const report: string[] = [];
-    for (let trial = 0; trial < 6; trial++) {
-      const out = render(makeScore(unisonSpecs(n, `u${trial}-`), 13, trial + 1), DRY_MIX, 13);
-      const whole = stereoRms(out, HOLD_FROM, HOLD_TO) / single;
-      let low = Infinity;
-      for (let t = HOLD_FROM; t + 0.5 <= HOLD_TO; t += 0.25) {
-        low = Math.min(low, stereoRms(out, t, t + 0.5) / single);
+  it.each([2, 4, 8, 16, 32])(
+    '%i converged voices stay near the incoherent sum',
+    (n) => {
+      const report: string[] = [];
+      for (let trial = 0; trial < 6; trial++) {
+        const out = render(makeScore(unisonSpecs(n, `u${trial}-`), 13, trial + 1), DRY_MIX, 13);
+        const whole = stereoRms(out, HOLD_FROM, HOLD_TO) / single;
+        let low = Infinity;
+        for (let t = HOLD_FROM; t + 0.5 <= HOLD_TO; t += 0.25) {
+          low = Math.min(low, stereoRms(out, t, t + 0.5) / single);
+        }
+        report.push(`${whole.toFixed(2)}/${low.toFixed(2)}`);
+        expect(whole, `trial ${trial}: hold average`).toBeGreaterThanOrEqual(0.5);
+        expect(whole, `trial ${trial}: hold average`).toBeLessThanOrEqual(1.6);
+        expect(low, `trial ${trial}: quietest 0.5 s`).toBeGreaterThanOrEqual(0.1);
       }
-      report.push(`${whole.toFixed(2)}/${low.toFixed(2)}`);
-      expect(whole, `trial ${trial}: hold average`).toBeGreaterThanOrEqual(0.5);
-      expect(whole, `trial ${trial}: hold average`).toBeLessThanOrEqual(1.6);
-      expect(low, `trial ${trial}: quietest 0.5 s`).toBeGreaterThanOrEqual(0.1);
-    }
-    console.info(`unison N=${n} (hold avg / quietest 0.5 s, × one voice): ${report.join(' ')}`);
-  });
+      console.info(`unison N=${n} (hold avg / quietest 0.5 s, × one voice): ${report.join(' ')}`);
+    },
+    60_000,
+  ); // 6 id sets × up to 32 voices × 9 s: slow when the machine is loaded
 });
 
 describe('merge level', () => {

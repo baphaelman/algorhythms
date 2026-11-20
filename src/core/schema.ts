@@ -310,8 +310,20 @@ export const TimbreSchema = z.looseObject({
       rate: nonNegative.default(T.vibrato.rate),
       depthCents: nonNegative.default(T.vibrato.depthCents),
       delay: nonNegative.default(T.vibrato.delay),
+      jitter: z.number().min(0).max(1).optional(),
     })
     .prefault({}),
+  formants: z
+    .array(
+      z.looseObject({ hz: z.number().positive(), bw: z.number().positive(), gain: nonNegative }),
+    )
+    .max(8)
+    .optional()
+    .describe('Fixed-Hz formant resonances applied to the harmonics.'),
+  drift: z
+    .looseObject({ cents: nonNegative, rate: nonNegative, amp: nonNegative.optional() })
+    .optional()
+    .describe('Slow seeded random pitch (and amplitude) wander per voice.'),
 });
 
 const M = DEFAULT_MIX;

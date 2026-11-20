@@ -171,7 +171,10 @@ describe('wavetables (§8.4)', () => {
   it('normalises every preset to the RMS of a unit sine at middle C', () => {
     for (const [name, t] of Object.entries(BUILTIN_TIMBRES)) {
       const set = buildWavetables(t, RATE);
-      const mip = Math.floor(Math.log2(261.63 / MIP_BASE_HZ));
+      // Octave mips: the one containing C4. Finer (formant) mips: the one nearest C4, since the
+      // formant weighting changes faster than the tilt across a mip.
+      const pos = Math.log2(261.63 / MIP_BASE_HZ) * set.mipsPerOctave;
+      const mip = set.mipsPerOctave === 1 ? Math.floor(pos) : Math.round(pos);
       const row = set.data.subarray(
         mip * WAVETABLE_STRIDE,
         mip * WAVETABLE_STRIDE + WAVETABLE_SIZE,

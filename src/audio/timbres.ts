@@ -41,6 +41,7 @@ export function tablesFor(timbre: Timbre, sampleRate: number): WavetableSet {
 export function cloneTables(set: WavetableSet): WavetableSet {
   return {
     sampleRate: set.sampleRate,
+    mipsPerOctave: set.mipsPerOctave,
     data: set.data.slice(),
     sameAsNext: set.sameAsNext.slice(),
     params: { ...set.params },

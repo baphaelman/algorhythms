@@ -2760,8 +2760,64 @@ This is the *input* form: fields with defaults are optional here.
                 "default": 0.5,
                 "type": "number",
                 "minimum": 0
+              },
+              "jitter": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
               }
             },
+            "additionalProperties": {}
+          },
+          "formants": {
+            "description": "Fixed-Hz formant resonances applied to the harmonics.",
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hz": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "bw": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "gain": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "hz",
+                "bw",
+                "gain"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "drift": {
+            "description": "Slow seeded random pitch (and amplitude) wander per voice.",
+            "type": "object",
+            "properties": {
+              "cents": {
+                "type": "number",
+                "minimum": 0
+              },
+              "rate": {
+                "type": "number",
+                "minimum": 0
+              },
+              "amp": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "cents",
+              "rate"
+            ],
             "additionalProperties": {}
           }
         },

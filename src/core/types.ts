@@ -372,8 +372,23 @@ export interface Timbre {
   accent: number;
   /** Attack–decay envelope triggered when a glide arrives at a new pitch. */
   articulation: { amount: number; attack: Seconds; decay: Seconds };
-  /** Vibrato after arrival only: rate in Hz, depth in cents, onset delay in seconds. */
-  vibrato: { rate: number; depthCents: number; delay: Seconds };
+  /**
+   * Vibrato after arrival only: rate in Hz, depth in cents, onset delay in seconds. `jitter`
+   * (0..1, default 0) varies rate and depth per voice and slowly over time, so vibrato is not
+   * perfectly periodic.
+   */
+  vibrato: { rate: number; depthCents: number; delay: Seconds; jitter?: number };
+  /**
+   * Fixed-frequency formants: resonances at `hz` (centre, Hz) with bandwidth `bw` (Hz) and linear
+   * peak `gain`, summed into an envelope that weights each harmonic by its frequency in Hz. The
+   * vowel then stays put as the pitch moves. Absent = no formant shaping.
+   */
+  formants?: { hz: number; bw: number; gain: number }[];
+  /**
+   * Slow seeded random wander, different per voice: pitch by up to about ±`cents`, changing at
+   * roughly `rate` Hz, and optionally amplitude by about ±`amp` (a fraction). Absent = none.
+   */
+  drift?: { cents: number; rate: number; amp?: number };
 }
 
 // ---------------------------------------------------------------------------------------------

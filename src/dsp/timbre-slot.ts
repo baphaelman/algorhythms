@@ -15,10 +15,14 @@ export class TimbreSlot {
   data: Float32Array | null = null;
   /** sameAsNext flags of `data`. */
   same: Uint8Array | null = null;
+  /** Mip spacing of `data` (mips per octave). */
+  mipsPerOctave = 1;
   /** Tables being faded out after a replacement (null when none). */
   prevData: Float32Array | null = null;
   /** sameAsNext flags of `prevData`. */
   prevSame: Uint8Array | null = null;
+  /** Mip spacing of `prevData`. */
+  prevMipsPerOctave = 1;
   /** Render frame at which the replacement fade started. */
   fadeStart = 0;
   /** Length of the replacement fade in frames (0 = none running). */
@@ -32,13 +36,19 @@ export class TimbreSlot {
   vibRate = 5;
   vibDepthCents = 0;
   vibDelay = 0;
+  vibJitter = 0;
+  driftCents = 0;
+  driftRate = 0;
+  driftAmp = 0;
 
   /** Installs new tables, fading from the old ones (or from silence) over `fadeFrames`. */
   install(set: WavetableSet, renderFrame: number, fadeFrames: number): void {
     this.prevData = this.data;
     this.prevSame = this.same;
+    this.prevMipsPerOctave = this.mipsPerOctave;
     this.data = set.data;
     this.same = set.sameAsNext;
+    this.mipsPerOctave = set.mipsPerOctave;
     this.fadeStart = renderFrame;
     this.fadeLen = fadeFrames;
     const p = set.params;
@@ -50,6 +60,10 @@ export class TimbreSlot {
     this.vibRate = p.vibRate;
     this.vibDepthCents = p.vibDepthCents;
     this.vibDelay = p.vibDelay;
+    this.vibJitter = p.vibJitter;
+    this.driftCents = p.driftCents;
+    this.driftRate = p.driftRate;
+    this.driftAmp = p.driftAmp;
   }
 
   /** Weight of `data` (vs `prevData`) at a render frame: 1 once any fade is over. Pure. */

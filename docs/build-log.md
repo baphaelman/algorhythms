@@ -4,6 +4,30 @@ Newest milestone first. Each entry says what departs from (or fills a gap in) PL
 
 ---
 
+## M2 follow-up: a less robotic choir (2026-11-20)
+
+The owner found `choir` "a little goofy, robotic". Causes, all confirmed in the code: (1) the "ah" was baked into per-partial weights, so the formants moved with the pitch (a chipmunk vowel); (2) every voice had the same perfectly periodic vibrato (5.5 Hz, 14 cents; only the phase was seeded); (3) nothing drifted.
+
+### Contract additions (additive; `Timbre` in types.ts and `TimbreSchema`)
+- `formants?: { hz, bw, gain }[]` (max 8): fixed-Hz resonances. Envelope = Σ gain / √(1 + ((f − hz)/(bw/2))²), multiplied into partial n at n · f0 for each mip's bottom fundamental. Loudness is normalised at C4 with the envelope applied there.
+- `drift?: { cents, rate, amp? }`: slow seeded wander of pitch (about ±cents) and level (about ±amp), per voice.
+- `vibrato.jitter?` (0..1): per-voice vibrato rate (±12 %) and depth (±25 %) spread, plus slow wobble (±8 % rate, ±30 % depth), all scaled by jitter.
+- docs/file-format.md regenerated (`pnpm docs:schema`).
+
+### DSP
+- **Finer mips for formant timbres only.** Between two octave mips the oscillator would play both tables' formants shifted by up to an octave, so a formant timbre gets `FORMANT_MIPS_PER_OCTAVE` = 4 mips per octave (41 tables, 336 KB at 2049 floats per table). Halfway between two mips each formant is smeared by ±9 %, inside its bandwidth. `WavetableSet.mipsPerOctave` records the spacing; other timbres keep one mip per octave and bit-identical tables. The voice computes the mip index and crossfade weight per table role, because a timbre crossfade can mix spacings.
+- **Drift noise:** 64 knots in [−1, 1] per voice, drawn by `Prng` from hash2(voice hash, seed ^ salt) in `setIdentity`. Five streams read the knot ring at incommensurate rates through Catmull-Rom interpolation (C¹, no plateaus). The noise phase advances at the drift rate (0.3 Hz if only jitter is set) and is re-derived from the piece time on fresh starts and seeks. `noiseTick(frame, fresh)` takes only an integer and a boolean (V8 rule 3); `process()` stays allocation-free (no-GC test: 0 GC lines).
+- **Presets:** `choir` now has 32 equal partials at −4 dB/oct, an "ah" at 700/1200/2600/3300 Hz (bandwidths 130/150/220/300), `detuneSpread` 7 (was 4), a softer arrival (amount 0.08, attack 0.18 s, decay 0.8 s), vibrato 5 Hz / 9 cents / 0.45 s delay with jitter 0.8, and drift { 6 cents, 0.35 Hz, amp 0.06 }. `reed` gains a light touch: vibrato jitter 0.4, drift { 2.5 cents, 0.25 Hz, amp 0.03 }. The other presets are unchanged.
+- Choir loudness from C2 to C6 stays within about ±3 dB (before the pitch loudness tilt). The loudest partial sits at 640–810 Hz throughout.
+
+### Results
+- RTF (24 voices + FX, CPU time): 21–23× after, 18–24× at HEAD, measured alternately in a worktree under load average 10–12. No measurable change.
+- New tests in tests/dsp/humanise.test.ts: formant peaks and centroid fixed in Hz an octave apart (the old per-partial weights doubled); no aliasing at the finer spacing; a 24 → 108 → 36 choir sweep's click score is 1.34, against 1.90 for the same sweep on octave mips; drift knots and renders are identical per seed and differ across seeds and voices; drift moves the pitch a few cents and nothing moves without it.
+- tests/dsp/unison.test.ts: the N = 16 and 32 cases got a 60 s timeout. They took 7–9 s under load at HEAD as well (the default is 5 s).
+- A/B renders: `renders/choir-{before,after}.wav` and `renders/reed-{before,after}.wav` (24-bit, 48 kHz; the same 23 s phrase of slow chords with wide glides, default mix).
+
+---
+
 ## M2: sound engine and WAV export (2026-11-19)
 
 ### What exists

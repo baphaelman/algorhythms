@@ -9,10 +9,18 @@
 
 import type { Timbre } from './types';
 
-/** Vowel "ah"-like weights: formant peaks near partials 3–4 and 10–12 for a voice around A3. */
-const CHOIR_HARMONICS = [
-  0.55, 0.7, 1, 0.85, 0.45, 0.25, 0.14, 0.1, 0.12, 0.2, 0.26, 0.2, 0.11, 0.06, 0.04, 0.03, 0.02,
-  0.015, 0.01,
+/**
+ * Choir source: every partial equal before the tilt. The vowel comes from `formants`, at fixed Hz,
+ * so it does not slide up and down with the pitch.
+ */
+const CHOIR_HARMONICS = Array.from({ length: 32 }, () => 1);
+
+/** A classic sung "ah": F1–F3 near 700, 1200 and 2600 Hz, widened a little for an ensemble. */
+const CHOIR_FORMANTS = [
+  { hz: 700, bw: 130, gain: 1 },
+  { hz: 1200, bw: 150, gain: 0.6 },
+  { hz: 2600, bw: 220, gain: 0.25 },
+  { hz: 3300, bw: 300, gain: 0.1 },
 ];
 
 /** Hammond-like drawbars 16' 8' 5⅓' 4' 2⅔' 2' (sub-octave folded onto the fundamental). */
@@ -72,17 +80,23 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     detuneSpread: 1,
     accent: 0.3,
     articulation: { amount: 0.2, attack: 0.02, decay: 0.25 },
-    vibrato: { rate: 5, depthCents: 8, delay: 0.5 },
+    vibrato: { rate: 5, depthCents: 8, delay: 0.5, jitter: 0.4 },
+    drift: { cents: 2.5, rate: 0.25, amp: 0.03 },
   },
-  /** Choir "ah": formant-weighted harmonics, wider chorus detune, singer's vibrato. */
+  /**
+   * Choir "ah": fixed-Hz formants, a wide ensemble detune, a soft swell on arrival, gentle
+   * irregular vibrato and a slow per-voice pitch and level wander.
+   */
   choir: {
     harmonics: CHOIR_HARMONICS,
     stretch: 0,
-    brightness: { tilt: -1.5, track: 0.2 },
-    detuneSpread: 4,
-    accent: 0.2,
-    articulation: { amount: 0.1, attack: 0.06, decay: 0.4 },
-    vibrato: { rate: 5.5, depthCents: 14, delay: 0.35 },
+    brightness: { tilt: -4, track: 0 },
+    detuneSpread: 7,
+    accent: 0.15,
+    articulation: { amount: 0.08, attack: 0.18, decay: 0.8 },
+    vibrato: { rate: 5, depthCents: 9, delay: 0.45, jitter: 0.8 },
+    formants: CHOIR_FORMANTS,
+    drift: { cents: 6, rate: 0.35, amp: 0.06 },
   },
   /** Pluck: bright, strong attack on every arrival that decays back to a quiet sustain. */
   pluck: {
