@@ -415,7 +415,9 @@ test('a link made by another encoder (zlib deflate-raw) opens; a damaged one rep
   await expect(page.getByTestId('title')).toHaveText('Lanterns Over Salt Flats');
 });
 
-test('wide layout shows the editor lane and inspector; the player layout has neither', async ({ page }) => {
+test('wide layout shows the editor lane and inspector; the player layout has neither', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await expect(page.locator('.app')).toHaveAttribute('data-layout', 'full');
