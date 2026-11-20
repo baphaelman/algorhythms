@@ -22,6 +22,7 @@ import {
   type CameraState,
   type MomentLabels,
   type ScoreStyle,
+  type View,
 } from '../render';
 import { live, writeText } from './dom';
 import { currentTime, usePlayer, type PlayerState } from './store';
@@ -46,6 +47,16 @@ export const frameStats = {
     this.drawn = 0;
   },
 };
+
+/** Called every frame with the score view's camera (for DOM overlays such as the moment lane). */
+export type FrameListener = (view: View, compiled: CompiledScore) => void;
+const frameListeners = new Set<FrameListener>();
+
+/** Subscribes to every frame's camera; returns the unsubscribe function. */
+export function onScoreFrame(fn: FrameListener): () => void {
+  frameListeners.add(fn);
+  return () => frameListeners.delete(fn);
+}
 
 interface Tween {
   value: number;
@@ -188,6 +199,17 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
       );
     }
 
+    const cam: CameraState = {
+      window: view.window,
+      overview: overview.value,
+      playheadX: piece.view.playheadX,
+      pan: transport.status === 'playing' ? 0 : view.pan,
+    };
+    if (frameListeners.size > 0 && width > 0 && height > 0) {
+      const v = cameraAt(cameraScore(compiled), cam, t, { width, height }, view.hud);
+      for (const fn of frameListeners) fn(v, compiled);
+    }
+
     if (transport.status === 'playing' || tweening || ghosting || dirty) {
       dirty = false;
       if (width > 0 && height > 0) {
@@ -201,12 +223,6 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
           futureOpacity: ghost.value,
           hud: view.hud,
           labels,
-        };
-        const cam: CameraState = {
-          window: view.window,
-          overview: overview.value,
-          playheadX: piece.view.playheadX,
-          pan: transport.status === 'playing' ? 0 : view.pan,
         };
         drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.drawn++;

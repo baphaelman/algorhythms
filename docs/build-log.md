@@ -650,3 +650,19 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 **Defaults** (from the state at `at`; n = sounding voices; glide and target from the piece defaults): chord: degrees [0,2,4] (tonic triad), or [3,5,7] if every sounding pitch class is already in the tonic triad; even, ordered · unison: 'center' (n ≥ 2) else 'tonic', no octaves · split: count min(pool, max(n+2, 3)), current notes, even · merge: count max(1, ⌈n/2⌉), top, fade 2 · shift: +2 scale steps · spread: ×1.5 around mean, snap scale · walk: 16 s, grid 1, density 0.45, steps [-2,-1,1,2], stepGlide 0.3 · pin: top sounding voice, +2 scale steps (first pool voice if none sounds, which then errors 'pin-inactive') · key: up a fifth, same scale · level: gain 0.5 over 2 s. Inaudible cases: unison/spread/merge with one voice, split with a full pool.
 
 **Other:** `tsconfig.node.json` (tests) now includes `vite/client` types, since tests import the store (→ `import.meta.glob`). Tests: `tests/unit/app/editor.test.ts` (store in Node, audio mocked, rAF synchronous). Timing tests (compiler-perf, dsp rtf/export) fail only under the current machine load (load avg ~48); they pass alone.
+
+## M4d: moment lane (2026-11-20)
+
+**Files:** `src/app/ui/Lane.tsx` (+ `lane.css`), pure helpers `src/app/editor/lane.ts`; `App.tsx` renders `<Lane />` in the wide layout; `loop.ts` gains `onScoreFrame(fn)` (each frame's camera `View`; the `cam` object is now built once per frame). Tests: `tests/unit/app/lane.test.ts`, `tests/e2e/lane.spec.ts` (Chromium); `app.spec.ts` now expects the lane slot visible.
+
+**Design:** React renders items (on piece/score/selection change). Positions: one inner container gets `translateX(xAnchor − tc·pps)` each frame; items sit at `at·pps` and are rewritten only when pps or items change. Three rows of 20 px, greedy packing in pixel space (frozen during a drag). Bars: compiled `MomentSpan` when the moment hasn't moved since that compile and the span is non-empty, else an estimate (stagger + length; walk `until`; level `over`; key = point). Drags preview by direct transform writes and commit once per rAF via `beginGesture/updateGesture/endGesture` (Escape → `cancelGesture`).
+
+**Behaviour choices:**
+- Lane marker = `moment.at`; the canvas draws its marker line at the span start (first move), so they differ by up to the stagger/jitter offset.
+- Alt at press = duplicate; Alt held at any time = no snap. So an Alt-drag copy is unsnapped unless Alt is released mid-drag.
+- Span-end drags are not snapped. They edit `glide.length` (Shift: `glide.stagger`), a walk's `until`, a level's `over`; key moments have no handle. Handles hide on bars < 6 px.
+- Pressing a selected item keeps the selection (group drag); click without drag then selects it alone. Shift-click toggles. Empty-lane click clears.
+- Keys on a focused item (stopPropagation): ←/→ nudge (grid step to the next line, else 0.1 s; acts on the selection if the item is in it, else the item); ↑/↓/Home/End roving focus in time order; Delete/Backspace delete (focus moves to a neighbour); Enter/Space select (Shift toggles). So Space on a focused lane item selects rather than plays.
+- Live region announces moves, duplicates, glide/stagger/until/over changes, deletes, cancelled drags.
+
+**Not done:** focusing an off-screen item doesn't pan the view; no touch long-press menu (§11.3b); marquee and copy/paste (M5).

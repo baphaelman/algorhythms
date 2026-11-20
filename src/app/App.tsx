@@ -3,6 +3,7 @@ import { attachKeys } from './canvas-input';
 import { startPlayer } from './store';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
+import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { Notices, SilentHint } from './ui/Notices';
 import { ScoreView } from './ui/ScoreView';
@@ -50,7 +51,7 @@ export function App() {
       <Notices />
       <main className="workspace">
         <ScoreView />
-        {wide && <div className="slot lane" data-slot="lane" hidden />}
+        {wide && <Lane />}
         <Scrubber />
         <ViewBar />
         {wide && <aside className="slot inspector" data-slot="inspector" hidden />}
