@@ -258,6 +258,15 @@ const MOMENT_SCHEMAS = {
       .optional()
       .describe('Frozen walk: absolute notes per tick; when present the walk draws nothing.'),
   }),
+  note: z.looseObject({
+    type: z.literal('note'),
+    ...momentBase,
+    from: pitch.describe('The sounding note to change (nearest within ½ semitone).'),
+    to: pitch,
+    back: nonNegative
+      .optional()
+      .describe('When present, the note returns this many seconds after its glide ends.'),
+  }),
   pin: z.looseObject({ type: z.literal('pin'), ...momentBase, voice: id, pitch }),
   key: z.looseObject({ type: z.literal('key'), ...momentBase, key: KeySchema }),
   level: z.looseObject({
@@ -279,6 +288,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.shift,
   MOMENT_SCHEMAS.spread,
   MOMENT_SCHEMAS.walk,
+  MOMENT_SCHEMAS.note,
   MOMENT_SCHEMAS.pin,
   MOMENT_SCHEMAS.key,
   MOMENT_SCHEMAS.level,

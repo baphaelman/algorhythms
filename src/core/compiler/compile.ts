@@ -5,7 +5,8 @@
  * decision reads the state at the time it is made, so a walk can't overwrite a chord that lands
  * inside it (§7.1).
  *
- * Events (queue.ts), in time order; at equal times moment events (array order), then move starts
+ * Events (queue.ts), in time order; at equal times moment events (array order; a note moment's
+ * return after its own moment events at that time), then move starts
  * (life closes, then births, then moves, each by pool index), then walk ticks (array order).
  * - moment: resolve the target at this time, cancel the targeted voices' pending moves, run the
  *   moment on their committed destinations, plan and schedule the moves (plan.ts).
@@ -22,7 +23,8 @@ import { mod } from '../math';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
-import type { Intent, MomentEnv } from '../moments/types';
+import { noteMoment } from '../moments/note';
+import type { Intent, MomentEnv, MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
   MAX_VOICES,
@@ -38,6 +40,7 @@ import {
   type Moment,
   type MomentSpan,
   type MomentType,
+  type NoteMoment,
   type Piece,
   type Pitch,
   type Seconds,
@@ -63,6 +66,7 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
   'shift',
   'spread',
   'walk',
+  'note',
   'pin',
   'key',
   'level',
@@ -73,6 +77,19 @@ export const SUB_CLOSE = 0;
 export const SUB_BIRTH = 1;
 export const SUB_MOVE = 2;
 export const SUB_STRIDE = 64;
+
+/** `sub` of a moment-class event that returns a note moment's note (`back`, §6.2). */
+export const SUB_NOTE_BACK = 1;
+
+/**
+ * A note moment's scheduled return (§6.2 `back`): at `t`, the note `from` (where the move
+ * arrived) becomes `to` (the pitch it replaced). Immutable once queued.
+ */
+export interface NoteBack {
+  t: Seconds;
+  from: Pitch;
+  to: Pitch;
+}
 
 /** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
 function cachedHarmonyLabel(
@@ -495,6 +512,11 @@ export class Compiler {
       // invalidate the caches.
       switch (ev.cls) {
         case EventClass.Moment:
+          if (ev.sub === SUB_NOTE_BACK) {
+            this.touch();
+            this.onPointMoment(ev.ref, ev.obj as NoteBack);
+            break;
+          }
           if (this.onMomentEvent) this.onMomentEvent(ev.t, ev.ref);
           this.touch();
           this.onMoment(ev.ref);
@@ -566,10 +588,11 @@ export class Compiler {
   private effAfter = new Float64Array(0);
 
   /**
-   * A point moment, then the `no-effect` check (§7.9, revision 6): destinations before the moment
-   * (before its cancellations) against those after it. Skipped when the moment raised an error.
+   * A point moment (or a note moment's return), then the `no-effect` check (§7.9, revision 6):
+   * destinations before the moment (before its cancellations) against those after it. Skipped
+   * for returns, and when the moment raised an error or a `note-not-sounding` warning.
    */
-  private onPointMoment(i: number): void {
+  private onPointMoment(i: number, back: NoteBack | null = null): void {
     const n = this.voices.length;
     if (this.effBefore.length !== n) {
       this.effBefore = new Float64Array(n);
@@ -579,8 +602,12 @@ export class Compiler {
     const activeBefore = this.sortedActive();
     const dormant = this.dormantAt(this.moments[i].at).length;
     const d0 = this.diags.length;
-    const { targeted, res } = this.applyPointMoment(i);
-    for (let k = d0; k < this.diags.length; k++) if (this.diags[k].level === 'error') return;
+    const { targeted, res } = this.applyPointMoment(i, back);
+    if (back) return;
+    for (let k = d0; k < this.diags.length; k++) {
+      const d = this.diags[k];
+      if (d.level === 'error' || d.code === 'note-not-sounding') return;
+    }
     const deaths: { voice: number; to: Pitch }[] = [];
     const births: { voice: number; parent: number }[] = [];
     if (res) {
@@ -621,8 +648,15 @@ export class Compiler {
     return l.length > 0 ? l[l.length - 1].gain : 1;
   }
 
-  private applyPointMoment(i: number): { targeted: number[]; res: PlanResult | null } {
-    const m = this.moments[i];
+  private applyPointMoment(
+    i: number,
+    back: NoteBack | null,
+  ): { targeted: number[]; res: PlanResult | null } {
+    const m0 = this.moments[i];
+    // A return runs the note moment again at its own time, `from` and `to` swapped.
+    const m: Moment = back
+      ? { ...(m0 as NoteMoment), at: back.t, from: back.from, to: back.to, back: undefined }
+      : m0;
     const T = m.at;
     let pre: number[];
     let subset: boolean;
@@ -631,17 +665,32 @@ export class Compiler {
       pre = v !== undefined && this.voices[v].status === Status.Active ? [v] : [];
       subset = true;
     } else {
-      pre = this.resolveTarget(m.target, m.id);
+      pre = this.resolveTarget(m.target, back ? null : m.id); // a return does not re-warn
       subset = m.target !== undefined && m.target !== 'all';
     }
-    for (const v of pre) this.voices[v].cancelPending();
-    this.touch();
-    const targeted = this.sortByDest(pre.slice());
-    const env = this.env(i, targeted);
-    const plan = pointMomentPlan(m, env);
+    const seed = back ? hash32(this.seeds[i], 'back') : this.seeds[i];
+    let targeted: number[];
+    let plan: MomentPlan | null;
+    if (m.type === 'note') {
+      // A note reads where the voices are heading before cancelling anything, and cancels only
+      // when it applies: a voice whose pending move it cancels but does not change then gets a
+      // move to that same destination (planMoment sees it differ from the new committed one).
+      targeted = this.sortByDest(pre.slice());
+      plan = noteMoment(m, this.env(i, targeted, T, seed), back !== null);
+      if (plan) {
+        for (const v of pre) this.voices[v].cancelPending();
+        this.touch();
+        targeted = this.sortByDest(pre.slice());
+      }
+    } else {
+      for (const v of pre) this.voices[v].cancelPending();
+      this.touch();
+      targeted = this.sortByDest(pre.slice());
+      plan = pointMomentPlan(m, this.env(i, targeted, T, seed));
+    }
     if (!plan) {
-      this.span(i, T, T);
-      this.traceMoment(i, targeted, subset, null, null);
+      if (!back) this.span(i, T, T); // a skipped return leaves the span as it is
+      this.traceMoment(i, targeted, subset, null, null, T);
       return { targeted, res: null };
     }
     const host = {
@@ -650,7 +699,7 @@ export class Compiler {
       momentId: m.id,
       momentIndex: i,
       glide: this.glides[i],
-      seed: this.seeds[i],
+      seed,
       crossings: this.options.crossings,
       dest: (v: number) => this.destOf(v),
       diag: (level: DiagnosticLevel, code: string, message: string) =>
@@ -688,17 +737,36 @@ export class Compiler {
       });
     }
     if (res.moves.length === 0) this.span(i, T, T);
+    else if (!back && m.type === 'note' && plan.note) this.scheduleBack(i, m, plan.note, plan, res);
     this.touch();
-    this.recordHarmony(i);
-    this.traceMoment(i, targeted, subset, res.trace, plan.intents);
+    this.recordHarmony(i, T);
+    this.traceMoment(i, targeted, subset, res.trace, plan.intents, T);
     return { targeted, res };
+  }
+
+  /** Queues a note moment's return (§6.2 `back`): `back` seconds after its glide ends. */
+  private scheduleBack(
+    i: number,
+    m: NoteMoment,
+    note: { intent: number; from: Pitch },
+    plan: { intents: readonly Intent[] },
+    res: PlanResult,
+  ): void {
+    const wait = m.back;
+    if (!(typeof wait === 'number' && Number.isFinite(wait) && wait >= 0)) return;
+    let end = m.at;
+    for (const mv of res.moves) if (mv.t0 + mv.dur > end) end = mv.t0 + mv.dur;
+    const t = end + wait;
+    // The carrier's target after range folding (planMoment folds the intents in place).
+    const rec: NoteBack = { t, from: plan.intents[note.intent].to, to: note.from };
+    this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_NOTE_BACK, ref: i, obj: rec });
   }
 
   /**
    * Appends the harmony the active voices are heading to after moment i (HUD, §10). A written
    * chord symbol always starts an entry; otherwise an unchanged pitch-class set keeps the last one.
    */
-  private recordHarmony(i: number): void {
+  private recordHarmony(i: number, t: Seconds): void {
     const m = this.moments[i];
     const active = this.sortedActive();
     if (active.length === 0) return;
@@ -725,7 +793,7 @@ export class Compiler {
       return;
     }
     this.harmony.push({
-      t: m.at,
+      t,
       momentId: m.id,
       pcs,
       bass,
@@ -733,11 +801,10 @@ export class Compiler {
     });
   }
 
-  private env(i: number, targeted: number[]): MomentEnv {
+  private env(i: number, targeted: number[], t: Seconds, seed: number): MomentEnv {
     const m = this.moments[i];
-    const seed = this.seeds[i];
     return {
-      t: m.at,
+      t,
       momentId: m.id,
       key: this.key,
       seed,
@@ -745,10 +812,11 @@ export class Compiler {
       targeted,
       active: this.sortedActive(),
       dest: (v) => this.destOf(v),
+      now: (v) => this.voices[v].frontier.stateAt(t)?.p ?? NaN,
       range: (v) => this.voices[v].range,
       id: (v) => this.voices[v].id,
       sounding: (v) => this.voices[v].sounding,
-      dormant: () => this.dormantAt(m.at),
+      dormant: () => this.dormantAt(t),
       indexOf: (id) => this.byId.get(id) ?? -1,
       diag: (level, code, message) => this.diag(level, code, message, m.id),
       rand: (v, step, purpose) =>
@@ -1012,6 +1080,7 @@ export class Compiler {
     subset: boolean,
     plan: PlanTrace | null,
     intents: readonly Intent[] | null,
+    t: Seconds = this.moments[i].at,
   ): void {
     if (!this.trace) return;
     const m = this.moments[i];
@@ -1020,7 +1089,7 @@ export class Compiler {
       id: m.id,
       index: i,
       type: m.type,
-      t: m.at,
+      t,
       targeted,
       subset,
       plan,

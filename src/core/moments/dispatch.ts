@@ -3,6 +3,7 @@
 import type { Moment } from '../types';
 import { chordMoment } from './chord';
 import { mergeMoment } from './merge';
+import { noteMoment } from './note';
 import { pinMoment } from './pin';
 import { shiftMoment } from './shift';
 import { splitMoment } from './split';
@@ -25,6 +26,8 @@ export function pointMomentPlan(m: Moment, env: MomentEnv): MomentPlan | null {
       return shiftMoment(m, env);
     case 'spread':
       return spreadMoment(m, env);
+    case 'note':
+      return noteMoment(m, env);
     case 'pin':
       return pinMoment(m, env);
     default:

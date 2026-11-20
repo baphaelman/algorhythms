@@ -180,3 +180,38 @@ export function chordAt(score: CompiledScore, t: Seconds): HarmonyChange | null 
   }
   return found < 0 ? null : h[found];
 }
+
+/** A sounding voice found by `noteAt`. */
+export interface NoteHit {
+  /** Pool index. */
+  voice: number;
+  /** Pitch sounding at t (a note moment's `from`). */
+  pitch: Pitch;
+  /** Where its current segment is heading (its planned end). */
+  dest: Pitch;
+  /** |pitch − the queried pitch|. */
+  distance: number;
+}
+
+/**
+ * The voice sounding at t whose pitch is nearest `pitch` (hit testing a line, e.g. to add a note
+ * moment, §11.3), or null if none sounds or the nearest is farther than `maxDistance` semitones.
+ * Ties: the lower pool index.
+ */
+export function noteAt(
+  score: CompiledScore,
+  t: Seconds,
+  pitch: Pitch,
+  maxDistance = Infinity,
+): NoteHit | null {
+  let hit: NoteHit | null = null;
+  for (const v of score.voices) {
+    const s = segmentAt(v, t);
+    if (!s) continue;
+    const p = evalSegment(s, t);
+    const d = Math.abs(p - pitch);
+    if (d > maxDistance || (hit && d >= hit.distance)) continue;
+    hit = { voice: v.index, pitch: p, dest: s.curve ? s.curve.p1 : s.p1, distance: d };
+  }
+  return hit;
+}

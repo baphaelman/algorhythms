@@ -29,6 +29,7 @@ const LABELS: Record<MomentType, string> = {
   shift: 'shift',
   spread: 'spread',
   walk: 'walk',
+  note: 'note',
   pin: 'pin',
   key: 'key change',
   level: 'level',

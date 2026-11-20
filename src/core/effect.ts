@@ -17,8 +17,9 @@ import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
 import { mergeGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
+import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
-import { keyAt, lifeAt, segmentIndexAt } from './query';
+import { keyAt, lifeAt, pitchAt, segmentIndexAt } from './query';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
   CompiledScore,
@@ -43,6 +44,7 @@ export const EFFECT_MOMENT_TYPES: readonly MomentType[] = [
   'shift',
   'spread',
   'walk',
+  'note',
   'pin',
   'key',
   'level',
@@ -147,6 +149,8 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
       return m.factor === 1 ? 'factor 1' : 'no voice moves';
     case 'chord':
       return 'the voices already sound this chord';
+    case 'note':
+      return noteIsNoop(m) ? 'the note does not change' : 'no voice moves';
     case 'pin':
       return 'the voice is already on that pitch';
     case 'key':
@@ -309,13 +313,14 @@ function effectOn(piece: Piece, score: CompiledScore, st: StateAt, m: Moment): M
     targeted,
     active: st.active,
     dest: (v) => st.dest[v],
+    now: (v) => (st.dest[v] === st.dest[v] ? (pitchAt(score.voices[v], st.t) ?? NaN) : NaN),
     range: (v) => ranges[v] ?? [0, 127],
     id: (v) => ids[v],
     sounding: (v) => st.dest[v] === st.dest[v],
     dormant: () => st.dormant.slice(),
     indexOf,
-    diag: (level, _code, message) => {
-      if (level === 'error' && error === null) error = message;
+    diag: (level, code, message) => {
+      if ((level === 'error' || code === 'note-not-sounding') && error === null) error = message;
     },
     rand: (v, step, purpose) => randHashed(seed, v >= 0 ? hashes[v] : emptyHash, step, purpose),
   };

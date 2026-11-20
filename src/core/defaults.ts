@@ -143,6 +143,7 @@ export const MOMENT_DEFAULTS = deepFreeze({
   shift: { unit: 'semitones' },
   spread: { around: 'mean', snap: 'scale' },
   walk: { grid: 1, density: 0.45, steps: [-2, -1, 1, 2], stepGlide: 0.3 },
+  note: {},
   pin: {},
   key: {},
   level: { over: 1 },
