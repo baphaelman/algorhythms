@@ -948,3 +948,10 @@ Owner said go; the editor mockup looks good. Rulings:
 
 ## Full e2e on merged M4.5 (through M4.5-15, 06cc9da)
 - Chromium dev+prod: all pass except render.spec 4 ms budget (box limit, known). Firefox not installed in the cloud box (137 launch failures); WebKit skipped on Linux. Cross-engine coverage left to CI.
+
+## M4.5-19: faster CI (2026-11-20)
+- **Docs-only pushes/PRs skip CI.** `paths: ['**', '!PLAN.md', '!CLAUDE.md', '!README.md', '!CONTRIBUTING.md', '!docs/**', 'docs/file-format.md']` on push and pull_request (duplicated, no YAML anchors). `paths-ignore` can't re-include, but `paths` evaluates in order and a later match wins (GitHub docs: a `!` pattern must follow a positive one), so the generated, unit-tested `docs/file-format.md` still triggers. `workflow_dispatch` is unaffected; a docs-only push to main does not redeploy (nothing to deploy). Nothing in tests/src/scripts reads the other ignored files (only comments mention PLAN.md).
+- **`e2e-linux` is a matrix** over `chromium`/`firefox` (`fail-fast: false`, `--project='<browser>-*'`, artifact `playwright-report-<browser>`); pulseaudio sink kept. Deploy `needs` unchanged (a matrix job gates on all legs).
+- **Playwright browser cache** (`actions/cache@v4`, `~/.cache/ms-playwright` Linux, `~/Library/Caches/ms-playwright` macOS), keyed OS + browser + `hashFiles('pnpm-lock.yaml')` (pins the playwright version). Linux hit runs `playwright install-deps <browser>`; miss runs `install --with-deps`. macOS always runs `install webkit` (no-op when cached).
+- **`check` job** was already on ubuntu-latest; nothing to move. Only WebKit needs macOS.
+- No test or engine removed. YAML validated with python yaml; not run on GitHub yet, so the first run is the real check.
