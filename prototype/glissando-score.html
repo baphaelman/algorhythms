@@ -1,0 +1,749 @@
+<title>Glissando Score</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one plotter-paper stage, controls above, three working notes below. */
+:root {
+  --paper: #EEF1F4;
+  --ink: #151A21;
+  --ink-2: #5E6876;
+  --rule: #D2D8DF;
+  --accent: #C2410C;
+  --panel: #E3E8ED;
+  --f-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0F1217; --ink: #E4E8EE; --ink-2: #8D97A5; --rule: #262C36; --accent: #FF8F5A; --panel: #181D25;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0F1217; --ink: #E4E8EE; --ink-2: #8D97A5; --rule: #262C36; --accent: #FF8F5A; --panel: #181D25;
+  color-scheme: dark;
+}
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 28px; }
+.head-text { min-width: 0; max-width: 62ch; }
+h1 { font-family: var(--f-mono); font-weight: 500; font-size: 21px; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.sub { margin: 4px 0 0; color: var(--ink-2); font-size: 14.5px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select {
+  font: 500 13px/1 var(--f-mono);
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--ink-2); }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); min-width: 96px; }
+button.primary:hover { opacity: .88; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sel { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--f-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .08em; }
+.sel select { text-transform: none; letter-spacing: 0; padding-right: 8px; background: var(--paper); }
+.stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 74vh; border: 1px solid var(--rule); background: var(--paper); }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+@media (max-width: 640px) { .stage { aspect-ratio: 4 / 3; } .viewbar .keys { margin-left: 0; } }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px 32px; border-top: 1px solid var(--rule); padding-top: 18px; }
+.notes > div { min-width: 0; }
+.notes h2 { font: 500 12px/1.3 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); margin: 0 0 6px; }
+.notes p { margin: 0; font-size: 14px; max-width: 62ch; }
+code { font-family: var(--f-mono); font-size: .9em; background: var(--panel); padding: 1px 4px; border-radius: 2px; }
+.keys { color: var(--ink-2); font-size: 13px; margin: 0; }
+.viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; }
+.viewbar .keys { margin-left: auto; }
+.ctl { display: inline-flex; align-items: center; gap: 10px; font: 500 12px/1 var(--f-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .08em; }
+.ctl input[type="range"] { width: clamp(120px, 24vw, 240px); accent-color: var(--ink); margin: 0; }
+.ctl output { min-width: 11ch; text-transform: none; letter-spacing: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 8px 11px; text-transform: none; letter-spacing: 0; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.seekbar { display: flex; align-items: center; gap: 12px; margin-top: -8px; font: 500 12px/1 var(--f-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.seekbar input { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; }
+kbd { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 5px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="head-text">
+      <h1>Glissando Score</h1>
+      <p class="sub">Twelve voices. Each line is one oscillator's pitch over time, and the sound and the picture are drawn from the same numbers.</p>
+    </div>
+    <div class="controls" role="group" aria-label="Playback">
+      <button id="play" class="primary" type="button">Play</button>
+      <button id="restart" type="button">Restart</button>
+      <button id="fresh" type="button">New piece</button>
+      <label class="sel" for="mode"><span>Mode</span>
+        <select id="mode">
+          <option value="dorian">Dorian</option>
+          <option value="aeolian">Aeolian</option>
+          <option value="lydian">Lydian</option>
+          <option value="penta">Pentatonic</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" role="img" aria-label="Pitch lines for twelve voices over time"></canvas>
+  </div>
+
+  <div class="seekbar">
+    <output id="seekNow" for="seek">00:00.0</output>
+    <input id="seek" type="range" min="0" max="150" step="0.01" value="0" aria-label="Position in the piece">
+    <output id="seekEnd">00:00.0</output>
+  </div>
+
+  <div class="viewbar">
+    <label class="ctl" for="win"><span>Window</span>
+      <input id="win" type="range" min="0" max="1000" step="1" value="300">
+      <output id="winOut" for="win">20 s</output>
+    </label>
+    <div class="ctl" role="group" aria-label="Line color">
+      <span>Lines</span>
+      <div class="seg">
+        <button type="button" data-color="ink" aria-pressed="true">Ink</button>
+        <button type="button" data-color="voice" aria-pressed="false">Per voice</button>
+        <button type="button" data-color="pitch" aria-pressed="false">By pitch</button>
+      </div>
+    </div>
+    <p class="keys"><kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or <kbd>−</kbd> <kbd>=</kbd> changes the window.</p>
+  </div>
+
+  <section class="notes" aria-label="How it works">
+    <div>
+      <h2>The score</h2>
+      <p>Each voice is a list of moves: hold a note, then glide to the next with a smootherstep ease. When the chord changes, voices are sorted by pitch and matched to the sorted chord tones, so lines rarely cross. A split is a new voice born at its parent's pitch that glides away.</p>
+    </div>
+    <div>
+      <h2>The sound</h2>
+      <p>Pitch is stored as a MIDI note number <code>n</code> and turned into hertz with <code>f(n) = 440·2^((n−69)/12)</code>. Each curve is sampled 100 times a second and handed to a Web Audio oscillator as one frequency automation, with a matching gain curve. Gliding in <code>n</code> rather than hertz makes every interval move at an even speed to the ear.</p>
+    </div>
+    <div>
+      <h2>The picture</h2>
+      <p>The same arrays are drawn with time on x and note number on y, so vertical gaps are musical intervals. The camera follows the playhead, rings mark voices that are moving, and at the end it pulls back to show the whole score in one frame.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+// <engine>
+const RATE = 100, NV = 12, ROOT = 57, LOW = 38, HIGH = 84;
+const MODES = {
+  dorian:  { name: 'Dorian',     steps: [0, 2, 3, 5, 7, 9, 10] },
+  aeolian: { name: 'Aeolian',    steps: [0, 2, 3, 5, 7, 8, 10] },
+  lydian:  { name: 'Lydian',     steps: [0, 2, 4, 6, 7, 9, 11] },
+  penta:   { name: 'Pentatonic', steps: [0, 2, 4, 7, 9] },
+};
+const mtof = n => 440 * Math.pow(2, (n - 69) / 12);
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10);
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Order-preserving match of a sorted voices to k >= a sorted targets, minimising total travel.
+function assign(p, q) {
+  const a = p.length, k = q.length, INF = 1e9;
+  const dp = [], ch = [];
+  for (let i = 0; i <= a; i++) { dp.push(new Float64Array(k + 1).fill(INF)); ch.push(new Uint8Array(k + 1)); }
+  for (let j = 0; j <= k; j++) dp[0][j] = 0;
+  for (let i = 1; i <= a; i++) {
+    for (let j = i; j <= k; j++) {
+      const skip = dp[i][j - 1];
+      const take = dp[i - 1][j - 1] + Math.abs(p[i - 1] - q[j - 1]);
+      if (take <= skip) { dp[i][j] = take; ch[i][j] = 1; } else { dp[i][j] = skip; }
+    }
+  }
+  const res = new Array(a);
+  let i = a, j = k;
+  while (i > 0) { if (ch[i][j]) { res[i - 1] = j - 1; i--; j--; } else j--; }
+  return res;
+}
+
+function compose(seed, modeKey) {
+  const rnd = rng(seed);
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const steps = MODES[modeKey].steps, S = steps.length;
+  const pcOf = n => ((n - ROOT) % 12 + 12) % 12;
+  const tones = [];
+  for (let n = LOW; n <= HIGH; n++) if (steps.includes(pcOf(n))) tones.push(n);
+  const deg = n => steps.indexOf(pcOf(n));
+  const chordPool = c => { const s = new Set([c % S, (c + 2) % S, (c + 4) % S, (c + 6) % S]); return tones.filter(n => s.has(deg(n))); };
+  const nearestIn = (pool, x) => pool.reduce((b, n) => Math.abs(n - x) < Math.abs(b - x) ? n : b, pool[0]);
+  function voicing(c, k, center, extra = 0) {
+    if (k === 1) return [nearestIn(chordPool(c), center)];
+    const span = Math.min(HIGH - LOW, 6 + k * 3.3 + extra);
+    let lo = center - span / 2, hi = center + span / 2;
+    if (lo < LOW) { hi += LOW - lo; lo = LOW; }
+    if (hi > HIGH) { lo -= hi - HIGH; hi = HIGH; }
+    let pool = chordPool(c).filter(n => n >= lo && n <= hi);
+    if (pool.length < 2) pool = chordPool(c);
+    const out = [];
+    for (let i = 0; i < k; i++) out.push(pool[Math.round(i * (pool.length - 1) / (k - 1))]);
+    return out;
+  }
+  const MOVES = S === 7 ? [3, 4, 3, 4, 5, 2, -2, 1] : [1, 2, 3, -1, -2];
+  const nextChord = c => { let n; do { n = ((c + pick(MOVES)) % S + S) % S; } while (n === c); return n; };
+
+  const voices = Array.from({ length: NV }, (_, id) => ({ id, born: Infinity, start: ROOT, cur: ROOT, moves: [] }));
+  const sections = [];
+  const mark = (name, t) => sections.push({ name, t });
+  const dur = o => o.dur[0] + rnd() * (o.dur[1] - o.dur[0]);
+
+  function moveTo(v, n, t0, d) {
+    if (n === v.cur) return null;
+    const last = v.moves[v.moves.length - 1];
+    if (last && t0 < last.t0 + last.d) t0 = last.t0 + last.d;
+    v.moves.push({ t0, d, from: v.cur, to: n });
+    v.cur = n;
+    return t0;
+  }
+
+  function retarget(t, targets, o) {
+    targets = targets.slice().sort((x, y) => x - y);
+    const act = voices.filter(v => v.born < Infinity).sort((x, y) => x.cur - y.cur || x.id - y.id);
+    const a = act.length, k = targets.length;
+    const map = k === a ? act.map((_, i) => i) : assign(act.map(v => v.cur), targets);
+    const used = new Set(map);
+    const before = act.map(v => v.cur);
+    const startOf = act.map((v, i) => moveTo(v, targets[map[i]], t + o.stagger * rnd(), dur(o)));
+    for (let j = 0; j < k; j++) {
+      if (used.has(j)) continue;
+      const v = voices.find(w => w.born === Infinity);
+      if (!v) break;
+      let bi = 0;
+      for (let i = 1; i < a; i++) if (Math.abs(before[i] - targets[j]) < Math.abs(before[bi] - targets[j])) bi = i;
+      // A child forks off at the moment its parent starts to move, so the branch stays attached.
+      const born = startOf[bi] != null ? startOf[bi] : t + o.stagger * rnd();
+      v.born = born; v.start = before[bi]; v.cur = before[bi];
+      moveTo(v, targets[j], born, dur(o));
+    }
+  }
+
+  let t = 0, c = 0;
+  const center = ROOT + 2;
+  mark('Seed', 0);
+  voices[0].born = 0;
+  t = 8 + rnd() * 2;
+
+  mark('Split', t);
+  for (const k of [3, 5, 8, 12]) {
+    retarget(t, voicing(c, k, center), { stagger: .5, dur: [2.6, 3.8] });
+    t += 7 + rnd() * 1.5;
+    c = nextChord(c);
+  }
+
+  mark('Drift', t);
+  for (let i = 0; i < 6; i++) {
+    retarget(t, voicing(c, 12, center + Math.round((rnd() - .5) * 6)), { stagger: 1.4, dur: [2.2, 4] });
+    t += 5.8 + rnd() * 2.2;
+    c = nextChord(c);
+  }
+
+  mark('Gather', t);
+  retarget(t, new Array(NV).fill(nearestIn(chordPool(c), center)), { stagger: .9, dur: [3.6, 5] });
+  t += 9.5;
+
+  // Burst out to a bass note plus eleven upper voices, leaving the bass room to leap.
+  mark('Burst', t);
+  c = nextChord(c);
+  const burst = voicing(c, NV - 1, center + 6, -10);
+  burst.unshift(tones.find(n => deg(n) === c));
+  retarget(t, burst, { stagger: .25, dur: [1.1, 1.9] });
+  t += 7;
+
+  // Each beat a random subset of voices steps one or two scale tones; a step is only
+  // taken if it stays strictly between its neighbours, so lines never touch or cross.
+  mark('Walk', t);
+  for (let step = 0; step < 24; step++) {
+    const act = voices.slice().sort((x, y) => x.cur - y.cur || x.id - y.id);
+    for (let i = 0; i < act.length; i++) {
+      if (rnd() < .55) continue;
+      const v = act[i], st = t + rnd() * .1, d = .22 + rnd() * .1;
+      if (i === 0) {
+        const leaps = tones.filter(n => n < act[1].cur - 2 && Math.abs(n - v.cur) >= 5 && Math.abs(n - v.cur) <= 12);
+        if (leaps.length) moveTo(v, pick(leaps), st, d);
+        continue;
+      }
+      const ix = tones.indexOf(v.cur);
+      const n = tones[Math.max(0, Math.min(tones.length - 1, ix + pick([-2, -1, 1, 2])))];
+      const below = act[i - 1].cur, above = i < act.length - 1 ? act[i + 1].cur : HIGH + 1;
+      if (n > below && n < above) moveTo(v, n, st, d);
+    }
+    t += pick([.75, 1, 1, 1.5]);
+  }
+  t += 1.5;
+
+  mark('Thin', t);
+  for (let i = 0; i < 2; i++) {
+    c = nextChord(c);
+    const pool = chordPool(c);
+    const tri = [nearestIn(pool, center - 11), nearestIn(pool, center), nearestIn(pool, center + 10)];
+    const tg = [];
+    for (let j = 0; j < NV; j++) tg.push(tri[Math.min(2, Math.floor(j * 3 / NV))]);
+    retarget(t, tg, { stagger: 1.3, dur: [3, 5] });
+    t += 9;
+  }
+
+  mark('Home', t);
+  retarget(t, new Array(NV).fill(ROOT), { stagger: 1, dur: [4, 6.5] });
+  t += 13.5;
+
+  let loN = Infinity, hiN = -Infinity;
+  for (const v of voices) {
+    if (v.born === Infinity) continue;
+    loN = Math.min(loN, v.start); hiN = Math.max(hiN, v.start);
+    for (const m of v.moves) { loN = Math.min(loN, m.to); hiN = Math.max(hiN, m.to); }
+  }
+  return { voices, sections, D: t, loN: loN - 1.5, hiN: hiN + 1.5, seed, mode: MODES[modeKey].name };
+}
+
+// Sample every voice at RATE Hz: pitch (MIDI, NaN before birth), motion (0..1 during a glide), gain.
+function bake(score) {
+  const N = Math.ceil(score.D * RATE) + 1, D = (N - 1) / RATE;
+  const count = new Float32Array(N);
+  const vs = score.voices.filter(v => v.born < Infinity).map(v => {
+    const p = new Float32Array(N), mv = new Float32Array(N), env = new Float32Array(N);
+    let m = 0, cur = v.start;
+    for (let i = 0; i < N; i++) {
+      const t = i / RATE;
+      if (t < v.born) { p[i] = NaN; continue; }
+      while (m < v.moves.length && t >= v.moves[m].t0 + v.moves[m].d) { cur = v.moves[m].to; m++; }
+      let val = cur, mov = 0;
+      if (m < v.moves.length && t > v.moves[m].t0) {
+        const M = v.moves[m], x = (t - M.t0) / M.d;
+        val = M.from + (M.to - M.from) * ease(x);
+        mov = Math.sin(Math.PI * x);
+      }
+      p[i] = val; mv[i] = mov;
+      env[i] = ease((t - v.born) / 1.4);
+      count[i] += env[i];
+    }
+    return { id: v.id, born: v.born, start: v.start, p, mv, env, gain: null };
+  });
+  for (const v of vs) {
+    v.f = Float32Array.from(v.p, p => mtof(p === p ? p : v.start));
+    v.gain = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      if (!(v.env[i] > 0)) continue;
+      const t = i / RATE;
+      const outer = Math.min(1, t / .3) * Math.min(1, Math.max(0, (D - t) / 6));
+      const tilt = Math.pow(2, -(v.p[i] - ROOT) / 48);
+      v.gain[i] = .2 * v.env[i] * (1 + .35 * v.mv[i]) * tilt * outer / Math.sqrt(Math.max(1, count[i]));
+    }
+  }
+  return { N, D, voices: vs };
+}
+// </engine>
+
+const cv = document.getElementById('cv'), stage = document.getElementById('stage');
+const g = cv.getContext('2d');
+const playBtn = document.getElementById('play'), restartBtn = document.getElementById('restart');
+const freshBtn = document.getElementById('fresh'), modeSel = document.getElementById('mode');
+const winIn = document.getElementById('win'), winOut = document.getElementById('winOut');
+const segBtns = [...document.querySelectorAll('[data-color]')];
+const seek = document.getElementById('seek'), seekNow = document.getElementById('seekNow'), seekEnd = document.getElementById('seekEnd');
+const MONO = '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let seed = 2611, modeKey = 'dorian', score, baked;
+let state = 'rest'; // rest | playing | paused | ended
+let z = 1, zFrom = 1, zTo = 1, zT0 = 0;
+let futureA = 1, fFrom = 1, fTo = 1, fT0 = 0;
+let W = 0, H = 0, dirty = true, C = {};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+const WMIN = 4;
+let winSec = parseFloat(store.get('gs.win', '20')) || 20;
+let colorMode = store.get('gs.color', 'ink');
+if (!['ink', 'voice', 'pitch'].includes(colorMode)) colorMode = 'ink';
+let pausePos = 0, scrubbing = false, scrubPos = 0, wasPlaying = false;
+
+function recompose() {
+  score = compose(seed, modeKey);
+  baked = bake(score);
+  seek.max = baked.D;
+  seekEnd.textContent = fmt(baked.D);
+  syncWin();
+  dirty = true;
+}
+
+// View window: seconds visible across the stage, 4 s up to the whole piece (log scale).
+function syncWin() {
+  const D = baked.D;
+  winSec = Math.min(Math.max(WMIN, winSec), D);
+  winIn.value = Math.round(1000 * (Math.log(winSec) - Math.log(WMIN)) / (Math.log(D) - Math.log(WMIN)));
+  winOut.textContent = winSec >= D * .98 ? 'whole piece' : (winSec < 10 ? winSec.toFixed(1) : Math.round(winSec)) + ' s';
+  dirty = true;
+}
+function setWin(w) { winSec = w; syncWin(); store.set('gs.win', String(winSec)); }
+function setColor(m) {
+  colorMode = m;
+  segBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.color === m ? 'true' : 'false'));
+  store.set('gs.color', m);
+  dirty = true;
+}
+
+// ---------- audio ----------
+let actx = null, bus = null, live = null;
+function impulse(ctx, secs, decay) {
+  const len = Math.floor(ctx.sampleRate * secs), b = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+  }
+  return b;
+}
+function ensureAudio() {
+  if (actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .3;
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200; lp.Q.value = .5;
+  const mix = actx.createGain();
+  const dry = actx.createGain(); dry.gain.value = .85;
+  const wet = actx.createGain(); wet.gain.value = .5;
+  const conv = actx.createConvolver(); conv.buffer = impulse(actx, 4.2, 2.4);
+  mix.connect(dry); mix.connect(conv); conv.connect(wet);
+  dry.connect(lp); wet.connect(lp); lp.connect(comp); comp.connect(actx.destination);
+  const h = new Float32Array([0, 1, .32, .14, .07, .035, .015]);
+  bus = { mix, wave: actx.createPeriodicWave(new Float32Array(h.length), h) };
+}
+function stopVoices() {
+  if (!live || !actx) { live = null; return; }
+  const now = actx.currentTime, old = live;
+  old.out.gain.setTargetAtTime(0, now, .03);
+  old.nodes.forEach(n => { try { n.osc.stop(now + .25); } catch (e) {} });
+  setTimeout(() => { try { old.out.disconnect(); } catch (e) {} }, 400);
+  live = null;
+}
+function startPlayback(offset = 0) {
+  ensureAudio();
+  stopVoices();
+  if (actx.state === 'suspended') actx.resume();
+  const i0 = Math.max(0, Math.min(baked.N - 2, Math.round(offset * RATE)));
+  const startAt = actx.currentTime + .12, dur = (baked.N - 1 - i0) / RATE;
+  const out = actx.createGain();
+  out.gain.setValueAtTime(0, startAt);
+  out.gain.linearRampToValueAtTime(1, startAt + .05);
+  out.connect(bus.mix);
+  const nodes = baked.voices.map((v, i) => {
+    const osc = actx.createOscillator();
+    osc.setPeriodicWave(bus.wave);
+    osc.detune.value = (i % 2 ? 1 : -1) * (1.5 + (i * 7 % 5) * .6);
+    const f = v.f.subarray(i0);
+    osc.frequency.value = f[0];
+    osc.frequency.setValueCurveAtTime(f, startAt, dur);
+    const gn = actx.createGain();
+    gn.gain.value = 0;
+    gn.gain.setValueCurveAtTime(v.gain.subarray(i0), startAt, dur);
+    let node = osc.connect(gn);
+    if (actx.createStereoPanner) {
+      const pan = actx.createStereoPanner();
+      pan.pan.value = (i % 2 ? 1 : -1) * (.12 + .5 * (i / NV));
+      node = node.connect(pan);
+    }
+    node.connect(out);
+    osc.start(startAt);
+    osc.stop(startAt + dur + .05);
+    return { osc };
+  });
+  live = { nodes, out, t0: startAt - i0 / RATE, from: i0 / RATE };
+}
+function audioTime() {
+  if (!live || !actx) return pausePos;
+  const lat = actx.outputLatency || 0;
+  return Math.min(baked.D, Math.max(live.from, actx.currentTime - live.t0 - lat));
+}
+
+// ---------- state ----------
+function setZoom(to) { zFrom = z; zTo = to; zT0 = performance.now(); }
+function setFuture(to) { fFrom = futureA; fTo = to; fT0 = performance.now(); }
+function syncUI() {
+  playBtn.textContent = { rest: 'Play', playing: 'Pause', paused: 'Resume', ended: 'Play again' }[state];
+  playBtn.setAttribute('aria-pressed', state === 'playing' ? 'true' : 'false');
+  dirty = true;
+}
+function play() {
+  if (state === 'rest' || state === 'ended') { pausePos = 0; startPlayback(0); state = 'playing'; setZoom(0); setFuture(0); }
+  else if (state === 'playing') { pausePos = audioTime(); stopVoices(); state = 'paused'; }
+  else if (state === 'paused') { startPlayback(pausePos); state = 'playing'; }
+  syncUI();
+}
+function restart() {
+  pausePos = 0;
+  startPlayback(0);
+  state = 'playing'; setZoom(0); setFuture(0);
+  syncUI();
+}
+function reset() {
+  stopVoices();
+  recompose();
+  state = 'rest'; pausePos = 0; scrubbing = false;
+  z = zTo = 1; zT0 = 0; futureA = fTo = 1; fT0 = 0;
+  syncUI();
+}
+playBtn.addEventListener('click', play);
+restartBtn.addEventListener('click', restart);
+freshBtn.addEventListener('click', () => { seed = 1 + Math.floor(Math.random() * 99998); reset(); });
+modeSel.addEventListener('change', () => { modeKey = modeSel.value; reset(); });
+cv.addEventListener('click', play);
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === '-' || e.key === '_') { setWin(winSec * 1.25); return; }
+  if (e.key === '=' || e.key === '+') { setWin(winSec / 1.25); return; }
+  if (e.code !== 'Space') return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'button' || tag === 'select' || tag === 'input') return;
+  e.preventDefault(); play();
+});
+winIn.addEventListener('input', () => {
+  setWin(Math.exp(Math.log(WMIN) + (Math.log(baked.D) - Math.log(WMIN)) * winIn.value / 1000));
+});
+cv.addEventListener('wheel', e => {
+  if (!(e.ctrlKey || e.metaKey || e.altKey)) return;
+  e.preventDefault();
+  setWin(winSec * Math.exp(Math.max(-60, Math.min(60, e.deltaY)) * .01));
+}, { passive: false });
+segBtns.forEach(b => b.addEventListener('click', () => setColor(b.dataset.color)));
+
+// Scrubbing: silence while dragging, the picture follows the handle; on release, resume
+// from there if it was playing, otherwise wait paused at the new position.
+seek.addEventListener('input', () => {
+  if (!scrubbing) {
+    scrubbing = true;
+    wasPlaying = state === 'playing';
+    if (wasPlaying) stopVoices();
+    if (state === 'rest' || state === 'ended') { state = 'paused'; setZoom(0); setFuture(0); }
+  }
+  scrubPos = parseFloat(seek.value);
+  seekNow.textContent = fmt(scrubPos);
+  dirty = true;
+});
+seek.addEventListener('change', () => {
+  scrubbing = false;
+  pausePos = parseFloat(seek.value);
+  if (wasPlaying) { startPlayback(pausePos); state = 'playing'; }
+  else state = 'paused';
+  wasPlaying = false;
+  syncUI();
+});
+
+// ---------- drawing ----------
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = k => cs.getPropertyValue(k).trim();
+  C = { paper: v('--paper'), ink: v('--ink'), ink2: v('--ink-2'), rule: v('--rule'), accent: v('--accent') };
+  dirty = true;
+}
+readColors();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { dirty = true; });
+
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dirty = true;
+}).observe(stage);
+
+function pAt(v, t) {
+  const x = t * RATE, i = Math.floor(x), f = x - i;
+  const a = v.p[Math.max(0, Math.min(baked.N - 1, i))], b = v.p[Math.max(0, Math.min(baked.N - 1, i + 1))];
+  if (a !== a) return b === b ? b : v.start;
+  if (b !== b) return a;
+  return a + (b - a) * f;
+}
+function mvAt(v, t) { return v.mv[Math.max(0, Math.min(baked.N - 1, Math.round(t * RATE)))]; }
+const fmt = t => { const m = Math.floor(t / 60), s = t - m * 60; return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0'); };
+const NAMES = { 45: 'A2', 57: 'A3', 69: 'A4', 81: 'A5' };
+
+// Line colors: ink, a distinct hue per voice, or a low-to-high pitch gradient.
+const OKLCH = !!(window.CSS && CSS.supports && CSS.supports('color', 'oklch(0.5 0.1 100)'));
+const col = (L, c, h) => OKLCH ? `oklch(${L} ${c} ${h})` : `hsl(${Math.round(h)} 65% ${Math.round(L * 88)}%)`;
+const PITCH_HUES = [280, 240, 195, 150, 95, 50, 20];
+function isDark() {
+  const m = /^#?([0-9a-f]{6})$/i.exec(C.paper || '');
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  return (n >> 16) * .299 + ((n >> 8) & 255) * .587 + (n & 255) * .114 < 128;
+}
+function painter(yOf) {
+  if (colorMode === 'ink') return () => C.ink;
+  const dark = isDark(), L = dark ? .8 : .57, ch = dark ? .13 : .16;
+  if (colorMode === 'voice') return v => col(L, ch, (25 + v.id * 137.508) % 360);
+  const grad = g.createLinearGradient(0, yOf(score.loN), 0, yOf(score.hiN));
+  PITCH_HUES.forEach((h, i) => grad.addColorStop(i / (PITCH_HUES.length - 1), col(L, ch, h)));
+  return () => grad;
+}
+
+function draw(now) {
+  if (!W || !H) return;
+  if (zT0) { const k = reduced ? 1 : Math.min(1, (now - zT0) / 2400); z = zFrom + (zTo - zFrom) * ease(k); if (k >= 1) zT0 = 0; }
+  if (fT0) { const k = reduced ? 1 : Math.min(1, (now - fT0) / 900); futureA = fFrom + (fTo - fFrom) * k; if (k >= 1) fT0 = 0; }
+  const D = baked.D;
+  const tNow = scrubbing ? scrubPos : state === 'rest' ? 0 : state === 'ended' ? D : state === 'paused' ? pausePos : audioTime();
+
+  g.globalAlpha = 1;
+  g.fillStyle = C.paper; g.fillRect(0, 0, W, H);
+
+  const padT = Math.max(28, H * .08), padB = Math.max(54, H * .15);
+  const padL = Math.max(16, W * .025), padR = Math.max(16, W * .025);
+  const yOf = n => padT + (score.hiN - n) / (score.hiN - score.loN) * (H - padT - padB);
+  const ppsF = W / winSec, xF = W - Math.min(190, Math.max(100, W * .22));
+  const ppsO = (W - padL - padR) / D, xO = padL + tNow * ppsO;
+  // As the window approaches the whole piece, the follow camera eases into the overview.
+  const zc = Math.max(z, ease((Math.log(winSec) - Math.log(D * .4)) / (Math.log(D) - Math.log(D * .4))));
+  const pps = Math.exp(Math.log(ppsF) + (Math.log(ppsO) - Math.log(ppsF)) * zc);
+  const xNow = xF + (xO - xF) * zc;
+  const xOf = t => xNow + (t - tNow) * pps;
+  const tL = tNow - xNow / pps, tR = tNow + (W - xNow) / pps;
+
+  // octave grid: the A of each octave, labelled with its frequency
+  g.lineWidth = 1; g.font = `10px ${MONO}`; g.textBaseline = 'alphabetic';
+  for (const n of [45, 57, 69, 81]) {
+    if (n < score.loN || n > score.hiN) continue;
+    const y = Math.round(yOf(n)) + .5;
+    g.strokeStyle = C.rule; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+    g.fillStyle = C.ink2; g.globalAlpha = .75;
+    g.fillText(`${NAMES[n]} ${mtof(n).toFixed(0)} Hz`, 6, y - 4);
+    g.globalAlpha = 1;
+  }
+
+  // section boundaries
+  g.font = `500 9.5px ${MONO}`;
+  try { g.letterSpacing = '1px'; } catch (e) {}
+  let lastEnd = -1e9;
+  const labelY = padT * .45;
+  for (const s of score.sections) {
+    const x = Math.round(xOf(s.t)) + .5;
+    if (x > W + 1) break;
+    g.strokeStyle = C.rule; g.beginPath(); g.moveTo(x, labelY - 8); g.lineTo(x, H - padB + 6); g.stroke();
+    const label = s.name.toUpperCase(), w = g.measureText(label).width;
+    if (x + 4 + w > 0 && x >= lastEnd + 8 && x + 4 + w < W) {
+      g.fillStyle = C.ink2; g.fillText(label, x + 4, labelY);
+      lastEnd = x + 4 + w;
+    }
+  }
+  try { g.letterSpacing = '0px'; } catch (e) {}
+
+  // voice lines
+  g.lineWidth = 1.5; g.lineJoin = 'round'; g.lineCap = 'round';
+  const paint = painter(yOf);
+  const step = Math.max(1, Math.round(Math.min(.25, .8 / pps) * RATE));
+  function trace(v, ta, tb) {
+    ta = Math.max(ta, v.born, 0); tb = Math.min(tb, D);
+    if (tb <= ta) return;
+    const i0 = Math.ceil(ta * RATE / step) * step, i1 = Math.floor(tb * RATE);
+    g.beginPath();
+    g.moveTo(xOf(ta), yOf(pAt(v, ta)));
+    for (let i = i0; i <= i1; i += step) { const p = v.p[i]; if (p === p) g.lineTo(xOf(i / RATE), yOf(p)); }
+    g.lineTo(xOf(tb), yOf(pAt(v, tb)));
+    g.stroke();
+  }
+  for (const v of baked.voices) {
+    g.strokeStyle = paint(v);
+    g.globalAlpha = 1; trace(v, tL, Math.min(tNow, tR));
+    if (futureA > .01) { g.globalAlpha = futureA; trace(v, tNow, tR); }
+  }
+  g.globalAlpha = 1;
+
+  // playhead, dots, rings, frequency labels
+  const headA = state === 'rest' ? 0 : 1 - z;
+  let active = 0;
+  for (const v of baked.voices) if (tNow >= v.born) active++;
+  if (headA > .02) {
+    g.globalAlpha = headA; g.strokeStyle = C.rule; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(xNow) + .5, padT - 6); g.lineTo(Math.round(xNow) + .5, H - padB + 6); g.stroke();
+    const groups = new Map();
+    for (const v of baked.voices) {
+      if (tNow < v.born) continue;
+      const p = pAt(v, tNow), y = yOf(p), mv = mvAt(v, tNow);
+      const pc = paint(v);
+      if (mv > .03) {
+        g.globalAlpha = headA * mv; g.strokeStyle = colorMode === 'ink' ? C.accent : pc; g.lineWidth = 1.2;
+        g.beginPath(); g.arc(xNow, y, 6.5, 0, Math.PI * 2); g.stroke();
+      }
+      g.globalAlpha = headA; g.fillStyle = pc;
+      g.beginPath(); g.arc(xNow, y, 2.6, 0, Math.PI * 2); g.fill();
+      const key = Math.round(p * 20), gr = groups.get(key);
+      if (gr) gr.count++; else groups.set(key, { p, y, count: 1 });
+    }
+    g.font = `10px ${MONO}`; g.fillStyle = C.ink2; g.globalAlpha = headA;
+    let lastY = -99;
+    for (const gr of [...groups.values()].sort((a, b) => a.y - b.y)) {
+      if (gr.y - lastY < 11) continue;
+      g.fillText(`${mtof(gr.p).toFixed(2)} Hz${gr.count > 1 ? ' ×' + gr.count : ''}`, xNow + 11, gr.y + 3.5);
+      lastY = gr.y;
+    }
+    g.globalAlpha = 1;
+  }
+
+  // HUD
+  const hy = H - padB + 22;
+  g.font = `10.5px ${MONO}`; g.fillStyle = C.ink2; g.textAlign = 'left';
+  g.fillText('f(n) = 440·2^((n−69)/12)', padL, hy);
+  g.fillText(`voices  ${String(active).padStart(2, ' ')} / ${NV}`, padL, hy + 14);
+  g.fillText(`t       ${fmt(tNow)} / ${fmt(D)}`, padL, hy + 28);
+  g.textAlign = 'right';
+  let sec = score.sections[0].name;
+  for (const s of score.sections) if (s.t <= tNow) sec = s.name;
+  g.fillStyle = C.ink; g.font = `500 10.5px ${MONO}`;
+  g.fillText(state === 'rest' || state === 'ended' ? 'whole score' : sec.toLowerCase(), W - padR, hy);
+  g.fillStyle = C.ink2; g.font = `10.5px ${MONO}`;
+  g.fillText(`${score.mode.toLowerCase()} on A · seed ${score.seed}`, W - padR, hy + 14);
+  let tail;
+  if (state === 'rest') { g.fillStyle = C.accent; tail = 'press play'; }
+  else if (state === 'paused') { g.fillStyle = C.accent; tail = 'paused'; }
+  else if (state === 'ended') tail = `${score.sections.length} sections`;
+  else {
+    let lo = Infinity, hi = -Infinity;
+    for (const v of baked.voices) if (tNow >= v.born) { const p = pAt(v, tNow); lo = Math.min(lo, p); hi = Math.max(hi, p); }
+    tail = `${mtof(lo).toFixed(1)}–${mtof(hi).toFixed(1)} Hz`;
+  }
+  g.fillText(tail, W - padR, hy + 28);
+  g.textAlign = 'left';
+  if (!scrubbing) { seek.value = tNow; seekNow.textContent = fmt(tNow); }
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (state === 'playing' && live && audioTime() >= baked.D - .005) { state = 'ended'; live = null; setZoom(1); syncUI(); }
+  if (!(state === 'playing' || zT0 || fT0 || dirty)) return;
+  dirty = false;
+  draw(now);
+}
+
+recompose();
+setColor(colorMode);
+syncUI();
+requestAnimationFrame(frame);
+})();
+</script>
