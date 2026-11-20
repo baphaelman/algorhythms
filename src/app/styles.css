@@ -349,7 +349,7 @@ input[type='range'] {
 .ruler {
   position: relative;
   flex: none;
-  height: 22px;
+  height: 30px;
   border: 1px solid var(--rule);
   border-bottom: 0;
   background: var(--panel);
@@ -387,7 +387,7 @@ input[type='range'] {
   left: 0;
   top: 0;
   bottom: 0;
-  padding: 4px 0 0 4px;
+  padding: 13px 0 0 4px;
   border-left: 1px solid var(--rule);
   font: 10.5px/1 var(--f-mono);
   color: var(--ink-2);
@@ -395,6 +395,63 @@ input[type='range'] {
 }
 
 .ruler-tick[hidden] {
+  display: none;
+}
+
+/* The loop band: the ruler's top strip (LOOP_BAND_PX in ruler.ts), §11.3 revision 6. */
+.ruler-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 9px;
+  border-bottom: 1px dotted var(--rule);
+  pointer-events: none;
+}
+
+.ruler[data-hover='band'] {
+  cursor: crosshair;
+}
+
+.ruler[data-hover='edge'] {
+  cursor: col-resize;
+}
+
+/* The loop region: shaded over the ruler, score and rows; placed by LoopRegion.tsx. */
+.loop-region {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-inline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.loop-region::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 9px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.loop-region[data-on='false'] {
+  background: color-mix(in srgb, var(--ink-2) 5%, transparent);
+  border-inline: 1px dashed color-mix(in srgb, var(--ink-2) 50%, transparent);
+}
+
+.loop-region[data-on='false']::before {
+  background: var(--ink-2);
+  opacity: 0.35;
+}
+
+.loop-region[hidden] {
   display: none;
 }
 

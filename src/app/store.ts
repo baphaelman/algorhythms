@@ -19,12 +19,20 @@
 import { create } from 'zustand';
 import { createIncrementalCompiler } from '../core/compiler/incremental';
 import { parsePiece } from '../core/schema';
-import type { CompiledScore, FollowMode, LineColors, Piece, Seconds } from '../core/types';
+import type {
+  CompiledScore,
+  FollowMode,
+  LineColors,
+  LoopRegion,
+  Piece,
+  Seconds,
+} from '../core/types';
 import { DEFAULT_FOLLOW, clampStart, clampWindow, zoomAnchor, zoomAround } from '../render';
 import {
   configureAudio,
   getEngine,
   loadAudio,
+  loopAudio,
   mixAudio,
   primeAudio,
   resumeAudio,
@@ -33,6 +41,7 @@ import {
 } from './audio';
 import { writeMeter } from './dom';
 import { featuredExample } from './examples';
+import { clampLoop, type LoopSpan } from './ruler';
 import { decodeSharePayload, sharePayloadOf } from './share';
 
 // ---------------------------------------------------------------------------------------------
@@ -250,7 +259,11 @@ function queueAudioLoad(piece: Piece, compiled: CompiledScore): void {
   setTransport({ audio: 'loading' });
   const seq = ++loadSeq;
   deferredLoad = () => {
-    loadAudio(compiled, piece.mix, piece.timbres)
+    const loading = loadAudio(compiled, piece.mix, piece.timbres);
+    // The load clears the engine's loop; send the piece's after it.
+    sentLoop = '';
+    syncLoop();
+    loading
       .then(() => {
         if (seq === loadSeq) setTransport({ audio: 'ready' });
       })
@@ -349,8 +362,13 @@ let recompilePending = false;
  * Replaces the piece after an edit. The store's `piece` changes now; `compiled` follows within one
  * animation frame (several edits in a frame cost one compile), and the engine is hot-swapped.
  */
-export function setPiece(piece: Piece): void {
+export function setPiece(next: Piece): void {
   const prev = get().piece;
+  // The loop region is view state, not an edit: undo and edits keep the current one.
+  const piece =
+    next.view.loop === prev.view.loop
+      ? next
+      : { ...next, view: withLoop(next.view, prev.view.loop) };
   set({ piece });
   if (piece.mix !== prev.mix) void mixAudio(piece.mix).catch(() => undefined);
   if (recompilePending) return;
@@ -367,6 +385,7 @@ export function recompileNow(): CompiledScore {
   const compiled = incremental.compile(piece);
   set({ compiled });
   void swapAudio(compiled, piece.timbres).catch(() => undefined);
+  syncLoop();
   return compiled;
 }
 
@@ -513,6 +532,68 @@ export function scrubEnd(t?: Seconds): void {
   clock.resume = false;
   setTransport({ scrubbing: false });
   if (resume) play();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Loop region (§11.3 revision 6): stored in `piece.view.loop`, saved with the piece, not undone
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A loop region being dragged on the ruler (transient: committed with `setLoop` on release). While
+ * `span` is set, the overlay shows it instead of the stored region.
+ */
+export const loopDraft: { span: LoopSpan | null } = { span: null };
+
+function withLoop(view: Piece['view'], loop: LoopRegion | undefined): Piece['view'] {
+  const { loop: _old, ...rest } = view;
+  return loop ? { ...rest, loop } : rest;
+}
+
+/** The stored loop region, clipped to the piece, with its on/off state; null when none. */
+export function loopRegion(): (LoopSpan & { on: boolean }) | null {
+  const { piece, compiled } = get();
+  const span = clampLoop(piece.view.loop, compiled.duration);
+  return span ? { ...span, on: piece.view.loop?.on !== false } : null;
+}
+
+/** The span playback loops now: the region when it is on, else null. */
+export function activeLoop(): LoopSpan | null {
+  const r = loopRegion();
+  return r && r.on ? { start: r.start, end: r.end } : null;
+}
+
+/** The range the engine was last sent ('' = none). */
+let sentLoop = '';
+
+/** Sends the active loop to the engine if it changed (the pending load sends it otherwise). */
+function syncLoop(): void {
+  if (deferredLoad) return;
+  const span = activeLoop();
+  const key = span ? `${span.start}|${span.end}` : '';
+  if (key === sentLoop) return;
+  sentLoop = key;
+  void loopAudio(span).catch(() => undefined);
+}
+
+function storeLoop(loop: LoopRegion | undefined): void {
+  const { piece } = get();
+  set({ piece: { ...piece, view: withLoop(piece.view, loop) } });
+  syncLoop();
+}
+
+/** Sets the loop region (turned on), or clears it with null. */
+export function setLoop(span: LoopSpan | null): void {
+  loopDraft.span = null;
+  storeLoop(span ? { start: span.start, end: span.end, on: true } : undefined);
+}
+
+/** Turns looping on or off, keeping the region; false when there is no region. */
+export function toggleLoop(on?: boolean): boolean {
+  const r = get().piece.view.loop;
+  if (!r || !loopRegion()) return false;
+  const next = on ?? r.on === false;
+  if ((r.on !== false) !== next) storeLoop({ ...r, on: next });
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------

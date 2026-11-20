@@ -42,3 +42,74 @@ export function beatPx(bpm: number | undefined, pps: number, minPx = 4): number 
   const px = (60 / bpm) * pps;
   return px >= minPx ? px : null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Loop region (§11.3 revision 6)
+// ---------------------------------------------------------------------------------------------
+
+/** Height of the ruler's loop band (its top strip), px. */
+export const LOOP_BAND_PX = 9;
+/** Shortest loop region, seconds. */
+export const LOOP_MIN: Seconds = 0.25;
+/** How close to a region edge a press grabs it, px. */
+export const LOOP_EDGE_PX = 6;
+/** Pointer travel before a band press becomes a new region, px. */
+export const LOOP_DRAG_PX = 3;
+
+/** A loop span [start, end), seconds. */
+export interface LoopSpan {
+  start: Seconds;
+  end: Seconds;
+}
+
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+
+/** The span between two drag times, within [0, duration]; null when shorter than `min`. */
+export function loopFromDrag(
+  a: Seconds,
+  b: Seconds,
+  duration: Seconds,
+  min: Seconds = LOOP_MIN,
+): LoopSpan | null {
+  const start = clamp(Math.min(a, b), 0, duration);
+  const end = clamp(Math.max(a, b), 0, duration);
+  return end - start >= min ? { start, end } : null;
+}
+
+/** `span` with one edge moved to `t`: kept at least `min` long and within [0, duration]. */
+export function dragLoopEdge(
+  span: LoopSpan,
+  edge: 'start' | 'end',
+  t: Seconds,
+  duration: Seconds,
+  min: Seconds = LOOP_MIN,
+): LoopSpan {
+  if (edge === 'start') return { start: clamp(t, 0, Math.max(0, span.end - min)), end: span.end };
+  return { start: span.start, end: clamp(t, Math.min(duration, span.start + min), duration) };
+}
+
+/** `span` clipped to [0, duration], or null when what is left is shorter than `min` (or invalid). */
+export function clampLoop(
+  span: LoopSpan | null | undefined,
+  duration: Seconds,
+  min: Seconds = LOOP_MIN,
+): LoopSpan | null {
+  if (!span || !Number.isFinite(span.start) || !Number.isFinite(span.end)) return null;
+  const start = clamp(span.start, 0, duration);
+  const end = clamp(span.end, 0, duration);
+  return end - start >= min ? { start, end } : null;
+}
+
+/** The edge of `span` within `tolPx` of time `t` at `pps` px/s (the nearer one), or null. */
+export function loopEdgeAt(
+  span: LoopSpan | null | undefined,
+  t: Seconds,
+  pps: number,
+  tolPx: number = LOOP_EDGE_PX,
+): 'start' | 'end' | null {
+  if (!span) return null;
+  const ds = Math.abs(t - span.start) * pps;
+  const de = Math.abs(t - span.end) * pps;
+  if (ds > tolPx && de > tolPx) return null;
+  return ds <= de ? 'start' : 'end';
+}

@@ -3125,6 +3125,30 @@ This is the *input* form: fields with defaults are optional here.
             "page",
             "off"
           ]
+        },
+        "loop": {
+          "description": "Loop region [start, end) (s).",
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "on": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": {}
         }
       },
       "additionalProperties": {}

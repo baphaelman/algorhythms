@@ -173,6 +173,14 @@ describe('parsePiece: defaults', () => {
     expect(piece.moments[3]).toMatchObject({ octaves: false });
   });
 
+  it('keeps view.loop (revision 6)', () => {
+    const p = { ...newPiece({ seed: 5 }) };
+    p.view = { ...p.view, loop: { start: 4, end: 9.5, on: false } };
+    const r = ok(parsePiece(JSON.stringify(p)));
+    expect(r.piece.view.loop).toEqual({ start: 4, end: 9.5, on: false });
+    expect(ok(parsePiece(newPiece({ seed: 5 }))).piece.view.loop).toBeUndefined();
+  });
+
   it("reads the retired colors 'voice' as 'pitch'", () => {
     const old = { ...newPiece({ seed: 5 }), view: { window: 20, colors: 'voice', hud: true } };
     const r = ok(parsePiece(JSON.stringify(old)));

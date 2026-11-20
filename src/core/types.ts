@@ -516,6 +516,16 @@ export interface ViewSettings {
   playheadX?: number;
   /** Follow mode the view opens with (§10). @default 'smooth' */
   follow?: FollowMode;
+  /** Loop region (§11.3 revision 6); absent means none. */
+  loop?: LoopRegion;
+}
+
+/** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
+export interface LoopRegion {
+  start: Seconds;
+  end: Seconds;
+  /** Whether playback loops it. @default true */
+  on?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------

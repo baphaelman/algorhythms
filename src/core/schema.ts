@@ -399,6 +399,10 @@ export const ViewSchema = z.looseObject({
   futureOpacity: unitInterval.optional(),
   playheadX: unitInterval.optional(),
   follow: z.enum(['smooth', 'page', 'off']).optional(),
+  loop: z
+    .looseObject({ start: seconds, end: seconds, on: z.boolean().optional() })
+    .optional()
+    .describe('Loop region [start, end) (s).'),
 });
 
 // ---------------------------------------------------------------------------------------------

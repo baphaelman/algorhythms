@@ -96,6 +96,11 @@ export function swapAudio(
   return enqueue((e) => e.swap(compiled, timbres));
 }
 
+/** Sets the engine's loop range (null stops looping), after any queued load or swap. */
+export function loopAudio(range: { start: number; end: number } | null): Promise<AudioEngine> {
+  return enqueue(async (e) => e.loop(range));
+}
+
 /** Replaces the master mix (after an edit to `piece.mix`). */
 export function mixAudio(mix: MixSettings): Promise<AudioEngine> {
   return enqueue(async (e) => e.setMix(mix));

@@ -202,6 +202,15 @@ export class AudioEngine {
 
   /** Loops [start, end) seconds, or stops looping with null. */
   loop(range: { start: number; end: number } | null): void {
+    // Re-anchor at the time heard now, so the old anchor is not wrapped by the new range (a
+    // region set ahead of or behind the playhead must not move it).
+    const a = this.anchors[0];
+    if (!this.optimistic && a?.playing) {
+      const pieceTime = this.currentTime();
+      this.anchors = [
+        { contextTime: this.heardContextTime(), pieceTime, playing: true, reason: 'pos' },
+      ];
+    }
     this.loopRange = range && range.end > range.start ? { ...range } : null;
     this.post({ type: 'loop', range: this.loopRange });
   }
