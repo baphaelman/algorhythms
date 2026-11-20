@@ -182,3 +182,64 @@ test('works in the phone layout, in both themes', async ({ page }) => {
     expect((await snapshot(page)).seed).toBe(theme === 'light' ? 11 : 12);
   }
 });
+
+test.describe('confirm before replacing an edited piece', () => {
+  const title = async (page: Page) => (await snapshot(page)).title;
+
+  async function generate(page: Page): Promise<void> {
+    await openPanel(page);
+    await panel(page).getByLabel('Seed', { exact: true }).fill('99');
+    await page.getByTestId('generate-run').click();
+  }
+
+  async function edit(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const h = window.__algorhythms!;
+      const ms = h.store.getState().piece.moments;
+      const ids = [ms[0]!.id, ms[1]!.id];
+      (h as unknown as { editor: { select(i: string[]): void } }).editor.select(ids);
+    });
+    await page.getByTestId('inspector').getByRole('button', { name: 'Mute all' }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window.__algorhythms as unknown as {
+                editor: { state: { getState(): { canUndo: boolean } } };
+              }
+            ).editor.state.getState().canUndo,
+        ),
+      )
+      .toBe(true);
+  }
+
+  test('an unedited piece is replaced without asking', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await generate(page);
+    await expect(panel(page)).toBeHidden();
+    expect(await title(page)).not.toBe('Tidewater Hymn');
+    // A fresh generate is unedited too.
+    await generate(page);
+    await expect(panel(page)).toBeHidden();
+  });
+
+  test('an edited piece asks; Cancel keeps it, Replace generates', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await edit(page);
+    const before = await snapshot(page);
+    await generate(page);
+    await expect(page.getByTestId('generate-confirm')).toBeVisible();
+    await expect(page.getByTestId('generate-confirm')).toContainText('Replace the current piece?');
+
+    await page.getByTestId('generate-confirm-cancel').click();
+    expect((await snapshot(page)).body).toBe(before.body);
+    await expect(page.getByTestId('generate-run')).toBeVisible();
+
+    await page.getByTestId('generate-run').click();
+    await page.getByTestId('generate-confirm-replace').click();
+    await expect(panel(page)).toBeHidden();
+    expect((await snapshot(page)).body).not.toBe(before.body);
+    expect(await title(page)).not.toBe('Tidewater Hymn');
+  });
+});

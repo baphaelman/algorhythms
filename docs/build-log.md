@@ -805,3 +805,6 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Generate confirms** before replacing an edited piece (§11.3).
 - Tablet touch editing (M5): low priority but in scope.
 - Integrator may push to `main`. Cloud: `git push` works; `gh` is not authenticated, use the GitHub MCP tools for CI.
+
+### B8: Generate confirms before replacing an edited piece (§11.3)
+"Edited" = the editor's undo stack is non-empty (`useEditor.canUndo`; every load clears it), so no store change. Generate on an edited piece swaps the dialog body for "Replace the current piece?" (Replace / Cancel; Cancel returns to the form). Autosave (§11.4) saves an edited piece at its first edit, so the copy "saved in My pieces" is true. Specs in `tests/e2e/generate.spec.ts`.
