@@ -5,6 +5,7 @@
 
 import type { AudioEngine } from '../audio/engine';
 import { getAudioContext, getEngine } from './audio';
+import { select } from './editor/history';
 import { frameStats } from './loop';
 import { encodeShareLink } from './share';
 import { loadPiece, recompileNow, setPiece, usePlayer } from './store';
@@ -24,6 +25,8 @@ export interface AlgoRhythmsDebug {
     loadPiece: typeof loadPiece;
     setPiece: typeof setPiece;
     recompileNow: typeof recompileNow;
+    /** Editor selection (moment ids). */
+    select: typeof select;
   };
   /** `encodeShareLink`, for round-trip tests. */
   encodeShareLink: typeof encodeShareLink;
@@ -54,7 +57,7 @@ export function installDebug(): void {
       return tap;
     },
     frameStats,
-    actions: { loadPiece, setPiece, recompileNow },
+    actions: { loadPiece, setPiece, recompileNow, select },
     encodeShareLink,
   };
 }

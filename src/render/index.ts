@@ -21,7 +21,17 @@ export {
   zoomWindow,
   type CameraScore,
 } from './camera';
-export { DEFAULT_MONO, GLIDE_STEP_PX, drawScore, formatTime, keyName, type Ctx2D } from './draw';
+export {
+  DEFAULT_MONO,
+  DIM_ALPHA,
+  GLIDE_STEP_PX,
+  HIGHLIGHT_WIDTH,
+  drawScore,
+  formatTime,
+  keyName,
+  type Ctx2D,
+} from './draw';
+export { HOVER_RADIUS_PX, hoverLabel, nearestLine, noteLabel, type LineHit } from './hover';
 export {
   DARK_TOKENS,
   LIGHT_TOKENS,

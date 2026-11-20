@@ -109,4 +109,9 @@ export interface ScoreStyle {
   labels?: MomentLabels;
   /** Monospace font family. */
   fontMono?: string;
+  /**
+   * Selected moments (§11.3 selection feedback): segments with these `momentId`s are drawn
+   * emphasised and the other lines dimmed. Empty or absent: no highlight, no extra cost.
+   */
+  highlight?: ReadonlySet<MomentId>;
 }

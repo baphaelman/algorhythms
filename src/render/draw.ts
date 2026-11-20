@@ -9,9 +9,16 @@
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
-import { activeAt, chordAt, keyAt, motionAt, pitchAt, sample } from '../core/query';
+import { activeAt, chordAt, keyAt, motionAt, pitchAt, sample, segmentIndexAt } from '../core/query';
 import { hzOf } from '../core/tuning';
-import type { CompiledScore, Key, MomentSpan, Seconds } from '../core/types';
+import type {
+  CompiledScore,
+  CompiledVoice,
+  Key,
+  MomentId,
+  MomentSpan,
+  Seconds,
+} from '../core/types';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { lineColor, pitchStops } from './palettes';
 import type { CameraState, ScoreStyle, View } from './types';
@@ -28,6 +35,10 @@ export const GLIDE_STEP_PX = 2;
 const A_PITCHES = [21, 33, 45, 57, 69, 81, 93, 105];
 /** Head dot and motion ring radii, px. */
 const DOT_R = 2.6;
+/** Opacity factor of unselected lines while a selection is highlighted. */
+export const DIM_ALPHA = 0.3;
+/** Line width of highlighted segments, px (normal lines are 1.5). */
+export const HIGHLIGHT_WIDTH = 2.75;
 const RING_R = 6.5;
 
 /** `mm:ss.s` */
@@ -64,6 +75,7 @@ function spansByStart(spans: readonly MomentSpan[]): MomentSpan[] {
  * @param t      playhead time in seconds
  * @param size   canvas size in CSS pixels
  * @param dpr    device pixel ratio; the context is set to scale by it
+ * @returns the resolved view (for hit-testing the same frame)
  */
 export function drawScore(
   ctx2d: Ctx2D,
@@ -73,7 +85,7 @@ export function drawScore(
   t: Seconds,
   size: { width: number; height: number },
   dpr: number,
-): void {
+): View {
   const g = ctx2d as CanvasRenderingContext2D;
   const { width: W, height: H } = size;
   const C = style.tokens;
@@ -136,6 +148,7 @@ export function drawScore(
 
   // 7. HUD
   if (style.hud) drawHud(g, compiled, style, view, MONO, padL, padR);
+  return view;
 }
 
 function drawMarkers(
@@ -207,19 +220,66 @@ function drawLines(
 
   const past = t > tL;
   const future = ghost && t < tR;
+  const hl = style.highlight && style.highlight.size > 0 ? style.highlight : null;
+  const dim = hl ? DIM_ALPHA : 1;
   for (const v of compiled.voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
     if (past) {
-      g.globalAlpha = 1;
+      g.globalAlpha = dim;
       trace(g, view, sample(v, tL, Math.min(t, tR), maxStep, tolerance));
     }
     if (future) {
-      g.globalAlpha = style.futureOpacity;
+      g.globalAlpha = style.futureOpacity * dim;
       trace(g, view, sample(v, Math.max(t, tL), tR, maxStep, tolerance));
     }
   }
+  if (hl) {
+    // Selected segments on top, thicker; the future part stays visible even with no ghost.
+    g.lineWidth = HIGHLIGHT_WIDTH;
+    const futureA = Math.max(style.futureOpacity, 0.6);
+    for (const v of compiled.voices) {
+      if (v.segments.length === 0) continue;
+      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      forHighlighted(v, hl, tL, tR, (a, b) => {
+        if (a < t) {
+          g.globalAlpha = 1;
+          trace(g, view, sample(v, a, Math.min(t, b), maxStep, tolerance));
+        }
+        if (b > t) {
+          g.globalAlpha = futureA;
+          trace(g, view, sample(v, Math.max(t, a), b, maxStep, tolerance));
+        }
+      });
+    }
+  }
   g.globalAlpha = 1;
+}
+
+/** Calls `fn(a, b)` for each run of contiguous segments in `ids`, clipped to [tL, tR]. */
+function forHighlighted(
+  v: CompiledVoice,
+  ids: ReadonlySet<MomentId>,
+  tL: Seconds,
+  tR: Seconds,
+  fn: (a: Seconds, b: Seconds) => void,
+): void {
+  const segs = v.segments;
+  let a = NaN;
+  let b = NaN;
+  for (let i = Math.max(0, segmentIndexAt(v, tL)); i < segs.length; i++) {
+    const s = segs[i];
+    if (s.t0 >= tR) break;
+    if (s.t1 <= tL || s.momentId === undefined || !ids.has(s.momentId)) continue;
+    if (a === a && s.t0 === b) {
+      b = s.t1;
+      continue;
+    }
+    if (a === a) fn(Math.max(a, tL), Math.min(b, tR));
+    a = s.t0;
+    b = s.t1;
+  }
+  if (a === a) fn(Math.max(a, tL), Math.min(b, tR));
 }
 
 /** Strokes sampled points as one path; a NaN pitch lifts the pen (gap between lives). */

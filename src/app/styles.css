@@ -348,6 +348,24 @@ input[type='range'] {
   touch-action: none;
 }
 
+/* Hover readout of the line under the mouse (§11.3); positioned by the loop. */
+.score-hover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--ink);
+  font: 10.5px var(--f-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.score-hover[hidden] {
+  display: none;
+}
+
 .slot.lane {
   grid-area: lane;
 }
