@@ -1,6 +1,7 @@
 /** Unit tests for core/generate.ts (PLAN.md §11.3 Generate, §15 M1 acceptance). */
 
 import { describe, expect, it, vi } from 'vitest';
+import { compile } from '../../../src/core/compiler/compile';
 import {
   SECTION_NAMES,
   generate,
@@ -290,5 +291,33 @@ describe('generate: options', () => {
     const b = generate(77, { mode: 'dorian', density: 0.9 });
     const strip = (p: Piece) => p.moments.filter((m) => m.type !== 'walk');
     expect(strip(b)).toEqual(strip(a));
+  });
+});
+
+describe('generate: compiles', () => {
+  it('compiles with no error diagnostics, 20 seeds in every mode', () => {
+    for (const mode of MODES) {
+      for (const seed of SEEDS) {
+        const errors = compile(generate(seed, { mode })).diagnostics.filter(
+          (d) => d.level === 'error',
+        );
+        expect(errors, `${mode} ${seed}`).toEqual([]);
+      }
+    }
+  });
+
+  it('the compiled lives give the expected active count at each section boundary', () => {
+    for (const seed of SEEDS.slice(0, 5)) {
+      const { piece, sections } = generateWithSections(seed, { mode: 'dorian' });
+      const score = compile(piece);
+      const expected = pieceSections(piece).map((s) => s.end);
+      for (let i = 1; i < sections.length; i++) {
+        const t = sections[i].at;
+        const alive = score.voices.filter((v) =>
+          v.lives.some((l) => l.born <= t && (l.died === undefined || l.died > t)),
+        ).length;
+        expect(alive, `seed ${seed}, end of ${sections[i - 1].name}`).toBe(expected[i - 1]);
+      }
+    }
   });
 });
