@@ -4,7 +4,7 @@ This is for the Claude session that orchestrates AlgoRhythms. Read it top to bot
 
 Also read `CLAUDE.md` (rules and the status table) and `docs/build-log.md`, which records every decision, deviation and owner ruling. `PLAN.md` is the spec; read only the sections a task needs.
 
-Last updated: 2026-11-20, end of the second integrator session (handoff at ~255k tokens).
+Last updated: 2026-11-20, end of the third integrator session (handoff at ~180k tokens).
 
 ## Your role (the owner's standing instructions)
 - **Don't write project code yourself.** Delegate all coding to builder subagents. You:
@@ -29,6 +29,8 @@ Last updated: 2026-11-20, end of the second integrator session (handoff at ~255k
   - The first builders were given whole milestones and reached about 550k tokens each; the owner called that "very expensive and inefficient". Small tasks cost about 35–170k.
 - **The owner wants speed** ("chop chop"). Run independent tasks in parallel when they touch different files. Sequence tasks that share files.
 - **Run cheap checks yourself.** Don't spawn reviewer agents.
+
+- **Owner messaging (2026-11-20):** one line each time a builder returns; otherwise message only for a decision or something they can see. Give local demo links (dev server via `preview_start algorhythms-dev` → http://localhost:5180/algorhythms/) instead of waiting for the CI deploy.
 
 ## Environment
 - **Repo:** `/Users/raps/algorhythms`. Remote `origin` = https://github.com/baphaelman/algorhythms (public). The site is https://baphaelman.github.io/algorhythms/; the hidden test page is `/algorhythms/fixtures.html`.
@@ -58,25 +60,30 @@ Last updated: 2026-11-20, end of the second integrator session (handoff at ~255k
 | Milestone | State |
 |---|---|
 | M0 | Done. CI is green on Chromium, Firefox and WebKit; the Pages deploy works. |
-| M1 compiler | Done; the owner said the generated pieces "sound lovely". Open: about 16 ms compile against 5 ms (deal with it in M4: a worker or incremental compile); about 2 unresolved crossings per thousands of pieces, both involving newborns from a split (reported as diagnostics, written up in the build log); the compiler should extend the final hold to `died` (noticed by the MIDI builder). |
+| M1 compiler | Done; the owner said the generated pieces "sound lovely". Open: compile ~8–10 ms against 5 ms after M4a (strict test: 9.7 ms at load 9.5); incremental compile is the next step; about 2 unresolved crossings per thousands of pieces, both involving newborns from a split (reported as diagnostics, written up in the build log); the compiler should extend the final hold to `died` (noticed by the MIDI builder). |
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
 | M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: announce the first public release (the iPhone check is not a blocker). Next milestone: M4 editor. |
-| M4–M7 | Not started. |
+| M4 | In progress. Merged locally (M4a–M4i, see build log): compiler speed-up (≈2× fewer instructions, output byte-identical), editor API (`src/app/editor/`), persistence (`src/app/persist/`, My pieces, New, Save as file, Download all, Chromium file link), lane, inspector, palette + shortcuts, voices drawer, selection highlight + hover readout. The owner has the local demo (http://localhost:5180/algorhythms/, `preview_start algorhythms-dev`). |
+| M5–M7 | Not started. |
 
 Last pushed: `f77952c`, verified in a clean worktree (745/745 tests, lint, typecheck, build, 170 e2e on Chromium + Firefox); CI green on all three engines and deployed (bundle `main-RYkdSH3g.js`).
 
 ## Next tasks
-- **Unison glide fix: approved by the owner ("push it") and pushed** with this handoff. PLAN §8.4 records the warp (rev 4). Tunable via `WARP_HZ` / `WARP_MAX` in `src/dsp/voice.ts` if the owner later finds the bend too audible.
-- **Builders misjudge their own context:** the unison builder said "about 150k" and actually used ~400k. Give big DSP tasks narrower briefs, or tell them to check every ~30 tool calls.
-- **M4 must start with compile speed** (drags need it). Escalation order: (1) compile in a worker so drags stay smooth; (2) incremental compile from the nearest checkpoint before the edited moment (the event simulation is causal), the big win; (3) profile and optimise the compiler; (4) last resort only: port `core`'s compiler to WASM (a contained swap thanks to P3 and the import boundaries; no wider rewrite). Note this reverses D2 and needs the owner's OK.
-- **Watch items:** the unison lock is getting intricate (group pass + glide warp, stems 6× slower); plan a consolidation pass in M6 when timbre work touches the same code. Hard DSP briefs must be narrow (the last one used ~400k tokens).
-- **Stems speed:** since the lock, each stem pass runs every voice silently, so stems are about 6× slower (0.46× real time of CPU for 24 voices). Optimisation: skip voices that can never join the stem voice's group. Not urgent.
-- **M4 editor:** next milestone. Includes the compiler perf work (worker or incremental compile).
+- **Push state:** see the build log tail / `git log origin/main`. If local main is ahead, verify HEAD in a clean worktree and push (routine above).
+- **M4 left:**
+  1. **Incremental compile** (Opus high; core only, then a few lines in `store.ts` `recompileNow`). M4a's verdict and the state to snapshot are in the build log "M4a" entry. Must equal a full compile (property test: random edit sequences, incremental == full). A reordered moment list, voice-definition change or setup diagnostics fall back to a full compile. If drags still stutter after that, compile in a worker.
+  2. **Acceptance checks (PLAN §15 M4):** a 1-minute piece from New with the mouse alone (try it in the browser pane); every action undoable; an edit during playback heard within 50 ms with no clicks (measure: setPiece → swap posted, plus engine swap latency); persistent storage status shown; Download all.
+  3. **Small polish noted by builders:** the canvas draws a moment's line at its span start, the lane at `moment.at` (≈0.15 s apart; make them agree); focusing an off-screen lane item doesn't pan; Escape with the menu open also clears the selection; drag-from-palette skipped; `canvas-input.ts` key guards have no unit test.
+  4. Run the whole e2e suite on the merged tree before pushing app work.
+- **Builder Alt rule (integrator call):** Alt at press duplicates; Alt held disables snapping (PLAN gives Alt both meanings).
+- **Machine load:** parallel builders push load to 40–60, so their full `pnpm test` runs fail timing tests (rtf, compiler-perf, dsp export, stems). Rerun those alone; don't treat them as regressions.
+- **Watch items:** the unison lock is getting intricate (group pass + glide warp, stems 6× slower); plan a consolidation pass in M6. Hard DSP briefs must be narrow.
+- **Stems speed:** skip voices that can never join the stem voice's group. Not urgent.
 - **Later backlog:** the expo/bezier allocation fix (M6); choir ideas (breath noise in M6, two oscillators per voice, formants per register, more partials for bass).
 
 ## Waiting on the owner
 - **Device checks:** MIDI in FL Studio once the owner has it (until then the automatic round-trip tests stand). The iPhone silent-switch check is optional, not a release blocker.
-- **Generate:** warn before replacing the open piece? Unanswered; it doesn't warn.
+- **Generate:** warn before replacing the open piece? Unanswered; it doesn't warn. Less pressing now: edited pieces autosave to My pieces.
 - **To hear:** `renders/gen-30s.wav`, `gen-60s.wav` (short Generate pieces); the unison glide WAVs once they exist.
 - **HUD chord choices to review if the owner cares:** written chord symbols get no inversion slash; a single pitch class reads "A (unison)"; the key and follow mode share one HUD line.
 - **Older, unanswered:** reed A/B (`reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (numerals read against the major scale: in A dorian, `III` = C♯ major, `bIII` = C; keep unless they object). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
