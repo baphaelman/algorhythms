@@ -8,6 +8,7 @@ import type { CompiledScore, MixSettings } from '../../core/types';
 import { AudioEngine, ENGINE_PROCESSOR, engineWorkletUrl } from '../engine';
 import { exportWav } from '../export-client';
 import { parseWavHeader, type WavBitDepth } from '../wav';
+import { stemsHook, type StemsHook } from './stems-hook';
 import {
   DRY_MIX,
   FIXTURE_MIX,
@@ -48,6 +49,8 @@ export interface FixturesHook {
     decodedPeak: number;
     progress: number[];
   }>;
+  /** Stems export in the real worker (tests/e2e/stems.spec.ts). */
+  stems: StemsHook;
   /** The live engine while playing (null when stopped). */
   engine: AudioEngine | null;
   /** An analyser on the live engine's output. */
@@ -131,6 +134,7 @@ const hook: FixturesHook = {
   workletUrl: engineWorkletUrl,
   processorName: ENGINE_PROCESSOR,
   names: NAMES,
+  stems: stemsHook,
   engine: null,
   analyser: null,
   async renderOffline(name, seconds, sampleRate = 48000) {

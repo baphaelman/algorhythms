@@ -413,3 +413,47 @@ The four tests are:
 - **Notes-only:** a glide into a birth is dropped, and consecutive holds at one pitch merge into one note.
 - **Channel 10:** per-voice mode skips channel 10 (the GM drum channel). This is an integrator decision; the spec said wrap after 16.
 - **Compiler quirk noticed by the MIDI builder:** a life's `died` can be later than its last segment's `t1` (the end fade). Consumers hold the last pitch until `died`. Consider making the compiler extend the final hold to `died`.
+
+## M3c: stems export (2026-11-20)
+
+### What exists
+- **`src/audio/stems.ts`** (pure, no DOM or Worker): `planStems`, `estimateStemsSize`, `writeStemsZip(input, options, sink, hooks)`, `soundingVoices`, `STEMS_WARN_BYTES`.
+- **`src/audio/stems.worker.ts`** + **`src/audio/stems-client.ts`**: `exportStems(score, mix, opts) → Promise<{ blob | null, bytes, entries, zip64 }>`, `canSaveToDisk()`, `pickStemsFile(name)`.
+- **`src/audio/zip.ts`**: the in-house streaming store-mode ZIP writer with ZIP64 (below), plus `crc32`, `zipSize`, `zipNeedsZip64`.
+- **`src/audio/fixtures/stems-hook.ts`**: `window.__fixtures.stems` for the e2e (additive: 4 lines in `fixtures/page.ts`).
+- **Tests:** `tests/unit/audio/{zip,stems}.test.ts`, `tests/e2e/stems.spec.ts`.
+
+### How it works
+- Passes, as §12: pass 1 renders the mix, writing `mix.wav` as it goes and capturing g_L; then one `RenderMode.Voice` pass per sounding voice and one `RenderMode.Fx` pass, each with the g_L replay. Each pass builds a fresh graph (wavetables are cached by `tablesFor`), renders ~1 s chunks, encodes, and writes them to the zip. Memory holds one chunk, g_L (4 bytes per frame) and the zip's central directory.
+- **Order:** `mix.wav`, voices in pool order (`<name or id>.wav`, sanitised and de-duplicated), `fx-returns.wav`.
+- **"Sounding" voice:** has at least one life, is not muted, and is soloed when any voice is. A muted voice is silent in the mix, so it gets no stem.
+- **Backpressure:** the worker stops when more than 8 MB of zip bytes are unacknowledged; the client acknowledges a chunk after `writer.write` resolves (disk) or after storing it (Blob). A slow disk therefore slows the render instead of filling memory.
+- **Cancel:** the client terminates the worker and aborts the writable (a file from `showSaveFilePicker` is then discarded by the browser). `writeStemsZip` itself checks its `AbortSignal` after every chunk.
+- **Dither:** 16-bit stems use a different dither stream per file, so the dither doesn't add coherently when the stems are summed. `mix.wav` uses the same seed as the plain WAV export, so it is byte-identical to `exportWav` (tested).
+- **Mono option:** stems and FX are written as (L + R) / 2; Σ mono stems = the mono downmix of the mix. `mix.wav` stays stereo.
+
+### ZIP64 finding
+- **fflate 0.8.3 does not write ZIP64.** Measured with `Zip` + `ZipPassThrough` on a 4.13 GiB entry: the central directory's size fields held `size mod 2^32` (134 217 728) and there were no ZIP64 extra fields or end records. It reads ZIP64 but cannot write it, so the archive is corrupt past 4 GiB.
+- **Decision (the plan's fallback):** an in-house store-mode ZIP64 writer (`zip.ts`, ~300 lines with comments, including CRC-32), so fflate is not used for writing. It writes an entry's ZIP64 extra field and 8-byte descriptor when that entry is ≥ 4 GiB, ZIP64 offsets in the central directory past 4 GiB, and the ZIP64 end record and locator past 4 GiB or 65 535 entries. Archives under 4 GiB are plain ZIPs.
+- **Verification:**
+  - Real: a 5.3 GiB archive (a 1 GiB entry, a 4.2 GiB entry, a 100 MiB entry whose offset is past 4 GiB) written to disk in 7.5 s; its size matched `zipSize` exactly, Python's `zipfile.testzip()` returned `None` (every CRC checked) and Info-ZIP `unzip -t` reported no errors.
+  - In CI: the writer takes a lowered `zip64Threshold`, so every ZIP64 path runs on kilobytes. tests/unit/audio/zip.test.ts reads those archives with fflate's unzip and with Python's zipfile (skipped if python3 is missing), and also covers > 65 535 entries. tests/unit/audio/stems.test.ts runs a real export with the lowered threshold.
+- A single WAV is still limited to 4 GiB by its RIFF header (`wavHeader` throws), so a stem entry never reaches ZIP64 size in practice; the archive does (32 float stereo stems over 10 minutes).
+
+### Results (macOS 26.4, Apple Silicon)
+| Check | Result |
+|---|---|
+| Exact sum, float stems + FX = mix, limiter pulling the gain below 0.8, 8 voices (one muted), tone tilt + low-pass on | residual **−144.0 dBFS** in Node; **−147.4 dBFS** decoded from the Chromium worker's zip |
+| 24-bit | Σ stems differs from the mix by at most (files + 1) / 2 LSB, as rounding allows |
+| 5 min, 24 voices, 24-bit stereo, 48 kHz, 26 files, 2.28 GB zip, streamed to an OPFS file handle in Chromium | 73–95 s; peak resident memory of all browser processes **+53 to +78 MB** over idle (idle 173–329 MB; two runs) |
+
+### Memory measurement
+- `performance.measureUserAgentSpecificMemory` throws `SecurityError` in this headless Chromium even when the page is cross-origin isolated, so it is recorded only if it works.
+- The evidence is the resident set size of the browser's whole process tree, sampled with `ps` every 250 ms. The stems worker runs in the page's renderer process, so this includes its ArrayBuffers and the browser-side file writes. The test uses a persistent profile, because an incognito context's OPFS quota is too small for a 2 GB file.
+- Cross-check in Node (same export, 108 s, a sink that only counts bytes): peak RSS 187 MB, +131 MB over the idle process (the Node process also holds the compiled score and test code, and V8 reclaims lazily). Both numbers are far below the 500 MB budget; the dominant held memory is g_L (58 MB) plus one ~1 s chunk.
+- The memory spec runs in `chromium-prod` only (about 95 s, and a transient 2.3 GB file in the browser profile's OPFS, removed afterwards). Run it alone with `pnpm e2e --project=chromium-prod -g "5 min"`.
+
+### Deviations from PLAN.md
+1. **fflate is not used for the zip** (§12 names it): it can't write ZIP64 (above). The plan's own fallback was taken.
+2. **Mono stems apply to voices and FX only**; `mix.wav` stays stereo.
+3. **The size estimate is exact**, not approximate: every entry's size follows from the frame count, and `zipSize` computes headers and the directory.
