@@ -23,8 +23,8 @@ const IN_SIGN = [1, -1, 1, -1, -1, 1, -1, 1];
 const OUT_L = [1, -1, 1, -1, 1, -1, 1, -1];
 const OUT_R = [1, 1, -1, -1, 1, 1, -1, -1];
 const IN_GAIN = 1 / Math.sqrt(LINES);
-/** Output scale: a 2 s reverb fed white noise returns roughly the input power. */
-const OUT_GAIN = 0.35;
+/** Output scale: with the default mix (send 0.5, return 0.35, 3.2 s) the return sits ~10 dB under the dry signal. Tune by ear. */
+const OUT_GAIN = 0.7;
 /** Per-block smoothing of lengths, gains and pre-delay. */
 const SMOOTH = 0.08;
 /** Tiny DC injected so recirculating tails never become denormal. */

@@ -1,6 +1,12 @@
 /**
  * Real-time factor (PLAN.md §8.9): 24 voices plus FX at 48 kHz must render at ≥ 10× real time in
- * Node. The workload glides every voice continuously, through every ease and all six presets.
+ * Node, i.e. use ≤ 10 % of one core. The workload glides every voice continuously, through every
+ * ease and all six presets.
+ *
+ * The gate uses this process's CPU time (`process.cpuUsage`), because Vitest runs test files in
+ * parallel processes and wall-clock time would include waiting for a core, and it takes the best of
+ * five 6 s runs, because a contended process may be parked on a slower (efficiency) core for a
+ * while. Wall-clock RTF is reported too.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -10,7 +16,7 @@ import { BLOCK_FRAMES } from '../../src/dsp/constants';
 
 const RATE = 48000;
 
-function measure(seconds: number): number {
+function measure(seconds: number): { cpu: number; wall: number } {
   const graph = createLoadedGraph({
     score: denseScore(24, 40, 5, ALL_EASES),
     mix: FIXTURE_MIX,
@@ -22,15 +28,24 @@ function measure(seconds: number): number {
   const warm = Math.round((3 * RATE) / BLOCK_FRAMES);
   for (let i = 0; i < warm; i++) graph.process(l, r);
   const blocks = Math.round((seconds * RATE) / BLOCK_FRAMES);
+  const c0 = process.cpuUsage();
   const t0 = performance.now();
   for (let i = 0; i < blocks; i++) graph.process(l, r);
-  return (seconds * 1000) / (performance.now() - t0);
+  const wallMs = performance.now() - t0;
+  const c = process.cpuUsage(c0);
+  const cpuMs = (c.user + c.system) / 1000;
+  return { cpu: (seconds * 1000) / cpuMs, wall: (seconds * 1000) / wallMs };
 }
 
 describe('real-time factor', () => {
   it('renders 24 voices + FX at 48 kHz at ≥ 10× real time', () => {
-    const rtf = Math.max(measure(20), measure(20)); // best of two, to discount scheduler noise
-    console.info(`RTF, 24 voices + reverb + delay + tone + limiter at 48 kHz: ${rtf.toFixed(1)}×`);
-    expect(rtf).toBeGreaterThanOrEqual(10);
+    const runs = Array.from({ length: 5 }, () => measure(6));
+    const cpu = Math.max(...runs.map((r) => r.cpu));
+    const wall = Math.max(...runs.map((r) => r.wall));
+    console.info(
+      `RTF, 24 voices + reverb + delay + tone + limiter at 48 kHz: ${cpu.toFixed(1)}× (CPU time), ` +
+        `${wall.toFixed(1)}× (wall clock)`,
+    );
+    expect(cpu).toBeGreaterThanOrEqual(10);
   }, 60_000);
 });
