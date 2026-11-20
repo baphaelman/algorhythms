@@ -34,6 +34,7 @@ interface Hook {
     progress: number[];
   }>;
   analyser: AnalyserNode | null;
+  engine: { currentTime(): number; seek(t: number): void } | null;
 }
 
 const CEILING = Math.pow(10, -1 / 20);
@@ -142,6 +143,25 @@ test('Play sounds a live A4 through the engine worklet', async ({ page }) => {
   const a = analyse(captured!.samples, captured!.sampleRate);
   expect(a.rms, 'non-silent').toBeGreaterThan(0.05);
   expect(Math.abs(a.frequency - 440), `frequency ${a.frequency.toFixed(2)} Hz`).toBeLessThan(3);
+
+  // The anchor clock (§8.3): the playhead advances in real time and follows a seek.
+  const clock = await page.evaluate(async () => {
+    const e = (window as unknown as { __fixtures: Hook }).__fixtures.engine!;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const t0 = e.currentTime();
+    const w0 = performance.now();
+    await wait(600);
+    const t1 = e.currentTime();
+    const w1 = performance.now();
+    e.seek(5);
+    await wait(400);
+    return { rate: (t1 - t0) / ((w1 - w0) / 1000), afterSeek: e.currentTime() };
+  });
+  expect(clock.rate, 'playhead speed').toBeGreaterThan(0.8);
+  expect(clock.rate, 'playhead speed').toBeLessThan(1.2);
+  expect(clock.afterSeek).toBeGreaterThanOrEqual(5);
+  expect(clock.afterSeek).toBeLessThan(5.6);
+
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.locator('#state')).toHaveText('stopped');
 });
