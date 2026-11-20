@@ -8,7 +8,7 @@ vi.mock('../../../src/app/loop', () => ({ onScoreFrame: () => () => undefined })
 import { droppedType, dropTime } from '../../../src/app/palette-drop';
 import type { View } from '../../../src/render';
 
-const view = { tc: 20, xAnchor: 500, pps: 50 } as View;
+const view = { start: 10, pps: 50 } as View;
 
 describe('palette drop', () => {
   it('maps x to time like the canvas, snapped to the grid', () => {

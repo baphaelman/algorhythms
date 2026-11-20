@@ -376,6 +376,7 @@ export const ViewSchema = z.looseObject({
   gridBpm: z.number().positive().optional(),
   futureOpacity: unitInterval.optional(),
   playheadX: unitInterval.optional(),
+  follow: z.enum(['smooth', 'page', 'off']).optional(),
 });
 
 // ---------------------------------------------------------------------------------------------

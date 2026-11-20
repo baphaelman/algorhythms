@@ -25,54 +25,43 @@ export interface ThemeTokens {
 export type ThemeName = 'light' | 'dark';
 
 /**
- * What a user controls about the view. Pure data: the app owns it, `cameraAt` resolves it against
- * the score and the canvas size to a `View`.
+ * What a user controls about the view (PLAN.md §10, revision 5). Pure data: the app owns it,
+ * `cameraAt` resolves it against the score and the canvas size to a `View`.
  */
 export interface CameraState {
-  /**
-   * Visible time window in seconds, 2 s up to the whole piece (log scale). Values outside the
-   * range are clamped.
-   */
+  /** Time at the left edge, seconds; clamped to [0, duration − window]. */
+  start: Seconds;
+  /** Visible time window in seconds, 2 s up to the whole piece (log scale); clamped. */
   window: Seconds;
-  /**
-   * Overview factor 0..1: 0 = follow camera, 1 = the whole piece. The app animates it, for
-   * example 0 → 1 over 2.4 s when the piece ends and 1 → 0 when playback starts (the prototype's
-   * `z`; see `easeOverview`). The camera also blends into the overview by itself as `window`
-   * approaches the whole piece.
-   */
-  overview: number;
-  /** Playhead x as a fraction of the width in follow mode. @default 0.78 */
-  playheadX?: number;
-  /** Paused dragging: seconds the view centre is shifted from the playhead. @default 0 */
-  pan?: Seconds;
   /** Overrides the vertical auto-fit: the pitch range [low, high] to show. */
   pitchRange?: [number, number];
 }
 
-/** A camera resolved for one frame: everything needed to map time and pitch to pixels. */
+/**
+ * A camera resolved for one frame: everything needed to map time and pitch to pixels. It is an
+ * `Axis` (start, window, width, pps), so `timeToX(view, t)` works on it.
+ */
 export interface View {
   /** Canvas width and height in CSS pixels. */
   width: number;
   height: number;
   /** Time the playhead shows (the `t` passed to `cameraAt`). */
   t: Seconds;
-  /** Time anchored at `xAnchor`: `t` plus the (blend-faded) pan, clamped to the piece. */
-  tc: Seconds;
-  /** x of time `tc`. */
-  xAnchor: number;
-  /** x of the playhead, time `t`. */
-  xHead: number;
-  /** Pixels per second. */
+  /** Time at x = 0 (clamped). */
+  start: Seconds;
+  /** Visible time span (clamped). */
+  window: Seconds;
+  /** Pixels per second: `width / window`. */
   pps: number;
-  /** Time at the left and right edges. */
+  /** x of the playhead, time `t` (may be off-canvas). */
+  xHead: number;
+  /** Time at the left and right edges (`start`, `start + window`). */
   tL: Seconds;
   tR: Seconds;
-  /** 0 = follow, 1 = overview: the max of `overview` and the window-driven blend. */
-  blend: number;
   /** Pitch shown at the top (`pHi`) and bottom (`pLo`) of the plot area. */
   pLo: number;
   pHi: number;
-  /** Plot-area padding in px: the pitch axis spans [padT, height − padB]. */
+  /** Plot-area padding in px: the pitch axis spans [padT, height − padB]. padL/padR inset text. */
   padT: number;
   padB: number;
   padL: number;
@@ -99,7 +88,7 @@ export interface ScoreStyle {
   oklch: boolean;
   /** `VoiceDef.color` by pool index, for `colors: 'custom'`. Missing entries fall back to the ink. */
   customColors?: readonly (string | undefined)[];
-  /** Opacity 0..1 of the future lines (the ghost). 0 during playback by default. */
+  /** Opacity 0..1 of the future lines (the ghost); the app's default is 0.35. */
   futureOpacity: number;
   /** Draw the heads-up display. */
   hud: boolean;

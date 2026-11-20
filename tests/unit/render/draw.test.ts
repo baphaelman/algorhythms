@@ -109,7 +109,8 @@ const style = (over: Partial<ScoreStyle> = {}): ScoreStyle => ({
   ...over,
 });
 const SIZE = { width: 1000, height: 600 };
-const cam = (window: number): CameraState => ({ window, overview: 0 });
+/** The prototype-like follow framing: the playhead at 78 % of the width. */
+const cam = (window: number, t: number): CameraState => ({ window, start: t - 0.78 * window });
 
 const flatHold = voice(0, [hold(0, 100, 60)]);
 const glider = voice(1, [
@@ -134,7 +135,7 @@ function paths(calls: Call[], color: string): { x: number; y: number; op: string
 describe('layers', () => {
   it('paints background, grid, markers, lines, heads, playhead and HUD back to front', () => {
     const { ctx, calls } = fakeCtx();
-    drawScore(ctx, score([flatHold, glider]), cam(20), style(), 25, SIZE, 1);
+    drawScore(ctx, score([flatHold, glider]), cam(20, 25), style(), 25, SIZE, 1);
     const at = (pred: (c: Call) => boolean): number => {
       const i = calls.findIndex(pred);
       expect(i).toBeGreaterThanOrEqual(0);
@@ -165,7 +166,7 @@ describe('layers', () => {
 
   it('scales by dpr and omits the HUD when disabled', () => {
     const { ctx, calls } = fakeCtx();
-    drawScore(ctx, score([flatHold]), cam(20), style({ hud: false }), 25, SIZE, 2);
+    drawScore(ctx, score([flatHold]), cam(20, 25), style({ hud: false }), 25, SIZE, 2);
     expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 0, 0] });
     expect(calls.some((c) => c.op === 'fillText' && /^voices/.test(c.args[0] as string))).toBe(
       false,
@@ -175,13 +176,13 @@ describe('layers', () => {
   it('draws moment markers at markerTimes when given, else at the span start', () => {
     const introX = (over: Partial<ScoreStyle>): number => {
       const { ctx, calls } = fakeCtx();
-      const view = drawScore(ctx, score([flatHold]), cam(40), style(over), 25, SIZE, 1);
+      const view = drawScore(ctx, score([flatHold]), cam(40, 25), style(over), 25, SIZE, 1);
       const c = calls.find((x) => x.op === 'fillText' && x.args[0] === 'INTRO');
-      return (c?.args[1] as number) - 4 - (view.xAnchor - view.tc * view.pps);
+      return (c?.args[1] as number) - 4 - -view.start * view.pps;
     };
     const pps = (() => {
       const { ctx } = fakeCtx();
-      return drawScore(ctx, score([flatHold]), cam(40), style(), 25, SIZE, 1).pps;
+      return drawScore(ctx, score([flatHold]), cam(40, 25), style(), 25, SIZE, 1).pps;
     })();
     expect(introX({}) / pps).toBeCloseTo(10, 1);
     expect(introX({ markerTimes: { m1: 9.5 } }) / pps).toBeCloseTo(9.5, 1);
@@ -191,7 +192,7 @@ describe('layers', () => {
 
   it('labels A lines with their Hz', () => {
     const { ctx, calls } = fakeCtx();
-    drawScore(ctx, score([flatHold, glider]), cam(20), style(), 25, SIZE, 1);
+    drawScore(ctx, score([flatHold, glider]), cam(20, 25), style(), 25, SIZE, 1);
     const labels = calls.filter((c) => c.op === 'fillText').map((c) => c.args[0]);
     expect(labels).toContain('A4 440 Hz');
     expect(labels).toContain('A3 220 Hz');
@@ -200,7 +201,7 @@ describe('layers', () => {
   it('marks labelled moments full height and unlabelled ones with a tick', () => {
     const { ctx, calls } = fakeCtx();
     const sc = score([flatHold]);
-    drawScore(ctx, sc, cam(60), style(), 30, SIZE, 1);
+    drawScore(ctx, sc, cam(60, 30), style(), 30, SIZE, 1);
     const segs = paths(calls, TOKENS.rule).filter((p) => p.length === 2 && p[0].x === p[1].x);
     const heights = segs.map((p) => Math.abs(p[1].y - p[0].y)).sort((a, b) => a - b);
     // two ticks/lines for m1 (full height) and m2 (short), plus the playhead (full height)
@@ -212,7 +213,7 @@ describe('layers', () => {
 describe('lines', () => {
   it('draws a hold as one straight segment', () => {
     const { ctx, calls } = fakeCtx();
-    drawScore(ctx, score([flatHold]), cam(20), style(), 50, SIZE, 1);
+    drawScore(ctx, score([flatHold]), cam(20, 50), style(), 50, SIZE, 1);
     const ps = paths(calls, RED);
     expect(ps).toHaveLength(1); // the past only
     expect(ps[0].map((p) => p.op)).toEqual(['moveTo', 'lineTo']);
@@ -223,7 +224,7 @@ describe('lines', () => {
     const counts: number[] = [];
     for (const win of [10, 40]) {
       const { ctx, calls } = fakeCtx();
-      drawScore(ctx, score([silent(0), glider]), cam(win), style(), 35, SIZE, 1);
+      drawScore(ctx, score([silent(0), glider]), cam(win, 35), style(), 35, SIZE, 1);
       const ps = paths(calls, BLUE);
       expect(ps).toHaveLength(1);
       const pps = SIZE.width / win;
@@ -251,7 +252,7 @@ describe('lines', () => {
       ],
     );
     const { ctx, calls } = fakeCtx();
-    drawScore(ctx, score([v]), cam(100), style(), 100, SIZE, 1);
+    drawScore(ctx, score([v]), cam(100, 100), style(), 100, SIZE, 1);
     const ps = paths(calls, RED);
     expect(ps[0].filter((p) => p.op === 'moveTo')).toHaveLength(2);
   });
@@ -262,7 +263,15 @@ describe('lines', () => {
       [0.3, true],
     ] as const) {
       const { ctx, calls } = fakeCtx();
-      drawScore(ctx, score([flatHold]), cam(20), style({ futureOpacity: opacity }), 50, SIZE, 1);
+      drawScore(
+        ctx,
+        score([flatHold]),
+        cam(20, 50),
+        style({ futureOpacity: opacity }),
+        50,
+        SIZE,
+        1,
+      );
       const alphas = calls.filter((c) => c.op === 'stroke' && c.stroke === RED).map((c) => c.alpha);
       expect(alphas).toContain(1);
       expect(alphas.includes(0.3)).toBe(ghost);
@@ -283,7 +292,7 @@ describe('heads', () => {
     const b = voice(1, [hold(0, 100, 60)]);
     const c = voice(2, [hold(0, 100, 67)]);
     const dormant = voice(3, [hold(70, 100, 50)]);
-    drawScore(ctx, score([a, b, c, dormant]), cam(20), style(), 50, SIZE, 1);
+    drawScore(ctx, score([a, b, c, dormant]), cam(20, 50), style(), 50, SIZE, 1);
     const dots = calls.filter((x) => x.op === 'arc' && x.args[2] === 2.6);
     expect(dots).toHaveLength(3);
     const labels = calls.filter((x) => x.op === 'fillText').map((x) => x.args[0] as string);
@@ -297,20 +306,20 @@ describe('heads', () => {
     const mid = motionAt(glider, 24);
     expect(mid).toBeGreaterThan(0.5);
     const gliding = fakeCtx();
-    drawScore(gliding.ctx, sc, cam(20), style(), 24, SIZE, 1);
+    drawScore(gliding.ctx, sc, cam(20, 24), style(), 24, SIZE, 1);
     const ring = gliding.calls.find((c) => c.op === 'arc' && c.args[2] === 6.5);
     expect(ring?.alpha).toBeCloseTo(mid, 9);
     const holding = fakeCtx();
-    drawScore(holding.ctx, sc, cam(20), style(), 50, SIZE, 1);
+    drawScore(holding.ctx, sc, cam(20, 50), style(), 50, SIZE, 1);
     expect(holding.calls.some((c) => c.op === 'arc' && c.args[2] === 6.5)).toBe(false);
   });
 
-  it('fades heads out in the overview and when disabled', () => {
+  it('draws heads at Fit too (no overview fade), and none when disabled', () => {
     const o = fakeCtx();
-    drawScore(o.ctx, score([flatHold]), { window: 100, overview: 1 }, style(), 50, SIZE, 1);
-    expect(o.calls.some((c) => c.op === 'arc')).toBe(false);
+    drawScore(o.ctx, score([flatHold]), { window: 100, start: 0 }, style(), 50, SIZE, 1);
+    expect(o.calls.some((c) => c.op === 'arc')).toBe(true);
     const off = fakeCtx();
-    drawScore(off.ctx, score([flatHold]), cam(20), style({ heads: false }), 50, SIZE, 1);
+    drawScore(off.ctx, score([flatHold]), cam(20, 50), style({ heads: false }), 50, SIZE, 1);
     expect(off.calls.some((c) => c.op === 'arc')).toBe(false);
   });
 });

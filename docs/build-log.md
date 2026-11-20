@@ -805,3 +805,13 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Generate confirms** before replacing an edited piece (§11.3).
 - Tablet touch editing (M5): low priority but in scope.
 - Integrator may push to `main`. Cloud: `git push` works; `gh` is not authenticated, use the GitHub MCP tools for CI.
+
+## M4.5-2: camera, follow, zoom, dimmed future (2026-11-20)
+- **Camera API (`src/render/camera.ts`).** `CameraState = { start, window, pitchRange? }`. One map for every row: `timeToX(axis, t) = (t − start)·pps`, `xToTime`, with `pps = width / window`, no horizontal padding. `axisOf(cam, width)` gives an `Axis` without a score; a `View` (from `cameraAt`) is also an `Axis`. Follow: `followStart(mode, start, t, window, duration)` (Smooth 35 %, Page 92 % → 8 %, Off; always `clampStart` to [0, duration − window]). Zoom: `zoomAnchor(start, window, t)` (playhead if visible, else centre) and `zoomAround(cam, next, anchor, duration)`.
+- **Removed:** the overview blend and its tween (`easeOverview`, `windowBlend`, `BLEND_START`, `OVERVIEW_TWEEN_MS`, `smootherstep`, `DEFAULT_PLAYHEAD_X`), `CameraState.overview/pan/playheadX`, `View.tc/xAnchor/blend`. Lane and palette-drop use `view.start`.
+- **App.** `view.follow` in the store (from `piece.view.follow`, default Smooth). The left-edge time is transient (`camera.start` in store.ts, like the clock), since Smooth writes it every frame. The loop applies `followStart` while playing or when the playhead moved (a seek), so a paused pan stays put. `setWindow`/`zoomBy`/`fitWindow` keep the playhead's x; `panBy` works during playback and turns Follow off. A new piece opens at start 0 with its own window (no overview at idle).
+- **Ghost:** future lines at `futureOpacity ?? 0.35` once played; full opacity before the first play (idle). Heads no longer fade.
+- **Core (extended):** `FollowMode`, `ViewSettings.follow?`; `playheadX` is kept but unused; `futureOpacity` default documented as 0.35. `docs/file-format.md` regenerated.
+- **ViewBar:** Zoom − [log slider] + · window · Fit; Follow [Smooth|Page|Off]. `frameStats` exposes `start`, `window`, `head`, `ghost` (replacing `overview`).
+- **Tests:** `tests/unit/render/camera.test.ts` (follow ±1 %, Page jumps, Off, clamping, Fit, zoom anchor); `tests/e2e/view-follow.spec.ts`; app.spec updated (no overview).
+- **Perf trap:** drawing the whole window (past + dimmed future) costs ~1.3× the old past-only frame. On the cloud box (software raster) `render.spec`'s strict 4 ms `ink-24-flush` reads 4.7–4.8 ms (baseline before this change: 3.3–4.0 ms there); draw-only stays 1.1–1.4 ms. Check on the Mac; if over, cache line tiles per scale offscreen (§10 Budget) and blit past/future with globalAlpha.

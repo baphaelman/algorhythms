@@ -129,7 +129,7 @@ class LaneController {
     this.view = view;
     const inner = this.inner;
     if (!inner || !(view.pps > 0)) return;
-    const offset = view.xAnchor - view.tc * view.pps;
+    const offset = -view.start * view.pps;
     if (offset !== this.offset) {
       this.offset = offset;
       inner.style.transform = `translateX(${offset.toFixed(2)}px)`;

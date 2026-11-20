@@ -8,7 +8,7 @@ export interface Hook {
     getState(): {
       piece: { meta: { title: string }; voices: unknown[]; moments: { id: string; at: number }[] };
       compiled: { duration: number };
-      view: { window: number; colors: string; theme: string; pan: number; hud: boolean };
+      view: { window: number; colors: string; theme: string; follow: string; hud: boolean };
       transport: { status: string; scrubbing: boolean; audio: string };
       notices: { kind: string; title: string; lines: string[] }[];
     };
@@ -20,7 +20,10 @@ export interface Hook {
     work: number[];
     interval: number[];
     drawn: number;
-    overview: number;
+    start: number;
+    window: number;
+    head: number;
+    ghost: number;
     reset(): void;
   };
   actions: {

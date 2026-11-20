@@ -1,24 +1,57 @@
 /**
- * Pure camera maths for the score view (PLAN.md §10): the follow camera, the overview, the
- * log-interpolated blend between them, vertical auto-fit, and time/pitch <-> pixel mapping.
- * Nothing here touches the DOM.
+ * Pure camera maths (PLAN.md §10 "Camera (revision 5)"). Nothing here touches the DOM.
+ *
+ * The camera is `{ start, window }` in seconds plus the view width in px. Everything on the time
+ * axis (score canvas, ruler, lanes, playhead) maps time to x with the one pair below:
+ *
+ *     timeToX(axis, t) = (t − start) · width / window      xToTime is its inverse
+ *
+ * `axis` is any `Axis` (a `View` is one; `axisOf(cam, width)` builds one without a score).
+ * Follow (`followStart`), zoom (`zoomAround`) and pan only ever change `start` and `window`;
+ * `start` is always clamped to [0, duration − window].
  */
 
-import type { CompiledScore, Seconds } from '../core/types';
+import type { CompiledScore, FollowMode, Seconds } from '../core/types';
 import type { CameraState, View } from './types';
 
 /** Shortest visible window, seconds. */
 export const MIN_WINDOW: Seconds = 2;
-/** Default playhead position as a fraction of the width. */
-export const DEFAULT_PLAYHEAD_X = 0.78;
-/** The window fraction of the piece at which the follow camera starts blending into the overview. */
-export const BLEND_START = 0.4;
-/** Duration of the app's overview tween, in ms (the prototype's 2400). */
-export const OVERVIEW_TWEEN_MS = 2400;
+/** Smooth follow: the playhead's x as a fraction of the width. */
+export const SMOOTH_X = 0.35;
+/** Page follow: the view turns when the playhead passes this fraction of the width... */
+export const PAGE_TURN_X = 0.92;
+/** ...and lands so the playhead sits at this fraction. */
+export const PAGE_LAND_X = 0.08;
+/** Default opacity of the future (not yet played) lines. */
+export const DEFAULT_FUTURE_OPACITY = 0.35;
+/** Default follow mode. */
+export const DEFAULT_FOLLOW: FollowMode = 'smooth';
 
-/** Smootherstep on [0, 1], clamped. The prototype's `ease`. */
-export function smootherstep(x: number): number {
-  return x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10);
+/** One time axis: what `timeToX` / `xToTime` need. */
+export interface Axis {
+  /** Time at x = 0, seconds. */
+  start: Seconds;
+  /** Visible time span, seconds. */
+  window: Seconds;
+  /** Width in CSS px. */
+  width: number;
+  /** Pixels per second (`width / window`). */
+  pps: number;
+}
+
+/** The axis for camera `cam` on a view `width` px wide (no clamping). */
+export function axisOf(cam: { start: Seconds; window: Seconds }, width: number): Axis {
+  return { start: cam.start, window: cam.window, width, pps: width / cam.window };
+}
+
+/** x (px) of time `t`. */
+export function timeToX(axis: Pick<Axis, 'start' | 'pps'>, t: Seconds): number {
+  return (t - axis.start) * axis.pps;
+}
+
+/** Time at x (px); inverse of `timeToX`. */
+export function xToTime(axis: Pick<Axis, 'start' | 'pps'>, x: number): Seconds {
+  return axis.start + x / axis.pps;
 }
 
 /** The allowed window range for a piece of this duration. */
@@ -30,6 +63,12 @@ export function windowRange(duration: Seconds): [Seconds, Seconds] {
 export function clampWindow(window: Seconds, duration: Seconds): Seconds {
   const [lo, hi] = windowRange(duration);
   return Math.min(hi, Math.max(lo, Number.isFinite(window) ? window : hi));
+}
+
+/** Clamps `start` to [0, duration − window] (0 when the window covers the piece). */
+export function clampStart(start: Seconds, window: Seconds, duration: Seconds): Seconds {
+  const hi = Math.max(0, duration - window);
+  return Math.min(hi, Math.max(0, Number.isFinite(start) ? start : 0));
 }
 
 /** Slider position 0..1 (log scale) for a window. 0 = 2 s, 1 = the whole piece. */
@@ -47,34 +86,54 @@ export function sliderToWindow(x: number, duration: Seconds): Seconds {
   return Math.exp(Math.log(lo) + (Math.log(hi) - Math.log(lo)) * k);
 }
 
-/** Multiplies the window by `factor` (e.g. 1.25 for `−`, 0.8 for `=`, exp(deltaY·0.01) for wheel). */
+/** Multiplies the window by `factor` (e.g. 1.25 for `−`, 0.8 for `=`), clamped. */
 export function zoomWindow(window: Seconds, factor: number, duration: Seconds): Seconds {
   return clampWindow(window * factor, duration);
 }
 
 /**
- * Overview tween: the value of the overview factor `elapsedMs` into a tween from `from` to `to`
- * (smootherstep over `OVERVIEW_TWEEN_MS`; instant when `reducedMotion`).
+ * The view start after one frame of following playhead time `t`:
+ * - `smooth`: the playhead at 35 % of the width;
+ * - `page`: unchanged until the playhead passes 92 % (or leaves the view), then the playhead at 8 %;
+ * - `off`: unchanged.
+ * Always clamped, so near either end (and at Fit) the playhead moves across a still view.
  */
-export function easeOverview(
-  from: number,
-  to: number,
-  elapsedMs: number,
-  reducedMotion = false,
-): number {
-  const k = reducedMotion ? 1 : Math.min(1, Math.max(0, elapsedMs / OVERVIEW_TWEEN_MS));
-  return from + (to - from) * smootherstep(k);
+export function followStart(
+  mode: FollowMode,
+  start: Seconds,
+  t: Seconds,
+  window: Seconds,
+  duration: Seconds,
+): Seconds {
+  let s = start;
+  if (mode === 'smooth') s = t - SMOOTH_X * window;
+  else if (mode === 'page' && (t >= start + PAGE_TURN_X * window || t < start)) {
+    s = t - PAGE_LAND_X * window;
+  }
+  return clampStart(s, window, duration);
 }
 
 /**
- * The blend (0 follow .. 1 overview) the window alone asks for: 0 until the window reaches 40 % of
- * the piece, then a smootherstep on the log of the window up to 1 at the whole piece.
+ * The time a zoom keeps fixed on screen: the playhead `t` while it is in view, else the view's
+ * centre.
  */
-export function windowBlend(window: Seconds, duration: Seconds): number {
-  const hi = Math.log(duration);
-  const lo = Math.log(duration * BLEND_START);
-  if (!(hi > lo)) return 1;
-  return smootherstep((Math.log(window) - lo) / (hi - lo));
+export function zoomAnchor(start: Seconds, window: Seconds, t: Seconds): Seconds {
+  return t >= start && t <= start + window ? t : start + window / 2;
+}
+
+/**
+ * Zooms to `next` (clamped) keeping time `anchor` at the same x; returns the new camera, start
+ * clamped.
+ */
+export function zoomAround(
+  cam: { start: Seconds; window: Seconds },
+  next: Seconds,
+  anchor: Seconds,
+  duration: Seconds,
+): { start: Seconds; window: Seconds } {
+  const window = clampWindow(next, duration);
+  const f = (anchor - cam.start) / cam.window;
+  return { start: clampStart(anchor - f * window, window, duration), window };
 }
 
 /** The pitch range a score uses, plus a margin; cached per score. */
@@ -123,10 +182,8 @@ export function cameraScore(score: CompiledScore): CameraScore {
 }
 
 /**
- * Resolves the camera for time `t` on a canvas of `size` CSS px. In follow mode the playhead sits
- * at `playheadX` (78 %) and the window is `cam.window` seconds wide. As the window nears the whole
- * piece, or `cam.overview` rises, pixels-per-second is interpolated on a log scale and the anchor
- * x linearly, until the whole piece fits between the side paddings (the prototype's formula).
+ * Resolves camera `cam` (window and start clamped to the piece) on a canvas of `size` CSS px, with
+ * the playhead at time `t`. `hud` reserves room for the heads-up display at the bottom.
  */
 export function cameraAt(
   score: CameraScore,
@@ -137,53 +194,31 @@ export function cameraAt(
 ): View {
   const { width: W, height: H } = size;
   const D = Math.max(score.duration, 1e-6);
-  const win = clampWindow(cam.window, D);
+  const window = clampWindow(cam.window, D);
+  const start = clampStart(cam.start, window, D);
+  const pps = W / window;
   const padT = Math.max(28, H * 0.08);
   const padB = hud ? Math.max(54, H * 0.15) : Math.max(16, H * 0.05);
   const padL = Math.max(16, W * 0.025);
-  const padR = padL;
-
-  const ppsF = W / win;
-  const xF = W * (cam.playheadX ?? DEFAULT_PLAYHEAD_X);
-  const ppsO = Math.max(1e-9, (W - padL - padR) / D);
-  const blend = Math.min(1, Math.max(cam.overview || 0, windowBlend(win, D)));
-
-  const pps = Math.exp(Math.log(ppsF) + (Math.log(ppsO) - Math.log(ppsF)) * blend);
-  const pan = (cam.pan ?? 0) * (1 - blend);
-  const tc = Math.min(D, Math.max(0, t + pan));
-  // The view centre tc sits where the playhead would with no pan; the playhead moves instead.
-  const xAnchor = xF + (padL + tc * ppsO - xF) * blend;
-  const xHead = xAnchor + (t - tc) * pps;
   const [pLo, pHi] = cam.pitchRange ?? score.pitchRange;
   return {
     width: W,
     height: H,
     t,
-    tc,
-    xAnchor,
-    xHead,
+    start,
+    window,
     pps,
-    tL: tc - xAnchor / pps,
-    tR: tc + (W - xAnchor) / pps,
-    blend,
+    xHead: (t - start) * pps,
+    tL: start,
+    tR: start + window,
     pLo,
     pHi,
     padT,
     padB,
     padL,
-    padR,
+    padR: padL,
     duration: D,
   };
-}
-
-/** x (px) of time `time`. */
-export function timeToX(view: View, time: Seconds): number {
-  return view.xAnchor + (time - view.tc) * view.pps;
-}
-
-/** Time at x (px); inverse of `timeToX`. */
-export function xToTime(view: View, x: number): Seconds {
-  return view.tc + (x - view.xAnchor) / view.pps;
 }
 
 /** y (px) of pitch `p`; higher pitches are nearer the top. */

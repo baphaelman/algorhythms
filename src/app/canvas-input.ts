@@ -1,7 +1,7 @@
 /**
  * Pointer, wheel and keyboard input for the score view (PLAN.md §10 camera, §11.5):
  * - a click or tap on the canvas plays or pauses;
- * - dragging pans the view while paused;
+ * - dragging pans the view (during playback this turns Follow off);
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
  * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
  * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
@@ -17,7 +17,7 @@ import { redo, undo } from './editor/history';
 import { addAtPlayhead, clearSelection, deleteSelection, editorKey } from './editor/shortcuts';
 import { clearHover, setHover } from './hover';
 import { currentPps } from './loop';
-import { currentTime, panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
+import { panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_SLOP = 4;
@@ -78,10 +78,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     }
     travelled += Math.abs(dx) + Math.abs(dy);
     if (travelled <= DRAG_SLOP) return;
-    const s = usePlayer.getState();
-    if (s.transport.status === 'playing') return;
-    // Dragging right shows earlier time: the view centre moves left of the playhead.
-    const pps = currentPps(canvas, s, currentTime());
+    // Dragging right shows earlier time.
+    const pps = currentPps(canvas);
     if (pps > 0) panBy(-dx / pps);
   };
 
@@ -100,11 +98,10 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       zoomBy(Math.exp(Math.max(-60, Math.min(60, e.deltaY * unit)) * 0.01));
       return;
     }
-    // Horizontal trackpad scroll pans while paused.
-    const s = usePlayer.getState();
-    if (s.transport.status !== 'playing' && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    // Horizontal trackpad scroll pans.
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault();
-      const pps = currentPps(canvas, s, currentTime());
+      const pps = currentPps(canvas);
       if (pps > 0) panBy((e.deltaX * unit) / pps);
     }
   };
