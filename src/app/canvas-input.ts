@@ -156,6 +156,17 @@ function ownsKeys(target: EventTarget | null, key: string): boolean {
   return false;
 }
 
+/** True when a native text-editing control has focus (it owns its own undo). */
+function ownsTextUndo(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  if (tag === 'textarea' || target.isContentEditable) return true;
+  if (tag === 'input') {
+    return !['range', 'checkbox', 'radio', 'color'].includes((target as HTMLInputElement).type);
+  }
+  return false; // select and everything else: undo passes through
+}
+
 /** True while the wide (editor) layout is shown (PLAN.md §11.5). */
 function editorLayout(): boolean {
   return document.querySelector('.app[data-layout="full"]') !== null;
@@ -167,7 +178,7 @@ export function attachKeys(): () => void {
     if (document.querySelector('dialog[open]')) return;
     const k = e.key.toLowerCase();
     if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === 'z' || (k === 'y' && e.ctrlKey))) {
-      if (ownsKeys(e.target, e.key)) return;
+      if (ownsTextUndo(e.target)) return;
       e.preventDefault();
       if (k === 'z' && !e.shiftKey) undo();
       else redo();

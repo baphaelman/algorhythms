@@ -415,13 +415,15 @@ test('a link made by another encoder (zlib deflate-raw) opens; a damaged one rep
   await expect(page.getByTestId('title')).toHaveText('Lanterns Over Salt Flats');
 });
 
-test('desktop layout leaves hidden slots for the editor lane and inspector', async ({ page }) => {
+test('wide layout shows the editor lane and inspector; the player layout has neither', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await expect(page.locator('.app')).toHaveAttribute('data-layout', 'full');
   await expect(page.locator('[data-slot="lane"]')).toBeVisible(); // M4d: the moment lane
-  await expect(page.locator('[data-slot="inspector"]')).toBeHidden();
-  expect(await page.locator('[data-slot]').count()).toBe(2);
+  await expect(page.locator('[data-slot="inspector"]')).toBeVisible();
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(page.locator('.app')).toHaveAttribute('data-layout', 'player');
+  expect(await page.locator('[data-slot]').count()).toBe(0);
 });
 
 test('phone viewport shows the player-only layout', async ({ page }) => {
