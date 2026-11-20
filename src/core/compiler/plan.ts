@@ -62,6 +62,9 @@ interface Part {
 }
 
 /** What the planner needs from the compiler. */
+/** Compile option: 'forbid' (default) enforces §7.2; 'allow' skips it. */
+export type CrossingsMode = 'forbid' | 'allow';
+
 export interface PlanHost {
   readonly voices: readonly VoiceRun[];
   readonly t: Seconds;
@@ -69,6 +72,8 @@ export interface PlanHost {
   readonly momentIndex: number;
   readonly glide: Glide;
   readonly seed: number;
+  /** 'allow' skips crossing enforcement and its diagnostics (dev toggle). */
+  readonly crossings?: CrossingsMode;
   /** Committed destination (after the targeted voices' pending moves were cancelled). */
   dest(v: number): Pitch;
   diag(level: DiagnosticLevel, code: string, message: string): void;
@@ -104,6 +109,7 @@ export function planMoment(
 ): PlanResult {
   const { voices, t: T, glide, seed } = host;
   const ordered = plan.ordered;
+  const enforceCrossings = host.crossings !== 'allow';
 
   // 1. Ranges (§7.8).
   let folded = 0;
@@ -408,7 +414,8 @@ export function planMoment(
     return -1;
   };
 
-  const enforce = ordered && n >= 2 && parts.some((p) => p.kind !== PartKind.Fixed);
+  const enforce =
+    ordered && enforceCrossings && n >= 2 && parts.some((p) => p.kind !== PartKind.Fixed);
   const unresolved = new Set<number>();
   if (enforce) {
     const isMover = (p: Part): boolean => p.kind !== PartKind.Fixed;
@@ -578,7 +585,7 @@ export function planMoment(
   }
 
   // 5. Moves through untargeted voices (§7.2 scope): info only.
-  if (ordered && subset) {
+  if (ordered && enforceCrossings && subset) {
     const inPlan = new Set(parts.map((p) => p.voice));
     const others: number[] = [];
     for (let v = 0; v < voices.length; v++) {

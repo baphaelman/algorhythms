@@ -47,7 +47,7 @@ import {
   type WalkMoment,
 } from '../types';
 import { MIN_GLIDE, mergeGlide, sanitizeGlide } from './glide';
-import { planMoment, type PlanTrace } from './plan';
+import { planMoment, type CrossingsMode, type PlanTrace } from './plan';
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldIntoRange, sanitizeRange } from './range';
@@ -87,6 +87,12 @@ export interface MomentTrace {
   subset: boolean;
   /** Planner output; null if the moment was not applied (or has no moves of its own). */
   plan: PlanTrace | null;
+}
+
+/** Options of `compile` (not part of the Piece or the file format). */
+export interface CompileOptions {
+  /** 'forbid' (default) enforces voice-crossing rules (§7.2); 'allow' skips them. Dev toggle. */
+  crossings?: CrossingsMode;
 }
 
 /** Extra output of `compileWithTrace`. */
@@ -131,6 +137,7 @@ class Compiler {
   constructor(
     readonly piece: Piece,
     tracing: boolean,
+    readonly options: CompileOptions = {},
   ) {
     this.trace = tracing ? { moments: [], end: 0 } : null;
     this.key = piece.key;
@@ -482,6 +489,7 @@ class Compiler {
       momentIndex: i,
       glide: this.glides[i],
       seed: this.seeds[i],
+      crossings: this.options.crossings,
       dest: (v: number) => this.destOf(v),
       diag: (level: DiagnosticLevel, code: string, message: string) =>
         this.diag(level, code, message, m.id),
@@ -761,13 +769,16 @@ class Compiler {
  * Compiles a piece into its score (§7): pure, synchronous and deterministic. Problems become
  * diagnostics; this never throws on a parsed piece.
  */
-export function compile(piece: Piece): CompiledScore {
-  return new Compiler(piece, false).run();
+export function compile(piece: Piece, options?: CompileOptions): CompiledScore {
+  return new Compiler(piece, false, options).run();
 }
 
 /** `compile` plus a trace of every planned moment, for tests and debugging. */
-export function compileWithTrace(piece: Piece): { score: CompiledScore; trace: CompileTrace } {
-  const c = new Compiler(piece, true);
+export function compileWithTrace(
+  piece: Piece,
+  options?: CompileOptions,
+): { score: CompiledScore; trace: CompileTrace } {
+  const c = new Compiler(piece, true, options);
   const score = c.run();
   return { score, trace: c.trace! };
 }
