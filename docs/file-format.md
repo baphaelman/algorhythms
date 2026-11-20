@@ -16,7 +16,7 @@ An AlgoRhythms piece is a JSON file, usually named `*.algorhythms.json`. This pa
 
 ## Defaults for moment fields
 
-A moment's `glide` is partial: missing fields come from `defaults.glide`, whose own default is `{"length":3,"jitter":0.2,"stagger":0.8,"order":"random","ease":"smootherstep"}`.
+A moment's `glide` is partial: missing fields come from `defaults.glide`, whose own default is `{"length":3,"jitter":0.2,"stagger":0.8,"arrive":"together","order":"random","ease":"smootherstep"}`.
 
 | Moment type | Defaults filled in |
 |---|---|
@@ -246,6 +246,15 @@ This is the *input* form: fields with defaults are optional here.
               "description": "Spread of start times (s).",
               "type": "number",
               "minimum": 0
+            },
+            "arrive": {
+              "default": "together",
+              "description": "'together': every moving voice lands at once; 'spread': each after its own length.",
+              "type": "string",
+              "enum": [
+                "together",
+                "spread"
+              ]
             },
             "order": {
               "default": "random",
@@ -634,6 +643,13 @@ This is the *input* form: fields with defaults are optional here.
                     "type": "number",
                     "minimum": 0
                   },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -908,6 +924,13 @@ This is the *input* form: fields with defaults are optional here.
                     "type": "number",
                     "minimum": 0
                   },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -1090,6 +1113,13 @@ This is the *input* form: fields with defaults are optional here.
                   "stagger": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
                   },
                   "order": {
                     "type": "string",
@@ -1346,6 +1376,13 @@ This is the *input* form: fields with defaults are optional here.
                     "type": "number",
                     "minimum": 0
                   },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -1531,6 +1568,13 @@ This is the *input* form: fields with defaults are optional here.
                     "type": "number",
                     "minimum": 0
                   },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -1705,6 +1749,13 @@ This is the *input* form: fields with defaults are optional here.
                   "stagger": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
                   },
                   "order": {
                     "type": "string",
@@ -1897,6 +1948,13 @@ This is the *input* form: fields with defaults are optional here.
                   "stagger": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
                   },
                   "order": {
                     "type": "string",
@@ -2152,6 +2210,13 @@ This is the *input* form: fields with defaults are optional here.
                     "type": "number",
                     "minimum": 0
                   },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -2324,6 +2389,13 @@ This is the *input* form: fields with defaults are optional here.
                   "stagger": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
                   },
                   "order": {
                     "type": "string",
@@ -2572,6 +2644,13 @@ This is the *input* form: fields with defaults are optional here.
                   "stagger": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
                   },
                   "order": {
                     "type": "string",

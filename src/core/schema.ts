@@ -122,6 +122,7 @@ export const EaseSchema = z.union([
 ]);
 
 const GLIDE_ORDERS = ['random', 'low-first', 'high-first', 'center-out', 'outside-in'] as const;
+const GLIDE_ARRIVE = ['together', 'spread'] as const;
 
 /** A full glide (Piece.defaults.glide); omitted fields come from DEFAULT_GLIDE. */
 export const GlideSchema = z.looseObject({
@@ -130,6 +131,10 @@ export const GlideSchema = z.looseObject({
     .default(DEFAULT_GLIDE.jitter)
     .describe('Each length varies by ±jitter·length.'),
   stagger: nonNegative.default(DEFAULT_GLIDE.stagger).describe('Spread of start times (s).'),
+  arrive: z
+    .enum(GLIDE_ARRIVE)
+    .default(DEFAULT_GLIDE.arrive ?? 'together')
+    .describe("'together': every moving voice lands at once; 'spread': each after its own length."),
   order: z.enum(GLIDE_ORDERS).default(DEFAULT_GLIDE.order),
   ease: EaseSchema.default(DEFAULT_GLIDE.ease),
 });
@@ -139,6 +144,7 @@ export const PartialGlideSchema = z.looseObject({
   length: nonNegative.optional(),
   jitter: unitInterval.optional(),
   stagger: nonNegative.optional(),
+  arrive: z.enum(GLIDE_ARRIVE).optional(),
   order: z.enum(GLIDE_ORDERS).optional(),
   ease: EaseSchema.optional(),
 });

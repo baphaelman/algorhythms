@@ -90,6 +90,7 @@ export const DEFAULT_GLIDE: DeepReadonly<Glide> = deepFreeze({
   length: 3,
   jitter: 0.2,
   stagger: 0.8,
+  arrive: 'together',
   order: 'random',
   ease: 'smootherstep',
 });
