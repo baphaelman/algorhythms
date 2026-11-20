@@ -29,3 +29,7 @@ Thumbs.db
 
 # Listening renders
 renders/
+
+# Builder worktrees and alternate e2e build folders
+.claude/worktrees/
+dist-*/
