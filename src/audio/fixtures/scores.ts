@@ -215,8 +215,18 @@ export function stressScore(n = 12, seconds = 30, every = 1.2, seed = 11, timbre
   return makeScore(specs, seconds, seed);
 }
 
+/** The eases whose evaluation is allocation-free on the audio thread (see docs/build-log.md, M2). */
+export const PLAIN_EASES: EaseRef[] = ['smootherstep', 'smootherstep', 'linear', 'smoothstep', 'cosine'];
+
+/** Every ease kind, including the solver-based expo and bézier. */
+export const ALL_EASES: EaseRef[] = [
+  ...PLAIN_EASES,
+  'expo',
+  { kind: 'bezier', x1: 0.3, y1: 0, x2: 0.2, y2: 1.15 },
+];
+
 /** `n` voices that glide continuously (a new target every ~0.6–1.4 s): the RTF/GC workload. */
-export function denseScore(n = 24, seconds = 70, seed = 5): CompiledScore {
+export function denseScore(n = 24, seconds = 70, seed = 5, eases: EaseRef[] = ALL_EASES): CompiledScore {
   const rng = new Prng(seed);
   const specs: VoiceSpec[] = [];
   const timbres = ['sine', 'glass', 'organ', 'reed', 'choir', 'pluck'];
@@ -227,7 +237,7 @@ export function denseScore(n = 24, seconds = 70, seed = 5): CompiledScore {
     while (t < seconds) {
       const len = 0.4 + rng.next() * 0.6;
       p = Math.min(88, Math.max(33, p + Math.floor(rng.next() * 15) - 7));
-      moves.push({ at: t, to: p, len, ease: rng.next() < 0.3 ? 'linear' : 'smootherstep' });
+      moves.push({ at: t, to: p, len, ease: eases[Math.floor(rng.next() * eases.length)] });
       t += len + 0.2 + rng.next() * 0.4;
     }
     specs.push({ start: 40 + v * 2, moves, timbre: timbres[v % timbres.length] });

@@ -13,8 +13,8 @@ const SMOOTH = 0.15;
 const FEEDBACK_DAMP = 0.6;
 
 export class PingPongDelay {
-  private readonly sampleRate: number;
-  private readonly mask: number;
+  private readonly sampleRate: number = 0;
+  private readonly mask: number = 0;
   private readonly bufL: Float64Array;
   private readonly bufR: Float64Array;
   private w = 0;

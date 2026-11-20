@@ -20,24 +20,24 @@ const SAFETY = 1 - 1e-6;
 
 export class Limiter {
   /** Look-ahead delay in frames. */
-  readonly delay: number;
+  readonly delay: number = 0;
   private readonly dL: Float64Array;
   private readonly dR: Float64Array;
   private dPos = 0;
   // Sliding minimum over D + 1 frames: a monotonic deque in a ring.
-  private readonly window: number;
+  private readonly window: number = 0;
   private readonly dqVal: Float64Array;
   private readonly dqIdx: Float64Array;
-  private readonly dqCap: number;
+  private readonly dqCap: number = 0;
   private dqHead = 0;
   private dqSize = 0;
   private n = 0;
   // Release and box smoothing.
   private env = 1;
-  private readonly relCoef: number;
+  private readonly relCoef: number = 0;
   private readonly box: Float64Array;
   private boxPos = 0;
-  private boxSum: number;
+  private boxSum: number = 0;
   private ceiling = 1;
 
   /** When set, every applied gain is written here at `cursor` (then cursor advances). */
@@ -83,7 +83,7 @@ export class Limiter {
     this.cursor = 0;
   }
 
-  /** Limits `frames` stereo samples from inL/inR into outL/outR. */
+  /** Limits `frames` stereo samples from inL/inR into outL/outR. Allocation-free. */
   process(
     inL: Float64Array,
     inR: Float64Array,
@@ -96,58 +96,71 @@ export class Limiter {
     const dR = this.dR;
     const replay = this.replay;
     const capture = this.capture;
+    const cap = this.dqCap;
+    const vals = this.dqVal;
+    const idxs = this.dqIdx;
+    const box = this.box;
+    const ceiling = this.ceiling;
+    const window = this.window;
+    const rel = this.relCoef;
+    let head = this.dqHead;
+    let size = this.dqSize;
+    let n = this.n;
+    let env = this.env;
+    let boxPos = this.boxPos;
+    let boxSum = this.boxSum;
+    let cursor = this.cursor;
+    let dPos = this.dPos;
     for (let i = 0; i < frames; i++) {
       const xl = inL[i];
       const xr = inR[i];
       let g: number;
       if (replay !== null) {
-        g = this.cursor < replay.length ? replay[this.cursor] : 1;
+        g = cursor < replay.length ? replay[cursor] : 1;
       } else {
         const al = xl < 0 ? -xl : xl;
         const ar = xr < 0 ? -xr : xr;
         const peak = al > ar ? al : ar;
-        const req = peak > this.ceiling ? this.ceiling / peak : 1;
-        g = Math.fround(this.gainFor(req));
+        const req = peak > ceiling ? ceiling / peak : 1;
+        // Sliding minimum over the last D + 1 values: drop larger values from the back, append,
+        // then drop expired values from the front.
+        while (size > 0) {
+          const back = (head + size - 1) % cap;
+          if (vals[back] >= req) size--;
+          else break;
+        }
+        const slot = (head + size) % cap;
+        vals[slot] = req;
+        idxs[slot] = n;
+        size++;
+        while (idxs[head] <= n - window) {
+          head = (head + 1) % cap;
+          size--;
+        }
+        n++;
+        const held = vals[head];
+        // Instant attack (the box filter smooths it), exponential release.
+        env = held < env ? held : env + (held - env) * rel;
+        boxSum += env - box[boxPos];
+        box[boxPos] = env;
+        boxPos = boxPos + 1 === D ? 0 : boxPos + 1;
+        g = Math.fround(boxSum / D);
       }
-      if (capture !== null && this.cursor < capture.length) capture[this.cursor] = g;
-      this.cursor++;
-      const p = this.dPos;
-      outL[i] = dL[p] * g;
-      outR[i] = dR[p] * g;
-      dL[p] = xl;
-      dR[p] = xr;
-      this.dPos = p + 1 === D ? 0 : p + 1;
+      if (capture !== null && cursor < capture.length) capture[cursor] = g;
+      cursor++;
+      outL[i] = dL[dPos] * g;
+      outR[i] = dR[dPos] * g;
+      dL[dPos] = xl;
+      dR[dPos] = xr;
+      dPos = dPos + 1 === D ? 0 : dPos + 1;
     }
-  }
-
-  /** Pushes req(n) and returns the smoothed gain for the delayed sample. */
-  private gainFor(req: number): number {
-    const cap = this.dqCap;
-    const vals = this.dqVal;
-    const idxs = this.dqIdx;
-    const n = this.n++;
-    // Drop larger values from the back, then append.
-    while (this.dqSize > 0) {
-      const back = (this.dqHead + this.dqSize - 1) % cap;
-      if (vals[back] >= req) this.dqSize--;
-      else break;
-    }
-    const slot = (this.dqHead + this.dqSize) % cap;
-    vals[slot] = req;
-    idxs[slot] = n;
-    this.dqSize++;
-    // Drop expired values from the front.
-    while (idxs[this.dqHead] <= n - this.window) {
-      this.dqHead = (this.dqHead + 1) % cap;
-      this.dqSize--;
-    }
-    const held = vals[this.dqHead];
-    // Instant attack (the box filter smooths it), exponential release.
-    this.env = held < this.env ? held : this.env + (held - this.env) * this.relCoef;
-    const bp = this.boxPos;
-    this.boxSum += this.env - this.box[bp];
-    this.box[bp] = this.env;
-    this.boxPos = bp + 1 === this.delay ? 0 : bp + 1;
-    return this.boxSum / this.delay;
+    this.dqHead = head;
+    this.dqSize = size;
+    this.n = n;
+    this.env = env;
+    this.boxPos = boxPos;
+    this.boxSum = boxSum;
+    this.cursor = cursor;
+    this.dPos = dPos;
   }
 }

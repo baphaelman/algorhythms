@@ -30,7 +30,7 @@ export function unit(h: number): number {
  */
 export class Prng {
   /** Current state (uint32). */
-  state: number;
+  state: number = 0;
 
   constructor(seed: number) {
     this.state = seed >>> 0;

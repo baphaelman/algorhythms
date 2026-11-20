@@ -28,7 +28,6 @@ import {
   MAX_TIMBRE_SLOTS,
   NORM_SMOOTHING,
   SEEK_FADE,
-  SWAP_CROSSFADE_SEMITONES,
   SWAP_FADE,
 } from './constants';
 import { PingPongDelay } from './fx/delay';
@@ -80,7 +79,7 @@ interface PreparedScore {
 
 export class Graph {
   /** Output sample rate in Hz. */
-  readonly sampleRate: number;
+  readonly sampleRate: number = 0;
   private readonly slots: TimbreSlot[] = [];
   private readonly slotByName = new Map<string, number>();
   private readonly ctx: VoiceContext;
@@ -117,9 +116,10 @@ export class Graph {
   private pendingPos = -1;
   private pendingSwap: PreparedScore | null = null;
   private gnValue = 1;
-  private readonly normCoeff: number;
-  private readonly seekFadeFrames: number;
-  private readonly swapFadeFrames: number;
+  private readonly gnScratch = new Float64Array(1);
+  private readonly normCoeff: number = 0;
+  private readonly seekFadeFrames: number = 0;
+  private readonly swapFadeFrames: number = 0;
 
   // Stems.
   private renderMode: RenderMode = RenderMode.Mix;
@@ -144,8 +144,12 @@ export class Graph {
     this.sampleRate = sampleRate;
     for (let i = 0; i < MAX_TIMBRE_SLOTS; i++) this.slots.push(new TimbreSlot());
     this.ctx = new VoiceContext(sampleRate, this.slots);
-    for (let i = 0; i < DSP_MAX_VOICES; i++) this.voices.push(new Voice());
-    for (let i = 0; i < MAX_GHOSTS; i++) this.ghosts.push(new Voice());
+    for (let i = 0; i < DSP_MAX_VOICES; i++) this.voices.push(new Voice(sampleRate));
+    for (let i = 0; i < MAX_GHOSTS; i++) {
+      const g = new Voice(sampleRate);
+      g.isGhost = true;
+      this.ghosts.push(g);
+    }
     this.reverb = new Reverb(sampleRate);
     this.delay = new PingPongDelay(sampleRate);
     this.tone = new Tone(sampleRate);
@@ -346,7 +350,10 @@ export class Graph {
     for (let i = 0; i < MAX_GHOSTS; i++) {
       const g = this.ghosts[i];
       if (!g.enabled) continue;
-      if (mode !== RenderMode.Voice || g.index === this.stemVoice) g.render(ctx, g.frame);
+      if (mode !== RenderMode.Voice || g.index === this.stemVoice) {
+        for (let k = 1; k <= TICKS_PER_BLOCK; k++) g.computeLife(g.frame + k * CONTROL_PERIOD, k);
+        g.render(ctx, g.frame);
+      }
       g.frame += BLOCK_FRAMES;
       if (g.xfDone) g.enabled = false;
     }
@@ -545,22 +552,29 @@ export class Graph {
     }
   }
 
-  /** g_n target 1/√(Σ life weights) at piece time t (pure). */
-  private normTarget(t: number): number {
+  /** Re-initialises g_n to 1/√(Σ life weights) at the current position (after a jump). */
+  private resetNorm(): void {
     let sum = 0;
-    for (let i = 0; i < this.voiceCount; i++) sum += this.voices[i].data.lifeAt(t);
-    return 1 / Math.sqrt(sum > 1 ? sum : 1);
+    for (let i = 0; i < this.voiceCount; i++) {
+      const v = this.voices[i];
+      v.computeLife(this.pieceFrame, 0);
+      sum += v.lifeTick[0];
+    }
+    this.gnValue = 1 / Math.sqrt(sum > 1 ? sum : 1);
   }
 
   private computeNorm(): void {
     const gn = this.ctx.gn;
     gn[0] = this.gnValue;
-    const inv = 1 / this.sampleRate;
     for (let k = 1; k <= TICKS_PER_BLOCK; k++) {
       if (this.playing) {
-        const t = (this.pieceFrame + k * CONTROL_PERIOD) * inv;
+        const frame = this.pieceFrame + k * CONTROL_PERIOD;
         let sum = 0;
-        for (let i = 0; i < this.voiceCount; i++) sum += this.voices[i].lifeAt(t);
+        for (let i = 0; i < this.voiceCount; i++) {
+          const v = this.voices[i];
+          v.computeLife(frame, k);
+          sum += v.lifeTick[k];
+        }
         const target = 1 / Math.sqrt(sum > 1 ? sum : 1);
         this.gnValue += (target - this.gnValue) * this.normCoeff;
       }
@@ -598,7 +612,8 @@ export class Graph {
     if (g === null) return false;
     g.copyFrom(v);
     g.frame = this.pieceFrame;
-    g.gnFrozen = this.gnValue;
+    this.gnScratch[0] = this.gnValue;
+    g.freezeGn(this.gnScratch, 0);
     g.fadeOut(frames);
     return true;
   }
@@ -609,13 +624,13 @@ export class Graph {
       let needed = 0;
       for (let i = 0; i < DSP_MAX_VOICES; i++) {
         const v = this.voices[i];
-        if (v.enabled && v.prevAmp > 0) needed++;
+        if (v.enabled && v.isSounding()) needed++;
       }
       if (needed > this.freeGhosts()) return false;
     }
     for (let i = 0; i < DSP_MAX_VOICES; i++) {
       const v = this.voices[i];
-      if (v.enabled && v.prevAmp > 0) this.ghostOf(v, frames, force);
+      if (v.enabled && v.isSounding()) this.ghostOf(v, frames, force);
       v.enabled = false;
     }
     return true;
@@ -623,15 +638,14 @@ export class Graph {
 
   /** Starts every main voice at the current position with a fade-in. */
   private startMains(frames: number): void {
-    const t = this.pieceFrame / this.sampleRate;
-    this.gnValue = this.normTarget(t);
     for (let i = 0; i < DSP_MAX_VOICES; i++) {
       const v = this.voices[i];
       v.enabled = i < this.voiceCount;
       if (!v.enabled) continue;
-      v.jump(t, true);
+      v.jump(this.pieceFrame, true);
       v.fadeIn(frames);
     }
+    this.resetNorm();
   }
 
   private applyTransport(): void {
@@ -686,25 +700,15 @@ export class Graph {
     }
   }
 
-  /** Whether swapping voice v to `nd` at time t needs a crossfade rather than a slew. */
-  private needsCrossfade(v: Voice, nd: VoiceData, t: number): boolean {
-    if (nd.hash !== v.data.hash) return true;
-    if (!(nd.lifeAt(t) > 0)) return true;
-    const p = nd.pitchAt(t);
-    if (!(Math.abs(p - v.curPitch) <= SWAP_CROSSFADE_SEMITONES)) return true;
-    return nd.slotAt(t) !== v.curSlot;
-  }
-
   private applySwap(): void {
     const next = this.pendingSwap as PreparedScore;
-    const t = this.pieceFrame / this.sampleRate;
     const n = next.data.length;
     if (this.playing) {
       let needed = 0;
       for (let i = 0; i < DSP_MAX_VOICES; i++) {
         const v = this.voices[i];
         const nd = i < n ? next.data[i] : EMPTY_VOICE_DATA;
-        if (v.enabled && v.prevAmp > 0 && this.needsCrossfade(v, nd, t)) needed++;
+        if (v.enabled && v.isSounding() && v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)) needed++;
       }
       if (needed > this.freeGhosts()) return; // retry next block
     }
@@ -717,30 +721,28 @@ export class Graph {
       if (!this.playing) {
         v.data = nd;
         if (identityChanged) v.setIdentity(i, nd.hash, this.seed, this.voiceCount);
-        v.jump(t, true);
+        v.jump(this.pieceFrame, true);
         continue;
       }
-      const audible = v.enabled && v.prevAmp > 0;
-      if (audible && this.needsCrossfade(v, nd, t)) {
+      const audible = v.enabled && v.isSounding();
+      if (audible && v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)) {
         this.ghostOf(v, this.swapFadeFrames, true);
         v.data = nd;
         if (identityChanged) v.setIdentity(i, nd.hash, this.seed, this.voiceCount);
         v.enabled = i < n;
-        v.jump(t, true);
+        v.jump(this.pieceFrame, true);
         v.fadeIn(this.swapFadeFrames);
       } else if (audible) {
-        const p = v.curPitch;
-        const a = v.prevAmp;
+        v.slewFromCurrent(this.swapFadeFrames);
         v.data = nd;
-        v.jump(t, false);
-        v.slew(p, a, this.swapFadeFrames);
+        v.jump(this.pieceFrame, false);
       } else {
         v.data = nd;
         if (identityChanged) v.setIdentity(i, nd.hash, this.seed, this.voiceCount);
         v.enabled = i < n;
-        v.jump(t, true);
+        v.jump(this.pieceFrame, true);
         // Whatever the new score sounds here ramps in over 20 ms instead of starting abruptly.
-        v.slew(nd.pitchAt(t), 0, this.swapFadeFrames);
+        v.slewFromSilence(this.swapFadeFrames);
       }
     }
     this.anchor(AnchorReason.Swap);

@@ -16,7 +16,7 @@ const PIVOT_HZ = 1000;
 const SMOOTH = 0.2;
 
 export class Tone {
-  private readonly sampleRate: number;
+  private readonly sampleRate: number = 0;
   // Shelf high-pass coefficients (bilinear, prewarped) and state per channel.
   private readonly hpB0 = new Float64Array(SHELVES);
   private readonly hpA1 = new Float64Array(SHELVES);

@@ -21,8 +21,15 @@ import {
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
   LIFE_STRIDE,
+  SEG_BX1,
+  SEG_BX2,
+  SEG_BY1,
+  SEG_BY2,
   SEG_CURVE_P1,
+  SEG_CURVE_T1,
+  SEG_EASE,
   SEG_M0,
+  SEG_P1,
   SEG_P0,
   SEG_STRIDE,
   SEG_T0,
@@ -40,18 +47,21 @@ import {
   VOICE_SOLO,
   VOICE_STRIDE,
   evalFlatSegment,
-  evalFlatSegmentMotion,
+  segmentMotion,
+  segmentPitch,
 } from '../core/segment';
+import type { EaseCode } from '../core/ease';
 import type { FlatVoice } from '../core/flat';
 import {
   BLOCK_FRAMES,
   CONTROL_PERIOD,
   MIN_LIFE_FADE,
   MUTE_RAMP,
+  SWAP_CROSSFADE_SEMITONES,
   VOICE_BASE_GAIN,
 } from './constants';
 import { hash2, unit } from './rng';
-import { cos2pi, sin2pi } from './sine';
+import { SINE, SINE_TABLE_SIZE, cos2pi, sin2pi } from './sine';
 import type { TimbreSlot } from './timbre-slot';
 import { MIP_BASE_HZ, MIP_COUNT, WAVETABLE_SIZE, WAVETABLE_STRIDE } from './wavetable';
 
@@ -117,8 +127,8 @@ export function lastAtOrBefore(
 }
 
 /**
- * One voice's score data plus everything precomputed from it. Built on the main thread side of a
- * message handler (it allocates); assigning it to a voice is a reference copy.
+ * One voice's score data plus everything precomputed from it. Built in a message handler (it
+ * allocates); assigning it to a voice is a reference copy.
  */
 export class VoiceData {
   segs: Float64Array = EMPTY_F64;
@@ -151,6 +161,11 @@ export class VoiceData {
   sendReverb = NaN;
   sendDelay = NaN;
   hash = 0;
+
+  /** Results of `probe()`. */
+  probeLife = 0;
+  probePitch = NaN;
+  probeSlot = -1;
 
   /** Builds data for pool voice `index` of a flat score; `slotOf` maps timbreNames indices. */
   static fromFlat(
@@ -228,39 +243,42 @@ export class VoiceData {
     return d;
   }
 
-  /** Life weight 0..1 at t (pure; smootherstep fades, at least MIN_LIFE_FADE long). */
-  lifeAt(t: number): number {
+  /**
+   * Evaluates life weight, pitch and timbre slot at `frame` / `sampleRate` seconds into
+   * probeLife, probePitch and probeSlot. Pure apart from those fields; integer arguments only,
+   * so calling it from the audio thread boxes nothing.
+   */
+  probe(frame: number, sampleRate: number): void {
+    const t = frame / sampleRate;
     const li = lastAtOrBefore(this.lives, this.nLife, LIFE_STRIDE, LIFE_BORN, t);
-    return li < 0 ? 0 : lifeWeight(this.lives, li * LIFE_STRIDE, t);
-  }
-
-  /** Pitch at t (pure); NaN when the voice has no segments. */
-  pitchAt(t: number): number {
-    if (this.nSeg === 0) return NaN;
-    const si = Math.max(0, lastAtOrBefore(this.segs, this.nSeg, SEG_STRIDE, SEG_T0, t));
-    return evalFlatSegment(this.segs, si * SEG_STRIDE, t);
-  }
-
-  /** Timbre slot at t (the crossfade target if one is running); −1 if none. */
-  slotAt(t: number): number {
-    if (this.nTimbre === 0) return -1;
-    const i = Math.max(0, lastAtOrBefore(this.timbres, this.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
-    return this.timbreSlot[i];
+    this.probeLife = li < 0 ? 0 : lifeWeight(this.lives, li * LIFE_STRIDE, t);
+    if (this.nSeg === 0) this.probePitch = NaN;
+    else {
+      const si = lastAtOrBefore(this.segs, this.nSeg, SEG_STRIDE, SEG_T0, t);
+      this.probePitch = evalFlatSegment(this.segs, (si < 0 ? 0 : si) * SEG_STRIDE, t);
+    }
+    if (this.nTimbre === 0) this.probeSlot = -1;
+    else {
+      const ti = lastAtOrBefore(this.timbres, this.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t);
+      this.probeSlot = this.timbreSlot[ti < 0 ? 0 : ti];
+    }
   }
 }
 
-/** Shared empty data for voices beyond the pool size. */
+/** Shared empty data for voices beyond the pool size. Never mutated. */
 export const EMPTY_VOICE_DATA = new VoiceData();
 
+/** Life weight of the life record at `o` (smootherstep fades, at least MIN_LIFE_FADE long). */
 function lifeWeight(L: Float64Array, o: number, t: number): number {
   const born = L[o + LIFE_BORN];
   const died = L[o + LIFE_DIED];
   if (t >= died || t < born) return 0;
   let w = 1;
-  const fin = L[o + LIFE_FADE_IN] > MIN_LIFE_FADE ? L[o + LIFE_FADE_IN] : MIN_LIFE_FADE;
+  // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
+        const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
   const u = (t - born) / fin;
   if (u < 1) w = smootherstep(u);
-  const fout = L[o + LIFE_FADE_OUT] > MIN_LIFE_FADE ? L[o + LIFE_FADE_OUT] : MIN_LIFE_FADE;
+  const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
   const v = (died - t) / fout;
   if (v < 1) w *= smootherstep(v);
   return w;
@@ -273,15 +291,15 @@ function lifeWeight(L: Float64Array, o: number, t: number): number {
 export class VoiceContext {
   /** Timbre slots (owned by the graph). */
   readonly slots: TimbreSlot[];
-  readonly sampleRate: number;
-  readonly invSampleRate: number;
+  readonly sampleRate: number = 0;
+  readonly invSampleRate: number = 0;
   /** Seconds per control tick. */
-  readonly tickSeconds: number;
+  readonly tickSeconds: number = 0;
   /** Per-tick smoothing coefficients. */
-  readonly motionCoeff: number;
-  readonly vibratoCoeff: number;
+  readonly motionCoeff: number = 0;
+  readonly vibratoCoeff: number = 0;
   /** Mute gain change per tick. */
-  readonly muteStep: number;
+  readonly muteStep: number = 0;
   /** log2(referenceHz / MIP_BASE_HZ). */
   refOct = Math.log2(440 / MIP_BASE_HZ);
   /** `mix.panAuto === 'pitch'`. */
@@ -315,57 +333,76 @@ export class VoiceContext {
   }
 }
 
-/** One synthesis voice (or ghost). */
+/** Indices into `Voice.st`, the voice's persistent double-valued state. */
+const S_PHASE = 0;
+const S_LFO = 1;
+const S_MOTION = 2;
+const S_VIB = 3;
+const S_MUTE = 4;
+const S_PREV_AMP = 5;
+const S_CUR_AMP = 6;
+const S_PREV_INC = 7;
+const S_CUR_INC = 8;
+const S_PREV_GL = 9;
+const S_CUR_GL = 10;
+const S_PREV_GR = 11;
+const S_CUR_GR = 12;
+const S_PITCH = 13;
+const S_MIP_W = 14;
+const S_SEND_REV = 15;
+const S_SEND_DLY = 16;
+const S_XF_FROM = 17;
+const S_SLEW_PITCH = 18;
+const S_SLEW_AMP = 19;
+const S_GN_FROZEN = 20;
+const S_DET_SIGN = 21;
+const S_DET_MAG = 22;
+const S_DET_U = 23;
+const S_PAN_INDEX = 24;
+const STATE_SIZE = 25;
+
+/**
+ * One synthesis voice (or ghost).
+ *
+ * Allocation discipline (§8.11). V8 boxes a double (allocates a HeapNumber) whenever one crosses a
+ * call it did not inline, and may box doubles stored in object fields. So:
+ * - every double that persists between ticks lives in the Float64Array `st`;
+ * - the per-tick work is one large method, `render`, written inline. It is too big to be inlined
+ *   into the graph, and so gets its own inlining budget, which goes to the shared core/segment
+ *   functions it calls (P1);
+ * - calls between the graph and a voice pass only integers, booleans and objects.
+ * The no-GC test (tests/dsp/no-gc.test.ts) enforces the result.
+ */
 export class Voice {
   /** Pool index (stems select by it). */
   index = -1;
   data: VoiceData = EMPTY_VOICE_DATA;
-
   /** Main voice: rendering enabled. Ghost: in use. */
   enabled = false;
+  /** A ghost computes its own life weights; a main voice reads `lifeTick` (filled by the graph). */
+  isGhost = false;
   /** Ghosts only: piece frame of the ghost's own timeline at the block start. */
   frame = 0;
-  /** Ghosts only: g_n frozen at spawn. */
-  gnFrozen = -1;
-
-  // Identity-derived constants.
-  private detSign = 1;
-  private detMag = 2;
-  private detSpreadU = 0;
-  private panIndex = 0;
+  /**
+   * Life weight per tick of the current block (index k + 1 for tick k; index 0 is scratch),
+   * filled by the graph before `render` (for ghosts too), so render's inlining budget is left
+   * for the segment functions.
+   */
+  readonly lifeTick = new Float64Array(TICKS_PER_BLOCK + 1);
+  /** Persistent double state (see the S_* indices). */
+  private readonly st = new Float64Array(STATE_SIZE);
+  private readonly invRate: number = 0;
 
   // Cursors (monotonic between jumps).
   private segCur = 0;
   private lifeCur = -1;
   private levelCur = -1;
   private timbreCur = 0;
-
-  // Oscillator and smoother state.
-  private phase = 0;
-  private lfoPhase = 0;
-  private motionSm = 0;
-  private vibSm = 0;
-  private muteGain = 1;
+  /** Mip index and timbre slot at the last tick. */
+  private curMip = 0;
+  private curSlot = -1;
   /** Re-initialise smoothers and interpolation at the next tick. */
   private fresh = true;
-
-  // Control values: previous tick (start of the sub-block) and current tick (end).
-  prevAmp = 0;
-  private curAmp = 0;
-  private prevInc = 0;
-  private curInc = 0;
-  private prevGL = Math.SQRT1_2;
-  private curGL = Math.SQRT1_2;
-  private prevGR = Math.SQRT1_2;
-  private curGR = Math.SQRT1_2;
-  /** Pitch (with slew) at the last tick. */
-  curPitch = NaN;
-  /** Slot of the timbre crossfade target at the last tick. */
-  curSlot = -1;
-  private curMip = 0;
-  private curW = 0;
-  private curSendRev = 0;
-  private curSendDly = 0;
 
   // Up to four tables at once (timbre crossfade × slot replacement), matched by identity.
   private readonly roleTab: (Float32Array | null)[] = [null, null, null, null];
@@ -374,51 +411,73 @@ export class Voice {
   private readonly roleG1 = new Float64Array(4);
   private readonly roleClaim = new Uint8Array(4);
 
-  // Crossfade (seek, loop, swap) and slew (swap).
+  // Crossfade (seek, loop, swap) and slew (swap), counted in frames.
   private xfMode = XF_NONE;
   private xfPos = 0;
   private xfLen = 1;
-  private xfFrom = 1;
   /** A fade-out finished: the ghost can be released. */
   xfDone = false;
   private slewPos = 0;
   private slewLen = 0;
-  private slewPitch = 0;
-  private slewAmp = 0;
+
+  constructor(sampleRate: number) {
+    this.invRate = 1 / sampleRate;
+    const st = this.st;
+    st[S_MUTE] = 1;
+    st[S_PREV_GL] = st[S_CUR_GL] = st[S_PREV_GR] = st[S_CUR_GR] = Math.SQRT1_2;
+    st[S_PITCH] = NaN;
+    st[S_SLEW_PITCH] = NaN;
+    st[S_GN_FROZEN] = 1;
+    st[S_XF_FROM] = 1;
+    st[S_DET_SIGN] = 1;
+    st[S_DET_MAG] = 2;
+  }
 
   /** Sets pool identity: detune, start phase and auto-pan position (§8.4). */
   setIdentity(index: number, hash: number, seed: number, poolSize: number): void {
+    const st = this.st;
     this.index = index;
-    this.detSign = index % 2 === 1 ? 1 : -1;
-    this.detMag = DETUNE_MIN + DETUNE_RANGE * unit(hash2(hash, SALT_DETUNE));
-    this.detSpreadU = unit(hash2(hash, SALT_SPREAD));
-    this.phase = unit(hash2(hash, seed));
-    this.lfoPhase = unit(hash2(hash, (seed ^ SALT_LFO) >>> 0));
-    this.panIndex =
+    st[S_DET_SIGN] = index % 2 === 1 ? 1 : -1;
+    st[S_DET_MAG] = DETUNE_MIN + DETUNE_RANGE * unit(hash2(hash, SALT_DETUNE));
+    st[S_DET_U] = unit(hash2(hash, SALT_SPREAD));
+    st[S_PHASE] = unit(hash2(hash, seed));
+    st[S_LFO] = unit(hash2(hash, (seed ^ SALT_LFO) >>> 0));
+    st[S_PAN_INDEX] =
       (index % 2 === 1 ? 1 : -1) * (0.12 + (0.5 * index) / Math.max(1, poolSize - 1));
   }
 
-  /** Detune in cents for a given timbre spread (§8.4: alternating sign, never below 1 cent). */
+  /** Detune in cents for a timbre spread (§8.4: alternating sign, never below 1 cent). Tests. */
   detuneCents(spread: number): number {
-    const m = this.detMag + spread * this.detSpreadU;
-    return this.detSign * (m > DETUNE_FLOOR ? m : DETUNE_FLOOR);
+    const m = this.st[S_DET_MAG] + spread * this.st[S_DET_U];
+    return this.st[S_DET_SIGN] * (m > DETUNE_FLOOR ? m : DETUNE_FLOOR);
   }
 
-  /** Start phase in cycles (for tests). */
-  get startPhase(): number {
-    return this.phase;
+  /** Current oscillator phase in cycles (tests). */
+  get phaseCycles(): number {
+    return this.st[S_PHASE];
   }
 
-  /** Repositions every cursor at piece time t. `fresh` re-initialises smoothers. */
-  jump(t: number, fresh: boolean): void {
+  /** Whether the voice produced sound at its last tick. */
+  isSounding(): boolean {
+    return this.st[S_PREV_AMP] > 0;
+  }
+
+  /** Ghosts: freezes g_n at `source[index]` (the value when the ghost was spawned). */
+  freezeGn(source: Float64Array, index: number): void {
+    this.st[S_GN_FROZEN] = source[index];
+  }
+
+  /** Repositions every cursor at piece frame `frame`. `fresh` re-initialises smoothers. */
+  jump(frame: number, fresh: boolean): void {
     const d = this.data;
+    const t = frame * this.invRate;
     this.segCur = Math.max(0, lastAtOrBefore(d.segs, d.nSeg, SEG_STRIDE, SEG_T0, t));
     this.lifeCur = lastAtOrBefore(d.lives, d.nLife, LIFE_STRIDE, LIFE_BORN, t);
     this.levelCur = lastAtOrBefore(d.levels, d.nLevel, LEVEL_STRIDE, LEVEL_T, t);
     this.timbreCur = Math.max(0, lastAtOrBefore(d.timbres, d.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
     if (fresh) {
       this.fresh = true;
-      this.prevAmp = 0;
+      this.st[S_PREV_AMP] = 0;
       this.slewLen = 0;
     }
   }
@@ -428,7 +487,7 @@ export class Voice {
     this.xfMode = XF_IN;
     this.xfPos = 0;
     this.xfLen = Math.max(1, frames);
-    this.xfFrom = 0;
+    this.st[S_XF_FROM] = 0;
     this.xfDone = false;
   }
 
@@ -438,7 +497,7 @@ export class Voice {
     this.xfMode = XF_OUT;
     this.xfPos = 0;
     this.xfLen = Math.max(1, frames);
-    this.xfFrom = from;
+    this.st[S_XF_FROM] = from;
     this.xfDone = from === 0;
   }
 
@@ -448,29 +507,63 @@ export class Voice {
     this.xfDone = false;
   }
 
-  /** Blends from a frozen pitch and amplitude to the live values over `frames` (swap slew). */
-  slew(pitch: number, amp: number, frames: number): void {
-    this.slewPitch = pitch;
-    this.slewAmp = amp;
+  /** Swap slew: blends from the current pitch and amplitude to the live values over `frames`. */
+  slewFromCurrent(frames: number): void {
+    this.st[S_SLEW_PITCH] = this.st[S_PITCH];
+    this.st[S_SLEW_AMP] = this.st[S_PREV_AMP];
     this.slewPos = 0;
     this.slewLen = Math.max(1, frames);
+  }
+
+  /** Swap ramp for a voice that was silent: its amplitude rises from 0 over `frames`. */
+  slewFromSilence(frames: number): void {
+    this.st[S_SLEW_PITCH] = NaN;
+    this.st[S_SLEW_AMP] = 0;
+    this.slewPos = 0;
+    this.slewLen = Math.max(1, frames);
+  }
+
+  /** Whether swapping to `nd` at piece frame `frame` needs a crossfade rather than a slew. */
+  swapNeedsCrossfade(nd: VoiceData, frame: number, sampleRate: number): boolean {
+    if (nd.hash !== this.data.hash) return true;
+    nd.probe(frame, sampleRate);
+    if (!(nd.probeLife > 0)) return true;
+    if (!(Math.abs(nd.probePitch - this.st[S_PITCH]) <= SWAP_CROSSFADE_SEMITONES)) return true;
+    return nd.probeSlot !== this.curSlot;
   }
 
   /** Current crossfade gain (0..1). */
   xfGain(): number {
     if (this.xfMode === XF_NONE) return 1;
     const u = this.xfPos >= this.xfLen ? 1 : this.xfPos / this.xfLen;
-    return this.xfMode === XF_IN ? sin2pi(u * 0.25) : this.xfFrom * cos2pi(u * 0.25);
+    return this.xfMode === XF_IN ? sin2pi(u * 0.25) : this.st[S_XF_FROM] * cos2pi(u * 0.25);
   }
 
-  /** Life weight at t, advancing the life cursor (monotonic in t between jumps). */
-  lifeAt(t: number): number {
+  /** Writes the life weight at piece frame `frame` to lifeTick[slot], advancing the cursor. */
+  computeLife(frame: number, slot: number): void {
+    const t = frame * this.invRate;
     const d = this.data;
     const L = d.lives;
     let li = this.lifeCur;
     while (li + 1 < d.nLife && L[(li + 1) * LIFE_STRIDE + LIFE_BORN] <= t) li++;
     this.lifeCur = li;
-    return li < 0 ? 0 : lifeWeight(L, li * LIFE_STRIDE, t);
+    let w = 0;
+    if (li >= 0) {
+      const o = li * LIFE_STRIDE;
+      const born = L[o + LIFE_BORN];
+      const died = L[o + LIFE_DIED];
+      if (t < died && t >= born) {
+        w = 1;
+        // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
+        const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
+        const u = (t - born) / fin;
+        if (u < 1) w = u * u * u * (u * (u * 6 - 15) + 10);
+        const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
+        const v = (died - t) / fout;
+        if (v < 1) w *= v * v * v * (v * (v * 6 - 15) + 10);
+      }
+    }
+    this.lifeTick[slot] = w;
   }
 
   /** Copies the complete state of `v` (used to spawn a ghost). Allocation-free. */
@@ -478,34 +571,14 @@ export class Voice {
     this.index = v.index;
     this.data = v.data;
     this.enabled = true;
-    this.detSign = v.detSign;
-    this.detMag = v.detMag;
-    this.detSpreadU = v.detSpreadU;
-    this.panIndex = v.panIndex;
+    this.st.set(v.st);
     this.segCur = v.segCur;
     this.lifeCur = v.lifeCur;
     this.levelCur = v.levelCur;
     this.timbreCur = v.timbreCur;
-    this.phase = v.phase;
-    this.lfoPhase = v.lfoPhase;
-    this.motionSm = v.motionSm;
-    this.vibSm = v.vibSm;
-    this.muteGain = v.muteGain;
-    this.fresh = v.fresh;
-    this.prevAmp = v.prevAmp;
-    this.curAmp = v.curAmp;
-    this.prevInc = v.prevInc;
-    this.curInc = v.curInc;
-    this.prevGL = v.prevGL;
-    this.curGL = v.curGL;
-    this.prevGR = v.prevGR;
-    this.curGR = v.curGR;
-    this.curPitch = v.curPitch;
-    this.curSlot = v.curSlot;
     this.curMip = v.curMip;
-    this.curW = v.curW;
-    this.curSendRev = v.curSendRev;
-    this.curSendDly = v.curSendDly;
+    this.curSlot = v.curSlot;
+    this.fresh = v.fresh;
     for (let r = 0; r < 4; r++) {
       this.roleTab[r] = v.roleTab[r];
       this.roleSame[r] = v.roleSame[r];
@@ -515,303 +588,350 @@ export class Voice {
     this.xfMode = v.xfMode;
     this.xfPos = v.xfPos;
     this.xfLen = v.xfLen;
-    this.xfFrom = v.xfFrom;
     this.xfDone = v.xfDone;
     this.slewPos = v.slewPos;
     this.slewLen = v.slewLen;
-    this.slewPitch = v.slewPitch;
-    this.slewAmp = v.slewAmp;
-    this.gnFrozen = v.gnFrozen;
   }
 
-  /** Renders one block starting at piece frame `frame0` into the context's buses. */
+  /**
+   * Renders one block starting at piece frame `frame0` into the context's buses. For each control
+   * tick it evaluates pitch, timbre, envelopes, frequency, amplitude and pan at the tick's end,
+   * then synthesises the tick's frames interpolating from the previous tick.
+   */
   render(ctx: VoiceContext, frame0: number): void {
     const K = CONTROL_PERIOD;
-    const inv = ctx.invSampleRate;
+    const st = this.st;
+    const d = this.data;
+    const inv = this.invRate;
+    const slots = ctx.slots;
     for (let k = 0; k < TICKS_PER_BLOCK; k++) {
-      const t = (frame0 + (k + 1) * K) * inv;
-      const gn = this.gnFrozen >= 0 ? this.gnFrozen : ctx.gn[k + 1];
-      this.tick(ctx, t, gn, ctx.renderFrame0 + (k + 1) * K);
-      if (this.prevAmp !== 0 || this.curAmp !== 0) this.synth(ctx, k * K);
-      this.prevAmp = this.curAmp;
-      this.prevInc = this.curInc;
-      this.prevGL = this.curGL;
-      this.prevGR = this.curGR;
+      const frame = frame0 + (k + 1) * K;
+      const t = frame * inv;
+
+      // Crossfade, slew and mute-ramp progress.
+      let xf = 1;
+      if (this.xfMode !== XF_NONE) {
+        this.xfPos += K;
+        const u = this.xfPos >= this.xfLen ? 1 : this.xfPos / this.xfLen;
+        // Equal power: sin(π/2·u) fading in, cos(π/2·u) fading out (shared sine table).
+        const pos = (this.xfMode === XF_IN ? u * 0.25 : u * 0.25 + 0.25) * SINE_TABLE_SIZE;
+        const i0 = pos | 0;
+        const a = SINE[i0];
+        const sv = a + (SINE[i0 + 1] - a) * (pos - i0);
+        if (this.xfMode === XF_IN) {
+          xf = sv;
+          if (u >= 1) this.xfMode = XF_NONE;
+        } else {
+          xf = u >= 1 ? 0 : st[S_XF_FROM] * sv;
+          if (u >= 1) this.xfDone = true;
+        }
+      }
+      let slewR = 0;
+      if (this.slewLen > 0) {
+        this.slewPos += K;
+        const r = 1 - this.slewPos / this.slewLen;
+        if (r <= 0) this.slewLen = 0;
+        else slewR = r;
+      }
+      if (!d.mute && (!ctx.anySolo || d.solo)) {
+        if (st[S_MUTE] < 1) st[S_MUTE] = Math.min(1, st[S_MUTE] + ctx.muteStep);
+      } else if (st[S_MUTE] > 0) st[S_MUTE] = Math.max(0, st[S_MUTE] - ctx.muteStep);
+
+      const lw = this.lifeTick[k + 1];
+
+      // Timbre timeline: crossfade from the previous entry's preset (slot A) to this one's (B).
+      let ok = lw > 0 && xf > 0 && st[S_MUTE] > 0 && d.nSeg > 0 && d.nTimbre > 0;
+      let slotA = -1;
+      let slotB = -1;
+      let x = 1;
+      if (ok) {
+        const T = d.timbres;
+        let ti = this.timbreCur;
+        while (ti + 1 < d.nTimbre && T[(ti + 1) * TIMBRE_STRIDE + TIMBRE_T] <= t) ti++;
+        this.timbreCur = ti;
+        slotB = d.timbreSlot[ti];
+        slotA = ti > 0 ? d.timbreSlot[ti - 1] : slotB;
+        const fade = T[ti * TIMBRE_STRIDE + TIMBRE_FADE];
+        x = fade > 0 ? (t - T[ti * TIMBRE_STRIDE + TIMBRE_T]) / fade : 1;
+        if (x > 1) x = 1;
+        else if (x < 0) x = 0;
+        if (slotB < 0 || (slotA < 0 && x < 1)) ok = false;
+        else if (slotA < 0) slotA = slotB;
+      }
+
+      if (ok) {
+        const A = slots[slotA];
+        const B = slots[slotB];
+        const xa = 1 - x;
+        this.curSlot = slotB;
+
+        // Table sources: each slot's current tables, plus its old ones during a replacement fade.
+        if (this.fresh) {
+          for (let r = 0; r < 4; r++) {
+            this.roleTab[r] = null;
+            this.roleSame[r] = null;
+            this.roleG0[r] = 0;
+          }
+        }
+        const G1 = this.roleG1;
+        const G0 = this.roleG0;
+        const claim = this.roleClaim;
+        const R = this.roleTab;
+        G1.fill(0);
+        claim.fill(0);
+        const renderFrame = ctx.renderFrame0 + (k + 1) * K;
+        for (let src = 0; src < 4; src++) {
+          const slot = src < 2 ? B : A;
+          if (src >= 2 && A === B) break;
+          const weight = A === B ? 1 : src < 2 ? x : xa;
+          let sw = 1;
+          if (slot.fadeLen > 0) {
+            const u = (renderFrame - slot.fadeStart) / slot.fadeLen;
+            sw = u >= 1 ? 1 : u <= 0 ? 0 : u;
+          }
+          const useNew = (src & 1) === 0;
+          const tab = useNew ? slot.data : sw < 1 ? slot.prevData : null;
+          const g = weight * (useNew ? sw : 1 - sw);
+          if (tab === null || !(g > 0)) continue;
+          let role = -1;
+          for (let r = 0; r < 4 && role < 0; r++) if (R[r] === tab) role = r;
+          if (role >= 0) G1[role] += g;
+          else {
+            let bestG = Infinity;
+            for (let r = 0; r < 4; r++) {
+              if (claim[r] === 0 && G0[r] < bestG) {
+                role = r;
+                bestG = G0[r];
+              }
+            }
+            if (role < 0) continue;
+            R[role] = tab;
+            this.roleSame[role] = useNew ? slot.same : slot.prevSame;
+            G0[role] = 0;
+            G1[role] = g;
+          }
+          claim[role] = 1;
+        }
+        ok = G1[0] > 0 || G1[1] > 0 || G1[2] > 0 || G1[3] > 0;
+
+        if (ok) {
+          // Pitch and motion from the shared segment code (P1).
+          const s = d.segs;
+          let si = this.segCur;
+          while (si + 1 < d.nSeg && s[(si + 1) * SEG_STRIDE + SEG_T0] <= t) si++;
+          this.segCur = si;
+          const so = si * SEG_STRIDE;
+          const glide = d.segGlide[si] === 1;
+          let p = s[so + SEG_P0];
+          let motion = 0;
+          if (glide) {
+            // The raw leaf functions, called directly with the record's fields: the same code
+            // evalFlatSegment / evalFlatSegmentMotion run, without their wrapper frames.
+            const t0 = s[so + SEG_T0];
+            const t1 = s[so + SEG_T1];
+            const m0 = s[so + SEG_M0];
+            const ct1 = s[so + SEG_CURVE_T1];
+            const cp1 = s[so + SEG_CURVE_P1];
+            p = segmentPitch(
+              t0,
+              t1,
+              p,
+              s[so + SEG_P1],
+              s[so + SEG_EASE] as EaseCode,
+              s[so + SEG_BX1],
+              s[so + SEG_BY1],
+              s[so + SEG_BX2],
+              s[so + SEG_BY2],
+              m0,
+              t,
+              ct1,
+              cp1,
+            );
+            motion = segmentMotion(t0, t1, s[so + SEG_P0], m0, t, ct1, cp1);
+          }
+
+          // Vibrato: only while holding, after its onset delay.
+          const vibDepth = A.vibDepthCents * xa + B.vibDepthCents * x;
+          let vibTarget = 0;
+          if (!glide && vibDepth > 0) {
+            const vibDelay = A.vibDelay * xa + B.vibDelay * x;
+            const u = (t - d.holdStart[si] - vibDelay) / VIBRATO_RAMP;
+            vibTarget = u <= 0 ? 0 : u >= 1 ? 1 : u;
+          }
+          if (this.fresh) {
+            st[S_MOTION] = motion;
+            st[S_VIB] = vibTarget;
+          } else {
+            st[S_MOTION] += (motion - st[S_MOTION]) * ctx.motionCoeff;
+            st[S_VIB] += (vibTarget - st[S_VIB]) * ctx.vibratoCoeff;
+          }
+          let vibCents = 0;
+          if (st[S_VIB] > 1e-6) {
+            let lfo = st[S_LFO] + (A.vibRate * xa + B.vibRate * x) * ctx.tickSeconds;
+            lfo -= Math.floor(lfo);
+            st[S_LFO] = lfo;
+            const pos = lfo * SINE_TABLE_SIZE;
+            const i0 = pos | 0;
+            const a = SINE[i0];
+            vibCents = vibDepth * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
+          }
+
+          // Articulation: attack from the decaying envelope, then exponential decay to 1 %.
+          let artic = 1;
+          const amount = A.artAmount * xa + B.artAmount * x;
+          if (amount > 0) {
+            const attack = A.artAttack * xa + B.artAttack * x;
+            const decay = A.artDecay * xa + B.artDecay * x;
+            const ta = t - d.arrive[si];
+            let env = 0;
+            if (ta >= 0) {
+              if (ta < attack) {
+                const pa = d.prevArrive[si];
+                let e0 = 0;
+                if (pa === pa) {
+                  const tp = d.arrive[si] - pa;
+                  e0 =
+                    tp < attack
+                      ? tp / attack
+                      : Math.exp((-(tp - attack) * ARTICULATION_DECAY) / decay);
+                }
+                env = e0 + ((1 - e0) * ta) / attack;
+              } else env = Math.exp((-(ta - attack) * ARTICULATION_DECAY) / decay);
+            }
+            artic = 1 - amount + amount * env;
+          }
+
+          // Level timeline.
+          const Lv = d.levels;
+          let li = this.levelCur;
+          while (li + 1 < d.nLevel && Lv[(li + 1) * LEVEL_STRIDE + LEVEL_T] <= t) li++;
+          this.levelCur = li;
+          let level = 1;
+          if (li >= 0) {
+            const lo = li * LEVEL_STRIDE;
+            const start = d.levelStart[li];
+            const over = Lv[lo + LEVEL_OVER];
+            const u = over > 0 ? (t - Lv[lo + LEVEL_T]) / over : 1;
+            level = u >= 1 ? Lv[lo + LEVEL_GAIN] : start + (Lv[lo + LEVEL_GAIN] - start) * u;
+          }
+
+          // Swap slew: blend from the frozen pre-swap pitch.
+          const sp = st[S_SLEW_PITCH];
+          if (slewR > 0 && sp === sp) p += (sp - p) * slewR;
+          st[S_PITCH] = p;
+
+          // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
+          const spread = A.detuneSpread * xa + B.detuneSpread * x;
+          const mag = st[S_DET_MAG] + spread * st[S_DET_U];
+          const detune = st[S_DET_SIGN] * (mag > DETUNE_FLOOR ? mag : DETUNE_FLOOR);
+          const oct = ctx.refOct + (p - 69) / 12 + (detune + vibCents) / 1200;
+          if (oct === oct && oct < 40 && oct > -40) {
+            let inc = MIP_BASE_HZ * Math.exp(oct * LN2) * ctx.invSampleRate;
+            if (inc > 0.5) inc = 0.5;
+            st[S_CUR_INC] = inc;
+            let m = Math.floor(oct);
+            let w = oct - m;
+            if (m < 0) {
+              m = 0;
+              w = 0;
+            } else if (m >= MIP_COUNT - 1) {
+              m = MIP_COUNT - 2;
+              w = 1;
+            }
+            this.curMip = m;
+            st[S_MIP_W] = w;
+
+            // Amplitude (§8.4).
+            const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
+            const accent = A.accent * xa + B.accent * x;
+            const loud = Math.exp(-(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
+            let amp =
+              VOICE_BASE_GAIN *
+              d.gain *
+              lw *
+              level *
+              (1 + accent * st[S_MOTION]) *
+              artic *
+              loud *
+              gn *
+              st[S_MUTE] *
+              xf;
+            if (slewR > 0) amp += (st[S_SLEW_AMP] - amp) * slewR;
+            st[S_CUR_AMP] = amp > 0 ? amp : 0;
+
+            // Equal-power pan: fixed, by pool index, or by pitch.
+            let pan = d.pan;
+            if (pan !== pan) {
+              if (ctx.panByPitch) {
+                pan = (p - 60) * PAN_PITCH_SLOPE;
+                if (pan > PAN_PITCH_MAX) pan = PAN_PITCH_MAX;
+                else if (pan < -PAN_PITCH_MAX) pan = -PAN_PITCH_MAX;
+              } else pan = st[S_PAN_INDEX];
+            }
+            if (pan > 1) pan = 1;
+            else if (pan < -1) pan = -1;
+            const ppos = (pan + 1) * 0.125 * SINE_TABLE_SIZE; // θ/2π with θ = (pan + 1)·π/4
+            const pi0 = ppos | 0;
+            const pfr = ppos - pi0;
+            const sa = SINE[pi0];
+            st[S_CUR_GR] = sa + (SINE[pi0 + 1] - sa) * pfr;
+            const cpos = ppos + SINE_TABLE_SIZE / 4;
+            const ci0 = cpos | 0;
+            const ca = SINE[ci0];
+            st[S_CUR_GL] = ca + (SINE[ci0 + 1] - ca) * (cpos - ci0);
+            st[S_SEND_REV] = d.sendReverb === d.sendReverb ? d.sendReverb : ctx.sendReverb;
+            st[S_SEND_DLY] = d.sendDelay === d.sendDelay ? d.sendDelay : ctx.sendDelay;
+
+            if (this.fresh || st[S_PREV_AMP] === 0) {
+              st[S_PREV_INC] = st[S_CUR_INC];
+              st[S_PREV_GL] = st[S_CUR_GL];
+              st[S_PREV_GR] = st[S_CUR_GR];
+              if (this.fresh) G0.set(G1);
+              this.fresh = false;
+            }
+          } else ok = false;
+        }
+      }
+
+      if (!ok) {
+        st[S_CUR_AMP] = 0;
+        this.roleG1.fill(0);
+        this.fresh = true;
+      }
+      if (st[S_PREV_AMP] !== 0 || st[S_CUR_AMP] !== 0) this.synth(ctx, k * K);
+      st[S_PREV_AMP] = st[S_CUR_AMP];
+      st[S_PREV_INC] = st[S_CUR_INC];
+      st[S_PREV_GL] = st[S_CUR_GL];
+      st[S_PREV_GR] = st[S_CUR_GR];
       this.roleG0.set(this.roleG1);
     }
-  }
-
-  /** Adds a table source for this tick, matching it to a role by identity. */
-  private addSource(tab: Float32Array, same: Uint8Array | null, g: number): void {
-    if (!(g > 0)) return;
-    const R = this.roleTab;
-    for (let r = 0; r < 4; r++) {
-      if (R[r] === tab) {
-        this.roleG1[r] += g;
-        this.roleClaim[r] = 1;
-        return;
-      }
-    }
-    let best = -1;
-    let bestG = Infinity;
-    for (let r = 0; r < 4; r++) {
-      if (this.roleClaim[r] === 0 && this.roleG0[r] < bestG) {
-        best = r;
-        bestG = this.roleG0[r];
-      }
-    }
-    if (best < 0) return;
-    R[best] = tab;
-    this.roleSame[best] = same;
-    this.roleG0[best] = 0;
-    this.roleG1[best] = g;
-    this.roleClaim[best] = 1;
-  }
-
-  private addSlot(slot: TimbreSlot, weight: number, renderFrame: number): void {
-    if (!(weight > 0)) return;
-    const w = slot.weight(renderFrame);
-    if (slot.data !== null) this.addSource(slot.data, slot.same, weight * w);
-    if (w < 1 && slot.prevData !== null) this.addSource(slot.prevData, slot.prevSame, weight * (1 - w));
-  }
-
-  /** Computes the control values at the end of a tick (piece time t). */
-  private tick(ctx: VoiceContext, t: number, gn: number, renderFrame: number): void {
-    const K = CONTROL_PERIOD;
-    const d = this.data;
-
-    // Crossfade and slew progress.
-    let xf = 1;
-    if (this.xfMode !== XF_NONE) {
-      this.xfPos += K;
-      xf = this.xfGain();
-      if (this.xfPos >= this.xfLen) {
-        if (this.xfMode === XF_IN) this.xfMode = XF_NONE;
-        else this.xfDone = true;
-      }
-    }
-    let slewR = 0;
-    if (this.slewLen > 0) {
-      this.slewPos += K;
-      slewR = 1 - this.slewPos / this.slewLen;
-      if (slewR <= 0) {
-        slewR = 0;
-        this.slewLen = 0;
-      }
-    }
-    const audible = !d.mute && (!ctx.anySolo || d.solo);
-    if (audible) {
-      if (this.muteGain < 1) this.muteGain = Math.min(1, this.muteGain + ctx.muteStep);
-    } else if (this.muteGain > 0) this.muteGain = Math.max(0, this.muteGain - ctx.muteStep);
-
-    const lw = this.lifeAt(t);
-    if (!(lw > 0) || xf === 0 || this.muteGain === 0 || d.nSeg === 0 || d.nTimbre === 0) {
-      this.silence();
-      return;
-    }
-
-    // Pitch and motion.
-    const s = d.segs;
-    let si = this.segCur;
-    while (si + 1 < d.nSeg && s[(si + 1) * SEG_STRIDE + SEG_T0] <= t) si++;
-    this.segCur = si;
-    const so = si * SEG_STRIDE;
-    const glide = d.segGlide[si] === 1;
-    let p = glide ? evalFlatSegment(s, so, t) : s[so + SEG_P0];
-    const motion = glide ? evalFlatSegmentMotion(s, so, t) : 0;
-
-    // Timbre timeline: crossfade from the previous entry's preset (slot A) to this one's (B).
-    const T = d.timbres;
-    let ti = this.timbreCur;
-    while (ti + 1 < d.nTimbre && T[(ti + 1) * TIMBRE_STRIDE + TIMBRE_T] <= t) ti++;
-    this.timbreCur = ti;
-    const slotB = d.timbreSlot[ti];
-    const slotA = ti > 0 ? d.timbreSlot[ti - 1] : slotB;
-    const fade = T[ti * TIMBRE_STRIDE + TIMBRE_FADE];
-    let x = fade > 0 ? (t - T[ti * TIMBRE_STRIDE + TIMBRE_T]) / fade : 1;
-    if (x > 1) x = 1;
-    else if (x < 0) x = 0;
-    if (slotB < 0 || (slotA < 0 && x < 1)) {
-      this.silence();
-      return;
-    }
-    const B = ctx.slots[slotB];
-    const A = slotA >= 0 ? ctx.slots[slotA] : B;
-    const xa = 1 - x;
-    const spread = A.detuneSpread * xa + B.detuneSpread * x;
-    const accent = A.accent * xa + B.accent * x;
-    const artAmount = A.artAmount * xa + B.artAmount * x;
-    const artAttack = A.artAttack * xa + B.artAttack * x;
-    const artDecay = A.artDecay * xa + B.artDecay * x;
-    const vibRate = A.vibRate * xa + B.vibRate * x;
-    const vibDepth = A.vibDepthCents * xa + B.vibDepthCents * x;
-    const vibDelay = A.vibDelay * xa + B.vibDelay * x;
-    this.curSlot = slotB;
-
-    if (this.fresh) {
-      for (let r = 0; r < 4; r++) {
-        this.roleTab[r] = null;
-        this.roleSame[r] = null;
-        this.roleG0[r] = 0;
-      }
-    }
-    this.roleG1.fill(0);
-    this.roleClaim.fill(0);
-    if (A === B) this.addSlot(B, 1, renderFrame);
-    else {
-      this.addSlot(A, xa, renderFrame);
-      this.addSlot(B, x, renderFrame);
-    }
-
-    // Vibrato: only while holding, after its onset delay.
-    let vibTarget = 0;
-    if (!glide && vibDepth > 0) {
-      const u = (t - d.holdStart[si] - vibDelay) / VIBRATO_RAMP;
-      vibTarget = u <= 0 ? 0 : u >= 1 ? 1 : u;
-    }
-    if (this.fresh) {
-      this.motionSm = motion;
-      this.vibSm = vibTarget;
-    } else {
-      this.motionSm += (motion - this.motionSm) * ctx.motionCoeff;
-      this.vibSm += (vibTarget - this.vibSm) * ctx.vibratoCoeff;
-    }
-    let vibCents = 0;
-    if (this.vibSm > 1e-6) {
-      this.lfoPhase += vibRate * ctx.tickSeconds;
-      if (this.lfoPhase >= 1) this.lfoPhase -= Math.floor(this.lfoPhase);
-      vibCents = vibDepth * this.vibSm * sin2pi(this.lfoPhase);
-    }
-
-    // Articulation: attack from the decaying envelope, then exponential decay.
-    let artic = 1;
-    if (artAmount > 0) {
-      const ta = t - d.arrive[si];
-      let env = 0;
-      if (ta >= 0) {
-        if (ta < artAttack) {
-          const pa = d.prevArrive[si];
-          let e0 = 0;
-          if (pa === pa) {
-            const tp = d.arrive[si] - pa;
-            e0 = tp < artAttack ? tp / artAttack : Math.exp((-(tp - artAttack) * ARTICULATION_DECAY) / artDecay);
-          }
-          env = e0 + ((1 - e0) * ta) / artAttack;
-        } else env = Math.exp((-(ta - artAttack) * ARTICULATION_DECAY) / artDecay);
-      }
-      artic = 1 - artAmount + artAmount * env;
-    }
-
-    // Level timeline.
-    const Lv = d.levels;
-    let li = this.levelCur;
-    while (li + 1 < d.nLevel && Lv[(li + 1) * LEVEL_STRIDE + LEVEL_T] <= t) li++;
-    this.levelCur = li;
-    let level = 1;
-    if (li >= 0) {
-      const lo = li * LEVEL_STRIDE;
-      const start = d.levelStart[li];
-      const over = Lv[lo + LEVEL_OVER];
-      const u = over > 0 ? (t - Lv[lo + LEVEL_T]) / over : 1;
-      level = u >= 1 ? Lv[lo + LEVEL_GAIN] : start + (Lv[lo + LEVEL_GAIN] - start) * u;
-    }
-
-    // Swap slew: blend from the frozen pre-swap values.
-    if (slewR > 0) p += (this.slewPitch - p) * slewR;
-    this.curPitch = p;
-
-    // Frequency and mip position (log2 f is linear in pitch, so no log is needed).
-    const oct =
-      ctx.refOct + (p - 69) / 12 + (this.detuneCents(spread) + vibCents) / 1200;
-    if (!(oct === oct) || oct > 40 || oct < -40) {
-      this.silence();
-      return;
-    }
-    let inc = MIP_BASE_HZ * Math.exp(oct * LN2) * ctx.invSampleRate;
-    if (inc > 0.5) inc = 0.5;
-    this.curInc = inc;
-    let m = Math.floor(oct);
-    let w = oct - m;
-    if (m < 0) {
-      m = 0;
-      w = 0;
-    } else if (m >= MIP_COUNT - 1) {
-      m = MIP_COUNT - 2;
-      w = 1;
-    }
-    this.curMip = m;
-    this.curW = w;
-
-    // Amplitude (§8.4) and pan.
-    const loud = Math.exp(-(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
-    let amp =
-      VOICE_BASE_GAIN *
-      d.gain *
-      lw *
-      level *
-      (1 + accent * this.motionSm) *
-      artic *
-      loud *
-      gn *
-      this.muteGain *
-      xf;
-    if (slewR > 0) amp += (this.slewAmp - amp) * slewR;
-    this.curAmp = amp > 0 ? amp : 0;
-
-    let pan = d.pan;
-    if (pan !== pan) {
-      if (ctx.panByPitch) {
-        pan = (p - 60) * PAN_PITCH_SLOPE;
-        if (pan > PAN_PITCH_MAX) pan = PAN_PITCH_MAX;
-        else if (pan < -PAN_PITCH_MAX) pan = -PAN_PITCH_MAX;
-      } else pan = this.panIndex;
-    }
-    if (pan > 1) pan = 1;
-    else if (pan < -1) pan = -1;
-    const th = (pan + 1) * 0.125;
-    this.curGL = cos2pi(th);
-    this.curGR = sin2pi(th);
-    this.curSendRev = d.sendReverb === d.sendReverb ? d.sendReverb : ctx.sendReverb;
-    this.curSendDly = d.sendDelay === d.sendDelay ? d.sendDelay : ctx.sendDelay;
-
-    if (this.fresh || this.prevAmp === 0) {
-      this.prevInc = this.curInc;
-      this.prevGL = this.curGL;
-      this.prevGR = this.curGR;
-      if (this.fresh) this.roleG0.set(this.roleG1);
-      this.fresh = false;
-    }
-  }
-
-  /** Marks the tick silent; the next audible tick re-initialises smoothers. */
-  private silence(): void {
-    this.curAmp = 0;
-    this.roleG1.fill(0);
-    this.fresh = true;
   }
 
   /** Synthesises one control period at buffer offset `off`. */
   private synth(ctx: VoiceContext, off: number): void {
     const K = CONTROL_PERIOD;
     const invK = 1 / K;
+    const st = this.st;
+    const G0 = this.roleG0;
+    const G1 = this.roleG1;
     let active = 0;
     let r0 = -1;
     for (let r = 0; r < 4; r++) {
-      if (this.roleG0[r] > 0 || this.roleG1[r] > 0) {
+      if (G0[r] > 0 || G1[r] > 0) {
         active++;
         r0 = r;
       }
     }
     if (active === 0) return;
 
-    let inc = this.prevInc;
-    const dInc = (this.curInc - inc) * invK;
-    let gL = this.prevGL;
-    const dgL = (this.curGL - gL) * invK;
-    let gR = this.prevGR;
-    const dgR = (this.curGR - gR) * invK;
-    const sR = this.curSendRev;
-    const sD = this.curSendDly;
+    let inc = st[S_PREV_INC];
+    const dInc = (st[S_CUR_INC] - inc) * invK;
+    let gL = st[S_PREV_GL];
+    const dgL = (st[S_CUR_GL] - gL) * invK;
+    let gR = st[S_PREV_GR];
+    const dgR = (st[S_CUR_GR] - gR) * invK;
+    const sR = st[S_SEND_REV];
+    const sD = st[S_SEND_DLY];
     const dryL = ctx.dryL;
     const dryR = ctx.dryR;
     const revIn = ctx.revIn;
@@ -819,14 +939,14 @@ export class Voice {
     const N = WAVETABLE_SIZE;
     const lo = this.curMip * WAVETABLE_STRIDE;
     const hi = lo + WAVETABLE_STRIDE;
-    const w = this.curW;
-    let phase = this.phase;
+    const w = st[S_MIP_W];
+    let phase = st[S_PHASE];
     const end = off + K;
 
     if (active === 1) {
       const tab = this.roleTab[r0] as Float32Array;
-      let amp = this.prevAmp * this.roleG0[r0];
-      const dAmp = (this.curAmp * this.roleG1[r0] - amp) * invK;
+      let amp = st[S_PREV_AMP] * G0[r0];
+      const dAmp = (st[S_CUR_AMP] * G1[r0] - amp) * invK;
       const same = this.roleSame[r0];
       if (w === 0 || w === 1 || (same !== null && same[this.curMip] === 1)) {
         const base = w === 1 ? hi : lo;
@@ -882,8 +1002,8 @@ export class Voice {
         mb[i] = 0;
       }
       for (let r = 0; r < 4; r++) {
-        const g0 = this.roleG0[r];
-        const g1 = this.roleG1[r];
+        const g0 = G0[r];
+        const g1 = G1[r];
         if (g0 === 0 && g1 === 0) continue;
         const tab = this.roleTab[r] as Float32Array;
         let g = g0;
@@ -902,8 +1022,8 @@ export class Voice {
           g += dg;
         }
       }
-      let amp = this.prevAmp;
-      const dAmp = (this.curAmp - amp) * invK;
+      let amp = st[S_PREV_AMP];
+      const dAmp = (st[S_CUR_AMP] - amp) * invK;
       for (let i = 0; i < K; i++) {
         const y = mb[i] * amp;
         amp += dAmp;
@@ -916,6 +1036,6 @@ export class Voice {
         dlyIn[o] += y * sD;
       }
     }
-    this.phase = phase;
+    st[S_PHASE] = phase;
   }
 }

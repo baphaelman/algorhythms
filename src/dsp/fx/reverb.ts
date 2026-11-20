@@ -38,9 +38,9 @@ function pow2Above(n: number): number {
 }
 
 export class Reverb {
-  private readonly sampleRate: number;
-  private readonly lineMask: number;
-  private readonly lineCap: number;
+  private readonly sampleRate: number = 0;
+  private readonly lineMask: number = 0;
+  private readonly lineCap: number = 0;
   private readonly lines: Float64Array;
   private readonly lenCur = new Float64Array(LINES);
   private readonly lenTarget = new Float64Array(LINES);
@@ -50,7 +50,7 @@ export class Reverb {
   private writePos = 0;
 
   private readonly pre: Float64Array;
-  private readonly preMask: number;
+  private readonly preMask: number = 0;
   private preWrite = 0;
   private preCur = 0;
   private preTarget = 0;
