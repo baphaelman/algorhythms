@@ -730,8 +730,8 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
   - **Transition:** sliders for Length, Stagger and Jitter; chips for Order and Curve (Smooth, Linear, Cosine, Expo, plus Custom for a bezier), with a curve preview.
   - **Level:** sliders for Level and Ramp.
   - **Walk:** sliders for region, grid, density (%) and step glide; the allowed steps as toggle chips (−3…+3); bass leap range; Re-roll; and a **Steps** list (time, voice, note) with ▲/▼. Selecting a step highlights its dot on the lines, and clicking a dot selects its row. The first ▲/▼ freezes the walk (§6.2); a "Frozen" badge and an **Unfreeze** button then show, and the generator controls are disabled.
-  - **Voices:** All, Top n, Bottom n (a `rank` selector) or Pick… (a voice checklist).
-  - **Chord voices (revision 6):** a **Voices** count (writes `count`), and a per-voice list (one row per voice: voice, target note, ▲/▼, plus draggable target dots on the score). The first per-voice change freezes the chord (Freeze below: `pitches` NoteSet, `assign: 'ordered'`, `count` kept) as one undo entry; **Unfreeze** restores the original NoteSet.
+  - **Voices (owner 2026-11-20: the artist thinks in notes, not voice identities):** no Top n / Bottom n. Moments target all voices by default; the targeting selector (rank, Pick…) is hidden under an "Advanced" fold, shown open only for pieces that already use it.
+  - **Chord notes (revision 6):** a **Notes: n** count, the number of notes sounding in the chord (writes `count`), and a note list (one row per sounding note, low to high: note name, ▲/▼, plus draggable target dots on the score; no voice names). The first per-voice change freezes the chord (Freeze below: `pitches` NoteSet, `assign: 'ordered'`, `count` kept) as one undo entry; **Unfreeze** restores the original NoteSet.
   - **Arrive together** toggle in Transition (default on).
   - Every slider drag is one undo entry.
 - **Inspector, carried over from M4:**
@@ -1081,7 +1081,7 @@ The original questions follow for reference.
 
 ### Revision 6 (2026-11-20): owner notes on the M4.5 demo
 - **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.
-- **Chord voices (§6.2, §11.3):** `count` on chord; per-voice editing freezes the chord.
+- **Chord notes (§6.2, §11.3):** `count` on chord shown as "Notes: n"; per-note editing freezes the chord; voice targeting (Top/Bottom n) removed from the main inspector (owner).
 - **Context (§7.9, §11.3):** `no-effect` diagnostic; dimmed markers; a palette that greys out no-op moments and previews on hover. Next-move suggestions follow.
 - All in M4.5.
 
