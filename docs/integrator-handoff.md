@@ -62,21 +62,23 @@ Last updated: 2026-11-20, by the second integrator session.
 Last pushed: `61f6f0e`, verified in a clean worktree (719/719 tests, lint, typecheck, build; the full e2e suite passed locally on all three engines).
 
 ## Next tasks
-- **After the owner's answers:** small follow-ups to the Generate/Export dialogs; remove the `?dev` panel if the owner wants (recipe in the build log, "M3d2b").
+- **In flight (2026-11-20, second session):** HUD chord readout (src/render + core query); unison lock steady during glide in/out (src/dsp, Opus high); `generate()` real short pieces down to 30 s (src/core/generate.ts). Merged locally, not yet pushed: colours (per-voice removed) and Generate 30–900 s / `?dev` removal. Check `git log` and the build log if their reports didn't reach you.
 - **Stems speed:** since the lock, each stem pass runs every voice silently, so stems are about 6× slower (0.46× real time of CPU for 24 voices). Optimisation: skip voices that can never join the stem voice's group. Not urgent.
 - **M4 editor:** next milestone. Includes the compiler perf work (worker or incremental compile).
 - **Later backlog:** the expo/bezier allocation fix (M6); choir ideas (breath noise in M6, two oscillators per voice, formants per register, more partials for bass).
 
 ## Waiting on the owner
 - **Device checks:** the iPhone silent-switch test on the live site; MIDI in FL Studio once they have it (until then the automatic round-trip tests stand, as agreed).
-- **Generate panel:** is a 100–900 s length range right? Keep "natural length" as the default (choosing a length uses `sectionSizes`, so proportions differ)? Warn before replacing the open piece (no editor state yet, so it doesn't)?
-- **Export dialog:** should closing the dialog during an export cancel it (it does now; a streamed file is discarded)? Keep or remove the `?dev` panel for the public release?
-- **Unison and wobble A/B** (gitignored `renders/`): `unison8-before`/`-after`, `merge-before`/`-after`, `wobble-preset`, `gen-1-dorian`/`gen-1-dorian-after`.
-- **Older, unanswered:** choir A/B (`choir-before`/`-after`, `reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (numerals read against the major scale: in A dorian, `III` = C♯ major, `bIII` = C; keep unless they object). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
+- **Generate:** warn before replacing the open piece? Unanswered; it doesn't warn.
+- **Older, unanswered:** reed A/B (`reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (numerals read against the major scale: in A dorian, `III` = C♯ major, `bIII` = C; keep unless they object). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
 
 ## Owner rulings so far (details in the build log)
 - **§16 answers:** MIT; time in seconds with an optional BPM grid; no DAW yet (FL Studio later); GitHub Pages; the name is AlgoRhythms (plural) everywhere; 32 voices; M3 before the editor.
-- **Line crossing:** a temporary compile-option toggle only (`compile(piece, { crossings: 'allow' })`, exposed in the `?dev` panel).
-- **Unisons and merges:** steady by default (the unison lock); wobble is its own opt-in timbre setting and preset.
-- **Choir:** was "goofy, robotic" and has been reworked; awaiting the owner's ears.
+- **Line crossing:** forbidden in the app. The core compile option `crossings: 'allow'` remains for tests; the `?dev` panel was removed (2026-11-20).
+- **Unisons and merges:** steady by default (the unison lock); wobble is its own opt-in timbre setting and preset. After the lock: holds were fine, but the owner still heard wobble as voices glide in/out (fix in flight).
+- **Choir:** reworked; the owner heard the difference (2026-11-20).
+- **Line colours:** "Per voice" removed; "By pitch" is the default (2026-11-20).
+- **HUD:** must show the chord currently playing (2026-11-20).
+- **Generate:** length 30–900 s, slider default 2:30, "natural length" optional and off by default (2026-11-20).
+- **Export:** closing the dialog mid-export cancels it (2026-11-20).
 - **MIDI:** per-voice tracks skip channel 10 (integrator call).
