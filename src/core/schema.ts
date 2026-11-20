@@ -324,6 +324,10 @@ export const TimbreSchema = z.looseObject({
     .looseObject({ cents: nonNegative, rate: nonNegative, amp: nonNegative.optional() })
     .optional()
     .describe('Slow seeded random pitch (and amplitude) wander per voice.'),
+  wobble: nonNegative
+    .max(100)
+    .optional()
+    .describe('Unison wobble in cents: 0 (default) locks converged voices into a steady tone.'),
 });
 
 const M = DEFAULT_MIX;

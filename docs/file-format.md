@@ -2819,6 +2819,12 @@ This is the *input* form: fields with defaults are optional here.
               "rate"
             ],
             "additionalProperties": {}
+          },
+          "wobble": {
+            "description": "Unison wobble in cents: 0 (default) locks converged voices into a steady tone.",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
           }
         },
         "required": [

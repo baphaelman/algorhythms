@@ -81,6 +81,8 @@ export interface TimbreParams {
   driftRate: number;
   /** Amplitude drift depth as a fraction (0 = off). */
   driftAmp: number;
+  /** Unison wobble in cents: 0 = converged voices lock (steady); > 0 = they keep beating. */
+  wobble: number;
 }
 
 /** Wavetables for one timbre at one sample rate, plus its scalar params. Transferable. */
@@ -116,6 +118,7 @@ export function timbreParams(t: Timbre): TimbreParams {
     driftCents: Math.max(0, finiteOr(t.drift?.cents ?? 0, 0)),
     driftRate: Math.max(0, finiteOr(t.drift?.rate ?? 0, 0)),
     driftAmp: Math.min(1, Math.max(0, finiteOr(t.drift?.amp ?? 0, 0))),
+    wobble: Math.min(100, Math.max(0, finiteOr(t.wobble ?? 0, 0))),
   };
 }
 

@@ -1,4 +1,5 @@
-/** `node --import ./register.mjs`: installs the extensionless-TypeScript resolver. */
-import { register } from 'node:module';
+/** `node --import ./register.mjs`: installs the extensionless-TypeScript resolver (in-thread). */
+import { registerHooks } from 'node:module';
+import { resolve } from './resolve-ts.mjs';
 
-register('./resolve-ts.mjs', import.meta.url);
+registerHooks({ resolve });

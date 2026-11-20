@@ -478,3 +478,56 @@ The four tests are:
 1. **fflate is not used for the zip** (§12 names it): it can't write ZIP64 (above). The plan's own fallback was taken.
 2. **Mono stems apply to voices and FX only**; `mix.wav` stays stereo.
 3. **The size estimate is exact**, not approximate: every entry's size follows from the frame count, and `zipSize` computes headers and the directory.
+
+## Unison lock + wobble preset (2026-11-20)
+
+Implements the owner's decision above ("unison wobble"): converged voices sound steady by default; the beating is an opt-in timbre setting and a new `wobble` preset.
+
+### Design
+- **Group pass, once per block** (`Graph.computeGroups`, src/dsp/graph.ts), on each main voice's end-of-block state (published by `Voice.render` into `VoiceContext.g*`). Pair weight w = smoothstep over the score-pitch distance (full ≤ 2 cents, none ≥ 20 cents) × both voices' lockability (timbre `wobble` = 0). Pairs moving apart faster than 2–12 cents/s leave early.
+- **Per voice:** lock amount λ = max w (smoothed 40 ms up, 100 ms down); a pitch correction λ·(m̄ − m) toward the group's mean *modulated* pitch (detune, drift and vibrato included, so they merge into the group's); a phase pull toward the group's mean phase (≤ 0.4 % of f) and a vibrato-phase pull. Targets are weighted by amplitude × settled stillness 1/(1 + |v|/20 cents/s), so the arriving voice converges and a held survivor keeps its pitch.
+- **Within a group** level drift and vibrato jitter fade by λ.
+- **Group gain** h = √(Σw²A²)/|Σ w·A·e^{iφ}| from the measured phases (≤ +3 dB, 10 ms smoothing): a coherent group sits at the incoherent (chord) level. Applied per voice in `amp`, so voice stems carry it.
+- **Parting:** θ accumulates each voice's phase-pull correction and unwinds (≤ 1.2 % of f) while the voice parts from a close neighbour, so voices leave with unrelated phases (without it a symmetric split fanned out from one phase and dipped to 0.40).
+- **Fresh voices** (seek, birth, unmute) snap to the group's phase and vibrato phase at zero amplitude, so a seek re-locks with no level change.
+- **Stems and mute:** in `RenderMode.Voice` every voice still runs its controls and phase silently (`advance()`, the synth loop's exact phase arithmetic), so the group pass sees identical state in every mode. Muted voices keep running silently: they stay in their group and mute changes only their own level.
+- **`Timbre.wobble?: number`** (cents, 0–100; types, schema, `TimbreParams`, `TimbreSlot`): > 0 never locks, and scales the base detune to a mean |detune| of `wobble` (2.75 = the old detune exactly). Scale and lockability interpolate across timbre crossfades. Preset `wobble`: soft glass-like, wobble 3, 1-cent slow drift.
+- **Fixtures:** `unisonSplitScore`, `unisonChordScore`, `lockStressScore`; pages `unison-split-8`, `unison-chord`, `wobble-8`, `wobble-phrase`, `preset-wobble`.
+
+### Results (tests/dsp/unison.test.ts unless noted; "before" from the first builder's scratch runs)
+| Check | Before | After |
+|---|---|---|
+| Held unison N = 2…32, 9 s average × one voice | 0.5–1.6 band | 0.950–0.958 (−0.4 dB is pan narrowing) |
+| Held unison, 50 ms envelope CV (sine) | 0.41 | ≤ 0.0017 |
+| Converge/hold/diverge, 0.25 s windows ÷ incoherent sum (each voice rendered alone), N = 2/8/32 at 45/57/69 | 0.11–1.92 | 0.75–1.11 |
+| Merge, 0.25 s windows × one voice, 12 id sets | 0.53–1.41 | 0.80–1.19 |
+| Merge survivor bend (voice stem, zero crossings) | ~10 cents | ≤ 6.7 cents |
+| Seek into a held unison, N = 2/8/32: level ÷ straight playback; click | — | 1.000; 0.05 (threshold 0.16–0.19) |
+| `wobble-8` envelope CV | — | 0.42 (beating kept) |
+| Stems Σ − mix: unison phrase with a muted voice in a group; lock workload (stems.test.ts) | — | −143.4 / −146.7 dBFS |
+| Unison phrase WAV: identical bytes at chunk sizes 1 s / 0.37 s / 1 block (export.test.ts) | — | yes |
+
+RTF (CPU time, best of 5 × 6 s, interleaved with the pre-change tree, load average 22–35):
+| Workload | Before | After |
+|---|---|---|
+| 24 voices + FX, dense glides (the rtf.test.ts workload) | 44.5× | 40.5× |
+| 24 voices converged into one unison (group pass at its O(n²) worst) | 57.0× | 46.8× |
+| One voice-stem pass, 24 voices | 430–484× | 56–67× |
+
+**Stems export is about 6× slower** (24 stems: ≈ 0.46 × real time of CPU vs 0.08 ×), because every stem pass now runs every voice's controls. A later optimisation: skip voices that can never join the stem voice's group (transitive pitch proximity over the piece).
+
+### No-GC: root causes and fixes
+1. **First-visit deopts in `computeGroups`.** It deoptimised on branches with no type feedback (the snap loop) and on `sep > SEP_START`, speculated as integer because separation speeds had always been 0. Deoptimised code boxes every double: MBs per second until reoptimised. This is a one-time JIT cost per path, so the 'lock' harness now warms up over the whole score plus one full seek cycle (`tests/dsp/node/gc-harness.ts`).
+2. **`render`'s inlining budget (pre-existing).** TurboFan's cumulative inlining budget (920 bytecode bytes) could not hold `noiseTick` (331) + `segmentMotion` (~210) + `segmentPitch` (~490). Which one was left out depended on call-frequency feedback at compile time, so it varied between runs and with machine load. When `segmentPitch` was left out, every glide tick boxed its 13 double arguments (~40 MB/min, a scavenge every ~0.3 s; 2 of 6 runs under load). This also explains the old note that `stressScore` scavenges. **Fix:** `noiseTick`'s body is written inline in `render`, with identical arithmetic.
+3. **Harness noise.** The TS resolver used `module.register()`, whose hooks run in a second isolate. That isolate's memory-reducer GCs (~8 s after start) printed into `--trace-gc` when a loaded run reached them. It now uses `module.registerHooks` (in-thread).
+- Result: 0 GC lines in 12 of 12 'lock' runs and 2 of 2 'plain' runs, six at a time in parallel at load 10–17.
+- Left: rare paths (seek, the birth probe) run unoptimised the first time and allocate a few KB; they don't trigger a GC.
+
+### Deviations from PLAN.md (for the integrator to fold into §8.4 / P2)
+1. **§8.4 detune is no longer the unison safeguard** (also lines on §8.4 "with detune: converged voices beat", the newborn note in §7, the start-phase note, and §8.7 seek). The lock is: converged voices share pitch and phase, and h holds them at the incoherent level. Detune stays per voice, and is averaged into the group's pitch.
+2. **Phases couple across voices** (group pass per block). Determinism (P2) holds: there are no time sources, and the inputs are block-start state. A seek re-locks at the group's phase (level 1.000) rather than restoring the from-0 phases.
+3. **Stem passes run every voice silently** (cost above), and **muted voices keep running** silently.
+4. **New Timbre field `wobble`** (schema, docs/file-format.md) and a 7th built-in preset, `wobble`.
+5. **Outside my directories:** the tests/unit/audio/stems.test.ts fixture gain went from 3 to 4. Crossings no longer sum coherently, so gain 3 no longer drove the mix to the limiter ceiling.
+
+Owner A/B WAVs (24-bit, gitignored `renders/`): `unison8-before`/`unison8-after`, `merge-before`/`merge-after`, `wobble-preset` (`unisonChordScore('wobble')`), `gen-1-dorian` (before) / `gen-1-dorian-after`.

@@ -4,6 +4,13 @@
  * band-limited wavetable oscillator with mip crossfade, articulation,
  * motion accent, loudness tilt, life fades, level ramps, equal-power pan and FX sends.
  *
+ * Unison lock (docs/build-log.md, "Unison lock"): the graph groups voices whose pitches meet, once
+ * per block, and hands each voice its lock amount λ, a pitch correction toward the group, a phase
+ * and vibrato-phase pull, a group gain h and (for a voice starting from silence) a phase to start
+ * at. Within a group every voice moves to the group's mean pitch (detune and drift included) and
+ * level drift and vibrato jitter fade out by λ, so the group sums to one steady tone; h keeps that
+ * tone at the level of the same voices spread into a chord.
+ *
  * Evaluation is at control rate: once per CONTROL_PERIOD frames the voice computes its frequency,
  * amplitude, pan and mip position, and the samples in between interpolate linearly (phase
  * increment, amplitude and pan gains). `render` never allocates (§8.11).
@@ -56,6 +63,7 @@ import type { FlatVoice } from '../core/flat';
 import {
   BLOCK_FRAMES,
   CONTROL_PERIOD,
+  DSP_MAX_VOICES,
   MIN_LIFE_FADE,
   MUTE_RAMP,
   SWAP_CROSSFADE_SEMITONES,
@@ -79,8 +87,8 @@ const MOTION_SMOOTHING = 0.015;
 /** Smoothing of the vibrato depth, so vibrato stops without a pitch step when a glide starts. */
 const VIBRATO_SMOOTHING = 0.04;
 /** Loudness tilt 2^(−(p − 57)/48) (the prototype's equal-loudness tilt, §8.4). */
-const LOUDNESS_PITCH = 57;
-const LOUDNESS_SLOPE = LN2 / 48;
+export const LOUDNESS_PITCH = 57;
+export const LOUDNESS_SLOPE = LN2 / 48;
 /** Pan per semitone for `panAuto: 'pitch'`, centred on middle C, clamped to ±PAN_PITCH_MAX. */
 const PAN_PITCH_SLOPE = 1 / 40;
 const PAN_PITCH_MAX = 0.8;
@@ -88,6 +96,8 @@ const PAN_PITCH_MAX = 0.8;
 const DETUNE_MIN = 1.5;
 const DETUNE_RANGE = 2.5;
 const DETUNE_FLOOR = 1;
+/** Mean base detune magnitude (DETUNE_MIN + DETUNE_RANGE / 2): `wobble` scales the base by w/this. */
+const INV_DETUNE_MEAN = 1 / (DETUNE_MIN + DETUNE_RANGE / 2);
 /** Hash salts. */
 const SALT_DETUNE = 0x0de7;
 const SALT_SPREAD = 0x5bd1;
@@ -102,6 +112,7 @@ const SALT_VJ_DEPTH = 0xde97;
  * audibly repeat). The noise phase advances at the timbre's drift rate, or DEFAULT_WANDER_RATE.
  */
 const DRIFT_KNOTS = 64;
+const KNOT_MASK = DRIFT_KNOTS - 1;
 const DEFAULT_WANDER_RATE = 0.3;
 /** Noise streams: phase scale and offset (in knots) of each, read off the same knot ring. */
 const NOISE_SCALE = new Float64Array([1, 2.13, 0.61, 0.83, 1.37]);
@@ -344,6 +355,44 @@ export class VoiceContext {
   readonly phaseBuf = new Float64Array(CONTROL_PERIOD);
   readonly mixBuf = new Float64Array(CONTROL_PERIOD);
 
+  // Unison lock, by pool index. Written by each main voice at the end of its block (g*In), read
+  // by the graph's group pass, which writes the per-block controls (g*Out) the voices then read.
+  /** 1 when the voice synthesised (was alive with tables) at its last tick. */
+  readonly gOk = new Uint8Array(DSP_MAX_VOICES);
+  /** Score pitch (after swap slew) in cents. */
+  readonly gPitch = new Float64Array(DSP_MAX_VOICES);
+  /** The voice's own modulated pitch in cents: pitch + detune + drift + vibrato. */
+  readonly gMod = new Float64Array(DSP_MAX_VOICES);
+  /** Raw amplitude: everything but g_n, h, mute, crossfades and slews. */
+  readonly gAmp = new Float64Array(DSP_MAX_VOICES);
+  /** Oscillator phase and vibrato LFO phase, in cycles. */
+  readonly gPhase = new Float64Array(DSP_MAX_VOICES);
+  readonly gLfo = new Float64Array(DSP_MAX_VOICES);
+  /** Own phase increment per sample (before the lock pull). */
+  readonly gInc = new Float64Array(DSP_MAX_VOICES);
+  /** Accumulated phase pull θ (cycles, wrapped to [−0.5, 0.5)). */
+  readonly gTheta = new Float64Array(DSP_MAX_VOICES);
+  /** Lockability 0..1 (1 when the timbre's wobble is 0). */
+  readonly gLock = new Float64Array(DSP_MAX_VOICES);
+  /** Lock amount λ (0..1) for this block. */
+  readonly gLam = new Float64Array(DSP_MAX_VOICES);
+  /** Pitch correction toward the group, cents. */
+  readonly gCorr = new Float64Array(DSP_MAX_VOICES);
+  /** Phase pull: added to the phase increment per sample. */
+  readonly gDInc = new Float64Array(DSP_MAX_VOICES);
+  /** Vibrato-phase pull: added to the vibrato rate, Hz. */
+  readonly gDLfo = new Float64Array(DSP_MAX_VOICES);
+  /** Group gain h at the block start and end. */
+  readonly gH0 = new Float64Array(DSP_MAX_VOICES).fill(1);
+  readonly gH1 = new Float64Array(DSP_MAX_VOICES).fill(1);
+  /**
+   * Start phase for a voice starting from silence (NaN = keep its own), the increment by which
+   * it advances per frame of the block before the voice starts, and the vibrato phase.
+   */
+  readonly gSnapPh = new Float64Array(DSP_MAX_VOICES).fill(NaN);
+  readonly gSnapInc = new Float64Array(DSP_MAX_VOICES);
+  readonly gSnapLfo = new Float64Array(DSP_MAX_VOICES);
+
   constructor(sampleRate: number, slots: TimbreSlot[]) {
     this.slots = slots;
     this.sampleRate = sampleRate;
@@ -386,7 +435,27 @@ const S_NOISE_PH = 25;
 const S_NOISE_0 = 26;
 const S_VJ_RATE_U = 31;
 const S_VJ_DEPTH_U = 32;
-const STATE_SIZE = 33;
+/** Unison lock controls for the current block (copied from the context; frozen in ghosts). */
+const S_LAM = 33;
+const S_CORR = 34;
+const S_DINC = 35;
+const S_DLFO = 36;
+const S_H0 = 37;
+const S_H1 = 38;
+const S_SNAP_PH = 39;
+const S_SNAP_INC = 40;
+const S_SNAP_LFO = 41;
+/** Values published to the group pass at the end of each block. */
+const S_RAW_AMP = 42;
+const S_OWN_INC = 43;
+const S_MOD = 44;
+const S_LOCKABLE = 45;
+/**
+ * Accumulated phase pull θ, in cycles: how far the group has moved this voice's phase from where it
+ * would be on its own. Leaving a group unwinds it, so voices part with unrelated phases.
+ */
+const S_THETA = 46;
+const STATE_SIZE = 47;
 
 /**
  * One synthesis voice (or ghost).
@@ -464,6 +533,9 @@ export class Voice {
     st[S_XF_FROM] = 1;
     st[S_DET_SIGN] = 1;
     st[S_DET_MAG] = 2;
+    st[S_H0] = st[S_H1] = 1;
+    st[S_SNAP_PH] = NaN;
+    st[S_LOCKABLE] = 1;
   }
 
   /** Sets pool identity: detune, start phase and auto-pan position (§8.4). */
@@ -485,10 +557,30 @@ export class Voice {
       (index % 2 === 1 ? 1 : -1) * (0.12 + (0.5 * index) / Math.max(1, poolSize - 1));
   }
 
-  /** Detune in cents for a timbre spread (§8.4: alternating sign, never below 1 cent). Tests. */
-  detuneCents(spread: number): number {
-    const m = this.st[S_DET_MAG] + spread * this.st[S_DET_U];
-    return this.st[S_DET_SIGN] * (m > DETUNE_FLOOR ? m : DETUNE_FLOOR);
+  /**
+   * Detune in cents for a timbre's spread and wobble, before any unison lock fades it (§8.4:
+   * alternating sign; never below 1 cent, or below 1 cent × wobble / 2.75 for small wobbles). Tests.
+   */
+  detuneCents(spread: number, wobble = 0): number {
+    const scale = wobble > 0 ? wobble * INV_DETUNE_MEAN : 1;
+    const m = this.st[S_DET_MAG] * scale + spread * this.st[S_DET_U];
+    return this.st[S_DET_SIGN] * Math.max(m, DETUNE_FLOOR * Math.min(1, scale));
+  }
+
+  /** Unison lock amount λ (0..1) in effect for the last block (tests). */
+  get lockAmount(): number {
+    return this.st[S_LAM];
+  }
+
+  /** Whether the voice starts from scratch at its next tick (after a jump, or from silence). */
+  get isFresh(): boolean {
+    return this.fresh;
+  }
+
+  /** Publishes the current oscillator and vibrato phases to the group pass. */
+  publishPhase(ctx: VoiceContext): void {
+    ctx.gPhase[this.index] = this.st[S_PHASE];
+    ctx.gLfo[this.index] = this.st[S_LFO];
   }
 
   /** Drift noise knot i (tests: drift is a pure function of the voice hash and piece seed). */
@@ -645,12 +737,33 @@ export class Voice {
    * tick it evaluates pitch, timbre, envelopes, frequency, amplitude and pan at the tick's end,
    * then synthesises the tick's frames interpolating from the previous tick.
    */
-  render(ctx: VoiceContext, frame0: number): void {
+  render(ctx: VoiceContext, frame0: number, audible: boolean): void {
     const K = CONTROL_PERIOD;
     const st = this.st;
     const d = this.data;
     const inv = this.invRate;
     const slots = ctx.slots;
+    if (!this.isGhost) {
+      // This block's unison-lock controls (see Graph.computeGroups). Ghosts keep the copies they
+      // were spawned with, frozen.
+      const gi = this.index;
+      st[S_LAM] = ctx.gLam[gi];
+      st[S_CORR] = ctx.gCorr[gi];
+      st[S_DINC] = ctx.gDInc[gi];
+      st[S_DLFO] = ctx.gDLfo[gi];
+      st[S_H0] = ctx.gH0[gi];
+      st[S_H1] = ctx.gH1[gi];
+      st[S_SNAP_PH] = ctx.gSnapPh[gi];
+      st[S_SNAP_INC] = ctx.gSnapInc[gi];
+      st[S_SNAP_LFO] = ctx.gSnapLfo[gi];
+    } else {
+      st[S_H0] = st[S_H1];
+      st[S_DINC] = 0;
+      st[S_DLFO] = 0;
+      st[S_SNAP_PH] = NaN;
+    }
+    const lam = st[S_LAM];
+    const free = 1 - lam;
     for (let k = 0; k < TICKS_PER_BLOCK; k++) {
       const frame = frame0 + (k + 1) * K;
       const t = frame * inv;
@@ -689,7 +802,9 @@ export class Voice {
       const lw = this.lifeTick[k + 1];
 
       // Timbre timeline: crossfade from the previous entry's preset (slot A) to this one's (B).
-      let ok = lw > 0 && xf > 0 && st[S_MUTE] > 0 && d.nSeg > 0 && d.nTimbre > 0;
+      // A muted voice keeps running silently, so it stays locked in its group and unmuting it
+      // changes nothing but its own level.
+      let ok = lw > 0 && xf > 0 && d.nSeg > 0 && d.nTimbre > 0;
       let slotA = -1;
       let slotB = -1;
       let x = 1;
@@ -811,11 +926,21 @@ export class Voice {
           if (this.fresh) {
             st[S_MOTION] = motion;
             st[S_VIB] = vibTarget;
+            // Starting from silence inside a group: take the group's phase (and vibrato phase),
+            // advanced to this tick, so the lock holds from the first sample.
+            const sp = st[S_SNAP_PH];
+            if (sp === sp) {
+              let ph = sp + st[S_SNAP_INC] * (k * K);
+              ph -= Math.floor(ph);
+              st[S_THETA] += ph - st[S_PHASE];
+              st[S_PHASE] = ph;
+              st[S_LFO] = st[S_SNAP_LFO];
+            }
           } else {
             st[S_MOTION] += (motion - st[S_MOTION]) * ctx.motionCoeff;
             st[S_VIB] += (vibTarget - st[S_VIB]) * ctx.vibratoCoeff;
           }
-          // Drift and vibrato jitter: slow seeded noise per voice (see noiseTick).
+          // Drift and vibrato jitter: slow seeded noise per voice.
           let vibRate = A.vibRate * xa + B.vibRate * x;
           let vibDepthNow = vibDepth;
           let driftCents = 0;
@@ -826,16 +951,46 @@ export class Voice {
           if (jitter > 0 || driftDepth > 0 || driftAmp > 0) {
             const dr = A.driftRate * xa + B.driftRate * x;
             st[S_NOISE_RATE] = dr > 0 ? dr : DEFAULT_WANDER_RATE;
-            this.noiseTick(frame, this.fresh);
+            // The noise streams, written out here rather than as a method: render's TurboFan
+            // inlining budget (920 bytecode bytes) cannot hold a noise method plus segmentPitch
+            // and segmentMotion, and whichever is left out then boxes doubles at every call (a
+            // scavenge every few seconds). Advance the noise phase to `frame` (re-derived from
+            // the piece time when fresh, so a seek lands where playing through would) and
+            // evaluate the five streams into st[S_NOISE_0 + j].
+            const nRate = st[S_NOISE_RATE];
+            if (this.fresh) st[S_NOISE_PH] = t * nRate;
+            else st[S_NOISE_PH] += nRate * K * inv;
+            const nPh = st[S_NOISE_PH];
+            const kn = this.knots;
+            for (let j = 0; j < 5; j++) {
+              const y = nPh * NOISE_SCALE[j] + NOISE_OFFSET[j];
+              const fi = Math.floor(y);
+              const f = y - fi;
+              const i = fi | 0;
+              const p0 = kn[(i - 1) & KNOT_MASK];
+              const p1 = kn[i & KNOT_MASK];
+              const p2 = kn[(i + 1) & KNOT_MASK];
+              const p3 = kn[(i + 2) & KNOT_MASK];
+              // Catmull-Rom through the knots: smooth (C¹) and passes through every knot.
+              st[S_NOISE_0 + j] =
+                p1 +
+                0.5 *
+                  f *
+                  (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
+            }
+            // Within a unison group (λ) level drift and vibrato jitter fade out, so the group stays
+            // one steady tone (pitch drift and detune are averaged across the group instead).
             driftCents = driftDepth * (0.75 * st[S_NOISE_0] + 0.35 * st[S_NOISE_0 + 1]);
-            driftGain = 1 + driftAmp * st[S_NOISE_0 + 4];
+            driftGain = 1 + free * driftAmp * st[S_NOISE_0 + 4];
+            const jf = jitter * free;
             vibRate *=
-              1 + jitter * (VJ_RATE_SPREAD * st[S_VJ_RATE_U] + VJ_RATE_WOBBLE * st[S_NOISE_0 + 2]);
+              1 + jf * (VJ_RATE_SPREAD * st[S_VJ_RATE_U] + VJ_RATE_WOBBLE * st[S_NOISE_0 + 2]);
             const df =
-              1 +
-              jitter * (VJ_DEPTH_SPREAD * st[S_VJ_DEPTH_U] + VJ_DEPTH_WOBBLE * st[S_NOISE_0 + 3]);
+              1 + jf * (VJ_DEPTH_SPREAD * st[S_VJ_DEPTH_U] + VJ_DEPTH_WOBBLE * st[S_NOISE_0 + 3]);
             vibDepthNow *= df > 0 ? df : 0;
           }
+          // The group pulls vibrato phases together, so a locked group keeps its full vibrato.
+          vibRate = Math.max(0, vibRate + st[S_DLFO]);
 
           let vibCents = 0;
           if (st[S_VIB] > 1e-6) {
@@ -892,15 +1047,31 @@ export class Voice {
           if (slewR > 0 && sp === sp) p += (sp - p) * slewR;
           st[S_PITCH] = p;
 
-          // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
+          // Detune (§8.4), scaled by the timbre's wobble when it has one. Interpolating the scale
+          // and the lockability (not the wobble itself) keeps timbre crossfades continuous.
+          const wA = A.wobble;
+          const wB = B.wobble;
+          const scale =
+            (wA > 0 ? wA * INV_DETUNE_MEAN : 1) * xa + (wB > 0 ? wB * INV_DETUNE_MEAN : 1) * x;
+          st[S_LOCKABLE] = (wA > 0 ? 0 : xa) + (wB > 0 ? 0 : x);
           const spread = A.detuneSpread * xa + B.detuneSpread * x;
-          const mag = st[S_DET_MAG] + spread * st[S_DET_U];
-          const detune = st[S_DET_SIGN] * (mag > DETUNE_FLOOR ? mag : DETUNE_FLOOR);
-          const oct = ctx.refOct + (p - 69) / 12 + (detune + vibCents + driftCents) / 1200;
+          const mag = st[S_DET_MAG] * scale + spread * st[S_DET_U];
+          const detune = st[S_DET_SIGN] * Math.max(mag, DETUNE_FLOOR * Math.min(1, scale));
+
+          // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
+          // Within a group, the correction moves the voice to the group's (stillness-weighted)
+          // mean modulated pitch, so its detune and drift merge into the group's.
+          const own = detune + driftCents + vibCents;
+          st[S_MOD] = p * 100 + own;
+          const oct = ctx.refOct + (p - 69) / 12 + (own + st[S_CORR]) / 1200;
           if (oct === oct && oct < 40 && oct > -40) {
             let inc = MIP_BASE_HZ * Math.exp(oct * LN2) * ctx.invSampleRate;
             if (inc > 0.5) inc = 0.5;
-            st[S_CUR_INC] = inc;
+            st[S_OWN_INC] = inc;
+            // The group's phase pull, accumulated into θ.
+            inc += st[S_DINC];
+            st[S_THETA] += st[S_DINC] * K;
+            st[S_CUR_INC] = inc > 0.5 ? 0.5 : inc < 0 ? 0 : inc;
             // Mip index and crossfade weight per role (formant timbres use finer mips).
             for (let r = 0; r < 4; r++) {
               const mpo = this.roleMpo[r];
@@ -923,7 +1094,7 @@ export class Voice {
             const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
             const accent = A.accent * xa + B.accent * x;
             const loud = Math.exp(-(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
-            let amp =
+            const raw =
               VOICE_BASE_GAIN *
               d.gain *
               lw *
@@ -931,10 +1102,11 @@ export class Voice {
               driftGain *
               (1 + accent * st[S_MOTION]) *
               artic *
-              loud *
-              gn *
-              st[S_MUTE] *
-              xf;
+              loud;
+            st[S_RAW_AMP] = raw;
+            // Group gain h, interpolated across the block.
+            const h = st[S_H0] + ((st[S_H1] - st[S_H0]) * (k + 1)) / TICKS_PER_BLOCK;
+            let amp = raw * h * gn * st[S_MUTE] * xf;
             if (slewR > 0) amp += (st[S_SLEW_AMP] - amp) * slewR;
             st[S_CUR_AMP] = amp > 0 ? amp : 0;
 
@@ -977,46 +1149,50 @@ export class Voice {
         this.roleG1.fill(0);
         this.fresh = true;
       }
-      if (st[S_PREV_AMP] !== 0 || st[S_CUR_AMP] !== 0) this.synth(ctx, k * K);
+      // The phase advances whenever the voice runs, whether or not it is heard (muted, or not the
+      // stem being rendered), so the group pass sees the same phases in every render mode.
+      if (st[S_PREV_AMP] !== 0 || st[S_CUR_AMP] !== 0) this.synth(ctx, k * K, audible);
+      else if (ok) this.advance();
       st[S_PREV_AMP] = st[S_CUR_AMP];
       st[S_PREV_INC] = st[S_CUR_INC];
       st[S_PREV_GL] = st[S_CUR_GL];
       st[S_PREV_GR] = st[S_CUR_GR];
       this.roleG0.set(this.roleG1);
     }
-  }
-
-  /**
-   * Advances the drift noise phase to piece frame `frame` (re-derived from the piece time when
-   * `fresh`, so a seek lands where playing through would) and evaluates the five noise streams into
-   * st[S_NOISE_0 + j]. Integer and boolean arguments only (no boxing); allocation-free.
-   */
-  private noiseTick(frame: number, fresh: boolean): void {
-    const st = this.st;
-    const rate = st[S_NOISE_RATE];
-    if (fresh) st[S_NOISE_PH] = frame * this.invRate * rate;
-    else st[S_NOISE_PH] += rate * CONTROL_PERIOD * this.invRate;
-    const ph = st[S_NOISE_PH];
-    const kn = this.knots;
-    const mask = DRIFT_KNOTS - 1;
-    for (let j = 0; j < 5; j++) {
-      const y = ph * NOISE_SCALE[j] + NOISE_OFFSET[j];
-      const fi = Math.floor(y);
-      const f = y - fi;
-      const i = fi | 0;
-      const p0 = kn[(i - 1) & mask];
-      const p1 = kn[i & mask];
-      const p2 = kn[(i + 1) & mask];
-      const p3 = kn[(i + 2) & mask];
-      // Catmull-Rom through the knots: smooth (C¹) and passes through every knot.
-      st[S_NOISE_0 + j] =
-        p1 +
-        0.5 * f * (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
+    if (!this.isGhost) {
+      // Publish this block's end state to the next group pass.
+      const gi = this.index;
+      ctx.gOk[gi] = this.fresh ? 0 : 1;
+      ctx.gPitch[gi] = st[S_PITCH] * 100;
+      ctx.gMod[gi] = st[S_MOD];
+      ctx.gAmp[gi] = st[S_RAW_AMP];
+      ctx.gPhase[gi] = st[S_PHASE];
+      ctx.gLfo[gi] = st[S_LFO];
+      ctx.gInc[gi] = st[S_OWN_INC];
+      ctx.gLock[gi] = st[S_LOCKABLE];
+      let th = st[S_THETA];
+      th -= Math.floor(th + 0.5);
+      st[S_THETA] = th;
+      ctx.gTheta[gi] = th;
     }
   }
 
-  /** Synthesises one control period at buffer offset `off`. */
-  private synth(ctx: VoiceContext, off: number): void {
+  /** Advances the phase over one control period without producing sound (same arithmetic). */
+  private advance(): void {
+    const st = this.st;
+    let inc = st[S_PREV_INC];
+    const dInc = (st[S_CUR_INC] - inc) * (1 / CONTROL_PERIOD);
+    let phase = st[S_PHASE];
+    for (let i = 0; i < CONTROL_PERIOD; i++) {
+      phase += inc;
+      if (phase >= 1) phase -= 1;
+      inc += dInc;
+    }
+    st[S_PHASE] = phase;
+  }
+
+  /** Synthesises one control period at buffer offset `off` (only advances it if not `audible`). */
+  private synth(ctx: VoiceContext, off: number, audible: boolean): void {
     const K = CONTROL_PERIOD;
     const invK = 1 / K;
     const st = this.st;
@@ -1031,6 +1207,10 @@ export class Voice {
       }
     }
     if (active === 0) return;
+    if (!audible) {
+      this.advance();
+      return;
+    }
 
     let inc = st[S_PREV_INC];
     const dInc = (st[S_CUR_INC] - inc) * invK;

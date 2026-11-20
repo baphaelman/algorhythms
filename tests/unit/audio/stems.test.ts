@@ -24,7 +24,8 @@ import { renderWav } from '../../../src/audio/wav-export';
 
 function fixture(): StemsInput & { score: CompiledScore } {
   const score = stressScore(8, 6, 1, 9);
-  for (const v of score.voices) v.gain = 3; // push the limiter
+  // Push the limiter (4, not 3: the unison lock keeps crossing voices at their incoherent level).
+  for (const v of score.voices) v.gain = 4;
   score.voices[2].mute = true; // no stem for a muted voice
   return { score, mix: { ...FIXTURE_MIX, tone: { tilt: 1.5, lowpassHz: 9000 } } };
 }

@@ -10,8 +10,14 @@
  * semitone (or its timbre or life changes) and slews otherwise. The FX keep running throughout,
  * so tails continue.
  *
+ * Unison lock (docs/build-log.md, "Unison lock"): once per block, `computeGroups` finds voices
+ * whose pitches meet and steers them into one steady, phase-coherent tone at the level the same
+ * voices would have as a chord (see Voice for what each voice does with it).
+ *
  * Stems (§12): `setRenderMode` renders one voice (its dry signal only) or the FX returns only,
- * through the same tone stage and limiter delay; `setLimiterCapture`/`setLimiterReplay` record and
+ * through the same tone stage and limiter delay. Every other voice still runs, silently, because
+ * the unison lock couples voices: so each voice stem carries exactly what that voice contributed
+ * to the mix; `setLimiterCapture`/`setLimiterReplay` record and
  * replay the limiter's per-sample gain g_L. Σ voice stems + FX stem = mix.
  *
  * `process()` is allocation-free (§8.11). Methods that take scores or tables allocate, and are
@@ -29,14 +35,24 @@ import {
   NORM_SMOOTHING,
   SEEK_FADE,
   SWAP_FADE,
+  VOICE_BASE_GAIN,
 } from './constants';
 import { PingPongDelay } from './fx/delay';
 import { Limiter } from './fx/limiter';
 import { Reverb } from './fx/reverb';
 import { Tone } from './fx/tone';
 import { MixState, type ParamValue } from './mix';
+import { SINE, SINE_TABLE_SIZE } from './sine';
 import { TimbreSlot } from './timbre-slot';
-import { EMPTY_VOICE_DATA, TICKS_PER_BLOCK, Voice, VoiceContext, VoiceData } from './voice';
+import {
+  EMPTY_VOICE_DATA,
+  LOUDNESS_PITCH,
+  LOUDNESS_SLOPE,
+  TICKS_PER_BLOCK,
+  Voice,
+  VoiceContext,
+  VoiceData,
+} from './voice';
 import { MIP_BASE_HZ, type WavetableSet } from './wavetable';
 
 /** What `process()` sends to the master (stems, §12). */
@@ -68,6 +84,52 @@ export const AnchorReason = {
   Swap: 5,
   End: 6,
 } as const;
+
+/**
+ * Unison lock (docs/build-log.md, "Unison lock"). Two voices group fully when their score pitches
+ * are within LOCK_FULL cents, not at all beyond LOCK_EDGE cents, smoothly in between.
+ */
+const LOCK_FULL = 2;
+const LOCK_EDGE = 20;
+/**
+ * Phase pull: a voice's frequency moves toward its group's mean phase by up to LOCK_PULL of
+ * itself (about 7 cents), and by at most LOCK_PULL_MAX_HZ. A pair closes a small phase gap with a
+ * time constant of 1/(2π · LOCK_PULL · f): 0.18 s at 220 Hz.
+ */
+const LOCK_PULL = 0.004;
+const LOCK_PULL_MAX_HZ = 12;
+/**
+ * Release pull: while a voice is parting from a close neighbour, it unwinds its accumulated phase
+ * pull θ at up to LOCK_RELEASE_PULL of its frequency (it is gliding then anyway), so voices leave a
+ * unison with unrelated phases instead of fanning out from one phase, which would cancel in nulls
+ * as they part. A voice whose group simply ends (its partner dies) keeps its θ: no pitch bend.
+ */
+const LOCK_RELEASE_PULL = 0.012;
+/**
+ * Two voices moving apart faster than SEP_START cents/s start to leave their group; at SEP_FULL
+ * cents/s they have left it, however close they still are.
+ */
+const SEP_START = 2;
+const SEP_FULL = 12;
+const INV_SEP_SPAN = 1 / (SEP_FULL - SEP_START);
+/**
+ * Stillness: a voice's say in its group's target pitch and phase is its amplitude times its
+ * stillness, 1 / (1 + |v| / 20 cents/s) for score-pitch speed v. Stillness drops at once when a
+ * voice moves and recovers over STILL_SETTLE seconds, so a voice gliding in (and for a while after
+ * it arrives) does the converging, and a held voice it arrives on keeps its pitch.
+ */
+const INV_STILL_SPEED = 1 / 20;
+const STILL_SETTLE = 0.6;
+/** Vibrato-phase pull, in Hz of vibrato rate. */
+const LOCK_LFO_PULL = 0.6;
+/** Smoothing of the lock amount λ, rising and falling (seconds). */
+const LOCK_ATTACK = 0.04;
+const LOCK_RELEASE = 0.1;
+/** Smoothing of the group gain h (seconds), and its ceiling h² ≤ LOCK_H2_MAX (+3 dB). */
+const LOCK_GAIN_SMOOTHING = 0.01;
+const LOCK_H2_MAX = 2;
+const INV_LOCK_SPAN = 1 / (LOCK_EDGE - LOCK_FULL);
+const INV_TWO_PI = 1 / (2 * Math.PI);
 
 /** Prepared voice data for a score (built in a message handler, applied at a block boundary). */
 interface PreparedScore {
@@ -125,6 +187,34 @@ export class Graph {
   private renderMode: RenderMode = RenderMode.Mix;
   private stemVoice = -1;
 
+  // Unison lock: the group pass's per-voice inputs (0 = out, 1 = running, 2 = starting from
+  // silence), smoothed state and coefficients.
+  private readonly gPart = new Uint8Array(DSP_MAX_VOICES);
+  private readonly gWas = new Uint8Array(DSP_MAX_VOICES);
+  private readonly gP = new Float64Array(DSP_MAX_VOICES);
+  private readonly gA = new Float64Array(DSP_MAX_VOICES);
+  private readonly gM = new Float64Array(DSP_MAX_VOICES);
+  private readonly gL = new Float64Array(DSP_MAX_VOICES);
+  private readonly gInc = new Float64Array(DSP_MAX_VOICES);
+  /** Score pitch at the previous block (cents), for the separation speed of pairs. */
+  private readonly gPrevP = new Float64Array(DSP_MAX_VOICES);
+  private readonly gV = new Float64Array(DSP_MAX_VOICES);
+  private readonly gTh = new Float64Array(DSP_MAX_VOICES);
+  /** Settled stillness per voice (see STILL_SETTLE). */
+  private readonly gStill = new Float64Array(DSP_MAX_VOICES);
+  private readonly gCx = new Float64Array(DSP_MAX_VOICES);
+  private readonly gSy = new Float64Array(DSP_MAX_VOICES);
+  private readonly gLx = new Float64Array(DSP_MAX_VOICES);
+  private readonly gLy = new Float64Array(DSP_MAX_VOICES);
+  private readonly gLamS = new Float64Array(DSP_MAX_VOICES);
+  private readonly gHS = new Float64Array(DSP_MAX_VOICES).fill(1);
+  private readonly lockUp: number = 0;
+  private readonly lockDown: number = 0;
+  private readonly lockGain: number = 0;
+  private readonly pullMaxInc: number = 0;
+  private readonly invBlockSeconds: number = 0;
+  private readonly stillCoeff: number = 0;
+
   /** GraphEvent bits set by the last `process()`. */
   events = 0;
   /** Piece time of the newest anchor (at the first frame of the block that set it). */
@@ -157,6 +247,13 @@ export class Graph {
     this.normCoeff = 1 - Math.exp(-CONTROL_PERIOD / (NORM_SMOOTHING * sampleRate));
     this.seekFadeFrames = Math.round(SEEK_FADE * sampleRate);
     this.swapFadeFrames = Math.round(SWAP_FADE * sampleRate);
+    const blockSeconds = BLOCK_FRAMES / sampleRate;
+    this.lockUp = 1 - Math.exp(-blockSeconds / LOCK_ATTACK);
+    this.lockDown = 1 - Math.exp(-blockSeconds / LOCK_RELEASE);
+    this.lockGain = 1 - Math.exp(-blockSeconds / LOCK_GAIN_SMOOTHING);
+    this.pullMaxInc = LOCK_PULL_MAX_HZ / sampleRate;
+    this.invBlockSeconds = sampleRate / BLOCK_FRAMES;
+    this.stillCoeff = 1 - Math.exp(-blockSeconds / STILL_SETTLE);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -190,6 +287,7 @@ export class Graph {
     this.pieceFrame = 0;
     this.prevPieceFrame = 0;
     this.gnValue = 1;
+    this.resetGroups();
     this.loopStart = -1;
     this.loopEnd = -1;
     this.anchor(AnchorReason.Load);
@@ -335,6 +433,7 @@ export class Graph {
     if (this.pendingPlay >= 0 || this.pendingPos >= 0) this.applyTransport();
     if (this.playing) this.checkLoopAndEnd();
     this.computeNorm();
+    if (this.playing) this.computeGroups();
 
     ctx.dryL.fill(0);
     ctx.dryR.fill(0);
@@ -344,15 +443,15 @@ export class Graph {
     for (let i = 0; i < DSP_MAX_VOICES; i++) {
       const v = this.voices[i];
       if (!v.enabled) continue;
-      if (mode === RenderMode.Voice && i !== this.stemVoice) continue;
-      v.render(ctx, this.pieceFrame);
+      // In a voice stem, the other voices run silently: the unison lock couples them.
+      v.render(ctx, this.pieceFrame, mode !== RenderMode.Voice || i === this.stemVoice);
     }
     for (let i = 0; i < MAX_GHOSTS; i++) {
       const g = this.ghosts[i];
       if (!g.enabled) continue;
       if (mode !== RenderMode.Voice || g.index === this.stemVoice) {
         for (let k = 1; k <= TICKS_PER_BLOCK; k++) g.computeLife(g.frame + k * CONTROL_PERIOD, k);
-        g.render(ctx, g.frame);
+        g.render(ctx, g.frame, true);
       }
       g.frame += BLOCK_FRAMES;
       if (g.xfDone) g.enabled = false;
@@ -585,6 +684,283 @@ export class Graph {
         this.gnValue += (target - this.gnValue) * this.normCoeff;
       }
       gn[k] = this.gnValue;
+    }
+  }
+
+  /** Clears the unison-lock state (on load). */
+  private resetGroups(): void {
+    const ctx = this.ctx;
+    this.gWas.fill(0);
+    this.gLamS.fill(0);
+    this.gHS.fill(1);
+    ctx.gOk.fill(0);
+    ctx.gLam.fill(0);
+    ctx.gCorr.fill(0);
+    ctx.gDInc.fill(0);
+    ctx.gDLfo.fill(0);
+    ctx.gH0.fill(1);
+    ctx.gH1.fill(1);
+    ctx.gSnapPh.fill(NaN);
+  }
+
+  /** cos and sin of 2π·src[i] into c[i], s[i] (shared sine table; src[i] in [0, 1)). */
+  private static trig(src: Float64Array, i: number, c: Float64Array, s: Float64Array): void {
+    let x = src[i];
+    x -= Math.floor(x);
+    const N = SINE_TABLE_SIZE;
+    const pos = x * N;
+    const i0 = pos | 0;
+    const a = SINE[i0];
+    s[i] = a + (SINE[i0 + 1] - a) * (pos - i0);
+    let cpos = pos + N / 4;
+    if (cpos >= N) cpos -= N;
+    const c0 = cpos | 0;
+    const b = SINE[c0];
+    c[i] = b + (SINE[c0 + 1] - b) * (cpos - c0);
+  }
+
+  /**
+   * The unison-lock group pass (once per block, before the voices render). From each voice's state
+   * at the end of the last block it computes, per voice j:
+   * - pair weights w(j, l): 1 when the score pitches are within LOCK_FULL cents, 0 beyond
+   *   LOCK_EDGE, smoothstep between, times both voices' lockability (timbre wobble = 0);
+   * - the lock amount λ_j = max over l of w(j, l), smoothed (fast up, slower down);
+   * - a pitch correction λ_j·(m̄ − m_j) toward the group's mean modulated pitch m̄ (detune, drift
+   *   and vibrato included), weighted by amplitude and settled stillness (STILL_SETTLE);
+   * - a phase pull toward the group's mean phase, weighted the same way, and the same for the
+   *   vibrato phase; while a voice is parting from a close neighbour, a release pull instead
+   *   unwinds the phase pull it has accumulated;
+   * - the group gain h_j = √(Σ_l w²A_l²) / |Z_j|, Z_j = Σ_l w·A_l·e^{2πiφ_l} with the actual
+   *   phases (capped at +3 dB, smoothed), so a coherent group
+   *   sums to the power of the same voices spread out (incoherent), whatever its phases.
+   * A voice starting from silence (seek, birth) takes its group's phase at once (gSnapPh), so the
+   * lock holds from its first sample. All inputs are block-start state, which every render mode
+   * computes identically, so stems sum exactly. Allocation-free.
+   */
+  private computeGroups(): void {
+    const ctx = this.ctx;
+    const n = this.voiceCount;
+    const part = this.gPart;
+    const P = this.gP;
+    const Am = this.gA;
+    const M = this.gM;
+    const Lk = this.gL;
+    const INC = this.gInc;
+    const CX = this.gCx;
+    const SY = this.gSy;
+    const LX = this.gLx;
+    const LY = this.gLy;
+    const V = this.gV;
+    const ST = this.gStill;
+    const frameEnd = this.pieceFrame + BLOCK_FRAMES;
+    let any = 0;
+    for (let i = 0; i < n; i++) {
+      const v = this.voices[i];
+      part[i] = 0;
+      ctx.gSnapPh[i] = NaN;
+      if (!v.enabled) continue;
+      if (!v.isFresh && ctx.gOk[i] === 1) {
+        part[i] = 1;
+        P[i] = ctx.gPitch[i];
+        Am[i] = ctx.gAmp[i];
+        M[i] = ctx.gMod[i];
+        Lk[i] = ctx.gLock[i];
+        INC[i] = ctx.gInc[i];
+        this.gTh[i] = ctx.gTheta[i];
+        this.gV[i] = this.gWas[i] === 1 ? (P[i] - this.gPrevP[i]) * this.invBlockSeconds : 0;
+      } else if (v.lifeTick[TICKS_PER_BLOCK] > 0) {
+        // Starts this block (seek, birth, swap): probe where it starts.
+        const d = v.data;
+        d.probe(frameEnd, this.sampleRate);
+        const slot = d.probeSlot;
+        const pp = d.probePitch;
+        if (slot < 0 || !(pp === pp) || this.slots[slot].data === null) continue;
+        part[i] = 2;
+        P[i] = pp * 100;
+        M[i] = P[i];
+        Am[i] =
+          VOICE_BASE_GAIN *
+          d.gain *
+          d.probeLife *
+          Math.exp(-(pp - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
+        Lk[i] = this.slots[slot].wobble > 0 ? 0 : 1;
+        INC[i] = 0;
+        this.gTh[i] = 0;
+        this.gV[i] = 0;
+        v.publishPhase(ctx);
+      } else continue;
+      const vi = this.gV[i] < 0 ? -this.gV[i] : this.gV[i];
+      const still = 1 / (1 + vi * INV_STILL_SPEED);
+      const prev = this.gStill[i];
+      this.gStill[i] =
+        part[i] === 2 || this.gWas[i] === 0 || still < prev
+          ? still
+          : prev + (still - prev) * this.stillCoeff;
+      Graph.trig(ctx.gPhase, i, CX, SY);
+      Graph.trig(ctx.gLfo, i, LX, LY);
+      any++;
+    }
+
+    // Voices starting from silence take their group's phase: the amplitude-weighted mean of the
+    // running members, else the lowest-index starting member's (all start on the same tick).
+    for (let j = 0; j < n; j++) {
+      if (part[j] !== 2 || !(Lk[j] > 0)) continue;
+      let sx = 0;
+      let sy = 0;
+      let lx = 0;
+      let ly = 0;
+      let swa = 0;
+      let sinc = 0;
+      let first = -1;
+      for (let l = 0; l < n; l++) {
+        if (l === j || part[l] === 0) continue;
+        const dp = P[j] - P[l];
+        const dist = dp < 0 ? -dp : dp;
+        if (dist >= LOCK_EDGE) continue;
+        let w = (LOCK_EDGE - dist) * INV_LOCK_SPAN;
+        if (w > 1) w = 1;
+        w = w * w * (3 - 2 * w) * Lk[l];
+        if (!(w > 0)) continue;
+        if (part[l] === 1) {
+          const wa = w * Am[l] * ST[l];
+          sx += wa * CX[l];
+          sy += wa * SY[l];
+          lx += wa * LX[l];
+          ly += wa * LY[l];
+          sinc += wa * INC[l];
+          swa += wa;
+        } else if (first < 0 && l < j) first = l;
+      }
+      let ph: number;
+      let lfo: number;
+      let inc = 0;
+      if (swa > 0 && sx * sx + sy * sy > 1e-24) {
+        ph = Math.atan2(sy, sx) * INV_TWO_PI;
+        lfo = lx * lx + ly * ly > 1e-24 ? Math.atan2(ly, lx) * INV_TWO_PI : ctx.gLfo[j];
+        inc = sinc / swa;
+      } else if (first >= 0) {
+        const fp = ctx.gSnapPh[first];
+        ph = fp === fp ? fp : ctx.gPhase[first];
+        lfo = fp === fp ? ctx.gSnapLfo[first] : ctx.gLfo[first];
+      } else continue;
+      ph -= Math.floor(ph);
+      lfo -= Math.floor(lfo);
+      ctx.gSnapPh[j] = ph;
+      ctx.gSnapLfo[j] = lfo;
+      ctx.gSnapInc[j] = inc;
+      ctx.gPhase[j] = ph;
+      ctx.gLfo[j] = lfo;
+      Graph.trig(ctx.gPhase, j, CX, SY);
+      Graph.trig(ctx.gLfo, j, LX, LY);
+    }
+
+    // Per-voice lock controls.
+    for (let j = 0; j < DSP_MAX_VOICES; j++) {
+      if (j >= n || part[j] === 0) {
+        this.gWas[j] = 0;
+        this.gLamS[j] = 0;
+        this.gHS[j] = 1;
+        ctx.gLam[j] = 0;
+        ctx.gCorr[j] = 0;
+        ctx.gDInc[j] = 0;
+        ctx.gDLfo[j] = 0;
+        ctx.gH0[j] = 1;
+        ctx.gH1[j] = 1;
+        continue;
+      }
+      // Z (for h): amplitude-weighted phasor sum and Σ w²A². T: the stillness-weighted target sums
+      // for pitch (sa, sam), phase (tx, ty) and vibrato phase (lx, ly).
+      const aj = Am[j];
+      const tj = aj * ST[j];
+      let zx = aj * CX[j];
+      let zy = aj * SY[j];
+      let tx = tj * CX[j];
+      let ty = tj * SY[j];
+      let lx = tj * LX[j];
+      let ly = tj * LY[j];
+      let q = aj * aj;
+      let sa = tj;
+      let sam = tj * M[j];
+      let lamT = 0;
+      let parting = 0;
+      if (any > 1 && Lk[j] > 0) {
+        for (let l = 0; l < n; l++) {
+          if (l === j || part[l] === 0) continue;
+          const dp = P[j] - P[l];
+          const dist = dp < 0 ? -dp : dp;
+          if (dist >= LOCK_EDGE) continue;
+          let w = (LOCK_EDGE - dist) * INV_LOCK_SPAN;
+          if (w > 1) w = 1;
+          w = w * w * (3 - 2 * w) * Lk[j] * Lk[l];
+          if (!(w > 0)) continue;
+          // Pairs moving apart leave the group early (separation speed, cents/s).
+          const sep = dp < 0 ? V[l] - V[j] : V[j] - V[l];
+          if (sep > SEP_START) {
+            let g = 1 - (sep - SEP_START) * INV_SEP_SPAN;
+            if (g < 0) g = 0;
+            const lw = w * g * g * (3 - 2 * g);
+            if (lw > lamT) lamT = lw;
+            if (w - lw > parting) parting = w - lw;
+          } else if (w > lamT) lamT = w;
+          const wa = w * Am[l];
+          zx += wa * CX[l];
+          zy += wa * SY[l];
+          q += wa * wa;
+          const wt = wa * ST[l];
+          tx += wt * CX[l];
+          ty += wt * SY[l];
+          lx += wt * LX[l];
+          ly += wt * LY[l];
+          sa += wt;
+          sam += wt * M[l];
+        }
+      }
+      const starting = part[j] === 2 || this.gWas[j] === 0;
+      let lam = this.gLamS[j];
+      if (starting) lam = lamT;
+      else lam += (lamT - lam) * (lamT > lam ? this.lockUp : this.lockDown);
+      this.gLamS[j] = lam;
+      ctx.gLam[j] = lam;
+      ctx.gCorr[j] = sa > 0 ? lam * (sam / sa - M[j]) : 0;
+
+      const z2 = zx * zx + zy * zy;
+      let dInc = 0;
+      let dLfo = 0;
+      if (part[j] === 1) {
+        const t2 = tx * tx + ty * ty;
+        if (lam > 0 && t2 > 1e-24) {
+          // sin(arg T − φ_j) = Im(T · e^{−iφ_j}) / |T|.
+          const sd = (ty * CX[j] - tx * SY[j]) / Math.sqrt(t2);
+          dInc = lam * sd * Math.min(LOCK_PULL * INC[j], this.pullMaxInc);
+          const l2 = lx * lx + ly * ly;
+          if (l2 > 1e-24) dLfo = (lam * LOCK_LFO_PULL * (ly * LX[j] - lx * LY[j])) / Math.sqrt(l2);
+        }
+        // Release while parting: unwind θ (sin 2πθ from the sine table; θ in [−0.5, 0.5)).
+        const th = this.gTh[j];
+        if (parting > 0 && th !== 0) {
+          let pos = (th + 1) * SINE_TABLE_SIZE;
+          if (pos >= SINE_TABLE_SIZE) pos -= SINE_TABLE_SIZE;
+          const i0 = pos | 0;
+          const a = SINE[i0];
+          const sth = a + (SINE[i0 + 1] - a) * (pos - i0);
+          dInc -= parting * sth * Math.min(LOCK_RELEASE_PULL * INC[j], this.pullMaxInc);
+        }
+      }
+      ctx.gDInc[j] = dInc;
+      ctx.gDLfo[j] = dLfo;
+
+      // Group gain: h² = Σ w²A² / |Z|², at most LOCK_H2_MAX.
+      const h2 = q > 0 ? Math.min(LOCK_H2_MAX, q / z2) : 1;
+      const hT = Math.sqrt(h2);
+      let h = this.gHS[j];
+      const h0 = starting ? hT : h;
+      if (starting) h = hT;
+      else h += (hT - h) * this.lockGain;
+      this.gHS[j] = h;
+      ctx.gH0[j] = h0;
+      ctx.gH1[j] = h;
+      this.gWas[j] = 1;
+      this.gPrevP[j] = P[j];
     }
   }
 

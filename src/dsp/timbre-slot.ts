@@ -40,6 +40,8 @@ export class TimbreSlot {
   driftCents = 0;
   driftRate = 0;
   driftAmp = 0;
+  /** Unison wobble in cents (0 = lock converged voices). */
+  wobble = 0;
 
   /** Installs new tables, fading from the old ones (or from silence) over `fadeFrames`. */
   install(set: WavetableSet, renderFrame: number, fadeFrames: number): void {
@@ -64,6 +66,7 @@ export class TimbreSlot {
     this.driftCents = p.driftCents;
     this.driftRate = p.driftRate;
     this.driftAmp = p.driftAmp;
+    this.wobble = p.wobble;
   }
 
   /** Weight of `data` (vs `prevData`) at a render frame: 1 once any fade is over. Pure. */

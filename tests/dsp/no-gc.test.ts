@@ -5,8 +5,9 @@
  *
  * The workload is 24 continuously gliding voices plus reverb and delay, using every ease except
  * the solver-based expo and bézier. Those two allocate a little per control tick, because V8 cannot
- * inline their solvers into the audio loop (docs/build-log.md, M2); the second test measures how
- * often that makes the young generation collect, and only reports it.
+ * inline their solvers into the audio loop (docs/build-log.md, M2); the last test measures how
+ * often that makes the young generation collect, and only reports it. The 'lock' run covers the
+ * unison lock: unisons, merges, births into held unisons and a seek every 5 s.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -15,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
-function runHarness(mode: 'plain' | 'all'): {
+function runHarness(mode: 'plain' | 'all' | 'lock'): {
   gcLines: string[];
   summary: { ms: number; observedGc: number };
 } {
@@ -36,6 +37,15 @@ describe('no GC in process()', () => {
     const { gcLines, summary } = runHarness('plain');
     console.info(
       `no-GC run: 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed`,
+    );
+    expect(gcLines).toEqual([]);
+    expect(summary.observedGc).toBe(0);
+  }, 120_000);
+
+  it('runs 60 s of unisons, merges, births into unisons and seeks with no scavenge', () => {
+    const { gcLines, summary } = runHarness('lock');
+    console.info(
+      `no-GC run (unison lock): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed`,
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);

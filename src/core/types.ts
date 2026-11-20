@@ -366,7 +366,10 @@ export interface Timbre {
   noise?: { level: number; bandwidth: number };
   /** Spectral tilt in dB/octave, and how strongly the tilt follows pitch. */
   brightness: { tilt: number; track: number };
-  /** Extra detune spread across voices, in cents; can't take any voice below 1 cent (§8.4). */
+  /**
+   * Extra detune spread across voices, in cents; can't take any voice below 1 cent (§8.4). Voices
+   * that converge on one pitch still lock into one steady tone (unless `wobble` > 0).
+   */
   detuneSpread: number;
   /** Amount by which motion raises the level: gain · (1 + accent · motion). */
   accent: number;
@@ -389,6 +392,12 @@ export interface Timbre {
    * roughly `rate` Hz, and optionally amplitude by about ±`amp` (a fraction). Absent = none.
    */
   drift?: { cents: number; rate: number; amp?: number };
+  /**
+   * Unison wobble, in cents (default 0). At 0, voices that converge on one pitch phase-lock into
+   * one steady tone. Above 0, they never lock and keep beating: each voice is detuned by about
+   * `wobble` cents (0.55–1.45 × wobble, alternating sign), plus `detuneSpread`.
+   */
+  wobble?: number;
 }
 
 // ---------------------------------------------------------------------------------------------

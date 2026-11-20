@@ -147,6 +147,64 @@ export function unisonScore(
 }
 
 /**
+ * N voices fanned 2 semitones apart around `pitch`: they glide into a unison at 0.5–2.5 s, hold
+ * it, and at `splitAt` glide back out to where they started (over 2 s); the score ends at `end`.
+ */
+export function unisonSplitScore(
+  n: number,
+  opts: {
+    pitch?: number;
+    splitAt?: number;
+    end?: number;
+    timbre?: string;
+    seed?: number;
+    prefix?: string;
+  } = {},
+): CompiledScore {
+  const pitch = opts.pitch ?? 57;
+  const splitAt = opts.splitAt ?? 7;
+  const specs: VoiceSpec[] = [];
+  for (let i = 0; i < n; i++) {
+    const start = pitch + (i - (n - 1) / 2) * 2;
+    specs.push({
+      id: opts.prefix === undefined ? undefined : `${opts.prefix}${i}`,
+      start,
+      moves: [
+        { at: 0.5, to: pitch, len: 2 },
+        { at: splitAt, to: start, len: 2 },
+      ],
+      timbre: opts.timbre ?? 'sine',
+    });
+  }
+  return makeScore(specs, opts.end ?? splitAt + 4, opts.seed ?? 7);
+}
+
+/**
+ * A phrase of unisons and chords for six voices (about 20 s): an A minor chord gathers into a
+ * unison on A3, opens into F major, folds into an octave pair, opens into E major and closes on
+ * an A minor chord.
+ */
+export function unisonChordScore(timbre = 'sine', seed = 13): CompiledScore {
+  const chordA = [45, 52, 57, 60, 64, 69];
+  const chordF = [41, 48, 57, 60, 65, 72];
+  const octaves = [45, 45, 45, 57, 57, 57];
+  const chordE = [40, 52, 56, 59, 64, 68];
+  const specs: VoiceSpec[] = chordA.map((p, v) => ({
+    id: `phrase-${v}`,
+    start: p,
+    moves: [
+      { at: 1.5, to: 57, len: 2 },
+      { at: 6, to: chordF[v], len: 1.5 },
+      { at: 9.5, to: octaves[v], len: 1.5 },
+      { at: 13.5, to: chordE[v], len: 1.2 },
+      { at: 16.5, to: chordA[v], len: 1.2 },
+    ],
+    timbre,
+  }));
+  return makeScore(specs, 20.5, seed);
+}
+
+/**
  * Merge: four voices; at 2 s voices 2 and 4 glide onto voices 1 and 3 over 1.5 s and then fade
  * out over 2 s (dying at 5.5 s); the survivors hold until 10 s.
  */
@@ -305,10 +363,54 @@ export function swapPair(swapAt = 3, timbre = 'sine'): { a: CompiledScore; b: Co
   return { a, b: makeScore(specs, end, 21) };
 }
 
+/**
+ * Unison-lock workload (no-GC test): `n` voices that keep gathering into unisons (all on one
+ * pitch, or in pairs) and opening into chords, with glides of 0.6–2 s, plus four voices born late
+ * into a held unison. Deterministic from `seed`.
+ */
+export function lockStressScore(n = 12, seconds = 80, seed = 17): CompiledScore {
+  const rng = new Prng(seed);
+  const specs: VoiceSpec[] = Array.from({ length: n }, (_, v) => ({
+    start: CHORDS[0][v % 6] + 12 * (Math.floor(v / 6) - 1),
+    moves: [] as Move[],
+    timbre: ['sine', 'glass', 'choir'][v % 3],
+  }));
+  let t = 1;
+  let step = 0;
+  const unisons: { at: number; pitch: number }[] = [];
+  while (t < seconds - 4) {
+    const len = 0.6 + rng.next() * 1.4;
+    const kind = step % 3;
+    const chord = CHORDS[Math.floor(rng.next() * CHORDS.length)];
+    const pitch = 50 + Math.floor(rng.next() * 14);
+    for (let v = 0; v < n; v++) {
+      const to =
+        kind === 0
+          ? pitch
+          : kind === 1
+            ? chord[(v >> 1) % 6] + 12 * (Math.floor(v / 12) - 1)
+            : chord[v % 6] + 12 * (Math.floor(v / 6) - 1);
+      specs[v].moves?.push({ at: t, to, len });
+    }
+    if (kind === 0) unisons.push({ at: t + len + 0.5, pitch });
+    t += len + 1.5 + rng.next() * 2;
+    step++;
+  }
+  for (let k = 0; k < 4 && k < unisons.length; k++) {
+    const u = unisons[k * 2 < unisons.length ? k * 2 : k];
+    specs.push({ start: u.pitch, born: u.at, died: u.at + 3, fadeIn: 0.3, fadeOut: 0.5 });
+  }
+  return makeScore(specs, seconds, seed);
+}
+
 /** Names of the fixtures the hidden page offers. */
 export const FIXTURE_NAMES = [
   'a4-sine',
   'unison-8',
+  'unison-split-8',
+  'unison-chord',
+  'wobble-8',
+  'wobble-phrase',
   'merge',
   'long-glide',
   'stress',
@@ -318,6 +420,7 @@ export const FIXTURE_NAMES = [
   'preset-reed',
   'preset-choir',
   'preset-pluck',
+  'preset-wobble',
   'dense-24',
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
@@ -329,6 +432,14 @@ export function fixtureScore(name: FixtureName): CompiledScore {
       return makeScore([{ id: 'a4', start: 69, timbre: 'sine' }], 10);
     case 'unison-8':
       return unisonScore(8);
+    case 'unison-split-8':
+      return unisonSplitScore(8);
+    case 'unison-chord':
+      return unisonChordScore();
+    case 'wobble-8':
+      return unisonScore(8, { timbre: 'wobble' });
+    case 'wobble-phrase':
+      return unisonChordScore('wobble');
     case 'merge':
       return mergeScore();
     case 'long-glide':

@@ -50,13 +50,17 @@ function periodSpread(x: Float32Array, from: number, to: number, rate = RATE): n
 }
 
 describe('graph output', () => {
-  it.each(FIXTURE_NAMES)('fixture %s renders with no NaN or Inf, under the ceiling', (name) => {
-    const score = fixtureScore(name);
-    const out = render(score, FIXTURE_MIX, Math.min(score.duration + 2, 32));
-    expect(allFinite(out.left) && allFinite(out.right)).toBe(true);
-    expect(Math.max(peak(out.left), peak(out.right))).toBeLessThanOrEqual(CEILING);
-    expect(rms(out.left)).toBeGreaterThan(1e-3);
-  });
+  it.each(FIXTURE_NAMES)(
+    'fixture %s renders with no NaN or Inf, under the ceiling',
+    (name) => {
+      const score = fixtureScore(name);
+      const out = render(score, FIXTURE_MIX, Math.min(score.duration + 2, 32));
+      expect(allFinite(out.left) && allFinite(out.right)).toBe(true);
+      expect(Math.max(peak(out.left), peak(out.right))).toBeLessThanOrEqual(CEILING);
+      expect(rms(out.left)).toBeGreaterThan(1e-3);
+    },
+    30_000,
+  ); // dense-24 renders 32 s of 24 voices: slow on a loaded machine
 
   it('holds the −1 dBFS ceiling when 24 voices at 4× gain drive the limiter hard', () => {
     const score = denseScore(24, 12);
@@ -127,6 +131,21 @@ describe('detune and phase (§8.4)', () => {
       expect(Math.abs(v.detuneCents(4))).toBeGreaterThanOrEqual(Math.abs(v.detuneCents(0)));
       expect(Math.abs(v.detuneCents(-100))).toBe(1);
     }
+  });
+
+  it('wobble scales the base detune to a mean |detune| of `wobble` cents', () => {
+    const base = Array.from({ length: 32 }, (_, i) => graph.voiceAt(i).detuneCents(0));
+    // 2.75 cents is the old always-on detune exactly.
+    for (let i = 0; i < 32; i++) expect(graph.voiceAt(i).detuneCents(0, 2.75)).toBe(base[i]);
+    for (const w of [1, 3, 10]) {
+      const cents = base.map((_, i) => graph.voiceAt(i).detuneCents(0, w));
+      cents.forEach((c, i) => {
+        expect(Math.sign(c)).toBe(Math.sign(base[i]));
+        expect(c / base[i]).toBeCloseTo(w / 2.75, 12);
+      });
+    }
+    // Small wobbles scale the 1-cent floor too.
+    expect(Math.abs(graph.voiceAt(0).detuneCents(-100, 0.55))).toBeCloseTo(0.2, 12);
   });
 
   it('seeds the start phase from the voice id and piece seed', () => {

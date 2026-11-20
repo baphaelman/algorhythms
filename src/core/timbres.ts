@@ -40,9 +40,12 @@ const PLUCK_HARMONICS = [
   1, 0.48, 0.3, 0.2, 0.06, 0.13, 0.12, 0.09, 0.07, 0.025, 0.05, 0.045, 0.035, 0.03, 0.01, 0.02,
 ];
 
-/** The six M2 presets, by name. */
+/** Wobble: a soft glass-like tone with a strong fundamental and faint odd partials. */
+const WOBBLE_HARMONICS = [1, 0.05, 0.16, 0.02, 0.06, 0, 0.025];
+
+/** The six M2 presets plus `wobble`, by name. */
 export const BUILTIN_TIMBRES: Record<string, Timbre> = {
-  /** Pure sine; the always-on detune (1-cent floor) is all that animates unisons. */
+  /** Pure sine. Converged voices lock into one steady tone (see `wobble` for the beating kind). */
   sine: {
     harmonics: [1],
     stretch: 0,
@@ -107,5 +110,22 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     accent: 0.1,
     articulation: { amount: 0.9, attack: 0.002, decay: 0.35 },
     vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
+  },
+  /**
+   * Wobble: converged voices do not lock but keep beating against each other, a slowly clumping
+   * shimmer (what every unison did before the unison lock). Soft glass-like partials, about
+   * 3 cents of detune per voice, a gentle bloom on arrival and a very slow drift that keeps the
+   * beat pattern changing.
+   */
+  wobble: {
+    harmonics: WOBBLE_HARMONICS,
+    stretch: 0,
+    brightness: { tilt: -1, track: 0.3 },
+    detuneSpread: 0.5,
+    accent: 0.2,
+    articulation: { amount: 0.2, attack: 0.03, decay: 1.2 },
+    vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
+    drift: { cents: 1, rate: 0.1 },
+    wobble: 3,
   },
 };

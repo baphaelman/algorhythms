@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { FIXTURE_MIX, stressScore } from '../../src/audio/fixtures/scores';
+import { FIXTURE_MIX, stressScore, unisonChordScore } from '../../src/audio/fixtures/scores';
 import { parseWavHeader } from '../../src/audio/wav';
 import { renderWav, wavExportChunks, wavExportSize } from '../../src/audio/wav-export';
 import { renderOffline } from '../../src/audio/offline';
@@ -37,6 +37,15 @@ describe('WAV export', () => {
     );
     expect(new Set(hashes).size).toBe(1);
   });
+
+  it('a unison phrase (locked groups) exports byte-identically, at any chunk size', () => {
+    const phrase = { score: unisonChordScore('glass'), mix: FIXTURE_MIX };
+    const hashes = [1, 0.37, 128 / 48000].map((chunkSeconds) =>
+      digest(wavExportChunks(phrase, { sampleRate: 48000, bitDepth: 24, chunkSeconds })),
+    );
+    hashes.push(digest([renderWav(phrase, { sampleRate: 48000, bitDepth: 24 })]));
+    expect(new Set(hashes).size).toBe(1);
+  }, 30_000);
 
   it('reports progress up to 1', () => {
     const seen: number[] = [];

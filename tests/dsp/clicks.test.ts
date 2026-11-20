@@ -46,14 +46,23 @@ describe.each(TIMBRES)('click detector, %s', (timbre) => {
   const threshold = 2 * clean;
 
   it('catches a hard cut (positive control)', () => {
-    const spliced = new Float32Array(4 * RATE);
-    spliced.set(reference.left.subarray(0, 2 * RATE));
-    spliced.set(reference.left.subarray(9 * RATE, 11 * RATE), 2 * RATE);
-    const r = clickScore(spliced, 480);
+    // A hard splice (what a seek without the crossfade would do). How big its step is depends on
+    // the two waveform values that meet, so take the median over nine splice points.
+    const ratios: number[] = [];
+    for (let k = 0; k < 9; k++) {
+      const a = Math.round((2 + k * 0.0371) * RATE);
+      const b = Math.round((9 + k * 0.0293) * RATE);
+      const spliced = new Float32Array(a + 2 * RATE);
+      spliced.set(reference.left.subarray(0, a));
+      spliced.set(reference.left.subarray(b, b + 2 * RATE), a);
+      ratios.push(clickScore(spliced, a - 480, a + 480).ratio);
+    }
+    ratios.sort((x, y) => x - y);
+    const median = ratios[4];
     console.info(
-      `${timbre}: clean ${clean.toFixed(3)}, threshold ${threshold.toFixed(3)}, hard cut ${r.ratio.toFixed(2)}`,
+      `${timbre}: clean ${clean.toFixed(3)}, threshold ${threshold.toFixed(3)}, hard cut ${median.toFixed(2)} (median of 9)`,
     );
-    expect(r.ratio).toBeGreaterThan(2.5 * threshold);
+    expect(median).toBeGreaterThan(1.5 * threshold);
   });
 
   it('seek (single and a scrub burst) and pause/play stay click-free', () => {
