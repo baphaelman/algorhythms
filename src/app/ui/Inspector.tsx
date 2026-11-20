@@ -23,6 +23,7 @@ const TYPE_NAMES: Record<Moment['type'], string> = {
   shift: 'Shift',
   spread: 'Spread',
   walk: 'Walk',
+  note: 'Note',
   pin: 'Pin',
   key: 'Key change',
   level: 'Level',

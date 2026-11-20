@@ -324,9 +324,13 @@ describe('compiler properties (§14)', () => {
       'overshoot',
       fc.property(pieceArb({ varyRanges: true }), (p) => {
         const { score, trace } = compileWithTrace(p);
-        const limits = new Map<string, { up: number; down: number }>();
+        // A note moment plans twice (its return), so look limits up by the segment's start.
+        const limits = new Map<string, { t: number; up: number; down: number }[]>();
         for (const m of trace.moments) {
-          for (const l of m.plan?.limits ?? []) limits.set(`${m.id}/${l.voice}`, l);
+          for (const l of m.plan?.limits ?? []) {
+            const k = `${m.id}/${l.voice}`;
+            limits.set(k, [...(limits.get(k) ?? []), { t: m.t, up: l.up, down: l.down }]);
+          }
         }
         for (const v of score.voices) {
           const range = p.voices[v.index].range;
@@ -336,7 +340,9 @@ describe('compiler properties (§14)', () => {
             const end = plannedEnd(g);
             const lo = Math.min(g.p0, end.p1);
             const hi = Math.max(g.p0, end.p1);
-            const lim = limits.get(`${g.momentId}/${v.index}`) ?? { up: 1, down: 1 };
+            const lim = (limits.get(`${g.momentId}/${v.index}`) ?? [])
+              .filter((l) => l.t <= g.t0)
+              .reduce((a, l) => (a.t > l.t ? a : l), { t: -Infinity, up: 1, down: 1 });
             const roomUp = Math.max(0, range[1] - hi);
             const roomDown = Math.max(0, lo - range[0]);
             const up = Math.min(1, lim.up, roomUp);
@@ -503,6 +509,39 @@ describe('compiler properties (§14)', () => {
       ),
       { numRuns: 100 },
     );
+  });
+
+  it('note moments: one note changes, in order; returns run (§6.2 note)', () => {
+    let applied = 0;
+    let returns = 0;
+    check(
+      'note',
+      fc.property(pieceArb(), (p) => {
+        const { score, trace } = compileWithTrace(p);
+        const seen = new Set<string>();
+        for (const m of trace.moments) {
+          if (m.type !== 'note' || !m.plan || !m.intents) continue;
+          if (seen.has(m.id)) returns++;
+          else applied++;
+          seen.add(m.id);
+          expect(m.plan.ordered).toBe(true);
+          expect(m.intents.length).toBe(m.targeted.length);
+          // Intents list the voices low to high by destination; unless range folding moved a
+          // target, their targets are in the same order (ordered voice leading, §7.2).
+          const folded = score.diagnostics.some(
+            (d) =>
+              d.momentId === m.id && (d.code === 'range-fold' || d.code === 'range-too-narrow'),
+          );
+          if (folded) continue;
+          for (let k = 1; k < m.intents.length; k++) {
+            expect(m.intents[k].to).toBeGreaterThanOrEqual(m.intents[k - 1].to);
+          }
+        }
+      }),
+      RUNS,
+    );
+    expect(applied).toBeGreaterThan(30);
+    expect(returns).toBeGreaterThan(5);
   });
 
   it('every diagnostic has a stable kebab-case code and no generated piece errors out', () => {

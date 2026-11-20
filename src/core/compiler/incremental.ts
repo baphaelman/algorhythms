@@ -12,8 +12,8 @@
  *
  * A checkpoint holds what the simulation mutates (compile.ts, voice.ts): per voice the status,
  * pending moves and birth, the frontier tail with the fields `finishAt` mutates by value, the open
- * Life, and the lengths of the append-only arrays (segments, lives, level); the queued move starts
- * and walk ticks with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
+ * Life, and the lengths of the append-only arrays (segments, lives, level); the queued move starts,
+ * walk ticks and note returns with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
  * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
@@ -36,7 +36,7 @@ import type {
   Segment,
   WalkStepRecord,
 } from '../types';
-import { Compiler, SUB_MOVE, SUB_STRIDE, type CompileOptions } from './compile';
+import { Compiler, SUB_MOVE, SUB_NOTE_BACK, SUB_STRIDE, type CompileOptions } from './compile';
 import { EventClass, type QueuedEvent } from './queue';
 import type { Birth, Move, Status, VoiceRun } from './voice';
 
@@ -60,7 +60,10 @@ interface Checkpoint {
   /** The moment event about to be handled: its time and moment index. */
   t: Seconds;
   i: number;
-  /** Queued move starts and walk ticks after the first (moment events and first ticks are rebuilt). */
+  /**
+   * Queued move starts, walk ticks after the first and note returns (moment events and first
+   * ticks are rebuilt from the piece).
+   */
   events: QueuedEvent[];
   /** Per event: the move's `cancelled` flag (false for non-moves). */
   cancelled: boolean[];
@@ -164,7 +167,11 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
   const items = c.queue.items;
   const events: QueuedEvent[] = [];
   for (const ev of items) {
-    if (ev.cls === EventClass.MoveStart || (ev.cls === EventClass.Tick && ev.ref > 0)) {
+    if (
+      ev.cls === EventClass.MoveStart ||
+      (ev.cls === EventClass.Tick && ev.ref > 0) ||
+      (ev.cls === EventClass.Moment && ev.sub === SUB_NOTE_BACK)
+    ) {
       events.push(ev);
     }
   }
@@ -176,8 +183,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
   };
   for (const ev of events) {
     let off = false;
-    if (ev.cls === EventClass.Tick) {
-      live(ev.key);
+    if (ev.cls !== EventClass.MoveStart) {
+      live(ev.key); // a walk tick or a note return
     } else if (Math.floor(ev.key / SUB_STRIDE) === SUB_MOVE) {
       const mv = ev.obj as Move;
       off = mv.cancelled;
@@ -240,7 +247,8 @@ function pushPrefix<T>(to: T[], from: readonly T[], n: number, start = 0): void 
 function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   pushPrefix(c.diags, prev.diags, prev.initDiags + cp.diags, prev.initDiags);
 
-  // Moment events and first walk ticks from the new piece, if not yet handled at the checkpoint.
+  // Moment events and first walk ticks from the new piece, if not yet handled at the checkpoint
+  // (a fresh queue holds no note returns: those come from the checkpoint).
   const events: QueuedEvent[] = [];
   for (const ev of c.queue.items) {
     const keep =

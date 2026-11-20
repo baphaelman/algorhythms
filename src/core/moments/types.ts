@@ -35,6 +35,11 @@ export interface MomentPlan {
   /** Crossing enforcement and neighbour-gap overshoot limits apply (§7.2, §7.5). */
   ordered: boolean;
   intents: Intent[];
+  /**
+   * Note moments (§6.2): the index in `intents` of the move that carries the new note, and the
+   * pitch it replaced (where `back` returns it).
+   */
+  note?: { intent: number; from: Pitch };
 }
 
 /** What a moment function may read and do. */
@@ -54,6 +59,8 @@ export interface MomentEnv {
   readonly active: readonly number[];
   /** Committed destination (after the targeted voices' pending moves were cancelled). */
   dest(v: number): Pitch;
+  /** Pitch sounding at t (before moves starting at t); NaN when silent. */
+  now(v: number): Pitch;
   range(v: number): readonly [Pitch, Pitch];
   id(v: number): string;
   /** True if the voice's life is open at t (it can be a birth parent). */

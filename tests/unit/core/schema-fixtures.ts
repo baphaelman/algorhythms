@@ -85,6 +85,7 @@ export function fullPiece(): Piece {
     { id: 'aaaab4', type: 'key', at: 42, key: { tonic: 'F#', scale: 'lydian' } },
     { id: 'aaaab5', type: 'level', at: 44, gain: 0.5, over: 3 },
     { id: 'aaaab6', type: 'merge', at: 46, count: 1, which: 'outer', fade: 1.5 },
+    { id: 'aaaan1', type: 'note', at: 48, from: 72, to: 74, back: 0.5 },
   ];
   p.timbres.mine = {
     harmonics: [1, 0.5, 0.25],
