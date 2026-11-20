@@ -18,7 +18,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc -b",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "docs:schema": "node scripts/docs-schema.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
