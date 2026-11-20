@@ -227,7 +227,7 @@ class Compiler {
       ids.add(m.id);
       if (m.muted) return;
       if (!MOMENT_TYPES.has(m.type)) {
-        this.diag('error', 'unknown-moment-type', `Unknown moment type '${String(m.type)}'.`, m.id);
+        this.diag('info', 'unknown-moment-type', `Unknown moment type '${String(m.type)}'.`, m.id);
         return;
       }
       if (!(typeof m.at === 'number' && Number.isFinite(m.at) && m.at >= 0)) {
@@ -290,11 +290,20 @@ class Compiler {
     return st ? st.p : b.pitch;
   }
 
-  /** Active voices sorted by committed destination, ties by pool index (§7.2). */
-  sortedActive(): number[] {
+  private activeEpoch = 0;
+  private activeCache: number[] = [];
+
+  /**
+   * Active voices sorted by committed destination, ties by pool index (§7.2). Cached per epoch;
+   * callers must not mutate the result.
+   */
+  sortedActive(): readonly number[] {
+    if (this.activeEpoch === this.epoch) return this.activeCache;
     const out: number[] = [];
     for (const run of this.voices) if (run.status === Status.Active) out.push(run.index);
-    return this.sortByDest(out);
+    this.activeCache = this.sortByDest(out);
+    this.activeEpoch = this.epoch;
+    return this.activeCache;
   }
 
   private sortByDest(vs: number[]): number[] {
@@ -304,7 +313,7 @@ class Compiler {
   /** The voices a selector picks at the current time (§6.1), sorted by committed destination. */
   resolveTarget(sel: VoiceSelector | undefined, momentId: string | null): number[] {
     const active = this.sortedActive();
-    if (sel === undefined || sel === 'all') return active;
+    if (sel === undefined || sel === 'all') return active.slice();
     if (typeof sel === 'object' && 'voices' in sel && Array.isArray(sel.voices)) {
       const want = new Set<number>();
       for (const id of sel.voices) {
@@ -327,7 +336,7 @@ class Compiler {
       const hi = Math.min(active.length - 1, Math.floor(Math.max(a, b)));
       return lo <= hi ? active.slice(lo, hi + 1) : [];
     }
-    return active;
+    return active.slice();
   }
 
   /** Pool voices a split may birth at t: not active, their last life ended (§7.4). */
@@ -358,9 +367,12 @@ class Compiler {
       const ev = this.queue.peek();
       if (!ev || ev.t >= this.endAt) break;
       this.queue.pop();
-      this.touch();
+      // Move starts, births and closes never change a committed destination or the active set
+      // (a started move's target was already the destination), so only moments and walk ticks
+      // invalidate the caches.
       switch (ev.cls) {
         case EventClass.Moment:
+          this.touch();
           this.onMoment(ev.ref);
           break;
         case EventClass.MoveStart: {
@@ -371,6 +383,7 @@ class Compiler {
           break;
         }
         case EventClass.Tick:
+          this.touch();
           this.onTick(ev.key, ev.ref);
           break;
       }
@@ -556,6 +569,7 @@ class Compiler {
       mv.crossScale,
       run.range,
       mv.momentId,
+      mv,
     );
     this.span(mv.momentIndex, mv.t0, seg.t1);
     this.activity(seg.t1);
@@ -644,7 +658,7 @@ class Compiler {
     if (steps.length > 0) this.touch();
   }
 
-  /** Active, sounding, no glide in progress and nothing pending (§7.1 walk rules). */
+  /** Active, sounding, no move in progress and nothing pending (§7.1 walk rules). */
   private idle(v: number, t: Seconds): boolean {
     const run = this.voices[v];
     return (
@@ -652,7 +666,7 @@ class Compiler {
       run.frontier.alive &&
       !run.pendingBirth &&
       run.pending.length === 0 &&
-      !run.frontier.glidingAt(t)
+      !run.frontier.busyAt(t)
     );
   }
 

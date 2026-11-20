@@ -1,0 +1,320 @@
+/**
+ * fast-check generators of valid, varied pieces for the compiler property tests (PLAN.md §14).
+ *
+ * Pieces overlap moments on purpose: dense moment times, long glides with stagger and jitter, walk
+ * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
+ * out-of-range pitches (folding), key changes and every ease (béziers with finite start slopes).
+ */
+import fc from 'fast-check';
+import { newPiece } from '../../../src/core/defaults';
+import type {
+  EaseRef,
+  Glide,
+  GlideOrder,
+  Moment,
+  NoteSet,
+  Piece,
+  VoiceSelector,
+} from '../../../src/core/types';
+
+const tenths = (lo: number, hi: number): fc.Arbitrary<number> =>
+  fc.integer({ min: Math.round(lo * 10), max: Math.round(hi * 10) }).map((x) => x / 10);
+
+export const easeArb: fc.Arbitrary<EaseRef> = fc.oneof(
+  {
+    weight: 6,
+    arbitrary: fc.constantFrom<EaseRef>('smootherstep', 'smoothstep', 'cosine', 'linear', 'expo'),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.record({
+      kind: fc.constant('bezier' as const),
+      x1: tenths(0.1, 0.9),
+      y1: tenths(-0.5, 1.5),
+      x2: tenths(0.1, 0.9),
+      y2: tenths(-0.5, 1.5),
+    }),
+  },
+);
+
+const orderArb = fc.constantFrom<GlideOrder>(
+  'random',
+  'low-first',
+  'high-first',
+  'center-out',
+  'outside-in',
+);
+
+export const glideArb: fc.Arbitrary<Glide> = fc.record({
+  length: tenths(0.2, 5),
+  jitter: tenths(0, 1),
+  stagger: tenths(0, 3),
+  order: orderArb,
+  ease: easeArb,
+});
+
+const partialGlideArb: fc.Arbitrary<Partial<Glide>> = fc.record(
+  {
+    length: tenths(0.2, 6),
+    jitter: tenths(0, 1),
+    stagger: tenths(0, 3),
+    order: orderArb,
+    ease: easeArb,
+  },
+  { requiredKeys: [] },
+);
+
+const SYMBOLS = ['Am7', 'C', 'Dm9', 'G7', 'F#m7b5', 'C/E', 'ii7', 'V9', 'Bbmaj7', 'Esus4', 'Cadd9'];
+
+const notesArb: fc.Arbitrary<NoteSet> = fc.oneof(
+  fc.record({ kind: fc.constant('chord' as const), symbol: fc.constantFrom(...SYMBOLS) }),
+  fc.record({
+    kind: fc.constant('degrees' as const),
+    degrees: fc.array(fc.integer({ min: 0, max: 11 }), { minLength: 1, maxLength: 5 }),
+  }),
+  fc.record({
+    kind: fc.constant('pitches' as const),
+    pitches: fc.array(fc.integer({ min: 24, max: 108 }), { minLength: 1, maxLength: 8 }),
+  }),
+  fc.constant({ kind: 'current' as const }),
+);
+
+function selectorArb(ids: string[]): fc.Arbitrary<VoiceSelector | undefined> {
+  return fc.oneof(
+    { weight: 6, arbitrary: fc.constant(undefined) },
+    { weight: 1, arbitrary: fc.constant('all' as const) },
+    {
+      weight: 2,
+      arbitrary: fc
+        .tuple(fc.integer({ min: 0, max: 8 }), fc.integer({ min: 0, max: 8 }))
+        .map(([a, b]) => ({ rank: [Math.min(a, b), Math.max(a, b)] as [number, number] })),
+    },
+    {
+      weight: 2,
+      arbitrary: fc.subarray(ids, { minLength: 1 }).map((voices) => ({ voices })),
+    },
+  );
+}
+
+type Draft = Omit<Moment, 'id'>;
+
+function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
+  const at = tenths(0, maxT);
+  const base = {
+    at,
+    target: selectorArb(ids),
+    glide: fc.option(partialGlideArb, { nil: undefined }),
+  };
+  return fc
+    .oneof(
+      {
+        weight: 4,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('chord' as const),
+            notes: notesArb,
+            voicing: fc.constantFrom('even' as const, 'close' as const, 'nearest' as const),
+            assign: fc.constantFrom('ordered' as const, 'ordered' as const, 'free' as const),
+            register: fc.option(
+              fc
+                .tuple(fc.integer({ min: 36, max: 72 }), fc.integer({ min: 6, max: 30 }))
+                .map(([lo, w]) => [lo, lo + w] as [number, number]),
+              { nil: undefined },
+            ),
+          },
+          { requiredKeys: ['at', 'type', 'notes', 'voicing', 'assign'] },
+        ),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('unison' as const),
+            pitch: fc.oneof(
+              fc.integer({ min: 30, max: 100 }),
+              fc.constantFrom('center' as const, 'tonic' as const),
+            ),
+            octaves: fc.boolean(),
+          },
+          { requiredKeys: ['at', 'type', 'pitch', 'octaves'] },
+        ),
+      },
+      {
+        weight: 3,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('split' as const),
+            count: fc.integer({ min: 1, max: 14 }),
+            notes: fc.option(notesArb, { nil: undefined }),
+            voicing: fc.constantFrom('even' as const, 'close' as const, 'nearest' as const),
+          },
+          { requiredKeys: ['at', 'type', 'count', 'voicing'] },
+        ),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('merge' as const),
+            count: fc.integer({ min: 0, max: 8 }),
+            which: fc.constantFrom(
+              'top' as const,
+              'bottom' as const,
+              'inner' as const,
+              'outer' as const,
+              'random' as const,
+            ),
+            fade: tenths(0, 3),
+          },
+          { requiredKeys: ['at', 'type', 'count', 'which', 'fade'] },
+        ),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('shift' as const),
+            by: fc.integer({ min: -14, max: 14 }),
+            unit: fc.constantFrom('semitones' as const, 'scaleSteps' as const),
+          },
+          { requiredKeys: ['at', 'type', 'by', 'unit'] },
+        ),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('spread' as const),
+            factor: tenths(-1, 2.5),
+            around: fc.oneof(
+              fc.constantFrom('mean' as const, 'median' as const),
+              fc.integer({ min: 40, max: 80 }),
+            ),
+            snap: fc.constantFrom('scale' as const, 'chromatic' as const, 'none' as const),
+          },
+          { requiredKeys: ['at', 'type', 'factor', 'around', 'snap'] },
+        ),
+      },
+      {
+        weight: 2,
+        arbitrary: fc
+          .record(
+            {
+              ...base,
+              type: fc.constant('walk' as const),
+              len: tenths(1, 20),
+              grid: tenths(0.2, 1.5),
+              density: tenths(0, 1),
+              steps: fc.constantFrom([-2, -1, 1, 2], [-1, 1], [1, 2, 3], [-3, 3]),
+              stepGlide: tenths(0.1, 2),
+              bass: fc.option(
+                fc
+                  .tuple(fc.integer({ min: 2, max: 7 }), fc.integer({ min: 7, max: 14 }))
+                  .map(([a, b]) => ({ leap: [a, b] as [number, number] })),
+                { nil: undefined },
+              ),
+            },
+            { requiredKeys: ['at', 'type', 'len', 'grid', 'density', 'steps', 'stepGlide'] },
+          )
+          .map(({ len, ...w }) => ({ ...w, until: w.at + len }) as Draft),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record(
+          {
+            at,
+            glide: base.glide,
+            type: fc.constant('pin' as const),
+            voice: fc.constantFrom(...ids),
+            pitch: fc.integer({ min: 30, max: 100 }),
+          },
+          { requiredKeys: ['at', 'type', 'voice', 'pitch'] },
+        ),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          at,
+          type: fc.constant('key' as const),
+          key: fc.record({
+            tonic: fc.constantFrom(
+              'C' as const,
+              'D' as const,
+              'Eb' as const,
+              'F#' as const,
+              'A' as const,
+            ),
+            scale: fc.constantFrom(
+              'major' as const,
+              'dorian' as const,
+              'aeolian' as const,
+              'pentatonic-minor' as const,
+              'whole-tone' as const,
+            ),
+          }),
+        }),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('level' as const),
+            gain: tenths(0, 1.5),
+            over: tenths(0, 4),
+          },
+          { requiredKeys: ['at', 'type', 'gain', 'over'] },
+        ),
+      },
+    )
+    .map((m) => m as Draft);
+}
+
+export interface PieceShape {
+  pool: number;
+  maxT: number;
+  maxMoments: number;
+  /** Give voices individual ranges (some narrower than an octave). */
+  varyRanges: boolean;
+}
+
+/** A random valid piece. */
+export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
+  const maxT = shape.maxT ?? 40;
+  return fc
+    .record({
+      seed: fc.integer({ min: 0, max: 0xffff }),
+      pool: shape.pool !== undefined ? fc.constant(shape.pool) : fc.integer({ min: 3, max: 16 }),
+      glide: glideArb,
+      starts: fc.array(fc.integer({ min: 40, max: 80 }), { minLength: 0, maxLength: 4 }),
+      ranges: shape.varyRanges
+        ? fc.array(
+            fc
+              .tuple(fc.integer({ min: 30, max: 70 }), fc.integer({ min: 8, max: 40 }))
+              .map(([lo, w]) => [lo, lo + w] as [number, number]),
+            { minLength: 16, maxLength: 16 },
+          )
+        : fc.constant(null),
+    })
+    .chain((r) => {
+      const ids = Array.from({ length: r.pool }, (_, i) => `v${i + 1}`);
+      return fc
+        .array(momentArb(ids, maxT), { minLength: 1, maxLength: shape.maxMoments ?? 14 })
+        .map((moments) => {
+          const p = newPiece({ seed: r.seed, poolSize: r.pool });
+          p.defaults.glide = r.glide;
+          p.voices.forEach((v, i) => (v.range = r.ranges ? r.ranges[i] : [36, 96]));
+          p.start = r.starts.slice(0, r.pool).map((pitch, i) => ({ voice: ids[i], pitch }));
+          p.moments = moments.map(
+            (m, i) => ({ ...m, id: `m${i.toString(36).padStart(5, '0')}` }) as Moment,
+          );
+          return p;
+        });
+    });
+}

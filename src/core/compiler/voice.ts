@@ -11,7 +11,13 @@
  */
 
 import { evalSegment, evalSegmentVelocity } from '../segment';
-import { buildMoveSegment, type OvershootLimits, type StartState } from '../interrupt';
+import {
+  carriedVelocity,
+  segmentFromCarried,
+  type CarriedVelocity,
+  type OvershootLimits,
+  type StartState,
+} from '../interrupt';
 import type { EaseRef, Life, Pitch, Seconds, Segment, VoiceDef } from '../types';
 
 /** Ease stored on hold segments (p0 = p1, so it never matters; linear is cheapest to evaluate). */
@@ -40,6 +46,20 @@ export interface Move {
   cancelled: boolean;
   /** Index of the moment that scheduled it, for diagnostics and spans. */
   momentIndex: number;
+  /** Cache of the last segment built for this move (projections rebuild it often). */
+  memo?: SegmentMemo;
+}
+
+/** Inputs and output of one carried-velocity computation (see Frontier.start). */
+export interface SegmentMemo {
+  p: Pitch;
+  v: number;
+  mid: boolean;
+  dur: Seconds;
+  to: Pitch;
+  up: number;
+  down: number;
+  carried: CarriedVelocity;
 }
 
 /** A birth (§7.4): never cancelled. */
@@ -123,10 +143,13 @@ export class Frontier {
     return this.tail ? this.tail.p1 : NaN;
   }
 
-  /** True while a glide is in progress at t. */
-  glidingAt(t: Seconds): boolean {
+  /**
+   * True while a move is in progress at t: a glide, or a fixed-length move that keeps the pitch
+   * (a parentless newborn's arrival, a merge's dying hold). Walks wait for it to end (§7.1).
+   */
+  busyAt(t: Seconds): boolean {
     const s = this.tail;
-    return !!s && !this.open && t < s.t1 && isGlide(s);
+    return !!s && !this.open && t < s.t1;
   }
 
   /** Finishes the tail at t: holds end there, running glides are cut, ended glides get a hold. */
@@ -136,7 +159,10 @@ export class Frontier {
       s.t1 = t;
       if (t > s.t0) this.out.push(s);
     } else if (t < s.t1) {
-      if (t > s.t0) {
+      if (t > s.t0 && !isGlide(s)) {
+        s.t1 = t; // a constant segment truncates exactly; it is not an interrupted glide
+        this.out.push(s);
+      } else if (t > s.t0) {
         s.curve = { t1: s.t1, p1: s.p1 };
         s.t1 = t;
         s.p1 = pitchAtT;
@@ -149,9 +175,53 @@ export class Frontier {
   }
 
   /**
-   * Starts a move at t0 (§7.1 move-start): reads the actual pitch and velocity, applies the
-   * interruption rule if mid-glide (§7.5), and makes the new segment the tail. `range` adds the
-   * room left to the voice's range to the overshoot limits.
+   * The segment a move starting at t0 would get, without changing the frontier: reads the actual
+   * pitch and velocity, applies the interruption rule if mid-glide (§7.5), with the overshoot
+   * limits narrowed by the room left to the voice's range (§7.8).
+   */
+  prepare(
+    t0: Seconds,
+    dur: Seconds,
+    to: Pitch,
+    ease: EaseRef,
+    limits: OvershootLimits,
+    crossScale: number,
+    range: readonly [Pitch, Pitch],
+    momentId: string,
+    holder?: { memo?: SegmentMemo },
+  ): Segment {
+    const st = this.stateAt(t0)!;
+    const hi = st.p > to ? st.p : to;
+    const lo = st.p < to ? st.p : to;
+    const roomUp = range[1] - hi;
+    const roomDown = lo - range[0];
+    const up = limits.up < roomUp ? limits.up : roomUp > 0 ? roomUp : 0;
+    const down = limits.down < roomDown ? limits.down : roomDown > 0 ? roomDown : 0;
+    // The clamp (64-point bisection) depends only on these inputs; projections rebuild the same
+    // move many times while the planner adjusts timings and scales, so it is cached per move.
+    const k = holder?.memo;
+    let carried: CarriedVelocity;
+    if (
+      k &&
+      k.p === st.p &&
+      k.v === st.v &&
+      k.mid === st.mid &&
+      k.dur === dur &&
+      k.to === to &&
+      k.up === up &&
+      k.down === down
+    ) {
+      carried = k.carried;
+    } else {
+      carried = carriedVelocity(st, dur, to, ease, { up, down });
+      if (holder) holder.memo = { p: st.p, v: st.v, mid: st.mid, dur, to, up, down, carried };
+    }
+    return segmentFromCarried(st.p, t0, dur, to, ease, carried, crossScale, momentId);
+  }
+
+  /**
+   * Starts a move at t0 (§7.1 move-start): the `prepare`d segment becomes the tail, and the old
+   * tail is finished (a running glide is cut, §7.5 step 1).
    */
   start(
     t0: Seconds,
@@ -162,18 +232,10 @@ export class Frontier {
     crossScale: number,
     range: readonly [Pitch, Pitch],
     momentId: string,
+    holder?: { memo?: SegmentMemo },
   ): Segment {
-    const st = this.stateAt(t0)!;
-    const hi = st.p > to ? st.p : to;
-    const lo = st.p < to ? st.p : to;
-    const roomUp = range[1] - hi;
-    const roomDown = lo - range[0];
-    const lim: OvershootLimits = {
-      up: limits.up < roomUp ? limits.up : roomUp > 0 ? roomUp : 0,
-      down: limits.down < roomDown ? limits.down : roomDown > 0 ? roomDown : 0,
-    };
-    const seg = buildMoveSegment(st, t0, dur, to, ease, lim, crossScale, momentId);
-    this.finishAt(t0, st.p);
+    const seg = this.prepare(t0, dur, to, ease, limits, crossScale, range, momentId, holder);
+    this.finishAt(t0, seg.p0);
     this.tail = seg;
     this.open = false;
     return seg;

@@ -29,6 +29,17 @@ import type { Birth, Move, VoiceRun } from './voice';
 
 /** Order reversals smaller than this are touching, not crossing (semitones). */
 export const CROSS_EPS = 1e-9;
+export const DBG = {
+  resample: 0,
+  tighten: 0,
+  resolve: 0,
+  passes: 0,
+  plans: 0,
+  checks: 0,
+  pruned: 0,
+  parts: 0,
+  movers: 0,
+};
 
 const enum PartKind {
   Fixed = 0,
@@ -53,8 +64,10 @@ interface Part {
   crossScale: number;
   move: Move | null;
   birth: Birth | null;
-  samples: Float64Array;
+  samples: Float64Array | null;
   sampled: boolean;
+  /** Cached pitch bounds over the window (valid while `sampled`'s projection is). */
+  bnd: [Pitch, Pitch] | null;
 }
 
 /** What the planner needs from the compiler. */
@@ -99,6 +112,7 @@ export function planMoment(
   subset: boolean,
 ): PlanResult {
   const { voices, t: T, glide, seed } = host;
+  DBG.plans++;
   const ordered = plan.ordered;
 
   // 1. Ranges (§7.8).
@@ -143,8 +157,9 @@ export function planMoment(
       crossScale: 1,
       move: null,
       birth: null,
-      samples: new Float64Array(CHECK_SAMPLES),
+      samples: null,
       sampled: false,
+      bnd: null,
     };
     partOf.set(voice, parts.length);
     parts.push(p);
@@ -172,6 +187,8 @@ export function planMoment(
     p.deferT = -Infinity;
   }
   const n = parts.length;
+  DBG.parts += n;
+  DBG.movers += parts.filter((p) => p.kind !== PartKind.Fixed).length;
 
   // 3. Timings (§5, §7.4, §7.7): stratified offsets for movers, linked starts for newborns.
   const movers = parts
@@ -285,9 +302,37 @@ export function planMoment(
   }
   const projector = new Projector(voices, (v) => tentative.get(v));
 
-  /** Re-applies group timings to the tentative records; invalidates what changed. */
+  // A newborn's path reads its parent's (left-limit) state, so a change to a voice's schedule
+  // also invalidates the voices it parents: this moment's newborns and pending ones.
+  const children = new Map<number, number[]>();
+  const addChild = (parent: number, child: number): void => {
+    const list = children.get(parent);
+    if (list) list.push(child);
+    else children.set(parent, [child]);
+  };
+  for (const run of voices) {
+    const b = tentative.get(run.index)?.birth ?? run.pendingBirth;
+    if (b && b.parent >= 0) addChild(b.parent, run.index);
+  }
+  let touched = new Uint8Array(n);
+  /** Per-part version, bumped whenever its curve may change. */
+  const ver = new Int32Array(n);
+  /** Per adjacent pair k: 1 + versions at which it was last found clear (0 = unknown). */
+  const clearAt = new Float64Array(n);
+  const invalidate = (v: number, depth = 0): void => {
+    projector.invalidate(v);
+    const pi = partOf.get(v);
+    if (pi !== undefined) {
+      parts[pi].sampled = false;
+      parts[pi].bnd = null;
+      touched[pi] = 1;
+      ver[pi]++;
+    }
+    if (depth < 40) for (const c of children.get(v) ?? []) invalidate(c, depth + 1);
+  };
+
+  /** Re-applies group timings and scales to the tentative records; invalidates what changed. */
   const sync = (): void => {
-    let any = false;
     for (let i = 0; i < n; i++) {
       const p = parts[i];
       if (!p.move) continue;
@@ -298,40 +343,54 @@ export function planMoment(
         p.move.dur = d;
         p.move.crossScale = p.crossScale;
         if (p.birth) p.birth.t = s;
-        any = true;
+        invalidate(p.voice);
       }
-    }
-    if (any) {
-      projector.invalidate();
-      for (const p of parts) p.sampled = false;
     }
   };
 
-  // Window: the moment's time to the latest end of anything moving.
+  // Window: the moment's time to the latest end of anything moving. Timing adoption only copies
+  // timings that exist (deferred starts included below), so this bound holds throughout.
   let we = T;
-  const window = (): void => {
-    we = T;
-    for (let i = 0; i < n; i++) {
-      const p = parts[i];
-      const e = p.move ? p.move.t0 + p.move.dur : projector.get(p.voice).lastGlideEnd();
-      if (e > we) we = e;
-    }
-  };
+  let maxDur = 0;
+  let maxDefer = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const p = parts[i];
+    const e = p.move ? p.move.t0 + p.move.dur : projector.get(p.voice).lastGlideEnd();
+    if (e > we) we = e;
+    if (p.move && p.move.dur > maxDur) maxDur = p.move.dur;
+    if (p.deferT > maxDefer) maxDefer = p.deferT;
+  }
+  if (maxDefer + maxDur > we) we = maxDefer + maxDur;
   const times = new Float64Array(CHECK_SAMPLES);
-  const setTimes = (): void => {
-    for (let j = 0; j < CHECK_SAMPLES; j++) times[j] = T + ((we - T) * j) / (CHECK_SAMPLES - 1);
-  };
+  for (let j = 0; j < CHECK_SAMPLES; j++) times[j] = T + ((we - T) * j) / (CHECK_SAMPLES - 1);
   const sample = (p: Part): Float64Array => {
-    if (!p.sampled) {
+    if (!p.sampled || !p.samples) {
+      DBG.resample++;
       const proj = projector.get(p.voice);
-      for (let j = 0; j < CHECK_SAMPLES; j++) p.samples[j] = proj.pitchAt(times[j]);
+      const out = p.samples ?? (p.samples = new Float64Array(CHECK_SAMPLES));
+      for (let j = 0; j < CHECK_SAMPLES; j++) out[j] = proj.pitchAt(times[j]);
       p.sampled = true;
     }
     return p.samples;
   };
+  const boundsOf = (p: Part): [Pitch, Pitch] =>
+    p.bnd ?? (p.bnd = projector.get(p.voice).bounds(T, we));
 
-  /** First sample where lo is above hi; −1 if none; −2 if they start out of order. */
-  const crossing = (lo: Part, hi: Part): { at: number; ref: number } => {
+  /** Reference sample of the last `crossing` call (first sample where both sound). */
+  let crossRef = 0;
+  /**
+   * First sample index where lo is above hi; −1 if none; −2 if they are already out of order at
+   * the first sample where both sound (not this moment's doing). Sets `crossRef`.
+   */
+  const crossing = (lo: Part, hi: Part): number => {
+    // Exact pruning: if lo's highest possible pitch is not above hi's lowest, they cannot cross.
+    const bl = boundsOf(lo);
+    const bh = boundsOf(hi);
+    DBG.checks++;
+    if (bl[1] <= bh[0] + CROSS_EPS) {
+      DBG.pruned++;
+      return -1;
+    }
     const a = sample(lo);
     const b = sample(hi);
     let ref = -1;
@@ -341,66 +400,98 @@ export function planMoment(
       if (x !== x || y !== y) continue;
       if (ref < 0) {
         ref = j;
-        if (x > y + CROSS_EPS) return { at: -2, ref };
+        crossRef = j;
+        if (x > y + CROSS_EPS) return -2;
         continue;
       }
-      if (x > y + CROSS_EPS) return { at: j, ref };
+      if (x > y + CROSS_EPS) return j;
     }
-    return { at: -1, ref };
+    return -1;
   };
 
   const enforce = ordered && n >= 2 && parts.some((p) => p.kind !== PartKind.Fixed);
   const unresolved = new Set<number>();
   if (enforce) {
-    window();
-    setTimes();
     const isMover = (p: Part): boolean => p.kind !== PartKind.Fixed;
-    /** Scales down the carried velocity of the movers among (lo, up) until they stop crossing. */
+    /**
+     * Scales down the carried velocity of the movers among (lo, up) until they stop crossing
+     * (§7.2: "the overshoot clamp is tightened to the gap"). Both curves are affine in the shared
+     * scale s (pitch = base + s·m₀·H after the move starts, unchanged before), so the largest s
+     * that keeps every sample in order is found from the curves at s = 0 and s = 1, then checked.
+     */
     const tighten = (lo: Part, up: Part): boolean => {
       const ms = [lo, up].filter((p) => p.move !== null);
       if (ms.length === 0) return false;
       const saved = ms.map((p) => p.crossScale);
-      const check = (s: number): boolean => {
+      const set = (s: number): void => {
         for (const p of ms) p.crossScale = s;
         sync();
-        return crossing(lo, up).at === -1;
       };
-      if (!check(0)) {
+      set(0);
+      if (crossing(lo, up) !== -1) {
         ms.forEach((p, k) => (p.crossScale = saved[k]));
         sync();
         return false;
       }
-      let ok = 0;
-      let bad = saved.reduce((m, s) => (s < m ? s : m), 1);
-      for (let k = 0; k < 16; k++) {
-        const mid = (ok + bad) / 2;
-        if (check(mid)) ok = mid;
-        else bad = mid;
+      DBG.tighten++;
+      // Scales only ever decrease, so tightening one pair cannot undo another.
+      const cap = saved.reduce((m, x) => (x < m ? x : m), 1);
+      const a0 = sample(lo).slice();
+      const b0 = sample(up).slice();
+      set(cap);
+      const a1 = sample(lo);
+      const b1 = sample(up);
+      let best = 1;
+      for (let j = 0; j < CHECK_SAMPLES; j++) {
+        const d0 = a0[j] - b0[j];
+        const slope = a1[j] - b1[j] - d0;
+        if (d0 !== d0 || slope !== slope || slope <= 0) continue;
+        const sj = (CROSS_EPS * 0.5 - d0) / slope;
+        if (sj < best) best = sj;
       }
-      check(ok);
+      let s = best > 0 ? cap * best * (1 - 1e-9) : 0;
+      set(s);
+      // Rounding can leave a sliver: halve until the samples agree (s = 0 is known to fit).
+      for (let k = 0; k < 8 && s > 0 && crossing(lo, up) !== -1; k++) {
+        s = k < 7 ? s / 2 : 0;
+        set(s);
+      }
       return true;
     };
 
+    // Each pass resolves every crossing it finds among pairs whose curves it has not changed yet.
     const maxPasses = 3 * n + 8;
     for (let pass = 0; pass < maxPasses; pass++) {
       let acted = false;
-      for (let k = 0; k + 1 < n && !acted; k++) {
+      DBG.passes++;
+      touched = new Uint8Array(n);
+      for (let k = 0; k + 1 < n; k++) {
         const li = order[k];
         const hi = order[k + 1];
+        if (touched[li] || touched[hi]) continue;
         const lo = parts[li];
         const up = parts[hi];
         if (!isMover(lo) && !isMover(up)) continue;
         const key = li * n + hi;
         if (unresolved.has(key)) continue;
-        const c = crossing(lo, up);
-        if (c.at === -1) continue;
-        if (c.at === -2) {
+        // A pair found clear stays clear until one of its curves changes.
+        if (clearAt[k] === ver[li] + ver[hi] * 65536 + 1) continue;
+        const at = crossing(lo, up);
+        if (at === -1) {
+          clearAt[k] = ver[li] + ver[hi] * 65536 + 1;
+          continue;
+        }
+        if (at === -2) {
           unresolved.add(key); // already out of order when the moment starts: not its doing
           continue;
         }
+        const c = { at, ref: crossRef };
         acted = true;
-        const dLo = lo.samples[c.at] - lo.samples[c.ref];
-        const dHi = up.samples[c.ref] - up.samples[c.at];
+        DBG.resolve++;
+        const sl = sample(lo);
+        const su = sample(up);
+        const dLo = sl[c.at] - sl[c.ref];
+        const dHi = su[c.ref] - su[c.at];
         const [a, ai, b, bi] = dLo >= dHi ? [lo, li, up, hi] : [up, hi, lo, li];
         if (isMover(a) && isMover(b)) {
           if (find(ai) === find(bi)) {
@@ -419,14 +510,14 @@ export function planMoment(
             tentative.set(fixed.voice, { birth: null, moves: [fixed.move] });
             if (fixedI === ai) adopt(ai, bi);
             else adopt(bi, ai);
+            invalidate(fixed.voice);
           } else if (!tighten(lo, up)) {
             unresolved.add(key);
           }
         }
         sync();
-        window();
-        setTimes();
-        for (const p of parts) p.sampled = false;
+        touched[li] = 1;
+        touched[hi] = 1;
       }
       if (!acted) break;
     }
@@ -436,7 +527,7 @@ export function planMoment(
       const lo = parts[order[k]];
       const up = parts[order[k + 1]];
       if (!isMover(lo) && !isMover(up)) continue;
-      if (crossing(lo, up).at >= 0) left++;
+      if (crossing(lo, up) >= 0) left++;
     }
     if (left > 0) {
       host.diag(
@@ -482,25 +573,37 @@ export function planMoment(
       if (run.sounding || run.pendingBirth) others.push(v);
     }
     if (others.length > 0) {
-      if (!enforce) {
-        window();
-        setTimes();
-      }
       const crossed = new Set<string>();
+      const oBounds = new Map<number, [Pitch, Pitch]>();
+      const oSamples = new Map<number, Float64Array>();
       for (const p of parts) {
         if (!p.move) continue;
-        const a = sample(p);
+        const pb = boundsOf(p);
+        let a: Float64Array | null = null;
         for (const o of others) {
-          const proj = projector.get(o);
+          let ob = oBounds.get(o);
+          if (!ob) {
+            ob = projector.get(o).bounds(T, we);
+            oBounds.set(o, ob);
+          }
+          if (pb[1] < ob[0] - CROSS_EPS || pb[0] > ob[1] + CROSS_EPS) continue; // disjoint
+          let y = oSamples.get(o);
+          if (!y) {
+            y = new Float64Array(CHECK_SAMPLES);
+            const proj = projector.get(o);
+            for (let j = 0; j < CHECK_SAMPLES; j++) y[j] = proj.pitchAt(times[j]);
+            oSamples.set(o, y);
+          }
+          a ??= sample(p);
           let sign = 0;
           for (let j = 0; j < CHECK_SAMPLES; j++) {
-            const y = proj.pitchAt(times[j]);
             const x = a[j];
-            if (x !== x || y !== y) continue;
-            const s = x > y + CROSS_EPS ? 1 : x < y - CROSS_EPS ? -1 : 0;
-            if (s === 0) continue;
-            if (sign === 0) sign = s;
-            else if (s !== sign) {
+            const z = y[j];
+            if (x !== x || z !== z) continue;
+            const sg = x > z + CROSS_EPS ? 1 : x < z - CROSS_EPS ? -1 : 0;
+            if (sg === 0) continue;
+            if (sign === 0) sign = sg;
+            else if (sg !== sign) {
               crossed.add(`${voices[p.voice].id}/${voices[o].id}`);
               break;
             }
@@ -532,7 +635,6 @@ export function planMoment(
       crossScale: p.crossScale,
     });
   }
-  if (!enforce) window();
   return {
     births,
     moves,

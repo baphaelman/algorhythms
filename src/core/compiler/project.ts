@@ -8,10 +8,16 @@
  * intervenes.
  */
 
-import { evalSegment, evalSegmentVelocity } from '../segment';
+import { EaseCode, easeCodeOf } from '../ease';
+import { evalSegment, evalSegmentVelocity, segmentPitch } from '../segment';
 import type { StartState } from '../interrupt';
 import type { Pitch, Seconds, Segment } from '../types';
 import { isGlide, type Birth, type Move, type VoiceRun } from './voice';
+
+/** Doubles per flattened record: t0 t1 p0 p1 code x1 y1 x2 y2 m0 curveT1 curveP1. */
+const REC = 12;
+/** max H(x) = 4/27. */
+const H_MAX = 4 / 27;
 
 /** Extra scheduled events for a voice (the moment being planned). */
 export interface Tentative {
@@ -29,22 +35,99 @@ export class Projection {
   startT = -Infinity;
   /** Silent from this time on (a death's end). */
   closeT = Infinity;
+  /** When the life open at (or born in) the projection began, and its instantaneous motion. */
   bornT = NaN;
+  bornV = 0;
+  bornMid = false;
   bornState: StartState | null = null;
   private cursor = 0;
+  /** Segments and tail as scalar records (REC doubles each), built on first use. */
+  private rec: Float64Array | null = null;
+  private nrec = 0;
+
+  /** Flattens segs + tail for fast, monomorphic evaluation (an open hold runs to +∞). */
+  private records(): Float64Array {
+    const all = this.tail ? [...this.segs, this.tail] : this.segs;
+    const r = new Float64Array(all.length * REC);
+    all.forEach((g, i) => {
+      const o = i * REC;
+      const e = g.ease;
+      const open = g === this.tail && this.open;
+      r[o] = g.t0;
+      r[o + 1] = open ? Infinity : g.t1;
+      r[o + 2] = g.p0;
+      r[o + 3] = open ? g.p0 : g.p1;
+      r[o + 4] = easeCodeOf(e);
+      r[o + 5] = typeof e === 'object' ? e.x1 : 0;
+      r[o + 6] = typeof e === 'object' ? e.y1 : 0;
+      r[o + 7] = typeof e === 'object' ? e.x2 : 1;
+      r[o + 8] = typeof e === 'object' ? e.y2 : 1;
+      r[o + 9] = g.m0 ?? 0;
+      r[o + 10] = open ? Infinity : g.curve ? g.curve.t1 : g.t1;
+      r[o + 11] = open ? g.p0 : g.curve ? g.curve.p1 : g.p1;
+    });
+    this.rec = r;
+    this.nrec = all.length;
+    return r;
+  }
 
   /** Pitch at t, NaN while silent. Fastest when called with increasing t. */
   pitchAt(t: Seconds): Pitch {
     if (t < this.startT || t >= this.closeT) return NaN;
-    const tail = this.tail;
-    if (tail && t >= tail.t0) return this.open ? tail.p0 : evalSegment(tail, t);
-    const segs = this.segs;
-    if (segs.length === 0 || t < segs[0].t0) return NaN;
-    let i = this.cursor < segs.length ? this.cursor : segs.length - 1;
-    if (segs[i].t0 > t) i = 0;
-    while (i + 1 < segs.length && segs[i + 1].t0 <= t) i++;
+    const r = this.rec ?? this.records();
+    const n = this.nrec;
+    if (n === 0 || t < r[0]) return NaN;
+    let i = this.cursor < n ? this.cursor : n - 1;
+    if (r[i * REC] > t) i = 0;
+    while (i + 1 < n && r[(i + 1) * REC] <= t) i++;
     this.cursor = i;
-    return evalSegment(segs[i], t);
+    const o = i * REC;
+    return segmentPitch(
+      r[o],
+      r[o + 1],
+      r[o + 2],
+      r[o + 3],
+      r[o + 4] as EaseCode,
+      r[o + 5],
+      r[o + 6],
+      r[o + 7],
+      r[o + 8],
+      r[o + 9],
+      t,
+      r[o + 10],
+      r[o + 11],
+    );
+  }
+
+  /**
+   * Exact bounds [lo, hi] of the pitch over [a, b]: each segment stays within
+   * p₀ + (P₁ − p₀)·[e_min, e_max] + m₀·[0, 4/27] (a bézier's y lies in its control hull).
+   */
+  bounds(a: Seconds, b: Seconds): [Pitch, Pitch] {
+    const r = this.rec ?? this.records();
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < this.nrec; i++) {
+      const o = i * REC;
+      if (r[o + 1] < a || r[o] > b) continue;
+      const p0 = r[o + 2];
+      const d = r[o + 11] - p0;
+      let eMin = 0;
+      let eMax = 1;
+      if (r[o + 4] === EaseCode.Bezier) {
+        eMin = Math.min(0, r[o + 6], r[o + 8]);
+        eMax = Math.max(1, r[o + 6], r[o + 8]);
+      }
+      let x = p0 + d * eMin;
+      let y = p0 + d * eMax;
+      if (x > y) [x, y] = [y, x];
+      const m = r[o + 9] * H_MAX;
+      if (m > 0) y += m;
+      else x += m;
+      if (x < lo) lo = x;
+      if (y > hi) hi = y;
+    }
+    return [lo, hi];
   }
 
   /** Left-limit state at t (what a birth at t reads from its parent); null while silent. */
@@ -63,9 +146,17 @@ export class Projection {
         }
       }
     }
-    if (!s) return t === this.bornT && this.bornState ? this.bornState : null;
+    if (!s) {
+      // The life begins exactly at t: the state is its first instant (Frontier.stateAt).
+      if (t !== this.bornT) return null;
+      if (this.bornState) return this.bornState;
+      const first = this.segs.length > 0 ? this.segs[0] : this.tail;
+      return first && first.t0 === t ? { p: first.p0, v: this.bornV, mid: this.bornMid } : null;
+    }
     if (isTail && this.open) return { p: s.p0, v: 0, mid: false };
-    if (t < s.t1 && isGlide(s)) {
+    // A glide cut at exactly t (by a move at t) is still running in the left limit.
+    const runsTo = s.curve ? s.curve.t1 : s.t1;
+    if (t <= s.t1 && t < runsTo && isGlide(s)) {
       return { p: evalSegment(s, t), v: evalSegmentVelocity(s, t), mid: true };
     }
     return { p: t <= s.t1 ? evalSegment(s, t) : s.p1, v: 0, mid: false };
@@ -109,15 +200,55 @@ export class Projector {
     const run = this.voices[v];
     const proj = new Projection();
     if (this.depth > 40) return proj; // pathological parent chains: treat as silent
-    const out: Segment[] = [];
-    const f = run.frontier.clone(out);
     const ext = this.extra(v);
+    const fr = run.frontier;
+    // Fast path for the common case, a sounding voice whose only scheduled move is the planned
+    // one: before the new move starts, the uncut tail evaluates exactly like the cut one, so the
+    // path is [tail, new segment] (shared read-only), with no copy of the frontier.
+    if (
+      fr.alive &&
+      !run.pendingBirth &&
+      run.pending.length === 0 &&
+      (!ext || (!ext.birth && ext.moves.length <= 1 && !ext.moves[0]?.death))
+    ) {
+      proj.bornT = fr.bornT;
+      proj.bornV = fr.bornV;
+      proj.bornMid = fr.bornMid;
+      const m = ext?.moves[0];
+      if (!m) {
+        proj.tail = fr.tail;
+        proj.open = fr.open;
+        return proj;
+      }
+      const seg = fr.prepare(
+        m.t0,
+        m.dur,
+        m.to,
+        m.ease,
+        m.limits,
+        m.crossScale,
+        run.range,
+        m.momentId,
+        m,
+      );
+      proj.segs = [fr.tail!];
+      proj.tail = seg;
+      proj.open = false;
+      return proj;
+    }
+    const out: Segment[] = [];
+    const f = fr.clone(out);
     const birth = ext?.birth ?? run.pendingBirth;
     const moves: Move[] = [];
     for (const m of run.pending) if (!m.cancelled) moves.push(m);
     if (ext) for (const m of ext.moves) moves.push(m);
     moves.sort((a, b) => a.t0 - b.t0);
     if (!f.alive) proj.startT = birth ? birth.t : Infinity;
+    else {
+      proj.bornT = f.bornT;
+      proj.bornV = f.bornV;
+      proj.bornMid = f.bornMid;
+    }
     let bi = birth && !f.alive ? 0 : 1; // the birth precedes moves at equal times
     let mi = 0;
     while (bi === 0 || mi < moves.length) {
@@ -138,7 +269,17 @@ export class Projector {
       }
       const m = moves[mi++];
       if (!f.alive) continue;
-      const seg = f.start(m.t0, m.dur, m.to, m.ease, m.limits, m.crossScale, run.range, m.momentId);
+      const seg = f.start(
+        m.t0,
+        m.dur,
+        m.to,
+        m.ease,
+        m.limits,
+        m.crossScale,
+        run.range,
+        m.momentId,
+        m,
+      );
       if (m.death) {
         proj.closeT = seg.t1 + m.death.fade;
         f.close(proj.closeT);

@@ -1,0 +1,498 @@
+/**
+ * Compiler property tests (PLAN.md §14) over randomly generated valid pieces.
+ *
+ * Every property runs RUNS pieces (fast-check, seeded by Vitest's run so failures shrink and
+ * replay). See compiler-arbitraries.ts for what the pieces contain.
+ */
+import { writeFileSync } from 'node:fs';
+import fc from 'fast-check';
+import { describe, expect, it } from 'vitest';
+import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
+import { CHECK_SAMPLES } from '../../../src/core/interrupt';
+import { pitchAt } from '../../../src/core/query';
+import { evalSegment, evalSegmentVelocity } from '../../../src/core/segment';
+import { easeCodeOf, easeRaw, bezierOf } from '../../../src/core/ease';
+import type { CompiledScore, CompiledVoice, Piece, Segment } from '../../../src/core/types';
+import { pieceArb } from './compiler-arbitraries';
+
+const RUNS = Number(process.env.PROP_RUNS ?? 300);
+
+/**
+ * fc.assert, and when the DUMP_DIR environment variable is set, writes a failing piece to
+ * $DUMP_DIR/<name>.json for debugging.
+ */
+function check<T>(name: string, prop: fc.IProperty<[T]>, numRuns: number): void {
+  fc.assert(prop, {
+    numRuns,
+    reporter: (out) => {
+      if (!out.failed) return;
+      const dir = process.env.DUMP_DIR;
+      if (dir && out.counterexample) {
+        writeFileSync(`${dir}/${name}.json`, JSON.stringify(out.counterexample[0], null, 1));
+      }
+      throw new Error(fc.defaultReportMessage(out));
+    },
+  });
+}
+
+/** The moment's effective ease is a bézier that leaves [0, 1] (it overshoots by design). */
+function overshootingEase(p: Piece, momentId: string): boolean {
+  const m = p.moments.find((x) => x.id === momentId);
+  const e = m?.glide?.ease ?? p.defaults.glide.ease;
+  return typeof e === 'object' && (e.y1 < 0 || e.y1 > 1 || e.y2 < 0 || e.y2 > 1);
+}
+
+/**
+ * How far the segment's ease alone (m0 = 0) can leave [min(p0, p1), max(p0, p1)] of its plan: a
+ * bézier's y lies within its control hull [min(0, y1, y2), max(1, y1, y2)]; named eases stay in
+ * [0, 1].
+ */
+function ownOvershoot(g: Segment): { up: number; down: number } {
+  const end = g.curve ? g.curve : { t1: g.t1, p1: g.p1 };
+  if (typeof g.ease !== 'object') return { up: 0, down: 0 };
+  const eMin = Math.min(0, g.ease.y1, g.ease.y2);
+  const eMax = Math.max(1, g.ease.y1, g.ease.y2);
+  const a = g.p0 + (end.p1 - g.p0) * eMin;
+  const b = g.p0 + (end.p1 - g.p0) * eMax;
+  return {
+    up: Math.max(0, Math.max(a, b) - Math.max(g.p0, end.p1)),
+    down: Math.max(0, Math.min(g.p0, end.p1) - Math.min(a, b)),
+  };
+}
+
+/** The planned glide's end (cut segments keep it in `curve`). */
+const plannedEnd = (s: Segment): { t1: number; p1: number } =>
+  s.curve ? s.curve : { t1: s.t1, p1: s.p1 };
+
+/** Index of a voice's segment covering t (t0 ≤ t ≤ t1), or −1. */
+function segAt(v: CompiledVoice, t: number): number {
+  for (let i = v.segments.length - 1; i >= 0; i--) {
+    const s = v.segments[i];
+    if (s.t0 <= t) return t <= s.t1 ? i : -1;
+  }
+  return -1;
+}
+
+describe('compiler properties (§14)', () => {
+  it('is deterministic: same piece, same score; JSON round trips do not matter', () => {
+    check(
+      'determinism',
+      fc.property(pieceArb(), (p) => {
+        const a = compile(p);
+        const b = compile(JSON.parse(JSON.stringify(p)) as Piece);
+        expect(b).toEqual(a);
+        expect(JSON.stringify(compile(p))).toBe(JSON.stringify(a));
+      }),
+      RUNS,
+    );
+  });
+
+  it('C⁰ everywhere: lives are contiguous runs of segments with exact joins', () => {
+    check(
+      'c0',
+      fc.property(pieceArb({ varyRanges: true }), (p) => {
+        const s = compile(p);
+        for (const v of s.voices) {
+          let k = 0;
+          for (const life of v.lives) {
+            const segs: Segment[] = [];
+            while (k < v.segments.length && v.segments[k].t0 < (life.died ?? Infinity)) {
+              segs.push(v.segments[k++]);
+            }
+            expect(segs.length).toBeGreaterThan(0);
+            expect(segs[0].t0).toBe(life.born);
+            expect(segs[segs.length - 1].t1).toBe(life.died);
+            for (let i = 0; i < segs.length; i++) {
+              const g = segs[i];
+              expect(g.t1).toBeGreaterThan(g.t0);
+              expect(evalSegment(g, g.t0)).toBe(g.p0);
+              expect(evalSegment(g, g.t1)).toBe(g.p1);
+              // Inside the segment the curve approaches p1 continuously at the cut.
+              const near = evalSegment(g, g.t1 - (g.t1 - g.t0) * 1e-9);
+              expect(Math.abs(near - g.p1)).toBeLessThan(1e-5);
+              if (i > 0) {
+                expect(g.t0).toBe(segs[i - 1].t1);
+                expect(g.p0).toBe(segs[i - 1].p1);
+              }
+            }
+          }
+          expect(k).toBe(v.segments.length);
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it('C¹ at interruptions, except joins flagged clamped (§7.5)', () => {
+    let joins = 0;
+    let clampedJoins = 0;
+    check(
+      'c1',
+      fc.property(pieceArb(), (p) => {
+        const s = compile(p);
+        for (const v of s.voices) {
+          for (let i = 1; i < v.segments.length; i++) {
+            const prev = v.segments[i - 1];
+            const next = v.segments[i];
+            if (!prev.curve || next.t0 !== prev.t1) continue; // not an interruption
+            joins++;
+            if (next.clamped) {
+              clampedJoins++;
+              continue;
+            }
+            const vl = evalSegmentVelocity(prev, prev.t1);
+            const vr = evalSegmentVelocity(next, next.t0);
+            expect(Math.abs(vl - vr)).toBeLessThanOrEqual(1e-6 * (1 + Math.abs(vl)));
+          }
+        }
+      }),
+      RUNS,
+    );
+    expect(joins).toBeGreaterThan(50); // the generator really interrupts glides
+    expect(clampedJoins).toBeLessThan(joins);
+  });
+
+  it('no crossings within the targeted set under ordered (pairwise sampling, §7.2)', () => {
+    let pairsChecked = 0;
+    let unresolved = 0;
+    check(
+      'crossing',
+      fc.property(pieceArb(), (p) => {
+        const { score, trace } = compileWithTrace(p);
+        trace.moments.forEach((m, mi) => {
+          const plan = m.plan;
+          if (!plan || !plan.ordered || plan.order.length < 2) return;
+          // A later moment targeting a voice cancels its pending moves (§7.1): the guarantee
+          // covers this moment's plan only until then.
+          const takeover = (v: number): number => {
+            for (const o of trace.moments.slice(mi + 1)) {
+              if (o.type !== 'level' && o.targeted.includes(v)) return o.t;
+            }
+            return Infinity;
+          };
+          const reported = score.diagnostics.some(
+            (d) => d.momentId === m.id && d.code === 'crossing-unresolved',
+          );
+          const [ws, we] = plan.window;
+          for (let k = 0; k + 1 < plan.order.length; k++) {
+            const lo = score.voices[plan.order[k]];
+            const hi = score.voices[plan.order[k + 1]];
+            if (!plan.movers.includes(lo.index) && !plan.movers.includes(hi.index)) continue;
+            // The window ends when a later moment (or walk) takes over either voice.
+            let end = Math.min(we, takeover(lo.index), takeover(hi.index));
+            for (const v of [lo, hi]) {
+              for (const g of v.segments) {
+                if (g.t0 >= ws && g.momentId !== undefined && g.momentId !== m.id && g.t0 < end) {
+                  end = g.t0;
+                }
+              }
+            }
+            let ref = false;
+            let crossed = false;
+            for (let j = 0; j < CHECK_SAMPLES; j++) {
+              const t = ws + ((we - ws) * j) / (CHECK_SAMPLES - 1);
+              if (t > end) break;
+              const a = pitchAt(lo, t);
+              const b = pitchAt(hi, t);
+              if (a === null || b === null) continue;
+              if (!ref) {
+                ref = true;
+                if (a > b + 1e-9) break; // already out of order at the moment: exempt
+                pairsChecked++;
+                continue;
+              }
+              if (a > b + 1e-9) crossed = true;
+            }
+            if (crossed) {
+              if (!overshootingEase(p, m.id)) unresolved++;
+              expect(reported, `moment ${m.id} crosses ${lo.id}/${hi.id} without a report`).toBe(
+                true,
+              );
+            }
+          }
+        });
+      }),
+      RUNS,
+    );
+    expect(pairsChecked).toBeGreaterThan(500);
+    // A bézier whose y leaves [0, 1] overshoots by itself, so equal timing cannot stop lines
+    // swapping (§7.2's algebra needs 0 ≤ e ≤ 1); those are reported but not counted here. Other
+    // unresolvable crossings (carried velocity that tightening cannot fix) must stay rare.
+    expect(unresolved / pairsChecked).toBeLessThan(0.002);
+  });
+
+  it('overshoot never exceeds its limit L (§7.5)', () => {
+    let checked = 0;
+    check(
+      'overshoot',
+      fc.property(pieceArb({ varyRanges: true }), (p) => {
+        const { score, trace } = compileWithTrace(p);
+        const limits = new Map<string, { up: number; down: number }>();
+        for (const m of trace.moments) {
+          for (const l of m.plan?.limits ?? []) limits.set(`${m.id}/${l.voice}`, l);
+        }
+        for (const v of score.voices) {
+          const range = p.voices[v.index].range;
+          for (const g of v.segments) {
+            if (!g.m0) continue;
+            checked++;
+            const end = plannedEnd(g);
+            const lo = Math.min(g.p0, end.p1);
+            const hi = Math.max(g.p0, end.p1);
+            const lim = limits.get(`${g.momentId}/${v.index}`) ?? { up: 1, down: 1 };
+            const roomUp = Math.max(0, range[1] - hi);
+            const roomDown = Math.max(0, lo - range[0]);
+            const up = Math.min(1, lim.up, roomUp);
+            const down = Math.min(1, lim.down, roomDown);
+            // The ease's own overshoot (béziers) is allowed on top.
+            const code = easeCodeOf(g.ease);
+            const bz = bezierOf(g.ease);
+            let ownUp = hi;
+            let ownDown = lo;
+            for (let i = 0; i < CHECK_SAMPLES; i++) {
+              const x = i / (CHECK_SAMPLES - 1);
+              const b = g.p0 + (end.p1 - g.p0) * easeRaw(code, x, bz.x1, bz.y1, bz.x2, bz.y2);
+              ownUp = Math.max(ownUp, b);
+              ownDown = Math.min(ownDown, b);
+            }
+            for (let i = 0; i < CHECK_SAMPLES; i++) {
+              const x = i / (CHECK_SAMPLES - 1);
+              const t = g.t0 + (end.t1 - g.t0) * x;
+              const full: Segment = { ...g, t1: end.t1, p1: end.p1, curve: undefined };
+              const y = evalSegment(full, t);
+              expect(y).toBeLessThanOrEqual(ownUp + up + 1e-9);
+              expect(y).toBeGreaterThanOrEqual(ownDown - down - 1e-9);
+            }
+          }
+        }
+      }),
+      RUNS,
+    );
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('ranges are respected (§7.8)', () => {
+    check(
+      'ranges',
+      fc.property(pieceArb({ varyRanges: true }), (p) => {
+        const s = compile(p);
+        for (const v of s.voices) {
+          const [lo, hi] = p.voices[v.index].range;
+          // A newborn starts on its parent's pitch (§7.4), which may lie outside its own range;
+          // it is exempt until its path first starts a segment inside the range.
+          let outsideSinceBirth = false;
+          let prevOwn = 0;
+          v.segments.forEach((g) => {
+            const end = plannedEnd(g);
+            const isBirth = v.lives.some((l) => l.born === g.t0);
+            const inside = g.p0 >= lo && g.p0 <= hi;
+            if (isBirth) outsideSinceBirth = !inside;
+            else if (inside) outsideSinceBirth = false;
+            const birthHold = outsideSinceBirth && end.p1 === g.p0;
+            if (!birthHold) {
+              expect(end.p1).toBeGreaterThanOrEqual(lo);
+              expect(end.p1).toBeLessThanOrEqual(hi);
+            }
+            // Carried velocity never leaves the range; a bézier's own overshoot may (it is the
+            // user's ornament, like the allowance in the L test), and a move interrupting it
+            // there starts outside but never goes further out.
+            const own = ownOvershoot(g);
+            if (!inside) expect(outsideSinceBirth || prevOwn > 0).toBe(true);
+            prevOwn = own.up + own.down;
+            const bandLo = Math.min(lo, g.p0) - own.down - 1e-9;
+            const bandHi = Math.max(hi, g.p0) + own.up + 1e-9;
+            for (let j = 0; j < CHECK_SAMPLES; j++) {
+              const t = g.t0 + ((g.t1 - g.t0) * j) / (CHECK_SAMPLES - 1);
+              const y = evalSegment(g, t);
+              expect(y).toBeGreaterThanOrEqual(bandLo);
+              expect(y).toBeLessThanOrEqual(bandHi);
+            }
+          });
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it('pool limits are respected: one pool slot never holds two lives at once', () => {
+    check(
+      'pool',
+      fc.property(pieceArb(), (p) => {
+        const s = compile(p);
+        expect(s.voices.length).toBe(p.voices.length);
+        s.voices.forEach((v, i) => {
+          expect(v.index).toBe(i);
+          expect(v.id).toBe(p.voices[i].id);
+          for (let k = 1; k < v.lives.length; k++) {
+            expect(v.lives[k].born).toBeGreaterThanOrEqual(v.lives[k - 1].died!);
+          }
+        });
+        // At any segment boundary, no more voices sound than the pool holds.
+        const times = s.voices.flatMap((v) => v.lives.map((l) => l.born + 1e-6));
+        for (const t of times) {
+          const n = s.voices.filter((v) => pitchAt(v, t) !== null).length;
+          expect(n).toBeLessThanOrEqual(p.voices.length);
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it('overlap semantics: walk steps never overwrite a point moment (§7.1)', () => {
+    let resumed = 0;
+    check(
+      'overlap',
+      fc.property(pieceArb({ maxT: 25 }), (p) => {
+        const { score, trace } = compileWithTrace(p);
+        const walks = new Set(p.moments.filter((m) => m.type === 'walk').map((m) => m.id));
+        const isWalk = (g: Segment): boolean => g.momentId !== undefined && walks.has(g.momentId);
+        for (const v of score.voices) {
+          for (let i = 0; i + 1 < v.segments.length; i++) {
+            const g = v.segments[i];
+            const next = v.segments[i + 1];
+            // Walks step only idle voices: a running move is never cut by a walk step.
+            if (next.t0 === g.t1 && next.t0 < plannedEnd(g).t1 && !isWalk(g)) {
+              expect(isWalk(next), `${v.id}: walk step cuts ${g.momentId} at ${next.t0}`).toBe(
+                false,
+              );
+            }
+          }
+          // Count walk steps that follow a point moment's move (holds in between).
+          let lastMover: Segment | null = null;
+          for (const g of v.segments) {
+            if (g.momentId === undefined) continue;
+            if (isWalk(g) && lastMover && !isWalk(lastMover)) resumed++;
+            lastMover = g;
+          }
+        }
+        // A voice with a pending (staggered) move from a point moment does not walk before it.
+        for (const m of trace.moments) {
+          if (!m.plan) continue;
+          for (const vi of m.plan.movers) {
+            const v = score.voices[vi];
+            const own = v.segments.find((g) => g.momentId === m.id && g.t0 >= m.t);
+            if (!own) continue; // cancelled by a later moment
+            for (const g of v.segments) {
+              if (isWalk(g) && g.t0 >= m.t && g.t0 < own.t0) {
+                throw new Error(`${v.id} walks at ${g.t0} with ${m.id}'s move pending`);
+              }
+            }
+          }
+        }
+      }),
+      RUNS,
+    );
+    expect(resumed).toBeGreaterThan(20); // walks really resume after point moments
+  });
+
+  it('seed isolation: moving moment A leaves moment B’s draws and moves unchanged (§7.7)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 0xffff }),
+        fc.integer({ min: 0, max: 40 }),
+        fc.integer({ min: 0, max: 40 }),
+        fc.constantFrom('random' as const, 'low-first' as const, 'center-out' as const),
+        (seed, a1, a2, order) => {
+          // B moves v1..v3 by an explicit selector; A (a split and a merge on the other voices,
+          // with an empty target so it never touches v1..v3) changes the voice count elsewhere.
+          const make = (aAt: number): Piece => {
+            const p: Piece = JSON.parse(JSON.stringify(basePiece)) as Piece;
+            p.seed = seed;
+            p.defaults.glide.order = order;
+            p.moments = [
+              {
+                id: 'Aaaaaa',
+                type: 'split',
+                at: aAt / 4,
+                count: 8,
+                target: { voices: ['v4'] },
+                voicing: 'even',
+                notes: { kind: 'pitches', pitches: [80, 82, 84, 86, 88] },
+              },
+              {
+                id: 'Mmmmmm',
+                type: 'merge',
+                at: aAt / 4 + 6,
+                count: 4,
+                which: 'top',
+                fade: 1,
+                target: { rank: [4, 9] },
+              },
+              {
+                id: 'Bbbbbb',
+                type: 'chord',
+                at: 12,
+                target: { voices: ['v1', 'v2', 'v3'] },
+                notes: { kind: 'chord', symbol: 'Dm9' },
+                voicing: 'even',
+                assign: 'ordered',
+                register: [50, 70],
+              },
+            ];
+            return p;
+          };
+          const sa = compile(make(a1));
+          const sb = compile(make(a2));
+          for (const id of ['v1', 'v2', 'v3']) {
+            const pick = (s: CompiledScore): unknown[] =>
+              s.voices
+                .find((v) => v.id === id)!
+                .segments.filter((g) => g.momentId === 'Bbbbbb')
+                .map((g) => ({ t0: g.t0, p0: g.p0, end: plannedEnd(g), m0: g.m0, ease: g.ease }));
+            expect(pick(sb)).toEqual(pick(sa));
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it('every diagnostic has a stable kebab-case code and no generated piece errors out', () => {
+    check(
+      'diagnostics',
+      fc.property(pieceArb(), (p) => {
+        const s = compile(p);
+        for (const d of s.diagnostics) {
+          expect(d.code).toMatch(/^[a-z]+(-[a-z0-9]+)*$/);
+          expect(['info', 'warn', 'error']).toContain(d.level);
+        }
+      }),
+      RUNS,
+    );
+  });
+});
+
+const basePiece: Piece = (() => {
+  const p = JSON.parse(
+    JSON.stringify({
+      format: 'algorhythms',
+      version: 1,
+      meta: { title: 't', created: '', modified: '' },
+      seed: 1,
+      tuning: { referenceHz: 440, system: { kind: '12tet' } },
+      key: { tonic: 'D', scale: 'dorian' },
+      defaults: {
+        glide: { length: 3, jitter: 0.3, stagger: 1.2, order: 'random', ease: 'smootherstep' },
+      },
+      voices: Array.from({ length: 12 }, (_, i) => ({
+        id: `v${i + 1}`,
+        timbre: 'glass',
+        pan: 'auto',
+        gain: 1,
+        range: [36, 96],
+      })),
+      start: [
+        { voice: 'v1', pitch: 50 },
+        { voice: 'v2', pitch: 57 },
+        { voice: 'v3', pitch: 62 },
+        { voice: 'v4', pitch: 80 },
+      ],
+      moments: [],
+      timbres: {},
+      mix: {},
+      end: { fade: 4 },
+      view: { window: 20, colors: 'ink', hud: true },
+    }),
+  ) as Piece;
+  return p;
+})();
