@@ -55,6 +55,10 @@ export const DIAGNOSTIC_CODES: Readonly<
   },
   // Ranges and crossings
   'range-fold': { level: 'info', meaning: 'Targets outside a voice range were folded by octave.' },
+  'invalid-target': {
+    level: 'warn',
+    meaning: 'A moment produced a non-finite target pitch; the voice keeps its destination.',
+  },
   'range-too-narrow': {
     level: 'warn',
     meaning: 'A range narrower than an octave; a target was clamped.',

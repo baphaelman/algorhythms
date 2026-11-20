@@ -7,8 +7,8 @@
  *   p(x) = p₀ + (p₁ − p₀)·e(x) + m₀·H(x),   H(x) = x(1 − x)²,   m₀ = v·d − (p₁ − p₀)·e′(0)
  *
  * so the join is C¹. When the carried velocity makes the curve overshoot [min(p₀,p₁), max(p₀,p₁)]
- * by more than the limit L, m₀ is scaled down by bisection until the 64-point samples fit, and the
- * segment is flagged `clamped` (C⁰ join only).
+ * by more than the limit L, m₀ is scaled down until the curve fits (at the 64 check points and in
+ * between, see overshootScale), and the segment is flagged `clamped` (C⁰ join only).
  *
  * The limits are given separately above and below, so the caller can include the room left to the
  * voice's range (§7.8) next to min(1 semitone, gap to the neighbour under `ordered`).
@@ -78,12 +78,13 @@ const H_MAX = 4 / 27;
 const BASE = new Float64Array(CHECK_SAMPLES);
 
 /**
- * Largest s ∈ [0, 1] such that the curve with m₀·s stays within the limits at the 64 check
- * points (§7.5 "scale m₀ down by bisection until it fits"). The constraint is linear in s at each
- * point, so the limit of that bisection is computed directly and verified; bisection remains the
- * fallback if rounding makes the direct value fail. The ease's own overshoot (a bézier with y outside [0, 1]) is
- * the user's choice and is added to the allowance, so only the carried velocity is limited.
- * Returns 1 when no clamp is needed.
+ * Largest s ∈ [0, 1] such that the curve with m₀·s stays within the limits (§7.5 "scale m₀ down
+ * by bisection until it fits"). The constraint is linear in s at each point, so the bound is
+ * computed directly from the 64 check points, then refined between them (see below) so that it
+ * also holds for the continuous curve, which §7.8's ranges need; bisection remains the fallback
+ * if rounding makes the direct value fail. The ease's own overshoot (a bézier with y outside
+ * [0, 1]) is the user's choice and is added to the allowance, so only the carried velocity is
+ * limited. Returns 1 when no clamp is needed.
  */
 export function overshootScale(
   p0: Pitch,
@@ -116,28 +117,102 @@ export function overshootScale(
   }
   const ceil = baseMax + (limits.up > 0 ? limits.up : 0);
   const floor = baseMin - (limits.down > 0 ? limits.down : 0);
-  if (fits(m0, ceil, floor)) return 1;
-  // At each check point the curve is linear in the scale s (base + s·m₀·H), so the largest s that
-  // fits all 64 points is the minimum of the per-point bounds: exactly the value the bisection
-  // converges to. Take it (minus an ulp-sized margin) when it verifies; bisect otherwise.
+  // At each x the curve is linear in the scale s on m₀ (base + s·m₀·H), and m₀·H pushes towards
+  // one side only, so the largest s that keeps the curve inside is the infimum over x of
+  // r(x) = (side − base(x)) / (m₀·H(x)). The minimum over the 64 check points (what the
+  // bisection of §7.5 converges to) overestimates it between the points: by a first-order amount
+  // in the end intervals, where H → 0 (a newborn leaving its range edge dipped 0.002 semitones out
+  // before x = 1/63), and by a second-order amount around interior minima. So the end intervals
+  // and the sampled interior minima are refined by golden-section search, and the clamp holds for
+  // the continuous curve, not only at the samples (§7.8 ranges, §7.2's tightened clamp).
+  const side = m0 > 0 ? ceil : floor;
+  const last = CHECK_SAMPLES - 2;
+  for (let i = 1; i <= last; i++) RATIO[i] = (side - BASE[i]) / (m0 * H_TABLE[i]);
+  RATIO[0] = Infinity;
+  RATIO[CHECK_SAMPLES - 1] = Infinity;
+  const ratioAt = (x: number): number =>
+    (side - (p0 + d * easeRaw(code, x, bz.x1, bz.y1, bz.x2, bz.y2))) / (m0 * x * (1 - x) * (1 - x));
+  const step = 1 / (CHECK_SAMPLES - 1);
   let exact = 1;
-  for (let i = 1; i < CHECK_SAMPLES - 1; i++) {
-    const c = m0 * H_TABLE[i];
-    const sMax = c > 0 ? (ceil - BASE[i]) / c : c < 0 ? (floor - BASE[i]) / c : Infinity;
-    if (sMax < exact) exact = sMax;
+  for (let i = 1; i <= last; i++) if (RATIO[i] < exact) exact = RATIO[i];
+  // Room to the side at the bracket ends, |side − base|, for the skip test below.
+  const room = (j: number): number => (m0 > 0 ? side - BASE[j] : BASE[j] - side);
+  const am0 = m0 > 0 ? m0 : -m0;
+  for (let i = 1; i <= last; i++) {
+    const r = RATIO[i];
+    const end = i === 1 || i === last;
+    if (!end && !(r <= RATIO[i - 1] && r <= RATIO[i + 1] && r < REFINE_BELOW)) continue;
+    // Named eases are monotone, so over [x_{i−1}, x_{i+1}] the room is at least its smaller end
+    // value and H at most its larger end value (or 4/27 around x = 1/3): when that lower bound on
+    // r already reaches the current minimum, the search cannot lower it.
+    if (table) {
+      const hA = H_TABLE[i - 1];
+      const hB = H_TABLE[i + 1];
+      const hMax = i - 1 <= 21 && i + 1 >= 21 ? H_MAX : hA > hB ? hA : hB;
+      const rA = room(i - 1);
+      const rB = room(i + 1);
+      if ((rA < rB ? rA : rB) >= exact * am0 * hMax) continue;
+    }
+    const a = i === 1 ? EDGE : (i - 1) * step;
+    const b = i === last ? 1 - EDGE : (i + 1) * step;
+    const m = goldenMin(ratioAt, a, b);
+    if (m < exact) exact = m;
   }
+  if (exact >= 1) return 1;
   if (exact > 0) {
-    exact *= 1 - 1e-12;
+    exact *= 1 - 1e-9;
     if (fits(m0 * exact, ceil, floor)) return exact;
+  } else {
+    return 0;
   }
   let ok = 0;
-  let bad = 1;
+  let bad = exact;
   for (let k = 0; k < BISECT_STEPS; k++) {
     const mid = (ok + bad) * 0.5;
     if (fits(m0 * mid, ceil, floor)) ok = mid;
     else bad = mid;
   }
   return ok;
+}
+
+/** Scratch: per-point scale bounds r(x) at the check points (ends are +∞). */
+const RATIO = new Float64Array(CHECK_SAMPLES);
+/** Interior sampled minima of r below this are refined (others cannot drop below 1 in between). */
+const REFINE_BELOW = 2;
+/** The end intervals are searched from this distance to x = 0 and x = 1 (H vanishes there). */
+const EDGE = 1e-9;
+const GOLDEN_STEPS = 48;
+const INV_PHI = 0.6180339887498949;
+
+/** Minimum of f over [a, b] by golden-section search (f unimodal there); the smallest value seen. */
+function goldenMin(f: (x: number) => number, a: number, b: number): number {
+  let c = b - (b - a) * INV_PHI;
+  let e = a + (b - a) * INV_PHI;
+  let fc = f(c);
+  let fe = f(e);
+  let best = fc < fe ? fc : fe;
+  for (let k = 0; k < GOLDEN_STEPS; k++) {
+    if (fc < fe) {
+      b = e;
+      e = c;
+      fe = fc;
+      c = b - (b - a) * INV_PHI;
+      fc = f(c);
+      if (fc < best) best = fc;
+    } else {
+      a = c;
+      c = e;
+      fc = fe;
+      e = a + (b - a) * INV_PHI;
+      fe = f(e);
+      if (fe < best) best = fe;
+    }
+  }
+  const fa = f(a);
+  const fb = f(b);
+  if (fa < best) best = fa;
+  if (fb < best) best = fb;
+  return best;
 }
 
 function fits(m: number, ceil: number, floor: number): boolean {

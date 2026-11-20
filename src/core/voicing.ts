@@ -82,6 +82,7 @@ function pick(
   voices: readonly Pitch[],
 ): { targets: Pitch[]; perVoice: boolean } {
   const c = cands.length;
+  if (c === 0) return { targets: [], perVoice: false };
   if (mode === 'nearest' && voices.length > 0) {
     const own = voices.map((p) => cands[nearestIndex(cands, p)]);
     if (voices.length >= k) return { targets: own, perVoice: voices.length === k };
@@ -181,13 +182,10 @@ export function voiceNotes(input: VoicingInput): VoicingResult {
   let upper: Pitch[];
   if (mode === 'nearest' && input.voices.length > 0) {
     bass = bassCands[nearestIndex(bassCands, input.voices[0])];
-    upper = pick(
-      cands.filter((p) => p > bass),
-      k - 1,
-      mode,
-      mid,
-      input.voices.slice(1),
-    ).targets;
+    // With no chord tone above the bass in the register, the upper voices double within it
+    // (as for 'close'); picking from an empty list would give NaN targets.
+    const above = cands.filter((p) => p > bass);
+    upper = pick(above.length > 0 ? above : cands, k - 1, mode, mid, input.voices.slice(1)).targets;
   } else if (mode === 'close') {
     const above = cands.filter((p) => p > bassCands[0]);
     upper = pick(above.length > 0 ? above : cands, k - 1, 'close', mid, []).targets;

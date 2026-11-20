@@ -165,6 +165,12 @@ export function hungarian(cost: Float64Array, n: number, m: number): number[] {
           j1 = j;
         }
       }
+      if (j1 === 0) {
+        // Only non-finite reduced costs are left (NaN or ±∞ in `cost`): take the first unused
+        // column at no cost, so the search always ends (it would otherwise never terminate).
+        for (let j = 1; j <= m && j1 === 0; j++) if (!used[j]) j1 = j;
+        delta = 0;
+      }
       for (let j = 0; j <= m; j++) {
         if (used[j]) {
           u[rowOf[j]] += delta;

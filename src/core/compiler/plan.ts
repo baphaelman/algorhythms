@@ -10,9 +10,11 @@
  *    sampled at 64 points over the moment's window; if a pair crosses, the overtaking voice adopts
  *    the overtaken voice's start time and duration (timing groups merge, union-find), repeated
  *    until no pair crosses. A voice still gliding from an earlier moment that gets overtaken is
- *    re-timed with the group (it gets a move to its own destination). Where equal timing cannot
- *    remove a crossing caused by carried velocity, m₀ is tightened by bisection (`crossScale`);
- *    whatever is left is reported (`crossing-unresolved`);
+ *    re-timed with the group (it gets a move to its own destination). A pair that crosses before
+ *    its group starts (in glides left over from an earlier moment) gets the group's start pulled
+ *    back to just before the crossing. Where equal timing cannot remove a crossing caused by
+ *    carried velocity, m₀ is tightened (`crossScale`); whatever is left is reported
+ *    (`crossing-unresolved`);
  * 4. for subset selectors, reports moves through untargeted voices (`crossing-untargeted`).
  *
  * All curves are read from projections (project.ts), which run the simulation's own code.
@@ -106,12 +108,28 @@ export function planMoment(
   // 1. Ranges (§7.8).
   let folded = 0;
   let clamped = 0;
+  let invalid = 0;
   for (const it of plan.intents) {
     const r = voices[it.voice].range;
+    if (!Number.isFinite(it.to)) {
+      // A moment function must never return a non-finite target (NaN would reach the output and
+      // the voice-leading search); keep the voice where it is heading instead.
+      invalid++;
+      const keep =
+        it.kind === IntentKind.Birth
+          ? it.parent !== undefined && it.parent >= 0
+            ? host.dest(it.parent)
+            : NaN
+          : host.dest(it.voice);
+      it.to = Number.isFinite(keep) ? keep : (r[0] + r[1]) / 2;
+    }
     const f = foldIntoRange(it.to, r[0], r[1]);
     if (f.folded) folded++;
     if (f.clampedToRange) clamped++;
     it.to = f.p;
+  }
+  if (invalid > 0) {
+    host.diag('warn', 'invalid-target', `${invalid} target(s) were not finite pitches; kept.`);
   }
   if (folded > 0) {
     host.diag(
@@ -439,6 +457,24 @@ export function planMoment(
       return true;
     };
 
+    /**
+     * A pair that crosses before its timing group starts moving crosses in glides left over from
+     * an earlier moment (an exempt `free` or mirroring move, or a merge's carried motion): equal
+     * timing and a smaller m₀ cannot reach that. The group then starts at the last sample where
+     * the pair is still in order, interrupting those glides before they meet; the re-check clears
+     * it or tightens m₀, and at scale 0 equal timing and ease keep in-order lines apart (§7.2).
+     * Starts only move earlier (never before T), so this terminates.
+     */
+    const pullBack = (i: number, at: number): boolean => {
+      const t = times[at - 1];
+      const s = startOf(i);
+      if (!(s > t) || parts[i].deferT >= s) return false;
+      const r = find(i);
+      gLink[r] = -1;
+      gStart[r] = t;
+      return true;
+    };
+
     // Each pass resolves every crossing it finds among pairs whose curves it has not changed yet.
     const maxPasses = 3 * n + 8;
     for (let pass = 0; pass < maxPasses; pass++) {
@@ -473,7 +509,7 @@ export function planMoment(
         const [a, ai, b, bi] = dLo >= dHi ? [lo, li, up, hi] : [up, hi, lo, li];
         if (isMover(a) && isMover(b)) {
           if (find(ai) === find(bi)) {
-            if (!tighten(lo, up)) unresolved.add(key);
+            if (!pullBack(ai, at) && !tighten(lo, up)) unresolved.add(key);
           } else {
             adopt(ai, bi);
           }
@@ -489,7 +525,7 @@ export function planMoment(
             if (fixedI === ai) adopt(ai, bi);
             else adopt(bi, ai);
             invalidate(fixed.voice);
-          } else if (!tighten(lo, up)) {
+          } else if (!pullBack(isMover(a) ? ai : bi, at) && !tighten(lo, up)) {
             unresolved.add(key);
           }
         }

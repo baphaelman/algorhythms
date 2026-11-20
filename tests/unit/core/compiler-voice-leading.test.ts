@@ -9,7 +9,9 @@ import {
   assignOrdered,
   assignSurjective,
   assignmentCost,
+  hungarian,
 } from '../../../src/core/voice-leading';
+import { voiceNotes } from '../../../src/core/voicing';
 
 const sorted = (xs: number[]): number[] => xs.slice().sort((a, b) => a - b);
 
@@ -141,5 +143,37 @@ describe('free assignment (Hungarian, §7.2)', () => {
     // Free can swap; with equal costs it is still a valid optimum.
     const f = assignFree([60, 62], [61, 70]);
     expect(assignmentCost([60, 62], [61, 70], f)).toBe(9);
+  });
+});
+
+describe('degenerate inputs never hang or produce NaN', () => {
+  it('hungarian terminates on NaN and infinite costs (a NaN destination once looped forever)', () => {
+    const f = assignFree([NaN, 71], [53, 63, 71, 82]);
+    expect(f).toHaveLength(2);
+    expect(new Set(f).size).toBe(2);
+    for (const j of f) expect(j >= 0 && j < 4).toBe(true);
+    const cost = Float64Array.from([Infinity, NaN, 1, Infinity]);
+    const cols = hungarian(cost, 2, 2);
+    expect(new Set(cols).size).toBe(2);
+  });
+
+  it('nearest slash chord with no chord tone above the bass doubles inside the register', () => {
+    // C/E in [46, 52]: candidates 48 and 52, bass E = 52, nothing above it.
+    const r = voiceNotes({
+      notes: { kind: 'chord', symbol: 'C/E' },
+      k: 4,
+      mode: 'nearest',
+      register: [46, 52],
+      key: { tonic: 'C', scale: 'major' },
+      current: [64, 66, 68, 71],
+      voices: [64, 66, 68, 71],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.targets).toHaveLength(4);
+    for (const q of r.targets) {
+      expect(Number.isFinite(q)).toBe(true);
+      expect(q >= 46 && q <= 52).toBe(true);
+    }
   });
 });

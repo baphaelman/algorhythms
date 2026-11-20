@@ -4,10 +4,13 @@
  * Every property runs RUNS pieces (fast-check, seeded by Vitest's run so failures shrink and
  * replay). See compiler-arbitraries.ts for what the pieces contain.
  */
-import { writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
-import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
+import { afterAll, describe, expect, it } from 'vitest';
+import {
+  compile as compileRaw,
+  compileWithTrace as compileWithTraceRaw,
+} from '../../../src/core/compiler/compile';
 import { CHECK_SAMPLES } from '../../../src/core/interrupt';
 import { pitchAt } from '../../../src/core/query';
 import { evalSegment, evalSegmentVelocity } from '../../../src/core/segment';
@@ -18,6 +21,34 @@ import { pieceArb } from './compiler-arbitraries';
 const RUNS = Number(process.env.PROP_RUNS ?? 300);
 // Reproducible by default; set PROP_SEED=random (or a number) to explore other pieces.
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
+
+/**
+ * Every compile in this suite must finish within this budget (ms). Generated pieces are small, so
+ * a compile that takes longer signals a pathological path (one used to hang: a NaN target sent
+ * the Hungarian search into an endless loop). Generous against machine load; typical is < 1 ms.
+ */
+const COMPILE_BUDGET_MS = 50;
+let slowest = 0;
+afterAll(() => console.log(`compiler properties: slowest compile ${slowest.toFixed(2)} ms`));
+
+function timed<R>(f: () => R): R {
+  let t = performance.now();
+  const r = f();
+  let ms = performance.now() - t;
+  // A loaded machine (parallel test files, other processes) can stall one run: re-measure before
+  // failing, keeping the fastest. A pathological compile is slow every time.
+  for (let k = 0; k < 2 && ms >= COMPILE_BUDGET_MS; k++) {
+    t = performance.now();
+    f();
+    ms = Math.min(ms, performance.now() - t);
+  }
+  if (ms > slowest) slowest = ms;
+  expect(ms, 'compile time (ms)').toBeLessThan(COMPILE_BUDGET_MS);
+  return r;
+}
+const compile = (p: Piece): CompiledScore => timed(() => compileRaw(p));
+const compileWithTrace = (p: Piece): ReturnType<typeof compileWithTraceRaw> =>
+  timed(() => compileWithTraceRaw(p));
 
 /**
  * fc.assert, and when the DUMP_DIR environment variable is set, writes a failing piece to
@@ -67,6 +98,132 @@ function ownOvershoot(g: Segment): { up: number; down: number } {
 /** The planned glide's end (cut segments keep it in `curve`). */
 const plannedEnd = (s: Segment): { t1: number; p1: number } =>
   s.curve ? s.curve : { t1: s.t1, p1: s.p1 };
+
+/** Counts for the crossing property (pairs checked, crossings not caused by a bézier's own overshoot). */
+interface CrossingStats {
+  pairsChecked: number;
+  unresolved: number;
+}
+
+/** §7.2: under `ordered`, adjacent targeted voices never cross mid-glide unless reported. */
+function checkCrossings(p: Piece, stats: CrossingStats): void {
+  const { score, trace } = compileWithTrace(p);
+  trace.moments.forEach((m, mi) => {
+    const plan = m.plan;
+    if (!plan || !plan.ordered || plan.order.length < 2) return;
+    // A later moment targeting a voice cancels its pending moves (§7.1): the guarantee
+    // covers this moment's plan only until then.
+    const takeover = (v: number): number => {
+      for (const o of trace.moments.slice(mi + 1)) {
+        if (o.type !== 'level' && o.targeted.includes(v)) return o.t;
+      }
+      return Infinity;
+    };
+    const reported = score.diagnostics.some(
+      (d) => d.momentId === m.id && d.code === 'crossing-unresolved',
+    );
+    const [ws, we] = plan.window;
+    for (let k = 0; k + 1 < plan.order.length; k++) {
+      const lo = score.voices[plan.order[k]];
+      const hi = score.voices[plan.order[k + 1]];
+      if (!plan.movers.includes(lo.index) && !plan.movers.includes(hi.index)) continue;
+      // The window ends when a later moment (or walk) takes over either voice.
+      let end = Math.min(we, takeover(lo.index), takeover(hi.index));
+      for (const v of [lo, hi]) {
+        for (const g of v.segments) {
+          if (g.t0 >= ws && g.momentId !== undefined && g.momentId !== m.id && g.t0 < end) {
+            end = g.t0;
+          }
+        }
+      }
+      let ref = false;
+      let crossed = false;
+      for (let j = 0; j < CHECK_SAMPLES; j++) {
+        const t = ws + ((we - ws) * j) / (CHECK_SAMPLES - 1);
+        if (t > end) break;
+        const a = pitchAt(lo, t);
+        const b = pitchAt(hi, t);
+        if (a === null || b === null) continue;
+        if (!ref) {
+          ref = true;
+          if (a > b + 1e-9) break; // already out of order at the moment: exempt
+          stats.pairsChecked++;
+          continue;
+        }
+        if (a > b + 1e-9) crossed = true;
+      }
+      if (crossed) {
+        if (!overshootingEase(p, m.id)) stats.unresolved++;
+        expect(reported, `moment ${m.id} crosses ${lo.id}/${hi.id} without a report`).toBe(true);
+      }
+    }
+  });
+}
+
+/** §7.8: targets and carried velocity stay in range (newborns and bézier ornaments exempt). */
+function checkRanges(p: Piece): void {
+  const s = compile(p);
+  for (const v of s.voices) {
+    const [lo, hi] = p.voices[v.index].range;
+    // A newborn starts on its parent's pitch (§7.4), which may lie outside its own range;
+    // it is exempt until its path first starts a segment inside the range.
+    let outsideSinceBirth = false;
+    let prevOwn = 0;
+    v.segments.forEach((g) => {
+      const end = plannedEnd(g);
+      const isBirth = v.lives.some((l) => l.born === g.t0);
+      const inside = g.p0 >= lo && g.p0 <= hi;
+      if (isBirth) outsideSinceBirth = !inside;
+      else if (inside) outsideSinceBirth = false;
+      const birthHold = outsideSinceBirth && end.p1 === g.p0;
+      if (!birthHold) {
+        expect(end.p1).toBeGreaterThanOrEqual(lo);
+        expect(end.p1).toBeLessThanOrEqual(hi);
+      }
+      // Carried velocity never leaves the range; a bézier's own overshoot may (it is the
+      // user's ornament, like the allowance in the L test), and a move interrupting it
+      // there starts outside but never goes further out.
+      const own = ownOvershoot(g);
+      if (!inside) expect(outsideSinceBirth || prevOwn > 0).toBe(true);
+      prevOwn = own.up + own.down;
+      const bandLo = Math.min(lo, g.p0) - own.down - 1e-9;
+      const bandHi = Math.max(hi, g.p0) + own.up + 1e-9;
+      for (let j = 0; j < CHECK_SAMPLES; j++) {
+        const t = g.t0 + ((g.t1 - g.t0) * j) / (CHECK_SAMPLES - 1);
+        const y = evalSegment(g, t);
+        // Assert only on a violation: an expect() per sample dominated this test's run time.
+        if (y < bandLo || y > bandHi) {
+          expect(y, `${v.id} at ${t}`).toBeGreaterThanOrEqual(bandLo);
+          expect(y, `${v.id} at ${t}`).toBeLessThanOrEqual(bandHi);
+        }
+      }
+    });
+  }
+}
+
+/** Pieces that once failed a property (or hung); each must now pass every check. */
+const REGRESSIONS = new URL('./regressions/', import.meta.url);
+
+describe('compiler regressions (pieces that once failed)', () => {
+  const files = readdirSync(REGRESSIONS)
+    .filter((f) => f.endsWith('.json'))
+    .sort();
+  it('has fixtures', () => expect(files.length).toBeGreaterThanOrEqual(3));
+  for (const f of files) {
+    it(f, () => {
+      const p = JSON.parse(readFileSync(new URL(f, REGRESSIONS), 'utf8')) as Piece;
+      const stats: CrossingStats = { pairsChecked: 0, unresolved: 0 };
+      checkCrossings(p, stats);
+      checkRanges(p);
+      const s = compile(p);
+      for (const v of s.voices) {
+        for (const g of v.segments) {
+          expect(Number.isFinite(g.p0) && Number.isFinite(g.p1), `${v.id} pitch`).toBe(true);
+        }
+      }
+    });
+  }
+});
 
 describe('compiler properties (§14)', () => {
   it('is deterministic: same piece, same score; JSON round trips do not matter', () => {
@@ -148,72 +305,17 @@ describe('compiler properties (§14)', () => {
   });
 
   it('no crossings within the targeted set under ordered (pairwise sampling, §7.2)', () => {
-    let pairsChecked = 0;
-    let unresolved = 0;
+    const stats: CrossingStats = { pairsChecked: 0, unresolved: 0 };
     check(
       'crossing',
-      fc.property(pieceArb(), (p) => {
-        const { score, trace } = compileWithTrace(p);
-        trace.moments.forEach((m, mi) => {
-          const plan = m.plan;
-          if (!plan || !plan.ordered || plan.order.length < 2) return;
-          // A later moment targeting a voice cancels its pending moves (§7.1): the guarantee
-          // covers this moment's plan only until then.
-          const takeover = (v: number): number => {
-            for (const o of trace.moments.slice(mi + 1)) {
-              if (o.type !== 'level' && o.targeted.includes(v)) return o.t;
-            }
-            return Infinity;
-          };
-          const reported = score.diagnostics.some(
-            (d) => d.momentId === m.id && d.code === 'crossing-unresolved',
-          );
-          const [ws, we] = plan.window;
-          for (let k = 0; k + 1 < plan.order.length; k++) {
-            const lo = score.voices[plan.order[k]];
-            const hi = score.voices[plan.order[k + 1]];
-            if (!plan.movers.includes(lo.index) && !plan.movers.includes(hi.index)) continue;
-            // The window ends when a later moment (or walk) takes over either voice.
-            let end = Math.min(we, takeover(lo.index), takeover(hi.index));
-            for (const v of [lo, hi]) {
-              for (const g of v.segments) {
-                if (g.t0 >= ws && g.momentId !== undefined && g.momentId !== m.id && g.t0 < end) {
-                  end = g.t0;
-                }
-              }
-            }
-            let ref = false;
-            let crossed = false;
-            for (let j = 0; j < CHECK_SAMPLES; j++) {
-              const t = ws + ((we - ws) * j) / (CHECK_SAMPLES - 1);
-              if (t > end) break;
-              const a = pitchAt(lo, t);
-              const b = pitchAt(hi, t);
-              if (a === null || b === null) continue;
-              if (!ref) {
-                ref = true;
-                if (a > b + 1e-9) break; // already out of order at the moment: exempt
-                pairsChecked++;
-                continue;
-              }
-              if (a > b + 1e-9) crossed = true;
-            }
-            if (crossed) {
-              if (!overshootingEase(p, m.id)) unresolved++;
-              expect(reported, `moment ${m.id} crosses ${lo.id}/${hi.id} without a report`).toBe(
-                true,
-              );
-            }
-          }
-        });
-      }),
+      fc.property(pieceArb(), (p) => checkCrossings(p, stats)),
       RUNS,
     );
-    expect(pairsChecked).toBeGreaterThan(500);
+    expect(stats.pairsChecked).toBeGreaterThan(500);
     // A bézier whose y leaves [0, 1] overshoots by itself, so equal timing cannot stop lines
     // swapping (§7.2's algebra needs 0 ≤ e ≤ 1); those are reported but not counted here. Other
     // unresolvable crossings (carried velocity that tightening cannot fix) must stay rare.
-    expect(unresolved / pairsChecked).toBeLessThan(0.002);
+    expect(stats.unresolved / stats.pairsChecked).toBeLessThan(0.002);
   });
 
   it('overshoot never exceeds its limit L (§7.5)', () => {
@@ -267,46 +369,7 @@ describe('compiler properties (§14)', () => {
   });
 
   it('ranges are respected (§7.8)', () => {
-    check(
-      'ranges',
-      fc.property(pieceArb({ varyRanges: true }), (p) => {
-        const s = compile(p);
-        for (const v of s.voices) {
-          const [lo, hi] = p.voices[v.index].range;
-          // A newborn starts on its parent's pitch (§7.4), which may lie outside its own range;
-          // it is exempt until its path first starts a segment inside the range.
-          let outsideSinceBirth = false;
-          let prevOwn = 0;
-          v.segments.forEach((g) => {
-            const end = plannedEnd(g);
-            const isBirth = v.lives.some((l) => l.born === g.t0);
-            const inside = g.p0 >= lo && g.p0 <= hi;
-            if (isBirth) outsideSinceBirth = !inside;
-            else if (inside) outsideSinceBirth = false;
-            const birthHold = outsideSinceBirth && end.p1 === g.p0;
-            if (!birthHold) {
-              expect(end.p1).toBeGreaterThanOrEqual(lo);
-              expect(end.p1).toBeLessThanOrEqual(hi);
-            }
-            // Carried velocity never leaves the range; a bézier's own overshoot may (it is the
-            // user's ornament, like the allowance in the L test), and a move interrupting it
-            // there starts outside but never goes further out.
-            const own = ownOvershoot(g);
-            if (!inside) expect(outsideSinceBirth || prevOwn > 0).toBe(true);
-            prevOwn = own.up + own.down;
-            const bandLo = Math.min(lo, g.p0) - own.down - 1e-9;
-            const bandHi = Math.max(hi, g.p0) + own.up + 1e-9;
-            for (let j = 0; j < CHECK_SAMPLES; j++) {
-              const t = g.t0 + ((g.t1 - g.t0) * j) / (CHECK_SAMPLES - 1);
-              const y = evalSegment(g, t);
-              expect(y).toBeGreaterThanOrEqual(bandLo);
-              expect(y).toBeLessThanOrEqual(bandHi);
-            }
-          });
-        }
-      }),
-      RUNS,
-    );
+    check('ranges', fc.property(pieceArb({ varyRanges: true }), checkRanges), RUNS);
   });
 
   it('pool limits are respected: one pool slot never holds two lives at once', () => {

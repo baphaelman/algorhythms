@@ -127,6 +127,15 @@ export class Projection {
       if (x < lo) lo = x;
       if (y > hi) hi = y;
     }
+    // After the last record ends, `pitchAt` holds its end pitch (a glide that already finished,
+    // with no hold record yet). That hold is part of the path over [a, b] too: without it, a voice
+    // resting on an ended glide had empty bounds and the crossing check pruned it as "cannot cross".
+    const last = (this.nrec - 1) * REC;
+    if (last >= 0 && r[last + 1] < b) {
+      const p = r[last + 3];
+      if (p < lo) lo = p;
+      if (p > hi) hi = p;
+    }
     return [lo, hi];
   }
 
