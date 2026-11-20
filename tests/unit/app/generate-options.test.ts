@@ -55,10 +55,13 @@ describe('parseSeed', () => {
 });
 
 describe('checkForm: the mapping to generate()', () => {
-  it('maps the defaults to core defaults (no length)', () => {
+  it('maps the defaults to a 150 s piece', () => {
     const r = request(form());
     expect(r.seed).toBe(1234);
-    expect(r.options).toEqual({ mode: 'dorian', voices: 12, density: 0.45 });
+    expect(r.options).toEqual({ mode: 'dorian', voices: 12, density: 0.45, length: 150 });
+  });
+  it('natural length sends no length', () => {
+    const r = request(form({ naturalLength: true }));
     expect('length' in r.options).toBe(false);
   });
   it('passes mode, voices, density, length and now through', () => {
@@ -95,7 +98,13 @@ describe('checkForm: the mapping to generate()', () => {
 
 describe('generateFromRequest', () => {
   it('is generate(): the same seed and options give the same piece', () => {
-    const f = form({ seed: 'hello', mode: 'aeolian', voices: 6, density: 0.3 });
+    const f = form({
+      seed: 'hello',
+      mode: 'aeolian',
+      voices: 6,
+      density: 0.3,
+      naturalLength: true,
+    });
     const a = generateFromRequest(request(f));
     const b = generateFromRequest(request({ ...f }));
     expect(b).toEqual(a);

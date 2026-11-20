@@ -554,3 +554,8 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 
 ### Dev toggle: compile option `crossings`
 `compile(piece, { crossings: "allow" })` (also `compileWithTrace`) skips crossing enforcement and its diagnostics (`CompileOptions` in compiler/compile.ts, `CrossingsMode` in plan.ts); default `"forbid"` is unchanged. Not on Piece or in the schema; tests in tests/unit/core/crossings-option.test.ts (no tests/core dir exists).
+
+## Generate length 30-900 s; `?dev` panel removed (2026-11-20, owner rulings)
+- Length slider 30-900 s, default 2:30 (150 s); "natural length" stays but is off by default (`DEFAULT_FORM.naturalLength = false`).
+- **Core floor, not fixed (src/core untouched):** `generate()` keeps every section, so any length below about 100 s still yields about 100 s (11 moments, 8 to 10 s apart, ends 99.6 to 103.7 s for seeds 1, 7, 99, 12345 at 30 s and 60 s; identical to each other). So the 30-100 s part of the slider has no effect. Needs a core decision (shorter fixed sections) if real 30 s pieces are wanted.
+- `?dev` panel removed as in the M3d2b recipe: `dev-options.ts`, `DevPanel.tsx`, its unit test, its e2e test, `.dev-panel` styles, and the `compileOptions()` arguments in `store.ts`. Core `CompileOptions.crossings` left as is.

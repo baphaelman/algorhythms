@@ -1,7 +1,7 @@
 /**
  * The Export dialog (PLAN.md §12, §15 M3): WAV, MIDI (one file and a zip) and stems, from the menu
  * to the downloaded file, with the files' headers checked; stems streamed to a (stubbed, user-
- * activation-checking) save picker; cancel; keyboard use; the phone layout; and the `?dev` panel.
+ * activation-checking) save picker; cancel; keyboard use; the phone layout.
  */
 
 import { readFileSync } from 'node:fs';
@@ -350,44 +350,4 @@ test('fits a phone screen in both themes', async ({ page }) => {
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
   }
-});
-
-test('the dev panel is hidden without ?dev and never leaks into pieces or links', async ({
-  page,
-}) => {
-  await expect(page.getByTestId('dev-panel')).toHaveCount(0);
-
-  await page.goto('./?dev');
-  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  const box = page.getByTestId('dev-crossings');
-  await expect(box).not.toBeChecked();
-  const before = await page.evaluate(() => {
-    const s = window.__algorhythms!.store.getState();
-    (window as unknown as { __was: unknown }).__was = s.compiled;
-    return { piece: JSON.stringify(s.piece), duration: s.compiled.duration };
-  });
-  await box.check();
-  const after = await page.evaluate(async () => {
-    const h = window.__algorhythms!;
-    const s = h.store.getState();
-    return {
-      piece: JSON.stringify(s.piece),
-      link: await h.encodeShareLink(s.piece, 'https://example.org/'),
-    };
-  });
-  // The piece (and so any saved file or link) is untouched.
-  expect(after.piece).toBe(before.piece);
-  expect(after.piece).not.toContain('crossings');
-  expect(after.link.length).toBeGreaterThan(30);
-  // The score was recompiled (a new object).
-  expect(
-    await page.evaluate(
-      () =>
-        window.__algorhythms!.store.getState().compiled !==
-        (window as unknown as { __was: unknown }).__was,
-    ),
-  ).toBe(true);
-  await expect(box).toBeChecked();
-  await box.uncheck();
-  await expect(box).not.toBeChecked();
 });
