@@ -17,6 +17,10 @@
 import { bezierOf, EaseCode, easeCodeOf, easeRaw, easeSlope0 } from './ease';
 import type { EaseRef, Pitch, Seconds, Segment } from './types';
 
+/** Local aliases for the hot paths: under Vitest's module runner an imported binding is a getter. */
+const easeAt = easeRaw;
+const BEZIER = EaseCode.Bezier;
+
 /** Number of points (x = i/63) at which overshoot and crossings are checked (§7.2, §7.5). */
 export const CHECK_SAMPLES = 64;
 
@@ -97,7 +101,7 @@ export function overshootScale(
   if (m0 === 0) return 1;
   // Exact shortcut for eases within [0, 1]: p₀ + (p₁ − p₀)·e stays in [lo, hi] and
   // 0 ≤ H ≤ 4/27, so the curve leaves the range by at most |m₀|·4/27, on m₀'s side.
-  if (code !== EaseCode.Bezier) {
+  if (code !== BEZIER) {
     const reach = (m0 < 0 ? -m0 : m0) * H_MAX;
     if (reach <= (m0 > 0 ? limits.up : limits.down)) return 1;
   }
@@ -107,9 +111,9 @@ export function overshootScale(
   const d = p1 - p0;
   let baseMax = hi;
   let baseMin = lo;
-  const table = code === EaseCode.Bezier ? null : EASE_TABLES[code];
+  const table = code === BEZIER ? null : EASE_TABLES[code];
   for (let i = 0; i < CHECK_SAMPLES; i++) {
-    const e = table ? table[i] : easeRaw(code, i / (CHECK_SAMPLES - 1), bz.x1, bz.y1, bz.x2, bz.y2);
+    const e = table ? table[i] : easeAt(code, i / (CHECK_SAMPLES - 1), bz.x1, bz.y1, bz.x2, bz.y2);
     const b = p0 + d * e;
     BASE[i] = b;
     if (b > baseMax) baseMax = b;
@@ -131,7 +135,7 @@ export function overshootScale(
   RATIO[0] = Infinity;
   RATIO[CHECK_SAMPLES - 1] = Infinity;
   const ratioAt = (x: number): number =>
-    (side - (p0 + d * easeRaw(code, x, bz.x1, bz.y1, bz.x2, bz.y2))) / (m0 * x * (1 - x) * (1 - x));
+    (side - (p0 + d * easeAt(code, x, bz.x1, bz.y1, bz.x2, bz.y2))) / (m0 * x * (1 - x) * (1 - x));
   const step = 1 / (CHECK_SAMPLES - 1);
   let exact = 1;
   for (let i = 1; i <= last; i++) if (RATIO[i] < exact) exact = RATIO[i];

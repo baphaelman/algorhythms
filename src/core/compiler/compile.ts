@@ -78,6 +78,26 @@ const SUB_BIRTH = 1;
 const SUB_MOVE = 2;
 const SUB_STRIDE = 64;
 
+/** harmonyLabel is pure; the editor recompiles the same harmonies every frame (§7.10). */
+const labelCache = new Map<string, string>();
+
+function cachedHarmonyLabel(
+  symbol: string | undefined,
+  pcs: readonly number[],
+  bass: number,
+  key: Key,
+): string {
+  const scale = typeof key.scale === 'string' ? key.scale : JSON.stringify(key.scale);
+  const k = `${symbol ?? ''}\u0000${pcs.join(',')}\u0000${bass}\u0000${key.tonic}\u0000${scale}`;
+  let label = labelCache.get(k);
+  if (label === undefined) {
+    label = harmonyLabel(symbol, pcs, bass, key);
+    if (labelCache.size >= 1024) labelCache.clear();
+    labelCache.set(k, label);
+  }
+  return label;
+}
+
 /** One planned moment, for property tests. */
 export interface MomentTrace {
   id: string;
@@ -317,8 +337,36 @@ class Compiler {
     return this.activeCache;
   }
 
+  /** Scratch sort keys (committed destinations) by pool index. */
+  private sortKey = new Float64Array(0);
+
   private sortByDest(vs: number[]): number[] {
-    return vs.sort((a, b) => this.destOf(a) - this.destOf(b) || a - b);
+    if (this.sortKey.length < this.voices.length)
+      this.sortKey = new Float64Array(this.voices.length);
+    const key = this.sortKey;
+    let nan = false;
+    for (const v of vs) {
+      const d = this.destOf(v);
+      key[v] = d;
+      if (d !== d) nan = true;
+    }
+    if (nan) return vs.sort((a, b) => key[a] - key[b] || a - b);
+    // (destination, index) is a strict total order without NaN, so any correct sort gives the
+    // same result; insertion sort is fast on the short, nearly sorted lists seen here.
+    for (let i = 1; i < vs.length; i++) {
+      const v = vs[i];
+      const kv = key[v];
+      let j = i - 1;
+      while (j >= 0) {
+        const u = vs[j];
+        const ku = key[u];
+        if (ku < kv || (ku === kv && u < v)) break;
+        vs[j + 1] = u;
+        j--;
+      }
+      vs[j + 1] = v;
+    }
+    return vs;
   }
 
   /** The voices a selector picks at the current time (§6.1), sorted by committed destination. */
@@ -570,7 +618,7 @@ class Compiler {
       momentId: m.id,
       pcs,
       bass,
-      label: harmonyLabel(symbol, pcs, bass, this.key),
+      label: cachedHarmonyLabel(symbol, pcs, bass, this.key),
     });
   }
 

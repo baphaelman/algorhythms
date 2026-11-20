@@ -8,7 +8,7 @@
  * intervenes.
  */
 
-import { EaseCode, easeCodeOf } from '../ease';
+import { EaseCode, easeCodeOf, easeRaw } from '../ease';
 import { evalSegment, evalSegmentVelocity, segmentPitch } from '../segment';
 import type { StartState } from '../interrupt';
 import type { Pitch, Seconds, Segment } from '../types';
@@ -18,6 +18,13 @@ import { isGlide, type Birth, type Move, type VoiceRun } from './voice';
 const REC = 12;
 /** max H(x) = 4/27. */
 const H_MAX = 4 / 27;
+/** Local alias for the hot path: under Vitest's module runner an imported binding is a getter. */
+const segPitch = segmentPitch;
+const easeAt = easeRaw;
+const codeOf = easeCodeOf;
+const BEZIER = EaseCode.Bezier;
+/** Padding of `boundsIn` against rounding (the samples are sums of a few doubles near 100). */
+const BOUND_PAD = 1e-10;
 
 /** Extra scheduled events for a voice (the moment being planned). */
 export interface Tentative {
@@ -42,33 +49,51 @@ export class Projection {
   bornState: StartState | null = null;
   private cursor = 0;
   /** Segments and tail as scalar records (REC doubles each), built on first use. */
-  private rec: Float64Array | null = null;
+  private rec: number[] | null = null;
   private nrec = 0;
 
+  /** Records start in time order, so `pitchAt` does not depend on the order of its calls. */
+  private sorted = true;
+
   /** Flattens segs + tail for fast, monomorphic evaluation (an open hold runs to +∞). */
-  private records(): Float64Array {
-    const all = this.tail ? [...this.segs, this.tail] : this.segs;
-    const r = new Float64Array(all.length * REC);
-    all.forEach((g, i) => {
+  private records(): number[] {
+    const segs = this.segs;
+    const ns = segs.length;
+    const n = this.tail ? ns + 1 : ns;
+    // A plain array, written in index order (packed): a small typed array costs an off-heap
+    // allocation, and projections are rebuilt thousands of times per compile.
+    const r: number[] = [];
+    let sorted = true;
+    for (let i = 0; i < n; i++) {
+      const g = i < ns ? segs[i] : this.tail!;
       const o = i * REC;
       const e = g.ease;
       const open = g === this.tail && this.open;
       r[o] = g.t0;
+      if (i > 0 && !(g.t0 >= r[o - REC])) sorted = false;
       r[o + 1] = open ? Infinity : g.t1;
       r[o + 2] = g.p0;
       r[o + 3] = open ? g.p0 : g.p1;
-      r[o + 4] = easeCodeOf(e);
-      r[o + 5] = typeof e === 'object' ? e.x1 : 0;
-      r[o + 6] = typeof e === 'object' ? e.y1 : 0;
-      r[o + 7] = typeof e === 'object' ? e.x2 : 1;
-      r[o + 8] = typeof e === 'object' ? e.y2 : 1;
+      r[o + 4] = codeOf(e);
+      const bz = typeof e === 'object';
+      r[o + 5] = bz ? e.x1 : 0;
+      r[o + 6] = bz ? e.y1 : 0;
+      r[o + 7] = bz ? e.x2 : 1;
+      r[o + 8] = bz ? e.y2 : 1;
       r[o + 9] = g.m0 ?? 0;
       r[o + 10] = open ? Infinity : g.curve ? g.curve.t1 : g.t1;
       r[o + 11] = open ? g.p0 : g.curve ? g.curve.p1 : g.p1;
-    });
+    }
     this.rec = r;
-    this.nrec = all.length;
+    this.nrec = n;
+    this.sorted = sorted;
     return r;
+  }
+
+  /** True when `pitchAt` may be called in any order (its records start in time order). */
+  get anyOrder(): boolean {
+    if (!this.rec) this.records();
+    return this.sorted;
   }
 
   /** Pitch at t, NaN while silent. Fastest when called with increasing t. */
@@ -82,7 +107,7 @@ export class Projection {
     while (i + 1 < n && r[(i + 1) * REC] <= t) i++;
     this.cursor = i;
     const o = i * REC;
-    return segmentPitch(
+    return segPitch(
       r[o],
       r[o + 1],
       r[o + 2],
@@ -114,7 +139,7 @@ export class Projection {
       const d = r[o + 11] - p0;
       let eMin = 0;
       let eMax = 1;
-      if (r[o + 4] === EaseCode.Bezier) {
+      if (r[o + 4] === BEZIER) {
         eMin = Math.min(0, r[o + 6], r[o + 8]);
         eMax = Math.max(1, r[o + 6], r[o + 8]);
       }
@@ -137,6 +162,79 @@ export class Projection {
       if (p > hi) hi = p;
     }
     return [lo, hi];
+  }
+
+  /**
+   * Bounds on every non-NaN `pitchAt(t)` for t in [a, b], written to out[k] (low) and out[k + 1]
+   * (high). Tighter than `bounds`: each record is clipped to where `pitchAt` uses it, and a named
+   * ease (monotone) is evaluated at the clip ends; padded by BOUND_PAD against rounding. Requires
+   * `anyOrder`. NaN data gives NaN bounds, which prune nothing.
+   */
+  boundsIn(a: Seconds, b: Seconds, out: Float64Array, k: number): void {
+    const r = this.rec ?? this.records();
+    const n = this.nrec;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const o = i * REC;
+      const s = r[o];
+      const e = i + 1 < n ? r[o + REC] : Infinity; // pitchAt uses record i on [s, e)
+      if (!(e > s) || s > b || e < a) continue;
+      const ta = s > a ? s : a;
+      const tb = e < b ? e : b;
+      const t1 = r[o + 1];
+      const p1 = r[o + 3];
+      if (tb >= t1) {
+        if (p1 < lo) lo = p1;
+        if (p1 > hi) hi = p1;
+      }
+      if (!(ta < t1)) continue;
+      // Glide part, t in [ta, min(tb, t1)): x = (t − t0)/(curveT1 − t0) runs over [xa, xb].
+      const p0 = r[o + 2];
+      const span = r[o + 10] - s;
+      let xa = (ta - s) / span;
+      let xb = ((tb < t1 ? tb : t1) - s) / span;
+      if (!(xa < 1)) xa = 1;
+      if (!(xb < 1)) {
+        xb = 1;
+        if (p1 < lo) lo = p1;
+        if (p1 > hi) hi = p1;
+      }
+      const code = r[o + 4] as EaseCode;
+      const d = r[o + 11] - p0;
+      let ea: number;
+      let eb: number;
+      if (code === BEZIER) {
+        ea = Math.min(0, r[o + 6], r[o + 8]); // the control hull
+        eb = Math.max(1, r[o + 6], r[o + 8]);
+      } else {
+        ea = easeAt(code, xa, 0, 0, 1, 1);
+        eb = easeAt(code, xb, 0, 0, 1, 1);
+      }
+      let x = p0 + d * ea;
+      let y = p0 + d * eb;
+      if (x > y) [x, y] = [y, x];
+      const m0 = r[o + 9];
+      if (m0 !== 0) {
+        const oa = 1 - xa;
+        const ob = 1 - xb;
+        const ha = xa * oa * oa;
+        const hb = xb * ob * ob;
+        const hMin = ha < hb ? ha : hb;
+        const hMax = xa <= 1 / 3 && xb >= 1 / 3 ? H_MAX : ha > hb ? ha : hb;
+        if (m0 > 0) {
+          x += m0 * hMin;
+          y += m0 * hMax;
+        } else {
+          x += m0 * hMax;
+          y += m0 * hMin;
+        }
+      }
+      if (x < lo) lo = x;
+      if (y > hi) hi = y;
+    }
+    out[k] = lo - BOUND_PAD;
+    out[k + 1] = hi + BOUND_PAD;
   }
 
   /** Left-limit state at t (what a birth at t reads from its parent); null while silent. */

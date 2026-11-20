@@ -32,6 +32,39 @@ import type { Birth, Move, VoiceRun } from './voice';
 /** Order reversals smaller than this are touching, not crossing (semitones). */
 export const CROSS_EPS = 1e-9;
 
+/**
+ * Local copy of CHECK_SAMPLES for the hot loops: under Vitest's module runner an imported binding
+ * is a getter call on every read.
+ */
+const SAMPLES = CHECK_SAMPLES;
+/** The crossing scan skips blocks of BLOCK samples that provably cannot cross (BLOCKS of them). */
+const BLOCK = 8;
+const BLOCKS = SAMPLES / BLOCK;
+
+/**
+ * Scratch for the crossing check, reused across moments (the compiler is single-threaded and
+ * planMoment does not nest): per part, SAMPLES pitches and BLOCKS [low, high] bounds, each with
+ * the generation it was computed for. Generations only grow, so stale entries never match.
+ */
+let SAMP = new Float64Array(0);
+let SAMP_STAMP = new Float64Array(0);
+let BLK = new Float64Array(0);
+let BLK_STAMP = new Float64Array(0);
+let genSeq = 0;
+/** Check times of the moment being planned. */
+const TIMES = new Float64Array(SAMPLES);
+
+/**
+ * A packed array of n copies of v. Per-moment arrays are plain arrays: a small typed array costs
+ * an off-heap allocation.
+ */
+function filled(n: number, v: number): number[] {
+  const a: number[] = [];
+  for (let i = 0; i < n; i++) a.push(v);
+  return a;
+}
+const nextGen = (): number => ++genSeq;
+
 const enum PartKind {
   Fixed = 0,
   Move = 1,
@@ -55,9 +88,15 @@ interface Part {
   crossScale: number;
   move: Move | null;
   birth: Birth | null;
-  samples: Float64Array | null;
-  sampled: boolean;
-  /** Cached pitch bounds over the window (valid while `sampled`'s projection is). */
+  /**
+   * Generation of the part's projection, from `nextGen`: renewed whenever its curve may change.
+   * Its cached samples and block bounds (in the scratch arrays, at its part index) are valid
+   * while their stamps equal it.
+   */
+  gen: number;
+  /** Index in `parts`. */
+  slot: number;
+  /** Cached pitch bounds over the window (valid for the current projection). */
   bnd: [Pitch, Pitch] | null;
 }
 
@@ -169,8 +208,8 @@ export function planMoment(
       crossScale: 1,
       move: null,
       birth: null,
-      samples: null,
-      sampled: false,
+      gen: nextGen(),
+      slot: parts.length,
       bnd: null,
     };
     partOf.set(voice, parts.length);
@@ -210,10 +249,10 @@ export function planMoment(
     glide,
     seed,
   );
-  const uf = new Int32Array(n);
-  const gStart = new Float64Array(n);
-  const gDur = new Float64Array(n);
-  const gLink = new Int32Array(n).fill(-1);
+  const uf = filled(n, 0);
+  const gStart = filled(n, 0);
+  const gDur = filled(n, 0);
+  const gLink = filled(n, -1);
   for (let i = 0; i < n; i++) uf[i] = i;
   movers.forEach((i, r) => {
     gStart[i] = T + drawn[r].offset;
@@ -324,16 +363,16 @@ export function planMoment(
     const b = tentative.get(run.index)?.birth ?? run.pendingBirth;
     if (b && b.parent >= 0) addChild(b.parent, run.index);
   }
-  let touched = new Uint8Array(n);
+  const touched = filled(n, 0);
   /** Per-part version, bumped whenever its curve may change. */
-  const ver = new Int32Array(n);
+  const ver = filled(n, 0);
   /** Per adjacent pair k: 1 + versions at which it was last found clear (0 = unknown). */
-  const clearAt = new Float64Array(n);
+  const clearAt = filled(n, 0);
   const invalidate = (v: number, depth = 0): void => {
     projector.invalidate(v);
     const pi = partOf.get(v);
     if (pi !== undefined) {
-      parts[pi].sampled = false;
+      parts[pi].gen = nextGen();
       parts[pi].bnd = null;
       touched[pi] = 1;
       ver[pi]++;
@@ -371,45 +410,89 @@ export function planMoment(
     if (p.deferT > maxDefer) maxDefer = p.deferT;
   }
   if (maxDefer + maxDur > we) we = maxDefer + maxDur;
-  const times = new Float64Array(CHECK_SAMPLES);
-  for (let j = 0; j < CHECK_SAMPLES; j++) times[j] = T + ((we - T) * j) / (CHECK_SAMPLES - 1);
-  const sample = (p: Part): Float64Array => {
-    if (!p.sampled || !p.samples) {
-      const proj = projector.get(p.voice);
-      const out = p.samples ?? (p.samples = new Float64Array(CHECK_SAMPLES));
-      for (let j = 0; j < CHECK_SAMPLES; j++) out[j] = proj.pitchAt(times[j]);
-      p.sampled = true;
+  const times = TIMES;
+  for (let j = 0; j < SAMPLES; j++) times[j] = T + ((we - T) * j) / (SAMPLES - 1);
+  if (SAMP.length < n * SAMPLES) {
+    SAMP = new Float64Array(n * SAMPLES);
+    SAMP_STAMP = new Float64Array(n * SAMPLES);
+    BLK = new Float64Array(n * 2 * BLOCKS);
+    BLK_STAMP = new Float64Array(n * BLOCKS);
+  }
+  const samp = SAMP;
+  const sampStamp = SAMP_STAMP;
+  const blk = BLK;
+  const blkStamp = BLK_STAMP;
+  /** Pitch of a part at check time j (cached). */
+  const sampleAt = (p: Part, j: number): Pitch => {
+    const k = p.slot * SAMPLES + j;
+    if (sampStamp[k] !== p.gen) {
+      samp[k] = projector.get(p.voice).pitchAt(times[j]);
+      sampStamp[k] = p.gen;
     }
-    return p.samples;
+    return samp[k];
+  };
+  /** All samples of a part (filled in time order); a view, overwritten when the part changes. */
+  const sample = (p: Part): Float64Array => {
+    for (let j = 0; j < SAMPLES; j++) sampleAt(p, j);
+    const o = p.slot * SAMPLES;
+    return samp.subarray(o, o + SAMPLES);
   };
   const boundsOf = (p: Part): [Pitch, Pitch] =>
     p.bnd ?? (p.bnd = projector.get(p.voice).bounds(T, we));
+  /** Bounds of a part over check block b: the offset of [low, high] in `blk`. */
+  const blockOf = (p: Part, b: number): number => {
+    const k = p.slot * BLOCKS + b;
+    if (blkStamp[k] !== p.gen) {
+      const j = b * BLOCK;
+      projector.get(p.voice).boundsIn(times[j], times[j + BLOCK - 1], blk, 2 * k);
+      blkStamp[k] = p.gen;
+    }
+    return 2 * k;
+  };
 
   /** Reference sample of the last `crossing` call (first sample where both sound). */
   let crossRef = 0;
   /**
    * First sample index where lo is above hi; −1 if none; −2 if they are already out of order at
    * the first sample where both sound (not this moment's doing). Sets `crossRef`.
+   *
+   * Samples are read lazily: after the reference sample, a block of BLOCK samples is skipped when
+   * the pair's bounds over it (`Projection.boundsIn`) prove no sample there can be out of order.
+   * The result is the same as scanning every sample.
    */
   const crossing = (lo: Part, hi: Part): number => {
     // Exact pruning: if lo's highest possible pitch is not above hi's lowest, they cannot cross.
     const bl = boundsOf(lo);
     const bh = boundsOf(hi);
     if (bl[1] <= bh[0] + CROSS_EPS) return -1;
-    const a = sample(lo);
-    const b = sample(hi);
-    let ref = -1;
-    for (let j = 0; j < CHECK_SAMPLES; j++) {
-      const x = a[j];
-      const y = b[j];
+    if (!projector.get(lo.voice).anyOrder || !projector.get(hi.voice).anyOrder) {
+      sample(lo); // fill in time order, as `pitchAt` then requires
+      sample(hi);
+    }
+    let j = 0;
+    for (; j < SAMPLES; j++) {
+      const x = sampleAt(lo, j);
+      const y = sampleAt(hi, j);
       if (x !== x || y !== y) continue;
-      if (ref < 0) {
-        ref = j;
-        crossRef = j;
-        if (x > y + CROSS_EPS) return -2;
+      crossRef = j;
+      if (x > y + CROSS_EPS) return -2;
+      break;
+    }
+    for (j++; j < SAMPLES;) {
+      const b = (j / BLOCK) | 0;
+      const end = (b + 1) * BLOCK;
+      const ol = blockOf(lo, b);
+      const oh = blockOf(hi, b);
+      if (blk[ol + 1] <= blk[oh] + CROSS_EPS) {
+        j = end;
         continue;
       }
-      if (x > y + CROSS_EPS) return j;
+      for (; j < end; j++) {
+        const x = sampleAt(lo, j);
+        const y = sampleAt(hi, j);
+        if (x !== x || y !== y) continue;
+        if (x > y + CROSS_EPS) return j;
+      }
     }
     return -1;
   };
@@ -447,7 +530,7 @@ export function planMoment(
       const a1 = sample(lo);
       const b1 = sample(up);
       let best = 1;
-      for (let j = 0; j < CHECK_SAMPLES; j++) {
+      for (let j = 0; j < SAMPLES; j++) {
         const d0 = a0[j] - b0[j];
         const slope = a1[j] - b1[j] - d0;
         if (d0 !== d0 || slope !== slope || slope <= 0) continue;
@@ -486,7 +569,7 @@ export function planMoment(
     const maxPasses = 3 * n + 8;
     for (let pass = 0; pass < maxPasses; pass++) {
       let acted = false;
-      touched = new Uint8Array(n);
+      touched.fill(0);
       for (let k = 0; k + 1 < n; k++) {
         const li = order[k];
         const hi = order[k + 1];
@@ -509,10 +592,8 @@ export function planMoment(
         }
         const c = { at, ref: crossRef };
         acted = true;
-        const sl = sample(lo);
-        const su = sample(up);
-        const dLo = sl[c.at] - sl[c.ref];
-        const dHi = su[c.ref] - su[c.at];
+        const dLo = sampleAt(lo, c.at) - sampleAt(lo, c.ref);
+        const dHi = sampleAt(up, c.ref) - sampleAt(up, c.at);
         const [a, ai, b, bi] = dLo >= dHi ? [lo, li, up, hi] : [up, hi, lo, li];
         if (isMover(a) && isMover(b)) {
           if (find(ai) === find(bi)) {
@@ -548,6 +629,7 @@ export function planMoment(
       const lo = parts[order[k]];
       const up = parts[order[k + 1]];
       if (!isMover(lo) && !isMover(up)) continue;
+      if (clearAt[k] === ver[order[k]] + ver[order[k + 1]] * 65536 + 1) continue; // known clear
       if (crossing(lo, up) >= 0) left++;
     }
     if (left > 0) {
@@ -610,14 +692,14 @@ export function planMoment(
           if (pb[1] < ob[0] - CROSS_EPS || pb[0] > ob[1] + CROSS_EPS) continue; // disjoint
           let y = oSamples.get(o);
           if (!y) {
-            y = new Float64Array(CHECK_SAMPLES);
+            y = new Float64Array(SAMPLES);
             const proj = projector.get(o);
-            for (let j = 0; j < CHECK_SAMPLES; j++) y[j] = proj.pitchAt(times[j]);
+            for (let j = 0; j < SAMPLES; j++) y[j] = proj.pitchAt(times[j]);
             oSamples.set(o, y);
           }
           a ??= sample(p);
           let sign = 0;
-          for (let j = 0; j < CHECK_SAMPLES; j++) {
+          for (let j = 0; j < SAMPLES; j++) {
             const x = a[j];
             const z = y[j];
             if (x !== x || z !== z) continue;

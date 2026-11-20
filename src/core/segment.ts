@@ -28,6 +28,9 @@
 import { easeDerivRaw, easeRaw, type EaseCode, easeCodeOf, sinPi } from './ease';
 import type { Pitch, Seconds, Segment } from './types';
 
+/** Local alias for the hot path: under Vitest's module runner an imported binding is a getter. */
+const easeAt = easeRaw;
+
 // ---------------------------------------------------------------------------------------------
 // Flat record layouts (Float64Array, fixed stride). Offsets are indices within one record.
 // ---------------------------------------------------------------------------------------------
@@ -136,7 +139,7 @@ export function segmentPitch(
   const x = (t - t0) / (curveT1 - t0); // in [0, 1); x = 0 yields p0 exactly
   if (x >= 1) return p1;
   const omx = 1 - x;
-  return p0 + (curveP1 - p0) * easeRaw(code, x, x1, y1, x2, y2) + m0 * (x * omx * omx);
+  return p0 + (curveP1 - p0) * easeAt(code, x, x1, y1, x2, y2) + m0 * (x * omx * omx);
 }
 
 /**
