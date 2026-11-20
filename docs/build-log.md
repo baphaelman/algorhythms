@@ -670,3 +670,14 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - Help (Menu.tsx) gains an "Editing" list: the ten letters (from `PALETTE`), Delete/⌫, Esc, ⌘/Ctrl+Z, ⇧⌘/Ctrl+Z (Ctrl+Y).
 - Not done: drag from palette onto the lane (needs the lane's internals); disabling letters during musical typing (§9, M7: add a check in `editorKey`'s caller then).
 - Tests: `tests/unit/app/shortcuts.test.ts`, `tests/e2e/palette.spec.ts` (Chromium only).
+
+## M4g: voices drawer (2026-11-20)
+
+- `src/app/ui/VoicesDrawer.tsx` (+ `voices.css`): bottom panel under the workspace, wide layout only; "Voices" toggle in the view bar (hidden by CSS in the player layout). Pool size, voices at start (count, plus per-voice start toggle and pitch), and per voice colour, timbre, pan (auto toggle + slider), gain (0–2, shown in dB), range (MIDI with note names), mute, solo (Alt-click: solo only this voice), Clear solo. Esc closes.
+- Pure recipes in `src/app/editor/voices.ts`; every change is one `edit`; slider and colour drags are one gesture. Number fields commit on Enter, blur or a stepper/arrow step, not per keystroke (typing "12" must not shrink the pool to 1 on the way).
+- **Pool shrink** removes the last voices (highest pool index): their `start` entries go; `{ voices }` targets drop them; a moment left with no target, or a pin on a removed voice, is **deleted**; split/merge counts are clamped to the pool. An info notice names the deleted moments' count; undo restores. **Grow** appends `v<n>` (first free id), copying the last voice's timbre and range.
+- Choosing a built-in timbre copies it into `piece.timbres` (as `newPiece` does). Starting a voice picks a fifth above the highest start pitch (else A3), folded into its range.
+- Playback: all fields already reach the engine through `setPiece` → recompile → `swap` (CompiledVoice carries gain/pan/mute/solo/timbre). No engine work needed. Each change costs one recompile.
+- View bar: added "Custom" to Lines (the renderer already supports `colors: 'custom'`), so voice colours can be seen.
+- Note for canvas-input owner: ⌘Z is passed to the native control when a `select` or any `input` (checkbox, range) has focus, so after picking a timbre ⌘Z does nothing until focus moves. Consider letting ⌘Z through for select/range/checkbox.
+- Tests: `tests/unit/app/voices.test.ts`, `tests/e2e/voices.spec.ts` (Chromium).

@@ -1,0 +1,142 @@
+/* Voices drawer (PLAN.md §11.3): a bottom panel under the workspace, wide layout only. */
+
+.app[data-layout='player'] .voices-toggle {
+  display: none;
+}
+
+.voices-drawer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 38vh;
+  min-height: 0;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  border-radius: 3px;
+}
+
+.vd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.vd-head h2 {
+  margin: 0;
+  font: 500 14px/1 var(--f-mono);
+}
+
+.vd-hint {
+  margin: 0 0 0 auto;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.vd-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+
+.vd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 12px/1.2 var(--f-mono);
+}
+
+.vd-table th,
+.vd-table td {
+  padding: 3px 8px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--rule);
+}
+
+.vd-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  font-weight: 500;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.vd-table tbody th {
+  font-weight: 500;
+}
+
+.vd-silent th,
+.vd-silent .vd-out {
+  color: var(--ink-2);
+  text-decoration: line-through;
+}
+
+.voices-drawer button.vd-mini {
+  min-height: 24px;
+  min-width: 26px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.voices-drawer button.vd-mini + button.vd-mini {
+  margin-left: 4px;
+}
+
+.voices-drawer input.vd-num {
+  width: 5.5ch;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.voices-drawer select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.voices-drawer input[type='range'] {
+  width: 90px;
+  vertical-align: middle;
+}
+
+.voices-drawer input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  background: transparent;
+  vertical-align: middle;
+}
+
+.vd-start,
+.vd-pan,
+.vd-gain,
+.vd-range,
+.vd-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vd-note,
+.vd-out {
+  color: var(--ink-2);
+  min-width: 4ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.vd-close {
+  min-height: 28px;
+  padding: 4px 10px;
+}
