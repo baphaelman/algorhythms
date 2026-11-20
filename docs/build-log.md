@@ -366,3 +366,12 @@ The four tests are:
 
 - **M1 listening test passed:** the owner says the generated pieces "sound lovely".
 - **§17.2 item 1 (mid-glide crossings):** add the option *only as a temporary developer toggle*: a compile option plus a temporary panel in the app. It is **not** a schema or Piece field. The owner expects not to need it, so it can be removed later.
+
+## Owner decision, 2026-11-20: unison wobble
+
+- **What the owner heard:** on the fixture page, `unison-8` "clumps a lot, in a very interesting wobble sound", and `merge` wobbles too. `dense-24` is good. There are no pops; the wobble comes from interference.
+- **The cause:** §8.4's mandatory per-voice detune (1.5–4 cents) makes converged voices beat against each other.
+- **Decision:**
+  - Fix it by default: converged voices must sound steady (no beating, never cancelling).
+  - Keep the effect as an opt-in sound: a timbre-level setting and a new "wobble" preset.
+- §8.4 and P2 in PLAN.md will be updated once the fix's design lands.
