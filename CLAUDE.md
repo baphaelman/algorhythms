@@ -4,6 +4,8 @@
 
 **If you are the integrator,** read `docs/integrator-handoff.md` before doing anything else.
 
+**Be concise:** in reports, build-log entries, commit messages and code comments. Say what matters, and skip the narration.
+
 ## Roles
 - The **owner** decides product questions (PLAN.md §2, §16).
 - The **integrator** (the main Claude session) assigns milestones and verifies their acceptance criteria. It does not write code.

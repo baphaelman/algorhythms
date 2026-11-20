@@ -14,9 +14,15 @@ Last updated: 2026-11-20, by the first integrator session.
   - push;
   - report to the owner at milestones.
 - You may edit PLAN.md (you own it), the CLAUDE.md status table, this file and the build log.
-- **Choose `model` and `effort` per task, deliberately, every time.**
-  - Lower is not worse; Sonnet has been the right choice in the owner's other projects.
-  - So far: Sonnet low for tiny fixes, Sonnet high for well-specified features (renderer, MIDI, stems, app shell), Opus high for subtle algorithm and DSP work (compiler bugs, unison lock).
+- **Builders default to Opus at medium effort** (owner instruction, 2026-11-20).
+  - Go lower (Sonnet, low effort) only for tiny mechanical fixes.
+  - Go higher (Opus high) only for subtle algorithm or DSP work, such as compiler bugs or the unison lock.
+  - Pass `model` and `effort` explicitly on every spawn.
+- **Be concise** with the owner, in prompts and in docs.
+- **Offer a handoff at about 200k tokens.** When your own context passes that (a long session, many reports), tell the owner and offer to hand off:
+  - update this file first;
+  - then they start a fresh integrator session.
+  - Background builders report only to the session that spawned them, so let in-flight builders report first, or note them here.
 - **Keep tasks small: about one to three files each.**
   - Point builders at the exact PLAN sections and files they need, never "read all of §4–§7".
   - Tell them to stop and write up a stubborn bug rather than grind.
@@ -53,8 +59,17 @@ Last pushed and CI-verified commit: `7e1c9e8`, after the choir rework.
 ## In flight when this handoff was written
 Their reports go to the old session. If you don't have them, check `git log`, `git status` and the build log.
 
-1. **M3c stems export** (Sonnet high): new files in `src/audio/` (stems.ts and a stems worker).
-   - **Asked for:** exact sums (≤ −90 dBFS), streamed zip, ZIP64 check (finding goes in the build log under "M3c"), peak memory under 500 MB for 5 min × 24 voices, and an API for the export UI.
+1. **M3c stems export: DONE** (commit `90d8c54`; 18 unit tests verified).
+   - **Results:**
+     - residual −144 dBFS in Node and −142.6 in all three browsers;
+     - peak memory +53 to +78 MB for 5 min × 24 voices streamed to disk;
+     - fflate can't write ZIP64, so there's an in-house streaming ZIP64 writer, `src/audio/zip.ts`.
+   - **API for M3d2:** `src/audio/stems-client.ts`.
+     - `exportStems(score, mix, opts)` returns `{blob|null, bytes, entries, zip64}`.
+     - `estimateStemsSize(...)` gives the exact size plus a `large` flag above 1 GB.
+     - `canSaveToDisk()` and `pickStemsFile(name)`: call the picker from the click handler and pass the handle as `target`.
+     - Options: sampleRate, bitDepth 16/24/32 (default 32f), mono, voiceNames, onProgress, signal.
+     - **Lazy-load it**, because it pulls in the DSP graph.
 2. **M3d1 player app** (Sonnet high): `src/app/**` and `index.html`, removing M0's test-tone.
    - **Asked for:** transport, score canvas outside React, view controls, themes, examples gallery, load from file and `#p=` link (decode plus `encodeShareLink`), the phone layout, the iOS audio session, ≤ 3 s to first sound, and 60 fps measured.
    - The menu has disabled "Generate" and "Export" items for M3d2, plus a `loadPiece` hook.
