@@ -60,19 +60,13 @@ Last updated: 2026-11-20, end of the second integrator session (handoff at ~255k
 | M0 | Done. CI is green on Chromium, Firefox and WebKit; the Pages deploy works. |
 | M1 compiler | Done; the owner said the generated pieces "sound lovely". Open: about 16 ms compile against 5 ms (deal with it in M4: a worker or incremental compile); about 2 unresolved crossings per thousands of pieces, both involving newborns from a split (reported as diagnostics, written up in the build log); the compiler should extend the final hold to `died` (noticed by the MIDI builder). |
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
-| M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: the owner's verdict on the unison glide fix (merged locally, unpushed), owner device checks, then announce the first public release. |
+| M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: owner device checks (iPhone silent switch), then announce the first public release. Next milestone: M4 editor. |
 | M4–M7 | Not started. |
 
 Last pushed: `f77952c`, verified in a clean worktree (745/745 tests, lint, typecheck, build, 170 e2e on Chromium + Firefox); CI green on all three engines and deployed (bundle `main-RYkdSH3g.js`).
 
 ## Next tasks
-- **Unison glide fix: merged locally at `493ccc8`, NOT pushed, awaiting the owner's ears.**
-  - **What it does** (build log "Unison lock: steady approach and parting"): glides into or out of a unison are warped, so they sit on the unison pitch early and move quickly through the slow-beat zone; phase capture from 60 cents; group gain h with 2 ms smoothing and block-end phase prediction.
-  - **Cost:** a deliberate bend of up to ~60 cents (A2–A3) or ~35 cents (A4) at the end of a glide into a unison and the start of a glide out of one. Glides land ~0.2–0.4 s early. Tunable via `WARP_HZ` / `WARP_MAX` in `src/dsp/voice.ts` (8 Hz / 60 cents gives ~30–50 cents, slightly less steady).
-  - **Measured:** approach CV 0.162 → 0.026 (unison8), split 0.136 → 0.054, merge 0.120 → 0.060; the median lowest 50 ms window at N=8 went from −5.1 to −2.7 dB. Brief dips remain with 8+ voices. Holds, merges, seek, clicks, stems, determinism, no-GC and RTF are unchanged or better.
-  - **Owner WAVs** (`renders/`): `unison8-glide-after` vs `unison8-after`; `unison8-split-glide-after` vs `unison8-split-before`; `merge-glide-after` vs `merge-after`; `gen-1-dorian-glide-after` vs `gen-1-dorian-after`.
-  - **If the owner approves:** verify `493ccc8` (or later) in a clean worktree, including e2e; push; update PLAN §8.4 with the three deviations in that build-log entry (the bend, the full-strength phase pull beyond a quarter cycle, and parting unwind only without a warp). **If the bend is too audible:** try the smaller `WARP_*` setting first. **If rejected:** `git revert -m 1 493ccc8`.
-  - **Not verified by the integrator:** the full suite on the merged tree. The builder's run passed except two load flakes that passed alone (rtf, ease property).
+- **Unison glide fix: approved by the owner ("push it") and pushed** with this handoff. PLAN §8.4 records the warp (rev 4). Tunable via `WARP_HZ` / `WARP_MAX` in `src/dsp/voice.ts` if the owner later finds the bend too audible.
 - **Builders misjudge their own context:** the unison builder said "about 150k" and actually used ~400k. Give big DSP tasks narrower briefs, or tell them to check every ~30 tool calls.
 - **Stems speed:** since the lock, each stem pass runs every voice silently, so stems are about 6× slower (0.46× real time of CPU for 24 voices). Optimisation: skip voices that can never join the stem voice's group. Not urgent.
 - **M4 editor:** next milestone. Includes the compiler perf work (worker or incremental compile).

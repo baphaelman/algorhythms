@@ -496,7 +496,8 @@ The worklet runs on the context clock, so the playhead is derived from that cloc
   - **Group pass, once per 128-frame block**, on each voice's block-start state. Two voices pair with weight w: full at ≤ 2 cents apart, none at ≥ 20 cents, zero if either timbre has `wobble` > 0. Voices moving apart quickly leave early.
   - **Per voice,** a lock amount λ (smoothed) pulls its modulated pitch, phase and vibrato phase toward the group's amplitude-weighted mean. Arriving voices converge onto a held one, which keeps its pitch. Level drift and vibrato jitter fade by λ.
   - **Group gain** h = √(Σw²A²)/|Σ w·A·e^{iφ}| from the measured phases (≤ +3 dB, smoothed): a coherent group sits at the level of an incoherent chord. It is applied per voice, so stems carry it.
-  - **Parting:** the accumulated phase correction unwinds as voices separate, so they leave with unrelated phases.
+  - **Parting:** the accumulated phase correction unwinds as voices separate, so they leave with unrelated phases (only for partings without a warp, below).
+  - **Glide warp into and out of a unison (owner-approved 2026-11-20).** A glide that ends where another voice holds (within 20 cents for 0.2 s), or starts from one, is warped near that pitch: it sits on the unison early and moves 2–3× faster through the zone where it would beat slowly. The zone is the distance that beats at 12 Hz (about 100 cents at A2, 47 at A4), capped by the glide's span. That bends the written glide by up to ~60 cents (A2–A3) or ~35 cents (A4), landing 0.2–0.4 s early. Crossings, passing glides, distinct intervals and `wobble` timbres are never warped. Warping pairs capture phase from 60 cents and join the group gain h until they beat faster than 20 Hz. h uses block-end phase prediction with 2 ms smoothing, and the phase pull is full strength beyond a quarter cycle. Tunable via `WARP_HZ` / `WARP_MAX` (src/dsp/voice.ts).
   - **Fresh voices** (seek, birth, unmute) snap to their group's phase at zero amplitude, so a seek re-locks with no level change.
   - **Measured (M3):** a held unison of 2–32 voices sits at 0.95× one voice with envelope variation ≤ 0.002; merges stay within 0.80–1.19× one voice.
   - **Wobble:** a timbre with `wobble` = c cents (§8.5) never locks and scales the detune to a mean of c cents, giving the old slow beating. The `wobble` preset uses it.
@@ -1010,6 +1011,10 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 4 (2026-11-20): owner rulings after the first M3 release
+- **Unisons (§8.4):** glides into and out of a unison are warped (up to ~60 cents) so approach and parting stay steady.
+- **Colors (§10):** "Per voice" removed; "By pitch" is the default. **HUD (§10, §7.9):** shows the current chord (`chordAt`). **Generate (§11.3):** 30–900 s, default 2:30.
 
 ### Revision 3 (2026-11-20): unison lock
 - **Unisons (P2, §3, §7.4, §8.4, §8.5, §8.7, §12):** converged voices are steady by default (owner decision). A per-block group pass locks pitch and phase and holds the group at the chord level; detune is no longer mandatory as the safeguard. A new Timbre field `wobble` and preset `wobble` give the old beating as an opt-in. Stem passes run every voice silently.
