@@ -625,3 +625,28 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - **Measured:** lengths 30–99 end exactly on target; 100 and 150 end at 101–104 and 152–157 as before. Tests: `tests/unit/core/generate-length.test.ts`; the old "length 30 keeps every section" assertion in `generate.test.ts` now checks the 100 s floor instead.
 - **Integrator, on merge:** the snapshot was recorded on a base where `DEFAULT_VIEW.colors` was `'voice'`. Re-hashed after checking that all cases match the old hashes once `view.colors` is set back to `'voice'`, so the only change is the colour default.
 - **E2E silent locally:** Chromium `--mute-audio`, Firefox `media.volume_scale=0.0`; WebKit has no mute option, so its projects run only with `CI` or `E2E_WEBKIT=1` (CI's webkit job sets CI).
+
+## M4b: editor actions and undo (2026-11-20)
+
+**API** (`src/app/editor/`; `MomentId`/`Piece`/`MomentType` from core/types):
+
+- `history.ts`: `useEditor` (Zustand: `selection: MomentId[]`, `canUndo`, `canRedo`, `undoLabel`, `redoLabel`); `edit(recipe: (p: Piece) => Piece, label?): boolean` (one entry; returning the same piece = no entry); `beginGesture(label?)`, `updateGesture(recipe)` (recipe gets the piece _at gesture start_; no entry), `endGesture()` (one entry if changed), `cancelGesture()`, `inGesture()`; `undo(): boolean`, `redo(): boolean`; `select(ids)`; `resetHistory()`; `HISTORY_CAP = 200`.
+- `actions.ts` (each one undo entry): `addMoment(type, at): MomentId` (selects it), `updateMoment(id, patch: MomentPatch, label?): boolean` (`undefined` removes a field), `moveMoments(ids, dt): boolean`, `deleteMoments(ids): boolean`, `duplicateMoments(ids, dt): MomentId[]` (selects the copies), `reroll(id): number | null`.
+- `ops.ts` (pure recipes, for gestures): `insertMoments`, `patchMoment`, `moveMomentsBy`, `removeMoments`, `copyMoments(p, ids, dt, newIds?) → { piece, ids }` (pass the same `newIds` on every Alt-drag frame), `newMomentIds(p, n)`, `randomU32()`.
+- `new-moment.ts`: `defaultMoment(type, at, id, piece, score)`.
+- Drag pattern: `beginGesture('Move moment')`; per frame `updateGesture(p => moveMomentsBy(p, ids, totalDt))`; `endGesture()`, or `cancelGesture()` on Escape.
+
+**Behaviour:**
+
+- `piece.moments` stays stably sorted by `at` (ties keep array order, so the sound is unchanged).
+- Moves clamp the group's dt so its earliest moment stops at 0 (spacing kept). A walk's `until` moves with it in move and duplicate, not in `updateMoment({ at })`.
+- Duplicate copies get `seed = momentSeed(piece.seed, orig.id, orig.seed)`.
+- Selection is pruned on every piece change; undo and redo also restore the selection of that side of the edit. Undo during a gesture cancels it; `edit`/`redo` during a gesture end it first.
+- History reset through a new `onLoadPiece(fn)` hook in store.ts (the only store change).
+- Keys (canvas-input.ts): ⌘/Ctrl+Z undo, ⇧⌘/Ctrl+Z and Ctrl+Y redo; skipped with a dialog open and in text fields (native undo there).
+- Ids: `base62Id(crypto random u32)`, retried until unique in the piece.
+- `addMoment` uses the store's `compiled` when it matches the piece, else compiles once (cached).
+
+**Defaults** (from the state at `at`; n = sounding voices; glide and target from the piece defaults): chord: degrees [0,2,4] (tonic triad), or [3,5,7] if every sounding pitch class is already in the tonic triad; even, ordered · unison: 'center' (n ≥ 2) else 'tonic', no octaves · split: count min(pool, max(n+2, 3)), current notes, even · merge: count max(1, ⌈n/2⌉), top, fade 2 · shift: +2 scale steps · spread: ×1.5 around mean, snap scale · walk: 16 s, grid 1, density 0.45, steps [-2,-1,1,2], stepGlide 0.3 · pin: top sounding voice, +2 scale steps (first pool voice if none sounds, which then errors 'pin-inactive') · key: up a fifth, same scale · level: gain 0.5 over 2 s. Inaudible cases: unison/spread/merge with one voice, split with a full pool.
+
+**Other:** `tsconfig.node.json` (tests) now includes `vite/client` types, since tests import the store (→ `import.meta.glob`). Tests: `tests/unit/app/editor.test.ts` (store in Node, audio mocked, rAF synchronous). Timing tests (compiler-perf, dsp rtf/export) fail only under the current machine load (load avg ~48); they pass alone.

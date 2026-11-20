@@ -8,6 +8,7 @@
  *
  * Hooks for later builders (editor, Generate, Export):
  * - `loadPiece(piece)`: open a new piece (compiles now, loads the engine, resets the transport).
+ * - `onLoadPiece(fn)`: run `fn` after every `loadPiece` (the editor resets its undo history).
  * - `setPiece(piece)`: replace the piece after an edit; recompiles once per animation frame and
  *   hot-swaps the engine. `usePlayer.getState().compiled` follows one frame later.
  * - `usePlayer.getState().compiled` / `.piece`: the current score and piece.
@@ -257,6 +258,13 @@ function clearShareHash(): void {
   }
 }
 
+const loadListeners: (() => void)[] = [];
+
+/** Calls `fn` after every `loadPiece` (the editor clears its history there). */
+export function onLoadPiece(fn: () => void): void {
+  loadListeners.push(fn);
+}
+
 /**
  * Opens a piece: compiles it, resets the transport (stopped at 0, overview shown) and the view
  * (window, colours and HUD from `piece.view`), and loads the audio engine (at idle, or when play
@@ -289,6 +297,7 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
   document.title =
     piece.meta.title === 'Untitled' ? 'AlgoRhythms' : `${piece.meta.title} · AlgoRhythms`;
   queueAudioLoad(piece, compiled);
+  for (const fn of loadListeners) fn();
 }
 
 let recompilePending = false;
