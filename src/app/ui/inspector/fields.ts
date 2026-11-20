@@ -17,6 +17,8 @@ import { segmentAt } from '../../../core/query';
 import type {
   CompiledScore,
   EaseRef,
+  Glide,
+  GlideArrive,
   Key,
   MomentId,
   Pitch,
@@ -42,42 +44,30 @@ export function toggleStep(steps: readonly number[], s: number): number[] | null
 }
 
 /**
- * The inspector's voice-target modes (§11.3): all, the top or bottom n by pitch (a `rank`
- * selector), a pick of voices, or `range` for any other rank pair (kept as written).
+ * The inspector's voice-target modes (§11.3 Voices, under "Advanced"): all, a `rank` range by
+ * pitch, or a pick of voices. The owner dropped Top n / Bottom n (revision 6).
  */
-export type TargetMode = 'all' | 'top' | 'bottom' | 'pick' | 'range';
+export type TargetMode = 'all' | 'rank' | 'pick';
+
+export function targetMode(t: VoiceSelector | undefined): TargetMode {
+  if (!t || t === 'all') return 'all';
+  return 'voices' in t ? 'pick' : 'rank';
+}
 
 /**
- * The mode of a selector. Bottom n is rank [0, n − 1]; top n is rank [k − n, pool − 1], k being the
- * active count at the moment's time (the core clamps the high end to the active voices).
+ * The moment's partial glide with Arrive together set to `on` (§7.2): the field is dropped when
+ * it equals the piece default (`'together'` when unset), and an empty glide becomes undefined.
  */
-export function targetMode(t: VoiceSelector | undefined, pool: number): TargetMode {
-  if (!t || t === 'all') return 'all';
-  if ('voices' in t) return 'pick';
-  if (t.rank[0] === 0) return 'bottom';
-  return t.rank[1] >= pool - 1 ? 'top' : 'range';
-}
-
-/** n of a top or bottom rank selector, given `active` voices at the moment's time. */
-export function rankCount(
-  rank: readonly [number, number],
-  mode: 'top' | 'bottom',
-  active: number,
-): number {
-  return mode === 'bottom' ? rank[1] + 1 : Math.max(1, active - rank[0]);
-}
-
-/** The rank selector for the top or bottom `n` of `active` voices, in a pool of `pool`. */
-export function rankSelector(
-  mode: 'top' | 'bottom',
-  n: number,
-  active: number,
-  pool: number,
-): { rank: [number, number] } {
-  const k = Math.max(1, Math.round(n));
-  return mode === 'bottom'
-    ? { rank: [0, k - 1] }
-    : { rank: [Math.max(0, active - k), Math.max(0, pool - 1)] };
+export function arriveGlide(
+  glide: Partial<Glide> | undefined,
+  fallback: GlideArrive | undefined,
+  on: boolean,
+): Partial<Glide> | undefined {
+  const want: GlideArrive = on ? 'together' : 'spread';
+  const rest = { ...glide };
+  delete rest.arrive;
+  const next = want === (fallback ?? 'together') ? rest : { ...rest, arrive: want };
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 /** Shortest decimal text for `x`, at most `digits` decimals ("3", "0.25", "-1.5"). */

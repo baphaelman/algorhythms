@@ -6,10 +6,12 @@
 
 import { compile } from '../../core/compiler/compile';
 import type { CompiledScore, MomentId, MomentType, Piece, Seconds } from '../../core/types';
+import { keyAt } from '../../core/query';
 import { usePlayer } from '../store';
-import { edit, select } from './history';
+import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
+import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
-import { movedFixed, type StepRef } from './walk-steps';
+import { movedFixed, scaleNeighbour, type StepRef } from './walk-steps';
 import {
   copyMoments,
   insertMoments,
@@ -124,4 +126,66 @@ export function moveWalkStep(ref: StepRef, dir: 1 | -1): boolean {
   const fixed = movedFixed(w, scoreOf(piece), ref, dir);
   if (!fixed) return false;
   return updateMoment(w.id, { fixed }, w.fixed ? 'Move walk step' : 'Freeze walk and move step');
+}
+
+function chordOf(piece: Piece, id: MomentId) {
+  const m = piece.moments.find((x) => x.id === id);
+  return m?.type === 'chord' ? m : null;
+}
+
+/**
+ * Sets note `index` (low to high) of chord `id` to `pitch` (§11.3 Chord notes). An unfrozen chord
+ * is frozen first, in the same undo entry. False if nothing changed.
+ */
+export function setChordNote(id: MomentId, index: number, pitch: number): boolean {
+  const piece = usePlayer.getState().piece;
+  const m = chordOf(piece, id);
+  const notes = m && chordNotes(piece, scoreOf(piece), m);
+  const next = notes && withChordNote(notes, index, pitch);
+  if (!m || !next) return false;
+  const label = m.frozenFrom ? 'Move chord note' : 'Freeze chord and move note';
+  return updateMoment(id, frozenPatch(m, next), label);
+}
+
+/** Moves note `index` of chord `id` one scale step (in the key at the chord's time). */
+export function moveChordNote(id: MomentId, index: number, dir: 1 | -1): boolean {
+  const piece = usePlayer.getState().piece;
+  const m = chordOf(piece, id);
+  if (!m) return false;
+  const score = scoreOf(piece);
+  const notes = chordNotes(piece, score, m);
+  if (!notes || index < 0 || index >= notes.length) return false;
+  return setChordNote(id, index, scaleNeighbour(notes[index], dir, keyAt(score, m.at)));
+}
+
+/** Restores chord `id`'s notes from before it was frozen. */
+export function unfreezeChord(id: MomentId): boolean {
+  const m = chordOf(usePlayer.getState().piece, id);
+  const patch = m && unfreezePatch(m);
+  return patch ? updateMoment(id, patch, 'Unfreeze chord') : false;
+}
+
+/**
+ * A drag of chord `id`'s note `index` (score dots): one undo entry for the whole drag, freezing
+ * the chord on the first change. Null if the chord has no notes.
+ */
+export function dragChordNote(
+  id: MomentId,
+  index: number,
+): { to(pitch: number): void; end(cancel?: boolean): void } | null {
+  const piece = usePlayer.getState().piece;
+  const m = chordOf(piece, id);
+  const notes = m && chordNotes(piece, scoreOf(piece), m);
+  if (!m || !notes || index < 0 || index >= notes.length) return null;
+  beginGesture(m.frozenFrom ? 'Move chord note' : 'Freeze chord and move note');
+  return {
+    to(pitch) {
+      const next = withChordNote(notes, index, pitch);
+      updateGesture((p) => (next ? patchMoment(p, id, frozenPatch(m, next)) : p));
+    },
+    end(cancel = false) {
+      if (cancel) cancelGesture();
+      else endGesture();
+    },
+  };
 }

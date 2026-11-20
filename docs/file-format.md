@@ -837,6 +837,100 @@ This is the *input* form: fields with defaults are optional here.
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 9007199254740991
+              },
+              "frozenFrom": {
+                "description": "Editor only: the notes and assign before the chord was frozen (Unfreeze).",
+                "type": "object",
+                "properties": {
+                  "notes": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "pitches"
+                          },
+                          "pitches": {
+                            "type": "array",
+                            "items": {
+                              "type": "number",
+                              "description": "Fractional MIDI note number; 69 = A4."
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "pitches"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "chord"
+                          },
+                          "symbol": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "symbol"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "degrees"
+                          },
+                          "degrees": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "degrees"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "current"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    ]
+                  },
+                  "assign": {
+                    "type": "string",
+                    "enum": [
+                      "ordered",
+                      "free"
+                    ]
+                  }
+                },
+                "required": [
+                  "notes",
+                  "assign"
+                ]
               }
             },
             "required": [

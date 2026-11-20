@@ -195,6 +195,10 @@ const MOMENT_SCHEMAS = {
       .min(1)
       .optional()
       .describe('Active voice count after the chord (1..pool size); absent: unchanged.'),
+    frozenFrom: z
+      .object({ notes: NoteSetSchema, assign: z.enum(['ordered', 'free']) })
+      .optional()
+      .describe('Editor only: the notes and assign before the chord was frozen (Unfreeze).'),
   }),
   unison: z.looseObject({
     type: z.literal('unison'),

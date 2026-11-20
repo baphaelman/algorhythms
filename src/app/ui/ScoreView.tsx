@@ -3,6 +3,7 @@ import { attachCanvasInput } from '../canvas-input';
 import { startScoreLoop } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { usePlayer } from '../store';
+import { ChordNoteDots } from './ChordNoteDots';
 import { WalkStepDots } from './WalkStepDots';
 
 /** The score canvas. Drawn by `startScoreLoop` outside React; this component only mounts it. */
@@ -34,6 +35,7 @@ export function ScoreView() {
         aria-label={`Pitch lines for ${voices} voices over time: ${title}. Click or press Space to play and pause.`}
       />
       <WalkStepDots />
+      <ChordNoteDots />
       <div ref={tip} className="score-hover" data-testid="score-hover" aria-hidden="true" hidden />
     </div>
   );

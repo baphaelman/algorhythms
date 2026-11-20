@@ -4,7 +4,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough for the inspector');
 
@@ -356,27 +356,29 @@ test('a frozen walk shows its badge, locks the generator and unfreezes', async (
 test('voices, transition and level controls', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [WALK]);
+  // Voice targeting sits in a collapsed Advanced fold; no Top n / Bottom n (revision 6).
+  const adv = insp.getByTestId('insp-advanced');
   const modes = insp.getByTestId('insp-target');
+  await expect(adv).not.toHaveAttribute('open');
+  await expect(modes).toBeHidden();
+  await adv.locator('summary').click();
   await expect(modes.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(modes.getByRole('button', { name: /Top n|Bottom n/ })).toHaveCount(0);
 
-  await modes.getByRole('button', { name: 'Bottom n' }).click();
-  expect((await walk(page))?.target).toEqual({ rank: [0, 0] });
-  const n = insp.getByTestId('insp-target-n');
-  await n.fill('3');
-  await n.press('Enter');
-  expect((await walk(page))?.target).toEqual({ rank: [0, 2] });
-
-  await modes.getByRole('button', { name: 'Top n' }).click();
-  const top = (await walk(page))?.target as { rank: [number, number] };
-  expect(top.rank[1]).toBe(11);
-  await expect(modes.getByRole('button', { name: 'Top n' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(n).toHaveValue('1');
+  await modes.getByRole('button', { name: 'By rank' }).click();
+  const rank = (await walk(page))?.target as { rank: [number, number] };
+  expect(rank.rank[0]).toBe(0);
+  await expect(insp.getByLabel('Lowest rank')).toBeVisible();
 
   await modes.getByRole('button', { name: 'Pick…' }).click();
   await expect(insp.locator('.insp-voices input[type=checkbox]')).toHaveCount(12);
+
+  // A moment that already targets something opens with the fold open.
+  await hook(page, 'select', ['TwLvl1']);
+  await hook(page, 'select', [WALK]);
+  await expect(adv).toHaveAttribute('open');
+  await modes.getByRole('button', { name: 'All' }).click();
+  expect((await walk(page))?.target).toBeUndefined();
 
   // Transition chips.
   const tr = insp.getByTestId('insp-transition');
@@ -405,4 +407,113 @@ test('voices, transition and level controls', async ({ page }) => {
       return h.store.getState().piece.moments.find((m) => m.id === 'TwLvl1')?.over;
     }),
   ).toBe(7.5);
+});
+
+interface ChordM {
+  count?: number;
+  notes: { kind: string };
+  frozenFrom?: { notes: { kind: string } };
+  glide?: { arrive?: string };
+}
+const chordM = (page: Page) => moment(page, CHORD) as Promise<(M & ChordM) | undefined>;
+const notePitches = (page: Page): Promise<number[]> =>
+  page
+    .getByTestId('chord-note')
+    .evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-pitch'))));
+
+test('chord Notes: n changes how many notes sound', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [CHORD]);
+  const rows = insp.getByTestId('chord-note');
+  await expect(rows.first()).toBeVisible();
+  const n0 = await rows.count();
+  const count = insp.getByTestId('insp-chord-count');
+  await expect(count).toHaveValue(String(n0));
+
+  // The featured chord already sounds the whole pool: go down, then up.
+  expect(n0).toBeGreaterThan(4);
+  await count.fill(String(n0 - 3));
+  await count.press('Enter');
+  expect((await chordM(page))?.count).toBe(n0 - 3);
+  await expect(rows).toHaveCount(n0 - 3);
+
+  await count.focus();
+  await count.press('ArrowUp');
+  expect((await chordM(page))?.count).toBe(n0 - 2);
+  await expect(rows).toHaveCount(n0 - 2);
+  await hook(page, 'undo');
+  await expect(rows).toHaveCount(n0 - 3);
+});
+
+test('a per-note ▲ freezes the chord and changes one note; undo; Unfreeze', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [CHORD]);
+  const rows = insp.getByTestId('chord-note');
+  await expect(rows.first()).toBeVisible();
+  const before = await notePitches(page);
+
+  await rows.nth(1).getByTestId('chord-note-up').click();
+  const m = await chordM(page);
+  expect(m?.notes.kind).toBe('pitches');
+  expect(m?.frozenFrom?.notes.kind).toBe('degrees');
+  expect(await undoLabel(page)).toBe('Freeze chord and move note');
+  await expect(insp.getByTestId('insp-chord-frozen')).toBeVisible();
+  await expect(insp.getByTestId('insp-chord-count')).toBeDisabled();
+  await expect.poll(() => notePitches(page)).not.toEqual(before);
+  const after = await notePitches(page);
+  expect(after).toHaveLength(before.length);
+  expect(before.filter((p) => !after.includes(p))).toHaveLength(1);
+
+  // One undo entry restores the unfrozen chord.
+  await hook(page, 'undo');
+  expect((await chordM(page))?.notes.kind).toBe('degrees');
+  expect((await chordM(page))?.frozenFrom).toBeUndefined();
+  await expect(insp.getByTestId('insp-chord-frozen')).toHaveCount(0);
+  await expect.poll(() => notePitches(page)).toEqual(before);
+
+  // ▼ twice, then Unfreeze restores the original notes.
+  await rows.nth(0).getByTestId('chord-note-down').click();
+  await rows.nth(0).getByTestId('chord-note-down').click();
+  expect(await undoLabel(page)).toBe('Move chord note');
+  await insp.getByTestId('insp-chord-unfreeze').click();
+  expect(await undoLabel(page)).toBe('Unfreeze chord');
+  const back = await chordM(page);
+  expect(back?.notes).toEqual({ kind: 'degrees', degrees: [0, 2, 4, 6] });
+  expect(back?.frozenFrom).toBeUndefined();
+  await expect.poll(() => notePitches(page)).toEqual(before);
+});
+
+test('dragging a chord dot on the score freezes and moves that note', async ({ page }) => {
+  await hook(page, 'select', [CHORD]);
+  await seek(page, 44);
+  const dots = page.getByTestId('chord-dot');
+  await expect(dots.first()).toBeVisible();
+  const before = await notePitches(page);
+  expect(await dots.count()).toBe(before.length);
+  const box = (await dots.nth(0).boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 15, { steps: 4 });
+  await page.mouse.move(x, y - 30, { steps: 4 });
+  await page.mouse.up();
+  expect((await chordM(page))?.frozenFrom).toBeDefined();
+  expect(await undoLabel(page)).toBe('Freeze chord and move note');
+  await expect.poll(() => notePitches(page)).not.toEqual(before);
+  await hook(page, 'undo');
+  expect((await chordM(page))?.frozenFrom).toBeUndefined();
+});
+
+test('Arrive together toggle writes glide.arrive', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [CHORD]);
+  const arrive = insp.getByTestId('insp-arrive');
+  await expect(arrive).toBeChecked();
+  await arrive.uncheck();
+  expect((await chordM(page))?.glide?.arrive).toBe('spread');
+  await arrive.check();
+  expect((await chordM(page))?.glide?.arrive).toBeUndefined();
+  await hook(page, 'undo');
+  await expect(arrive).not.toBeChecked();
 });

@@ -5,8 +5,8 @@
  *
  * Shrinking the pool removes voices from the end (highest pool index) and keeps the piece valid:
  * their `start` entries go; `{ voices }` targets drop them, and a moment left with no target
- * voices is deleted; pins on removed voices are deleted; split and merge counts are clamped to the
- * new pool size. `poolShrinkEffects` reports this beforehand.
+ * voices is deleted; pins on removed voices are deleted; split, merge and chord counts are
+ * clamped to the new pool size. `poolShrinkEffects` reports this beforehand.
  */
 
 import {
@@ -69,7 +69,11 @@ function pruneMoment(m: Moment, gone: Set<VoiceId>, size: number): Moment | null
     if (voices.length === 0) return null;
     out = { ...out, target: { voices } };
   }
-  if ((out.type === 'split' || out.type === 'merge') && out.count > size) {
+  if (
+    (out.type === 'split' || out.type === 'merge' || out.type === 'chord') &&
+    out.count !== undefined &&
+    out.count > size
+  ) {
     out = { ...out, count: size };
   }
   return out;
