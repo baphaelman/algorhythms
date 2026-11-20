@@ -554,3 +554,10 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 
 ### Dev toggle: compile option `crossings`
 `compile(piece, { crossings: "allow" })` (also `compileWithTrace`) skips crossing enforcement and its diagnostics (`CompileOptions` in compiler/compile.ts, `CrossingsMode` in plan.ts); default `"forbid"` is unchanged. Not on Piece or in the schema; tests in tests/unit/core/crossings-option.test.ts (no tests/core dir exists).
+
+## Generate: short form below 100 s (2026-11-20)
+
+- **Rule:** `length` < 100 s (`SHORT_FORM_BELOW`; below 30 s treated as 30) uses `shortPlan()` in `src/core/generate.ts`. Natural length and `length` ≥ 100 s take the old path unchanged: byte-identical, checked by SHA-256 snapshot `tests/unit/core/generate-snapshot.json` (232 cases, recorded before the change).
+- **Shape:** Seed, Split (straight to the full voice count) and Home always. Then, in order, each added while it fits at the target time scale: Drift chord, middle split stage, Thin chord, Gather+Burst+Walk (4 ticks), more split stages, Drift, Thin, extra Drifts. Sections keep prototype order; empty ones are not marked. Typical: 30 s = Seed, Split, Drift, Home (3 moments); 45–60 s adds Thin and split stages; ≥ ~75 s has all eight.
+- **Timing:** target scale rises linearly 0.75 (30 s) to 1 (100 s); the actual scale is then solved so the piece ends exactly at the request. It multiplies every section gap and every glide's length and stagger; walk ticks stay 1 s. Min gap between moments 5.8 × 0.75 ≈ 4.35 s (measured ≥ 5.4 s on sampled seeds); each glide plus stagger ends before the next moment.
+- **Measured:** lengths 30–99 end exactly on target; 100 and 150 end at 101–104 and 152–157 as before. Tests: `tests/unit/core/generate-length.test.ts`; the old "length 30 keeps every section" assertion in `generate.test.ts` now checks the 100 s floor instead.

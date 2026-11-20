@@ -53,9 +53,10 @@ export interface GenerateOptions {
   /** Scale on A. */
   mode: GenerateMode;
   /**
-   * Target length in seconds. The Drift section gets more or fewer chords and the Walk more or
-   * fewer ticks; every section is kept, so the piece is never shorter than about 100 s. Absent:
-   * the prototype's proportions (6 drift chords, 24 walk ticks, about 2.5 minutes).
+   * Target length in seconds. From 100 s up, the Drift section gets more or fewer chords and the
+   * Walk more or fewer ticks, and every section is kept. Below 100 s (floored at 30 s) the piece
+   * is a short form: sections are dropped and the timing tightened (see `shortPlan`). Absent: the
+   * prototype's proportions (6 drift chords, 24 walk ticks, about 2.5 minutes).
    */
   length?: Seconds;
   /** Pool size and final active-voice count, 2..32. @default 12 */
@@ -163,6 +164,109 @@ function sectionSizes(length: Seconds | undefined): { drifts: number; ticks: num
   };
 }
 
+/** Below this target length `generate` uses the short form; at or above, the full form. */
+export const SHORT_FORM_BELOW: Seconds = 100;
+/** The shortest target the short form aims for; shorter requests are treated as this. */
+export const SHORT_FORM_MIN: Seconds = 30;
+/** The short form's tightest time scale (at 30 s); it rises linearly to 1 at 100 s. */
+const SHORT_SCALE_MIN = 0.75;
+/** Walk ticks in a short form's development. */
+const SHORT_TICKS = 4;
+
+/** What a piece contains and how tightly it is timed. */
+interface FormPlan {
+  /** Indices into splitStages(n), ascending. */
+  splits: number[];
+  drifts: number;
+  /** Gather, Burst and Walk. */
+  development: boolean;
+  ticks: number;
+  thins: number;
+  /** Multiplies every section gap and every glide's length and stagger (not the walk's ticks). */
+  scale: number;
+}
+
+/**
+ * The short form for `length` < SHORT_FORM_BELOW. Seed, Split (to the full voice count) and Home
+ * are always there; then, while they fit at the target scale, in this order: a Drift chord, a
+ * middle split stage, a Thin chord, the Gather–Burst–Walk development (4 ticks), more split
+ * stages, Drift and Thin chords, then extra Drift chords. The time scale is then solved so the
+ * piece ends exactly at the target. Gaps are at least 5.8 s × 0.75 ≈ 4.35 s.
+ */
+function shortPlan(
+  length: Seconds,
+  stageCount: number,
+  draw: (stream: string, i: number, purpose: Purpose) => number,
+): FormPlan {
+  const L = Math.max(SHORT_FORM_MIN, length);
+  const target =
+    SHORT_SCALE_MIN +
+    (1 - SHORT_SCALE_MIN) * Math.min(1, (L - SHORT_FORM_MIN) / (SHORT_FORM_BELOW - SHORT_FORM_MIN));
+  const splitGap = (j: number): Seconds => 7 + draw('split', j, Purpose.GenTiming) * 1.5;
+  const driftGap = (i: number): Seconds => 5.8 + draw('drift', i, Purpose.GenTiming) * 2.2;
+
+  // Split stages join in this order: the last (the full count), then middle-out.
+  const last = stageCount - 1;
+  const stageOrder = [
+    last,
+    ...Array.from({ length: last }, (_, i) => i).sort(
+      (a, b) => Math.abs(a - (last - 1) / 2) - Math.abs(b - (last - 1) / 2) || a - b,
+    ),
+  ];
+  const plan: FormPlan = {
+    splits: [last],
+    drifts: 0,
+    development: false,
+    ticks: SHORT_TICKS,
+    thins: 0,
+    scale: 1,
+  };
+  let raw = 8 + draw('seed', 0, Purpose.GenTiming) * 2 + splitGap(last) + 13.5;
+  let fixed = 0;
+  const fits = (r: Seconds, f = 0): boolean => (raw + r) * target + fixed + f <= L;
+
+  const tryDrift = (): boolean => {
+    const r = driftGap(plan.drifts);
+    if (!fits(r)) return false;
+    raw += r;
+    plan.drifts++;
+    return true;
+  };
+  const trySplit = (): void => {
+    const j = stageOrder[plan.splits.length];
+    if (j === undefined || !fits(splitGap(j))) return;
+    raw += splitGap(j);
+    plan.splits.push(j);
+  };
+  const tryThin = (): void => {
+    if (plan.thins < 2 && fits(9)) {
+      raw += 9;
+      plan.thins++;
+    }
+  };
+  const tryDevelopment = (): void => {
+    const r = 9.5 + 7 + 1.5;
+    if (!fits(r, SHORT_TICKS * WALK_GRID)) return;
+    raw += r;
+    fixed += SHORT_TICKS * WALK_GRID;
+    plan.development = true;
+  };
+
+  tryDrift();
+  trySplit();
+  tryThin();
+  tryDevelopment();
+  trySplit();
+  tryDrift();
+  tryThin();
+  trySplit();
+  while (tryDrift());
+
+  plan.splits.sort((a, b) => a - b);
+  plan.scale = (L - fixed) / raw;
+  return plan;
+}
+
 /** `generate`, also returning where each section starts (for tests and the Generate panel). */
 export function generateWithSections(
   seed: number,
@@ -172,11 +276,25 @@ export function generateWithSections(
   const mode: GenerateMode = opts.mode in MODE_SCALE ? opts.mode : 'dorian';
   const n = Math.max(2, Math.min(MAX_VOICES, Math.round(opts.voices ?? PROTOTYPE_VOICES)));
   const density = Math.max(0, Math.min(1, opts.density ?? DEFAULT_DENSITY));
-  const { drifts, ticks } = sectionSizes(opts.length);
-
   /** A keyed draw in [0, 1): stream and index name the decision. */
   const draw = (stream: string, i: number, purpose: Purpose): number =>
     rand(pieceSeed, stream, i, purpose);
+
+  const stages = splitStages(n);
+  const short = opts.length !== undefined && opts.length < SHORT_FORM_BELOW;
+  const plan: FormPlan = short
+    ? shortPlan(opts.length ?? SHORT_FORM_MIN, stages.length, draw)
+    : {
+        splits: stages.map((_, j) => j),
+        ...sectionSizes(opts.length),
+        development: true,
+        thins: 2,
+        scale: 1,
+      };
+  const { drifts, ticks, scale: s } = plan;
+  /** glideOf with the plan's time scale (exact at scale 1). */
+  const glide = (stagger: Seconds, a: Seconds, b: Seconds): Partial<Glide> =>
+    glideOf(stagger * s, a * s, b * s);
 
   // Harmony, as in the prototype: chords are stacks of thirds on scale degree c.
   const steps = SCALES[MODE_SCALE[mode]];
@@ -257,27 +375,27 @@ export function generateWithSections(
     moments.push(moment);
   };
 
-  let t = 0;
   let c = 0;
 
   mark('Seed', 0);
-  t = 8 + draw('seed', 0, Purpose.GenTiming) * 2;
+  let t = (8 + draw('seed', 0, Purpose.GenTiming) * 2) * s;
 
   mark('Split', t);
-  splitStages(n).forEach((k, j) => {
+  for (const j of plan.splits) {
+    const k = stages[j];
     add({
       type: 'split',
       at: t,
       count: k,
       notes: { kind: 'pitches', pitches: voicing(c, k, CENTER) },
       voicing: 'even',
-      glide: glideOf(0.5, 2.6, 3.8),
+      glide: glide(0.5, 2.6, 3.8),
     });
-    t += 7 + draw('split', j, Purpose.GenTiming) * 1.5;
+    t += (7 + draw('split', j, Purpose.GenTiming) * 1.5) * s;
     c = nextChord(c);
-  });
+  }
 
-  mark('Drift', t);
+  if (drifts > 0) mark('Drift', t);
   for (let i = 0; i < drifts; i++) {
     const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
     add({
@@ -287,56 +405,58 @@ export function generateWithSections(
       voicing: 'even',
       register: registerFor(c, n, center),
       assign: 'ordered',
-      glide: glideOf(1.4, 2.2, 4),
+      glide: glide(1.4, 2.2, 4),
     });
-    t += 5.8 + draw('drift', i, Purpose.GenTiming) * 2.2;
+    t += (5.8 + draw('drift', i, Purpose.GenTiming) * 2.2) * s;
     c = nextChord(c);
   }
 
-  mark('Gather', t);
-  add({
-    type: 'unison',
-    at: t,
-    pitch: nearestIn(chordPool(c), CENTER),
-    octaves: false,
-    glide: glideOf(0.9, 3.6, 5),
-  });
-  t += 9.5;
+  if (plan.development) {
+    mark('Gather', t);
+    add({
+      type: 'unison',
+      at: t,
+      pitch: nearestIn(chordPool(c), CENTER),
+      octaves: false,
+      glide: glide(0.9, 3.6, 5),
+    });
+    t += 9.5 * s;
 
-  // Burst out to a bass note plus n − 1 upper voices, leaving the bass room to leap.
-  mark('Burst', t);
-  c = nextChord(c);
-  const bass = tones.find((p) => deg(p) === c) ?? tones[0];
-  add({
-    type: 'chord',
-    at: t,
-    notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
-    voicing: 'even',
-    assign: 'ordered',
-    glide: glideOf(0.25, 1.1, 1.9),
-  });
-  t += 7;
+    // Burst out to a bass note plus n − 1 upper voices, leaving the bass room to leap.
+    mark('Burst', t);
+    c = nextChord(c);
+    const bass = tones.find((p) => deg(p) === c) ?? tones[0];
+    add({
+      type: 'chord',
+      at: t,
+      notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
+      voicing: 'even',
+      assign: 'ordered',
+      glide: glide(0.25, 1.1, 1.9),
+    });
+    t += 7 * s;
 
-  // Each tick a random subset of voices steps one or two scale tones, never touching or crossing;
-  // the lowest voice leaps 5–12 semitones instead. Steps last 0.22–0.32 s and start up to 0.1 s
-  // into the tick.
-  mark('Walk', t);
-  add({
-    type: 'walk',
-    at: t,
-    until: round3(t + ticks * WALK_GRID),
-    grid: WALK_GRID,
-    density,
-    steps: [-2, -1, 1, 2],
-    stepGlide: 0.27,
-    bass: { leap: [5, 12] },
-    glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
-  });
-  t += ticks * WALK_GRID + 1.5;
+    // Each tick a random subset of voices steps one or two scale tones, never touching or
+    // crossing; the lowest voice leaps 5–12 semitones instead. Steps last 0.22–0.32 s and start
+    // up to 0.1 s into the tick. The walk's own timing is never scaled.
+    mark('Walk', t);
+    add({
+      type: 'walk',
+      at: t,
+      until: round3(t + ticks * WALK_GRID),
+      grid: WALK_GRID,
+      density,
+      steps: [-2, -1, 1, 2],
+      stepGlide: 0.27,
+      bass: { leap: [5, 12] },
+      glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
+    });
+    t += ticks * WALK_GRID + 1.5 * s;
+  }
 
   // Three-note chords, the voices split into three equal groups (low, middle, high).
-  mark('Thin', t);
-  for (let i = 0; i < 2; i++) {
+  if (plan.thins > 0) mark('Thin', t);
+  for (let i = 0; i < plan.thins; i++) {
     c = nextChord(c);
     const pool = chordPool(c);
     const tri = [
@@ -353,14 +473,14 @@ export function generateWithSections(
       },
       voicing: 'even',
       assign: 'ordered',
-      glide: glideOf(1.3, 3, 5),
+      glide: glide(1.3, 3, 5),
     });
-    t += 9;
+    t += 9 * s;
   }
 
   mark('Home', t);
-  add({ type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glideOf(1, 4, 6.5) });
-  t += 13.5;
+  add({ type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) });
+  t += 13.5 * s;
 
   const voices = defaultVoices(n);
   for (const v of voices) v.range = [LOW, HIGH];
