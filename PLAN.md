@@ -709,6 +709,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Add at playhead:** the palette, under the rows.
 
 ### 11.3 Interactions
+- **Loop region (revision 6, owner 2026-11-20):** drag on the ruler's loop band (its top strip), or Shift-drag on the ruler, to select a span; playback then loops it (engine `loop`, §8.2, §8.7). The region is shaded across ruler, score and rows; its edges drag; a **Loop** toggle in the transport (shortcut `\`) turns it on/off without losing it; double-click the band clears it. Stored in `view.loop` (saved with the piece). Seeking outside the region plays on from there and wraps at its end only once the playhead is inside.
 - **Note points (revision 6, owner 2026-11-20):** in the editor, double-click a line on the score (or click it with `N` held) to add a `note` moment at that time with `from` = that line's pitch, then drag vertically to set `to` (snaps to the key; Shift = chromatic; ▲/▼ keys). Its dot is drawn on the line like walk steps; the inspector shows `from → to`, the chord before → after, and a "Return after" toggle with a slider (`back`). This is how a single note is changed, including a deliberate break from a chord.
 - **Context-aware moments (revision 6, owner 2026-11-20):**
   - A moment with a `no-effect` diagnostic is drawn dimmed on the Moments row, with the reason as its tooltip and in the inspector.
@@ -989,6 +990,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - every walk control (density, allowed steps, grid, glide, bass leap) is heard within 50 ms;
   - moving a walk step freezes the walk and changes only that note; the frozen walk survives save, load and undo, ignores earlier edits, and Unfreeze restores the generated walk;
   - Generate asks before replacing an edited piece;
+  - (revision 6) a dragged loop region loops playback without clicks, survives save/load, and the toggle keeps the region;
   - (revision 6) double-clicking a line and dragging adds a note point; the chord label updates; lines never cross; `back` returns the note;
   - (revision 6) by default all voices moved by one moment arrive within 1 ms of each other; a chord with `count` changes the voice count; a per-voice chord edit freezes only that chord and Unfreeze restores it; a merge on a unison shows `no-effect`, its marker is dimmed, and the palette greys merge out there; palette hover previews are heard;
   - 60 fps at 1080p with 24 voices while following;
@@ -1086,6 +1088,7 @@ The original questions follow for reference.
 - **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.
 - **Chord notes (§6.2, §11.3):** `count` on chord shown as "Notes: n"; per-note editing freezes the chord; voice targeting (Top/Bottom n) removed from the main inspector (owner).
 - **Context (§7.9, §11.3):** `no-effect` diagnostic; dimmed markers; a palette that greys out no-op moments and previews on hover. Next-move suggestions follow.
+- **Loop region (§11.3):** drag on the ruler to loop a span.
 - **Note points (§6.2, §11.3):** new `note` moment (`from` → `to`, optional `back`), added by double-clicking a line.
 - All in M4.5.
 
