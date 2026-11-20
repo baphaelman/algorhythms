@@ -270,6 +270,7 @@ export function swapPair(swapAt = 3, timbre = 'sine'): { a: CompiledScore; b: Co
 
 /** Names of the fixtures the hidden page offers. */
 export const FIXTURE_NAMES = [
+  'a4-sine',
   'unison-8',
   'merge',
   'long-glide',
@@ -287,6 +288,8 @@ export type FixtureName = (typeof FIXTURE_NAMES)[number];
 /** A fixture by name. */
 export function fixtureScore(name: FixtureName): CompiledScore {
   switch (name) {
+    case 'a4-sine':
+      return makeScore([{ id: 'a4', start: 69, timbre: 'sine' }], 10);
     case 'unison-8':
       return unisonScore(8);
     case 'merge':

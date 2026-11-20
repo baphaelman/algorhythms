@@ -49,8 +49,23 @@ export type EngineOutMessage =
   | { type: 'meter'; peakL: number; peakR: number; rms: number }
   | { type: 'error'; message: string };
 
+/**
+ * Everything needed to start sounding, handed over in `processorOptions` so it is applied in the
+ * processor's constructor, before the first block. An OfflineAudioContext may render before any
+ * port message arrives, so offline renders use this instead of messages.
+ */
+export interface EnginePreload {
+  score: FlatScore;
+  mix: MixSettings;
+  tables: { timbre: string; mips: WavetableSet }[];
+  /** Start playing from this time (seconds); absent = stay stopped. */
+  playFrom?: number;
+}
+
 /** `processorOptions` of the engine node. */
 export interface EngineProcessorOptions {
+  /** Score, mix and tables to load before the first block. */
+  preload?: EnginePreload;
   /** Seconds between meter messages. @default 0.05 */
   meterInterval?: number;
   /** Seconds between pos messages while playing. @default 0.25 */

@@ -69,8 +69,9 @@ export function* wavExportChunks(
       right.set(br, f);
     }
     done += n;
-    yield encoder.encode(left, right, n);
+    const bytes = encoder.encode(left, right, n);
     onProgress?.(done / frames);
+    yield bytes;
   }
 }
 

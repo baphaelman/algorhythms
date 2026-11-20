@@ -19,6 +19,10 @@ export default defineConfig(({ command, isPreview }) => ({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rolldownOptions: {
+      // fixtures.html is the hidden M2 listening page (not linked from the site).
+      input: { main: 'index.html', fixtures: 'fixtures.html' },
+    },
   },
   test: {
     include: ['tests/{unit,property,golden,dsp}/**/*.test.ts'],

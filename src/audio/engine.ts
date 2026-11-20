@@ -55,7 +55,18 @@ export interface AudioEngineOptions {
   /** Connect the node to the context's destination. @default true */
   connect?: boolean;
   /** Worklet message intervals. */
-  processor?: EngineProcessorOptions;
+  processor?: Omit<EngineProcessorOptions, 'preload'>;
+  /**
+   * Load this score (and start playing from `playFrom`, if given) inside the processor's
+   * constructor, before its first block. Needed for OfflineAudioContext renders, which may start
+   * before port messages arrive.
+   */
+  preload?: {
+    score: CompiledScore;
+    mix: MixSettings;
+    timbres?: Record<string, Timbre>;
+    playFrom?: number;
+  };
 }
 
 export class AudioEngine {
@@ -96,14 +107,36 @@ export class AudioEngine {
     const context =
       options.context ?? new AudioContext({ latencyHint: options.latencyHint ?? 'playback' });
     await context.audioWorklet.addModule(engineWorkletUrl);
+    const processorOptions: EngineProcessorOptions = { ...options.processor };
+    const pre = options.preload;
+    if (pre) {
+      const flat = flatten(pre.score);
+      processorOptions.preload = {
+        score: flat,
+        mix: pre.mix,
+        tables: flat.timbreNames.map((name) => ({
+          timbre: name,
+          mips: buildWavetables(resolveTimbre(name, pre.timbres), context.sampleRate),
+        })),
+        playFrom: pre.playFrom,
+      };
+    }
     const node = new AudioWorkletNode(context, ENGINE_PROCESSOR, {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [2],
-      processorOptions: options.processor ?? {},
+      processorOptions,
     });
     if (options.connect !== false) node.connect(context.destination);
-    return new AudioEngine(context, node);
+    const engine = new AudioEngine(context, node);
+    if (pre) {
+      engine.durationValue = pre.score.duration;
+      engine.timbresValue = pre.timbres;
+      for (const name of processorOptions.preload?.score.timbreNames ?? []) {
+        engine.sent.set(name, timbreKey(resolveTimbre(name, pre.timbres), context.sampleRate));
+      }
+    }
+    return engine;
   }
 
   /** Duration of the loaded score, in seconds. */

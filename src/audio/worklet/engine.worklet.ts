@@ -42,6 +42,12 @@ class EngineProcessor extends AudioWorkletProcessor {
     this.meterEvery = Math.max(BLOCK_FRAMES, Math.round((o.meterInterval ?? 0.05) * sampleRate));
     this.posEvery = Math.max(BLOCK_FRAMES, Math.round((o.posInterval ?? 0.25) * sampleRate));
     this.port.onmessage = (event: MessageEvent) => this.handle(event.data as EngineInMessage);
+    const pre = o.preload;
+    if (pre) {
+      this.handle({ type: 'load', score: pre.score, mix: pre.mix });
+      for (const t of pre.tables) this.handle({ type: 'tables', timbre: t.timbre, mips: t.mips });
+      if (pre.playFrom !== undefined) this.handle({ type: 'play', from: pre.playFrom });
+    }
   }
 
   private post(msg: EngineOutMessage): void {
