@@ -1,18 +1,32 @@
 /**
- * A small window hook for end-to-end tests (tests/e2e). It exposes the worklet URL exactly as the
- * app resolves it, plus the live analyser while the test tone plays. Placeholder-page only; M3
- * replaces it with whatever the player's tests need.
+ * A small window hook for end-to-end tests (tests/e2e/app*.spec.ts) and for the next builders'
+ * experiments in the console. Read-mostly: it exposes the store, the engine and the frame timings.
  */
 
+import type { AudioEngine } from '../audio/engine';
+import { getAudioContext, getEngine } from './audio';
+import { frameStats } from './loop';
+import { encodeShareLink } from './share';
+import { loadPiece, recompileNow, setPiece, usePlayer } from './store';
+
 export interface AlgoRhythmsDebug {
-  /** URL passed to audioWorklet.addModule for the test tone. */
-  workletUrl: string;
-  /** Name of the registered test-tone processor. */
-  processorName: string;
-  /** The live context while playing. */
-  context?: AudioContext;
-  /** Analyser tapping the test tone while playing. */
-  analyser?: AnalyserNode;
+  /** The player store (`getState()`, `setState`, `subscribe`). */
+  store: typeof usePlayer;
+  /** The AudioEngine, once created. */
+  engine(): AudioEngine | null;
+  context(): AudioContext | null;
+  /** Taps the engine's output with an analyser (created once). */
+  analyser(): AnalyserNode | null;
+  /** Frame timings; set `enabled` then read `work` / `interval` (ms). */
+  frameStats: typeof frameStats;
+  /** Store actions the editor and Generate builders will call (and tests exercise). */
+  actions: {
+    loadPiece: typeof loadPiece;
+    setPiece: typeof setPiece;
+    recompileNow: typeof recompileNow;
+  };
+  /** `encodeShareLink`, for round-trip tests. */
+  encodeShareLink: typeof encodeShareLink;
 }
 
 declare global {
@@ -21,7 +35,26 @@ declare global {
   }
 }
 
-/** Merges fields into the debug hook. */
-export function setDebug(patch: Partial<AlgoRhythmsDebug>): void {
-  window.__algorhythms = { workletUrl: '', processorName: '', ...window.__algorhythms, ...patch };
+let tap: AnalyserNode | null = null;
+
+/** Installs `window.__algorhythms`. */
+export function installDebug(): void {
+  window.__algorhythms = {
+    store: usePlayer,
+    engine: getEngine,
+    context: getAudioContext,
+    analyser() {
+      const e = getEngine();
+      if (!e) return null;
+      if (!tap || tap.context !== e.context) {
+        tap = e.context.createAnalyser();
+        tap.fftSize = 8192;
+        e.node.connect(tap);
+      }
+      return tap;
+    },
+    frameStats,
+    actions: { loadPiece, setPiece, recompileNow },
+    encodeShareLink,
+  };
 }

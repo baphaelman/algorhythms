@@ -7,8 +7,11 @@ import { defineConfig, devices } from '@playwright/test';
  * Project names are `<engine>-<mode>`, so CI can select e.g. `--project='webkit-*'`.
  */
 const base = process.env.ALGORHYTHMS_BASE ?? '/algorhythms/';
-const DEV_PORT = 5180;
-const PROD_PORT = 4180;
+// Ports and the build folder can be overridden (E2E_DEV_PORT, E2E_PROD_PORT, E2E_OUT_DIR) so two
+// people or agents can run the suite side by side.
+const DEV_PORT = Number(process.env.E2E_DEV_PORT ?? 5180);
+const PROD_PORT = Number(process.env.E2E_PROD_PORT ?? 4180);
+const OUT_DIR = process.env.E2E_OUT_DIR ?? 'dist';
 const devURL = `http://localhost:${DEV_PORT}/`;
 const prodURL = `http://localhost:${PROD_PORT}${base}`;
 
@@ -38,7 +41,7 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: `pnpm exec vite build && pnpm exec vite preview --port ${PROD_PORT} --strictPort`,
+      command: `pnpm exec vite build --outDir ${OUT_DIR} --emptyOutDir && pnpm exec vite preview --outDir ${OUT_DIR} --port ${PROD_PORT} --strictPort`,
       url: prodURL,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

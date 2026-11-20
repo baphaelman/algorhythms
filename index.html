@@ -2,16 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
       content="AlgoRhythms: a free, open-source instrument and composer for pitch-line music."
     />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:," />
     <title>AlgoRhythms</title>
+    <script>
+      // Apply a stored theme before first paint (no flash). Storage may be unavailable.
+      try {
+        var theme = localStorage.getItem('algorhythms.theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch (e) {
+        /* ignore */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>AlgoRhythms needs JavaScript to draw and play pitch-line music.</noscript>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>
 </html>

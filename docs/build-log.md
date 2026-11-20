@@ -379,6 +379,27 @@ The four tests are:
 3. an OfflineAudioContext render is 440 ± 1 Hz at the requested amplitude;
 4. the Play button gives a live 440 ± 2 Hz sine (RMS > 0.1) through an AnalyserNode in a running AudioContext.
 
+## M3c: player app (recorded by the player builder)
+
+### What exists (`src/app/`)
+- `store.ts`: the Zustand store `{ piece, compiled, view, transport, notices }` and every action. **Hooks for the next builder:** `loadPiece(piece, opts?)` (fresh open: compiles, stops at 0, shows the overview, resets `view` from `piece.view`, loads the engine at idle or at the first Play), `setPiece(piece)` (an edit: `compiled` follows within one animation frame, several edits in a frame cost one compile, then `engine.swap`; a changed `piece.mix` goes through `engine.setMix`), `recompileNow()`, `openPieceJson(json, label)`, `openFile(file)`, `pushNotice(kind, title, lines)`, `currentTime()`, and the transport and view actions (`play`, `pause`, `togglePlay`, `seekTo`, `scrubTo`/`scrubEnd`, `setWindow`, `zoomBy`, `setColors`, `setHud`, `panBy`, `setTheme`). `usePlayer.getState().compiled` is the current score.
+- `audio.ts`: the one `AudioEngine`. `getEngine()` (null before it exists), `whenReady()` (resolves with the engine after the latest load or swap), `primeAudio()`, `loadAudio`, `swapAudio`, `mixAudio`. Loads and swaps run through one serial queue.
+- `loop.ts`: the rAF loop (`drawScore`, overview and ghost tweens, direct DOM writes). `canvas-input.ts`: pointer, wheel, gesture and key handling. `dom.ts`: the registry of elements written directly (time, scrubber, key and voice status, meter). `share.ts`: `encodeShareLink` / `decodeShareLink` (M5 adds default stripping to the encoder). `platform.ts`: iOS checks and the audio session. `examples.ts`: `import.meta.glob` of `examples/*.algorhythms.json`.
+- `ui/`: React panels only (`Transport`, `Scrubber`, `ViewBar`, `Menu`, `Notices`, `ScoreView`). `debug.ts` installs `window.__algorhythms` (`store`, `engine()`, `analyser()`, `frameStats`, `actions`, `encodeShareLink`) for the e2e tests.
+- Layout: `.app[data-layout=full|player]` (switch at 900 px). In `full`, empty hidden slots `[data-slot=lane]` (under the score) and `[data-slot=inspector]` (right column, `--inspector-w`) are ready for M4: remove `hidden`, set `--inspector-w`.
+
+### Decisions and deviations
+- **Removed M0's test tone** (`src/dsp/test-tone.ts`, `src/audio/test-tone.ts`, the test-tone worklet and protocol, `tests/dsp/test-tone.test.ts`, `tests/e2e/worklet.spec.ts`). The page-title test moved into `tests/e2e/app.spec.ts`; `tests/e2e/audio.spec.ts` already covers the worklet pipeline.
+- **No Google Fonts.** The prototype loaded IBM Plex from Google; the player uses the system sans and monospace stacks (no third-party requests; a bundled font would be a new dependency, so it is the owner's call).
+- **Canvas HUD stays** (`piece.view.hud`, toggle in the view bar), as in the prototype, so the time appears both in the HUD and in the transport readout.
+- **Engine start-up.** The AudioContext and engine are created, and wavetables built, at idle (or on the first pointerdown, or when Play is pressed, whichever comes first). Play is never disabled: it waits for the latest load. `AudioContext.resume()` is called synchronously in the click.
+- **Scrubber:** `input` events pause silently and follow the handle; `change` seeks and resumes if it was playing (a keyboard step does a quick pause and resume). Seeking by keys: ←/→ 5 s (Shift 15 s).
+- **Pan:** `view.pan` (seconds) feeds `CameraState.pan`; it is reset by play, seek and scrub, and has no effect in the overview.
+- **Window slider** is a controlled React input (it re-renders the small view bar per input event; nothing on the canvas or pointer path re-renders).
+- **Examples are bundled eagerly** (`import.meta.glob`, ~50 kB of JSON in the main chunk, 110 kB gzip in total). Revisit if more examples are added.
+- **Share links** are not stripped yet; decoding refuses output over 8 MB.
+- **playwright.config.ts (shared file) change, additive:** `E2E_DEV_PORT`, `E2E_PROD_PORT` and `E2E_OUT_DIR` override the ports and the build folder (defaults unchanged), and the prod build uses `--emptyOutDir`. Two agents running e2e side by side collided on port 4180, on `dist/` and on `test-results/`; use `--output=<dir>` as well.
+
 ## M3a: renderer (recorded by the integrator from the builder's report)
 
 - **Markers:** `CompiledScore` carries no labels, so marker text comes from `ScoreStyle.labels`, which the app builds from `Piece.moments[].label`. Positions come from `momentSpans`.

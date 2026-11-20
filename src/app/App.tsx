@@ -1,76 +1,56 @@
-import { useRef, useState } from 'react';
-import { createTestTone, stopTestTone } from '../audio/test-tone';
-import { setDebug } from './debug';
+import { useEffect, useSyncExternalStore } from 'react';
+import { attachKeys } from './canvas-input';
+import { startPlayer } from './store';
+import { Menu } from './ui/Menu';
+import { Notices, SilentHint } from './ui/Notices';
+import { ScoreView } from './ui/ScoreView';
+import { Scrubber, Transport } from './ui/Transport';
+import { ViewBar } from './ui/ViewBar';
 
-type Status = 'idle' | 'starting' | 'playing' | 'error';
+/** Width from which the editor layout is used (PLAN.md §11.5); narrower screens get the player only. */
+export const EDITOR_MIN_WIDTH = 900;
 
-interface Engine {
-  context: AudioContext;
-  node: AudioWorkletNode;
+const WIDE = `(min-width: ${EDITOR_MIN_WIDTH}px)`;
+
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const q = matchMedia(WIDE);
+      q.addEventListener('change', notify);
+      return () => q.removeEventListener('change', notify);
+    },
+    () => matchMedia(WIDE).matches,
+    () => true,
+  );
 }
 
-const STATUS_TEXT: Record<Status, string> = {
-  idle: 'Stopped',
-  starting: 'Starting…',
-  playing: 'Playing a 440 Hz sine through the AudioWorklet',
-  error: 'Audio failed to start',
-};
-
-/** M0 placeholder page: one button that plays a 440 Hz sine through the TypeScript worklet. */
+/**
+ * The player (PLAN.md §11.1–§11.5). Layout leaves room for the editor (M4): a moment-lane slot
+ * under the score and an inspector column, both empty and hidden until the editor fills them. On
+ * screens under 900 px only the player parts are rendered.
+ */
 export function App() {
-  const [status, setStatus] = useState<Status>('idle');
-  const [error, setError] = useState('');
-  const engine = useRef<Engine | null>(null);
+  const wide = useWide();
 
-  async function start() {
-    setStatus('starting');
-    // Create and resume the context synchronously inside the click, for Safari's autoplay rules.
-    const context = new AudioContext({ latencyHint: 'playback' });
-    void context.resume();
-    try {
-      const node = await createTestTone(context, { frequency: 440, amplitude: 0.2 });
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 8192;
-      node.connect(context.destination);
-      node.connect(analyser);
-      await context.resume();
-      engine.current = { context, node };
-      setDebug({ context, analyser });
-      setStatus('playing');
-    } catch (e) {
-      void context.close();
-      setError(e instanceof Error ? e.message : String(e));
-      setStatus('error');
-    }
-  }
+  useEffect(() => {
+    startPlayer();
+    return attachKeys();
+  }, []);
 
-  function stop() {
-    const current = engine.current;
-    if (!current) return;
-    engine.current = null;
-    stopTestTone(current.node, 0.02);
-    window.setTimeout(() => void current.context.close(), 100);
-    setDebug({ context: undefined, analyser: undefined });
-    setStatus('idle');
-  }
-
-  const playing = status === 'playing';
   return (
-    <main className="page">
-      <h1>AlgoRhythms</h1>
-      <p className="tagline">An instrument and composer for pitch-line music. Coming soon.</p>
-      <button
-        type="button"
-        className="play"
-        onClick={playing ? stop : () => void start()}
-        disabled={status === 'starting'}
-      >
-        {playing ? 'Stop' : 'Play'}
-      </button>
-      <p role="status" data-testid="status">
-        {STATUS_TEXT[status]}
-        {status === 'error' && error ? `: ${error}` : ''}
-      </p>
-    </main>
+    <div className="app" data-layout={wide ? 'full' : 'player'}>
+      <Transport>
+        <Menu />
+      </Transport>
+      <SilentHint />
+      <Notices />
+      <main className="workspace">
+        <ScoreView />
+        {wide && <div className="slot lane" data-slot="lane" hidden />}
+        <Scrubber />
+        <ViewBar />
+        {wide && <aside className="slot inspector" data-slot="inspector" hidden />}
+      </main>
+    </div>
   );
 }
