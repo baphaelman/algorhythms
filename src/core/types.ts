@@ -211,7 +211,17 @@ export type AssignMode = 'ordered' | 'free';
 
 /** Every v1 moment type (§6.2). `timbre` arrives in M6 (§6.3) and will extend this union. */
 export type MomentType =
-  'chord' | 'unison' | 'split' | 'merge' | 'shift' | 'spread' | 'walk' | 'pin' | 'key' | 'level';
+  | 'chord'
+  | 'unison'
+  | 'split'
+  | 'merge'
+  | 'shift'
+  | 'spread'
+  | 'walk'
+  | 'note'
+  | 'pin'
+  | 'key'
+  | 'level';
 
 /** Fields common to every moment (§6.1). */
 export interface MomentBase {
@@ -250,6 +260,11 @@ export interface ChordMoment extends MomentBase {
    * Absent: the count is unchanged.
    */
   count?: number;
+  /**
+   * Set when the editor froze the chord for per-note editing (revision 6, §11.3): the `notes`
+   * and `assign` it had before, restored by Unfreeze. The compiler ignores it.
+   */
+  frozenFrom?: { notes: NoteSet; assign: AssignMode };
 }
 
 /** All targeted voices go to one pitch (or its nearest octaves). */
@@ -350,6 +365,20 @@ export interface WalkStepRecord {
   fixed: boolean;
 }
 
+/**
+ * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. The target set is the
+ * current pitches with one `from` replaced by `to`, reached by ordered voice leading (§7.2).
+ */
+export interface NoteMoment extends MomentBase {
+  type: 'note';
+  /** The sounding note to change (matched to the nearest committed destination within ½ semitone). */
+  from: Pitch;
+  /** Its new pitch. */
+  to: Pitch;
+  /** When present, the note returns this many seconds after its glide ends. */
+  back?: Seconds;
+}
+
 /** Moves one voice to an exact pitch; may cross other voices. */
 export interface PinMoment extends MomentBase {
   type: 'pin';
@@ -384,6 +413,7 @@ export type Moment =
   | ShiftMoment
   | SpreadMoment
   | WalkMoment
+  | NoteMoment
   | PinMoment
   | KeyMoment
   | LevelMoment;
@@ -516,6 +546,16 @@ export interface ViewSettings {
   playheadX?: number;
   /** Follow mode the view opens with (§10). @default 'smooth' */
   follow?: FollowMode;
+  /** Loop region (§11.3 revision 6); absent means none. */
+  loop?: LoopRegion;
+}
+
+/** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
+export interface LoopRegion {
+  start: Seconds;
+  end: Seconds;
+  /** Whether playback loops it. @default true */
+  on?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------

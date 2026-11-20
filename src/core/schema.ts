@@ -195,6 +195,10 @@ const MOMENT_SCHEMAS = {
       .min(1)
       .optional()
       .describe('Active voice count after the chord (1..pool size); absent: unchanged.'),
+    frozenFrom: z
+      .object({ notes: NoteSetSchema, assign: z.enum(['ordered', 'free']) })
+      .optional()
+      .describe('Editor only: the notes and assign before the chord was frozen (Unfreeze).'),
   }),
   unison: z.looseObject({
     type: z.literal('unison'),
@@ -258,6 +262,15 @@ const MOMENT_SCHEMAS = {
       .optional()
       .describe('Frozen walk: absolute notes per tick; when present the walk draws nothing.'),
   }),
+  note: z.looseObject({
+    type: z.literal('note'),
+    ...momentBase,
+    from: pitch.describe('The sounding note to change (nearest within ½ semitone).'),
+    to: pitch,
+    back: nonNegative
+      .optional()
+      .describe('When present, the note returns this many seconds after its glide ends.'),
+  }),
   pin: z.looseObject({ type: z.literal('pin'), ...momentBase, voice: id, pitch }),
   key: z.looseObject({ type: z.literal('key'), ...momentBase, key: KeySchema }),
   level: z.looseObject({
@@ -279,6 +292,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.shift,
   MOMENT_SCHEMAS.spread,
   MOMENT_SCHEMAS.walk,
+  MOMENT_SCHEMAS.note,
   MOMENT_SCHEMAS.pin,
   MOMENT_SCHEMAS.key,
   MOMENT_SCHEMAS.level,
@@ -399,6 +413,10 @@ export const ViewSchema = z.looseObject({
   futureOpacity: unitInterval.optional(),
   playheadX: unitInterval.optional(),
   follow: z.enum(['smooth', 'page', 'off']).optional(),
+  loop: z
+    .looseObject({ start: seconds, end: seconds, on: z.boolean().optional() })
+    .optional()
+    .describe('Loop region [start, end) (s).'),
 });
 
 // ---------------------------------------------------------------------------------------------

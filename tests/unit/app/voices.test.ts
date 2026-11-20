@@ -100,6 +100,29 @@ describe('resizePool', () => {
     valid(q);
   });
 
+  it('clamps a chord count to the new pool', () => {
+    const p = base();
+    const q = resizePool(
+      {
+        ...p,
+        moments: [
+          {
+            id: 'chd1',
+            type: 'chord',
+            at: 1,
+            notes: { kind: 'chord', symbol: 'C' },
+            voicing: 'even',
+            assign: 'ordered',
+            count: p.voices.length,
+          },
+        ],
+      },
+      3,
+    );
+    expect((q.moments[0] as { count: number }).count).toBe(3);
+    valid(q);
+  });
+
   it('reports nothing when growing', () => {
     expect(poolShrinkEffects(base(), 10)).toEqual({ voices: [], start: 0, moments: 0 });
   });

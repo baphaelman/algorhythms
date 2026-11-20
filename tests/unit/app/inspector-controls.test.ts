@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   STEP_CHOICES,
-  rankCount,
-  rankSelector,
+  arriveGlide,
   stepChips,
   targetMode,
   toggleStep,
@@ -24,25 +23,22 @@ describe('walk step chips', () => {
 });
 
 describe('voice target modes', () => {
-  it('reads the mode of a selector', () => {
-    expect(targetMode(undefined, 8)).toBe('all');
-    expect(targetMode('all', 8)).toBe('all');
-    expect(targetMode({ voices: ['a'] }, 8)).toBe('pick');
-    expect(targetMode({ rank: [0, 1] }, 8)).toBe('bottom');
-    expect(targetMode({ rank: [4, 7] }, 8)).toBe('top');
-    expect(targetMode({ rank: [2, 3] }, 8)).toBe('range');
+  it('reads the mode of a selector (no top/bottom n)', () => {
+    expect(targetMode(undefined)).toBe('all');
+    expect(targetMode('all')).toBe('all');
+    expect(targetMode({ voices: ['a'] })).toBe('pick');
+    expect(targetMode({ rank: [0, 1] })).toBe('rank');
+    expect(targetMode({ rank: [4, 7] })).toBe('rank');
   });
+});
 
-  it('builds top and bottom n rank selectors that read back', () => {
-    const bottom = rankSelector('bottom', 2, 6, 8);
-    expect(bottom).toEqual({ rank: [0, 1] });
-    expect(rankCount(bottom.rank, 'bottom', 6)).toBe(2);
-    const top = rankSelector('top', 3, 6, 8);
-    expect(top).toEqual({ rank: [3, 7] });
-    expect(targetMode(top, 8)).toBe('top');
-    expect(rankCount(top.rank, 'top', 6)).toBe(3);
-    // n is rounded and at least 1; a top n beyond the active count starts at rank 0.
-    expect(rankSelector('bottom', 0, 6, 8)).toEqual({ rank: [0, 0] });
-    expect(rankSelector('top', 9, 6, 8)).toEqual({ rank: [0, 7] });
+describe('arrive together', () => {
+  it('drops the field at the default and keeps other glide fields', () => {
+    expect(arriveGlide(undefined, undefined, false)).toEqual({ arrive: 'spread' });
+    expect(arriveGlide({ arrive: 'spread' }, undefined, true)).toBeUndefined();
+    expect(arriveGlide({ arrive: 'spread', length: 2 }, 'together', true)).toEqual({ length: 2 });
+    // A piece whose default is spread needs an explicit 'together'.
+    expect(arriveGlide(undefined, 'spread', true)).toEqual({ arrive: 'together' });
+    expect(arriveGlide({ arrive: 'together' }, 'spread', false)).toBeUndefined();
   });
 });

@@ -3,7 +3,8 @@
  *
  * Pieces overlap moments on purpose: dense moment times, long glides with stagger and jitter, walk
  * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
- * out-of-range pitches (folding), key changes and every ease (béziers with finite start slopes).
+ * note points (with and without returns; `from` often a start pitch, so it sounds), out-of-range
+ * pitches (folding), key changes and every ease (béziers with finite start slopes).
  */
 import fc from 'fast-check';
 import { newPiece } from '../../../src/core/defaults';
@@ -239,6 +240,19 @@ export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
         ),
       },
       {
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            ...base,
+            type: fc.constant('note' as const),
+            from: fc.integer({ min: 40, max: 80 }),
+            to: fc.oneof(fc.integer({ min: 30, max: 100 }), tenths(40, 80)),
+            back: tenths(0, 4),
+          },
+          { requiredKeys: ['at', 'type', 'from', 'to'] },
+        ),
+      },
+      {
         weight: 1,
         arbitrary: fc.record({
           at,
@@ -312,9 +326,14 @@ export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
           p.defaults.glide = r.glide;
           p.voices.forEach((v, i) => (v.range = r.ranges ? r.ranges[i] : [36, 96]));
           p.start = r.starts.slice(0, r.pool).map((pitch, i) => ({ voice: ids[i], pitch }));
-          p.moments = moments.map(
-            (m, i) => ({ ...m, id: `m${i.toString(36).padStart(5, '0')}` }) as Moment,
-          );
+          p.moments = moments.map((m, i) => {
+            // Half the notes start on a start pitch, so they often find their note sounding.
+            const from =
+              m.type === 'note' && i % 2 === 0 && r.starts.length > 0
+                ? { from: r.starts[i % Math.min(r.starts.length, r.pool)] }
+                : {};
+            return { ...m, ...from, id: `m${i.toString(36).padStart(5, '0')}` } as Moment;
+          });
           return p;
         });
     });

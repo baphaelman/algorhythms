@@ -40,6 +40,7 @@ import {
   stepChips,
   toggleStep,
 } from './fields';
+import { ChordNotes } from './ChordNotes';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
 
@@ -95,9 +96,11 @@ function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
         keyAtMoment={ctx.keyAt}
         momentId={m.id}
         voicing={m.voicing}
-        onChange={(notes, l) => updateMoment(m.id, { notes }, l)}
+        // New notes replace a frozen chord: there is nothing left to unfreeze to.
+        onChange={(notes, l) => updateMoment(m.id, { notes, frozenFrom: undefined }, l)}
         onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
       />
+      <ChordNotes m={m} piece={ctx.piece} />
       <SelectField
         label="Assign"
         value={m.assign}

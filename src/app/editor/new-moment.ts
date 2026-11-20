@@ -5,6 +5,7 @@
  */
 
 import { mod } from '../../core/math';
+import { defaultNoteFields } from '../../core/moments/note';
 import { activeAt, keyAt, pitchAt } from '../../core/query';
 import {
   FLAT_NAMES,
@@ -98,6 +99,10 @@ export function defaultMoment<T extends MomentType>(
         steps: [-2, -1, 1, 2],
         stepGlide: 0.3,
       };
+      break;
+    case 'note':
+      // The sounding note nearest the middle, one scale step up (core/moments/note.ts).
+      m = { ...base, type: 'note', ...defaultNoteFields(score, at) };
       break;
     case 'pin': {
       // The top sounding voice, two scale steps up (the first pool voice if nothing sounds).

@@ -212,7 +212,18 @@ describe('momentEffectsAt (palette)', () => {
     });
     const r = effects(p, 8);
     expect(off(r)).toEqual(
-      ['chord', 'level', 'merge', 'pin', 'shift', 'split', 'spread', 'unison', 'walk'].sort(),
+      [
+        'chord',
+        'level',
+        'merge',
+        'note',
+        'pin',
+        'shift',
+        'split',
+        'spread',
+        'unison',
+        'walk',
+      ].sort(),
     );
     expect(r.chord.reason).toBe('no voice is sounding');
   });

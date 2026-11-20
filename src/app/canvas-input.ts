@@ -18,7 +18,7 @@ import { playheadEffect } from './editor/palette-effects';
 import { addAtPlayhead, clearSelection, deleteSelection, editorKey } from './editor/shortcuts';
 import { clearHover, setHover } from './hover';
 import { currentPps } from './loop';
-import { panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
+import { panBy, seekBy, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_SLOP = 4;
@@ -186,7 +186,9 @@ export function attachKeys(): () => void {
     // A key another handler already used (e.g. Escape closing a menu) is not an editor key.
     const ek = !e.defaultPrevented && editorLayout() ? editorKey(e) : null;
     if (ek) {
-      if (ek.kind === 'add') {
+      if (ek.kind === 'loop') {
+        if (toggleLoop()) e.preventDefault();
+      } else if (ek.kind === 'add') {
         e.preventDefault();
         // Revision 6: a type with no effect at the playhead is not added (the palette greys it).
         if (playheadEffect(ek.type).effect) addAtPlayhead(ek.type);

@@ -27,6 +27,7 @@ A moment's `glide` is partial: missing fields come from `defaults.glide`, whose 
 | `shift` | `unit`: `"semitones"` |
 | `spread` | `around`: `"mean"`, `snap`: `"scale"` |
 | `walk` | `grid`: `1`, `density`: `0.45`, `steps`: `[-2,-1,1,2]`, `stepGlide`: `0.3` |
+| `note` | (none) |
 | `pin` | (none) |
 | `key` | (none) |
 | `level` | `over`: `1` |
@@ -836,6 +837,100 @@ This is the *input* form: fields with defaults are optional here.
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 9007199254740991
+              },
+              "frozenFrom": {
+                "description": "Editor only: the notes and assign before the chord was frozen (Unfreeze).",
+                "type": "object",
+                "properties": {
+                  "notes": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "pitches"
+                          },
+                          "pitches": {
+                            "type": "array",
+                            "items": {
+                              "type": "number",
+                              "description": "Fractional MIDI note number; 69 = A4."
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "pitches"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "chord"
+                          },
+                          "symbol": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "symbol"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "degrees"
+                          },
+                          "degrees": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "degrees"
+                        ],
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "current"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    ]
+                  },
+                  "assign": {
+                    "type": "string",
+                    "enum": [
+                      "ordered",
+                      "free"
+                    ]
+                  }
+                },
+                "required": [
+                  "notes",
+                  "assign"
+                ]
               }
             },
             "required": [
@@ -2137,6 +2232,191 @@ This is the *input* form: fields with defaults are optional here.
             "properties": {
               "type": {
                 "type": "string",
+                "const": "note"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable id (6 base62 characters); seeds the moment."
+              },
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Seconds from the start of the piece."
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "voices": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": [
+                      "voices"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "rank": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        ],
+                        "items": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    },
+                    "required": [
+                      "rank"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              },
+              "glide": {
+                "type": "object",
+                "properties": {
+                  "length": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "jitter": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "stagger": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "random",
+                      "low-first",
+                      "high-first",
+                      "center-out",
+                      "outside-in"
+                    ]
+                  },
+                  "ease": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "smootherstep",
+                          "smoothstep",
+                          "cosine",
+                          "linear",
+                          "expo"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bezier"
+                          },
+                          "x1": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y1": {
+                            "type": "number"
+                          },
+                          "x2": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y2": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "x1",
+                          "y1",
+                          "x2",
+                          "y2"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "label": {
+                "type": "string"
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "from": {
+                "type": "number",
+                "description": "The sounding note to change (nearest within ½ semitone)."
+              },
+              "to": {
+                "type": "number",
+                "description": "Fractional MIDI note number; 69 = A4."
+              },
+              "back": {
+                "description": "When present, the note returns this many seconds after its glide ends.",
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "at",
+              "from",
+              "to"
+            ],
+            "additionalProperties": {}
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "pin"
               },
               "id": {
@@ -3125,6 +3405,30 @@ This is the *input* form: fields with defaults are optional here.
             "page",
             "off"
           ]
+        },
+        "loop": {
+          "description": "Loop region [start, end) (s).",
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "on": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": {}
         }
       },
       "additionalProperties": {}
