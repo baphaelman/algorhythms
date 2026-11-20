@@ -45,6 +45,7 @@ import { MixState, type ParamValue } from './mix';
 import { SINE, SINE_TABLE_SIZE } from './sine';
 import { TimbreSlot } from './timbre-slot';
 import {
+  computeUnisonWarps,
   EMPTY_VOICE_DATA,
   LOUDNESS_PITCH,
   LOUDNESS_SLOPE,
@@ -125,10 +126,30 @@ const LOCK_LFO_PULL = 0.6;
 /** Smoothing of the lock amount λ, rising and falling (seconds). */
 const LOCK_ATTACK = 0.04;
 const LOCK_RELEASE = 0.1;
-/** Smoothing of the group gain h (seconds), and its ceiling h² ≤ LOCK_H2_MAX (+3 dB). */
-const LOCK_GAIN_SMOOTHING = 0.01;
+/**
+ * Smoothing of the group gain h (seconds), and its ceiling h² ≤ LOCK_H2_MAX (+3 dB). h targets the
+ * phases predicted for the end of the block (it is interpolated across the block), so it can
+ * follow beats of up to ~10 Hz during a capture.
+ */
+const LOCK_GAIN_SMOOTHING = 0.002;
 const LOCK_H2_MAX = 2;
 const INV_LOCK_SPAN = 1 / (LOCK_EDGE - LOCK_FULL);
+/**
+ * Capture (docs/build-log.md, "Unison lock: steady approach and parting"), for pairs where either
+ * voice runs a unison warp (Voice: it arrives at or leaves a unison):
+ * - arriving, their phases pull together from CAPTURE_EDGE cents apart, fully within
+ *   CAPTURE_FULL, by up to CAPTURE_PULL of the frequency (at most LOCK_PULL_MAX_HZ), so the voices
+ *   meet in phase;
+ * - arriving or leaving, the pair counts for h while it beats slower than CAPTURE_H_EDGE Hz (fully
+ *   below CAPTURE_H_FULL), so h evens out the slow beats it cannot avoid.
+ */
+const CAPTURE_EDGE = 60;
+const CAPTURE_FULL = 20;
+const INV_CAPTURE_SPAN = 1 / (CAPTURE_EDGE - CAPTURE_FULL);
+const CAPTURE_PULL = 0.008;
+const CAPTURE_H_FULL = 10;
+const CAPTURE_H_EDGE = 20;
+const INV_CAPTURE_H_SPAN = 1 / (CAPTURE_H_EDGE - CAPTURE_H_FULL);
 const INV_TWO_PI = 1 / (2 * Math.PI);
 
 /** Prepared voice data for a score (built in a message handler, applied at a block boundary). */
@@ -202,6 +223,12 @@ export class Graph {
   private readonly gTh = new Float64Array(DSP_MAX_VOICES);
   /** Settled stillness per voice (see STILL_SETTLE). */
   private readonly gStill = new Float64Array(DSP_MAX_VOICES);
+  /** Unison warp running (ctx.gWarp) per voice. */
+  private readonly gWg = new Float64Array(DSP_MAX_VOICES);
+  /** Predicted phase at the block end and its phasor, for h. */
+  private readonly gPred = new Float64Array(DSP_MAX_VOICES);
+  private readonly gHx = new Float64Array(DSP_MAX_VOICES);
+  private readonly gHy = new Float64Array(DSP_MAX_VOICES);
   private readonly gCx = new Float64Array(DSP_MAX_VOICES);
   private readonly gSy = new Float64Array(DSP_MAX_VOICES);
   private readonly gLx = new Float64Array(DSP_MAX_VOICES);
@@ -212,6 +239,8 @@ export class Graph {
   private readonly lockDown: number = 0;
   private readonly lockGain: number = 0;
   private readonly pullMaxInc: number = 0;
+  /** Beat rate in Hz per cent of distance per unit phase increment: sampleRate · ln 2 / 1200. */
+  private readonly centsToHz: number = 0;
   private readonly invBlockSeconds: number = 0;
   private readonly stillCoeff: number = 0;
 
@@ -252,6 +281,7 @@ export class Graph {
     this.lockDown = 1 - Math.exp(-blockSeconds / LOCK_RELEASE);
     this.lockGain = 1 - Math.exp(-blockSeconds / LOCK_GAIN_SMOOTHING);
     this.pullMaxInc = LOCK_PULL_MAX_HZ / sampleRate;
+    this.centsToHz = (sampleRate * Math.LN2) / 1200;
     this.invBlockSeconds = sampleRate / BLOCK_FRAMES;
     this.stillCoeff = 1 - Math.exp(-blockSeconds / STILL_SETTLE);
   }
@@ -570,11 +600,13 @@ export class Graph {
     for (let i = 0; i < n; i++) {
       data.push(VoiceData.fromFlat(score.voices[i], score.voiceParams, i, slotOf));
     }
+    const referenceHz = score.referenceHz > 0 ? score.referenceHz : 440;
+    computeUnisonWarps(data, referenceHz);
     return {
       data,
       voiceIds: score.voiceIds.slice(0, n),
       duration: Number.isFinite(score.duration) ? Math.max(0, score.duration) : 0,
-      referenceHz: score.referenceHz > 0 ? score.referenceHz : 440,
+      referenceHz,
     };
   }
 
@@ -733,6 +765,9 @@ export class Graph {
    * - the group gain h_j = √(Σ_l w²A_l²) / |Z_j|, Z_j = Σ_l w·A_l·e^{2πiφ_l} with the actual
    *   phases (capped at +3 dB, smoothed), so a coherent group
    *   sums to the power of the same voices spread out (incoherent), whatever its phases.
+   * While either voice of a pair runs a unison warp, the pair is also captured: phase pull from
+   * CAPTURE_EDGE cents (arriving only) and a place in h while it beats slower than CAPTURE_H_EDGE
+   * Hz; h targets the phases predicted for the block end.
    * A voice starting from silence (seek, birth) takes its group's phase at once (gSnapPh), so the
    * lock holds from its first sample. All inputs are block-start state, which every render mode
    * computes identically, so stems sum exactly. Allocation-free.
@@ -752,6 +787,9 @@ export class Graph {
     const LY = this.gLy;
     const V = this.gV;
     const ST = this.gStill;
+    const WG = this.gWg;
+    const HX = this.gHx;
+    const HY = this.gHy;
     const frameEnd = this.pieceFrame + BLOCK_FRAMES;
     let any = 0;
     for (let i = 0; i < n; i++) {
@@ -767,6 +805,7 @@ export class Graph {
         Lk[i] = ctx.gLock[i];
         INC[i] = ctx.gInc[i];
         this.gTh[i] = ctx.gTheta[i];
+        WG[i] = ctx.gWarp[i];
         this.gV[i] = this.gWas[i] === 1 ? (P[i] - this.gPrevP[i]) * this.invBlockSeconds : 0;
       } else if (v.lifeTick[TICKS_PER_BLOCK] > 0) {
         // Starts this block (seek, birth, swap): probe where it starts.
@@ -787,6 +826,7 @@ export class Graph {
         INC[i] = 0;
         this.gTh[i] = 0;
         this.gV[i] = 0;
+        WG[i] = 0;
         v.publishPhase(ctx);
       } else continue;
       const vi = this.gV[i] < 0 ? -this.gV[i] : this.gV[i];
@@ -798,6 +838,9 @@ export class Graph {
           : prev + (still - prev) * this.stillCoeff;
       Graph.trig(ctx.gPhase, i, CX, SY);
       Graph.trig(ctx.gLfo, i, LX, LY);
+      // Phase at the end of this block, for h (which is interpolated up to it across the block).
+      this.gPred[i] = ctx.gPhase[i] + INC[i] * BLOCK_FRAMES;
+      Graph.trig(this.gPred, i, HX, HY);
       any++;
     }
 
@@ -852,6 +895,8 @@ export class Graph {
       ctx.gLfo[j] = lfo;
       Graph.trig(ctx.gPhase, j, CX, SY);
       Graph.trig(ctx.gLfo, j, LX, LY);
+      this.gPred[j] = ph + inc * BLOCK_FRAMES;
+      Graph.trig(this.gPred, j, HX, HY);
     }
 
     // Per-voice lock controls.
@@ -872,8 +917,8 @@ export class Graph {
       // for pitch (sa, sam), phase (tx, ty) and vibrato phase (lx, ly).
       const aj = Am[j];
       const tj = aj * ST[j];
-      let zx = aj * CX[j];
-      let zy = aj * SY[j];
+      let zx = aj * HX[j];
+      let zy = aj * HY[j];
       let tx = tj * CX[j];
       let ty = tj * SY[j];
       let lx = tj * LX[j];
@@ -882,17 +927,46 @@ export class Graph {
       let sa = tj;
       let sam = tj * M[j];
       let lamT = 0;
+      let lamC = 0;
       let parting = 0;
       if (any > 1 && Lk[j] > 0) {
+        const wj = WG[j];
         for (let l = 0; l < n; l++) {
           if (l === j || part[l] === 0) continue;
           const dp = P[j] - P[l];
           const dist = dp < 0 ? -dp : dp;
-          if (dist >= LOCK_EDGE) continue;
-          let w = (LOCK_EDGE - dist) * INV_LOCK_SPAN;
-          if (w > 1) w = 1;
-          w = w * w * (3 - 2 * w) * Lk[j] * Lk[l];
-          if (!(w > 0)) continue;
+          // Capture: while either voice of a pair runs a unison warp, the pair's phases pull
+          // together from CAPTURE_EDGE cents, and it counts for h while it beats slower than
+          // CAPTURE_H_EDGE Hz.
+          const cap = wj > 0 || WG[l] > 0;
+          const inc = INC[j] > INC[l] ? INC[j] : INC[l];
+          const hz = dist * inc * this.centsToHz;
+          if (cap ? dist >= CAPTURE_EDGE && hz >= CAPTURE_H_EDGE : dist >= LOCK_EDGE) continue;
+          const lkk = Lk[j] * Lk[l];
+          let w = 0;
+          if (dist < LOCK_EDGE) {
+            w = (LOCK_EDGE - dist) * INV_LOCK_SPAN;
+            if (w > 1) w = 1;
+            w = w * w * (3 - 2 * w) * lkk;
+          }
+          let wc = 0;
+          let wh = 0;
+          if (cap) {
+            if (dist < CAPTURE_EDGE && (wj === 1 || WG[l] === 1)) {
+              wc = (CAPTURE_EDGE - dist) * INV_CAPTURE_SPAN;
+              if (wc > 1) wc = 1;
+              wc = wc * wc * (3 - 2 * wc) * lkk;
+              if (wc > lamC) lamC = wc;
+            }
+            if (hz < CAPTURE_H_EDGE) {
+              wh = (CAPTURE_H_EDGE - hz) * INV_CAPTURE_H_SPAN;
+              if (wh > 1) wh = 1;
+              wh = wh * wh * (3 - 2 * wh) * lkk;
+            }
+          }
+          const we = Math.max(w, wc);
+          const wz = Math.max(w, wh);
+          if (!(we > 0 || wz > 0)) continue;
           // Pairs moving apart leave the group early (separation speed, cents/s).
           const sep = dp < 0 ? V[l] - V[j] : V[j] - V[l];
           if (sep > SEP_START) {
@@ -900,19 +974,21 @@ export class Graph {
             if (g < 0) g = 0;
             const lw = w * g * g * (3 - 2 * g);
             if (lw > lamT) lamT = lw;
-            if (w - lw > parting) parting = w - lw;
+            // A warped parting needs no unwinding: h covers its slow beats.
+            if (!cap && w - lw > parting) parting = w - lw;
           } else if (w > lamT) lamT = w;
-          const wa = w * Am[l];
-          zx += wa * CX[l];
-          zy += wa * SY[l];
-          q += wa * wa;
-          const wt = wa * ST[l];
+          const za = wz * Am[l];
+          zx += za * HX[l];
+          zy += za * HY[l];
+          q += za * za;
+          const wt = we * Am[l] * ST[l];
           tx += wt * CX[l];
           ty += wt * SY[l];
           lx += wt * LX[l];
           ly += wt * LY[l];
-          sa += wt;
-          sam += wt * M[l];
+          const wp = w * Am[l] * ST[l];
+          sa += wp;
+          sam += wp * M[l];
         }
       }
       const starting = part[j] === 2 || this.gWas[j] === 0;
@@ -928,10 +1004,17 @@ export class Graph {
       let dLfo = 0;
       if (part[j] === 1) {
         const t2 = tx * tx + ty * ty;
-        if (lam > 0 && t2 > 1e-24) {
-          // sin(arg T − φ_j) = Im(T · e^{−iφ_j}) / |T|.
-          const sd = (ty * CX[j] - tx * SY[j]) / Math.sqrt(t2);
-          dInc = lam * sd * Math.min(LOCK_PULL * INC[j], this.pullMaxInc);
+        if ((lam > 0 || lamC > 0) && t2 > 1e-24) {
+          // sin(arg T − φ_j) = Im(T · e^{−iφ_j}) / |T|. Beyond a quarter cycle the pull is full
+          // (not sin): a voice caught near anti-phase must not hang there (a level dip).
+          let sd = (ty * CX[j] - tx * SY[j]) / Math.sqrt(t2);
+          if (tx * CX[j] + ty * SY[j] < 0) sd = sd < 0 ? -1 : 1;
+          dInc =
+            sd *
+            Math.max(
+              lam * Math.min(LOCK_PULL * INC[j], this.pullMaxInc),
+              lamC * Math.min(CAPTURE_PULL * INC[j], this.pullMaxInc),
+            );
           const l2 = lx * lx + ly * ly;
           if (l2 > 1e-24) dLfo = (lam * LOCK_LFO_PULL * (ly * LX[j] - lx * LY[j])) / Math.sqrt(l2);
         }

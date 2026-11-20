@@ -532,6 +532,50 @@ RTF (CPU time, best of 5 × 6 s, interleaved with the pre-change tree, load aver
 
 Owner A/B WAVs (24-bit, gitignored `renders/`): `unison8-before`/`unison8-after`, `merge-before`/`merge-after`, `wobble-preset` (`unisonChordScore('wobble')`), `gen-1-dorian` (before) / `gen-1-dorian-after`.
 
+## Unison lock: steady approach and parting (2026-11-20)
+
+Owner: held unisons were steady, but the level wobbled as voices glided in and split apart. Cause: two voices a few Hz apart beat at that rate, and eases spend a long time near their target, so converging (and parting) voices beat slowly for ~0.5 s before the lock (20 → 2 cents) engaged. Only a frequency change removes a beat, so some pitch correction is unavoidable; the design spends it only on glides that end or start in a unison.
+
+### Design
+- **Unison warp** (`computeUnisonWarps`, `warpOffset`, src/dsp/voice.ts; computed in `Graph.prepare`). A glide is *arriving* when another voice stays within 20 cents of its end pitch for 0.2 s from its end, *leaving* when another voice was at its start pitch for 0.2 s before its start (uninterrupted glides only). Near that unison pitch A, at score distance r it sounds at A ± y(r): y = r for r ≥ C, 0 for r ≤ 0.4 C, r·smoothstep between. C = the distance that beats at 12 Hz against A, within [20, 100] cents and ≤ the glide's span (½ if both ends warp): 100 cents at A2, 92 at A3, 47 at A4, 24 at A5. So voices meet while the score still has them ≤ 0.4 C apart, part only past 0.4 C, and cross the slow-beat zone 2–3× faster. Written out in `render` (no call; inlining budget). Faded by both voices' lockability, so `wobble` glides as written.
+- **Capture** (`Graph.computeGroups`), for pairs where either voice runs a warp: arriving pairs pull phases together from 60 cents (full at 20) by ≤ 0.8 % of f, so they meet in phase; arriving or leaving pairs count for h while they beat slower than 20 Hz (full below 10 Hz). Leaving warped pairs skip the θ unwinding (h covers them); unwarped partings keep it.
+- **h**: targets the phases predicted for the block end (h is interpolated across the block), smoothing 10 → 2 ms, so it follows beats up to ~10 Hz.
+- **Phase pull** beyond a quarter cycle is full strength, not sin: a voice captured near anti-phase no longer hangs there (a level dip).
+- Fixtures/files unchanged; no new state in the score or schema.
+
+### Metric
+50 ms RMS of the mix ÷ the incoherent sum (each voice rendered with the others at gain 0, so g_n matches and nothing locks), over the approach (glide start to 0.5 s after arrival) and the split (split start to 0.5 s after it ends). Fan of N voices 2 semitones apart, glides of 1/2/4 s, smootherstep/linear/expo, pitches 45/57/69 (54 configs for N = 2 and 8; N = 32 at 2 s, smootherstep/expo). Medians of each config's lowest window and of its CV:
+
+| | approach low / CV, before → after | split low / CV, before → after | distinct fan after the split (natural) |
+|---|---|---|---|
+| N=2 @45 | −6.8 dB / 0.19 → −3.0 / 0.05 | −6.3 / 0.21 → −2.8 / 0.08 | −2.1…+1.4 |
+| N=2 @57 | −5.4 / 0.12 → −1.6 / 0.04 | −5.5 / 0.14 → −1.3 / 0.05 | −0.8…+0.7 |
+| N=2 @69 | −3.9 / 0.08 → −0.8 / 0.03 | −3.9 / 0.09 → −1.2 / 0.04 | −0.5…+0.4 |
+| N=8 @45 | −6.0 / 0.19 → −3.6 / 0.11 | −7.1 / 0.19 → −4.1 / 0.14 | −2.6…+1.6 |
+| N=8 @57 | −5.1 / 0.12 → −2.6 / 0.07 | −5.6 / 0.15 → −2.7 / 0.07 | −0.6…+0.6 |
+| N=8 @69 | −4.4 / 0.09 → −2.0 / 0.05 | −3.8 / 0.10 → −2.1 / 0.06 | −0.3…+0.3 |
+| N=32 @45/57/69 | −6.4/−8.3/−6.6 → −4.9/−2.0/−1.8; CV 0.15–0.20 → 0.06–0.15 | −5.6/−5.5/−3.9 → −4.9/−2.6/−2.4 | ±2 |
+
+Highs went from +2…+4.8 dB to ≤ +2 (mostly < +1). Windows outside ±1 dB: 24–37 % → 4–9 % (N=2), 14–17 % (N=8), 19–25 % (N=32). Worst single windows: −13.3 → −7.6 dB.
+- **Target ±1 dB at 50 ms throughout: met for N = 2 at A3 and above; not for N ≥ 8 or at A2.** What is left are brief dips (one or two 50 ms windows) where an arriving or leaving voice crosses the slow-beat zone against a small core, or several mutually coherent voices leave together. At A2 a semitone already beats at 6.5 Hz, so the distinct fan itself varies ±2 dB. Closing the rest needs bigger bends (C beyond 100 cents) or a longer capture.
+- The integrator's WAV measure (50 ms RMS, CV per 2 s window): `unison8` (= `unisonScore(8)`) 2–4 s 0.162 → 0.026; `unison-split-8` split window 6–8 s 0.136 → 0.054; `merge` 2–4 s 0.120 → 0.060; `gen-1-dorian` median 0.058 (unchanged), worst glide window 0.167 → 0.125. NB: `unison8-after`'s 0.24 at 10–12 s is the score's 0.5 s end fade, not a split (that fixture has none).
+
+### Pitch correction (max, sine stems, zero crossings vs the written pitch)
+- **≤ 60 cents** at A2–A3 (≤ 35 at A4), only in the last part of an arriving glide or the first part of a leaving one: the warp holds a voice on the unison while the score still has it ≤ 0.4 C away (≤ 45 cents), plus ≤ 14 cents of capture pull. In effect the glide lands ~0.2–0.4 s early and leaves ~0.2 s late. Held pitches are untouched (merge survivor bend 4.1 cents, was ≤ 6.7). To trade steadiness for smaller bends: `WARP_HZ` / `WARP_MAX` in voice.ts (8 Hz / 60 cents gave max ~30–50 cents and CV ~0.09 for N = 8).
+- Crossings, glides passing a held voice and semitone intervals get no warp and sound as with no lock at all (a twin timbre with wobble 2.75: same detune, never locks): ≤ 0.64 dB and ≤ 0.3 cents; the 0.64 dB is the existing 20-cent lock touching a passing glide, unchanged from before.
+
+### Kept
+Held unison 0.950–0.958 × one voice, CV ≤ 0.0002 (was ≤ 0.0017); converge/hold/diverge 0.25 s windows 0.70–1.08; merge 0.91–1.13 (was 0.80–1.19); seek re-lock level 1.0000, clicks 0.05 (threshold 0.16–0.36); click suite and swaps unchanged; stems Σ − mix −144.1 / −143.5 / −147.0 dBFS; `wobble-8` CV 0.421; no-GC 0 lines (plain and lock, lock harness ×3 more); expo/bézier 18 scavenges/60 s (report only). RTF (CPU, best of 5 × 6 s, alternating with HEAD, load ~9): dense 24 voices 37–39× vs 37–42×; lock workload 64–66× vs 63–69×: no measurable change. rtf.test.ts gave 9.6× once in the full parallel run, 17× alone.
+
+### Tests (tests/dsp/unison.test.ts)
+50 ms approach/split bands added to converge/hold/diverge (CV ≤ 0.1/0.15/0.2, lowest ≥ 0.45, highest ≤ 1.45); warp anchors only for arrivals/departures (not crossings, passing glides, semitones, a 30-cent interval); crossings/passing/semitones vs a no-lock twin; a merging glide bends ≤ 65 cents and the voices hold their written pitch (≤ 6 cents incl. detune).
+
+### For the integrator (PLAN §8.4)
+1. New: glides into or out of a unison are pitch-warped near it (above): a deliberate deviation from the written glide of up to ~60 cents (A2–A3), ~35 cents (A4). §8.4's "Small corrections… during the last part of a glide" should state this.
+2. Lock pull law: full strength beyond a quarter cycle; h smoothing 2 ms with block-end phase prediction.
+3. θ unwinding now applies only to partings without a warp.
+4. Owner A/B (renders/, 24-bit): `unison8-glide-after`, `merge-glide-after`, `gen-1-dorian-glide-after` (compare with the `-after` files); also `unison8-split-before` / `unison8-split-glide-after` (`unison-split-8`, which actually splits). Copied into the main checkout's renders/ as well.
+
 ## M3d2a: Generate panel (2026-11-20)
 
 - **Files:** `src/app/generate-options.ts` (pure: `parseSeed`, `checkForm`, `generateFromRequest`, ranges), `src/app/ui/GeneratePanel.tsx` (native modal `<dialog class="dialog generate">`; `openGenerate()`, `runGenerate()`), `.dialog` styles in `styles.css` (the class is generic, so the Export dialog can reuse it). Tests: `tests/unit/app/generate-options.test.ts`, `tests/e2e/generate.spec.ts`.
