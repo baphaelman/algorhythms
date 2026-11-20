@@ -695,3 +695,11 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - Switching NoteSet kind uses defaults (chord 'I', degrees [0,2,4], pitches C4 E4 G4); for split, 'current' removes `notes`.
 
 **Tests:** `tests/unit/app/inspector-fields.test.ts`; `tests/e2e/inspector.spec.ts` (Chromium only: hint/multi-select, chord symbol invalid→valid, glide length, Reroll, undo chain, label drag = one entry, degree picker by keyboard).
+
+## M4h: selection highlight and hover (2026-11-20)
+
+- **render:** `ScoreStyle.highlight?: ReadonlySet<MomentId>`. When non-empty, all lines draw at `DIM_ALPHA` (0.3) and the runs of segments with a selected `momentId` (contiguous segments merged, clipped to the window) are re-stroked on top at `HIGHLIGHT_WIDTH` 2.75 px, past alpha 1, future alpha max(futureOpacity, 0.6) so the selection shows during playback too. Empty set: identical ops to before. `drawScore` now returns the `View` it drew (was `void`).
+- **render/hover.ts:** `nearestLine(compiled, view, x, y, radius = 6, includeFuture)` probes each voice at 9 times across ±radius (catches steep glides); `noteLabel(p, key?)` ("F♯4", "A4 +12¢", spelled in the key via `spellPc`, octave fixed for B♯/C♭); `hoverLabel` → "`<voice name or 'voice N'>` · `<note>` · `<Hz>` Hz".
+- **app:** `app/hover.ts` holds the mouse position (mouse only, no button down; cleared on press and pointerleave). The loop passes `useEditor` selection each frame (Set rebuilt only when the array changes; editor store changes mark dirty) and re-hit-tests when it drew or the pointer moved, writing a `.score-hover` div (`data-testid="score-hover"`) by direct DOM writes. Future lines are hoverable only while the ghost is visible.
+- **debug:** `actions.select` added to `window.__algorhythms`.
+- Tests: `tests/unit/render/selection.test.ts`, `tests/e2e/score-hover.spec.ts` (Chromium). render.spec bench unchanged and within budget (it does not exercise a selection; the extra pass covers only selected segments in view).

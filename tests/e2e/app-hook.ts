@@ -6,7 +6,7 @@
 export interface Hook {
   store: {
     getState(): {
-      piece: { meta: { title: string }; voices: unknown[] };
+      piece: { meta: { title: string }; voices: unknown[]; moments: { id: string; at: number }[] };
       compiled: { duration: number };
       view: { window: number; colors: string; theme: string; pan: number; hud: boolean };
       transport: { status: string; scrubbing: boolean; audio: string };
@@ -27,6 +27,7 @@ export interface Hook {
     loadPiece(piece: unknown): void;
     setPiece(piece: unknown): void;
     recompileNow(): unknown;
+    select(ids: string[]): void;
   };
   encodeShareLink(piece: unknown, base?: string): Promise<string>;
 }

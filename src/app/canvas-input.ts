@@ -14,6 +14,7 @@
 
 import { redo, undo } from './editor/history';
 import { addAtPlayhead, clearSelection, deleteSelection, editorKey } from './editor/shortcuts';
+import { clearHover, setHover } from './hover';
 import { currentPps } from './loop';
 import { currentTime, panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
 
@@ -40,6 +41,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
 
   const onDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    clearHover();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
@@ -54,7 +56,14 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
 
   const onMove = (e: PointerEvent): void => {
     const p = pointers.get(e.pointerId);
-    if (!p) return;
+    if (!p) {
+      // Hover readout: a mouse with no button down (not during pan or drag).
+      if (e.pointerType === 'mouse' && pointers.size === 0) {
+        const r = canvas.getBoundingClientRect();
+        setHover(e.clientX - r.left, e.clientY - r.top);
+      }
+      return;
+    }
     const dx = e.clientX - p.x;
     const dy = e.clientY - p.y;
     p.x = e.clientX;
@@ -116,6 +125,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('pointerleave', clearHover);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('gesturestart', onGestureStart);
   canvas.addEventListener('gesturechange', onGestureChange);
@@ -124,6 +134,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onUp);
+    canvas.removeEventListener('pointerleave', clearHover);
+    clearHover();
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('gesturestart', onGestureStart);
     canvas.removeEventListener('gesturechange', onGestureChange);

@@ -16,14 +16,19 @@ import {
   drawScore,
   easeOverview,
   formatTime,
+  hoverLabel,
   keyName,
+  nearestLine,
   supportsOklch,
   tokensOf,
   type CameraState,
   type MomentLabels,
   type ScoreStyle,
+  type View,
 } from '../render';
 import { live, writeText } from './dom';
+import { useEditor } from './editor/history';
+import { hoverPointer } from './hover';
 import { currentTime, usePlayer, type PlayerState } from './store';
 
 /** Duration of the future-ghost fade, ms (the prototype's 900). */
@@ -80,8 +85,11 @@ export function currentPps(canvas: HTMLCanvasElement, s: PlayerState, t: number)
   return cameraAt(cameraScore(s.compiled), cam, t, size, s.view.hud).pps;
 }
 
-/** Starts the loop on `canvas`; returns a function that stops it and removes its listeners. */
-export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
+/**
+ * Starts the loop on `canvas`; returns a function that stops it and removes its listeners.
+ * `tip`, if given, shows the hover readout of the line under the mouse.
+ */
+export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | null): () => void {
   const g = canvas.getContext('2d', { alpha: false });
   if (!g) return () => undefined;
   const oklch = supportsOklch();
@@ -99,6 +107,11 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
   let labels: MomentLabels = {};
   let lastScrub = '';
   let lastFrame = 0;
+  let lastView: View | null = null;
+  let lastSelection: readonly MomentId[] = [];
+  let highlight: ReadonlySet<MomentId> = new Set();
+  let hoverVersion = -1;
+  let lastTip = '';
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -117,6 +130,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
     dirty = true;
   };
   const unsubscribe = usePlayer.subscribe(markDirty);
+  const unsubscribeEditor = useEditor.subscribe(markDirty);
   darkQuery.addEventListener('change', markDirty);
   const themeWatcher = new MutationObserver(markDirty);
   themeWatcher.observe(document.documentElement, {
@@ -188,6 +202,13 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
       );
     }
 
+    const selection = useEditor.getState().selection;
+    if (selection !== lastSelection) {
+      lastSelection = selection;
+      highlight = new Set(selection);
+    }
+
+    let drew = false;
     if (transport.status === 'playing' || tweening || ghosting || dirty) {
       dirty = false;
       if (width > 0 && height > 0) {
@@ -201,6 +222,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
           futureOpacity: ghost.value,
           hud: view.hud,
           labels,
+          highlight,
         };
         const cam: CameraState = {
           window: view.window,
@@ -208,8 +230,37 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
           playheadX: piece.view.playheadX,
           pan: transport.status === 'playing' ? 0 : view.pan,
         };
-        drawScore(g, compiled, cam, style, t, { width, height }, dpr);
+        lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.drawn++;
+        drew = true;
+      }
+    }
+
+    // Hover readout: re-tested when the frame or the pointer changed.
+    if (tip && (drew || hoverPointer.version !== hoverVersion)) {
+      hoverVersion = hoverPointer.version;
+      const hit =
+        hoverPointer.on && lastView
+          ? nearestLine(
+              compiled,
+              lastView,
+              hoverPointer.x,
+              hoverPointer.y,
+              undefined,
+              ghost.value > 0.05,
+            )
+          : null;
+      const text = hit ? hoverLabel(compiled, hit, piece.voices[hit.voice]?.name) : '';
+      if (text !== lastTip) {
+        lastTip = text;
+        tip.textContent = text;
+        tip.hidden = text === '';
+      }
+      if (hit) {
+        // Beside the point, flipped left near the right edge.
+        const left =
+          hit.x + 12 + tip.offsetWidth > width ? hit.x - 12 - tip.offsetWidth : hit.x + 12;
+        tip.style.transform = `translate(${Math.round(left)}px, ${Math.round(hit.y - 24)}px)`;
       }
     }
 
@@ -225,6 +276,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement): () => void {
     cancelAnimationFrame(raf);
     observer.disconnect();
     unsubscribe();
+    unsubscribeEditor();
     darkQuery.removeEventListener('change', markDirty);
     themeWatcher.disconnect();
   };
