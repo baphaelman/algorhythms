@@ -95,11 +95,52 @@ describe('arrive: together', () => {
         expect(spreadOf(ends), `${order} ${m.id}`).toBeLessThan(1e-3);
         // Stagger still spreads the starts.
         expect(spreadOf(moveStarts(s, m.id)), `${order} ${m.id}`).toBeGreaterThan(0.1);
-        // The shared end is at + stagger + the jittered length.
+        // The shared end is the latest drawn start + the jittered length. Crossing fix-ups only
+        // move starts earlier, so it lies at or after the latest actual start + that length, and
+        // never after at + stagger + that length.
         const seedM = momentSeed(p.seed, m.id, m.seed);
         const glide = { ...p.defaults.glide };
-        expect(ends[0]).toBeCloseTo(sharedEnd(m.at, glide, seedM), 9);
+        const last = Math.max(...moveStarts(s, m.id));
+        expect(ends[0]).toBeGreaterThanOrEqual(sharedEnd(last, glide, seedM) - 1e-9);
+        expect(ends[0]).toBeLessThanOrEqual(sharedEnd(m.at + glide.stagger, glide, seedM) + 1e-9);
       }
+    }
+  });
+
+  it('a single voice ends at at + the jittered length (pin, one-voice shift)', () => {
+    const p = piece({
+      start: [55, 60, 64],
+      glide: { length: 3, jitter: 0.4, stagger: 2, ease: 'smootherstep' },
+      moments: [
+        { id: 'pin', type: 'pin', at: 1, voice: 'v2', pitch: 62 },
+        { id: 'one', type: 'shift', at: 8, by: 2, unit: 'semitones', target: { voices: ['v3'] } },
+      ],
+    });
+    const s = compile(p);
+    for (const m of p.moments) {
+      const seedM = momentSeed(p.seed, m.id, m.seed);
+      expect(moveStarts(s, m.id)).toEqual([m.at]);
+      expect(moveEnds(s, m.id)[0]).toBeCloseTo(sharedEnd(m.at, p.defaults.glide, seedM), 12);
+      expect(moveEnds(s, m.id)[0]).toBeLessThanOrEqual(m.at + 3 * 1.4);
+    }
+  });
+
+  it('the shared end follows the latest start, not at + stagger', () => {
+    // Two voices far apart (no crossing fix-up): the later start + the moment's length.
+    for (let seed = 1; seed <= 20; seed++) {
+      const p = piece({
+        seed,
+        start: [48, 72],
+        glide: { length: 2, jitter: 0.2, stagger: 3, ease: 'smootherstep' },
+        moments: [{ id: 'c', type: 'shift', at: 1, by: 1, unit: 'semitones' }],
+      });
+      const s = compile(p);
+      const starts = moveStarts(s, 'c');
+      const ends = moveEnds(s, 'c');
+      const end = sharedEnd(Math.max(...starts), p.defaults.glide, momentSeed(p.seed, 'c'));
+      expect(ends[0]).toBeCloseTo(end, 12);
+      expect(ends[1]).toBeCloseTo(end, 12);
+      expect(Math.max(...starts)).toBeLessThan(1 + 3);
     }
   });
 
@@ -139,10 +180,17 @@ describe('arrive: together', () => {
       const starts = moveStarts(score, 'up');
       if (new Set(starts).size < starts.length) fixed++;
       expect(trace.moments[0].plan?.order.length).toBe(6);
-      // Sampled: lines stay in order throughout.
-      for (let t = 1; t <= ends[0]; t += 0.01) {
+      // Lines stay in order at the planner's 64 check points (§7.2: the sampled check is the
+      // authority), and within 0.05 semitone between them (linear glides can touch over a few
+      // ms between samples; this was so before M4.5-10 too).
+      for (let j = 0; j < 64; j++) {
+        const t = 1 + ((ends[0] - 1) * j) / 63;
         const ps = score.voices.slice(0, 6).map((v) => pitchAt(v, t)!);
         for (let k = 0; k + 1 < ps.length; k++) expect(ps[k]).toBeLessThanOrEqual(ps[k + 1] + 1e-9);
+      }
+      for (let t = 1; t <= ends[0]; t += 0.005) {
+        const ps = score.voices.slice(0, 6).map((v) => pitchAt(v, t)!);
+        for (let k = 0; k + 1 < ps.length; k++) expect(ps[k]).toBeLessThanOrEqual(ps[k + 1] + 0.05);
       }
     }
     expect(fixed).toBeGreaterThan(0); // the fix-up ran (shared start) in some cases

@@ -53,7 +53,11 @@ export const DIAGNOSTIC_CODES: Readonly<
   // Births and deaths
   'pool-exhausted': {
     level: 'warn',
-    meaning: 'Not enough dormant voices; the split was truncated.',
+    meaning: 'Not enough dormant voices; the split (or chord count) was truncated.',
+  },
+  'count-limited': {
+    level: 'info',
+    meaning: 'A chord count needs more deaths than it targets voices; one targeted voice stays.',
   },
   'split-no-births': {
     level: 'info',

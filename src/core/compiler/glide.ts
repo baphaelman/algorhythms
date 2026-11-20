@@ -8,7 +8,7 @@
  *
  * Durations are length·(1 + jitter·(2u − 1)) with u a Purpose.Jitter draw, never below MIN_GLIDE.
  * Under `arrive: 'together'` (revision 6) the planner instead ends every move at one shared time,
- * `sharedEnd`: at + stagger + the jittered length, with u drawn once per moment (voice id '').
+ * `sharedEnd`: the latest start + the jittered length, with u drawn once per moment (voice id '').
  */
 
 import { hash32, Purpose, randHashed } from '../rng';
@@ -146,12 +146,12 @@ export function arrivesTogether(glide: Glide): boolean {
 }
 
 /**
- * The shared end of a moment's moves under `arrive: 'together'`: T + stagger + the moment's
- * jittered length (one draw, voice id ''). Every start lies before T + stagger, so every
- * duration is at least that length.
+ * The shared end of a moment's moves under `arrive: 'together'`: the latest start among its
+ * moving voices + the moment's jittered length (one draw, voice id ''), so every duration is at
+ * least that length (integrator ruling, M4.5-10: a single voice ends at at + length).
  */
-export function sharedEnd(T: Seconds, glide: Glide, seed: number): Seconds {
-  return T + glide.stagger + glideDuration(glide, seed, MOMENT_HASH);
+export function sharedEnd(lastStart: Seconds, glide: Glide, seed: number): Seconds {
+  return lastStart + glideDuration(glide, seed, MOMENT_HASH);
 }
 
 /** Fade-in of a newborn: max(0.5 s, glide length / 2) (§7.4). */

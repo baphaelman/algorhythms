@@ -189,6 +189,12 @@ const MOMENT_SCHEMAS = {
     voicing: voicing.default(D.chord.voicing),
     register: pitchRange.optional(),
     assign: z.enum(['ordered', 'free']).default(D.chord.assign),
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Active voice count after the chord (1..pool size); absent: unchanged.'),
   }),
   unison: z.looseObject({
     type: z.literal('unison'),
@@ -414,7 +420,12 @@ function checkPiece(
   p: {
     voices: { id: string }[];
     start: { voice: string }[];
-    moments: { id: string; fixed?: { tick: number; voice: string }[] }[];
+    moments: {
+      id: string;
+      type?: string;
+      count?: number;
+      fixed?: { tick: number; voice: string }[];
+    }[];
   },
   ctx: z.RefinementCtx,
 ): void {
@@ -463,6 +474,13 @@ function checkPiece(
       });
     }
     momentIds.add(m.id);
+    if (m.type === 'chord' && typeof m.count === 'number' && m.count > p.voices.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['moments', i, 'count'],
+        message: `The chord count ${m.count} exceeds the pool of ${p.voices.length} voices.`,
+      });
+    }
     // Frozen walk notes: one per (tick, voice), on pool voices.
     if (Array.isArray(m.fixed)) {
       const seen = new Set<string>();

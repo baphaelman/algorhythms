@@ -5,8 +5,9 @@
  * 1. folds targets into ranges (§7.8);
  * 2. draws start offsets and durations (stagger, order, jitter; §5, §7.7); a newborn starts at its
  *    parent's departure, or at a seeded birth stagger if the parent does not move (§7.4); under
- *    `arrive: 'together'` (default, revision 6) every duration instead runs to one shared end,
- *    so start changes below (adoption, pull-back) keep that end;
+ *    `arrive: 'together'` (default, revision 6) every duration instead runs to one shared end
+ *    (the latest start + the moment's jittered length), so start changes below (adoption,
+ *    pull-back) keep that end;
  * 3. under `ordered`, sets each mover's overshoot limit L = min(1 semitone, gap to its neighbour)
  *    (§7.5) and enforces the crossing guarantee (§7.2): every adjacent pair of targeted voices is
  *    sampled at 64 points over the moment's window; if a pair crosses, the overtaking voice adopts
@@ -297,10 +298,19 @@ export function planMoment(
     const s = gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
     return s > parts[i].deferT ? s : parts[i].deferT;
   };
-  // Arrive together (§7.2, revision 6): every duration runs to one shared end, so a group that
-  // adopts a start (crossing fix-up, pull-back) keeps that end.
+  // Arrive together (§7.2, revision 6): every duration runs to one shared end, the latest drawn
+  // start plus the moment's jittered length. Fix-ups (adoption, pull-back) only copy existing
+  // starts or move them earlier, and keep that end.
   const together = arrivesTogether(glide);
-  const endT = together ? sharedEnd(T, glide, seed) : 0;
+  let lastStart = T;
+  if (together) {
+    for (let i = 0; i < n; i++) {
+      if (parts[i].kind === PartKind.Fixed) continue;
+      const s = startOf(i);
+      if (s > lastStart) lastStart = s;
+    }
+  }
+  const endT = together ? sharedEnd(lastStart, glide, seed) : 0;
   const durOf = together
     ? (i: number): Seconds => {
         const d = endT - startOf(i);

@@ -190,6 +190,10 @@ interface StateAt {
   level: Float64Array;
 }
 
+/** True for moment types that can end a voice's life (§7.4). */
+const kills = (m: Moment): boolean =>
+  m.type === 'merge' || (m.type === 'chord' && m.count !== undefined);
+
 function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
   const byId = new Map<string, Moment>();
   for (const m of piece.moments) if (m && !m.muted) byId.set(m.id, m);
@@ -210,7 +214,8 @@ function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
     }
     const end = life.died ?? Infinity;
     const segs = v.segments;
-    // Dying: the life ends before the piece does, and its last move belongs to a merge at ≤ t.
+    // Dying: the life ends before the piece does, and its last move belongs to a moment at ≤ t
+    // that kills (a merge, or a chord with `count`).
     if (end < score.duration) {
       let j = segmentIndexAt(v, end);
       while (j >= 0 && segs[j].t0 >= end) j--;
@@ -218,7 +223,7 @@ function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
         const id = segs[j].momentId;
         if (id === undefined) continue;
         const m = byId.get(id);
-        if (m && m.type === 'merge' && m.at <= t) return;
+        if (m && kills(m) && m.at <= t) return;
         break;
       }
     }

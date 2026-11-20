@@ -22,7 +22,7 @@ import { mod } from '../math';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
-import type { MomentEnv } from '../moments/types';
+import type { Intent, MomentEnv } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
   MAX_VOICES,
@@ -104,6 +104,8 @@ export interface MomentTrace {
   subset: boolean;
   /** Planner output; null if the moment was not applied (or has no moves of its own). */
   plan: PlanTrace | null;
+  /** The moment function's intents with folded targets (§7.8); null if not applied. */
+  intents: { voice: number; to: Pitch; kind: 'move' | 'birth' | 'death' }[] | null;
 }
 
 /** Options of `compile` (not part of the Piece or the file format). */
@@ -523,7 +525,7 @@ export class Compiler {
         this.key = m.key;
         this.keys.push({ t: T, key: m.key });
         this.span(i, T, T);
-        this.traceMoment(i, [], false, null);
+        this.traceMoment(i, [], false, null, null);
         return;
       case 'level': {
         const vs = this.resolveTarget(m.target, m.id);
@@ -540,13 +542,13 @@ export class Compiler {
           this.diag('info', 'no-targets', 'The level targets no active voice.', m.id);
         this.span(i, T, T + over);
         this.activity(T + over);
-        this.traceMoment(i, vs, m.target !== undefined && m.target !== 'all', null);
+        this.traceMoment(i, vs, m.target !== undefined && m.target !== 'all', null, null);
         return;
       }
       case 'walk':
         this.span(i, T, m.until);
         this.activity(m.until);
-        this.traceMoment(i, [], false, null);
+        this.traceMoment(i, [], false, null, null);
         return;
       default:
         this.onPointMoment(i);
@@ -639,7 +641,7 @@ export class Compiler {
     const plan = pointMomentPlan(m, env);
     if (!plan) {
       this.span(i, T, T);
-      this.traceMoment(i, targeted, subset, null);
+      this.traceMoment(i, targeted, subset, null, null);
       return { targeted, res: null };
     }
     const host = {
@@ -688,7 +690,7 @@ export class Compiler {
     if (res.moves.length === 0) this.span(i, T, T);
     this.touch();
     this.recordHarmony(i);
-    this.traceMoment(i, targeted, subset, res.trace);
+    this.traceMoment(i, targeted, subset, res.trace, plan.intents);
     return { targeted, res };
   }
 
@@ -1009,10 +1011,23 @@ export class Compiler {
     targeted: number[],
     subset: boolean,
     plan: PlanTrace | null,
+    intents: readonly Intent[] | null,
   ): void {
     if (!this.trace) return;
     const m = this.moments[i];
-    this.trace.moments.push({ id: m.id, index: i, type: m.type, t: m.at, targeted, subset, plan });
+    const kinds = ['move', 'birth', 'death'] as const;
+    this.trace.moments.push({
+      id: m.id,
+      index: i,
+      type: m.type,
+      t: m.at,
+      targeted,
+      subset,
+      plan,
+      intents: intents
+        ? intents.map((it) => ({ voice: it.voice, to: it.to, kind: kinds[it.kind] }))
+        : null,
+    });
   }
 
   // -------------------------------------------------------------------------------------------
