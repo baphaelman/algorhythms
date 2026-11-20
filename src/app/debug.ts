@@ -5,6 +5,7 @@
 
 import type { AudioEngine } from '../audio/engine';
 import { getAudioContext, getEngine } from './audio';
+import { redo, select, undo, useEditor } from './editor/history';
 import { frameStats } from './loop';
 import { encodeShareLink } from './share';
 import { loadPiece, recompileNow, setPiece, usePlayer } from './store';
@@ -27,6 +28,8 @@ export interface AlgoRhythmsDebug {
   };
   /** `encodeShareLink`, for round-trip tests. */
   encodeShareLink: typeof encodeShareLink;
+  /** Editor state and selection (M4b), for tests that can't use the lane. */
+  editor: { state: typeof useEditor; select: typeof select; undo: typeof undo; redo: typeof redo };
 }
 
 declare global {
@@ -56,5 +59,6 @@ export function installDebug(): void {
     frameStats,
     actions: { loadPiece, setPiece, recompileNow },
     encodeShareLink,
+    editor: { state: useEditor, select, undo, redo },
   };
 }

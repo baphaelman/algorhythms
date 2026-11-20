@@ -4,6 +4,7 @@ import { startPersistence } from './persist';
 import { startPlayer } from './store';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
+import { Inspector } from './ui/Inspector';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
 import { Notices, SilentHint } from './ui/Notices';
@@ -58,7 +59,7 @@ export function App() {
         {wide && <div className="slot lane" data-slot="lane" hidden />}
         <Scrubber />
         <ViewBar />
-        {wide && <aside className="slot inspector" data-slot="inspector" hidden />}
+        {wide && <Inspector />}
       </main>
       {wide && <VoicesDrawer />}
     </div>
