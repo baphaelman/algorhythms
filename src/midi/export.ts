@@ -540,7 +540,11 @@ export function exportMidi(score: CompiledScore, opts: MidiExportOptions = {}): 
   const sounding = score.voices.filter((v) => v.lives.length > 0 && v.segments.length > 0);
 
   if (mode !== 'mpe') {
-    const data = buildFile({ voices: sounding, channel: (k) => (k % 15 < 9 ? k % 15 : (k % 15) + 1), mpe: false }, score, o);
+    const data = buildFile(
+      { voices: sounding, channel: (k) => (k % 15 < 9 ? k % 15 : (k % 15) + 1), mpe: false },
+      score,
+      o,
+    );
     return { files: [{ name: `${base}${mode === 'notesOnly' ? '-notes' : ''}.mid`, data }] };
   }
   const parts = Math.max(1, Math.ceil(sounding.length / MPE_MEMBERS));

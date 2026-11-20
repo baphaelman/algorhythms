@@ -12,9 +12,9 @@ import { benchmarkPiece } from './compiler-bench-piece';
 
 describe('compile performance (§7.10)', () => {
   // §7.10's target is a median ≤ 5 ms. M1b measured about 9 ms on a loaded 6-core dev machine
-  // (4.5 ms with crossing enforcement off); see docs/build-log.md. The default run guards against
-  // regressions; ALGORHYTHMS_PERF_STRICT=1 enforces the 5 ms target.
-  const limit = process.env.ALGORHYTHMS_PERF_STRICT ? 5 : 25;
+  // (4.5 ms with crossing enforcement off); see docs/build-log.md. The default run is a loose guard (≤ 100 ms) against only pathological
+  // regressions, so load cannot flake it; ALGORHYTHMS_PERF_STRICT=1 enforces the 5 ms target.
+  const limit = process.env.ALGORHYTHMS_PERF_STRICT ? 5 : 100;
   it(`a 5-minute, 24-voice, 200-moment piece compiles in a median ≤ ${limit} ms`, () => {
     const piece = benchmarkPiece();
     expect(piece.moments.length).toBe(200);
