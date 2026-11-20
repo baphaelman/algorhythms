@@ -554,3 +554,10 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 
 ### Dev toggle: compile option `crossings`
 `compile(piece, { crossings: "allow" })` (also `compileWithTrace`) skips crossing enforcement and its diagnostics (`CompileOptions` in compiler/compile.ts, `CrossingsMode` in plan.ts); default `"forbid"` is unchanged. Not on Piece or in the schema; tests in tests/unit/core/crossings-option.test.ts (no tests/core dir exists).
+
+## HUD chord (owner request, 2026-11-20)
+
+- **Core:** new `src/core/harmony.ts` (`harmonyLabel`, `nameChord`, `spellPc`); the compiler records `CompiledScore.harmony?: HarmonyChange[]` (new type in types.ts; optional so hand-built scores still type-check) after every applied point moment: the active voices' destination pitch classes, bass, and a precomputed `label`. A written chord symbol always starts an entry; other moments (unison, shift, spread, pin, merge, chords from pitches/degrees) add one only when the pitch-class set or bass changed. Walk, key and level moments add none. `chordAt(score, t)` in query.ts: binary search, null before the first entry.
+- **Labels:** letter symbols as written with ♯/♭ (`F♯m7♭5`); numerals as `ii7 · Dm7`, `♭VII · B♭`, `V7/V · D7`, root letter spelled from the tonic letter; recognised sets as `F/A`, `Am7`, `A (unison)`; anything else lists pitch classes from the bass (`C C♯ D D♯`). Written symbols get no inversion slash added.
+- **HUD:** chord top right (ink, 500 12px); the key moved to line 2 as `a dorian · following`. Per frame: one binary search and one `fillText` of the cached label; the label width is measured once per label. When the chord would overlap the `f(n)` formula (phones), the formula is skipped.
+- **Goldens:** hashes regenerated (the score gains `harmony`); summaries otherwise unchanged.

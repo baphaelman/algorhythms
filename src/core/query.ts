@@ -11,7 +11,16 @@
  */
 
 import { evalSegment, evalSegmentMotion } from './segment';
-import type { CompiledScore, CompiledVoice, Key, Life, Pitch, Seconds, Segment } from './types';
+import type {
+  CompiledScore,
+  CompiledVoice,
+  HarmonyChange,
+  Key,
+  Life,
+  Pitch,
+  Seconds,
+  Segment,
+} from './types';
 
 /** Index of the last segment with t0 ≤ t, or −1. */
 export function segmentIndexAt(voice: CompiledVoice, t: Seconds): number {
@@ -148,4 +157,26 @@ export function keyAt(score: CompiledScore, t: Seconds): Key {
     else break;
   }
   return k;
+}
+
+/**
+ * The harmony in effect at t (HUD, §10): the last entry of `score.harmony` with entry.t ≤ t, or
+ * null before the first one. Binary search, no allocation.
+ */
+export function chordAt(score: CompiledScore, t: Seconds): HarmonyChange | null {
+  const h = score.harmony;
+  if (!h) return null;
+  let lo = 0;
+  let hi = h.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (h[mid].t <= t) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found < 0 ? null : h[found];
 }

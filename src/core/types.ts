@@ -656,6 +656,23 @@ export interface KeyChange {
   key: Key;
 }
 
+/**
+ * The harmony set by a moment, in effect from `t` until the next entry (HUD, §10). Extension of
+ * §7.9. Walks, key and level moments add none.
+ */
+export interface HarmonyChange {
+  /** The moment's time. */
+  t: Seconds;
+  /** The moment that set it. */
+  momentId: MomentId;
+  /** Pitch classes of the active voices' destinations, from the lowest voice up, unique. */
+  pcs: number[];
+  /** Pitch class of the lowest voice's destination. */
+  bass: number;
+  /** Display label, e.g. "ii7 · Dm7", "F/A" or "C E F♯" (core/harmony.ts). */
+  label: string;
+}
+
 /** Output of `compile(piece)` (§7.9): what audio, picture and MIDI all read (P1). */
 export interface CompiledScore {
   /** Time at which the last life has died: the end of the piece's sound before FX tails. */
@@ -668,6 +685,8 @@ export interface CompiledScore {
   diagnostics: Diagnostic[];
   /** Key timeline, sorted; the first entry is { t: 0, key: piece.key }. Extension of §7.9. */
   keys: KeyChange[];
+  /** Harmony timeline, sorted by t (ties in moment order). Absent on hand-built scores. */
+  harmony?: HarmonyChange[];
   /** Hz of pitch 69, copied from piece.tuning so the DSP needs only this score. Extension. */
   referenceHz: number;
   /** Piece seed, copied for the DSP's seeded phases and noise (§8.10). Extension. */

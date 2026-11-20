@@ -16,6 +16,8 @@
  */
 
 import { defaultGlide } from '../defaults';
+import { harmonyLabel } from '../harmony';
+import { mod } from '../math';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { chordMoment } from '../moments/chord';
@@ -34,6 +36,7 @@ import {
   type Diagnostic,
   type DiagnosticLevel,
   type Glide,
+  type HarmonyChange,
   type Key,
   type KeyChange,
   type Life,
@@ -122,6 +125,7 @@ class Compiler {
   readonly walks: number[] = [];
   key: Key;
   readonly keys: KeyChange[];
+  readonly harmony: HarmonyChange[] = [];
   lastActivity = 0;
   readonly endAt: Seconds;
   readonly endFade: Seconds;
@@ -527,7 +531,47 @@ class Compiler {
     }
     if (res.moves.length === 0) this.span(i, T, T);
     this.touch();
+    this.recordHarmony(i);
     this.traceMoment(i, targeted, subset, res.trace);
+  }
+
+  /**
+   * Appends the harmony the active voices are heading to after moment i (HUD, §10). A written
+   * chord symbol always starts an entry; otherwise an unchanged pitch-class set keeps the last one.
+   */
+  private recordHarmony(i: number): void {
+    const m = this.moments[i];
+    const active = this.sortedActive();
+    if (active.length === 0) return;
+    const notes = m.type === 'chord' || m.type === 'split' ? m.notes : undefined;
+    const symbol = notes?.kind === 'chord' ? notes.symbol : undefined;
+    const bass = mod(Math.round(this.destOf(active[0])), 12);
+    const seen = new Set<number>();
+    const pcs: number[] = [];
+    for (const v of active) {
+      const pc = mod(Math.round(this.destOf(v)), 12);
+      if (!seen.has(pc)) {
+        seen.add(pc);
+        pcs.push(pc);
+      }
+    }
+    const last = this.harmony[this.harmony.length - 1];
+    if (
+      symbol === undefined &&
+      last &&
+      last.bass === bass &&
+      last.pcs.length === pcs.length &&
+      last.pcs.every((p, j) => p === pcs[j])
+    ) {
+      return;
+    }
+    this.harmony.push({
+      t: m.at,
+      momentId: m.id,
+      pcs,
+      bass,
+      label: harmonyLabel(symbol, pcs, bass, this.key),
+    });
   }
 
   private env(i: number, targeted: number[]): MomentEnv {
@@ -758,6 +802,7 @@ class Compiler {
       momentSpans,
       diagnostics: this.diags,
       keys: this.keys,
+      harmony: this.harmony,
       referenceHz:
         typeof this.piece.tuning?.referenceHz === 'number' ? this.piece.tuning.referenceHz : 440,
       seed: this.piece.seed,
