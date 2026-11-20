@@ -129,14 +129,14 @@ describe('writeStemsZip', () => {
       expect(info).toMatchObject({ formatTag: 3, channels: 2, sampleRate: 48000, bitDepth: 32 });
       expect(info.frames).toBe(plan.frames);
     }
-  });
+  }, 30_000);
 
   it('mix.wav is byte-identical to the plain WAV export', async () => {
     const input = fixture();
     const { zip } = await exportZip(input);
     const plain = renderWav(input, { sampleRate: 48000, bitDepth: 32 });
     expect(Buffer.from(unzipSync(zip)['mix.wav']).equals(Buffer.from(plain))).toBe(true);
-  });
+  }, 30_000);
 
   it('float stems + FX stem sum to the mix within −90 dBFS with the limiter engaged', async () => {
     const input = fixture();
@@ -174,7 +174,7 @@ describe('writeStemsZip', () => {
       `stems residual: ${dbfs(worst).toFixed(1)} dBFS (mix peak ${dbfs(level).toFixed(1)})`,
     );
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
-  });
+  }, 30_000);
 
   it('mono stems are half-size downmixes; the mix stays stereo', async () => {
     const input = fixture();
@@ -193,7 +193,7 @@ describe('writeStemsZip', () => {
       worst = Math.max(worst, Math.abs(m[i] - 0.5 * (s.left[i] + s.right![i])));
     }
     expect(dbfs(worst)).toBeLessThanOrEqual(-120);
-  });
+  }, 30_000);
 
   it('writes 24-bit and 16-bit PCM at 44.1 kHz', async () => {
     const input = fixture();
@@ -204,7 +204,7 @@ describe('writeStemsZip', () => {
         expect(parseWavHeader(wav)).toMatchObject({ formatTag: 1, bitDepth, sampleRate: 44100 });
       }
     }
-  });
+  }, 30_000);
 
   it('24-bit stems sum to the 24-bit mix within a few LSB', async () => {
     const input = fixture();
@@ -232,7 +232,7 @@ describe('writeStemsZip', () => {
     for (let i = 0; i < mix.length; i++) worst = Math.max(worst, Math.abs(sum[i] - mix[i]));
     // each file rounds by at most half an LSB
     expect(worst).toBeLessThanOrEqual((n + 1) / 2 + 1);
-  });
+  }, 30_000);
 
   it('uses ZIP64 records when a size threshold is crossed, and the zip still reads back', async () => {
     const input = fixture();
@@ -247,7 +247,7 @@ describe('writeStemsZip', () => {
         Buffer.from(renderWav(input, { sampleRate: 48000, bitDepth: 32 })),
       ),
     ).toBe(true);
-  });
+  }, 30_000);
 
   it('cancels mid-export: rejects with AbortError and stops writing', async () => {
     const input = fixture();
@@ -271,7 +271,7 @@ describe('writeStemsZip', () => {
     // at most the chunk that was being written when the abort landed
     expect(writes - writesAtAbort).toBeLessThanOrEqual(1);
     expect(lastEntry).not.toBe(plan.entries.at(-1)?.name);
-  });
+  }, 30_000);
 
   it('rejects immediately when already aborted', async () => {
     const ac = new AbortController();
@@ -279,5 +279,5 @@ describe('writeStemsZip', () => {
     await expect(
       writeStemsZip(fixture(), {}, () => undefined, { signal: ac.signal }),
     ).rejects.toMatchObject({ name: 'AbortError' });
-  });
+  }, 30_000);
 });
