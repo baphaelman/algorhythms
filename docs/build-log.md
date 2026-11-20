@@ -796,3 +796,12 @@ Drafted from the owner's direction and mockup (section above). Integrator calls,
 - **Phones keep the scrubber;** the ruler replaces it in the editor layout.
 - **Effects row** stays hidden until the M6 `timbre` moment.
 - New milestone **M4.5** before M5. Builder split: `docs/integrator-handoff.md`.
+
+## M4.5 approved (owner, 2026-11-20)
+Owner said go; the editor mockup looks good. Rulings:
+- **Moving a walk step freezes the walk** into absolute notes (`fixed: WalkNote[]`), replacing the relative `edits` draft. Unfreeze drops it. PLAN §6.2, §7.9 (`walkSteps.fixed` replaces `edited`), §11.3, §15 updated.
+- The inspector must expose the walk generator values (density %, allowed steps, grid, glide, bass leap); added to §11.3 and the M4.5 checks.
+- Pan turns Follow off; phones keep the scrubber (owner doesn't care about phones); Effects row hidden until M6: all accepted.
+- **Generate confirms** before replacing an edited piece (§11.3).
+- Tablet touch editing (M5): low priority but in scope.
+- Integrator may push to `main`. Cloud: `git push` works; `gh` is not authenticated, use the GitHub MCP tools for CI.

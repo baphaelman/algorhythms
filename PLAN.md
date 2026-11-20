@@ -264,19 +264,21 @@ interface MomentBase {
 | **merge** | `count: number`, `which: 'top' \| 'bottom' \| 'inner' \| 'outer' \| 'random'`, `fade: Seconds` | Lowers the active count. Each dying voice glides into its nearest surviving neighbour's pitch, then fades out and becomes dormant; a later split can revive it. |
 | **shift** | `by: number`, `unit: 'semitones' \| 'scaleSteps'` | Transposes the targeted voices. Scale steps are counted in `Piece.key`; off-scale pitches snap to the scale first. |
 | **spread** | `factor: number`, `around: Pitch \| 'mean' \| 'median'`, `snap: 'scale' \| 'chromatic' \| 'none'` | Each pitch becomes c + factor·(p − c), then snaps. A factor above 1 widens the voicing; below 1 squeezes it. |
-| **walk** (region) | `until: Seconds`, `grid: Seconds`, `density: 0..1`, `steps: number[]` (scale steps, default [-2,-1,1,2]), `stepGlide: Seconds`, `bass?: { leap: [number, number] }`, `edits?: WalkStepEdit[]` | Independent stepwise melodies until `until`. It keeps pitch order (no crossing or touching), and the bass leaps. This is the prototype's algorithm. Hand-moved steps are stored as `edits` (below). |
+| **walk** (region) | `until: Seconds`, `grid: Seconds`, `density: 0..1`, `steps: number[]` (scale steps, default [-2,-1,1,2]), `stepGlide: Seconds`, `bass?: { leap: [number, number] }`, `fixed?: WalkNote[]` | Independent stepwise melodies until `until`. It keeps pitch order (no crossing or touching), and the bass leaps. This is the prototype's algorithm. A walk with hand-moved steps is frozen into `fixed` (below). |
 | **pin** | `voice: VoiceId`, `pitch: Pitch` | Moves one voice to an exact pitch. It is the hand-editing escape hatch and may cross other voices. |
 | **key** | `key: Key` | Changes the key from `at` onwards; no pitch effect. Everything that depends on the key (shift by scale steps, walk, `snap: 'scale'`, `degrees`, Roman numerals) reads the key in effect at its own time. The compiler emits a key timeline. Without it, "move to D minor 9" followed by a walk would walk in the initial key. |
 | **level** | `gain: number`, `over: Seconds` | Ramps the targeted voices' gain to `gain` over `over` seconds: swells, fades, "breath". Moved up from M6 because dynamics are central to G1. |
 
-**Walk step edits (revision 5).** Walk steps are drawn from the seed, so a moved step is stored as an override:
+**Frozen walks (revision 5; owner 2026-11-20: moving a step freezes the walk).** Walk steps are drawn from the seed. Moving one step freezes the whole walk into fixed notes:
 ```ts
-interface WalkStepEdit { tick: number; voice: VoiceId; step: number }  // scale steps; 0 = hold
+interface WalkNote { tick: number; voice: VoiceId; pitch: Pitch }  // absolute target of that voice at that tick
 ```
-- On tick `tick`, if `voice` is eligible, its step is `step` instead of the drawn one (the WalkPick, WalkStep and BassLeap draws are skipped for it). The bass voice also takes `step` in scale steps.
-- The no-crossing and range rules still apply. A blocked edit is skipped with a `warn` diagnostic; an edit on a tick where the voice isn't eligible is ignored with an `info` diagnostic. Edits past the last tick are ignored.
-- Steps are relative, so the voice's later steps follow the moved note, and the walk still adapts when earlier moments change. Freezing a walk into absolute pitches is not offered.
-- Re-roll changes the seed and keeps the edits; the inspector calls it "Re-roll unedited steps".
+- The first step move copies every step the walk currently takes (`walkSteps`, §7.9) into `fixed`, then changes the moved note. One undo entry.
+- With `fixed` present the walk draws nothing: on each tick, each listed voice glides (`stepGlide`) to its pitch; unlisted voices hold. `density`, `steps`, `bass` and the seed are ignored.
+- Moving a step changes that one note only (▲/▼ = one scale step in the key in effect); later notes stay where they are.
+- No-crossing and range rules still apply: a blocked note holds with a `warn` diagnostic. A note on a voice not active at that tick, or past `until`, is ignored with an `info` diagnostic. Changing `until` keeps the notes inside the region.
+- Earlier edits can no longer reshape a frozen walk; voices entering it just glide to the fixed notes.
+- **Unfreeze** deletes `fixed` (the hand moves are lost; undoable). On a frozen walk the generator controls (density, allowed steps, grid, bass leap, Re-roll) are disabled with a note "Unfreeze to change".
 - The compiler reports every taken step (`walkSteps`, §7.9), so the editor can draw and list them.
 
 ### 6.3 Planned for later milestones
@@ -419,8 +421,8 @@ interface CompiledScore {
   duration: Seconds;
   voices: CompiledVoice[];
   momentSpans: { id: MomentId; start: Seconds; end: Seconds }[];  // earliest move start .. latest move end
-  walkSteps: { momentId: MomentId; tick: number; voice: VoiceId; t: Seconds; from: Pitch; to: Pitch; edited: boolean }[];
-                                // every step a walk took, plus edited holds (from === to); sorted by t (revision 5, §6.2)
+  walkSteps: { momentId: MomentId; tick: number; voice: VoiceId; t: Seconds; from: Pitch; to: Pitch; fixed: boolean }[];
+                                // every step a walk took (from !== to), or every `fixed` note incl. holds; sorted by t (revision 5, §6.2)
   diagnostics: Diagnostic[];    // { momentId?, level: 'info'|'warn'|'error', message }
 }
 interface CompiledVoice {
@@ -719,7 +721,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
     - The picker writes a `chord` NoteSet. Pieces with `degrees`, `pitches` or `current` keep their existing fields under "Other notes".
   - **Transition:** sliders for Length, Stagger and Jitter; chips for Order and Curve (Smooth, Linear, Cosine, Expo, plus Custom for a bezier), with a curve preview.
   - **Level:** sliders for Level and Ramp.
-  - **Walk:** sliders for region, grid, density and step glide; the allowed steps; and a **Steps** list (time, voice, step) with ▲/▼. Selecting a step highlights its dot on the lines, and clicking a dot selects its row. ▲/▼ write `edits` (§6.2). "Re-roll unedited steps".
+  - **Walk:** sliders for region, grid, density (%) and step glide; the allowed steps as toggle chips (−3…+3); bass leap range; Re-roll; and a **Steps** list (time, voice, note) with ▲/▼. Selecting a step highlights its dot on the lines, and clicking a dot selects its row. The first ▲/▼ freezes the walk (§6.2); a "Frozen" badge and an **Unfreeze** button then show, and the generator controls are disabled.
   - **Voices:** All, Top n, Bottom n (a `rank` selector) or Pick… (a voice checklist).
   - Every slider drag is one undo entry.
 - **Inspector, carried over from M4:**
@@ -730,7 +732,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
   - diagnostics for that moment shown inline.
 - **Voices drawer:** pool size (1–32) and active voices at start; per voice color, timbre, pan, gain, range, mute and solo.
 - **Sound drawer:** timbre presets and an editor (harmonic sliders, FM, noise, accent, articulation, vibrato), plus master FX.
-- **Generate:** seed, mode, length, voice count and density produce a piece made of **moments**. This is the prototype composer ported to emit moments, so the result is fully editable. Generate ships in M3, before the editor, as the first way to make a new piece to export. Length is 30–900 s, default 2:30, with an optional "natural length" (owner, 2026-11-20).
+- **Generate:** asks for confirmation before replacing an open piece that has unsaved or unexported edits (owner, 2026-11-20). Seed, mode, length, voice count and density produce a piece made of **moments**. This is the prototype composer ported to emit moments, so the result is fully editable. Generate ships in M3, before the editor, as the first way to make a new piece to export. Length is 30–900 s, default 2:30, with an optional "natural length" (owner, 2026-11-20).
 
 ### 11.3a UI implementation: React and the canvas
 React re-renders must never sit on the per-frame or per-pointer-move path.
@@ -966,13 +968,15 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 **M4.5. Editor view redesign (M; revision 5, owner direction 2026-11-20)**
 - One time axis with a ruler and one playhead; Follow modes; zoom slider and Fit; future dimmed (§10).
 - The rows: Moments, Transitions, Level (Effects with M6) (§11.2).
-- The inspector's chord picker, transition, level and voice controls, and walk step editing with `edits` and `walkSteps` (§6.2, §7.9, §11.3).
+- The inspector's chord picker, transition, level and voice controls, and walk controls and step editing that freezes the walk (`fixed`, `walkSteps`) (§6.2, §7.9, §11.3).
 - *Accept when:*
   - at any zoom and while following, a moment's marker, its transition bar's start and the start of its glide on the lines sit within 1 px of each other;
   - during playback Smooth holds the playhead at 35% (±1%) away from the piece's ends, Page jumps at 92%, and Off never moves the view;
   - clicking or dragging the ruler seeks, and the playhead line spans the ruler, the score and every row;
   - picking a chord (from the key, or root, quality, bass and voicing) is heard within 50 ms, and the header shows its name, numeral and notes;
-  - moving a walk step changes only that voice from that tick on; edits survive save, load, undo and Re-roll;
+  - every walk control (density, allowed steps, grid, glide, bass leap) is heard within 50 ms;
+  - moving a walk step freezes the walk and changes only that note; the frozen walk survives save, load and undo, ignores earlier edits, and Unfreeze restores the generated walk;
+  - Generate asks before replacing an edited piece;
   - 60 fps at 1080p with 24 voices while following;
   - the M4 acceptance checks still pass.
 
@@ -1064,11 +1068,12 @@ The original questions follow for reference.
 
 ## 18. Changelog
 
-### Revision 5 (2026-11-20): editor view redesign (owner direction; builders wait for the owner's go)
+### Revision 5 (2026-11-20): editor view redesign (owner direction; approved 2026-11-20)
 - **View (§10):** one time axis shared by a new time ruler, the score, the lanes and a single playhead; the bottom scrubber goes (phones keep it). Follow: Smooth (35%, default), Page, Off. Zoom slider with Fit; no overview blend. The whole piece is drawn, the future dimmed.
 - **Layout (§11.2, §11.3a):** rows Moments, Transitions, Level and Effects (M6) under the score on the same axis.
 - **Inspector (§11.3):** chords picked (from the key, or root, quality, bass, voicing) with numeral and live notes; transition, level and voice controls.
-- **Walks (§6.2, §7.9):** steps can be moved; stored as relative `edits` keyed by tick and voice; the compiler reports `walkSteps`.
+- **Walks (§6.2, §7.9):** all generator settings editable; moving a step freezes the walk into absolute `fixed` notes (owner); Unfreeze; the compiler reports `walkSteps`.
+- **Generate (§11.3):** confirms before replacing an edited piece (owner).
 - **Milestones (§15):** new M4.5 before M5.
 
 ### Revision 4 (2026-11-20): owner rulings after the first M3 release
