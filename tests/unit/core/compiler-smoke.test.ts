@@ -12,7 +12,6 @@ describe('compile smoke', () => {
           count: 3,
           notes: { kind: 'chord', symbol: 'Am7' },
           voicing: 'even',
-          register: [48, 72],
         },
         { type: 'split', at: 8, count: 6, voicing: 'even' },
         {
