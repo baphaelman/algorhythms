@@ -8,7 +8,7 @@ import { deflateRawSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 
 const ROOT = join(import.meta.dirname, '../..');
 const EXAMPLES = join(ROOT, 'examples');
@@ -109,7 +109,7 @@ test('opens with the featured example loaded, not playing, at the start', async 
   expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);
 });
 
-test('play makes sound and time advances; pause holds; the scrubber seeks', async ({ page }) => {
+test('play makes sound and time advances; pause holds; seeking works', async ({ page }) => {
   await openApp(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
@@ -133,7 +133,7 @@ test('play makes sound and time advances; pause holds; the scrubber seeks', asyn
   expect((await getState(page)).status).toBe('paused');
 
   // Seek while paused.
-  await page.getByTestId('scrubber').fill('42');
+  await seek(page, 42);
   await expect(page.getByTestId('time')).toHaveText('00:42.0');
   expect((await getState(page)).status).toBe('paused');
 
@@ -143,7 +143,7 @@ test('play makes sound and time advances; pause holds; the scrubber seeks', asyn
   expect(await shownTime(page)).toBeLessThan(48);
 
   // Seeking while playing keeps playing.
-  await page.getByTestId('scrubber').fill('10');
+  await seek(page, 10);
   await expect
     .poll(async () => (await shownTime(page)) > 10.4 && (await shownTime(page)) < 16, {
       timeout: 10_000,
@@ -171,7 +171,7 @@ test('the piece ends with the view parked at its end, and play restarts it', asy
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await waitForStatus(page, 'playing');
   const { duration, view } = await getState(page);
-  await page.getByTestId('scrubber').fill(String(duration - 1.5));
+  await seek(page, duration - 1.5);
   await waitForStatus(page, 'ended', 15_000);
   await expect
     .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.start), {
@@ -222,7 +222,7 @@ test('the window slider is logarithmic from 2 s to the whole piece; = and − zo
 
 test('dragging pans the paused view', async ({ page }) => {
   await openApp(page);
-  await page.getByTestId('scrubber').fill('60');
+  await seek(page, 60);
   await expect(page.getByTestId('time')).toHaveText('01:00.0');
   await page.getByTestId('window-slider').fill('300');
   await frames(page);
@@ -243,7 +243,7 @@ test('dragging pans the paused view', async ({ page }) => {
 
 test('line colours change the picture', async ({ page }) => {
   await openApp(page);
-  await page.getByTestId('scrubber').fill('50');
+  await seek(page, 50);
   await page.getByTestId('window-slider').fill('300');
   await page.getByRole('button', { name: 'Ink', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ink', exact: true })).toHaveAttribute(
@@ -451,7 +451,7 @@ test('screenshots: desktop light, desktop dark, phone', async ({ page }, info) =
   test.skip(info.project.name !== 'chromium-prod', 'screenshots are taken once');
   const dir = process.env.E2E_SHOT_DIR ?? join(ROOT, 'test-results/screenshots');
   const settle = async () => {
-    await page.getByTestId('scrubber').fill('62');
+    await seek(page, 62);
     await page.getByTestId('window-slider').fill('300');
     await frames(page);
   };

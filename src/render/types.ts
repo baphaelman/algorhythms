@@ -112,4 +112,6 @@ export interface ScoreStyle {
    * emphasised and the other lines dimmed. Empty or absent: no highlight, no extra cost.
    */
   highlight?: ReadonlySet<MomentId>;
+  /** Draw the playhead line. The editor layout draws its own DOM playhead (§10). @default true */
+  playhead?: boolean;
 }

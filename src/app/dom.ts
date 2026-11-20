@@ -10,6 +10,8 @@ export interface LiveElements {
   scrub: HTMLInputElement | null;
   status: HTMLElement | null;
   meter: HTMLElement | null;
+  /** The editor's DOM playhead (`ui/Playhead.tsx`); while set, the canvas draws none. */
+  playhead: HTMLElement | null;
 }
 
 /** The registry. Components assign into it from ref callbacks. */
@@ -19,6 +21,7 @@ export const live: LiveElements = {
   scrub: null,
   status: null,
   meter: null,
+  playhead: null,
 };
 
 /** Writes text only when it changed (avoids layout work on identical frames). */

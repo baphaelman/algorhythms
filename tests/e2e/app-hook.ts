@@ -1,6 +1,8 @@
+import type { Page } from '@playwright/test';
+
 /**
  * The slice of `window.__algorhythms` (src/app/debug.ts) that the app e2e specs use. Importing this
- * file declares the global for TypeScript; it has no runtime effect.
+ * file declares the global for TypeScript; `seek` is a helper.
  */
 
 export interface Hook {
@@ -31,8 +33,14 @@ export interface Hook {
     setPiece(piece: unknown): void;
     recompileNow(): unknown;
     select(ids: string[]): void;
+    seek(t: number): void;
   };
   encodeShareLink(piece: unknown, base?: string): Promise<string>;
+}
+
+/** Moves the playhead to `t` s (the editor layout has no scrubber; the ruler seeks by pointer). */
+export async function seek(page: Page, t: number): Promise<void> {
+  await page.evaluate((to) => window.__algorhythms!.actions.seek(to), t);
 }
 
 declare global {

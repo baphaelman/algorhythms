@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 import { generate } from '../../src/core/generate';
 import { serializePiece } from '../../src/core/schema';
 
@@ -37,7 +37,7 @@ test('1080p, 24 voices, playing: median frame interval is 60 fps', async ({
   });
   await expect(page.getByTestId('keyvoices')).toContainText('/ 24 voices');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.getByTestId('scrubber').fill('60'); // into the Drift/Gather sections: many voices
+  await seek(page, 60); // into the Drift/Gather sections: many voices
   await page.waitForFunction(
     () => document.querySelector('[data-testid=time]')?.textContent !== '00:00.0',
   );
