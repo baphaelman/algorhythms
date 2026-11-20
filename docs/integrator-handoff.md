@@ -70,9 +70,25 @@ Their reports go to the old session. If you don't have them, check `git log`, `g
      - `canSaveToDisk()` and `pickStemsFile(name)`: call the picker from the click handler and pass the handle as `target`.
      - Options: sampleRate, bitDepth 16/24/32 (default 32f), mono, voiceNames, onProgress, signal.
      - **Lazy-load it**, because it pulls in the DSP graph.
-2. **M3d1 player app** (Sonnet high): `src/app/**` and `index.html`, removing M0's test-tone.
-   - **Asked for:** transport, score canvas outside React, view controls, themes, examples gallery, load from file and `#p=` link (decode plus `encodeShareLink`), the phone layout, the iOS audio session, ≤ 3 s to first sound, and 60 fps measured.
-   - The menu has disabled "Generate" and "Export" items for M3d2, plus a `loadPiece` hook.
+2. **M3d1 player app: DONE (committed; not yet verified in a clean worktree).**
+   - **Results:**
+     - e2e passed on all 6 projects before the DSP edits;
+     - the 4 Chromium-dev failures came from the unison builder's half-edited `graph.ts`, so re-verify after it lands;
+     - 16.7 ms frame interval with 0.8 ms work per frame;
+     - first sound 300–650 ms in prod.
+   - **API for M3d2 (in `src/app/store.ts` and `audio.ts`):**
+     - the `usePlayer` store `{piece, compiled, view, transport, notices}`;
+     - `loadPiece(piece)` for a fresh open and `setPiece(piece)` for an edit (coalesced recompile, then swap);
+     - `getEngine()` and `whenReady()`;
+     - `pushNotice`;
+     - the share helpers in `share.ts`;
+     - empty layout slots `[data-slot=lane]` and `[data-slot=inspector]` for M4.
+   - **Deleted** M0's test-tone files.
+   - **Parallel e2e:** `playwright.config.ts` now takes `E2E_DEV_PORT`, `E2E_PROD_PORT` and `E2E_OUT_DIR`. Give parallel builders distinct values plus `--output=<dir>`, or their runs collide.
+   - **Owner questions:**
+     - The app uses system fonts instead of the prototype's IBM Plex from Google Fonts (to avoid third-party requests). Bundling Plex would be a dependency.
+     - The iPhone silent-switch check needs the owner's device.
+   - Screenshots are in `renders/app-screenshots/`.
 3. **Unison lock + `wobble` preset** (Opus high): `src/dsp/**` and timbres.
    - **Asked for:** steady converged voices by default (phase lock or equivalent), group-aware normalisation, no clicks, stems still exact, RTF ≥ 10×, an opt-in timbre wobble control and a `wobble` preset.
    - Owner A/B WAVs go in `renders/` (`unison8-*`, `merge-*`, `wobble-preset`, `gen-1-dorian-after`).
