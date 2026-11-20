@@ -1,0 +1,49 @@
+/* The moment palette (Palette.tsx): a row of add buttons at the start of the view bar. */
+
+.palette {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex-basis: 100%;
+}
+
+.app[data-layout='player'] .palette {
+  display: none;
+}
+
+.palette-label {
+  margin-right: 6px;
+  font: 500 12px/1 var(--f-mono);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.palette button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 500 12px/1 var(--f-mono);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.palette button:hover {
+  border-color: var(--ink-2);
+}
+
+.palette button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.palette-icon {
+  color: var(--accent);
+}

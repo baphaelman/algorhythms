@@ -4,13 +4,16 @@
  * - dragging pans the view while paused;
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
  * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
- * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo).
+ * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
+ * - wide layout only: C U S M T P W I K L add a moment at the playhead, Delete/Backspace delete
+ *   the selection, Escape clears it (editor/shortcuts.ts).
  *
  * Handlers write the store (`setWindow`, `panBy`); the animation loop picks the change up on its
  * next frame, so no React render sits on the pointer path.
  */
 
 import { redo, undo } from './editor/history';
+import { addAtPlayhead, clearSelection, deleteSelection, editorKey } from './editor/shortcuts';
 import { currentPps } from './loop';
 import { currentTime, panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
 
@@ -141,6 +144,11 @@ function ownsKeys(target: EventTarget | null, key: string): boolean {
   return false;
 }
 
+/** True while the wide (editor) layout is shown (PLAN.md §11.5). */
+function editorLayout(): boolean {
+  return document.querySelector('.app[data-layout="full"]') !== null;
+}
+
 /** Installs the player's document-level keys; returns a function that removes them. */
 export function attachKeys(): () => void {
   const onKey = (e: KeyboardEvent): void => {
@@ -151,6 +159,16 @@ export function attachKeys(): () => void {
       e.preventDefault();
       if (k === 'z' && !e.shiftKey) undo();
       else redo();
+      return;
+    }
+    const ek = editorLayout() ? editorKey(e) : null;
+    if (ek) {
+      if (ek.kind === 'add') {
+        e.preventDefault();
+        addAtPlayhead(ek.type);
+      } else if (ek.kind === 'delete' ? deleteSelection() : clearSelection()) {
+        e.preventDefault();
+      }
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;

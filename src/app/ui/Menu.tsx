@@ -1,9 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
+import { PALETTE } from '../editor/shortcuts';
 import { EXAMPLES } from '../examples';
 import { canLinkFiles, linkToFile, newPieceNow, openMyPieces, saveAsFile } from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
+
+/** The undo modifier as shown in Help: ⌘ on Apple platforms, Ctrl elsewhere. */
+const MOD =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
 /** The ⋯ menu: examples, pieces (New, My pieces, files), Generate, Export, and help. */
 export function Menu() {
@@ -200,6 +205,33 @@ export function Menu() {
             <dd>Widen or narrow the window</dd>
             <dt>Drag</dt>
             <dd>Pan while paused</dd>
+          </dl>
+          <h2>Editing</h2>
+          <dl className="shortcuts" data-testid="editor-shortcuts">
+            {PALETTE.map((e) => (
+              <Fragment key={e.type}>
+                <dt>
+                  <kbd>{e.key}</kbd>
+                </dt>
+                <dd>Add {e.name} at the playhead</dd>
+              </Fragment>
+            ))}
+            <dt>
+              <kbd>Delete</kbd> <kbd>⌫</kbd>
+            </dt>
+            <dd>Delete the selected moments</dd>
+            <dt>
+              <kbd>Esc</kbd>
+            </dt>
+            <dd>Clear the selection</dd>
+            <dt>
+              <kbd>{MOD}</kbd> <kbd>Z</kbd>
+            </dt>
+            <dd>Undo</dd>
+            <dt>
+              <kbd>⇧</kbd> <kbd>{MOD}</kbd> <kbd>Z</kbd>
+            </dt>
+            <dd>Redo (also Ctrl+Y)</dd>
           </dl>
         </div>
       )}

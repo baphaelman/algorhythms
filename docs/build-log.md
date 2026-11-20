@@ -661,3 +661,12 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - **Files:** Save as file downloads `<sanitized title>.algorhythms.json` and marks the entry (no entry is created for an unedited example). Download all zips every entry (`algorhythms-pieces.zip`, repeats get `-2`, `-3`; fflate loaded on demand) and marks them all saved to a file. Link to a file: `showSaveFilePicker`, creates the entry if needed, writes now and on every autosave while write permission is granted; reopening a linked entry from My pieces re-asks permission (that click is the gesture). The link path is not covered by e2e (native picker).
 - **Safari note:** shown on Safari and every iOS browser (`evictsAfterAWeek`).
 - **Traps:** full `pnpm test` under load (~24) failed only the two timing tests (rtf, compile-perf); both pass alone.
+
+## M4f: palette and shortcuts (2026-11-20)
+
+- `src/app/editor/shortcuts.ts`: `PALETTE` (type, letter, name, icon, hint), `momentTypeForKey`, `editorKey(e)` (pure guard + mapping), `takesText(target)`, `snapToGrid(t, bpm?)` (nearest beat of `view.gridBpm`), `addAtPlayhead(type)`, `deleteSelection()`, `clearSelection()`.
+- Keys (canvas-input.ts `attachKeys`): C U S M T P W I K L add at the playhead (snapped); Delete/Backspace delete the selection; Escape clears it. Skipped with a dialog open, in text fields (text/number inputs, textarea, select, contenteditable; not buttons or sliders), with ⌘/Ctrl/Alt (letters: also Shift, auto-repeat), and outside the wide layout (`.app[data-layout="full"]`). Delete/Escape only `preventDefault` when they did something.
+- `src/app/ui/Palette.tsx` + `palette.css`: a toolbar row ("Add" + 10 buttons, tooltip "hint (K)", `aria-keyshortcuts`), mounted as the first item of the ViewBar (full-width row above the view controls), hidden in the player layout. Placed there rather than as its own workspace grid row so the lane builder keeps sole ownership of the grid areas; move it next to the lane later if wanted.
+- Help (Menu.tsx) gains an "Editing" list: the ten letters (from `PALETTE`), Delete/⌫, Esc, ⌘/Ctrl+Z, ⇧⌘/Ctrl+Z (Ctrl+Y).
+- Not done: drag from palette onto the lane (needs the lane's internals); disabling letters during musical typing (§9, M7: add a check in `editorKey`'s caller then).
+- Tests: `tests/unit/app/shortcuts.test.ts`, `tests/e2e/palette.spec.ts` (Chromium only).
