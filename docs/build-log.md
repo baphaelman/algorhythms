@@ -842,3 +842,8 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Walk:** Region (= `until − at`, writes `until`), Grid, Step glide, Density (%, writes 0..1) as sliders + boxes; allowed-step chips −3…+3 (stored steps outside that range get chips too; the last step can't be removed); bass leap min/max sliders. With `fixed`: "Frozen" badge, Unfreeze (deletes `fixed`, "Unfreeze walk"), and density, steps, bass and Reroll are disabled with "Unfreeze to change". **Choice:** Region, Grid and Step glide stay enabled when frozen, since a frozen walk still uses them (§6.2 ignores only density, steps, bass, seed).
 - **Voices:** chips All / Top n / Bottom n / Pick… Bottom n = `rank [0, n−1]`; Top n = `rank [k−n, pool−1]`, k = voices sounding at the moment's time (the core clamps the high end). So Top n's low rank is fixed when written: if the active count at that time changes later, the selection shifts. A rank pair that is neither shows the old lowest/highest fields. Exact "top n" would need a schema change (owner).
 - **Tests:** `tests/unit/app/inspector-controls.test.ts` (step chips, target modes); e2e `inspector.spec.ts`: walk density/steps change `walkSteps` and undo, slider drag = one undo entry, frozen walk badge/lock/Unfreeze/undo, voices/transition/level.
+
+## Owner notes on the M4.5 demo (2026-11-20; for the real editor, not yet planned)
+- Voices that start moving together should arrive together (today stagger 0.8 s + jitter 0.2 make arrivals differ).
+- Chord/split: choose how many voices sound, and edit voices individually.
+- Moments that do nothing in context (merge on already-stacked voices) are confusing; owner asked for options (grey-out, context-driven "flow chart" of next moves). Options sent; awaiting the owner's pick.
