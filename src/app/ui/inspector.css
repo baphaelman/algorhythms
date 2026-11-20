@@ -1,0 +1,283 @@
+/* Inspector column (PLAN.md §11.2, M4e). Only rendered in the wide layout. */
+
+.app[data-layout='full'] {
+  --inspector-w: 288px;
+}
+
+.slot.inspector {
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--rule);
+  padding: 2px 4px 12px 14px;
+  font-size: 13px;
+}
+
+.inspector h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inspector .dim {
+  color: var(--ink-2);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.inspector .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.insp-empty p {
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.insp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.insp-at {
+  font-family: var(--f-mono);
+  font-weight: normal;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+
+.insp-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 28px;
+}
+
+.insp-row > label,
+.insp-row > .insp-label {
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insp-row .scrub-label {
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.insp-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.insp-ctl input[type='text'],
+.insp-ctl select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-family: var(--f-mono);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+
+.insp-ctl select {
+  font-family: inherit;
+}
+
+.insp-ctl input[aria-invalid='true'] {
+  border-color: var(--accent);
+}
+
+.insp-ctl input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.insp-ctl .unit {
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  min-width: 2.5em;
+}
+
+.insp-row .field-error,
+.insp-row .insp-feedback {
+  grid-column: 2;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 1px 0 3px;
+}
+
+.insp-row .field-error {
+  color: var(--accent);
+}
+
+.insp-row .insp-feedback {
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+}
+
+.insp-row .insp-feedback:empty {
+  display: none;
+}
+
+.insp-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.insp-head .insp-check {
+  min-height: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.insp-group,
+.insp-degrees,
+.insp-voices {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 8px 0 0;
+  padding: 6px 0 0;
+  min-width: 0;
+}
+
+.insp-group > legend,
+.insp-degrees > legend {
+  padding: 0 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.insp-group > legend .link {
+  margin-left: 8px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: underline;
+}
+
+.degree-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.degree-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 0;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.degree-grid button small {
+  font-size: 10px;
+  color: var(--ink-2);
+}
+
+.degree-grid button.on small {
+  color: inherit;
+}
+
+.insp-voices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  border-top: 0;
+  margin: 0 0 4px;
+  padding: 0 0 0 92px;
+}
+
+.insp-voices label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.insp-bezier {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 8px;
+}
+
+.insp-bezier .insp-row {
+  grid-template-columns: 24px minmax(0, 1fr);
+}
+
+.ease-preview .frame {
+  fill: none;
+  stroke: var(--rule);
+}
+
+.ease-preview .curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.insp-seed {
+  flex: 1;
+  font-family: var(--f-mono);
+}
+
+.insp-diags {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+}
+
+.insp-diags li {
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--ink-2);
+  background: var(--panel);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.insp-diags li.warn,
+.insp-diags li.error {
+  border-left-color: var(--accent);
+}
+
+.insp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.inspector button.danger:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}

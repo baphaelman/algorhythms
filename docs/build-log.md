@@ -650,3 +650,17 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 **Defaults** (from the state at `at`; n = sounding voices; glide and target from the piece defaults): chord: degrees [0,2,4] (tonic triad), or [3,5,7] if every sounding pitch class is already in the tonic triad; even, ordered · unison: 'center' (n ≥ 2) else 'tonic', no octaves · split: count min(pool, max(n+2, 3)), current notes, even · merge: count max(1, ⌈n/2⌉), top, fade 2 · shift: +2 scale steps · spread: ×1.5 around mean, snap scale · walk: 16 s, grid 1, density 0.45, steps [-2,-1,1,2], stepGlide 0.3 · pin: top sounding voice, +2 scale steps (first pool voice if none sounds, which then errors 'pin-inactive') · key: up a fifth, same scale · level: gain 0.5 over 2 s. Inaudible cases: unison/spread/merge with one voice, split with a full pool.
 
 **Other:** `tsconfig.node.json` (tests) now includes `vite/client` types, since tests import the store (→ `import.meta.glob`). Tests: `tests/unit/app/editor.test.ts` (store in Node, audio mocked, rAF synchronous). Timing tests (compiler-perf, dsp rtf/export) fail only under the current machine load (load avg ~48); they pass alone.
+
+## M4e: inspector (2026-11-20)
+
+**Files:** `src/app/ui/Inspector.tsx` (column: none / one / several selected), `src/app/ui/inspector/` (`fields.ts` pure parse/format helpers, `controls.tsx` fields + edit plumbing, `NoteSetField.tsx`, `TypeFields.tsx`, `CommonFields.tsx`), `src/app/ui/inspector.css` (sets `--inspector-w: 288px` in the wide layout). App.tsx renders `<Inspector />` in place of the hidden slot. `debug.ts` gains `editor: { state, select, undo, redo }`.
+
+**Behaviour:**
+
+- One moment: header (type, time, Muted), inline diagnostics, label, time, every §6.2 field for its type, target (all / chosen voices / rank, ranks shown 1-based), glide (length, stagger, jitter, order, ease + bézier params, curve preview, "use defaults" removes `glide`), seed (effective, "(derived)" if implicit) with Reroll, Delete. Key moments hide target/glide/seed; level hides glide/seed.
+- Several: count, Mute/Unmute all (one entry), Delete. None: hint with the add shortcuts.
+- Text/number fields commit on Enter or blur, only valid values (error shown inline, `aria-invalid`); Escape reverts; ↑/↓ step (one entry each). Number labels scrub on drag and sliders drag as one gesture (one undo entry; pointercancel cancels). Gesture state is one module flag in `controls.tsx` (`fieldSetter`).
+- Chord field: live parse (`parseChord` in the key in effect at the moment, from `compiled.keys`) shows spelled notes or the error. Degree picker: toggle buttons over two octaves (widened to any stored degree); it cannot empty the set. Pitches accept note names (C4, F#3, A4+50) or MIDI numbers.
+- Switching NoteSet kind uses defaults (chord 'I', degrees [0,2,4], pitches C4 E4 G4); for split, 'current' removes `notes`.
+
+**Tests:** `tests/unit/app/inspector-fields.test.ts`; `tests/e2e/inspector.spec.ts` (Chromium only: hint/multi-select, chord symbol invalid→valid, glide length, Reroll, undo chain, label drag = one entry, degree picker by keyboard).
