@@ -1,18 +1,18 @@
 /**
  * Chord notes (§11.3, revision 6): "Notes: n" (writes `count`) and the note list, one row per
- * sounding note low → high with ▲/▼ (one scale step in the key). The first per-note change
- * freezes the chord (one undo entry); then a "Frozen" badge and Unfreeze show, and the count is
- * locked until Unfreeze. The score's target dots (ChordNoteDots) edit the same notes.
+ * voice low → high (by where the voices were heading) with ▲/▼ (one scale step in the key). The
+ * first per-note change freezes the chord (one undo entry); then a "Frozen" badge, Unfreeze and
+ * "Keep lines in order" (off: `byVoice`) show, and the count is locked until Unfreeze. The score's target dots (ArrivalDots) edit the same notes.
  */
 
 import { useMemo } from 'react';
 import { activeAt } from '../../../core/query';
 import type { ChordMoment, Piece } from '../../../core/types';
 import { noteLabel } from '../../../render';
-import { moveChordNote, unfreezeChord } from '../../editor/actions';
-import { chordNotes } from '../../editor/chord-notes';
+import { moveChordNote, unfreezeChord, updateMoment } from '../../editor/actions';
+import { chordKeepsOrder, chordNotes, chordOrderPatch } from '../../editor/chord-notes';
 import { usePlayer } from '../../store';
-import { NumberField, fieldSetter } from './controls';
+import { CheckField, NumberField, fieldSetter } from './controls';
 import { keyAt } from './fields';
 
 /** The chord's notes for the current piece and score (memoised: freezing recompiles). */
@@ -46,6 +46,17 @@ export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
             Unfreeze
           </button>
         </div>
+      )}
+      {frozen && (
+        <CheckField
+          label="Keep lines in order"
+          checked={chordKeepsOrder(m)}
+          testId="insp-chord-order"
+          onChange={(on) => {
+            const patch = chordOrderPatch(m, on);
+            if (patch) updateMoment(m.id, patch, on ? 'Keep lines in order' : 'Let lines cross');
+          }}
+        />
       )}
       <fieldset
         className="insp-plain"

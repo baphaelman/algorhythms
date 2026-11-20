@@ -14,6 +14,7 @@ import {
   zoomBy,
   type ThemePref,
 } from '../store';
+import { setKeepOrder, useLineOrder } from '../editor/line-order';
 import { VoicesToggle } from './VoicesDrawer';
 
 const COLORS = [
@@ -42,6 +43,7 @@ export function ViewBar() {
   const hud = usePlayer((s) => s.view.hud);
   const theme = usePlayer((s) => s.view.theme);
   const follow = usePlayer((s) => s.view.follow);
+  const keepOrder = useLineOrder((s) => s.keep);
   const fit = win >= Math.max(MIN_WINDOW, duration) - 1e-6;
 
   return (
@@ -156,6 +158,17 @@ export function ViewBar() {
         onClick={() => setHud(!hud)}
       >
         HUD
+      </button>
+
+      <button
+        type="button"
+        className="toggle keep-order-toggle"
+        aria-pressed={keepOrder}
+        data-testid="keep-order-toggle"
+        title="Hand edits (dragged dots, note points, chord notes) keep lines from crossing"
+        onClick={() => setKeepOrder(!keepOrder)}
+      >
+        Keep lines in order
       </button>
 
       <VoicesToggle />

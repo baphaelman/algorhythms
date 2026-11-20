@@ -15,11 +15,14 @@
 import { assignFree, assignOrdered } from '../voice-leading';
 import { voiceNotes } from '../voicing';
 import type { ChordMoment, Pitch } from '../types';
+import { chordByVoice } from './chord-by-voice';
 import { chooseDying } from './merge';
 import { voiceWithBirths } from './split';
 import { IntentKind, type MomentEnv, type MomentPlan, unionRange } from './types';
 
 export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
+  const byVoice = chordByVoice(m, env);
+  if (byVoice) return byVoice;
   if (m.count !== undefined) {
     if (!Number.isFinite(m.count)) {
       env.diag('error', 'invalid-moment', 'The chord count is not a number.');

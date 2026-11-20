@@ -69,19 +69,49 @@ describe('note moment', () => {
     expect(chordAt(s, 6)).toEqual([48, 55, 62, 64, 67]);
   });
 
-  it('to passing neighbours: ordered result, no crossings', () => {
+  it('order: to passing neighbours gives an ordered result, no crossings', () => {
     for (const [from, to, want, moved] of [
       [60, 66, [48, 55, 64, 66, 67], [2, 3]],
       [60, 70, [48, 55, 64, 67, 70], [2, 3, 4]],
       [64, 50, [48, 50, 55, 60, 67], [1, 2, 3]],
     ] as const) {
-      const s = compile(make({ start: START, glide: GLIDE, moments: [note(from, to)] }));
+      const p = make({ start: START, glide: GLIDE, moments: [note(from, to, { order: true })] });
+      const s = compile(p);
       expect(chordAt(s, 6), `${from}→${to}`).toEqual(want);
       expect(movers(s, 'n').sort()).toEqual([...moved]);
       // Pool order is pitch order at the start: it must stay so throughout.
       expectNoCrossings(s, [0, 1, 2, 3, 4], 0, 8);
       expect(s.voices.slice(0, 5).map(finalPitch)).toEqual(want);
     }
+  });
+
+  it('without order: only the voice sounding `from` moves, crossing its neighbours', () => {
+    for (const [from, to, voice] of [
+      [60, 66, 2],
+      [60, 70, 2],
+      [64, 50, 3],
+    ] as const) {
+      const s = compile(make({ start: START, glide: GLIDE, moments: [note(from, to)] }));
+      expect(codes(s), `${from}→${to}`).toEqual([]);
+      expect(movers(s, 'n')).toEqual([voice]);
+      const want = START.map((p, i) => (i === voice ? to : p));
+      expect(s.voices.slice(0, 5).map(finalPitch)).toEqual(want);
+      expect(chordAt(s, 6)).toEqual([...want].sort((a, b) => a - b));
+    }
+  });
+
+  it('without order, `back` returns the same voice', () => {
+    const p = make({
+      start: START,
+      glide: GLIDE,
+      end: { at: 20, fade: 1 },
+      moments: [note(60, 70, { back: 2 })],
+    });
+    const s = compile(p);
+    expect(codes(s)).toEqual([]);
+    expect(movers(s, 'n')).toEqual([2]);
+    expect(pitchAt(s.voices[2], 4)).toBeCloseTo(70, 6);
+    expect(s.voices.slice(0, 5).map(finalPitch)).toEqual(START);
   });
 
   it('several voices on `from`: one moves', () => {
@@ -134,7 +164,7 @@ describe('note moment', () => {
       start: START,
       glide: GLIDE,
       end: { at: 20, fade: 1 },
-      moments: [note(60, 70, { back: 2 })],
+      moments: [note(60, 70, { back: 2, order: true })],
     });
     const { score: s, trace } = compileWithTrace(p);
     expect(codes(s)).toEqual([]);

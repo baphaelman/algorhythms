@@ -85,3 +85,8 @@
   overflow: hidden;
   height: 26px;
 }
+
+/* "Keep lines in order" (§11.3) is an editor control. */
+.app[data-layout='player'] .keep-order-toggle {
+  display: none;
+}
