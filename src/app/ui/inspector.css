@@ -455,3 +455,75 @@
 .insp-preview {
   margin-top: 4px;
 }
+
+/* Walk steps list (M4.5-7). Capped height; scrolls for long walks. */
+
+.insp-steps .insp-count {
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-weight: 400;
+}
+
+.insp-steps ol {
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule);
+}
+
+.insp-steps li {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--rule);
+}
+
+.insp-steps li:last-child {
+  border-bottom: 0;
+}
+
+.insp-steps li.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.insp-steps .step-pick {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr) 4.2em;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: 11.5px var(--f-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.insp-steps .step-v {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-steps .step-move {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 0;
+  border-left: 1px solid var(--rule);
+  background: none;
+  color: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.insp-steps .step-move:hover,
+.insp-steps .step-pick:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
