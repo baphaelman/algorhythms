@@ -1,8 +1,8 @@
 /**
  * MIDI export (PLAN.md §12): Type-1 Standard MIDI Files from a compiled score, in three modes.
  *
- * - `perVoice` (default): one track and one channel per voice that ever sounds (channels wrap after
- *   16), each opening with RPN 0 (bend range). Notes sound at birth on the rounded pitch, with
+ * - `perVoice` (default): one track and one channel per voice that ever sounds (channels wrap over the 15
+ *   non-drum channels, skipping channel 10), each opening with RPN 0 (bend range). Notes sound at birth on the rounded pitch, with
  *   pitch bend only during glides.
  * - `mpe`: the same, laid out as MPE lower zones: channel 1 is the manager, channels 2-16 carry
  *   one voice each at ±48, and every 15 voices start a further complete file.
@@ -540,7 +540,7 @@ export function exportMidi(score: CompiledScore, opts: MidiExportOptions = {}): 
   const sounding = score.voices.filter((v) => v.lives.length > 0 && v.segments.length > 0);
 
   if (mode !== 'mpe') {
-    const data = buildFile({ voices: sounding, channel: (k) => k % 16, mpe: false }, score, o);
+    const data = buildFile({ voices: sounding, channel: (k) => (k % 15 < 9 ? k % 15 : (k % 15) + 1), mpe: false }, score, o);
     return { files: [{ name: `${base}${mode === 'notesOnly' ? '-notes' : ''}.mid`, data }] };
   }
   const parts = Math.max(1, Math.ceil(sounding.length / MPE_MEMBERS));

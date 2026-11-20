@@ -281,7 +281,7 @@ function run(
   return verifyFile(res.files[0], sounding(score), score, {
     range: opts.bendRange ?? 24,
     cc11: opts.cc11,
-    channelOf: (k) => k % 16,
+    channelOf: (k) => (k % 15 < 9 ? k % 15 : (k % 15) + 1),
     bpm: opts.bpm,
     label,
     samples,
@@ -458,14 +458,18 @@ describe('MPE export', () => {
 });
 
 describe('perVoice channels', () => {
-  it('wrap after 16', () => {
-    const s = manyVoices(18);
+  it('wrap over the 15 non-drum channels, skipping channel 10', () => {
+    const s = manyVoices(32);
+    const channelOf = (k: number) => (k % 15 < 9 ? k % 15 : (k % 15) + 1);
     const smf = parseSmf(exportMidi(s).files[0].data);
     const chans = smf.tracks.slice(1).map((t) => t.find((e) => e.type === 'noteOn')?.ch);
-    expect(chans).toEqual(Array.from({ length: 18 }, (_, i) => i % 16));
+    expect(chans).toEqual(Array.from({ length: 32 }, (_, i) => channelOf(i)));
+    expect(chans).not.toContain(9);
+    expect(chans[15]).toBe(0);
+    expect(chans[9]).toBe(10);
     verifyFile(exportMidi(s).files[0], sounding(s), s, {
       range: 24,
-      channelOf: (k) => k % 16,
+      channelOf,
       label: 'wrap',
       samples: 100,
     });
