@@ -126,6 +126,9 @@ export type EaseRef =
 /** Order in which stagger offsets are handed out across the affected voices (§5). */
 export type GlideOrder = 'random' | 'low-first' | 'high-first' | 'center-out' | 'outside-in';
 
+/** When a moment's moving voices land (§5, §7.2; revision 6). */
+export type GlideArrive = 'together' | 'spread';
+
 /** How voices travel to a moment's targets. */
 export interface Glide {
   /** Glide duration per voice, in seconds. */
@@ -134,6 +137,11 @@ export interface Glide {
   jitter: number;
   /** Spread of start times across the affected voices, in seconds. */
   stagger: Seconds;
+  /**
+   * 'together' (default; absent = 'together'): every voice the moment moves ends at one time,
+   * at + stagger + length (jitter applied once). 'spread': each ends at its own start + length.
+   */
+  arrive?: GlideArrive;
   /** Which voices start first within the stagger. */
   order: GlideOrder;
   /** Easing curve of each glide. */

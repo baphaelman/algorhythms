@@ -105,9 +105,12 @@ describe('generate: length', () => {
   it('natural length and lengths ≥ 100 s are byte-identical to before the short form', () => {
     const cases = snapshotCases();
     expect(cases.length).toBe(Object.keys(snapshot).length);
-    for (const c of cases)
-      expect(hashPiece(generate(c.seed, c.opts)), c.key).toBe(
-        (snapshot as Record<string, string>)[c.key],
-      );
+    for (const c of cases) {
+      // Revision 6 added `arrive: 'together'` to the default glide; the snapshot predates it.
+      const piece = generate(c.seed, c.opts);
+      expect(piece.defaults.glide.arrive).toBe('together');
+      delete piece.defaults.glide.arrive;
+      expect(hashPiece(piece), c.key).toBe((snapshot as Record<string, string>)[c.key]);
+    }
   });
 });

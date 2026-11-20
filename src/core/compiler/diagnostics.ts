@@ -59,6 +59,11 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'info',
     meaning: 'Enough voices are already active; nobody is born.',
   },
+  'no-effect': {
+    level: 'info',
+    meaning:
+      'The moment changes nothing at its time: no pitch target, audible count, level or key change (revision 6).',
+  },
   'merge-nothing': {
     level: 'info',
     meaning: 'The active count is already at or below the target.',

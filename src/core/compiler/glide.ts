@@ -7,10 +7,12 @@
  * instead of clumping. A single voice starts on time: a spread across one voice is empty.
  *
  * Durations are length·(1 + jitter·(2u − 1)) with u a Purpose.Jitter draw, never below MIN_GLIDE.
+ * Under `arrive: 'together'` (revision 6) the planner instead ends every move at one shared time,
+ * `sharedEnd`: at + stagger + the jittered length, with u drawn once per moment (voice id '').
  */
 
-import { Purpose, randHashed } from '../rng';
-import type { EaseRef, Glide, GlideOrder, Seconds } from '../types';
+import { hash32, Purpose, randHashed } from '../rng';
+import type { EaseRef, Glide, GlideArrive, GlideOrder, Seconds } from '../types';
 
 /** Shortest glide; a 0-length glide would be a jump and break C⁰ continuity. */
 export const MIN_GLIDE: Seconds = 0.01;
@@ -22,6 +24,8 @@ const ORDERS: readonly GlideOrder[] = [
   'center-out',
   'outside-in',
 ];
+
+const ARRIVE: readonly GlideArrive[] = ['together', 'spread'];
 
 function validEase(e: unknown): e is EaseRef {
   if (typeof e === 'string') {
@@ -59,6 +63,8 @@ export function sanitizeGlide(g: Partial<Glide> | undefined, fallback: Glide): G
   if (typeof g.stagger === 'number' && Number.isFinite(g.stagger)) {
     out.stagger = g.stagger < 0 ? 0 : g.stagger;
   }
+  if (g.arrive !== undefined && ARRIVE.includes(g.arrive)) out.arrive = g.arrive;
+  if (out.arrive !== 'spread') out.arrive = 'together';
   if (g.order !== undefined && ORDERS.includes(g.order)) out.order = g.order;
   if (g.ease !== undefined && validEase(g.ease)) out.ease = g.ease;
   return out;
@@ -129,6 +135,23 @@ export function glideDuration(glide: Glide, seed: number, hash: number): Seconds
   const u = randHashed(seed, hash, 0, Purpose.Jitter);
   const d = glide.length * (1 + glide.jitter * (2 * u - 1));
   return d > MIN_GLIDE ? d : MIN_GLIDE;
+}
+
+/** Hash of the empty voice id: the key of moment-level draws (§7.7). */
+const MOMENT_HASH = hash32('');
+
+/** True unless the glide asks for `arrive: 'spread'` (absent = 'together'). */
+export function arrivesTogether(glide: Glide): boolean {
+  return glide.arrive !== 'spread';
+}
+
+/**
+ * The shared end of a moment's moves under `arrive: 'together'`: T + stagger + the moment's
+ * jittered length (one draw, voice id ''). Every start lies before T + stagger, so every
+ * duration is at least that length.
+ */
+export function sharedEnd(T: Seconds, glide: Glide, seed: number): Seconds {
+  return T + glide.stagger + glideDuration(glide, seed, MOMENT_HASH);
 }
 
 /** Fade-in of a newborn: max(0.5 s, glide length / 2) (§7.4). */

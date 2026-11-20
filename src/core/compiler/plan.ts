@@ -4,7 +4,9 @@
  * Given the intents a moment function returned, the planner:
  * 1. folds targets into ranges (§7.8);
  * 2. draws start offsets and durations (stagger, order, jitter; §5, §7.7); a newborn starts at its
- *    parent's departure, or at a seeded birth stagger if the parent does not move (§7.4);
+ *    parent's departure, or at a seeded birth stagger if the parent does not move (§7.4); under
+ *    `arrive: 'together'` (default, revision 6) every duration instead runs to one shared end,
+ *    so start changes below (adoption, pull-back) keep that end;
  * 3. under `ordered`, sets each mover's overshoot limit L = min(1 semitone, gap to its neighbour)
  *    (§7.5) and enforces the crossing guarantee (§7.2): every adjacent pair of targeted voices is
  *    sampled at 64 points over the moment's window; if a pair crosses, the overtaking voice adopts
@@ -24,7 +26,14 @@ import { Purpose, randHashed } from '../rng';
 import { CHECK_SAMPLES, FREE_LIMITS, MAX_OVERSHOOT, type OvershootLimits } from '../interrupt';
 import type { DiagnosticLevel, Glide, Pitch, Seconds } from '../types';
 import { IntentKind, type MomentPlan } from '../moments/types';
-import { birthFadeIn, drawTimings, glideDuration } from './glide';
+import {
+  arrivesTogether,
+  birthFadeIn,
+  drawTimings,
+  glideDuration,
+  MIN_GLIDE,
+  sharedEnd,
+} from './glide';
 import { Projector, type Projection, type Tentative } from './project';
 import { foldIntoRange } from './range';
 import type { Birth, Move, VoiceRun } from './voice';
@@ -288,7 +297,16 @@ export function planMoment(
     const s = gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
     return s > parts[i].deferT ? s : parts[i].deferT;
   };
-  const durOf = (i: number): Seconds => gDur[find(i)];
+  // Arrive together (§7.2, revision 6): every duration runs to one shared end, so a group that
+  // adopts a start (crossing fix-up, pull-back) keeps that end.
+  const together = arrivesTogether(glide);
+  const endT = together ? sharedEnd(T, glide, seed) : 0;
+  const durOf = together
+    ? (i: number): Seconds => {
+        const d = endT - startOf(i);
+        return d > MIN_GLIDE ? d : MIN_GLIDE;
+      }
+    : (i: number): Seconds => gDur[find(i)];
 
   // 4. Overshoot limits (§7.5): L = min(1, gap to the neighbour) under `ordered`.
   const order = parts.map((_, i) => i);

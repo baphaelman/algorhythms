@@ -16,18 +16,13 @@
  */
 
 import { defaultGlide } from '../defaults';
+import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
-import { chordMoment } from '../moments/chord';
-import { mergeMoment } from '../moments/merge';
-import { pinMoment } from '../moments/pin';
-import { shiftMoment } from '../moments/shift';
-import { splitMoment } from '../moments/split';
-import { spreadMoment } from '../moments/spread';
-import type { MomentEnv, MomentPlan } from '../moments/types';
-import { unisonMoment } from '../moments/unison';
+import { pointMomentPlan } from '../moments/dispatch';
+import type { MomentEnv } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
   MAX_VOICES,
@@ -51,7 +46,7 @@ import {
   type WalkStepRecord,
 } from '../types';
 import { MIN_GLIDE, mergeGlide, sanitizeGlide } from './glide';
-import { planMoment, type CrossingsMode, type PlanTrace } from './plan';
+import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from './plan';
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldIntoRange, sanitizeRange } from './range';
@@ -524,6 +519,7 @@ export class Compiler {
     this.activity(T);
     switch (m.type) {
       case 'key':
+        if (sameKey(m.key, this.key)) this.noEffect(m, [], []);
         this.key = m.key;
         this.keys.push({ t: T, key: m.key });
         this.span(i, T, T);
@@ -535,6 +531,9 @@ export class Compiler {
         if (!Number.isFinite(m.gain)) {
           this.diag('error', 'invalid-moment', 'The level gain is not a number.', m.id);
           return;
+        }
+        if (vs.every((v) => this.levelOf(v) === m.gain)) {
+          this.noEffect(m, vs, this.sortedActive());
         }
         for (const v of vs) this.voices[v].level.push({ t: T, gain: m.gain, over });
         if (vs.length === 0)
@@ -554,7 +553,73 @@ export class Compiler {
     }
   }
 
+  /** Committed destinations of the active voices (NaN otherwise), into `out`. */
+  private destsInto(out: Float64Array): Float64Array {
+    out.fill(NaN);
+    for (const v of this.sortedActive()) out[v] = this.destOf(v);
+    return out;
+  }
+
+  private effBefore = new Float64Array(0);
+  private effAfter = new Float64Array(0);
+
+  /**
+   * A point moment, then the `no-effect` check (§7.9, revision 6): destinations before the moment
+   * (before its cancellations) against those after it. Skipped when the moment raised an error.
+   */
   private onPointMoment(i: number): void {
+    const n = this.voices.length;
+    if (this.effBefore.length !== n) {
+      this.effBefore = new Float64Array(n);
+      this.effAfter = new Float64Array(n);
+    }
+    const before = this.destsInto(this.effBefore);
+    const activeBefore = this.sortedActive();
+    const dormant = this.dormantAt(this.moments[i].at).length;
+    const d0 = this.diags.length;
+    const { targeted, res } = this.applyPointMoment(i);
+    for (let k = d0; k < this.diags.length; k++) if (this.diags[k].level === 'error') return;
+    const deaths: { voice: number; to: Pitch }[] = [];
+    const births: { voice: number; parent: number }[] = [];
+    if (res) {
+      for (const mv of res.moves) if (mv.death) deaths.push({ voice: mv.voice, to: mv.to });
+      for (const b of res.births) births.push({ voice: b.voice, parent: b.parent });
+    }
+    const after = this.destsInto(this.effAfter);
+    if (changesPitch({ before, after, deaths, births })) return;
+    this.diag(
+      'info',
+      'no-effect',
+      `No effect: ${noEffectReason(this.moments[i], {
+        targeted: targeted.map((v) => before[v]),
+        active: activeBefore.map((v) => before[v]),
+        births: births.length,
+        deaths: deaths.length,
+        dormant,
+      })}.`,
+      this.moments[i].id,
+    );
+  }
+
+  /** Raises `no-effect` for a key or level moment. */
+  private noEffect(m: Moment, targeted: readonly number[], active: readonly number[]): void {
+    const reason = noEffectReason(m, {
+      targeted: targeted.map((v) => this.destOf(v)),
+      active: active.map((v) => this.destOf(v)),
+      births: 0,
+      deaths: 0,
+      dormant: 0,
+    });
+    this.diag('info', 'no-effect', `No effect: ${reason}.`, m.id);
+  }
+
+  /** The level target of a voice now (1 before its first level change). */
+  private levelOf(v: number): number {
+    const l = this.voices[v].level;
+    return l.length > 0 ? l[l.length - 1].gain : 1;
+  }
+
+  private applyPointMoment(i: number): { targeted: number[]; res: PlanResult | null } {
     const m = this.moments[i];
     const T = m.at;
     let pre: number[];
@@ -571,36 +636,11 @@ export class Compiler {
     this.touch();
     const targeted = this.sortByDest(pre.slice());
     const env = this.env(i, targeted);
-    let plan: MomentPlan | null;
-    switch (m.type) {
-      case 'chord':
-        plan = chordMoment(m, env);
-        break;
-      case 'unison':
-        plan = unisonMoment(m, env);
-        break;
-      case 'split':
-        plan = splitMoment(m, env);
-        break;
-      case 'merge':
-        plan = mergeMoment(m, env);
-        break;
-      case 'shift':
-        plan = shiftMoment(m, env);
-        break;
-      case 'spread':
-        plan = spreadMoment(m, env);
-        break;
-      case 'pin':
-        plan = pinMoment(m, env);
-        break;
-      default:
-        plan = null;
-    }
+    const plan = pointMomentPlan(m, env);
     if (!plan) {
       this.span(i, T, T);
       this.traceMoment(i, targeted, subset, null);
-      return;
+      return { targeted, res: null };
     }
     const host = {
       voices: this.voices,
@@ -649,6 +689,7 @@ export class Compiler {
     this.touch();
     this.recordHarmony(i);
     this.traceMoment(i, targeted, subset, res.trace);
+    return { targeted, res };
   }
 
   /**
