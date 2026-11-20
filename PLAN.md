@@ -1,6 +1,6 @@
 # AlgoRhythms: Project Plan
 
-**Status:** revision 2, approved by the owner on 2026-11-19 (answers in §16). Implementation is under way, milestone by milestone (§15). The project is named **AlgoRhythms**.
+**Status:** revision 2, approved by the owner on 2026-11-19 (answers in §16); revision 5 (editor view, §18) drafted 2026-11-20, awaiting the owner's go. Implementation is under way, milestone by milestone (§15). The project is named **AlgoRhythms**.
 **Date:** 2026-11-19 (revision 2: 2026-11-19)
 **Audience:** an engineer or agent reviewing this plan before implementation starts.
 
@@ -264,10 +264,20 @@ interface MomentBase {
 | **merge** | `count: number`, `which: 'top' \| 'bottom' \| 'inner' \| 'outer' \| 'random'`, `fade: Seconds` | Lowers the active count. Each dying voice glides into its nearest surviving neighbour's pitch, then fades out and becomes dormant; a later split can revive it. |
 | **shift** | `by: number`, `unit: 'semitones' \| 'scaleSteps'` | Transposes the targeted voices. Scale steps are counted in `Piece.key`; off-scale pitches snap to the scale first. |
 | **spread** | `factor: number`, `around: Pitch \| 'mean' \| 'median'`, `snap: 'scale' \| 'chromatic' \| 'none'` | Each pitch becomes c + factor·(p − c), then snaps. A factor above 1 widens the voicing; below 1 squeezes it. |
-| **walk** (region) | `until: Seconds`, `grid: Seconds`, `density: 0..1`, `steps: number[]` (scale steps, default [-2,-1,1,2]), `stepGlide: Seconds`, `bass?: { leap: [number, number] }` | Independent stepwise melodies until `until`. It keeps pitch order (no crossing or touching), and the bass leaps. This is the prototype's algorithm. |
+| **walk** (region) | `until: Seconds`, `grid: Seconds`, `density: 0..1`, `steps: number[]` (scale steps, default [-2,-1,1,2]), `stepGlide: Seconds`, `bass?: { leap: [number, number] }`, `edits?: WalkStepEdit[]` | Independent stepwise melodies until `until`. It keeps pitch order (no crossing or touching), and the bass leaps. This is the prototype's algorithm. Hand-moved steps are stored as `edits` (below). |
 | **pin** | `voice: VoiceId`, `pitch: Pitch` | Moves one voice to an exact pitch. It is the hand-editing escape hatch and may cross other voices. |
 | **key** | `key: Key` | Changes the key from `at` onwards; no pitch effect. Everything that depends on the key (shift by scale steps, walk, `snap: 'scale'`, `degrees`, Roman numerals) reads the key in effect at its own time. The compiler emits a key timeline. Without it, "move to D minor 9" followed by a walk would walk in the initial key. |
 | **level** | `gain: number`, `over: Seconds` | Ramps the targeted voices' gain to `gain` over `over` seconds: swells, fades, "breath". Moved up from M6 because dynamics are central to G1. |
+
+**Walk step edits (revision 5).** Walk steps are drawn from the seed, so a moved step is stored as an override:
+```ts
+interface WalkStepEdit { tick: number; voice: VoiceId; step: number }  // scale steps; 0 = hold
+```
+- On tick `tick`, if `voice` is eligible, its step is `step` instead of the drawn one (the WalkPick, WalkStep and BassLeap draws are skipped for it). The bass voice also takes `step` in scale steps.
+- The no-crossing and range rules still apply. A blocked edit is skipped with a `warn` diagnostic; an edit on a tick where the voice isn't eligible is ignored with an `info` diagnostic. Edits past the last tick are ignored.
+- Steps are relative, so the voice's later steps follow the moved note, and the walk still adapts when earlier moments change. Freezing a walk into absolute pitches is not offered.
+- Re-roll changes the seed and keeps the edits; the inspector calls it "Re-roll unedited steps".
+- The compiler reports every taken step (`walkSteps`, §7.9), so the editor can draw and list them.
 
 ### 6.3 Planned for later milestones
 - **timbre** (M6): `preset`, `fade`. Crossfades the targeted voices to another timbre; no pitch effect.
@@ -409,6 +419,8 @@ interface CompiledScore {
   duration: Seconds;
   voices: CompiledVoice[];
   momentSpans: { id: MomentId; start: Seconds; end: Seconds }[];  // earliest move start .. latest move end
+  walkSteps: { momentId: MomentId; tick: number; voice: VoiceId; t: Seconds; from: Pitch; to: Pitch; edited: boolean }[];
+                                // every step a walk took, plus edited holds (from === to); sorted by t (revision 5, §6.2)
   diagnostics: Diagnostic[];    // { momentId?, level: 'info'|'warn'|'error', message }
 }
 interface CompiledVoice {
@@ -628,18 +640,23 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
 - **Layers, back to front:**
   1. Background and octave grid (A lines labelled with Hz).
   2. Moment and section markers.
-  3. Lines: the past at full opacity; the future as a ghost at a configurable opacity, 0 during playback by default.
+  3. Lines: the whole piece is drawn. The past is at full opacity; the future is dimmed (ghost opacity 0.35 by default, configurable; it was 0 during playback before revision 5).
   4. Heads: a dot per voice; a ring while moving, with opacity equal to `motionAt`; and Hz labels de-duplicated with ×N counts.
-  5. Playhead.
-  6. HUD, including the chord being played (`chordAt`; e.g. `ii7 · Dm7`, `Am7/E`), owner request 2026-11-20.
-  7. Editor overlay (§11).
+  5. Playhead. In the editor layout the playhead is one DOM line over the ruler, score and lanes (§11.2), and `drawScore` skips it.
+  6. HUD, including the chord being played (`chordAt`; e.g. `ii7 · Dm7`, `Am7/E`), owner request 2026-11-20. In the editor layout the top bar shows it instead.
+  7. Editor overlay (§11): with a walk selected, its steps (`walkSteps`) as dots; the selected step highlighted.
 - **Colors:** by pitch (the default: a vertical gradient, low cool to high warm); ink; or custom per voice (`VoiceDef.color`, falling back to ink). An HSL fallback covers browsers without OKLCH. The per-voice hue mode was removed (owner, 2026-11-20); old files with `"voice"` load as `"pitch"`.
 
-### Camera
-- The time window runs from 2 s to the whole piece on a log scale, set by slider, pinch, ⌘/Ctrl-scroll, or `−`/`=`.
-- The playhead sits at a fixed x, 78% across by default.
-- The follow camera blends into the overview as the window approaches the whole piece (the prototype's formula).
-- When paused, dragging pans the view. Vertical framing auto-fits the used range; manual vertical zoom is Later.
+### Camera (revision 5)
+- **One time axis.** The camera is `{ start, window }` in seconds plus the view width. The ruler, score canvas, lanes and playhead all map time to x through this one shared axis, read every frame, so they always line up.
+- **Zoom:** the window runs from 2 s to the whole piece on a log scale. It is set by a large slider with `−`/`+` buttons and **Fit** (whole piece), and by pinch, ⌘/Ctrl-scroll and `−`/`=`. Zoom keeps the playhead's x when it is visible, otherwise the view's centre.
+- **Follow** (a three-way toggle, stored in `view`):
+  - **Smooth** (default): the view scrolls so the playhead stays 35% across.
+  - **Page:** when the playhead passes 92% of the view, the view jumps so it sits at 8%.
+  - **Off:** the view never moves by itself.
+  - In every mode `start` is clamped to [0, duration − window], so near either end the playhead moves across a still view, and at Fit nothing scrolls. This replaces the prototype's overview blend.
+- Dragging the score or a lane background pans the view; a pan during playback turns Follow off. Clicking or dragging the ruler seeks. Vertical framing auto-fits the used range; manual vertical zoom is Later.
+- The player-only layout (phones, §11.5) uses the same camera and keeps its scrubber.
 
 ### Budget
 ≤ 4 ms per frame at 1080p with 24 voices. If the past lines become expensive, cache them to an offscreen canvas per camera scale.
@@ -653,25 +670,36 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
 - `/#p=…` opens a shared piece.
 - Menus give access to **Examples** (4–6 handmade pieces, CC0), **My pieces** (stored in IndexedDB), **New** (empty, or from a template), **Generate**, **Import/Export**, and **Help** (shortcuts).
 
-### 11.2 Layout (desktop)
+### 11.2 Layout (desktop; revision 5)
+Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29KnYtonhJGSZKEj12Jogm
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ ▶ ⟲ ⟳loop ●rec  01:42.3 / 05:00  ▁▃▅ meter   A dorian · 12 voices  ⋯ menu │
-├────┬───────────────────────────────────────────────────┬─────────────────┤
-│ A5 │                                                   │ CHORD   @ 0:42  │
-│    │   score view: lines, playhead, moment overlay     │ notes   Dm9 ▾   │
-│ A4 │                                                   │ voicing even    │
-│    │                                                   │ glide   3.0 s   │
-│ A3 │                                                   │ stagger 1.2 s   │
-├────┼───────────────────────────────────────────────────┤ order   low→hi  │
-│    │ moments ◆split  ◆chord━━━  ▭▭▭ walk ▭▭▭  ◆unison━ │ ease    ⌒       │
-│    │ ─────── scrubber ───────────────────────────────  │ voices  all     │
-├────┴───────────────────────────────────────────────────┤ seed    ⟳       │
-│ window ──●── 20 s   lines [ink|voice|pitch]   grid ♩=90 │                 │
-└────────────────────────────────────────────────────────┴─────────────────┘
-  drawers: Voices · Sound (timbres, FX) · Live
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ ▶  0:42.1 / 2:40   Cmaj7 · A dorian · 5/12 voices      Title     Voices  ⋯ Menu   │
+├───────────────────────────────────────────────────────────────┬───────────────────┤
+│ Zoom − ━━━━━●━━━━━ + 20 s  Fit      Follow [Smooth|Page|Off]  │ CHORD @ 0:26      │
+│ Time     │ 0:20   │ 0:25   │ 0:30   ▼   │ 0:35   │ 0:40      │ Cmaj7  III in A   │
+│ A4 440   │ lines: whole piece, future dimmed  ┃               │ C3 E3 G3 B3 E4    │
+│ A3 220   │                                    ┃               │ From the key …    │
+│ Moments  │ ◆Am7        ◆Cmaj7        walk     ┃  ◆55%         │ Root · Quality ·  │
+│ Transit. │ ▬▬4.0 s▬▬   ▬3.0 s▬   ▒▒▒walk▒▒▒   ┃               │ Bass · Voicing    │
+│ Level    │ ───────────────────────────────────┃──╲____        │ Transition sliders│
+│ Effects  │            (timbre moments, M6)    ┃               │ Voices · Re-roll  │
+│ Add at playhead: chord unison split merge shift spread walk pin key level        │
+└───────────────────────────────────────────────────────────────┴───────────────────┘
+  drawers: Voices · Sound (timbres, FX, M6) · Live (M7)
 ```
+- **Top bar:** transport, time, the playing chord · key · active/pool voices, title, Voices, Menu.
+- **View bar:** the zoom slider with `−`/`+`, the window length, Fit, and the Follow toggle (§10). The bottom scrubber is gone; the **time ruler** above the score replaces it.
+- **Rows, all on the shared time axis (§10), with labels in a left gutter:**
+  - **Time:** the ruler; click or drag to seek.
+  - **Lines:** the score canvas.
+  - **Moments:** a label per moment (chord name, `level 55%`, key name, type otherwise), on two staggered rows so neighbours don't overlap. Click to select; drag to move.
+  - **Transitions:** each moment's glide as a bar over its `momentSpans` extent (stagger and jitter included), labelled with its length. Walks show as a striped region over `at`–`until`; level moments as `at`–`at + over`. Dragging a bar's end changes the glide length; Shift-drag changes the stagger.
+  - **Level:** the mean gain of the active voices over time, from the compiled `level` data.
+  - **Effects:** timbre changes. Hidden until the `timbre` moment exists (M6).
+- **Playhead:** one line through the ruler, score and every row.
+- **Add at playhead:** the palette, under the rows.
 
 ### 11.3 Interactions
 - **Add a moment:** from a palette (click or drag), or by shortcut at the playhead: `C` chord, `U` unison, `S` split, `M` merge, `T` shift, `P` spread, `W` walk, `I` pin, `K` key, `L` level. These shortcuts are disabled while musical typing is on (§9).
@@ -684,9 +712,18 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   - Select several with Shift-click or a marquee; copy and paste.
 - **Selection feedback:** selecting a moment highlights the segments it produced in the score view, using `Segment.momentId`. Hovering a line shows its voice, note name and Hz.
 - **Piano ruler:** with a chord or pin moment selected, clicking keys toggles notes in its NoteSet. In live mode, clicking plays.
-- **Inspector:** a form for each moment type, including:
-  - a chord-symbol field with live parse feedback;
-  - a degree picker;
+- **Inspector (revision 5: more choices, picked rather than typed):**
+  - **Notes (chord and split):** a header with the chord name, its Roman numeral in the key in effect, and the live notes the moment produces. Chords are picked:
+    - **From the key:** the key's diatonic chords, one click each;
+    - **Root** (12), **Quality** (major, minor, 7, maj7, m7, 6, sus2, sus4, dim, aug, add9, m9, m7♭5), **Bass** (Any, Root, 3rd, 5th; written as a slash chord, Root as e.g. `C/C`), **Voicing** (Even, Close, Nearest).
+    - The picker writes a `chord` NoteSet. Pieces with `degrees`, `pitches` or `current` keep their existing fields under "Other notes".
+  - **Transition:** sliders for Length, Stagger and Jitter; chips for Order and Curve (Smooth, Linear, Cosine, Expo, plus Custom for a bezier), with a curve preview.
+  - **Level:** sliders for Level and Ramp.
+  - **Walk:** sliders for region, grid, density and step glide; the allowed steps; and a **Steps** list (time, voice, step) with ▲/▼. Selecting a step highlights its dot on the lines, and clicking a dot selects its row. ▲/▼ write `edits` (§6.2). "Re-roll unedited steps".
+  - **Voices:** All, Top n, Bottom n (a `rank` selector) or Pick… (a voice checklist).
+  - Every slider drag is one undo entry.
+- **Inspector, carried over from M4:**
+  - a degree picker (under "Other notes");
   - a preview of the easing curve;
   - a Reroll button;
   - a **Freeze** button: it replaces the moment's result with absolute targets (a `pitches` NoteSet with `assign: 'ordered'`, plus an explicit seed), so later edits to earlier moments no longer change what this moment does;
@@ -700,6 +737,7 @@ React re-renders must never sit on the per-frame or per-pointer-move path.
 - **Score view:** one canvas drawn by `drawScore` in a `requestAnimationFrame` loop that reads the store directly, outside React.
 - **Moment lane:** DOM/SVG, not canvas, so roving tabindex and screen-reader labels work (§11.5). A few hundred elements is fine. During a drag, pointer handlers write the marker's CSS transform directly and update a transient Zustand slice that React doesn't subscribe to. The piece is committed, which triggers a React render, an undo entry and a recompile, once per animation frame while dragging and once on release.
 - **Playhead, time readout and meter** update by direct DOM writes from the animation loop, not React state.
+- **Following the camera (revision 5):** ruler ticks and lane items are laid out in seconds × pixels-per-second inside a container whose CSS transform the animation loop sets from the camera's `start`, so scrolling is one transform write per frame. A zoom change re-lays them out, at most once per frame.
 - **React** renders panels, inspector, drawers and menus.
 
 ### 11.3b Touch editing (tablets)
@@ -925,6 +963,19 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - an edit made during playback is heard within 50 ms, with no clicks;
   - persistent storage is requested and its status shown, and "Download all" exports every piece.
 
+**M4.5. Editor view redesign (M; revision 5, owner direction 2026-11-20)**
+- One time axis with a ruler and one playhead; Follow modes; zoom slider and Fit; future dimmed (§10).
+- The rows: Moments, Transitions, Level (Effects with M6) (§11.2).
+- The inspector's chord picker, transition, level and voice controls, and walk step editing with `edits` and `walkSteps` (§6.2, §7.9, §11.3).
+- *Accept when:*
+  - at any zoom and while following, a moment's marker, its transition bar's start and the start of its glide on the lines sit within 1 px of each other;
+  - during playback Smooth holds the playhead at 35% (±1%) away from the piece's ends, Page jumps at 92%, and Off never moves the view;
+  - clicking or dragging the ruler seeks, and the playhead line spans the ruler, the score and every row;
+  - picking a chord (from the key, or root, quality, bass and voicing) is heard within 50 ms, and the header shows its name, numeral and notes;
+  - moving a walk step changes only that voice from that tick on; edits survive save, load, undo and Re-roll;
+  - 60 fps at 1080p with 24 voices while following;
+  - the M4 acceptance checks still pass.
+
 **M5. Editor completion (M)**
 - Piano ruler; multi-select, marquee, copy and paste; Freeze (§11.3).
 - Share links with default stripping (§11.4).
@@ -1012,6 +1063,13 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 5 (2026-11-20): editor view redesign (owner direction; builders wait for the owner's go)
+- **View (§10):** one time axis shared by a new time ruler, the score, the lanes and a single playhead; the bottom scrubber goes (phones keep it). Follow: Smooth (35%, default), Page, Off. Zoom slider with Fit; no overview blend. The whole piece is drawn, the future dimmed.
+- **Layout (§11.2, §11.3a):** rows Moments, Transitions, Level and Effects (M6) under the score on the same axis.
+- **Inspector (§11.3):** chords picked (from the key, or root, quality, bass, voicing) with numeral and live notes; transition, level and voice controls.
+- **Walks (§6.2, §7.9):** steps can be moved; stored as relative `edits` keyed by tick and voice; the compiler reports `walkSteps`.
+- **Milestones (§15):** new M4.5 before M5.
 
 ### Revision 4 (2026-11-20): owner rulings after the first M3 release
 - **Unisons (§8.4):** glides into and out of a unison are warped (up to ~60 cents) so approach and parting stay steady.

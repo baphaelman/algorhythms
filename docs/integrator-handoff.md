@@ -65,7 +65,21 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
 | M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: announce the first public release (the iPhone check is not a blocker). Next milestone: M4 editor. |
 | M4 | Done (2026-11-20). M4a–M4k merged and pushed: compiler speed-up, editor API, persistence, lane, inspector, palette + shortcuts + drag from palette, voices drawer, selection highlight, incremental compile (M4j), polish (M4k). All §15 acceptance checks pass (build log "M4 acceptance checks"; edit → swap 12–43 ms). |
+| M4.5 editor view | PLAN rev 5 drafted 2026-11-20 (§6.2 walk `edits`, §7.9 `walkSteps`, §10 camera, §11.2–§11.3a, §15 M4.5). Builders wait for the owner's go. |
 | M5–M7 | Not started. |
+
+## Running in the cloud (owner, 2026-11-20)
+The owner moved the integrator to a cloud session to use it from their phone. There: no Homebrew (skip the `brew shellenv` lines); localhost demo links don't reach the phone, so the demo is the Pages deploy after a push; check whether `gh` is authenticated before relying on it.
+
+## M4.5 builder split (proposed; start on the owner's go)
+1. **Core walk edits** (Opus medium): `types.ts`, `schema.ts`, `moments/walk.ts`, compiler emit of `walkSteps`; tests incl. incremental compile. Independent.
+2. **Camera + follow + zoom** (Opus medium): `render/camera.ts`, `app/loop.ts`, `ViewBar.tsx`, store view slice; future dimmed. First of the UI chain.
+3. **Ruler + single playhead** (after 2): new `Ruler.tsx`, `App.tsx`, `Transport.tsx` (scrubber only in the player layout); `drawScore` skips the playhead in the editor.
+4. **Rows on the shared axis** (after 2): `Lane.tsx`, `editor/lane.ts`, `lane.css`: Moments, Transitions, Level.
+5. **Chord picker** (independent): new inspector component + `NoteSetField.tsx`; slash `C/C` parse check.
+6. **Transition/level/voices controls** (after 5, shares `TypeFields.tsx`/`CommonFields.tsx`).
+7. **Walk steps UI** (after 1, 2): steps list + dots overlay.
+Then one builder runs the full e2e on the merged tree.
 
 Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871/871 tests, lint, typecheck, build, 224 e2e on Chromium + Firefox, 0 failed). CI: see `gh run list`.
 

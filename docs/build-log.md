@@ -788,3 +788,11 @@ The owner looked at M4 and wants the editor reworked before M5. Mockup (interact
 - **Inspector: much more customisation.** Chords picked, not typed: diatonic suggestions from the key, root + quality + bass, voicing; live notes and Roman numeral. Transition sliders (length, stagger, curve). Level sliders.
 - **Walks: move individual steps** (dots on the lines + step list with up/down). Needs a model change: walk steps are seeded, so edited steps must be stored as overrides (or the walk frozen); decide in the PLAN revision.
 - Next: integrator revises PLAN §10 (view) and the editor sections, then splits the work into builder tasks once the owner says go.
+
+## PLAN revision 5: editor view (integrator, 2026-11-20)
+Drafted from the owner's direction and mockup (section above). Integrator calls, open to the owner:
+- **Walk steps** are stored as relative overrides (`edits`, keyed by tick and voice id), not by freezing the walk: later steps of that voice follow the moved note, and the walk still adapts to earlier edits. The compiler reports `walkSteps` for the dots and list.
+- **Pan during playback turns Follow off.** Smooth clamps at the piece's ends, which replaces the overview blend.
+- **Phones keep the scrubber;** the ruler replaces it in the editor layout.
+- **Effects row** stays hidden until the M6 `timbre` moment.
+- New milestone **M4.5** before M5. Builder split: `docs/integrator-handoff.md`.
