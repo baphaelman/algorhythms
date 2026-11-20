@@ -495,3 +495,9 @@ The four tests are:
 - **Dev panel:** `?dev` in the URL shows a fixed bottom-left box with "Allow line crossings". The flag lives in `dev-options.ts` (not in the Piece, files or links); `store.ts` passes `compileOptions()` to its three `compile` calls (`initial`, `loadPiece`, `recompileNow`), and the checkbox calls `recompileNow()`. It stays on while the page is open, across loaded pieces. Remove by deleting `dev-options.ts`, `DevPanel.tsx`, the `<DevPanel />` line and the three `compileOptions()` arguments.
 - **Tests note:** `tests/unit/app/dev-options.test.ts` imports the store in Node (audio module mocked) and needs `/// <reference types="vite/client" />` because `tsconfig.node.json` doesn't load Vite's types. A Vitest trap: `beforeEach(() => spy.mockClear())` returns the spy, which Vitest then calls as a cleanup hook; use braces.
 - **e2e (Chromium dev + prod, 20 tests, ~15 s):** the stems picker is stubbed with an OPFS-backed function that throws unless `navigator.userActivation.isActive`, so it proves the synchronous call; everywhere else `showSaveFilePicker` is deleted to test the download path. The real native picker is not covered.
+
+### Timing-test CI flake fixes
+stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard when CI is set without ALGORHYTHMS_PERF_STRICT=1; 4 ms otherwise.
+
+### Dev toggle: compile option `crossings`
+`compile(piece, { crossings: "allow" })` (also `compileWithTrace`) skips crossing enforcement and its diagnostics (`CompileOptions` in compiler/compile.ts, `CrossingsMode` in plan.ts); default `"forbid"` is unchanged. Not on Piece or in the schema; tests in tests/unit/core/crossings-option.test.ts (no tests/core dir exists).
