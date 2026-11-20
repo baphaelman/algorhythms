@@ -177,7 +177,7 @@ export interface MomentEffect {
 }
 
 /** The state of a compiled score at t, as a moment at t would see it. */
-interface StateAt {
+export interface StateAt {
   t: Seconds;
   key: Key;
   /** Per pool index: where the voice is heading; NaN when not active. */
@@ -194,7 +194,8 @@ interface StateAt {
 const kills = (m: Moment): boolean =>
   m.type === 'merge' || (m.type === 'chord' && m.count !== undefined);
 
-function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
+/** The state at t from a compiled score (no recompile); see `momentEffectAt`. */
+export function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
   const byId = new Map<string, Moment>();
   for (const m of piece.moments) if (m && !m.muted) byId.set(m.id, m);
   const scheduled = (id: string | undefined): boolean => {

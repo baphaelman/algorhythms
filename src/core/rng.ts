@@ -45,6 +45,8 @@ export const enum Purpose {
   GenRegister = 13,
   /** generate(): moment ids. */
   GenId = 14,
+  /** suggestNext(): choices among next moves. */
+  Suggest = 15,
 }
 
 // ---------------------------------------------------------------------------------------------

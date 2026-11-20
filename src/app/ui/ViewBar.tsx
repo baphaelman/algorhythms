@@ -2,6 +2,7 @@ import type { FollowMode } from '../../core/types';
 import { MIN_WINDOW, sliderToWindow, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
 import { Palette } from './Palette';
+import { Suggestions } from './Suggestions';
 import {
   fitWindow,
   setColors,
@@ -46,6 +47,7 @@ export function ViewBar() {
   return (
     <div className="viewbar" data-region="view">
       <Palette />
+      <Suggestions />
       <div className="ctl zoom" role="group" aria-label="Zoom">
         <span>Zoom</span>
         <button
