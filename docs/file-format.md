@@ -830,6 +830,12 @@ This is the *input* form: fields with defaults are optional here.
                   "ordered",
                   "free"
                 ]
+              },
+              "count": {
+                "description": "Active voice count after the chord (1..pool size); absent: unchanged.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               }
             },
             "required": [

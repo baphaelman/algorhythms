@@ -244,6 +244,12 @@ export interface ChordMoment extends MomentBase {
   register?: [Pitch, Pitch];
   /** @default 'ordered' */
   assign: AssignMode;
+  /**
+   * Active voice count after the chord (revision 6), 1..pool size. Extra voices are born as in a
+   * split; surplus voices die as in a merge (`which: 'outer'`, `fade` = the glide length).
+   * Absent: the count is unchanged.
+   */
+  count?: number;
 }
 
 /** All targeted voices go to one pitch (or its nearest octaves). */

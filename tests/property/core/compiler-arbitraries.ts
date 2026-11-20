@@ -122,6 +122,7 @@ export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
                 .map(([lo, w]) => [lo, lo + w] as [number, number]),
               { nil: undefined },
             ),
+            count: fc.integer({ min: 1, max: Math.max(1, ids.length) }),
           },
           { requiredKeys: ['at', 'type', 'notes', 'voicing', 'assign'] },
         ),

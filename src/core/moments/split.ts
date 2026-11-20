@@ -9,7 +9,7 @@
  * parent's departure (§7.4). With too few dormant voices the split is truncated (`pool-exhausted`).
  */
 
-import { assignOrdered } from '../voice-leading';
+import { assignFree, assignOrdered } from '../voice-leading';
 import { evenIndices, voiceNotes } from '../voicing';
 import type { Pitch, SplitMoment } from '../types';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan, unionRange } from './types';
@@ -59,6 +59,24 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
     env.diag('error', voiced.code, voiced.message);
     return null;
   }
+  return { ordered: true, intents: voiceWithBirths(env, vs, p, newborns, voiced, false) };
+}
+
+/**
+ * The split rule (§7.4), shared with chord `count`: the targeted voices `vs` (sorted; committed
+ * destinations `p`) take an injective subset of the targets (order-preserving, or Hungarian when
+ * `free`), or double them (surjective) when there are fewer; the newborns take the leftover
+ * targets in ascending order (doubling evenly when too few), each parented by the sounding
+ * targeted voice nearest its target (ties: the lower one).
+ */
+export function voiceWithBirths(
+  env: MomentEnv,
+  vs: readonly number[],
+  p: readonly Pitch[],
+  newborns: readonly number[],
+  voiced: { targets: Pitch[]; perVoice: boolean },
+  free: boolean,
+): Intent[] {
   const q = voiced.targets;
   const intents: Intent[] = [];
 
@@ -67,7 +85,7 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
   if (vs.length === 0) {
     leftover = q.slice();
   } else if (q.length >= vs.length) {
-    const f = voiced.perVoice ? p.map((_, i) => i) : assignOrdered(p, q);
+    const f = voiced.perVoice ? p.map((_, i) => i) : free ? assignFree(p, q) : assignOrdered(p, q);
     const used = new Uint8Array(q.length);
     vs.forEach((voice, i) => {
       used[f[i]] = 1;
@@ -75,7 +93,7 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
     });
     leftover = q.filter((_, j) => !used[j]);
   } else {
-    const f = assignOrdered(p, q); // surjective: doubling
+    const f = free ? assignFree(p, q) : assignOrdered(p, q); // surjective: doubling
     vs.forEach((voice, i) => intents.push({ voice, to: q[f[i]], kind: IntentKind.Move }));
     leftover = [];
   }
@@ -106,5 +124,5 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
     }
     intents.push({ voice, to, kind: IntentKind.Birth, parent });
   });
-  return { ordered: true, intents };
+  return intents;
 }

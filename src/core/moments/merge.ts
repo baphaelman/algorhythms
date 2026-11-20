@@ -6,7 +6,7 @@
  */
 
 import { Purpose } from '../rng';
-import type { MergeMoment } from '../types';
+import type { MergeMoment, MergeWhich } from '../types';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from './types';
 
 export function mergeMoment(m: MergeMoment, env: MomentEnv): MomentPlan | null {
@@ -25,11 +25,39 @@ export function mergeMoment(m: MergeMoment, env: MomentEnv): MomentPlan | null {
     env.diag('info', 'no-targets', 'The merge targets no active voice.');
     return null;
   }
+  const dying = chooseDying(env, vs, m.which, n);
+  const survivors = env.active.filter((v) => !dying.has(v));
+  const fade = Number.isFinite(m.fade) && m.fade > 0 ? m.fade : 0;
+  const intents: Intent[] = [];
+  for (const v of vs) {
+    if (!dying.has(v)) continue;
+    const d = env.dest(v);
+    let to = d;
+    let best = Infinity;
+    for (const s of survivors) {
+      const dist = Math.abs(env.dest(s) - d);
+      if (dist < best) {
+        best = dist;
+        to = env.dest(s);
+      }
+    }
+    intents.push({ voice: v, to, kind: IntentKind.Death, fade });
+  }
+  return { ordered: true, intents };
+}
+
+/** The n voices of `vs` (sorted by committed destination) that die, by `which` (§6.2 merge). */
+export function chooseDying(
+  env: MomentEnv,
+  vs: readonly number[],
+  which: MergeWhich,
+  n: number,
+): Set<number> {
   const a = vs.length;
   const idx = vs.map((_, i) => i);
   const mid = (a - 1) / 2;
   let chosen: number[];
-  switch (m.which) {
+  switch (which) {
     case 'top':
       chosen = idx.slice(a - n);
       break;
@@ -56,23 +84,5 @@ export function mergeMoment(m: MergeMoment, env: MomentEnv): MomentPlan | null {
         .slice(0, n);
     }
   }
-  const dying = new Set(chosen.map((i) => vs[i]));
-  const survivors = env.active.filter((v) => !dying.has(v));
-  const fade = Number.isFinite(m.fade) && m.fade > 0 ? m.fade : 0;
-  const intents: Intent[] = [];
-  for (const v of vs) {
-    if (!dying.has(v)) continue;
-    const d = env.dest(v);
-    let to = d;
-    let best = Infinity;
-    for (const s of survivors) {
-      const dist = Math.abs(env.dest(s) - d);
-      if (dist < best) {
-        best = dist;
-        to = env.dest(s);
-      }
-    }
-    intents.push({ voice: v, to, kind: IntentKind.Death, fade });
-  }
-  return { ordered: true, intents };
+  return new Set(chosen.map((i) => vs[i]));
 }
