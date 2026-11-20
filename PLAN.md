@@ -92,7 +92,7 @@ The engine works out every voice's path from those moments. You can also play it
 - The Walk algorithm: each beat a random subset of voices steps one or two scale degrees, and a step is taken only if the voice stays strictly between its neighbours. The bass leaps 5–12 semitones.
 - The camera blend in `draw()`: log-interpolated pixels-per-second between the follow and overview cameras, and a user window that eases into the overview as it approaches the whole piece.
 - The scrubbing UX: silent while dragging, then resume on release if it was playing.
-- The fixed per-voice detune (`osc.detune`, about ±1.5–4 cents by voice index). It keeps converging voices beating gently instead of locking into a fixed phase relationship. §8.4 makes it mandatory.
+- The fixed per-voice detune (`osc.detune`, about ±1.5–4 cents by voice index). In the prototype it makes converged voices beat. We keep it as per-voice colour; the unison lock (§8.4) now makes converged voices steady, and the beating is the opt-in `wobble` setting.
 
 Note that the prototype's random stagger and durations already let lines cross mid-glide; §7.2 defines what the real compiler guarantees.
 
@@ -129,7 +129,7 @@ Live input (computer keyboard, on-screen piano, Web MIDI)
 - **P1 One source of truth.** Audio, picture and MIDI all read the compiled segments. None of them computes pitch independently.
 - **P2 Deterministic.**
   - The same Piece JSON gives an identical CompiledScore on any engine. This holds only because the compiler follows the numeric rules in §7.11; the spec does not guarantee identical `Math.sin`/`Math.pow` results across engines.
-  - The same CompiledScore, rendered from t = 0 at the same sample rate in fixed 128-frame blocks, gives byte-identical audio within one browser engine. It may differ by tiny amounts across engines.
+  - The same CompiledScore, rendered from t = 0 at the same sample rate in fixed 128-frame blocks, gives byte-identical audio within one browser engine. It may differ by tiny amounts across engines. Voices are coupled once per block by the unison lock (§8.4); its inputs are block-start state with no time source, so this still holds.
   - Live playback matches an export only when it runs from t = 0 at the same sample rate with no seek, loop or hot-swap. Those operations change the DSP state (phases, smoothers, FX buffers), so they are inaudibly different, not byte-identical.
 - **P3 Pure core.** `core/` and `dsp/` import nothing from the DOM or Web Audio, so they run and are tested in Node.
 - **P4 Small documents.** A piece stores moments, not curves; a typical piece is a few KB. That keeps undo snapshots, autosave and share-by-URL cheap.
@@ -350,7 +350,7 @@ Sort the active targeted voices by committed destination (§7.1), breaking ties 
   - The parent is the active voice nearest to the birth target, measured at the moment's time.
   - The newborn starts at the parent's pitch, at the parent's departure time (the start of the parent's move in this moment), or at the moment's time plus a seeded stagger if the parent doesn't move.
   - Gain fades in over `max(0.5 s, glide length / 2)`.
-  - The newborn starts exactly on its parent's pitch. The always-on detune (§8.4) keeps the two from locking into a fixed phase relationship, which could otherwise cancel or double them.
+  - The newborn starts exactly on its parent's pitch. The unison lock (§8.4) joins the two in one group with a shared phase and group gain, so they neither cancel nor double.
 - **Death (merge):**
   - The voice glides to its chosen absorber's target pitch.
   - Its gain fades out over `fade`, starting when the glide ends.
@@ -488,9 +488,15 @@ The worklet runs on the context clock, so the playhead is derived from that cloc
 
 ### 8.4 Per-voice DSP, per sample
 - **Frequency:** `f = Hz(p(t)) · 2^(detuneCents/1200) · vibrato(t)`, where `Hz(p) = referenceHz · 2^((p − 69)/12)` under 12-TET.
-- **Detune: always on.** Each voice has a fixed offset in cents, seeded by voice id, in the prototype's pattern: alternating sign, about 1.5–4 cents. A timbre's `detuneSpread` can widen it but cannot bring any voice below 1 cent.
-  - **Why it is mandatory:** voices that converge on exactly the same frequency lock their phase difference wherever it happens to be. The sum then sits at a seed-dependent level anywhere from near silence to +6 dB. Merges can briefly cancel the survivor while the dying voice sits on it. A seek, which resets phases, would land a unison at a different loudness than the export.
-  - **With detune:** converged voices beat slowly instead, so the level varies gently over time and no phase state is frozen in.
+- **Detune.** Each voice has a fixed offset in cents, seeded by voice id, in the prototype's pattern: alternating sign, about 1.5–4 cents. A timbre's `detuneSpread` can widen it. Within a locked group the offsets are averaged into the group's pitch.
+- **Unison lock (owner decision 2026-11-20: converged voices are steady by default).** Voices on exactly the same frequency would otherwise freeze their phase difference wherever it happens to be, so a unison would sit anywhere from near silence to +6 dB, merges could cancel the survivor, and a seek would change the level.
+  - **Group pass, once per 128-frame block**, on each voice's block-start state. Two voices pair with weight w: full at ≤ 2 cents apart, none at ≥ 20 cents, zero if either timbre has `wobble` > 0. Voices moving apart quickly leave early.
+  - **Per voice,** a lock amount λ (smoothed) pulls its modulated pitch, phase and vibrato phase toward the group's amplitude-weighted mean. Arriving voices converge onto a held one, which keeps its pitch. Level drift and vibrato jitter fade by λ.
+  - **Group gain** h = √(Σw²A²)/|Σ w·A·e^{iφ}| from the measured phases (≤ +3 dB, smoothed): a coherent group sits at the level of an incoherent chord. It is applied per voice, so stems carry it.
+  - **Parting:** the accumulated phase correction unwinds as voices separate, so they leave with unrelated phases.
+  - **Fresh voices** (seek, birth, unmute) snap to their group's phase at zero amplitude, so a seek re-locks with no level change.
+  - **Measured (M3):** a held unison of 2–32 voices sits at 0.95× one voice with envelope variation ≤ 0.002; merges stay within 0.80–1.19× one voice.
+  - **Wobble:** a timbre with `wobble` = c cents (§8.5) never locks and scales the detune to a mean of c cents, giving the old slow beating. The `wobble` preset uses it.
 - **Pitch evaluation:** per sample from segments. The segment cursor advances monotonically and is reset on seek. If profiling demands it, pitch can be evaluated at control rate (every 16 samples) and interpolated linearly in Hz.
 - **Sine table:** one shared 4096-point table with linear interpolation serves FM, vibrato, LFOs and the additive path (M6). The DSP never calls `Math.sin` per sample.
 - **Oscillator:**
@@ -504,7 +510,7 @@ The worklet runs on the context clock, so the playhead is derived from that cloc
   - `loudness(p)`: a gentle equal-loudness tilt; the prototype uses 2^(−(p−57)/48).
 - **Vibrato:** only after a voice arrives at a pitch; rate, depth in cents, and onset delay. Zero during glides.
 - **Pan:** equal-power, set per voice or `auto` (by index or by pitch, per mix setting).
-- **Starting phase:** a seeded random phase per voice, for determinism only. It does not prevent unison phase-summing; the detune above does that.
+- **Starting phase:** a seeded random phase per voice, for determinism only. Unison phase-summing is handled by the lock above.
 - **Sum normalisation:** every voice is multiplied by the same gain, `g_n(t) = 1/√(Σ life weights)` (as in the prototype), smoothed over 50 ms. It is applied per voice, before the dry/send split (§8.6), so stems can carry it exactly (§12).
 
 ### 8.5 Timbre model
@@ -520,11 +526,13 @@ interface Timbre {
   accent: number;               // motion accent amount
   articulation: { amount: number; attack: Seconds; decay: Seconds };
   vibrato: { rate: number; depthCents: number; delay: Seconds };
+  wobble?: number;              // cents, 0–100; > 0 opts out of the unison lock (§8.4) and beats
 }
 ```
 
 Built-in presets:
 - **M2 (wavetable and articulation only):** sine, glass, organ, reed, choir-ish (formant-weighted harmonics), pluck (high articulation).
+- **M3:** wobble (soft glass-like, `wobble` 3: converged voices beat slowly).
 - **M6:** bell (stretch + FM), plus further presets.
 
 **Inharmonic timbres (resolved).** `stretch ≠ 0` makes the partials inharmonic, so a single-cycle wavetable can't represent them. Such timbres use an **additive path** instead: up to 16 partials, each with its own phase accumulator, read from the shared sine table, with partials above Nyquist skipped individually. The cost is 24 voices × 16 partials × 48k ≈ 18M table lookups per second, which is affordable. It ships in M6 with `stretch`.
@@ -550,7 +558,7 @@ voice i ─► × g_n(t) ─┬────────────────�
   - If a voice's new pitch differs from its old pitch at the current time by more than 0.5 semitones, the old and new signals crossfade over 20 ms.
   - Smaller differences are slewed.
   - Life-span changes ramp the gain over 20 ms.
-- **Seek:** a 5 ms fade out, a jump, then a 5 ms fade in. FX state is kept by default, so the reverb tail continues. Oscillator phases after a seek differ from a render from t = 0. Because of the always-on detune (§8.4), this changes no audible level. Exact phase restore (storing cumulative cycles per segment at compile time) is Later.
+- **Seek:** a 5 ms fade out, a jump, then a 5 ms fade in. FX state is kept by default, so the reverb tail continues. Oscillator phases after a seek differ from a render from t = 0. Because locked groups re-take a shared phase and the group gain holds their level (§8.4), this changes no audible level. Exact phase restore (storing cumulative cycles per segment at compile time) is Later.
 - **Loop:** wraps with the same 5 ms crossfade.
 
 ### 8.8 Loudness and safety
@@ -757,7 +765,7 @@ Tablets such as iPads are wider than 900 px, so they get the editor. Touch rules
 ### Stems: exact sums and memory
 **Exact sums.** Two stages act on the whole mix: the normalisation gain g_n(t) and the nonlinear limiter. Rendering each voice "dry" would not sum to the mix whenever the limiter engages, so stems are made like this:
 1. **Pass 1, full mix:** render the mix and record the limiter's per-sample gain-reduction curve g_L(t) as a Float32Array. That is about 58 MB for 5 minutes at 48 kHz.
-2. **One pass per voice:** voice i × g_n(t) (computed per voice anyway, §8.4) → master tone (linear, so it distributes over the sum) → delayed by the limiter's 5 ms look-ahead, exactly as the mix is → × g_L(t).
+2. **One pass per voice:** voice i × g_n(t) (computed per voice anyway, §8.4) → master tone (linear, so it distributes over the sum) → delayed by the limiter's 5 ms look-ahead, exactly as the mix is → × g_L(t). Every other voice still runs its controls and phase silently, because the unison lock couples voices (§8.4); muted voices do the same. This makes a 24-voice stems export cost about 0.46× real time of CPU (later: skip voices that can never join voice i's group).
 3. **FX return stem:** the reverb and delay returns → tone → the same 5 ms delay → × g_L(t).
 
 The voice stems plus the FX return then sum to the mix up to floating-point error. The panning and the voice's sends are the same as in the mix.
@@ -999,6 +1007,9 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 3 (2026-11-20): unison lock
+- **Unisons (P2, §3, §7.4, §8.4, §8.5, §8.7, §12):** converged voices are steady by default (owner decision). A per-block group pass locks pitch and phase and holds the group at the chord level; detune is no longer mandatory as the safeguard. A new Timbre field `wobble` and preset `wobble` give the old beating as an opt-in. Stem passes run every voice silently.
 
 ### Revision 2 (2026-11-19): first review incorporated
 - **Compiler (§7.1):** replaced the one-pass loop with an event simulation, covering committed destinations, cancellation of pending moves, and walk/moment overlap rules.
