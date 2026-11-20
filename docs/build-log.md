@@ -4,6 +4,126 @@ Newest milestone first. Each entry says what departs from (or fills a gap in) PL
 
 ---
 
+## M2: sound engine and WAV export (2026-11-19)
+
+### What exists
+- **`src/dsp/`** (pure TS, no DOM): `graph.ts` (the graph and transport), `voice.ts`, `wavetable.ts` (pure table builder), `timbre-slot.ts`, `sine.ts` (shared 4096-point table), `rng.ts`, `mix.ts` (param paths, FX tail), `constants.ts`, `fx/{reverb,delay,tone,limiter}.ts`.
+- **`src/audio/`**: `engine.ts` (`AudioEngine`), `worklet/engine.worklet.ts` + `engine-protocol.ts`, `tables.ts` + `tables.worker.ts`, `wav.ts` (writer and parser), `wav-export.ts`, `export.worker.ts` + `export-client.ts`, `offline.ts`, `timbres.ts`, `fixtures/{scores,page}.ts`.
+- **`src/core/timbres.ts`**: `BUILTIN_TIMBRES`, the six M2 presets (data only).
+- **`fixtures.html`**: the hidden listening page, a second Vite entry (`build.rolldownOptions.input` in vite.config.ts, additive).
+
+### Graph API (for M3 and M7)
+- `new Graph(sampleRate)`; `load(flat, mix)` (stops, position 0, clears FX); `swap(flat)`; `setTables(name, wavetableSet, fade = 0.02)`; `setMix(mix)`; `setParam(path, value)` (paths in dsp/mix.ts, including `voices.<id|index>.gain|pan|mute|solo|sends.reverb|sends.delay`).
+- Transport: `play(from?)`, `pause()`, `seek(t)`, `setLoop(start, end)`, `clearLoop()`. All are applied at the next block boundary. `process(outL, outR)` renders exactly 128 frames.
+- After each `process()`: `events` (`GraphEvent.Anchor | Ended`), `anchorPieceTime`, `anchorPlaying`, `anchorReason`, `position`, and the meter accumulators (`meterPeakL/R`, `meterSumSq`, `meterFrames`, `resetMeter()`).
+- **Stems hooks (§12):**
+  - `setRenderMode(RenderMode.Voice, i)` renders voice i's dry signal only; `RenderMode.Fx` renders the reverb and delay returns only. Both go through the same tone stage and limiter delay.
+  - `setLimiterCapture(f32)` records g_L per output frame; `setLimiterReplay(f32)` applies it.
+  - `offline.ts renderOffline(input, frames, part)` wraps all of this.
+  - **Exact sum:** Σ voice stems + FX stem − mix = **−144 dBFS** in float, with the limiter pulling 4+ dB (tests/dsp/stems.test.ts).
+- **`AudioEngine`** (main thread):
+  - setup: `AudioEngine.create({ context?, latencyHint = 'playback', connect = true, preload? })`;
+  - transport and data: `load(score, mix, timbres?)`, `play(from?)`, `pause()`, `seek(t)`, `loop(range | null)`, `swap(score, timbres?)`, `param(path, value)`, `setMix(mix)`;
+  - clock and state: `currentTime()`, `isPlaying`, `duration`;
+  - callbacks: `onMeter`, `onEnded`, `onError`;
+  - teardown: `dispose()`.
+- **Export:**
+  - main thread: `exportWav({ score, mix, timbres?, sampleRate: 44100 | 48000, bitDepth: 16 | 24 | 32, chunkSeconds?, onProgress?, signal? }) → Promise<Blob>`, or `exportWavStream(...)` → `ReadableStream<Uint8Array>`;
+  - pure, without a worker: `wavExportChunks()` / `renderWav()` in wav-export.ts.
+
+### Decisions
+- **Control rate.** Pitch, envelopes, pan and the mip choice are evaluated every 16 frames, and phase increment, amplitude and pan gains are interpolated linearly per sample. This is §8.9 fallback 1, adopted from the start: it costs nothing audible and keeps the 24-voice budget comfortable.
+- **Detune (§8.4):**
+  - the sign alternates by pool index (odd +, even −, as in the prototype);
+  - the magnitude is 1.5 + 2.5·u(hash(id)) cents;
+  - `detuneSpread` adds spread·u′(hash(id)), with |detune| ≥ 1 cent always.
+  - Start phase: hash(id, piece seed). The vibrato LFO phase is seeded the same way.
+- **Life fades:** smootherstep in amplitude, at least 5 ms (so `fadeIn: 0` at t = 0 or a zero merge fade can't click). **MIDI CC11 (M3) must follow smootherstep.**
+- **g_n:**
+  - 1/√max(1, Σ life weights) over *every* pool voice, muted or not, so mute and solo don't change the other voices' levels (as on a mixer);
+  - smoothed by a 50 ms one-pole at control rate, and re-initialised on play, seek and loop jumps;
+  - ghosts (below) freeze the g_n they had.
+- **Motion accent** uses core's `segmentMotion` (P1), smoothed over 15 ms, because sin(πx) restarts at 0 on an interrupted glide and would otherwise step the gain.
+- **Articulation:**
+  - an envelope triggered at birth and at every glide→hold arrival: gain = (1 − amount) + amount·env;
+  - the attack is linear from the still-decaying previous envelope (two quick arrivals don't dip);
+  - `decay` is the time to fall to 1 % (−40 dB).
+- **Vibrato:** holds only; it fades in over 0.25 s after `delay`, and its depth is smoothed (40 ms) so it stops without a pitch step when a glide starts.
+- **Pan:** equal power. Auto by index uses the prototype's alternating spread; auto by pitch is (p − 60)/40, clamped to ±0.8.
+- **Sends** are mono (post-g_n, pre-pan): the reverb is mono-in/stereo-out, and the ping-pong takes a mono input.
+- **Wavetables:**
+  - 2048 points + guard, 11 mips from 20 Hz;
+  - band-limited conservatively: mip m keeps partial n only if n·(top of its octave) ≤ Nyquist, so nothing ever aliases;
+  - brightness tilt baked per mip (`track` follows pitch at 3 dB/oct per octave from C4, clamped −2…+3 octaves);
+  - normalised so every preset has unit-sine RMS at C4; fixed Schroeder-like phases per partial, so mips and timbres crossfade without combing.
+- **Timbre changes:** the timbre timeline crossfades A→B linearly. Tables replaced during playback fade from old to new over 20 ms; the old tables stay until the new ones arrive (§8.11).
+- **Levels:** loudness tilt 2^(−(p − 57)/48), as in the prototype; base voice gain 0.25.
+- **Limiter:**
+  - 5 ms look-ahead: a sliding minimum over D + 1 frames, 80 ms release, a box filter over D frames. This provably never exceeds the ceiling (proof in fx/limiter.ts);
+  - ceiling −1 dBFS minus 1e-6;
+  - the gain is always rounded to float32, so a captured g_L replays bit for bit.
+- **Reverb:**
+  - an 8-line FDN with a Householder matrix, 4 input allpass diffusers, a smoothed fractional pre-delay, per-line one-pole damping, and RT60-calibrated gains;
+  - size scales the line lengths 0.4–1.5×, smoothed (gliding lengths, no clicks);
+  - output gain set so M1a's default mix puts the return about 10 dB under the dry signal. **Owner: tune by ear.**
+- **Delay:** ping-pong, gentle low-pass in the feedback, delay time glides when changed.
+- **Tone:** five first-order high shelves two octaves apart (40 Hz…10 kHz) approximate a dB/octave tilt, normalised at 1 kHz; RBJ Butterworth low-pass, bypassed at ≥ 98 % of Nyquist.
+- **Export length:** duration + FX tail (reverb decay + pre-delay, or the delay's repeats down to −60 dB, capped at 20 s) + 50 ms, in whole blocks; no end fade.
+- **WAV:** 16-bit with TPDF dither seeded by the piece seed (±1 LSB; chunking doesn't change it), 24-bit undithered, 32-bit float as WAVE_FORMAT_IEEE_FLOAT with an 18-byte fmt chunk and a `fact` chunk.
+
+### Deviations from PLAN.md
+1. **Seek, pause and play crossfade over 5 ms instead of fade-out → jump → fade-in (§8.7).**
+   - Every sounding voice is copied into a "ghost" that keeps playing the old position while fading out (equal power), and the voice fades in at the new position. Loop wraps work the same way, as §8.7 asks.
+   - Effect: no 10 ms gap and no 5 ms delay before the jump; click-freedom is tested.
+   - There are 64 ghosts. A seek or swap that finds too few free waits a block or two; a loop wrap steals the most-faded ghost.
+2. **The DSP calls core's raw `segmentPitch` and `segmentMotion` with the record's fields,** not the `evalFlatSegment*` wrappers. It is the same code (P1); the wrappers' frames used up V8's inlining budget (see below).
+3. **Allocation-free `process()` holds for smootherstep, smoothstep, linear and cosine glides,** and for everything else in the graph: 60 s with 24 voices + FX gives 0 GC lines.
+   - **`expo` and `bezier` glides still allocate.** TurboFan inlines at most 920 bytecode bytes per compilation. The whole `easeRaw` chain (segmentPitch 172 + easeRaw 320 + sinPiPoly 59 + exp2 122 + pow2Int 96 + bezierValue 123 + bezierSolveT 284 = 1176) cannot fit in any one unit, so their calls box doubles.
+   - Worst case measured: 57 scavenges per 60 s with 24 voices gliding nonstop and 2 of 7 glides expo or bézier; typical pieces (smootherstep is the default) see none.
+   - **Proposed fix (M6 or M7, if wanted):** in the message handler, precompute each expo or bézier segment's pitch on a 128-frame grid with `segmentPitch` itself, and interpolate on the audio thread (exact at grid points, < 0.2 cent between).
+4. **The RTF gate uses this process's CPU time (best of five 6 s runs), not wall time.** Vitest runs test files in parallel, and wall time includes waiting for a core.
+5. **Additions to §8.2:**
+   - a `mix { mix }` message;
+   - `anchor` carries `playing` and `reason`;
+   - `AudioEngine.create({ preload })` passes score, mix and tables in `processorOptions`, because an OfflineAudioContext can render before port messages arrive (seen in Chromium).
+6. **M0's test-tone placeholder is kept.** src/app (not M2's) still uses it. M3 should switch the App to `AudioEngine` and then delete src/dsp/test-tone.ts, src/audio/test-tone.ts, the test-tone worklet and protocol, tests/dsp/test-tone.test.ts and the test-tone parts of tests/e2e/worklet.spec.ts. tests/e2e/audio.spec.ts already covers "the engine worklet loads in dev and prod".
+7. **A voice stem is that voice's dry signal;** its send contributions are in the FX stem (needed for the exact sum).
+
+### V8 rules for anything in `process()` (learned the hard way)
+1. **Initialise every numeric class field where it is declared** (`x = 0`, not `x: number;`). A field that starts as `undefined` gets Tagged representation, and every double that flows through it is boxed. This was the limiter's per-sample allocation.
+2. **Don't merge a float64 with an imported constant in a ternary** (`a > MIN ? a : MIN`). Imported bindings are loaded as tagged cells, so the phi is tagged and the float64 gets boxed. Use `Math.max`.
+3. **Don't pass doubles to, or return them from, calls that TurboFan might not inline.** Pass frame numbers (Smis) and keep doubles in Float64Arrays. The voice's persistent state lives in `Voice.st`.
+4. **Keep the per-tick work in one large method** (`Voice.render`, which is over the 460-byte inlining limit), so its own inlining budget goes to the core segment functions.
+- The no-GC test (tests/dsp/no-gc.test.ts) fails if any of this regresses.
+
+### Results (macOS 26.4, Apple Silicon)
+| Check | Result |
+|---|---|
+| RTF, 24 voices + reverb + delay + tone + limiter, 48 kHz, every ease | **19–26×** standalone, ~13× while the other test files run in parallel (gate ≥ 10×) |
+| No GC | 60 s of audio after a 10 s warm-up, in a child `node` with `--trace-gc` on for exactly that span: **0 GC lines, 0 'gc' observer entries** |
+| Click detector: worst \|Δx\| / local RMS; threshold = 2 × the clean render's worst | sine 0.122, organ 0.49, pluck 0.34. **Worst observed** (seek + scrub + pause/play / loop): sine 0.063 / 0.051, organ 0.196 / 0.188, pluck 0.122 / 0.132. Swap: sine 0.066 (clean 0.086), organ 0.330 (clean 0.309). Hard-cut control: 2.79, 3.42, 0.99 |
+| Unison band (N = 2…32, 6 id sets each; relative to one voice alone, which equals the incoherent √N sum after g_n) | 9 s hold average 0.80–1.42 (band [0.5, 1.6]); quietest 0.5 s window ≥ 0.25 (floor 0.1) |
+| Merge (12 id sets) | 0.25 s windows 0.53–1.41 × one voice (band [0.4, 1.6]) |
+| Stems | Σ stems + FX − mix = −144.3 dBFS |
+| Exports | byte-identical repeats at 16/24/32-bit; identical for chunk sizes 1 s, 0.37 s, 1 block and 2.5 s |
+| e2e, M0's 4 tests + 7 new per project | Chromium, Firefox and WebKit, dev and prod: **66/66** |
+
+### For the owner's ears
+- **Fixture page:** `pnpm dev`, then http://localhost:5173/fixtures.html. After a deploy it is at `/<repo>/fixtures.html`.
+  - fixtures: unison of 8, merge, long glide, a 30 s stress piece, one fixture per preset, 24 dense voices, and a swap pair;
+  - Stress buttons: seek ±2 s, a 20-seek scrub burst, loop 2–4.5 s, hot-swap A ↔ B;
+  - WAV download at 16, 24 or 32 bits and 44.1 or 48 kHz.
+- **§17.2 item 4 (does the 1-cent floor keep `sine` pure?):**
+  - A single sine voice stays a pure sine, just 1.5–4 cents off pitch (the floor only bites when a timbre's `detuneSpread` is negative).
+  - Unisons beat slowly instead: opposite-sign neighbours are at least 3 cents apart, a beat of ≤ 1.6 s at A3; same-sign pairs can drift much more slowly.
+  - Listen to `a4-sine`, `preset-sine` and `unison-8`.
+- **Also by ear:**
+  - the six preset sounds;
+  - the reverb level at the default mix;
+  - the pluck's sustain level (articulation amount 0.9 leaves 10 % between strikes).
+
+---
+
 ## M1a: rng, scales, chords, math, tuning, file format, defaults, generate (2026-11-19)
 
 ### `core/rng.ts` (§7.7)
