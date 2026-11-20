@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { attachCanvasInput } from '../canvas-input';
 import { startScoreLoop } from '../loop';
+import { attachPaletteDrop } from '../palette-drop';
 import { usePlayer } from '../store';
 
 /** The score canvas. Drawn by `startScoreLoop` outside React; this component only mounts it. */
@@ -15,9 +16,11 @@ export function ScoreView() {
     if (!el) return;
     const stopLoop = startScoreLoop(el, tip.current);
     const detach = attachCanvasInput(el);
+    const detachDrop = attachPaletteDrop(el);
     return () => {
       stopLoop();
       detach();
+      detachDrop();
     };
   }, []);
 

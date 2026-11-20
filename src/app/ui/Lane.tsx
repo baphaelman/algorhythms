@@ -11,7 +11,8 @@
  * Pointer: click selects, Shift-click toggles, a click on empty lane clears; drag moves (snapping
  * to the BPM grid unless Alt is held); Alt at press duplicates; dragging a span end changes the
  * glide length (Shift: stagger; a walk's end, a level ramp's length). Keys on a focused item:
- * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter/Space select.
+ * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter/Space select. Focusing an
+ * off-screen item pans the paused view to it.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -33,12 +34,14 @@ import {
   laneItems,
   nudgeDt,
   packRows,
+  revealPan,
   spokenTime,
   type LaneItem,
 } from '../editor/lane';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
 import { onScoreFrame } from '../loop';
-import { usePlayer } from '../store';
+import { attachPaletteDrop } from '../palette-drop';
+import { panBy, usePlayer } from '../store';
 import './lane.css';
 
 /** Rows items are packed into, and their height (px; keep in step with lane.css). */
@@ -48,6 +51,8 @@ const ROW_H = 20;
 const DRAG_SLOP = 3;
 /** Bars narrower than this (px) hide their end handle, so the marker stays clickable. */
 const MIN_HANDLE_BAR = 6;
+/** A focused item is kept at least this far (px) inside the lane's edges. */
+const REVEAL_MARGIN = 48;
 
 // Moment times each compiled score was built from, so stale spans (mid-drag) fall back to estimates.
 const sourceAt = new WeakMap<CompiledScore, Map<MomentId, Seconds>>();
@@ -161,6 +166,16 @@ class LaneController {
     const d = this.drag;
     const i = d ? d.newIds.indexOf(id) : -1;
     return i >= 0 && d ? (this.rowOf.get(d.ids[i]) ?? 0) : 0;
+  }
+
+  /** Pans the (paused) view so item `id` is visible: Tab focus onto an off-screen item. */
+  reveal(id: MomentId): void {
+    const it = this.items.find((x) => x.id === id);
+    const width = this.track?.clientWidth ?? 0;
+    if (!it || !this.view || this.drag || !(this.pps > 0)) return;
+    const x = (this.previewAt.get(id) ?? it.at) * this.pps + this.offset;
+    const dt = revealPan(x, width, this.pps, REVEAL_MARGIN);
+    if (dt !== 0) panBy(dt);
   }
 
   announce(text: string): void {
@@ -387,9 +402,11 @@ class LaneController {
     track.addEventListener('pointerup', this.onUp);
     track.addEventListener('pointercancel', this.onUp);
     const off = onScoreFrame((v) => this.layout(v));
+    const offDrop = attachPaletteDrop(track);
     return () => {
       this.cancel();
       off();
+      offDrop();
       track.removeEventListener('pointerdown', this.onDown);
       track.removeEventListener('pointermove', this.onMove);
       track.removeEventListener('pointerup', this.onUp);
@@ -538,7 +555,10 @@ export function Lane() {
               aria-pressed={selected.has(it.id)}
               aria-label={itemLabel(it)}
               tabIndex={it.id === tabId ? 0 : -1}
-              onFocus={() => setFocusId(it.id)}
+              onFocus={() => {
+                setFocusId(it.id);
+                ctl.reveal(it.id);
+              }}
             >
               <span className="lane-bar">
                 {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}

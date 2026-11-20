@@ -410,8 +410,10 @@ export function VoicesDrawer() {
       aria-label="Voices"
       data-testid="voices-drawer"
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement))
+        if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) {
+          e.preventDefault(); // used: the editor keys must not also clear the selection
           toggleVoicesDrawer(false);
+        }
       }}
     >
       <header className="vd-head">

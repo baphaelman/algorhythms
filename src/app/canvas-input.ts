@@ -6,7 +6,8 @@
  * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
  * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
  * - wide layout only: C U S M T P W I K L add a moment at the playhead, Delete/Backspace delete
- *   the selection, Escape clears it (editor/shortcuts.ts).
+ *   the selection, Escape clears it (editor/shortcuts.ts), unless another handler already used
+ *   the key (`defaultPrevented`, e.g. Escape closing the menu).
  *
  * Handlers write the store (`setWindow`, `panBy`); the animation loop picks the change up on its
  * next frame, so no React render sits on the pointer path.
@@ -184,7 +185,8 @@ export function attachKeys(): () => void {
       else redo();
       return;
     }
-    const ek = editorLayout() ? editorKey(e) : null;
+    // A key another handler already used (e.g. Escape closing a menu) is not an editor key.
+    const ek = !e.defaultPrevented && editorLayout() ? editorKey(e) : null;
     if (ek) {
       if (ek.kind === 'add') {
         e.preventDefault();

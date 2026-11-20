@@ -194,6 +194,18 @@ export function packRows(items: readonly LaneItem[], pps: number, rows: number):
 }
 
 /** Format of a time for announcements: seconds with up to 2 decimals. */
+/**
+ * Seconds to pan the view so a point `x` px from the lane's left edge sits at least `margin` px
+ * inside [0, width] (for a focused off-screen item); 0 if it already does.
+ */
+export function revealPan(x: number, width: number, pps: number, margin: number): Seconds {
+  if (!(pps > 0) || !(width > 0)) return 0;
+  const m = Math.min(margin, width / 2);
+  if (x < m) return (x - m) / pps;
+  if (x > width - m) return (x - (width - m)) / pps;
+  return 0;
+}
+
 export function spokenTime(t: Seconds): string {
   return `${Number(t.toFixed(2))} s`;
 }

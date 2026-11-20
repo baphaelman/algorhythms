@@ -172,6 +172,23 @@ describe('layers', () => {
     );
   });
 
+  it('draws moment markers at markerTimes when given, else at the span start', () => {
+    const introX = (over: Partial<ScoreStyle>): number => {
+      const { ctx, calls } = fakeCtx();
+      const view = drawScore(ctx, score([flatHold]), cam(40), style(over), 25, SIZE, 1);
+      const c = calls.find((x) => x.op === 'fillText' && x.args[0] === 'INTRO');
+      return (c?.args[1] as number) - 4 - (view.xAnchor - view.tc * view.pps);
+    };
+    const pps = (() => {
+      const { ctx } = fakeCtx();
+      return drawScore(ctx, score([flatHold]), cam(40), style(), 25, SIZE, 1).pps;
+    })();
+    expect(introX({}) / pps).toBeCloseTo(10, 1);
+    expect(introX({ markerTimes: { m1: 9.5 } }) / pps).toBeCloseTo(9.5, 1);
+    // missing ids fall back to the span start
+    expect(introX({ markerTimes: { m2: 30 } }) / pps).toBeCloseTo(10, 1);
+  });
+
   it('labels A lines with their Hz', () => {
     const { ctx, calls } = fakeCtx();
     drawScore(ctx, score([flatHold, glider]), cam(20), style(), 25, SIZE, 1);

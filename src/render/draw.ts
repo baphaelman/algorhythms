@@ -21,7 +21,7 @@ import type {
 } from '../core/types';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { lineColor, pitchStops } from './palettes';
-import type { CameraState, ScoreStyle, View } from './types';
+import type { CameraState, MomentTimes, ScoreStyle, View } from './types';
 
 /** A 2D context drawScore can paint on (a canvas, an offscreen canvas, or a test double). */
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -54,14 +54,20 @@ export function keyName(key: Key): string {
   return `${key.tonic} ${scale.replace(/-/g, ' ')}`;
 }
 
-/** Marker spans in ascending start order, cached per `momentSpans` array. */
-const sortedSpans = new WeakMap<readonly MomentSpan[], MomentSpan[]>();
-function spansByStart(spans: readonly MomentSpan[]): MomentSpan[] {
-  let out = sortedSpans.get(spans);
-  if (!out) {
-    out = [...spans].sort((a, b) => a.start - b.start);
-    sortedSpans.set(spans, out);
-  }
+interface Marker {
+  id: MomentId;
+  t: Seconds;
+}
+
+/** Markers in ascending time order, cached per `momentSpans` array and `markerTimes` object. */
+const sortedMarkers = new WeakMap<readonly MomentSpan[], { times?: MomentTimes; out: Marker[] }>();
+function markersByTime(spans: readonly MomentSpan[], times?: MomentTimes): Marker[] {
+  const hit = sortedMarkers.get(spans);
+  if (hit && hit.times === times) return hit.out;
+  const out = spans
+    .map((s) => ({ id: s.id, t: times?.[s.id] ?? s.start }))
+    .sort((a, b) => a.t - b.t);
+  sortedMarkers.set(spans, { times, out });
   return out;
 }
 
@@ -171,8 +177,8 @@ function drawMarkers(
   g.strokeStyle = C.rule;
   g.fillStyle = C.ink2;
   let lastEnd = -1e9;
-  for (const s of spansByStart(spans)) {
-    const x = Math.round(timeToX(view, s.start)) + 0.5;
+  for (const s of markersByTime(spans, style.markerTimes)) {
+    const x = Math.round(timeToX(view, s.t)) + 0.5;
     if (x > W + 1) break;
     if (x < -1) continue;
     const label = labels?.[s.id];

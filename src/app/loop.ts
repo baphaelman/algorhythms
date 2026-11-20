@@ -9,7 +9,7 @@
  */
 
 import { activeAt, keyAt } from '../core/query';
-import type { CompiledScore, MomentId, Piece } from '../core/types';
+import type { CompiledScore, MomentId, Piece, Seconds } from '../core/types';
 import {
   cameraAt,
   cameraScore,
@@ -23,6 +23,7 @@ import {
   tokensOf,
   type CameraState,
   type MomentLabels,
+  type MomentTimes,
   type ScoreStyle,
   type View,
 } from '../render';
@@ -84,6 +85,13 @@ function labelsOf(piece: Piece): MomentLabels {
   return out;
 }
 
+/** Marker times: `moment.at`, so canvas markers sit where the lane puts them. */
+function timesOf(piece: Piece): MomentTimes {
+  const out: Record<MomentId, Seconds> = {};
+  for (const m of piece.moments) out[m.id] = m.at;
+  return out;
+}
+
 /** Geometry the pointer handlers need: the current pixels-per-second of the canvas. */
 export function currentPps(canvas: HTMLCanvasElement, s: PlayerState, t: number): number {
   const cam: CameraState = {
@@ -115,6 +123,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastCompiled: CompiledScore | null = null;
   let lastPiece: Piece | null = null;
   let labels: MomentLabels = {};
+  let markerTimes: MomentTimes = {};
   let lastScrub = '';
   let lastFrame = 0;
   let lastView: View | null = null;
@@ -160,14 +169,18 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     const atRest = transport.status === 'idle' || transport.status === 'ended';
 
     // A new piece or score: at rest, jump to the overview instead of tweening to it.
+    if (piece !== lastPiece) {
+      labels = labelsOf(piece);
+      markerTimes = timesOf(piece);
+      lastPiece = piece;
+      dirty = true;
+    }
     if (compiled !== lastCompiled) {
-      if (piece !== lastPiece) labels = labelsOf(piece);
       if (transport.status === 'idle') {
         overview.value = overview.from = overview.to = 1;
         ghost.value = ghost.from = ghost.to = 1;
       }
       lastCompiled = compiled;
-      lastPiece = piece;
       dirty = true;
     }
 
@@ -243,6 +256,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           futureOpacity: ghost.value,
           hud: view.hud,
           labels,
+          markerTimes,
           highlight,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);

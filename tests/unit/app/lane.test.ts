@@ -9,6 +9,7 @@ import {
   laneItems,
   nudgeDt,
   packRows,
+  revealPan,
   snapTime,
   type LaneItem,
 } from '../../../src/app/editor/lane';
@@ -160,5 +161,20 @@ describe('packRows', () => {
     const items = [item('a', 0, 100), item('b', 30)];
     expect(packRows(items, 10, 3)).toEqual([0, 1]);
     expect(packRows(items, 10, 1)).toEqual([0, 0]);
+  });
+});
+
+describe('revealPan', () => {
+  it('pans just enough to bring a point inside the margins', () => {
+    expect(revealPan(300, 1000, 100, 48)).toBe(0);
+    expect(revealPan(-152, 1000, 100, 48)).toBeCloseTo(-2);
+    expect(revealPan(1152, 1000, 100, 48)).toBeCloseTo(2);
+    expect(revealPan(48, 1000, 100, 48)).toBe(0);
+  });
+
+  it('caps the margin at half the width and is 0 without geometry', () => {
+    expect(revealPan(-10, 40, 10, 48)).toBeCloseTo(-3);
+    expect(revealPan(-10, 0, 10, 48)).toBe(0);
+    expect(revealPan(-10, 1000, 0, 48)).toBe(0);
   });
 });

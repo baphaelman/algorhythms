@@ -84,6 +84,9 @@ export interface View {
 /** A moment label to draw on the markers layer. */
 export type MomentLabels = Readonly<Record<MomentId, string>>;
 
+/** A time per moment id. */
+export type MomentTimes = Readonly<Record<MomentId, Seconds>>;
+
 /** How to paint one frame. Pure data; the app builds it from the piece's view settings and theme. */
 export interface ScoreStyle {
   /** Resolved colour tokens of the current theme. */
@@ -107,6 +110,12 @@ export interface ScoreStyle {
    * an unlabelled one gets a short tick. Positions come from `CompiledScore.momentSpans`.
    */
   labels?: MomentLabels;
+  /**
+   * Marker times by moment id (the editor passes `moment.at`, so markers agree with the lane).
+   * Moments missing here are drawn at their span start. Markers are still drawn only for moments
+   * with a span.
+   */
+  markerTimes?: MomentTimes;
   /** Monospace font family. */
   fontMono?: string;
   /**

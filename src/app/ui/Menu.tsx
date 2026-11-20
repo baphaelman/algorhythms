@@ -21,8 +21,11 @@ export function Menu() {
 
   useEffect(() => {
     if (!open) return;
+    // Capture phase, so it runs before the document-level editor keys; preventDefault tells them
+    // the Escape was used (it must not also clear the selection).
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setOpen(false);
         trigger.current?.focus();
       }
@@ -30,10 +33,10 @@ export function Menu() {
     const onPointer = (e: PointerEvent): void => {
       if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onPointer);
     return () => {
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('pointerdown', onPointer);
     };
   }, [open]);

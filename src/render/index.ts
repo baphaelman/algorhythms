@@ -46,4 +46,12 @@ export {
   tokensOf,
   type PaletteInput,
 } from './palettes';
-export type { CameraState, MomentLabels, ScoreStyle, ThemeName, ThemeTokens, View } from './types';
+export type {
+  CameraState,
+  MomentLabels,
+  MomentTimes,
+  ScoreStyle,
+  ThemeName,
+  ThemeTokens,
+  View,
+} from './types';
