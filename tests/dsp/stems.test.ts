@@ -48,7 +48,9 @@ describe('stems exact sum', () => {
       level = Math.max(level, Math.abs(full.left[i]));
     }
     expect(level).toBeGreaterThan(0.5);
-    console.info(`stems residual: ${dbfs(worst).toFixed(1)} dBFS (peak mix ${dbfs(level).toFixed(1)} dBFS)`);
+    console.info(
+      `stems residual: ${dbfs(worst).toFixed(1)} dBFS (peak mix ${dbfs(level).toFixed(1)} dBFS)`,
+    );
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
   });
 

@@ -3,7 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseWavHeader, WavEncoder, wavHeader, type WavBitDepth } from '../../../src/audio/wav';
 
-function file(bitDepth: WavBitDepth, left: Float32Array, right: Float32Array, rate = 48000): Uint8Array {
+function file(
+  bitDepth: WavBitDepth,
+  left: Float32Array,
+  right: Float32Array,
+  rate = 48000,
+): Uint8Array {
   const format = { sampleRate: rate, bitDepth, channels: 2 } as const;
   const head = wavHeader(format, left.length);
   const data = new WavEncoder(format, 1).encode(left, right);

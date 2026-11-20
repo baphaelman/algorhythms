@@ -10,14 +10,24 @@ interface Hook {
   workletUrl: string;
   processorName: string;
   names: string[];
-  renderOffline(name: string, seconds: number, sampleRate?: number): Promise<{ left: number[]; right: number[]; sampleRate: number }>;
+  renderOffline(
+    name: string,
+    seconds: number,
+    sampleRate?: number,
+  ): Promise<{ left: number[]; right: number[]; sampleRate: number }>;
   exportCheck(
     name: string,
     bitDepth: 16 | 24 | 32,
     sampleRate: 44100 | 48000,
   ): Promise<{
     bytes: number;
-    header: { formatTag: number; channels: number; sampleRate: number; bitDepth: number; frames: number };
+    header: {
+      formatTag: number;
+      channels: number;
+      sampleRate: number;
+      bitDepth: number;
+      frames: number;
+    };
     decodedSeconds: number;
     decodedChannels: number;
     decodedPeak: number;
@@ -52,10 +62,14 @@ function analyse(samples: number[], sampleRate: number, from = 0, to = samples.l
   };
 }
 
-async function openFixtures(page: Page): Promise<Pick<Hook, 'workletUrl' | 'processorName' | 'names'>> {
+async function openFixtures(
+  page: Page,
+): Promise<Pick<Hook, 'workletUrl' | 'processorName' | 'names'>> {
   await page.goto('./fixtures.html');
   await expect(page.getByRole('heading', { name: 'AlgoRhythms sound fixtures' })).toBeVisible();
-  await page.waitForFunction(() => (window as unknown as { __fixtures?: unknown }).__fixtures !== undefined);
+  await page.waitForFunction(
+    () => (window as unknown as { __fixtures?: unknown }).__fixtures !== undefined,
+  );
   return page.evaluate(() => {
     const h = (window as unknown as { __fixtures: Hook }).__fixtures;
     return { workletUrl: h.workletUrl, processorName: h.processorName, names: h.names };
@@ -119,7 +133,9 @@ test('Play sounds a live A4 through the engine worklet', async ({ page }) => {
       if (Math.sqrt(s / buf.length) > 0.05) break;
     }
     const an = hook.analyser;
-    return an ? { samples: Array.from(buf), sampleRate: an.context.sampleRate, state: an.context.state } : null;
+    return an
+      ? { samples: Array.from(buf), sampleRate: an.context.sampleRate, state: an.context.state }
+      : null;
   });
   expect(captured, 'analyser exposed while playing').not.toBeNull();
   expect(captured!.state).toBe('running');
@@ -135,10 +151,13 @@ for (const [bitDepth, sampleRate] of [
   [24, 44100],
   [32, 48000],
 ] as const) {
-  test(`exports a valid ${bitDepth}-bit ${sampleRate / 1000} kHz WAV that the browser decodes`, async ({ page }) => {
+  test(`exports a valid ${bitDepth}-bit ${sampleRate / 1000} kHz WAV that the browser decodes`, async ({
+    page,
+  }) => {
     await openFixtures(page);
     const r = await page.evaluate(
-      ([b, s]) => (window as unknown as { __fixtures: Hook }).__fixtures.exportCheck('preset-pluck', b, s),
+      ([b, s]) =>
+        (window as unknown as { __fixtures: Hook }).__fixtures.exportCheck('preset-pluck', b, s),
       [bitDepth, sampleRate] as const,
     );
     expect(r.header.formatTag).toBe(bitDepth === 32 ? 3 : 1);

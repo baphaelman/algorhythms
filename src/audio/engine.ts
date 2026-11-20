@@ -150,7 +150,11 @@ export class AudioEngine {
   }
 
   /** Loads a score, mix and timbres; resolves once everything has been posted. Stops playback. */
-  async load(score: CompiledScore, mix: MixSettings, timbres?: Record<string, Timbre>): Promise<void> {
+  async load(
+    score: CompiledScore,
+    mix: MixSettings,
+    timbres?: Record<string, Timbre>,
+  ): Promise<void> {
     const flat = flatten(score);
     this.timbresValue = timbres;
     const sets = await this.prepareTables(flat, timbres, true);
@@ -251,7 +255,12 @@ export class AudioEngine {
     const ctx = this.context;
     if (typeof AudioContext !== 'undefined' && ctx instanceof AudioContext) {
       const ts = typeof ctx.getOutputTimestamp === 'function' ? ctx.getOutputTimestamp() : null;
-      if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined && ts.performanceTime > 0) {
+      if (
+        ts &&
+        ts.contextTime !== undefined &&
+        ts.performanceTime !== undefined &&
+        ts.performanceTime > 0
+      ) {
         const t = ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
         return Math.min(t, ctx.currentTime);
       }
@@ -283,7 +292,9 @@ export class AudioEngine {
         const loop = this.loopRange;
         const wrapped = loop && predicted >= loop.end;
         if (!wrapped && Math.abs(predicted - msg.time) > 0.005) {
-          this.anchors = [{ contextTime: ctxTime, pieceTime: msg.time, playing: true, reason: 'pos' }];
+          this.anchors = [
+            { contextTime: ctxTime, pieceTime: msg.time, playing: true, reason: 'pos' },
+          ];
         }
         break;
       }

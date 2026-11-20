@@ -72,7 +72,13 @@ function segmentsFor(spec: VoiceSpec, born: number, end: number): Segment[] {
     const at = Math.max(t, m.at);
     if (at >= end) break;
     if (at > t) segs.push({ t0: t, t1: at, p0: p, p1: p, ease: 'linear' });
-    const seg: Segment = { t0: at, t1: at + m.len, p0: p, p1: m.to, ease: m.ease ?? 'smootherstep' };
+    const seg: Segment = {
+      t0: at,
+      t1: at + m.len,
+      p0: p,
+      p1: m.to,
+      ease: m.ease ?? 'smootherstep',
+    };
     if (m.m0) seg.m0 = m.m0;
     segs.push(seg);
     t = at + m.len;
@@ -87,11 +93,15 @@ export function makeVoice(index: number, spec: VoiceSpec, end: number): Compiled
   const born = spec.born ?? 0;
   const died = spec.died ?? end;
   const timbre: TimbreChange[] =
-    typeof spec.timbre === 'object' ? spec.timbre : [{ t: 0, preset: spec.timbre ?? 'sine', fade: 0 }];
+    typeof spec.timbre === 'object'
+      ? spec.timbre
+      : [{ t: 0, preset: spec.timbre ?? 'sine', fade: 0 }];
   return {
     id: spec.id ?? `v${index + 1}`,
     index,
-    lives: [{ born, died, fadeIn: spec.fadeIn ?? (born > 0 ? 0.5 : 0), fadeOut: spec.fadeOut ?? 0.5 }],
+    lives: [
+      { born, died, fadeIn: spec.fadeIn ?? (born > 0 ? 0.5 : 0), fadeOut: spec.fadeOut ?? 0.5 },
+    ],
     segments: segmentsFor(spec, born, died),
     timbre,
     level: spec.level ?? [],
@@ -122,7 +132,10 @@ export function makeScore(specs: VoiceSpec[], end: number, seed = 1): CompiledSc
  * N voices fanned around `pitch`, gliding into a unison at 0.5–2.5 s and holding it until `hold`
  * seconds; they fade out over the last 0.5 s.
  */
-export function unisonScore(n: number, opts: { pitch?: number; hold?: number; timbre?: string; seed?: number } = {}): CompiledScore {
+export function unisonScore(
+  n: number,
+  opts: { pitch?: number; hold?: number; timbre?: string; seed?: number } = {},
+): CompiledScore {
   const pitch = opts.pitch ?? 57;
   const end = opts.hold ?? 12;
   const specs: VoiceSpec[] = [];
@@ -191,7 +204,13 @@ export function presetScore(timbre: string): CompiledScore {
  * Stress fixture: `n` voices changing chords every `every` seconds with varied glide lengths,
  * some interrupted (m0 ≠ 0), a level dip, and two timbres. Deterministic from `seed`.
  */
-export function stressScore(n = 12, seconds = 30, every = 1.2, seed = 11, timbres = ['sine', 'organ']): CompiledScore {
+export function stressScore(
+  n = 12,
+  seconds = 30,
+  every = 1.2,
+  seed = 11,
+  timbres = ['sine', 'organ'],
+): CompiledScore {
   const rng = new Prng(seed);
   const specs: VoiceSpec[] = [];
   for (let v = 0; v < n; v++) {
@@ -209,14 +228,26 @@ export function stressScore(n = 12, seconds = 30, every = 1.2, seed = 11, timbre
       start: CHORDS[0][v % 6] + 12 * (Math.floor(v / 6) - 1),
       moves,
       timbre: timbres[v % timbres.length],
-      level: v % 4 === 0 ? [{ t: 8, gain: 0.3, over: 2 }, { t: 14, gain: 1, over: 1 }] : [],
+      level:
+        v % 4 === 0
+          ? [
+              { t: 8, gain: 0.3, over: 2 },
+              { t: 14, gain: 1, over: 1 },
+            ]
+          : [],
     });
   }
   return makeScore(specs, seconds, seed);
 }
 
 /** The eases whose evaluation is allocation-free on the audio thread (see docs/build-log.md, M2). */
-export const PLAIN_EASES: EaseRef[] = ['smootherstep', 'smootherstep', 'linear', 'smoothstep', 'cosine'];
+export const PLAIN_EASES: EaseRef[] = [
+  'smootherstep',
+  'smootherstep',
+  'linear',
+  'smoothstep',
+  'cosine',
+];
 
 /** Every ease kind, including the solver-based expo and bézier. */
 export const ALL_EASES: EaseRef[] = [
@@ -226,7 +257,12 @@ export const ALL_EASES: EaseRef[] = [
 ];
 
 /** `n` voices that glide continuously (a new target every ~0.6–1.4 s): the RTF/GC workload. */
-export function denseScore(n = 24, seconds = 70, seed = 5, eases: EaseRef[] = ALL_EASES): CompiledScore {
+export function denseScore(
+  n = 24,
+  seconds = 70,
+  seed = 5,
+  eases: EaseRef[] = ALL_EASES,
+): CompiledScore {
   const rng = new Prng(seed);
   const specs: VoiceSpec[] = [];
   const timbres = ['sine', 'glass', 'organ', 'reed', 'choir', 'pluck'];
@@ -260,7 +296,8 @@ export function swapPair(swapAt = 3, timbre = 'sine'): { a: CompiledScore; b: Co
   const shift = [0, 0.25, 2, -0.3, 5, 0];
   const specs: VoiceSpec[] = base.map((p, i) => ({
     start: p,
-    moves: shift[i] !== 0 ? [{ at: swapAt - 0.001, to: p + shift[i], len: 0.001, ease: 'linear' }] : [],
+    moves:
+      shift[i] !== 0 ? [{ at: swapAt - 0.001, to: p + shift[i], len: 0.001, ease: 'linear' }] : [],
     timbre,
   }));
   specs[5] = { start: base[5], died: swapAt, fadeOut: 0, timbre };

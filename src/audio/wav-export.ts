@@ -30,9 +30,15 @@ export interface WavExportInput {
 }
 
 /** Total byte length of an export, known before rendering. */
-export function wavExportSize(input: WavExportInput, options: WavExportOptions): { frames: number; bytes: number } {
+export function wavExportSize(
+  input: WavExportInput,
+  options: WavExportOptions,
+): { frames: number; bytes: number } {
   const frames = exportFrameCount(input.score, input.mix, options.sampleRate);
-  const header = wavHeader({ sampleRate: options.sampleRate, bitDepth: options.bitDepth, channels: 2 }, frames);
+  const header = wavHeader(
+    { sampleRate: options.sampleRate, bitDepth: options.bitDepth, channels: 2 },
+    frames,
+  );
   return { frames, bytes: header.byteLength + frames * (options.bitDepth / 8) * 2 };
 }
 
@@ -51,10 +57,18 @@ export function* wavExportChunks(
   const format = { sampleRate, bitDepth: options.bitDepth, channels: 2 } as const;
   yield wavHeader(format, frames);
 
-  const graph = createLoadedGraph({ score: flat, mix: input.mix, timbres: input.timbres, sampleRate });
+  const graph = createLoadedGraph({
+    score: flat,
+    mix: input.mix,
+    timbres: input.timbres,
+    sampleRate,
+  });
   graph.play(0);
   const encoder = new WavEncoder(format, flat.seed);
-  const blocksPerChunk = Math.max(1, Math.round(((options.chunkSeconds ?? 1) * sampleRate) / BLOCK_FRAMES));
+  const blocksPerChunk = Math.max(
+    1,
+    Math.round(((options.chunkSeconds ?? 1) * sampleRate) / BLOCK_FRAMES),
+  );
   const chunkFrames = blocksPerChunk * BLOCK_FRAMES;
   const left = new Float32Array(chunkFrames);
   const right = new Float32Array(chunkFrames);
@@ -76,7 +90,10 @@ export function* wavExportChunks(
 }
 
 /** Renders a whole WAV file into one buffer (tests and small exports). */
-export function renderWav(input: WavExportInput, options: WavExportOptions): Uint8Array<ArrayBuffer> {
+export function renderWav(
+  input: WavExportInput,
+  options: WavExportOptions,
+): Uint8Array<ArrayBuffer> {
   const parts = [...wavExportChunks(input, options)];
   const out = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
   let o = 0;

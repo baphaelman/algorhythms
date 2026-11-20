@@ -15,7 +15,10 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
-function runHarness(mode: 'plain' | 'all'): { gcLines: string[]; summary: { ms: number; observedGc: number } } {
+function runHarness(mode: 'plain' | 'all'): {
+  gcLines: string[];
+  summary: { ms: number; observedGc: number };
+} {
   const res = spawnSync(
     process.execPath,
     ['--import', './tests/dsp/node/register.mjs', 'tests/dsp/node/gc-harness.ts', mode],

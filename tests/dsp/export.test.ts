@@ -40,7 +40,9 @@ describe('WAV export', () => {
 
   it('reports progress up to 1', () => {
     const seen: number[] = [];
-    for (const _ of wavExportChunks(input, { sampleRate: 44100, bitDepth: 24 }, (f) => seen.push(f))) {
+    for (const _ of wavExportChunks(input, { sampleRate: 44100, bitDepth: 24 }, (f) =>
+      seen.push(f),
+    )) {
       // drain
     }
     expect(seen.length).toBeGreaterThan(5);

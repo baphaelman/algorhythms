@@ -70,7 +70,11 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
         score: flat,
         mix: req.mix,
         timbres: req.timbres,
-        options: { sampleRate: req.sampleRate, bitDepth: req.bitDepth, chunkSeconds: req.chunkSeconds },
+        options: {
+          sampleRate: req.sampleRate,
+          bitDepth: req.bitDepth,
+          chunkSeconds: req.chunkSeconds,
+        },
       };
       w.postMessage(request, transferList(flat));
     },

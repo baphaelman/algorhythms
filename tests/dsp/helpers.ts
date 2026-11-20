@@ -70,7 +70,12 @@ export function rms(x: Float32Array, from = 0, to = x.length): number {
 }
 
 /** RMS of both channels together over [from, to) seconds. */
-export function stereoRms(out: { left: Float32Array; right: Float32Array }, from: number, to: number, rate = RATE): number {
+export function stereoRms(
+  out: { left: Float32Array; right: Float32Array },
+  from: number,
+  to: number,
+  rate = RATE,
+): number {
   const a = Math.floor(from * rate);
   const b = Math.floor(to * rate);
   const l = rms(out.left, a, b);

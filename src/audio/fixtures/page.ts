@@ -30,13 +30,24 @@ export interface FixturesHook {
   processorName: string;
   names: string[];
   /** Renders a fixture through the real worklet in an OfflineAudioContext. */
-  renderOffline(name: string, seconds: number, sampleRate?: number): Promise<{ left: number[]; right: number[]; sampleRate: number }>;
+  renderOffline(
+    name: string,
+    seconds: number,
+    sampleRate?: number,
+  ): Promise<{ left: number[]; right: number[]; sampleRate: number }>;
   /** Exports a fixture as WAV in the export worker; returns header facts and a decode check. */
   exportCheck(
     name: string,
     bitDepth: WavBitDepth,
     sampleRate: 44100 | 48000,
-  ): Promise<{ bytes: number; header: ReturnType<typeof parseWavHeader>; decodedSeconds: number; decodedChannels: number; decodedPeak: number; progress: number[] }>;
+  ): Promise<{
+    bytes: number;
+    header: ReturnType<typeof parseWavHeader>;
+    decodedSeconds: number;
+    decodedChannels: number;
+    decodedPeak: number;
+    progress: number[];
+  }>;
   /** The live engine while playing (null when stopped). */
   engine: AudioEngine | null;
   /** An analyser on the live engine's output. */
@@ -123,13 +134,21 @@ const hook: FixturesHook = {
   engine: null,
   analyser: null,
   async renderOffline(name, seconds, sampleRate = 48000) {
-    const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.round(seconds * sampleRate), sampleRate });
+    const ctx = new OfflineAudioContext({
+      numberOfChannels: 2,
+      length: Math.round(seconds * sampleRate),
+      sampleRate,
+    });
     await AudioEngine.create({
       context: ctx,
       preload: { score: scoreOf(name as Name), mix: FIXTURE_MIX, playFrom: 0 },
     });
     const buf = await ctx.startRendering();
-    return { left: Array.from(buf.getChannelData(0)), right: Array.from(buf.getChannelData(1)), sampleRate };
+    return {
+      left: Array.from(buf.getChannelData(0)),
+      right: Array.from(buf.getChannelData(1)),
+      sampleRate,
+    };
   },
   async exportCheck(name, bitDepth, sampleRate) {
     const progress: number[] = [];
@@ -192,7 +211,8 @@ $<HTMLButtonElement>('play').onclick = async () => {
     const analyser = context.createAnalyser();
     analyser.fftSize = 8192;
     e.node.connect(analyser);
-    e.onMeter = (m) => (meterBar.style.width = `${Math.min(100, Math.max(m.peakL, m.peakR) * 100)}%`);
+    e.onMeter = (m) =>
+      (meterBar.style.width = `${Math.min(100, Math.max(m.peakL, m.peakR) * 100)}%`);
     e.onEnded = () => (status.textContent = 'ended');
     e.onError = (msg) => (status.textContent = `error: ${msg}`);
     await e.load(scoreOf(nameSel.value as Name), mixOf());
@@ -268,11 +288,13 @@ $<HTMLButtonElement>('export').onclick = async () => {
     window.setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     progress.textContent = `done (${(blob.size / 1e6).toFixed(1)} MB)`;
   } catch (err) {
-    progress.textContent = err instanceof DOMException && err.name === 'AbortError' ? 'cancelled' : `error: ${String(err)}`;
+    progress.textContent =
+      err instanceof DOMException && err.name === 'AbortError'
+        ? 'cancelled'
+        : `error: ${String(err)}`;
   } finally {
     $<HTMLButtonElement>('cancel').disabled = true;
     exportAbort = null;
   }
 };
 $<HTMLButtonElement>('cancel').onclick = () => exportAbort?.abort();
-

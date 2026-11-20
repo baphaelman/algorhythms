@@ -82,7 +82,13 @@ export class Reverb {
   }
 
   /** Sets targets; `immediate` jumps there (used on load). */
-  setParams(size: number, decay: number, damping: number, preDelay: number, immediate = false): void {
+  setParams(
+    size: number,
+    decay: number,
+    damping: number,
+    preDelay: number,
+    immediate = false,
+  ): void {
     const s = Math.min(1, Math.max(0, size));
     const scale = MIN_SCALE + SCALE_RANGE * s;
     for (let k = 0; k < LINES; k++) this.lenTarget[k] = LINE_SECONDS[k] * scale * this.sampleRate;

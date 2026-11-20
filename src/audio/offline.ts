@@ -37,7 +37,11 @@ export function createLoadedGraph(input: RenderInput): Graph {
 }
 
 /** Frames an export renders: the piece plus its FX tail, rounded up to whole blocks. */
-export function exportFrameCount(score: CompiledScore | FlatScore, mix: MixSettings, sampleRate: number): number {
+export function exportFrameCount(
+  score: CompiledScore | FlatScore,
+  mix: MixSettings,
+  sampleRate: number,
+): number {
   const seconds = score.duration + fxTailSeconds(mix) + 0.05;
   return Math.ceil((seconds * sampleRate) / BLOCK_FRAMES) * BLOCK_FRAMES;
 }
@@ -62,7 +66,10 @@ export function renderOffline(
   if (part.kind === 'mix') {
     if (part.captureGain) graph.setLimiterCapture(part.captureGain);
   } else {
-    graph.setRenderMode(part.kind === 'voice' ? RenderMode.Voice : RenderMode.Fx, part.kind === 'voice' ? part.index : -1);
+    graph.setRenderMode(
+      part.kind === 'voice' ? RenderMode.Voice : RenderMode.Fx,
+      part.kind === 'voice' ? part.index : -1,
+    );
     graph.setLimiterReplay(part.replayGain);
   }
   graph.play(0);

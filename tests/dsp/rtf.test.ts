@@ -11,7 +11,11 @@ import { BLOCK_FRAMES } from '../../src/dsp/constants';
 const RATE = 48000;
 
 function measure(seconds: number): number {
-  const graph = createLoadedGraph({ score: denseScore(24, 40, 5, ALL_EASES), mix: FIXTURE_MIX, sampleRate: RATE });
+  const graph = createLoadedGraph({
+    score: denseScore(24, 40, 5, ALL_EASES),
+    mix: FIXTURE_MIX,
+    sampleRate: RATE,
+  });
   const l = new Float32Array(BLOCK_FRAMES);
   const r = new Float32Array(BLOCK_FRAMES);
   graph.play(0);

@@ -26,7 +26,11 @@ class Session extends Driver {
 function worstAround(x: Float32Array, events: number[]): { ratio: number; at: number } {
   let worst = { ratio: 0, at: -1 };
   for (const e of events) {
-    const r = clickScore(x, Math.max(1, Math.floor((e - 0.03) * RATE)), Math.floor((e + 0.06) * RATE));
+    const r = clickScore(
+      x,
+      Math.max(1, Math.floor((e - 0.03) * RATE)),
+      Math.floor((e + 0.06) * RATE),
+    );
     if (r.ratio > worst.ratio) worst = r;
   }
   return worst;
@@ -35,7 +39,10 @@ function worstAround(x: Float32Array, events: number[]): { ratio: number; at: nu
 describe.each(TIMBRES)('click detector, %s', (timbre) => {
   const score = stressScore(8, 20, 1.2, 11, [timbre]);
   const reference = render(score, DRY_MIX, 20);
-  const clean = Math.max(clickScore(reference.left, 480).ratio, clickScore(reference.right, 480).ratio);
+  const clean = Math.max(
+    clickScore(reference.left, 480).ratio,
+    clickScore(reference.right, 480).ratio,
+  );
   const threshold = 2 * clean;
 
   it('catches a hard cut (positive control)', () => {
@@ -43,7 +50,9 @@ describe.each(TIMBRES)('click detector, %s', (timbre) => {
     spliced.set(reference.left.subarray(0, 2 * RATE));
     spliced.set(reference.left.subarray(9 * RATE, 11 * RATE), 2 * RATE);
     const r = clickScore(spliced, 480);
-    console.info(`${timbre}: clean ${clean.toFixed(3)}, threshold ${threshold.toFixed(3)}, hard cut ${r.ratio.toFixed(2)}`);
+    console.info(
+      `${timbre}: clean ${clean.toFixed(3)}, threshold ${threshold.toFixed(3)}, hard cut ${r.ratio.toFixed(2)}`,
+    );
     expect(r.ratio).toBeGreaterThan(2.5 * threshold);
   });
 
@@ -70,7 +79,10 @@ describe.each(TIMBRES)('click detector, %s', (timbre) => {
     s.graph.play();
     s.run(1);
     const out = s.out();
-    const w = Math.max(worstAround(out.left, s.events).ratio, worstAround(out.right, s.events).ratio);
+    const w = Math.max(
+      worstAround(out.left, s.events).ratio,
+      worstAround(out.right, s.events).ratio,
+    );
     console.info(`${timbre}: seek/pause worst ${w.toFixed(3)}`);
     expect(w).toBeLessThanOrEqual(threshold);
   });
@@ -90,20 +102,26 @@ describe.each(TIMBRES)('click detector, %s', (timbre) => {
 });
 
 describe('click detector, hot-swap', () => {
-  it.each(['sine', 'organ'])('swapping %s voices (crossfade, slew, removal, addition) is click-free', (timbre) => {
-    const { a, b } = swapPair(3, timbre);
-    const clean = clickScore(render(a, DRY_MIX, 6).left, 480).ratio;
-    const s = new Session(a, DRY_MIX);
-    s.graph.play(0);
-    s.run(3);
-    s.mark();
-    s.graph.swap(flatten(b));
-    s.run(3);
-    const out = s.out();
-    const w = Math.max(worstAround(out.left, s.events).ratio, worstAround(out.right, s.events).ratio);
-    console.info(`${timbre} swap: clean ${clean.toFixed(3)}, worst ${w.toFixed(3)}`);
-    expect(w).toBeLessThanOrEqual(2 * clean);
-  });
+  it.each(['sine', 'organ'])(
+    'swapping %s voices (crossfade, slew, removal, addition) is click-free',
+    (timbre) => {
+      const { a, b } = swapPair(3, timbre);
+      const clean = clickScore(render(a, DRY_MIX, 6).left, 480).ratio;
+      const s = new Session(a, DRY_MIX);
+      s.graph.play(0);
+      s.run(3);
+      s.mark();
+      s.graph.swap(flatten(b));
+      s.run(3);
+      const out = s.out();
+      const w = Math.max(
+        worstAround(out.left, s.events).ratio,
+        worstAround(out.right, s.events).ratio,
+      );
+      console.info(`${timbre} swap: clean ${clean.toFixed(3)}, worst ${w.toFixed(3)}`);
+      expect(w).toBeLessThanOrEqual(2 * clean);
+    },
+  );
 
   it('a swap with FX keeps the tail and stays under the ceiling', () => {
     const { a, b } = swapPair(2);
@@ -113,6 +131,8 @@ describe('click detector, hot-swap', () => {
     s.graph.swap(flatten(b));
     s.run(2);
     const out = s.out();
-    expect(out.left.every((x) => Number.isFinite(x) && Math.abs(x) <= Math.pow(10, -1 / 20))).toBe(true);
+    expect(out.left.every((x) => Number.isFinite(x) && Math.abs(x) <= Math.pow(10, -1 / 20))).toBe(
+      true,
+    );
   });
 });

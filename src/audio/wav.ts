@@ -82,7 +82,11 @@ export class WavEncoder {
   }
 
   /** Encodes `frames` frames (default: all) of `left` (and `right` for stereo). */
-  encode(left: Float32Array, right: Float32Array | null, frames = left.length): Uint8Array<ArrayBuffer> {
+  encode(
+    left: Float32Array,
+    right: Float32Array | null,
+    frames = left.length,
+  ): Uint8Array<ArrayBuffer> {
     const { bitDepth, channels } = this.format;
     const out = new Uint8Array(frames * wavBlockAlign(this.format));
     const v = new DataView(out.buffer);
@@ -156,7 +160,13 @@ export function parseWavHeader(bytes: Uint8Array): WavInfo {
       if (fmt.blockAlign !== (fmt.bitDepth / 8) * fmt.channels) throw new Error('bad blockAlign');
       if (fmt.byteRate !== fmt.sampleRate * fmt.blockAlign) throw new Error('bad byteRate');
       if (o + 8 + size !== bytes.byteLength) throw new Error('data size mismatch');
-      return { ...fmt, dataOffset: o + 8, dataBytes: size, frames: size / fmt.blockAlign, factFrames };
+      return {
+        ...fmt,
+        dataOffset: o + 8,
+        dataBytes: size,
+        frames: size / fmt.blockAlign,
+        factFrames,
+      };
     }
     o += 8 + size + (size & 1);
   }

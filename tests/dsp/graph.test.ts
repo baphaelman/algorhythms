@@ -14,7 +14,13 @@ import {
   makeScore,
 } from '../../src/audio/fixtures/scores';
 import { Graph } from '../../src/dsp/graph';
-import { buildWavetables, MIP_BASE_HZ, MIP_COUNT, WAVETABLE_SIZE, WAVETABLE_STRIDE } from '../../src/dsp/wavetable';
+import {
+  buildWavetables,
+  MIP_BASE_HZ,
+  MIP_COUNT,
+  WAVETABLE_SIZE,
+  WAVETABLE_STRIDE,
+} from '../../src/dsp/wavetable';
 import { allFinite, Driver, peak, RATE, render, rms } from './helpers';
 
 const CEILING = Math.pow(10, -1 / 20);
@@ -102,7 +108,16 @@ describe('detune and phase (§8.4)', () => {
     });
     // Same ids, another piece: same detune.
     const other = new Graph(RATE);
-    other.load(flatten(makeScore(score.voices.map((v) => ({ id: v.id, start: 50 })), 1, 99)), DRY_MIX);
+    other.load(
+      flatten(
+        makeScore(
+          score.voices.map((v) => ({ id: v.id, start: 50 })),
+          1,
+          99,
+        ),
+      ),
+      DRY_MIX,
+    );
     expect(other.voiceAt(5).detuneCents(0)).toBe(cents[5]);
   });
 
@@ -157,7 +172,10 @@ describe('wavetables (§8.4)', () => {
     for (const [name, t] of Object.entries(BUILTIN_TIMBRES)) {
       const set = buildWavetables(t, RATE);
       const mip = Math.floor(Math.log2(261.63 / MIP_BASE_HZ));
-      const row = set.data.subarray(mip * WAVETABLE_STRIDE, mip * WAVETABLE_STRIDE + WAVETABLE_SIZE);
+      const row = set.data.subarray(
+        mip * WAVETABLE_STRIDE,
+        mip * WAVETABLE_STRIDE + WAVETABLE_SIZE,
+      );
       // Tracking changes the tilt between the mip's bottom and middle C, so allow a little.
       expect(rms(row), name).toBeGreaterThan(0.6);
       expect(rms(row), name).toBeLessThan(0.8);
@@ -197,8 +215,14 @@ describe('voice synthesis (§8.4)', () => {
       ...BUILTIN_TIMBRES.sine,
       vibrato: { rate: 6, depthCents: 40, delay: 0.5 },
     };
-    const score = makeScore([{ start: 57, moves: [{ at: 0.2, to: 69, len: 1.5, ease: 'linear' }], timbre: 'wobble' }], 5);
-    const out = renderOffline({ score, mix: DRY_MIX, sampleRate: RATE, timbres: { wobble } }, 5 * RATE);
+    const score = makeScore(
+      [{ start: 57, moves: [{ at: 0.2, to: 69, len: 1.5, ease: 'linear' }], timbre: 'wobble' }],
+      5,
+    );
+    const out = renderOffline(
+      { score, mix: DRY_MIX, sampleRate: RATE, timbres: { wobble } },
+      5 * RATE,
+    );
     const holdEarly = periodSpread(out.left, 1.75, 2.15); // arrived at 1.7, delay 0.5
     const holdLate = periodSpread(out.left, 3, 4.5);
     expect(holdEarly).toBeLessThan(0.5);
@@ -206,7 +230,10 @@ describe('voice synthesis (§8.4)', () => {
   });
 
   it('articulation makes a pluck loud at each arrival and quieter after', () => {
-    const score = makeScore([{ start: 60, moves: [{ at: 1, to: 64, len: 0.3 }], timbre: 'pluck' }], 4);
+    const score = makeScore(
+      [{ start: 60, moves: [{ at: 1, to: 64, len: 0.3 }], timbre: 'pluck' }],
+      4,
+    );
     const out = render(score, DRY_MIX, 4);
     const atArrival = rms(out.left, Math.floor(1.31 * RATE), Math.floor(1.36 * RATE));
     const later = rms(out.left, Math.floor(2.8 * RATE), Math.floor(2.85 * RATE));
@@ -215,7 +242,13 @@ describe('voice synthesis (§8.4)', () => {
 
   it('silences muted voices and everything but soloed ones', () => {
     const base = [{ start: 60 }, { start: 67 }];
-    const muted = makeScore([{ ...base[0], mute: true }, { ...base[1], mute: true }], 2);
+    const muted = makeScore(
+      [
+        { ...base[0], mute: true },
+        { ...base[1], mute: true },
+      ],
+      2,
+    );
     expect(peak(render(muted, DRY_MIX, 2).left)).toBe(0);
     const solo = makeScore([{ ...base[0], solo: true }, base[1]], 2);
     const out = render(solo, DRY_MIX, 2);
@@ -232,7 +265,8 @@ describe('voice synthesis (§8.4)', () => {
     const at = Math.floor(1 * RATE);
     expect(peak(out.left, at + Math.floor(0.03 * RATE))).toBe(0);
     let maxStep = 0;
-    for (let i = at; i < at + 0.03 * RATE; i++) maxStep = Math.max(maxStep, Math.abs(out.left[i] - out.left[i - 1]));
+    for (let i = at; i < at + 0.03 * RATE; i++)
+      maxStep = Math.max(maxStep, Math.abs(out.left[i] - out.left[i - 1]));
     expect(maxStep).toBeLessThan(0.01);
   });
 });

@@ -496,7 +496,13 @@ export class Graph {
 
   private applyMix(immediate: boolean): void {
     const m = this.mix;
-    this.reverb.setParams(m.reverbSize, m.reverbDecay, m.reverbDamping, m.reverbPreDelay, immediate);
+    this.reverb.setParams(
+      m.reverbSize,
+      m.reverbDecay,
+      m.reverbDamping,
+      m.reverbPreDelay,
+      immediate,
+    );
     this.delay.setParams(m.delayTime, m.delayFeedback, immediate);
     this.tone.setParams(m.toneTilt, m.toneLowpassHz, immediate);
     this.limiter.setCeilingDb(m.ceilingDb);
@@ -708,7 +714,12 @@ export class Graph {
       for (let i = 0; i < DSP_MAX_VOICES; i++) {
         const v = this.voices[i];
         const nd = i < n ? next.data[i] : EMPTY_VOICE_DATA;
-        if (v.enabled && v.isSounding() && v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)) needed++;
+        if (
+          v.enabled &&
+          v.isSounding() &&
+          v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)
+        )
+          needed++;
       }
       if (needed > this.freeGhosts()) return; // retry next block
     }

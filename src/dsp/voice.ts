@@ -207,7 +207,9 @@ export class VoiceData {
     for (let i = 0; i < n; i++) {
       const o = i * SEG_STRIDE;
       const glide =
-        s[o + SEG_P0] !== s[o + SEG_CURVE_P1] || s[o + SEG_M0] !== 0 || !(s[o + SEG_T1] > s[o + SEG_T0]);
+        s[o + SEG_P0] !== s[o + SEG_CURVE_P1] ||
+        s[o + SEG_M0] !== 0 ||
+        !(s[o + SEG_T1] > s[o + SEG_T0]);
       d.segGlide[i] = glide ? 1 : 0;
       const contiguous = i > 0 && s[o - SEG_STRIDE + SEG_T1] === s[o + SEG_T0];
       if (!contiguous) {
@@ -275,7 +277,7 @@ function lifeWeight(L: Float64Array, o: number, t: number): number {
   if (t >= died || t < born) return 0;
   let w = 1;
   // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
-        const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
+  const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
   const u = (t - born) / fin;
   if (u < 1) w = smootherstep(u);
   const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
@@ -635,7 +637,8 @@ export class Voice {
       }
       if (!d.mute && (!ctx.anySolo || d.solo)) {
         if (st[S_MUTE] < 1) st[S_MUTE] = Math.min(1, st[S_MUTE] + ctx.muteStep);
-      } else if (this.fresh) st[S_MUTE] = 0; // silent anyway: start muted, no ramp
+      } else if (this.fresh)
+        st[S_MUTE] = 0; // silent anyway: start muted, no ramp
       else if (st[S_MUTE] > 0) st[S_MUTE] = Math.max(0, st[S_MUTE] - ctx.muteStep);
 
       const lw = this.lifeTick[k + 1];

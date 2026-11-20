@@ -126,7 +126,8 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
       return true;
     }
-    if (out.length === 1) for (let i = 0; i < BLOCK_FRAMES; i++) left[i] = 0.5 * (left[i] + right[i]);
+    if (out.length === 1)
+      for (let i = 0; i < BLOCK_FRAMES; i++) left[i] = 0.5 * (left[i] + right[i]);
 
     if ((g.events & GraphEvent.Anchor) !== 0) this.postAnchor(currentTime);
     if ((g.events & GraphEvent.Ended) !== 0) this.port.postMessage(this.endedMsg);

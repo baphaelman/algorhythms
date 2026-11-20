@@ -11,7 +11,12 @@
 import { PerformanceObserver } from 'node:perf_hooks';
 import v8 from 'node:v8';
 import { createLoadedGraph } from '../../../src/audio/offline';
-import { ALL_EASES, denseScore, FIXTURE_MIX, PLAIN_EASES } from '../../../src/audio/fixtures/scores';
+import {
+  ALL_EASES,
+  denseScore,
+  FIXTURE_MIX,
+  PLAIN_EASES,
+} from '../../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../../src/dsp/constants';
 
 const RATE = 48000;

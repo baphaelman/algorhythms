@@ -16,7 +16,15 @@ export const ENGINE_PROCESSOR = 'algorhythms-engine';
 export type AnchorReason = 'load' | 'play' | 'pause' | 'seek' | 'loop' | 'swap' | 'end' | 'pos';
 
 /** Index → name, matching dsp/graph.ts `AnchorReason`. */
-export const ANCHOR_REASONS: readonly AnchorReason[] = ['load', 'play', 'pause', 'seek', 'loop', 'swap', 'end'];
+export const ANCHOR_REASONS: readonly AnchorReason[] = [
+  'load',
+  'play',
+  'pause',
+  'seek',
+  'loop',
+  'swap',
+  'end',
+];
 
 /** Main thread → worklet. */
 export type EngineInMessage =
@@ -40,7 +48,13 @@ export type EngineInMessage =
 /** Worklet → main thread. */
 export type EngineOutMessage =
   /** Clock anchor: piece time `pieceTime` is heard at context time `contextTime` (§8.3). */
-  | { type: 'anchor'; contextTime: number; pieceTime: number; playing: boolean; reason: AnchorReason }
+  | {
+      type: 'anchor';
+      contextTime: number;
+      pieceTime: number;
+      playing: boolean;
+      reason: AnchorReason;
+    }
   /** Drift correction only: the piece time at context frame `frame`. */
   | { type: 'pos'; frame: number; time: number }
   /** Playback reached the end of the piece. */

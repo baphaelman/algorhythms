@@ -26,7 +26,11 @@ function unisonSpecs(n: number, prefix: string): VoiceSpec[] {
   }));
 }
 
-const single = stereoRms(render(makeScore(unisonSpecs(1, 'ref'), 13), DRY_MIX, 13), HOLD_FROM, HOLD_TO);
+const single = stereoRms(
+  render(makeScore(unisonSpecs(1, 'ref'), 13), DRY_MIX, 13),
+  HOLD_FROM,
+  HOLD_TO,
+);
 
 describe('unison level', () => {
   it.each([2, 4, 8, 16, 32])('%i converged voices stay near the incoherent sum', (n) => {
@@ -66,7 +70,9 @@ describe('merge level', () => {
         high = Math.max(high, v);
       }
     }
-    console.info(`merge: 0.25 s windows between ${low.toFixed(2)} and ${high.toFixed(2)} × one voice`);
+    console.info(
+      `merge: 0.25 s windows between ${low.toFixed(2)} and ${high.toFixed(2)} × one voice`,
+    );
     expect(low).toBeGreaterThanOrEqual(0.4);
     expect(high).toBeLessThanOrEqual(1.6);
   });
