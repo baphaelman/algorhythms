@@ -1,48 +1,47 @@
 /**
- * Fields common to every moment (§6.1, §11.3 revision 5): target voices (All, Top n, Bottom n,
- * Pick…), the transition (sliders, Order and Curve chips, curve preview) and seed.
+ * Fields common to every moment (§6.1, §11.3 revisions 5–6): target voices (under "Advanced"),
+ * the transition (sliders, Order and Curve chips, curve preview, Arrive together) and seed.
  */
 
+import { useState } from 'react';
 import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
 import type { EaseRef, Glide, GlideOrder, Moment, Piece, VoiceSelector } from '../../../core/types';
 import { reroll, updateMoment } from '../../editor/actions';
 import { usePlayer } from '../../store';
-import { Chips, NumberField, Row, Slider, fieldSetter } from './controls';
-import { easePath, rankCount, rankSelector, targetMode, type TargetMode } from './fields';
+import { CheckField, Chips, NumberField, Row, Slider, fieldSetter } from './controls';
+import { arriveGlide, easePath, targetMode, type TargetMode } from './fields';
 
-const TARGET_MODES: readonly (readonly [Exclude<TargetMode, 'range'>, string])[] = [
+const TARGET_MODES: readonly (readonly [TargetMode, string])[] = [
   ['all', 'All'],
-  ['top', 'Top n'],
-  ['bottom', 'Bottom n'],
+  ['rank', 'By rank'],
   ['pick', 'Pick…'],
 ];
 
+/**
+ * Voice targeting (§11.3 Voices): moments target all voices by default, so the selector sits in
+ * a collapsed "Advanced" fold, open when the moment already targets something else.
+ */
 export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
   const compiled = usePlayer((s) => s.compiled);
   const target = m.target;
   const pool = piece.voices.length;
-  const mode = targetMode(target, pool);
+  const mode = targetMode(target);
   // Voices sounding just before the moment acts: what `rank` counts from.
   const active = Math.max(1, activeAt(compiled, m.at).length);
   const rank = target && target !== 'all' && 'rank' in target ? target.rank : null;
+  const [open, setOpen] = useState(mode !== 'all');
 
-  const choose = (v: Exclude<TargetMode, 'range'>): void => {
+  const choose = (v: TargetMode): void => {
     if (v === mode) return;
     const next: VoiceSelector | undefined =
       v === 'all'
         ? undefined
         : v === 'pick'
           ? { voices: piece.voices.map((x) => x.id) }
-          : rankSelector(v, 1, active, pool);
+          : { rank: [0, active - 1] };
     updateMoment(m.id, { target: next }, 'Change target');
   };
-  const countSet =
-    mode === 'top' || mode === 'bottom'
-      ? fieldSetter<number>(m.id, 'Edit target', (_x, n) => ({
-          target: rankSelector(mode, n, active, pool),
-        }))
-      : null;
 
   const rankLo = fieldSetter<number>(m.id, 'Edit target', (x, v) => {
     const t = x.target;
@@ -64,7 +63,13 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
   } as const;
 
   return (
-    <div className="insp-target">
+    <details
+      className="insp-advanced insp-target"
+      data-testid="insp-advanced"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary>Advanced</summary>
       <Chips
         legend="Voices"
         className="target-modes"
@@ -73,19 +78,6 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
         pressed={(v) => v === mode}
         onPick={choose}
       />
-      {rank && countSet && (mode === 'top' || mode === 'bottom') && (
-        <NumberField
-          label={mode === 'top' ? 'Top' : 'Bottom'}
-          unit={rankCount(rank, mode, active) === 1 ? 'voice' : 'voices'}
-          value={rankCount(rank, mode, active)}
-          set={countSet}
-          integer
-          step={1}
-          min={1}
-          max={mode === 'top' ? Math.max(1, active - 1) : pool}
-          testId="insp-target-n"
-        />
-      )}
       {target && target !== 'all' && 'voices' in target && (
         <fieldset className="insp-voices">
           <legend className="sr-only">Target voices</legend>
@@ -111,13 +103,13 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
           })}
         </fieldset>
       )}
-      {rank && mode === 'range' && (
+      {rank && (
         <>
           <NumberField label="Lowest rank" value={rank[0]} set={rankLo} {...rankProps} />
           <NumberField label="Highest rank" value={rank[1]} set={rankHi} {...rankProps} />
         </>
       )}
-    </div>
+    </details>
   );
 }
 
@@ -199,6 +191,18 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
         max={1}
         step={0.01}
         testId="insp-glide-jitter"
+      />
+      <CheckField
+        label="Arrive together"
+        checked={g.arrive !== 'spread'}
+        testId="insp-arrive"
+        onChange={(on) =>
+          updateMoment(
+            m.id,
+            { glide: arriveGlide(m.glide, piece.defaults.glide.arrive, on) },
+            on ? 'Arrive together' : 'Arrive spread',
+          )
+        }
       />
       <Chips
         legend="Order"

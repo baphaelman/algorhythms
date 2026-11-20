@@ -250,6 +250,11 @@ export interface ChordMoment extends MomentBase {
    * Absent: the count is unchanged.
    */
   count?: number;
+  /**
+   * Set when the editor froze the chord for per-note editing (revision 6, §11.3): the `notes`
+   * and `assign` it had before, restored by Unfreeze. The compiler ignores it.
+   */
+  frozenFrom?: { notes: NoteSet; assign: AssignMode };
 }
 
 /** All targeted voices go to one pitch (or its nearest octaves). */
