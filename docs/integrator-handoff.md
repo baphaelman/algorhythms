@@ -48,6 +48,14 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
   ```
 - **This Mac is often loaded, so timing tests flake.** The compiler perf guard is loose (100 ms); the strict 5 ms check runs only with `ALGORHYTHMS_PERF_STRICT=1`.
 
+## Merge routine in the cloud (this session)
+- `git merge --no-edit <branch>` aborts silently if the tree is dirty: commit doc edits first and check the merged files exist (once a commit was titled "Merge M4.5-12" with only a PLAN change; fixed by 694709e).
+- build-log conflicts: strip the conflict markers (keep both sides), `git add`, commit.
+- Verify in `<scratchpad>/verify-head` (detached worktree): lint, typecheck, test, build. `no-gc`, rtf, perf tests flake under load: rerun alone. `render.spec` 4 ms budget always fails on this box (software raster); CI's guard is 12 ms.
+- E2E here: `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` (symlinks Chromium 1243 as the 1255 Playwright wants).
+- After each push, rebuild and republish the preview artifact (see "Demo links").
+- Owner: one line per builder return; keep the placeholder commit author despite the stop hook.
+
 ## Working notes
 - **Check your own context size.** You can't run `/context`, but `mcp__ccd_session_mgmt__get_usage` (session `"self"`; load it with ToolSearch) returns `context.tokensUsed`. Call it after each builder report or push. At about 180k, update the docs and ask the owner to `/compact` without being asked (the second integrator overran to ~250k and the owner had to flag it). Keep context lean: headless checks and DOM reads instead of screenshots; test output to files.
 - **Ping the owner only when something they can test changes** (a deploy with new features, WAVs to hear, a device check) or a decision is needed. No progress narration (owner, 2026-11-20).
@@ -65,7 +73,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
 | M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: announce the first public release (the iPhone check is not a blocker). Next milestone: M4 editor. |
 | M4 | Done (2026-11-20). M4a–M4k merged and pushed: compiler speed-up, editor API, persistence, lane, inspector, palette + shortcuts + drag from palette, voices drawer, selection highlight, incremental compile (M4j), polish (M4k). All §15 acceptance checks pass (build log "M4 acceptance checks"; edit → swap 12–43 ms). |
-| M4.5 editor view | Approved 2026-11-20 (build log "M4.5 approved"). Builders running. |
+| M4.5 editor view | Approved 2026-11-20; PLAN rev 6 adds owner notes. Merged + pushed: 1 frozen walks, 2 camera, 3 ruler/playhead, 4 rows, 5 chord picker, 6 inspector controls, 7 walk steps, 8 Generate confirm, 9 arrive together + no-effect, 10 chord count + freezeChord, 12 context palette + hover preview. In flight (worktree builders): 11 chord Notes n/per-note editor/Arrive toggle/Advanced fold, 13 next-move suggestions, 14 `note` moment core, 16 loop region. Queue: 15 note point UI (after 11+14), then a full e2e run on the merged tree, then M4.5 acceptance checks. |
 | M5–M7 | Not started. |
 
 ## Running in the cloud (owner, 2026-11-20)
