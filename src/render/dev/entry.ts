@@ -6,7 +6,7 @@
 import { compile } from '../../core/compiler/compile';
 import { parsePiece } from '../../core/schema';
 import type { CompiledScore, Piece } from '../../core/types';
-import { drawScore, type CameraState, type ScoreStyle } from '../index';
+import { DEFAULT_FUTURE_OPACITY, drawScore, followStart, type ScoreStyle } from '../index';
 import { DARK_TOKENS, LIGHT_TOKENS, supportsOklch } from '../index';
 
 function compileExample(json: unknown): { score: CompiledScore; piece: Piece } {
@@ -51,24 +51,28 @@ function bench(canvas: HTMLCanvasElement, json: unknown, o: BenchOptions) {
   const g = canvas.getContext('2d', { willReadFrequently: false });
   if (!g) throw new Error('no 2d context');
   const size = { width: canvas.width, height: canvas.height };
-  const cam: CameraState = { window: o.window, overview: 0 };
+  const cam = (t: number) => ({
+    start: followStart('smooth', 0, t, o.window, score.duration),
+    window: o.window,
+  });
   const style: ScoreStyle = {
     tokens: o.dark ? DARK_TOKENS : LIGHT_TOKENS,
     dark: o.dark,
     colors: o.colors,
     oklch: supportsOklch(),
-    futureOpacity: 0,
+    futureOpacity: DEFAULT_FUTURE_OPACITY,
     hud: true,
   };
   const times: number[] = [];
   // warm-up
-  for (let i = 0; i < 10; i++) drawScore(g, score, cam, style, score.duration * 0.3, size, 1);
+  const t0 = score.duration * 0.3;
+  for (let i = 0; i < 10; i++) drawScore(g, score, cam(t0), style, t0, size, 1);
   for (let i = 0; i < o.frames; i++) {
     const t = 1 + ((score.duration - 2) * i) / o.frames;
-    const t0 = performance.now();
-    drawScore(g, score, cam, style, t, size, 1);
+    const w0 = performance.now();
+    drawScore(g, score, cam(t), style, t, size, 1);
     if (o.flush) g.getImageData(0, 0, 1, 1);
-    times.push(performance.now() - t0);
+    times.push(performance.now() - w0);
   }
   times.sort((a, b) => a - b);
   return {
@@ -90,7 +94,7 @@ function shot(canvas: HTMLCanvasElement, json: unknown, t: number, win: number, 
   drawScore(
     g,
     score,
-    { window: win, overview: 0 },
+    { start: followStart('smooth', 0, t, win, score.duration), window: win },
     {
       tokens: dark ? DARK_TOKENS : LIGHT_TOKENS,
       dark,

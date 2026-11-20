@@ -19,8 +19,8 @@
 import { create } from 'zustand';
 import { createIncrementalCompiler } from '../core/compiler/incremental';
 import { parsePiece } from '../core/schema';
-import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
-import { clampWindow, zoomWindow } from '../render';
+import type { CompiledScore, FollowMode, LineColors, Piece, Seconds } from '../core/types';
+import { DEFAULT_FOLLOW, clampStart, clampWindow, zoomAnchor, zoomAround } from '../render';
 import {
   configureAudio,
   getEngine,
@@ -50,8 +50,8 @@ export interface ViewState {
   colors: LineColors;
   /** Theme preference (persisted in localStorage). */
   theme: ThemePref;
-  /** Paused dragging: seconds the view centre is shifted from the playhead. */
-  pan: Seconds;
+  /** How the view follows the playhead (§10); `camera.start` holds the view's position. */
+  follow: FollowMode;
   /** Draw the canvas heads-up display. */
   hud: boolean;
 }
@@ -105,7 +105,7 @@ function viewFor(piece: Piece, compiled: CompiledScore, theme: ThemePref): ViewS
     window: clampWindow(piece.view.window, compiled.duration),
     colors: piece.view.colors,
     theme,
-    pan: 0,
+    follow: piece.view.follow ?? DEFAULT_FOLLOW,
     hud: piece.view.hud,
   };
 }
@@ -132,6 +132,24 @@ function setTransport(patch: Partial<TransportState>): void {
 }
 function setView(patch: Partial<ViewState>): void {
   set((s) => ({ view: { ...s.view, ...patch } }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Camera position (transient: written every frame while following, so not in the store)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The view's left-edge time (§10 camera `{ start, window }`; the window is `view.window`). The
+ * loop applies the follow mode to it each frame (`followStart`) while playing or after the
+ * playhead moved; pans and zooms write it here. Read it with the window through `cameraOf()`.
+ */
+export const camera = { start: 0 };
+
+/** The camera now: `{ start, window }`, both clamped to the piece. */
+export function cameraOf(): { start: Seconds; window: Seconds } {
+  const { view, compiled } = get();
+  const window = clampWindow(view.window, compiled.duration);
+  return { start: clampStart(camera.start, window, compiled.duration), window };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -301,6 +319,7 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
   }
   lastLoad.count++;
   lastLoad.source = opts.source ?? 'other';
+  camera.start = 0;
   set((s) => ({
     piece,
     compiled,
@@ -406,7 +425,6 @@ export function play(): void {
   flushAudioLoad();
   if (transport.status === 'ended' || clock.pos >= compiled.duration - 1e-3) clock.pos = 0;
   clock.started = false;
-  setView({ pan: 0 });
   setTransport({ status: 'playing', scrubbing: false });
   const token = ++clock.token;
   void whenReady().then(
@@ -451,7 +469,6 @@ export function seekTo(t: Seconds): void {
     return;
   }
   setTransport({ status: 'paused' });
-  setView({ pan: 0 });
 }
 
 /** Moves the playhead by `dt` seconds. */
@@ -473,7 +490,6 @@ export function scrubTo(t: Seconds): void {
       if (clock.started) getEngine()?.pause();
       clock.started = false;
     }
-    setView({ pan: 0 });
     setTransport({ status: 'paused', scrubbing: true });
   }
   clock.scrub = Math.min(compiled.duration, Math.max(0, t));
@@ -494,15 +510,36 @@ export function scrubEnd(t?: Seconds): void {
 // View
 // ---------------------------------------------------------------------------------------------
 
-/** Sets the visible window (clamped to 2 s … the whole piece). */
+/**
+ * Sets the visible window (clamped to 2 s … the whole piece), keeping the playhead's x when it is
+ * in view, else the view's centre.
+ */
 export function setWindow(seconds: Seconds): void {
-  setView({ window: clampWindow(seconds, get().compiled.duration) });
+  const { compiled } = get();
+  const cam = cameraOf();
+  const next = zoomAround(
+    cam,
+    seconds,
+    zoomAnchor(cam.start, cam.window, currentTime()),
+    compiled.duration,
+  );
+  camera.start = next.start;
+  setView({ window: next.window });
 }
 
-/** Multiplies the window (1.25 zooms out, 0.8 zooms in). */
+/** Multiplies the window (1.25 zooms out, 0.8 zooms in); see `setWindow`. */
 export function zoomBy(factor: number): void {
-  const { view, compiled } = get();
-  setView({ window: zoomWindow(view.window, factor, compiled.duration) });
+  setWindow(cameraOf().window * factor);
+}
+
+/** Shows the whole piece. */
+export function fitWindow(): void {
+  setWindow(get().compiled.duration);
+}
+
+/** Sets the follow mode. */
+export function setFollow(follow: FollowMode): void {
+  setView({ follow });
 }
 
 /** Sets the line colouring. */
@@ -515,12 +552,16 @@ export function setHud(hud: boolean): void {
   setView({ hud });
 }
 
-/** Pans the paused view by `dt` seconds (positive looks later), within the piece. */
+/**
+ * Pans the view by `dt` seconds (positive looks later), within the piece. A pan during playback
+ * turns Follow off.
+ */
 export function panBy(dt: Seconds): void {
   const { transport, view, compiled } = get();
-  if (transport.status === 'playing') return;
-  const t = currentTime();
-  setView({ pan: Math.min(compiled.duration - t, Math.max(-t, view.pan + dt)) });
+  const cam = cameraOf();
+  camera.start = clampStart(cam.start + dt, cam.window, compiled.duration);
+  // The loop redraws when it sees `camera.start` change.
+  if (transport.status === 'playing' && view.follow !== 'off') setView({ follow: 'off' });
 }
 
 /** Applies the theme preference to the document and stores it. */

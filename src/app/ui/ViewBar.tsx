@@ -1,7 +1,18 @@
-import { sliderToWindow, windowToSlider } from '../../render';
+import type { FollowMode } from '../../core/types';
+import { MIN_WINDOW, sliderToWindow, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
 import { Palette } from './Palette';
-import { setColors, setHud, setTheme, setWindow, usePlayer, type ThemePref } from '../store';
+import {
+  fitWindow,
+  setColors,
+  setFollow,
+  setHud,
+  setTheme,
+  setWindow,
+  usePlayer,
+  zoomBy,
+  type ThemePref,
+} from '../store';
 import { VoicesToggle } from './VoicesDrawer';
 
 const COLORS = [
@@ -10,25 +21,44 @@ const COLORS = [
   ['custom', 'Custom'],
 ] as const;
 
+const FOLLOW: readonly (readonly [FollowMode, string, string])[] = [
+  ['smooth', 'Smooth', 'The view scrolls with the playhead at 35 %'],
+  ['page', 'Page', 'The view turns a page as the playhead nears the right edge'],
+  ['off', 'Off', 'The view never moves by itself'],
+];
+
 const THEMES: readonly (readonly [ThemePref, string])[] = [
   ['system', 'Auto'],
   ['light', 'Light'],
   ['dark', 'Dark'],
 ];
 
-/** The window slider (log scale), line colours, HUD and theme. */
+/** Zoom (log slider, −/+, Fit), Follow, line colours, HUD and theme (PLAN.md §10, §11.2). */
 export function ViewBar() {
   const win = usePlayer((s) => s.view.window);
   const duration = usePlayer((s) => s.compiled.duration);
   const colors = usePlayer((s) => s.view.colors);
   const hud = usePlayer((s) => s.view.hud);
   const theme = usePlayer((s) => s.view.theme);
+  const follow = usePlayer((s) => s.view.follow);
+  const fit = win >= Math.max(MIN_WINDOW, duration) - 1e-6;
 
   return (
     <div className="viewbar" data-region="view">
       <Palette />
-      <label className="ctl">
-        <span>Window</span>
+      <div className="ctl zoom" role="group" aria-label="Zoom">
+        <span>Zoom</span>
+        <button
+          type="button"
+          className="zoom-step"
+          aria-label="Zoom out"
+          title="Zoom out (−)"
+          data-testid="zoom-out"
+          disabled={fit}
+          onClick={() => zoomBy(1.25)}
+        >
+          −
+        </button>
         <input
           type="range"
           min={0}
@@ -36,11 +66,50 @@ export function ViewBar() {
           step={1}
           value={Math.round(windowToSlider(win, duration) * 1000)}
           data-testid="window-slider"
+          aria-label="Visible window"
           aria-valuetext={formatWindow(win)}
           onChange={(e) => setWindow(sliderToWindow(Number(e.target.value) / 1000, duration))}
         />
+        <button
+          type="button"
+          className="zoom-step"
+          aria-label="Zoom in"
+          title="Zoom in (=)"
+          data-testid="zoom-in"
+          disabled={win <= MIN_WINDOW + 1e-6}
+          onClick={() => zoomBy(0.8)}
+        >
+          +
+        </button>
         <output data-testid="window-out">{formatWindow(win)}</output>
-      </label>
+        <button
+          type="button"
+          aria-pressed={fit}
+          data-testid="zoom-fit"
+          title="Show the whole piece"
+          onClick={fitWindow}
+        >
+          Fit
+        </button>
+      </div>
+
+      <div className="ctl" role="group" aria-label="Follow">
+        <span>Follow</span>
+        <div className="seg">
+          {FOLLOW.map(([value, label, title]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={follow === value}
+              data-follow={value}
+              title={title}
+              onClick={() => setFollow(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="ctl" role="group" aria-label="Line colour">
         <span>Lines</span>
@@ -91,7 +160,7 @@ export function ViewBar() {
 
       <p className="keys">
         <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
-        <kbd>−</kbd> <kbd>=</kbd> changes the window. Drag to pan while paused.
+        <kbd>−</kbd> <kbd>=</kbd> zooms. Drag to pan; during playback that turns Follow off.
       </p>
     </div>
   );

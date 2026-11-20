@@ -1,20 +1,23 @@
 /**
  * The score animation loop (PLAN.md §11.3a): one `requestAnimationFrame` loop that reads the store
- * and `currentTime()` directly, draws the canvas with `drawScore`, runs the overview and ghost
- * tweens, and writes the time readout, scrubber and key/voice status by direct DOM writes. React
+ * and `currentTime()` directly, applies the follow mode to the camera (§10), draws the canvas with
+ * `drawScore`, runs the ghost tween, and writes the time readout, scrubber and key/voice status by direct DOM writes. React
  * is never on this path.
  *
  * The canvas is redrawn only while playing, tweening, or after something changed (a store update,
- * a resize, a theme change), so a paused player costs nothing.
+ * a pan, a resize, a theme change), so a paused player costs nothing.
  */
 
 import { activeAt, keyAt } from '../core/query';
 import type { CompiledScore, MomentId, Piece, Seconds } from '../core/types';
 import {
+  DEFAULT_FUTURE_OPACITY,
   cameraAt,
   cameraScore,
+  clampStart,
+  clampWindow,
   drawScore,
-  easeOverview,
+  followStart,
   formatTime,
   hoverLabel,
   keyName,
@@ -30,7 +33,7 @@ import {
 import { live, writeText } from './dom';
 import { useEditor } from './editor/history';
 import { hoverPointer } from './hover';
-import { currentTime, usePlayer, type PlayerState } from './store';
+import { camera, cameraOf, currentTime, usePlayer } from './store';
 
 /** Duration of the future-ghost fade, ms (the prototype's 900). */
 const GHOST_TWEEN_MS = 900;
@@ -44,8 +47,12 @@ export const frameStats = {
   interval: [] as number[],
   /** Frames that drew the canvas. */
   drawn: 0,
-  /** The overview factor (0 follow .. 1 whole piece) as of the last frame. */
-  overview: 1,
+  /** The camera of the last frame: left-edge time, window (s), playhead x as a width fraction. */
+  start: 0,
+  window: 0,
+  head: 0,
+  /** Opacity of the future lines as of the last frame. */
+  ghost: 1,
   reset(): void {
     this.work = [];
     this.interval = [];
@@ -93,14 +100,8 @@ function timesOf(piece: Piece): MomentTimes {
 }
 
 /** Geometry the pointer handlers need: the current pixels-per-second of the canvas. */
-export function currentPps(canvas: HTMLCanvasElement, s: PlayerState, t: number): number {
-  const cam: CameraState = {
-    window: s.view.window,
-    overview: 0,
-    playheadX: s.piece.view.playheadX,
-  };
-  const size = { width: canvas.clientWidth, height: canvas.clientHeight };
-  return cameraAt(cameraScore(s.compiled), cam, t, size, s.view.hud).pps;
+export function currentPps(canvas: HTMLCanvasElement): number {
+  return canvas.clientWidth / cameraOf().window;
 }
 
 /**
@@ -118,7 +119,6 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let height = 0;
   let dpr = 1;
   let dirty = true;
-  const overview: Tween = { value: 1, from: 1, to: 1, t0: 0 };
   const ghost: Tween = { value: 1, from: 1, to: 1, t0: 0 };
   let lastCompiled: CompiledScore | null = null;
   let lastPiece: Piece | null = null;
@@ -126,6 +126,9 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let markerTimes: MomentTimes = {};
   let lastScrub = '';
   let lastFrame = 0;
+  let lastT = NaN;
+  let lastStart = NaN;
+  let lastWindow = NaN;
   let lastView: View | null = null;
   let lastSelection: readonly MomentId[] = [];
   let highlight: ReadonlySet<MomentId> = new Set();
@@ -166,9 +169,9 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     const { compiled, piece, view, transport } = s;
     const reduced = reducedQuery.matches;
     const t = currentTime();
-    const atRest = transport.status === 'idle' || transport.status === 'ended';
+    const idle = transport.status === 'idle';
 
-    // A new piece or score: at rest, jump to the overview instead of tweening to it.
+    // A new piece or score.
     if (piece !== lastPiece) {
       labels = labelsOf(piece);
       markerTimes = timesOf(piece);
@@ -176,21 +179,30 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       dirty = true;
     }
     if (compiled !== lastCompiled) {
-      if (transport.status === 'idle') {
-        overview.value = overview.from = overview.to = 1;
-        ghost.value = ghost.from = ghost.to = 1;
-      }
+      if (idle) ghost.value = ghost.from = ghost.to = 1;
       lastCompiled = compiled;
       dirty = true;
     }
 
-    // Tweens: overview (follow <-> whole piece) and the future ghost.
-    let tweening = stepTween(overview, atRest ? 1 : 0, now);
-    if (tweening) {
-      overview.value = easeOverview(overview.from, overview.to, now - overview.t0, reduced);
-      if (overview.value === overview.to) tweening = false;
+    // Camera: follow while playing or after the playhead moved (a seek); else just clamp.
+    const D = compiled.duration;
+    const win = clampWindow(view.window, D);
+    camera.start =
+      transport.status === 'playing' || t !== lastT
+        ? followStart(view.follow, camera.start, t, win, D)
+        : clampStart(camera.start, win, D);
+    lastT = t;
+    if (camera.start !== lastStart || win !== lastWindow) {
+      lastStart = camera.start;
+      lastWindow = win;
+      dirty = true;
     }
-    const ghostTarget = atRest ? 1 : (piece.view.futureOpacity ?? 0);
+    frameStats.start = camera.start;
+    frameStats.window = win;
+    frameStats.head = (t - camera.start) / win;
+
+    // The future ghost: full before the first play, then dimmed.
+    const ghostTarget = idle ? 1 : (piece.view.futureOpacity ?? DEFAULT_FUTURE_OPACITY);
     let ghosting = stepTween(ghost, ghostTarget, now);
     if (ghosting) {
       const k = reduced ? 1 : Math.min(1, (now - ghost.t0) / GHOST_TWEEN_MS);
@@ -200,8 +212,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
         ghosting = false;
       }
     }
-
-    frameStats.overview = overview.value;
+    frameStats.ghost = ghost.value;
 
     // Direct DOM writes: time, duration, scrubber, key and voice count.
     writeText(live.time, formatTime(t));
@@ -231,19 +242,14 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       highlight = new Set(selection);
     }
 
-    const cam: CameraState = {
-      window: view.window,
-      overview: overview.value,
-      playheadX: piece.view.playheadX,
-      pan: transport.status === 'playing' ? 0 : view.pan,
-    };
+    const cam: CameraState = { start: camera.start, window: win };
     if (frameListeners.size > 0 && width > 0 && height > 0) {
       const v = cameraAt(cameraScore(compiled), cam, t, { width, height }, view.hud);
       for (const fn of frameListeners) fn(v, compiled);
     }
 
     let drew = false;
-    if (transport.status === 'playing' || tweening || ghosting || dirty) {
+    if (transport.status === 'playing' || ghosting || dirty) {
       dirty = false;
       if (width > 0 && height > 0) {
         const dark = view.theme === 'dark' || (view.theme === 'system' && darkQuery.matches);

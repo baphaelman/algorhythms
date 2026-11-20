@@ -55,7 +55,7 @@ const style = (hud = true): ScoreStyle =>
     futureOpacity: 0,
     hud,
   }) as ScoreStyle;
-const cam = { window: 20, overview: 0 };
+const cam = { window: 20, start: 0 };
 
 const score: CompiledScore = compile(
   piece({

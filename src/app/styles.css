@@ -407,6 +407,18 @@ input[type='range'] {
   width: clamp(120px, 24vw, 240px);
 }
 
+/* Zoom (§10 revision 5): a large log slider between − and +. */
+.ctl.zoom input[type='range'] {
+  width: clamp(160px, 30vw, 360px);
+}
+
+.ctl .zoom-step {
+  min-width: 30px;
+  padding: 6px 0;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .ctl output {
   min-width: 6ch;
   text-transform: none;
@@ -734,6 +746,17 @@ dialog.dialog.export {
 
   .stage {
     min-height: 200px;
+  }
+
+  .ctl.zoom {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .ctl.zoom input[type='range'] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
   }
 }
 

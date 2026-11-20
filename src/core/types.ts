@@ -483,6 +483,9 @@ export interface MixSettings {
 /** How score lines are colored (§10). */
 export type LineColors = 'ink' | 'pitch' | 'custom';
 
+/** How the view follows the playhead (§10 revision 5): playhead at 35 %, page turns, or never. */
+export type FollowMode = 'smooth' | 'page' | 'off';
+
 /** View settings stored with the piece. Theme and other per-user preferences are not here. */
 export interface ViewSettings {
   /** Visible time window in seconds: 2 s up to the whole piece, on a log slider. */
@@ -493,10 +496,12 @@ export interface ViewSettings {
   hud: boolean;
   /** Snapping grid in beats per minute; absent means no grid. Snapping only (D9). */
   gridBpm?: number;
-  /** 0..1 opacity of the future lines (the "ghost") during playback. @default 0 */
+  /** 0..1 opacity of the future (not yet played) lines. @default 0.35 (revision 5; was 0) */
   futureOpacity?: number;
-  /** Playhead position as a fraction of the view width. @default 0.78 */
+  /** Unused since revision 5 (Smooth follow holds the playhead at 35 %); kept so files load. */
   playheadX?: number;
+  /** Follow mode the view opens with (§10). @default 'smooth' */
+  follow?: FollowMode;
 }
 
 // ---------------------------------------------------------------------------------------------

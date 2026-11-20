@@ -3032,6 +3032,14 @@ This is the *input* form: fields with defaults are optional here.
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "follow": {
+          "type": "string",
+          "enum": [
+            "smooth",
+            "page",
+            "off"
+          ]
         }
       },
       "additionalProperties": {}

@@ -95,7 +95,7 @@ test('page title is AlgoRhythms', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
 });
 
-test('opens with the featured example loaded, not playing, in overview', async ({ page }) => {
+test('opens with the featured example loaded, not playing, at the start', async ({ page }) => {
   await openApp(page);
   const s = await getState(page);
   expect(s.title).toBe('Tidewater Hymn');
@@ -106,7 +106,7 @@ test('opens with the featured example loaded, not playing, in overview', async (
   await expect(page.getByTestId('keyvoices')).toContainText(/A dorian · \d+ \/ 12 voices/);
   // No audio before a gesture beyond preloading: nothing is playing.
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
-  expect(await page.evaluate(() => window.__algorhythms!.frameStats.overview)).toBe(1);
+  expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);
 });
 
 test('play makes sound and time advances; pause holds; the scrubber seeks', async ({ page }) => {
@@ -166,23 +166,19 @@ test('Space plays and pauses; arrow keys seek', async ({ page }) => {
   await expect.poll(() => shownTime(page)).toBeCloseTo(t, 0);
 });
 
-test('the piece ends, the camera pulls back, and play restarts it', async ({ page }) => {
+test('the piece ends with the view parked at its end, and play restarts it', async ({ page }) => {
   await openApp(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await waitForStatus(page, 'playing');
-  await expect
-    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.overview), {
-      timeout: 10_000,
-    })
-    .toBeLessThan(0.05); // following
-  const { duration } = await getState(page);
+  const { duration, view } = await getState(page);
   await page.getByTestId('scrubber').fill(String(duration - 1.5));
   await waitForStatus(page, 'ended', 15_000);
   await expect
-    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.overview), {
+    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.start), {
       timeout: 10_000,
     })
-    .toBeGreaterThan(0.99); // whole piece
+    .toBeCloseTo(duration - view.window, 3); // clamped at the end
+  expect(await page.evaluate(() => window.__algorhythms!.frameStats.head)).toBeCloseTo(1, 3);
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await waitForStatus(page, 'playing');
@@ -224,7 +220,7 @@ test('the window slider is logarithmic from 2 s to the whole piece; = and − zo
   await expect.poll(async () => (await getState(page)).view.window).toBeLessThan(before);
 });
 
-test('dragging pans the view while paused, not while playing', async ({ page }) => {
+test('dragging pans the paused view', async ({ page }) => {
   await openApp(page);
   await page.getByTestId('scrubber').fill('60');
   await expect(page.getByTestId('time')).toHaveText('01:00.0');
@@ -232,13 +228,17 @@ test('dragging pans the view while paused, not while playing', async ({ page }) 
   await frames(page);
   const box = (await page.getByTestId('stage').boundingBox())!;
   const y = box.y + box.height / 2;
+  const start = () => page.evaluate(() => window.__algorhythms!.frameStats.start);
+  const before = await start();
   await page.mouse.move(box.x + 300, y);
   await page.mouse.down();
   await page.mouse.move(box.x + 500, y, { steps: 8 });
   await page.mouse.up();
+  await frames(page);
   const { view, status } = await getState(page);
   expect(status).toBe('paused'); // a drag is not a click
-  expect(view.pan).toBeLessThan(-1); // dragged right: shows earlier time
+  expect(view.follow).toBe('smooth'); // a paused pan keeps Follow
+  expect(await start()).toBeLessThan(before - 1); // dragged right: shows earlier time
 });
 
 test('line colours change the picture', async ({ page }) => {
@@ -282,14 +282,14 @@ test('themes: system default, light and dark toggle, and the choice is remembere
   expect(bright((await canvasInfo(page)).rgb), 'forced dark').toBeLessThan(150);
 });
 
-test('prefers-reduced-motion skips the camera tween', async ({ page }) => {
+test('prefers-reduced-motion skips the future-dimming tween', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await waitForStatus(page, 'playing');
   await expect
-    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.overview), { timeout: 2000 })
-    .toBe(0);
+    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.ghost), { timeout: 400 })
+    .toBe(0.35);
 });
 
 test('the examples gallery loads each example, stopped', async ({ page }) => {
@@ -453,10 +453,6 @@ test('screenshots: desktop light, desktop dark, phone', async ({ page }, info) =
   const settle = async () => {
     await page.getByTestId('scrubber').fill('62');
     await page.getByTestId('window-slider').fill('300');
-    // Let the camera finish its overview -> follow tween.
-    await expect
-      .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.overview))
-      .toBeLessThan(0.001);
     await frames(page);
   };
   await page.setViewportSize({ width: 1440, height: 900 });

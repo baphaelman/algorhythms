@@ -76,7 +76,7 @@ function markersByTime(spans: readonly MomentSpan[], times?: MomentTimes): Marke
  *
  * @param ctx2d  context of a canvas whose pixel size is `size · dpr`
  * @param compiled the score (read through core/query only)
- * @param camera the user-controlled view (window, overview, pan); see `cameraAt` for the maths
+ * @param camera the user-controlled view (start, window); see `cameraAt` for the maths
  * @param style  theme tokens, colouring, ghost opacity, labels
  * @param t      playhead time in seconds
  * @param size   canvas size in CSS pixels
@@ -136,21 +136,19 @@ export function drawScore(
   drawLines(g, compiled, style, view);
 
   // 5. heads
-  const headA = style.heads === false ? 0 : 1 - view.blend;
+  const headA = style.heads === false ? 0 : 1;
   const xH = view.xHead;
   if (headA > 0.02 && xH > -RING_R && xH < W + RING_R) {
     drawHeads(g, compiled, style, view, headA, MONO);
   }
 
   // 6. playhead
-  g.globalAlpha = 0.4 + 0.6 * (1 - view.blend);
   g.strokeStyle = C.rule;
   g.lineWidth = 1;
   g.beginPath();
   g.moveTo(Math.round(xH) + 0.5, padT - 6);
   g.lineTo(Math.round(xH) + 0.5, H - padB + 6);
   g.stroke();
-  g.globalAlpha = 1;
 
   // 7. HUD
   if (style.hud) drawHud(g, compiled, style, view, MONO, padL, padR);
@@ -415,7 +413,7 @@ function drawHud(
   }
   g.fillStyle = C.ink2;
   g.font = `10.5px ${MONO}`;
-  const mode = view.blend > 0.5 ? 'whole piece' : 'following';
+  const mode = view.window >= view.duration ? 'whole piece' : 'following';
   g.fillText(`${keyName(keyAt(compiled, t)).toLowerCase()} · ${mode}`, W - padR, hy + 14);
   let lo = Infinity;
   let hi = -Infinity;

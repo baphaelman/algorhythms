@@ -113,7 +113,7 @@ const style = (over: Partial<ScoreStyle> = {}): ScoreStyle => ({
   ...over,
 });
 const SIZE = { width: 1000, height: 600 };
-const CAM: CameraState = { window: 40, overview: 1 };
+const CAM: CameraState = { window: 40, start: 0 };
 
 const strokes = (calls: Call[], color: string): Call[] =>
   calls.filter((c) => c.op === 'stroke' && c.stroke === color);
