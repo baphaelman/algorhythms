@@ -27,9 +27,7 @@ Code layout, layer rules and the decisions log: [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Attribution
 
-AlgoRhythms was inspired by the YouTube video **"Listen to this algorithm · Nebula"** by the channel **Bounce Gravity** (published 2026-10-24): [find it on YouTube](https://www.youtube.com/results?search_query=%22Listen+to+this+algorithm%22+Nebula+Bounce+Gravity).
-
-<!-- TODO(owner): replace the search link above with the video's direct URL. -->
+AlgoRhythms was inspired by the YouTube video **"Listen to this algorithm · Nebula"** by the channel **Bounce Gravity** (published 2026-10-24): [watch it on YouTube](https://www.youtube.com/watch?v=TnSs5w5F5YA).
 
 AlgoRhythms is an independent implementation of the general technique (pitch-versus-time lines that drive oscillators). It is not affiliated with, endorsed by, or connected to the video's creator or channel, and it uses none of the video's material.
 
