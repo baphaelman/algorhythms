@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { newPiece } from '../../../src/core/defaults';
-import type { Glide, Moment, Piece } from '../../../src/core/types';
+import type { CompiledVoice, Glide, Moment, Piece } from '../../../src/core/types';
 import {
   dragDt,
   endDragPatch,
   estimateSpan,
   gridStep,
   laneItems,
+  levelCurve,
+  momentText,
   nudgeDt,
+  packBars,
   packRows,
   revealPan,
   snapTime,
@@ -157,10 +160,73 @@ describe('packRows', () => {
     expect(packRows(items, 10, 3)).toEqual([0, 1, 2, 0, 0]);
   });
 
-  it('long bars reserve their row', () => {
-    const items = [item('a', 0, 100), item('b', 30)];
-    expect(packRows(items, 10, 3)).toEqual([0, 1]);
-    expect(packRows(items, 10, 1)).toEqual([0, 0]);
+  it('bars pack on their own rows by span; labels do not reserve bar rows', () => {
+    const items = [item('a', 0, 100), item('b', 30, 31), item('c', 200, 201)];
+    expect(packRows(items, 10, 2)).toEqual([0, 0, 0]);
+    expect(packBars(items, 10, 2)).toEqual([0, 1, 0]);
+    expect(packBars(items, 10, 1)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('names and the level curve', () => {
+  it('momentText: label, chord name, level %, key name, type', () => {
+    expect(momentText(chord('a', 0), 'Am7')).toBe('Am7');
+    expect(momentText(chord('a', 0, { label: 'lift' }), 'Am7')).toBe('lift');
+    expect(momentText(chord('a', 0))).toBe('chord');
+    expect(momentText({ id: 'l', type: 'level', at: 0, gain: 0.554, over: 1 } as Moment)).toBe(
+      'level 55%',
+    );
+    expect(
+      momentText({
+        id: 'k',
+        type: 'key',
+        at: 0,
+        key: { tonic: 'A', scale: 'dorian' },
+      } as unknown as Moment),
+    ).toBe('A dorian');
+    expect(momentText({ id: 'u', type: 'unison', at: 0 } as unknown as Moment)).toBe('unison');
+  });
+
+  const voice = (lives: [number, number?][], level: CompiledVoice['level']): CompiledVoice =>
+    ({ lives: lives.map(([born, died]) => ({ born, died, fadeIn: 0 })), level }) as CompiledVoice;
+
+  it('levelCurve: mean over live voices, ramps linear, steps doubled', () => {
+    const curve = levelCurve({
+      duration: 10,
+      voices: [
+        voice([[0]], [{ t: 2, gain: 0.5, over: 2 }]),
+        voice([[0, 6]], []),
+        voice([], [{ t: 0, gain: 0, over: 0 }]), // never sounds: ignored
+      ],
+    });
+    const at = (t: number): number => {
+      const i = curve.findIndex((p) => p.t > t);
+      const [a, b] = [curve[i - 1], curve[i]];
+      return a.v + ((b.v - a.v) * (t - a.t)) / (b.t - a.t);
+    };
+    expect(curve[0]).toEqual({ t: 0, v: 1 });
+    expect(at(3)).toBeCloseTo((0.75 + 1) / 2, 9);
+    expect(at(5)).toBeCloseTo(0.75, 9);
+    // Voice 2 dies at 6: the mean steps to voice 1's 0.5.
+    expect(curve.filter((p) => p.t === 6).map((p) => p.v)).toEqual([0.75, 0.5]);
+    expect(curve.at(-1)).toEqual({ t: 10, v: 0.5 });
+  });
+
+  it('levelCurve: a ramp interrupted by the next change starts the next from where it got to', () => {
+    const curve = levelCurve({
+      duration: 4,
+      voices: [
+        voice(
+          [[0]],
+          [
+            { t: 0, gain: 0, over: 2 },
+            { t: 1, gain: 1, over: 0 },
+          ],
+        ),
+      ],
+    });
+    expect(curve.find((p) => p.t === 1 && p.v !== 1)?.v).toBeCloseTo(0.5, 9);
+    expect(curve.at(-1)?.v).toBe(1);
   });
 });
 
