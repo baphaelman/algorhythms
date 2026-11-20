@@ -1,6 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
 import { startPlayer } from './store';
+import { DevPanel } from './ui/DevPanel';
+import { ExportDialog } from './ui/ExportDialog';
+import { GeneratePanel } from './ui/GeneratePanel';
 import { Menu } from './ui/Menu';
 import { Notices, SilentHint } from './ui/Notices';
 import { ScoreView } from './ui/ScoreView';
@@ -42,6 +45,9 @@ export function App() {
       <Transport>
         <Menu />
       </Transport>
+      <GeneratePanel />
+      <ExportDialog />
+      <DevPanel />
       <SilentHint />
       <Notices />
       <main className="workspace">
