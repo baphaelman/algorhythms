@@ -48,6 +48,21 @@
   color: var(--accent);
 }
 
+/* No effect at the playhead (revision 6): greyed, still draggable. */
+.palette button[data-no-effect] {
+  opacity: 0.4;
+  border-style: dashed;
+  cursor: grab;
+}
+
+.palette button[data-no-effect]:hover {
+  border-color: var(--rule);
+}
+
+.palette button[data-no-effect] .palette-icon {
+  color: var(--ink-2);
+}
+
 /* A palette drag over the score or the lane (palette-drop.ts). */
 [data-palette-drop] {
   outline: 2px dashed var(--accent);

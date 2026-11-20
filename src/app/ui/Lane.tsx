@@ -543,6 +543,15 @@ function barText(it: LaneItem): string {
   return len > 1e-3 ? `${len.toFixed(1)} s` : '';
 }
 
+/** Moments with a `no-effect` diagnostic (revision 6) and its message. */
+function noEffectReasons(compiled: CompiledScore): Map<MomentId, string> {
+  const out = new Map<MomentId, string>();
+  for (const d of compiled.diagnostics) {
+    if (d.code === 'no-effect' && d.momentId !== undefined) out.set(d.momentId, d.message);
+  }
+  return out;
+}
+
 function itemLabel(it: LaneItem): string {
   const kind = it.text === it.type ? it.type : `${it.text} (${it.type})`;
   const span = it.end - it.at > 1e-3 ? `, ${spokenTime(it.end - it.at)} long` : '';
@@ -554,6 +563,7 @@ export function Lane() {
   const piece = usePlayer((s) => s.piece);
   const compiled = usePlayer((s) => s.compiled);
   const selection = useEditor((s) => s.selection);
+  const noEffect = useMemo(() => noEffectReasons(compiled), [compiled]);
   const items = useMemo(
     () => laneItems(piece, compiled.momentSpans, sourceAt.get(compiled), compiled.harmony),
     [piece, compiled],
@@ -698,9 +708,11 @@ export function Lane() {
               data-type={it.type}
               data-selected={selected.has(it.id) || undefined}
               data-muted={it.muted || undefined}
+              data-no-effect={noEffect.has(it.id) || undefined}
+              title={noEffect.get(it.id)}
               role="button"
               aria-pressed={selected.has(it.id)}
-              aria-label={itemLabel(it)}
+              aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}
               tabIndex={it.id === tabId ? 0 : -1}
               onFocus={() => {
                 setFocusId(it.id);

@@ -122,7 +122,7 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
       {diags.length > 0 && (
         <ul className="insp-diags" data-testid="insp-diags" aria-label="Messages for this moment">
           {diags.map((d, i) => (
-            <li key={i} className={d.level}>
+            <li key={i} className={d.level} data-code={d.code}>
               <span className="sr-only">{d.level}: </span>
               {d.message}
             </li>

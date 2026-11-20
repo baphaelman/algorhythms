@@ -14,6 +14,7 @@
  */
 
 import { redo, undo } from './editor/history';
+import { playheadEffect } from './editor/palette-effects';
 import { addAtPlayhead, clearSelection, deleteSelection, editorKey } from './editor/shortcuts';
 import { clearHover, setHover } from './hover';
 import { currentPps } from './loop';
@@ -187,7 +188,8 @@ export function attachKeys(): () => void {
     if (ek) {
       if (ek.kind === 'add') {
         e.preventDefault();
-        addAtPlayhead(ek.type);
+        // Revision 6: a type with no effect at the playhead is not added (the palette greys it).
+        if (playheadEffect(ek.type).effect) addAtPlayhead(ek.type);
       } else if (ek.kind === 'delete' ? deleteSelection() : clearSelection()) {
         e.preventDefault();
       }

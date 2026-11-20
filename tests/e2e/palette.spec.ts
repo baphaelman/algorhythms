@@ -72,6 +72,9 @@ test('letters add each type; modified letters do not', async ({ page }) => {
     const added = after.find((m) => !before.some((b) => b.id === m.id))!;
     expect(added.type).toBe(type);
     expect(added.at).toBeCloseTo(10, 3);
+    // Delete it again, so the next type sees the same state (a spread on a unison does nothing).
+    await page.keyboard.press('Delete');
+    expect(await moments(page)).toHaveLength(before.length);
   }
   const n = (await moments(page)).length;
   for (const combo of ['Control+c', 'Meta+c', 'Alt+u', 'Shift+s']) {

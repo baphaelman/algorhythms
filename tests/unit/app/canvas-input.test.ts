@@ -12,6 +12,8 @@ const h = vi.hoisted(() => {
     dialogOpen: false,
     wide: true,
     selection: [] as string[],
+    /** Moment types with no effect at the playhead. */
+    noEffect: new Set<string>(),
   };
   const g = globalThis as Record<string, unknown>;
   g.HTMLElement = FakeElement;
@@ -64,6 +66,9 @@ vi.mock('../../../src/app/editor/actions', () => ({
   addMoment: fns.addMoment,
   deleteMoments: fns.deleteMoments,
 }));
+vi.mock('../../../src/app/editor/palette-effects', () => ({
+  playheadEffect: (type: string) => ({ effect: !h.state.noEffect.has(type) }),
+}));
 vi.mock('../../../src/app/hover', () => ({ clearHover: vi.fn(), setHover: vi.fn() }));
 vi.mock('../../../src/app/loop', () => ({ currentPps: () => 100 }));
 
@@ -111,6 +116,7 @@ beforeEach(() => {
   h.state.dialogOpen = false;
   h.state.wide = true;
   h.state.selection = [];
+  h.state.noEffect.clear();
 });
 attachKeys();
 
@@ -121,6 +127,15 @@ describe('editor letters', () => {
     expect(e.defaultPrevented).toBe(true);
     press('L');
     expect(fns.addMoment).toHaveBeenLastCalledWith('level', 12.3);
+  });
+
+  it('do not add a type with no effect at the playhead', () => {
+    h.state.noEffect.add('merge');
+    const e = press('m');
+    expect(fns.addMoment).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
+    press('c');
+    expect(fns.addMoment).toHaveBeenCalledWith('chord', 12.3);
   });
 
   it('are ignored with a dialog open', () => {
