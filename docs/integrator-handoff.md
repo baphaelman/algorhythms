@@ -54,7 +54,7 @@ Last updated: 2026-11-20, by the first integrator session.
 | M3 | Renderer (M3a) and MIDI (M3b) are done. Stems (M3c), the player app (M3d1) and the unison lock are in flight (below). Not started: M3d2. |
 | M4–M7 | Not started. |
 
-Last pushed and CI-verified commit: `7e1c9e8`, after the choir rework.
+Last pushed: `ba1014f`, verified in a clean worktree (666/666 tests, lint, typecheck and build). It includes the M3 player, stems and MIDI. Watch its CI run with `gh run list`; when it's green the player is live, and the owner can do the iPhone silent-switch test.
 
 ## In flight when this handoff was written
 Their reports go to the old session. If you don't have them, check `git log`, `git status` and the build log.
@@ -93,7 +93,21 @@ Their reports go to the old session. If you don't have them, check `git log`, `g
    - **Asked for:** steady converged voices by default (phase lock or equivalent), group-aware normalisation, no clicks, stems still exact, RTF ≥ 10×, an opt-in timbre wobble control and a `wobble` preset.
    - Owner A/B WAVs go in `renders/` (`unison8-*`, `merge-*`, `wobble-preset`, `gen-1-dorian-after`).
    - The design goes in the build log under "Unison lock". **Then you update PLAN.md §8.4 and P2** to match.
-   - **Handoff:** at 300k tokens this builder was told to stop and write "Unison lock (handoff)" in the build log. Finish the work with a fresh agent (Opus; medium, or high if the remaining work is subtle) that starts from that note.
+   - **Handoff:** the builder stopped at 316k tokens. Its note is **"## Unison lock (handoff, 2026-11-20, uncommitted WIP)"** in `docs/build-log.md` (about line 482, uncommitted, next to the WIP).
+     - **WIP (uncommitted, in the main tree):** 8 files in src/dsp, src/core and the fixtures, plus `tests/dsp/{clicks,no-gc}.test.ts` and `tests/dsp/node/gc-harness.ts`.
+     - **Design:** per-block grouping of voices within 2–20 cents; pitch, phase and vibrato phase pulled together; group gain from the measured phases; `Timbre.wobble` (cents, 0 = lock); a `wobble` preset.
+     - **Measured:** a held unison of N = 2–32 sits at 0.95× one voice; envelope variation fell from 0.41 to about 0.002; click checks pass.
+     - **Left:**
+       - the no-GC test fails, with 8–9 GCs/min under the lock workload (heap-profile next);
+       - rewrite `unison.test.ts` to the new bands;
+       - RTF before and after;
+       - stems and determinism checks on a unison phrase;
+       - the four "after" WAVs;
+       - `pnpm docs:schema`;
+       - lint;
+       - the final build-log entry.
+     - **Who:** a fresh Opus agent at **high** effort, since the GC hunt on the audio thread is subtle, starting from that note.
+     - **Clean-up:** the builder left a git worktree `…/scratchpad/before`, and the integrator has `…/scratchpad/verify-head`. Run `git worktree list`, and `git worktree remove` when done.
 
 ## Next tasks (queued)
 - **Compile option `crossings: 'allow'`** (Sonnet medium, `src/core/compiler`): skips crossing enforcement.
