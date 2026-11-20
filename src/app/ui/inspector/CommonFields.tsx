@@ -1,22 +1,49 @@
-/** Fields common to every moment (§6.1): target voices, glide (with a curve preview) and seed. */
+/**
+ * Fields common to every moment (§6.1, §11.3 revision 5): target voices (All, Top n, Bottom n,
+ * Pick…), the transition (sliders, Order and Curve chips, curve preview) and seed.
+ */
 
+import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
 import type { EaseRef, Glide, GlideOrder, Moment, Piece, VoiceSelector } from '../../../core/types';
 import { reroll, updateMoment } from '../../editor/actions';
-import { NumberField, Row, SelectField, Slider, fieldSetter } from './controls';
-import { easePath } from './fields';
+import { usePlayer } from '../../store';
+import { Chips, NumberField, Row, Slider, fieldSetter } from './controls';
+import { easePath, rankCount, rankSelector, targetMode, type TargetMode } from './fields';
 
-type TargetMode = 'all' | 'voices' | 'rank';
-
-function modeOf(t: VoiceSelector | undefined): TargetMode {
-  if (!t || t === 'all') return 'all';
-  return 'voices' in t ? 'voices' : 'rank';
-}
+const TARGET_MODES: readonly (readonly [Exclude<TargetMode, 'range'>, string])[] = [
+  ['all', 'All'],
+  ['top', 'Top n'],
+  ['bottom', 'Bottom n'],
+  ['pick', 'Pick…'],
+];
 
 export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
+  const compiled = usePlayer((s) => s.compiled);
   const target = m.target;
-  const mode = modeOf(target);
-  const n = piece.voices.length;
+  const pool = piece.voices.length;
+  const mode = targetMode(target, pool);
+  // Voices sounding just before the moment acts: what `rank` counts from.
+  const active = Math.max(1, activeAt(compiled, m.at).length);
+  const rank = target && target !== 'all' && 'rank' in target ? target.rank : null;
+
+  const choose = (v: Exclude<TargetMode, 'range'>): void => {
+    if (v === mode) return;
+    const next: VoiceSelector | undefined =
+      v === 'all'
+        ? undefined
+        : v === 'pick'
+          ? { voices: piece.voices.map((x) => x.id) }
+          : rankSelector(v, 1, active, pool);
+    updateMoment(m.id, { target: next }, 'Change target');
+  };
+  const countSet =
+    mode === 'top' || mode === 'bottom'
+      ? fieldSetter<number>(m.id, 'Edit target', (_x, n) => ({
+          target: rankSelector(mode, n, active, pool),
+        }))
+      : null;
+
   const rankLo = fieldSetter<number>(m.id, 'Edit target', (x, v) => {
     const t = x.target;
     const hi = t && t !== 'all' && 'rank' in t ? t.rank[1] : v;
@@ -27,27 +54,38 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
     const lo = t && t !== 'all' && 'rank' in t ? t.rank[0] : v;
     return { target: { rank: [Math.min(v, lo), v] } };
   });
+  const rankProps = {
+    integer: true,
+    step: 1,
+    min: 0,
+    max: Math.max(0, pool - 1),
+    format: (v: number) => String(v + 1),
+    parse: (t: string) => (/^\d+$/.test(t.trim()) ? Number(t) - 1 : null),
+  } as const;
+
   return (
-    <>
-      <SelectField<TargetMode>
-        label="Voices"
-        value={mode}
+    <div className="insp-target">
+      <Chips
+        legend="Voices"
+        className="target-modes"
         testId="insp-target"
-        options={[
-          ['all', 'All active voices'],
-          ['voices', 'Chosen voices'],
-          ['rank', 'By pitch rank'],
-        ]}
-        onChange={(v) => {
-          const next: VoiceSelector | undefined =
-            v === 'all'
-              ? undefined
-              : v === 'voices'
-                ? { voices: piece.voices.map((x) => x.id) }
-                : { rank: [0, Math.max(0, n - 1)] };
-          updateMoment(m.id, { target: next }, 'Change target');
-        }}
+        options={TARGET_MODES}
+        pressed={(v) => v === mode}
+        onPick={choose}
       />
+      {rank && countSet && (mode === 'top' || mode === 'bottom') && (
+        <NumberField
+          label={mode === 'top' ? 'Top' : 'Bottom'}
+          unit={rankCount(rank, mode, active) === 1 ? 'voice' : 'voices'}
+          value={rankCount(rank, mode, active)}
+          set={countSet}
+          integer
+          step={1}
+          min={1}
+          max={mode === 'top' ? Math.max(1, active - 1) : pool}
+          testId="insp-target-n"
+        />
+      )}
       {target && target !== 'all' && 'voices' in target && (
         <fieldset className="insp-voices">
           <legend className="sr-only">Target voices</legend>
@@ -73,33 +111,13 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
           })}
         </fieldset>
       )}
-      {target && target !== 'all' && 'rank' in target && (
+      {rank && mode === 'range' && (
         <>
-          <NumberField
-            label="Lowest rank"
-            value={target.rank[0]}
-            set={rankLo}
-            integer
-            step={1}
-            min={0}
-            max={Math.max(0, n - 1)}
-            format={(v) => String(v + 1)}
-            parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) - 1 : null)}
-          />
-          <NumberField
-            label="Highest rank"
-            value={target.rank[1]}
-            set={rankHi}
-            integer
-            step={1}
-            min={0}
-            max={Math.max(0, n - 1)}
-            format={(v) => String(v + 1)}
-            parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) - 1 : null)}
-          />
+          <NumberField label="Lowest rank" value={rank[0]} set={rankLo} {...rankProps} />
+          <NumberField label="Highest rank" value={rank[1]} set={rankHi} {...rankProps} />
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -112,13 +130,12 @@ const ORDERS: readonly (readonly [GlideOrder, string])[] = [
 ];
 
 type EaseName = Exclude<EaseRef, object> | 'bezier';
-const EASES: readonly (readonly [EaseName, string])[] = [
-  ['smootherstep', 'Smootherstep'],
-  ['smoothstep', 'Smoothstep'],
-  ['cosine', 'Cosine'],
+const CURVES: readonly (readonly [EaseName, string])[] = [
+  ['smootherstep', 'Smooth'],
   ['linear', 'Linear'],
-  ['expo', 'Exponential'],
-  ['bezier', 'Bézier…'],
+  ['cosine', 'Cosine'],
+  ['expo', 'Expo'],
+  ['bezier', 'Custom'],
 ];
 
 /** Writes one glide field into the moment's partial glide. */
@@ -132,10 +149,16 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
   const stagger = fieldSetter<number>(m.id, 'Edit stagger', glidePatch('stagger'));
   const jitter = fieldSetter<number>(m.id, 'Edit jitter', glidePatch('jitter'));
   const bz = typeof g.ease === 'object' ? g.ease : null;
+  const curve: EaseName = bz ? 'bezier' : (g.ease as EaseName);
+  // Smoothstep has no chip of its own (§11.3); show one only while it is the curve.
+  const curves: readonly (readonly [EaseName, string])[] =
+    curve === 'smoothstep'
+      ? [...CURVES.slice(0, 1), ['smoothstep', 'Smoothstep'], ...CURVES.slice(1)]
+      : CURVES;
   return (
-    <fieldset className="insp-group">
+    <fieldset className="insp-group" data-testid="insp-transition">
       <legend>
-        Glide
+        Transition
         {m.glide && (
           <button
             type="button"
@@ -154,6 +177,7 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
         min={0}
         max={120}
         step={0.1}
+        slider={{ min: 0, max: 20 }}
         testId="insp-glide-length"
       />
       <NumberField
@@ -163,31 +187,44 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
         set={stagger}
         min={0}
         max={60}
-        step={0.1}
+        step={0.05}
+        slider={{ min: 0, max: 5 }}
+        testId="insp-glide-stagger"
       />
-      <Slider label="Jitter" value={g.jitter} set={jitter} min={0} max={1} step={0.01} />
-      <SelectField
-        label="Order"
-        value={g.order}
+      <Slider
+        label="Jitter"
+        value={g.jitter}
+        set={jitter}
+        min={0}
+        max={1}
+        step={0.01}
+        testId="insp-glide-jitter"
+      />
+      <Chips
+        legend="Order"
         options={ORDERS}
-        onChange={(order) => updateMoment(m.id, { glide: { ...m.glide, order } }, 'Change order')}
+        pressed={(v) => v === g.order}
+        onPick={(order) =>
+          order !== g.order && updateMoment(m.id, { glide: { ...m.glide, order } }, 'Change order')
+        }
       />
-      <SelectField<EaseName>
-        label="Ease"
-        value={bz ? 'bezier' : (g.ease as EaseName)}
-        options={EASES}
-        onChange={(v) =>
+      <Chips
+        legend="Curve"
+        options={curves}
+        pressed={(v) => v === curve}
+        onPick={(v) =>
+          v !== curve &&
           updateMoment(
             m.id,
             { glide: { ...m.glide, ease: v === 'bezier' ? DEFAULT_BEZIER : v } },
-            'Change ease',
+            'Change curve',
           )
         }
       />
-      {bz && <BezierFields m={m} piece={piece} bz={bz} />}
-      <Row label="Curve">
+      <Row label="Preview" className="insp-preview">
         <EasePreview ease={g.ease} />
       </Row>
+      {bz && <BezierFields m={m} piece={piece} bz={bz} />}
     </fieldset>
   );
 }
@@ -235,6 +272,8 @@ function EasePreview({ ease }: { ease: EaseRef }) {
 
 export function SeedField({ m, piece }: { m: Moment; piece: Piece }) {
   const effective = momentSeed(piece.seed, m.id, m.seed);
+  // A frozen walk draws nothing, so its seed does nothing (§6.2).
+  const frozen = m.type === 'walk' && m.fixed !== undefined;
   return (
     <Row label="Seed">
       <span
@@ -247,7 +286,13 @@ export function SeedField({ m, piece }: { m: Moment; piece: Piece }) {
         {effective}
         {m.seed === undefined && <span className="dim"> (derived)</span>}
       </span>
-      <button type="button" data-testid="insp-reroll" onClick={() => reroll(m.id)}>
+      <button
+        type="button"
+        data-testid="insp-reroll"
+        disabled={frozen}
+        title={frozen ? 'Unfreeze to change' : undefined}
+        onClick={() => reroll(m.id)}
+      >
         Reroll
       </button>
     </Row>

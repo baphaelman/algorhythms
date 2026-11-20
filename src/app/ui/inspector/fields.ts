@@ -22,7 +22,63 @@ import type {
   Pitch,
   Seconds,
   Segment,
+  VoiceSelector,
 } from '../../../core/types';
+
+/** The walk's allowed-step chips (§11.3): −3…+3 without 0. */
+export const STEP_CHOICES: readonly number[] = [-3, -2, -1, 1, 2, 3];
+
+/** Chips to show for a walk's steps: the standard choices plus any other stored step, sorted. */
+export function stepChips(steps: readonly number[]): number[] {
+  return [...new Set([...STEP_CHOICES, ...steps])].sort((a, b) => a - b);
+}
+
+/** Toggles `s` in a step list, kept sorted; null when that would leave no step. */
+export function toggleStep(steps: readonly number[], s: number): number[] | null {
+  const next = steps.includes(s)
+    ? steps.filter((x) => x !== s)
+    : [...steps, s].sort((a, b) => a - b);
+  return next.length > 0 ? next : null;
+}
+
+/**
+ * The inspector's voice-target modes (§11.3): all, the top or bottom n by pitch (a `rank`
+ * selector), a pick of voices, or `range` for any other rank pair (kept as written).
+ */
+export type TargetMode = 'all' | 'top' | 'bottom' | 'pick' | 'range';
+
+/**
+ * The mode of a selector. Bottom n is rank [0, n − 1]; top n is rank [k − n, pool − 1], k being the
+ * active count at the moment's time (the core clamps the high end to the active voices).
+ */
+export function targetMode(t: VoiceSelector | undefined, pool: number): TargetMode {
+  if (!t || t === 'all') return 'all';
+  if ('voices' in t) return 'pick';
+  if (t.rank[0] === 0) return 'bottom';
+  return t.rank[1] >= pool - 1 ? 'top' : 'range';
+}
+
+/** n of a top or bottom rank selector, given `active` voices at the moment's time. */
+export function rankCount(
+  rank: readonly [number, number],
+  mode: 'top' | 'bottom',
+  active: number,
+): number {
+  return mode === 'bottom' ? rank[1] + 1 : Math.max(1, active - rank[0]);
+}
+
+/** The rank selector for the top or bottom `n` of `active` voices, in a pool of `pool`. */
+export function rankSelector(
+  mode: 'top' | 'bottom',
+  n: number,
+  active: number,
+  pool: number,
+): { rank: [number, number] } {
+  const k = Math.max(1, Math.round(n));
+  return mode === 'bottom'
+    ? { rank: [0, k - 1] }
+    : { rank: [Math.max(0, active - k), Math.max(0, pool - 1)] };
+}
 
 /** Shortest decimal text for `x`, at most `digits` decimals ("3", "0.25", "-1.5"). */
 export function formatNum(x: number, digits = 3): string {
