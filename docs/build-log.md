@@ -353,3 +353,16 @@ The four tests are:
 2. the worklet URL comes from the expected pipeline;
 3. an OfflineAudioContext render is 440 ± 1 Hz at the requested amplitude;
 4. the Play button gives a live 440 ± 2 Hz sine (RMS > 0.1) through an AnalyserNode in a running AudioContext.
+
+## M3a: renderer (recorded by the integrator from the builder's report)
+
+- **Markers:** `CompiledScore` carries no labels, so marker text comes from `ScoreStyle.labels`, which the app builds from `Piece.moments[].label`. Positions come from `momentSpans`.
+- **Overview easing is app-driven:** `CameraState.overview` (0–1) plus the `easeOverview` tween, as in the prototype. The camera only blends into the overview by itself as the window approaches the whole piece.
+- **Vertical fit** covers the whole piece's pitch range, padded by 1.5 semitones and at least 12 semitones tall. It is not per window, so the view doesn't jitter.
+- **The playhead** stays faintly visible in the overview (alpha ≥ 0.4).
+- **The e2e** injects a bundled `src/render/dev/entry.ts` into a blank page. There is no extra Vite entry.
+
+## Owner decisions, 2026-11-20
+
+- **M1 listening test passed:** the owner says the generated pieces "sound lovely".
+- **§17.2 item 1 (mid-glide crossings):** add the option *only as a temporary developer toggle*: a compile option plus a temporary panel in the app. It is **not** a schema or Piece field. The owner expects not to need it, so it can be removed later.
