@@ -8,6 +8,7 @@ import { Notices, SilentHint } from './ui/Notices';
 import { ScoreView } from './ui/ScoreView';
 import { Scrubber, Transport } from './ui/Transport';
 import { ViewBar } from './ui/ViewBar';
+import { VoicesDrawer } from './ui/VoicesDrawer';
 
 /** Width from which the editor layout is used (PLAN.md §11.5); narrower screens get the player only. */
 export const EDITOR_MIN_WIDTH = 900;
@@ -55,6 +56,7 @@ export function App() {
         <ViewBar />
         {wide && <aside className="slot inspector" data-slot="inspector" hidden />}
       </main>
+      {wide && <VoicesDrawer />}
     </div>
   );
 }

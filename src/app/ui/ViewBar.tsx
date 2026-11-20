@@ -1,10 +1,12 @@
 import { sliderToWindow, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
 import { setColors, setHud, setTheme, setWindow, usePlayer, type ThemePref } from '../store';
+import { VoicesToggle } from './VoicesDrawer';
 
 const COLORS = [
   ['ink', 'Ink'],
   ['pitch', 'By pitch'],
+  ['custom', 'Custom'],
 ] as const;
 
 const THEMES: readonly (readonly [ThemePref, string])[] = [
@@ -82,6 +84,8 @@ export function ViewBar() {
       >
         HUD
       </button>
+
+      <VoicesToggle />
 
       <p className="keys">
         <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
