@@ -225,7 +225,7 @@ type NoteSet =
   "timbres": { "glass": { "...": "§8.5" } },
   "mix": { "...": "§8.6" },
   "end": { "fade": 6 },
-  "view": { "window": 20, "colors": "voice", "hud": true }
+  "view": { "window": 20, "colors": "pitch", "hud": true }
 }
 ```
 
@@ -629,7 +629,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   5. Playhead.
   6. HUD.
   7. Editor overlay (§11).
-- **Colors:** ink; per voice (golden-angle hues in OKLCH, lightness adjusted for the theme); by pitch (a vertical gradient, low cool to high warm); or custom per voice (`VoiceDef.color`). An HSL fallback covers browsers without OKLCH.
+- **Colors:** by pitch (the default: a vertical gradient, low cool to high warm); ink; or custom per voice (`VoiceDef.color`, falling back to ink). An HSL fallback covers browsers without OKLCH. The per-voice hue mode was removed (owner, 2026-11-20); old files with `"voice"` load as `"pitch"`.
 
 ### Camera
 - The time window runs from 2 s to the whole piece on a log scale, set by slider, pinch, ⌘/Ctrl-scroll, or `−`/`=`.
@@ -689,7 +689,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   - diagnostics for that moment shown inline.
 - **Voices drawer:** pool size (1–32) and active voices at start; per voice color, timbre, pan, gain, range, mute and solo.
 - **Sound drawer:** timbre presets and an editor (harmonic sliders, FM, noise, accent, articulation, vibrato), plus master FX.
-- **Generate:** seed, mode, length, voice count and density produce a piece made of **moments**. This is the prototype composer ported to emit moments, so the result is fully editable. Generate ships in M3, before the editor, as the first way to make a new piece to export.
+- **Generate:** seed, mode, length, voice count and density produce a piece made of **moments**. This is the prototype composer ported to emit moments, so the result is fully editable. Generate ships in M3, before the editor, as the first way to make a new piece to export. Length is 30–900 s, default 2:30, with an optional "natural length" (owner, 2026-11-20).
 
 ### 11.3a UI implementation: React and the canvas
 React re-renders must never sit on the per-frame or per-pointer-move path.
