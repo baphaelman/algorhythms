@@ -21,7 +21,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 - **Be concise** with the owner, in prompts and in docs.
 - **Compact at about 200k tokens (owner, 2026-11-20; replaces the fresh-session handoff).** When your context passes that:
   - bring this file, the build log and the CLAUDE.md status up to date first (they are the durable memory; the summary is lossy);
-  - ask the owner to type `/compact` (you can't run it), suggesting what to keep: push state, in-flight builders, open owner questions;
+  - ask the owner to type `/compact`, giving a ready-to-paste `/compact <what to keep>` command (owner, 2026-11-20): push state, in-flight builders, open owner questions;
   - the session continues, so in-flight builders still report to it.
   - A fresh session is still fine when the owner prefers one; this file is written for that case too.
 - **Keep tasks small: about one to three files each.**
