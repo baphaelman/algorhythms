@@ -945,3 +945,6 @@ Owner said go; the editor mockup looks good. Rulings:
 - "Generalize the note points to all circles": every arrival dot is draggable (PLAN §11.3 "Every dot is draggable"). Assigned M4.5-18 (UI).
 
 - Owner: hand edits may cross lines; a visible "Keep lines in order" toggle, off by default (PLAN §11.3). Added to M4.5-18; `note.order` field.
+
+## Full e2e on merged M4.5 (through M4.5-15, 06cc9da)
+- Chromium dev+prod: all pass except render.spec 4 ms budget (box limit, known). Firefox not installed in the cloud box (137 launch failures); WebKit skipped on Linux. Cross-engine coverage left to CI.
