@@ -32,6 +32,8 @@ import {
   SEG_BY1,
   SEG_BY2,
   SEG_CLAMPED,
+  SEG_CURVE_P1,
+  SEG_CURVE_T1,
   SEG_EASE,
   SEG_M0,
   SEG_P0,
@@ -69,6 +71,8 @@ export {
   SEG_BY1,
   SEG_BY2,
   SEG_CLAMPED,
+  SEG_CURVE_P1,
+  SEG_CURVE_T1,
   SEG_EASE,
   SEG_M0,
   SEG_P0,
@@ -91,8 +95,11 @@ export {
 };
 export { EaseCode };
 
-/** Version of this layout; bump it whenever a stride or offset changes. */
-export const FLAT_LAYOUT_VERSION = 1;
+/**
+ * Version of this layout; bump it whenever a stride or offset changes.
+ * v2 (M1): segment records gain SEG_CURVE_T1 and SEG_CURVE_P1 (cut segments, §7.5); stride 13.
+ */
+export const FLAT_LAYOUT_VERSION = 2;
 
 /** One voice's time-varying data. Every array is sorted by time. */
 export interface FlatVoice {
@@ -162,6 +169,8 @@ function flattenVoice(v: CompiledVoice, timbreIndex: Map<string, number>): FlatV
     writeEase(segments, o, s.ease);
     segments[o + SEG_M0] = s.m0 ?? 0;
     segments[o + SEG_CLAMPED] = s.clamped ? 1 : 0;
+    segments[o + SEG_CURVE_T1] = s.curve ? s.curve.t1 : s.t1;
+    segments[o + SEG_CURVE_P1] = s.curve ? s.curve.p1 : s.p1;
   });
 
   const lives = new Float64Array(v.lives.length * LIFE_STRIDE);
@@ -273,7 +282,7 @@ function records<T>(a: Float64Array, stride: number, read: (o: number) => T): T[
 /**
  * Rebuilds a CompiledScore from a flat score, for tests and debugging. Lossy where noted in the
  * module comment; optional fields come back in canonical form: `m0` only when nonzero, `clamped`
- * only when true, `died` only when finite, `fadeOut` only when nonzero, sends only when set.
+ * only when true, `curve` only when it differs from (t1, p1), `died` only when finite, `fadeOut` only when nonzero, sends only when set.
  */
 export function unflatten(flat: FlatScore): CompiledScore {
   const voices = flat.voices.map((fv, i): CompiledVoice => {
@@ -306,6 +315,9 @@ export function unflatten(flat: FlatScore): CompiledScore {
         const m0 = fv.segments[o + SEG_M0];
         if (m0 !== 0) s.m0 = m0;
         if (fv.segments[o + SEG_CLAMPED] === 1) s.clamped = true;
+        const ct1 = fv.segments[o + SEG_CURVE_T1];
+        const cp1 = fv.segments[o + SEG_CURVE_P1];
+        if (ct1 !== s.t1 || cp1 !== s.p1) s.curve = { t1: ct1, p1: cp1 };
         return s;
       }),
       timbre: records(fv.timbres, TIMBRE_STRIDE, (o) => ({

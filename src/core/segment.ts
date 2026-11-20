@@ -15,9 +15,17 @@
  *
  * H(0) = H(1) = 0, H′(0) = 1, H′(1) = 0, so p(t0) = p0 and p(t1) = p1 exactly (both are returned
  * by branch, not by arithmetic), and the start slope carries the interrupted velocity (§7.5).
+ *
+ * Cut segments (M1, additive): when a glide is interrupted at tᵢ (§7.5 step 1, "truncate S"), its
+ * curve keeps the parametrisation of the glide as planned, which ran to `curveT1` and aimed at
+ * `curveP1`. The segment itself ends at t1 = tᵢ with p1 = its pitch there. Then
+ *
+ *   x = (t − t0)/(curveT1 − t0),   p = p0 + (curveP1 − p0)·e(x) + m0·H(x)   for t0 ≤ t < t1.
+ *
+ * For an uncut segment curveT1 = t1 and curveP1 = p1, which is the formula above unchanged.
  */
 
-import { easeDerivRaw, easeRaw, type EaseCode, easeCodeOf } from './ease';
+import { easeDerivRaw, easeRaw, type EaseCode, easeCodeOf, sinPi } from './ease';
 import type { Pitch, Seconds, Segment } from './types';
 
 // ---------------------------------------------------------------------------------------------
@@ -46,8 +54,12 @@ export const SEG_BY2 = 8;
 export const SEG_M0 = 9;
 /** Segment record: 1 if the overshoot clamp applied, else 0. */
 export const SEG_CLAMPED = 10;
+/** Segment record: end time of the planned glide (equals SEG_T1 unless the segment was cut). */
+export const SEG_CURVE_T1 = 11;
+/** Segment record: target of the planned glide (equals SEG_P1 unless the segment was cut). */
+export const SEG_CURVE_P1 = 12;
 /** Doubles per segment record. */
-export const SEG_STRIDE = 11;
+export const SEG_STRIDE = 13;
 
 /** Life record: audible onset. */
 export const LIFE_BORN = 0;
@@ -101,7 +113,8 @@ export const VOICE_STRIDE = 7;
 
 /**
  * p(t) from scalar segment fields; allocation-free. Before t0 it returns p0, from t1 on it
- * returns p1 (a zero-length segment is a step at t0).
+ * returns p1 (a zero-length segment is a step at t0). `curveT1` and `curveP1` describe the planned
+ * glide of a cut segment (see the module comment); they default to t1 and p1.
  */
 export function segmentPitch(
   t0: Seconds,
@@ -115,18 +128,21 @@ export function segmentPitch(
   y2: number,
   m0: number,
   t: Seconds,
+  curveT1: Seconds = t1,
+  curveP1: Pitch = p1,
 ): Pitch {
   if (t < t0) return p0;
   if (t >= t1) return p1;
-  const x = (t - t0) / (t1 - t0); // in [0, 1); x = 0 yields p0 exactly
+  const x = (t - t0) / (curveT1 - t0); // in [0, 1); x = 0 yields p0 exactly
   if (x >= 1) return p1;
   const omx = 1 - x;
-  return p0 + (p1 - p0) * easeRaw(code, x, x1, y1, x2, y2) + m0 * (x * omx * omx);
+  return p0 + (curveP1 - p0) * easeRaw(code, x, x1, y1, x2, y2) + m0 * (x * omx * omx);
 }
 
 /**
  * dp/dt in semitones per second from scalar segment fields; allocation-free. Outside [t0, t1]
- * it returns the slope at the nearer end. A zero-length segment returns 0.
+ * it returns the slope at the nearer end. A zero-length segment returns 0. `curveT1` and
+ * `curveP1` are as in `segmentPitch`.
  */
 export function segmentVelocity(
   t0: Seconds,
@@ -140,32 +156,69 @@ export function segmentVelocity(
   y2: number,
   m0: number,
   t: Seconds,
+  curveT1: Seconds = t1,
+  curveP1: Pitch = p1,
 ): number {
-  const d = t1 - t0;
-  if (!(d > 0)) return 0;
-  let x = (t - t0) / d;
-  if (x < 0) x = 0;
-  else if (x > 1) x = 1;
+  const d = curveT1 - t0;
+  if (!(d > 0) || !(t1 > t0)) return 0;
+  const tc = t < t0 ? t0 : t > t1 ? t1 : t;
+  let x = (tc - t0) / d;
+  if (x > 1) x = 1;
   const dH = (1 - x) * (1 - 3 * x); // H′(x) = 3x² − 4x + 1
-  return ((p1 - p0) * easeDerivRaw(code, x, x1, y1, x2, y2) + m0 * dH) / d;
+  return ((curveP1 - p0) * easeDerivRaw(code, x, x1, y1, x2, y2) + m0 * dH) / d;
+}
+
+/**
+ * Motion 0..1 (§7.9): sin(π·x) during a glide, x being the position in the planned glide, and 0
+ * during a hold (p0 = curveP1 with no carried velocity). Allocation-free; shared by the query API
+ * (motionAt) and the DSP's accent term (§8.4), so both read the same value (P1). Outside
+ * [t0, t1) it returns 0.
+ */
+export function segmentMotion(
+  t0: Seconds,
+  t1: Seconds,
+  p0: Pitch,
+  m0: number,
+  t: Seconds,
+  curveT1: Seconds,
+  curveP1: Pitch,
+): number {
+  if (t < t0 || t >= t1) return 0;
+  if (p0 === curveP1 && m0 === 0) return 0;
+  const x = (t - t0) / (curveT1 - t0);
+  if (!(x > 0)) return 0;
+  return x >= 1 ? 0 : sinPi(x);
 }
 
 /** p(t) of a compiled segment (§7.9). Clamped to p0 before t0 and p1 after t1. */
 export function evalSegment(seg: Segment, t: Seconds): Pitch {
   const e = seg.ease;
   const code = easeCodeOf(e);
+  const ct1 = seg.curve ? seg.curve.t1 : seg.t1;
+  const cp1 = seg.curve ? seg.curve.p1 : seg.p1;
+  const m0 = seg.m0 ?? 0;
   return typeof e === 'object'
-    ? segmentPitch(seg.t0, seg.t1, seg.p0, seg.p1, code, e.x1, e.y1, e.x2, e.y2, seg.m0 ?? 0, t)
-    : segmentPitch(seg.t0, seg.t1, seg.p0, seg.p1, code, 0, 0, 1, 1, seg.m0 ?? 0, t);
+    ? segmentPitch(seg.t0, seg.t1, seg.p0, seg.p1, code, e.x1, e.y1, e.x2, e.y2, m0, t, ct1, cp1)
+    : segmentPitch(seg.t0, seg.t1, seg.p0, seg.p1, code, 0, 0, 1, 1, m0, t, ct1, cp1);
 }
 
 /** dp/dt of a compiled segment in semitones per second; used for interruptions (§7.5). */
 export function evalSegmentVelocity(seg: Segment, t: Seconds): number {
   const e = seg.ease;
   const code = easeCodeOf(e);
+  const ct1 = seg.curve ? seg.curve.t1 : seg.t1;
+  const cp1 = seg.curve ? seg.curve.p1 : seg.p1;
+  const m0 = seg.m0 ?? 0;
   return typeof e === 'object'
-    ? segmentVelocity(seg.t0, seg.t1, seg.p0, seg.p1, code, e.x1, e.y1, e.x2, e.y2, seg.m0 ?? 0, t)
-    : segmentVelocity(seg.t0, seg.t1, seg.p0, seg.p1, code, 0, 0, 1, 1, seg.m0 ?? 0, t);
+    ? segmentVelocity(seg.t0, seg.t1, seg.p0, seg.p1, code, e.x1, e.y1, e.x2, e.y2, m0, t, ct1, cp1)
+    : segmentVelocity(seg.t0, seg.t1, seg.p0, seg.p1, code, 0, 0, 1, 1, m0, t, ct1, cp1);
+}
+
+/** Motion 0..1 of a compiled segment at t; see `segmentMotion`. */
+export function evalSegmentMotion(seg: Segment, t: Seconds): number {
+  const ct1 = seg.curve ? seg.curve.t1 : seg.t1;
+  const cp1 = seg.curve ? seg.curve.p1 : seg.p1;
+  return segmentMotion(seg.t0, seg.t1, seg.p0, seg.m0 ?? 0, t, ct1, cp1);
 }
 
 /**
@@ -185,5 +238,20 @@ export function evalFlatSegment(records: Float64Array, offset: number, t: Second
     records[offset + SEG_BY2],
     records[offset + SEG_M0],
     t,
+    records[offset + SEG_CURVE_T1],
+    records[offset + SEG_CURVE_P1],
+  );
+}
+
+/** Motion 0..1 of the flat segment record at `offset`; allocation-free, for the DSP's accent. */
+export function evalFlatSegmentMotion(records: Float64Array, offset: number, t: Seconds): number {
+  return segmentMotion(
+    records[offset + SEG_T0],
+    records[offset + SEG_T1],
+    records[offset + SEG_P0],
+    records[offset + SEG_M0],
+    t,
+    records[offset + SEG_CURVE_T1],
+    records[offset + SEG_CURVE_P1],
   );
 }

@@ -501,8 +501,12 @@ export interface Piece {
  *
  *   p(x) = p0 + (p1 − p0)·ease(x) + m0·(x³ − 2x² + x),   x = (t − t0)/(t1 − t0) ∈ [0, 1]
  *
+ * or, for a segment cut short by an interruption (`curve` present, M1 extension):
+ *
+ *   p(x) = p0 + (curve.p1 − p0)·ease(x) + m0·H(x),   x = (t − t0)/(curve.t1 − t0) ∈ [0, x(t1)]
+ *
  * Evaluate with core/segment.ts `evalSegment`, never by hand (P1). p(t0) = p0 and p(t1) = p1
- * exactly. A hold is p0 === p1 with m0 absent or 0.
+ * exactly. A hold is p0 === p1 with m0 absent or 0 and no `curve`.
  */
 export interface Segment {
   /** Start time. */
@@ -519,6 +523,13 @@ export interface Segment {
   m0?: number;
   /** The overshoot clamp reduced m0, so the join at t0 is C⁰ only (§7.5). */
   clamped?: boolean;
+  /**
+   * Present when the glide was interrupted (§7.5 "truncate S at tᵢ"): it was planned to reach
+   * `curve.p1` at `curve.t1`, but stopped at t1 (< curve.t1), where its pitch is p1. The curve keeps
+   * that planned parametrisation, so the part that sounded is unchanged. M1 extension; absent means
+   * curve = { t1, p1 }.
+   */
+  curve?: { t1: Seconds; p1: Pitch };
   /** The moment that produced this segment, for selection highlighting (§11.3). */
   momentId?: MomentId;
 }

@@ -4,6 +4,18 @@ Newest milestone first. Each entry says what departs from (or fills a gap in) PL
 
 ---
 
+## M1b: compiler, voice leading, interruption, query API (2026-11-19, in progress)
+
+### Contract change (additive): cut segments, `Segment.curve`, flat layout v2
+§7.5 step 1 says "truncate S at tᵢ". The M0 `Segment` cannot represent a truncated eased glide: x is normalised over [t0, t1], so moving t1 changes the curve's shape, and no restriction of e.g. smootherstep to a sub-interval lies in the family p0 + Δ·e(x) + m0·H(x). Without a fix, either the part of the glide that already sounded would change shape after the fact, or C⁰ and P1 would break.
+- **`Segment.curve?: { t1, p1 }`** (types.ts): present only on a cut segment. It holds the *planned* end time and target, and the curve keeps that parametrisation: x = (t − t0)/(curve.t1 − t0), p = p0 + (curve.p1 − p0)·e(x) + m0·H(x). `t1`/`p1` stay the segment's *real* end and its pitch there, so contiguity (seg[i].t1 === seg[i+1].t0), exact joins (seg[i].p1 === seg[i+1].p0) and every consumer that reads only t0/t1/p0/p1 are unaffected.
+- **segment.ts:** `segmentPitch` and `segmentVelocity` take two optional trailing parameters `curveT1 = t1`, `curveP1 = p1`; for uncut segments the arithmetic is bit-identical to M0's. `evalSegment`, `evalSegmentVelocity` and `evalFlatSegment` read the cut fields.
+- **New in segment.ts:** `segmentMotion` / `evalSegmentMotion` / `evalFlatSegmentMotion`: motion 0..1 = sin(π·x) over the planned glide, 0 on holds (§7.9 `motionAt`). It lives in the leaf so that the DSP's accent term (§8.4) and the renderer read the same value (P1).
+- **flat.ts:** segment records gain `SEG_CURVE_T1` (11) and `SEG_CURVE_P1` (12), always filled (equal to t1/p1 when uncut); **`SEG_STRIDE` is 13** and **`FLAT_LAYOUT_VERSION` is 2**. Existing offsets are unchanged. `unflatten` restores `curve` only when it differs from (t1, p1).
+- **M2:** use `evalFlatSegment` / `evalFlatSegmentMotion` and the constants, as before; nothing else changes.
+
+---
+
 ## M0: scaffold, shared contracts, worklet pipeline (2026-11-19)
 
 ### Toolchain
