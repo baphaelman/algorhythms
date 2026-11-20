@@ -40,6 +40,11 @@ import {
   takesText,
 } from '../../../src/app/editor/shortcuts';
 import { loadPiece, seekTo, usePlayer } from '../../../src/app/store';
+import {
+  playheadEffect,
+  refreshPaletteEffects,
+  usePaletteEffects,
+} from '../../../src/app/editor/palette-effects';
 
 const key = (k: string, mods: Record<string, unknown> = {}) => ({
   key: k,
@@ -146,5 +151,28 @@ describe('actions at the playhead', () => {
     addAtPlayhead('pin');
     expect(deleteSelection()).toBe(true);
     expect(usePlayer.getState().piece.moments).toHaveLength(1);
+  });
+});
+
+describe('palette effects at the playhead (revision 6)', () => {
+  beforeEach(() => {
+    loadPiece(newPiece({ seed: 7 }));
+  });
+
+  it('greys merge out on a unison, with a reason; chord stays enabled', () => {
+    seekTo(0.5);
+    addAtPlayhead('split');
+    seekTo(1);
+    addAtPlayhead('unison');
+    seekTo(8);
+    const merge = playheadEffect('merge');
+    expect(merge.effect).toBe(false);
+    expect(merge.reason).toMatch(/one pitch/);
+    expect(playheadEffect('chord').effect).toBe(true);
+    refreshPaletteEffects(true);
+    const s = usePaletteEffects.getState();
+    expect(s.t).toBeCloseTo(8);
+    expect(s.effects?.merge.effect).toBe(false);
+    expect(s.effects?.chord.effect).toBe(true);
   });
 });

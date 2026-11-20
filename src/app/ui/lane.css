@@ -207,3 +207,10 @@
   background: repeating-linear-gradient(90deg, var(--c) 0 3px, transparent 3px 6px);
   opacity: 0.5;
 }
+
+/* A moment with a no-effect diagnostic (revision 6): dimmed, reason in the tooltip. */
+.lane-item[data-no-effect] .lane-marker,
+.lane-item[data-no-effect] .lane-label,
+.lane-item[data-no-effect] .lane-bar {
+  opacity: 0.4;
+}

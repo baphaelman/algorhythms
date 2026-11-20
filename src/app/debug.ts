@@ -7,6 +7,7 @@ import type { AudioEngine } from '../audio/engine';
 import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
 import { frameStats } from './loop';
+import { previewState } from './preview';
 import { encodeShareLink } from './share';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
@@ -34,6 +35,8 @@ export interface AlgoRhythmsDebug {
   encodeShareLink: typeof encodeShareLink;
   /** Editor state and selection (M4b), for tests that can't use the lane. */
   editor: { state: typeof useEditor; select: typeof select; undo: typeof undo; redo: typeof redo };
+  /** Palette hover preview state (revision 6). */
+  preview: typeof previewState;
 }
 
 declare global {
@@ -64,5 +67,6 @@ export function installDebug(): void {
     actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,
     editor: { state: useEditor, select, undo, redo },
+    preview: previewState,
   };
 }
