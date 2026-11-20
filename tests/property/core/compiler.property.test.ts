@@ -12,7 +12,7 @@ import { CHECK_SAMPLES } from '../../../src/core/interrupt';
 import { pitchAt } from '../../../src/core/query';
 import { evalSegment, evalSegmentVelocity } from '../../../src/core/segment';
 import { easeCodeOf, easeRaw, bezierOf } from '../../../src/core/ease';
-import type { CompiledScore, CompiledVoice, Piece, Segment } from '../../../src/core/types';
+import type { CompiledScore, Piece, Segment } from '../../../src/core/types';
 import { pieceArb } from './compiler-arbitraries';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 300);
@@ -63,15 +63,6 @@ function ownOvershoot(g: Segment): { up: number; down: number } {
 /** The planned glide's end (cut segments keep it in `curve`). */
 const plannedEnd = (s: Segment): { t1: number; p1: number } =>
   s.curve ? s.curve : { t1: s.t1, p1: s.p1 };
-
-/** Index of a voice's segment covering t (t0 ≤ t ≤ t1), or −1. */
-function segAt(v: CompiledVoice, t: number): number {
-  for (let i = v.segments.length - 1; i >= 0; i--) {
-    const s = v.segments[i];
-    if (s.t0 <= t) return t <= s.t1 ? i : -1;
-  }
-  return -1;
-}
 
 describe('compiler properties (§14)', () => {
   it('is deterministic: same piece, same score; JSON round trips do not matter', () => {
