@@ -931,6 +931,10 @@ This is the *input* form: fields with defaults are optional here.
                   "notes",
                   "assign"
                 ]
+              },
+              "byVoice": {
+                "description": "Pitches go to the voices in order, unsorted (lines may cross).",
+                "type": "boolean"
               }
             },
             "required": [
@@ -2401,6 +2405,10 @@ This is the *input* form: fields with defaults are optional here.
                 "description": "When present, the note returns this many seconds after its glide ends.",
                 "type": "number",
                 "minimum": 0
+              },
+              "order": {
+                "description": "Keep lines in order: true = ordered voice leading; false or absent = only that voice moves (may cross).",
+                "type": "boolean"
               }
             },
             "required": [

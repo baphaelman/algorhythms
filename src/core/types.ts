@@ -265,6 +265,12 @@ export interface ChordMoment extends MomentBase {
    * and `assign` it had before, restored by Unfreeze. The compiler ignores it.
    */
   frozenFrom?: { notes: NoteSet; assign: AssignMode };
+  /**
+   * Revision 6, "Keep lines in order" off: with a `pitches` NoteSet, pitch i goes to the i-th
+   * targeted voice (by committed destination), unsorted, and lines may cross. Applies only when
+   * there is one pitch per targeted voice and the voice count doesn't change.
+   */
+  byVoice?: boolean;
 }
 
 /** All targeted voices go to one pitch (or its nearest octaves). */
@@ -366,8 +372,9 @@ export interface WalkStepRecord {
 }
 
 /**
- * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. The target set is the
- * current pitches with one `from` replaced by `to`, reached by ordered voice leading (§7.2).
+ * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. With `order`, the target
+ * set is the current pitches with one `from` replaced by `to`, reached by ordered voice leading
+ * (§7.2); without, only that voice moves.
  */
 export interface NoteMoment extends MomentBase {
   type: 'note';
@@ -377,6 +384,11 @@ export interface NoteMoment extends MomentBase {
   to: Pitch;
   /** When present, the note returns this many seconds after its glide ends. */
   back?: Seconds;
+  /**
+   * Keep lines in order (revision 6): true = ordered voice leading, no crossings; false or absent
+   * = only the voice sounding `from` moves, and may cross its neighbours.
+   */
+  order?: boolean;
 }
 
 /** Moves one voice to an exact pitch; may cross other voices. */

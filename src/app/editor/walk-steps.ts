@@ -68,6 +68,20 @@ export function movedFixed(
       ?.to;
   if (from === undefined) return null;
   const pitch = scaleNeighbour(from, dir, keyAt(score, walkTickTime(w, ref.tick)));
+  return fixedWith(w, score, ref, pitch);
+}
+
+/**
+ * The walk's `fixed` with step `ref` set to `pitch` (an unfrozen walk is frozen first). Null if
+ * `pitch` is outside MIDI 0..127.
+ */
+export function fixedWith(
+  w: WalkMoment,
+  score: CompiledScore,
+  ref: StepRef,
+  pitch: Pitch,
+): WalkNote[] | null {
   if (pitch < 0 || pitch > 127) return null;
+  const base = w.fixed ?? freezeWalk(score, w.id);
   return withNote(base, { tick: ref.tick, voice: ref.voice, pitch });
 }

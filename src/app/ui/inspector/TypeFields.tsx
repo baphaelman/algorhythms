@@ -99,8 +99,22 @@ function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
         keyAtMoment={ctx.keyAt}
         momentId={m.id}
         voicing={m.voicing}
-        // New notes replace a frozen chord: there is nothing left to unfreeze to.
-        onChange={(notes, l) => updateMoment(m.id, { notes, frozenFrom: undefined }, l)}
+        // New notes replace a frozen chord: there is nothing left to unfreeze to. A per-voice
+        // (`byVoice`) freeze set assign to free; the chord gets its own back.
+        onChange={(notes, l) =>
+          updateMoment(
+            m.id,
+            m.byVoice
+              ? {
+                  notes,
+                  frozenFrom: undefined,
+                  byVoice: undefined,
+                  assign: m.frozenFrom?.assign ?? 'ordered',
+                }
+              : { notes, frozenFrom: undefined },
+            l,
+          )
+        }
         onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
       />
       <ChordNotes m={m} piece={ctx.piece} />

@@ -1,4 +1,4 @@
-/* Walk step dots over the score (§10 Drawing rules 7; M4.5-7). */
+/* Arrival dots over the score: walk steps, chord notes, note points, landings (§11.3; M4.5-18). */
 
 .walk-dots {
   position: absolute;
@@ -44,4 +44,20 @@
 .chord-dot {
   cursor: ns-resize;
   touch-action: none;
+}
+
+.walk-dots .walk-dot {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+/* Arrival dots of a hovered moment (§11.3 "Every dot is draggable"). */
+.hover-dot {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.hover-dot:hover {
+  opacity: 1;
+  border-style: solid;
 }

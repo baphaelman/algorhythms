@@ -20,7 +20,9 @@ import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-n
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
 import { stepNoteTo } from './note-points';
-import { movedFixed, scaleNeighbour, type StepRef } from './walk-steps';
+import { fixedWith, movedFixed, scaleNeighbour, type StepRef } from './walk-steps';
+import { dotAction, type ArrivalDot } from './arrival-points';
+import { keepOrder, noteOrder } from './line-order';
 import {
   copyMoments,
   insertMoments,
@@ -150,10 +152,11 @@ export function setChordNote(id: MomentId, index: number, pitch: number): boolea
   const piece = usePlayer.getState().piece;
   const m = chordOf(piece, id);
   const notes = m && chordNotes(piece, scoreOf(piece), m);
-  const next = notes && withChordNote(notes, index, pitch);
+  const keep = keepOrder();
+  const next = notes && withChordNote(notes, index, pitch, keep);
   if (!m || !next) return false;
   const label = m.frozenFrom ? 'Move chord note' : 'Freeze chord and move note';
-  return updateMoment(id, frozenPatch(m, next), label);
+  return updateMoment(id, frozenPatch(m, next, keep), label);
 }
 
 /** Moves note `index` of chord `id` one scale step (in the key at the chord's time). */
@@ -186,11 +189,12 @@ export function dragChordNote(
   const m = chordOf(piece, id);
   const notes = m && chordNotes(piece, scoreOf(piece), m);
   if (!m || !notes || index < 0 || index >= notes.length) return null;
+  const keep = keepOrder();
   beginGesture(m.frozenFrom ? 'Move chord note' : 'Freeze chord and move note');
   return {
     to(pitch) {
-      const next = withChordNote(notes, index, pitch);
-      updateGesture((p) => (next ? patchMoment(p, id, frozenPatch(m, next)) : p));
+      const next = withChordNote(notes, index, pitch, keep);
+      updateGesture((p) => (next ? patchMoment(p, id, frozenPatch(m, next, keep)) : p));
     },
     end(cancel = false) {
       if (cancel) cancelGesture();
@@ -215,6 +219,8 @@ export function addNoteDrag(at: Seconds, from: Pitch): PitchDrag & { id: MomentI
   const [id] = newMomentIds(piece, 1);
   const base = defaultMoment('note', t, id, piece, scoreOf(piece));
   const m: NoteMoment = { ...(base as NoteMoment), from, to: from };
+  const order = noteOrder();
+  if (order) m.order = order;
   beginGesture(`Add ${LABELS.note}`);
   updateGesture((p) => insertMoments(p, [m]));
   select([id]);
@@ -241,20 +247,62 @@ export function stepNote(id: MomentId, dir: 1 | -1): boolean {
   const m = noteOf(piece, id);
   if (!m) return false;
   const to = stepNoteTo(m.to, dir, keyAt(scoreOf(piece), m.at));
-  return updateMoment(id, { to }, 'Move note');
+  return updateMoment(id, { to, order: noteOrder() }, 'Move note');
 }
 
 /** A drag of note `id`'s `to` (its score dot): one undo entry. Null if there is no such note. */
 export function dragNote(id: MomentId): PitchDrag | null {
   if (!noteOf(usePlayer.getState().piece, id)) return null;
+  const order = noteOrder();
   beginGesture('Move note');
   return {
     to(pitch) {
-      updateGesture((p) => patchMoment(p, id, { to: pitch }));
+      updateGesture((p) => patchMoment(p, id, { to: pitch, order }));
     },
     end(cancel = false) {
       if (cancel) cancelGesture();
       else endGesture();
     },
   };
+}
+
+/**
+ * A drag of walk step `ref` (its score dot): sets the step's pitch, freezing the walk on the first
+ * change; one undo entry. Null if there is no such walk.
+ */
+export function dragWalkStep(ref: StepRef): PitchDrag | null {
+  const piece = usePlayer.getState().piece;
+  const w = piece.moments.find((m) => m.id === ref.momentId);
+  if (w?.type !== 'walk') return null;
+  const score = scoreOf(piece);
+  beginGesture(w.fixed ? 'Move walk step' : 'Freeze walk and move step');
+  return {
+    to(pitch) {
+      const fixed = fixedWith(w, score, ref, pitch);
+      updateGesture((p) => (fixed ? patchMoment(p, w.id, { fixed }) : p));
+    },
+    end(cancel = false) {
+      if (cancel) cancelGesture();
+      else endGesture();
+    },
+  };
+}
+
+/**
+ * A drag of arrival dot `dot` (§11.3 "Every dot is draggable"): edits that chord note, walk step
+ * or note's `to`, or adds a note at the arrival with `from` = the dot's pitch. One undo entry.
+ */
+export function dragArrival(dot: ArrivalDot): PitchDrag | null {
+  const piece = usePlayer.getState().piece;
+  const a = dotAction(piece, dot, (m) => chordNotes(piece, scoreOf(piece), m));
+  switch (a.kind) {
+    case 'chord':
+      return dragChordNote(a.id, a.index);
+    case 'walk':
+      return dragWalkStep(a.step);
+    case 'note':
+      return dragNote(a.id);
+    case 'add':
+      return addNoteDrag(a.at, a.from);
+  }
 }

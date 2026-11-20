@@ -199,6 +199,10 @@ const MOMENT_SCHEMAS = {
       .object({ notes: NoteSetSchema, assign: z.enum(['ordered', 'free']) })
       .optional()
       .describe('Editor only: the notes and assign before the chord was frozen (Unfreeze).'),
+    byVoice: z
+      .boolean()
+      .optional()
+      .describe('Pitches go to the voices in order, unsorted (lines may cross).'),
   }),
   unison: z.looseObject({
     type: z.literal('unison'),
@@ -270,6 +274,12 @@ const MOMENT_SCHEMAS = {
     back: nonNegative
       .optional()
       .describe('When present, the note returns this many seconds after its glide ends.'),
+    order: z
+      .boolean()
+      .optional()
+      .describe(
+        'Keep lines in order: true = ordered voice leading; false or absent = only that voice moves (may cross).',
+      ),
   }),
   pin: z.looseObject({ type: z.literal('pin'), ...momentBase, voice: id, pitch }),
   key: z.looseObject({ type: z.literal('key'), ...momentBase, key: KeySchema }),

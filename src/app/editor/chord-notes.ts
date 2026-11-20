@@ -18,41 +18,84 @@ export function isFrozenChord(m: ChordMoment): boolean {
 }
 
 /**
- * The chord's notes, low to high: the stored pitches of a frozen chord, else what each voice it
- * voices gets (`freezeChord`). Null when the chord isn't applied.
+ * The chord's notes, one per voice in voice order (low to high by where the voices were heading):
+ * the stored pitches of a frozen chord (sorted unless `byVoice`), else what each voice it voices
+ * gets (`freezeChord`). Null when the chord isn't applied.
  */
 export function chordNotes(piece: Piece, score: CompiledScore, m: ChordMoment): Pitch[] | null {
-  if (m.frozenFrom && m.notes.kind === 'pitches') return [...m.notes.pitches].sort((a, b) => a - b);
+  if (m.frozenFrom && m.notes.kind === 'pitches') {
+    const ps = [...m.notes.pitches];
+    return m.byVoice ? ps : ps.sort((a, b) => a - b);
+  }
   const f = freezeChord(piece, score, m.id);
   return f && f.notes.kind === 'pitches' ? f.notes.pitches : null;
 }
 
-/** `notes` with note `index` set to `pitch`, sorted; null if out of range or unchanged. */
+/**
+ * `notes` with note `index` set to `pitch`; sorted when `keepOrder`, else each voice keeps its
+ * place. Null if out of range or unchanged.
+ */
 export function withChordNote(
   notes: readonly Pitch[],
   index: number,
   pitch: Pitch,
+  keepOrder = true,
 ): Pitch[] | null {
   if (index < 0 || index >= notes.length || pitch < 0 || pitch > 127) return null;
   if (notes[index] === pitch) return null;
   const out = notes.slice();
   out[index] = pitch;
-  return out.sort((a, b) => a - b);
+  return keepOrder ? out.sort((a, b) => a - b) : out;
 }
 
-/** The patch that sets the chord's notes to `pitches`, freezing it if needed. */
-export function frozenPatch(m: ChordMoment, pitches: readonly Pitch[]): ChordPatch {
+/**
+ * The patch that sets the chord's notes to `pitches` (in voice order), freezing it if needed.
+ * `keepOrder` ("Keep lines in order", §11.3): sorted and ordered; else `byVoice` (each voice keeps
+ * its own note, lines may cross) with `assign: 'free'`.
+ */
+export function frozenPatch(
+  m: ChordMoment,
+  pitches: readonly Pitch[],
+  keepOrder = true,
+): ChordPatch {
+  const frozenFrom = m.frozenFrom ?? { notes: m.notes, assign: m.assign };
+  if (keepOrder) {
+    const sorted = [...pitches].sort((a, b) => a - b);
+    return {
+      notes: { kind: 'pitches', pitches: sorted },
+      assign: 'ordered',
+      byVoice: undefined,
+      frozenFrom,
+    };
+  }
   return {
     notes: { kind: 'pitches', pitches: [...pitches] },
-    assign: 'ordered',
-    frozenFrom: m.frozenFrom ?? { notes: m.notes, assign: m.assign },
+    assign: 'free',
+    byVoice: true,
+    frozenFrom,
   };
+}
+
+/** The patch that switches a frozen chord's "Keep lines in order"; null if not frozen. */
+export function chordOrderPatch(m: ChordMoment, keepOrder: boolean): ChordPatch | null {
+  if (!m.frozenFrom || m.notes.kind !== 'pitches') return null;
+  return frozenPatch(m, m.notes.pitches, keepOrder);
+}
+
+/** True when a frozen chord keeps its lines in order (not `byVoice`). */
+export function chordKeepsOrder(m: ChordMoment): boolean {
+  return !m.byVoice;
 }
 
 /** The patch that restores the chord's notes from before freezing; null if not frozen. */
 export function unfreezePatch(m: ChordMoment): ChordPatch | null {
   if (!m.frozenFrom) return null;
-  return { notes: m.frozenFrom.notes, assign: m.frozenFrom.assign, frozenFrom: undefined };
+  return {
+    notes: m.frozenFrom.notes,
+    assign: m.frozenFrom.assign,
+    frozenFrom: undefined,
+    byVoice: undefined,
+  };
 }
 
 /** A dragged pitch: snapped to the key, or to the nearest semitone with `chromatic`; 0..127. */
