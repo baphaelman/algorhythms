@@ -4,6 +4,7 @@ import { startScoreLoop } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { usePlayer } from '../store';
 import { ChordNoteDots } from './ChordNoteDots';
+import { NoteDots } from './NoteDots';
 import { WalkStepDots } from './WalkStepDots';
 
 /** The score canvas. Drawn by `startScoreLoop` outside React; this component only mounts it. */
@@ -36,6 +37,7 @@ export function ScoreView() {
       />
       <WalkStepDots />
       <ChordNoteDots />
+      <NoteDots />
       <div ref={tip} className="score-hover" data-testid="score-hover" aria-hidden="true" hidden />
     </div>
   );

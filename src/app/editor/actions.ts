@@ -5,12 +5,21 @@
  */
 
 import { compile } from '../../core/compiler/compile';
-import type { CompiledScore, MomentId, MomentType, Piece, Seconds } from '../../core/types';
+import type {
+  CompiledScore,
+  MomentId,
+  MomentType,
+  NoteMoment,
+  Piece,
+  Pitch,
+  Seconds,
+} from '../../core/types';
 import { keyAt } from '../../core/query';
 import { usePlayer } from '../store';
 import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
+import { stepNoteTo } from './note-points';
 import { movedFixed, scaleNeighbour, type StepRef } from './walk-steps';
 import {
   copyMoments,
@@ -182,6 +191,66 @@ export function dragChordNote(
     to(pitch) {
       const next = withChordNote(notes, index, pitch);
       updateGesture((p) => (next ? patchMoment(p, id, frozenPatch(m, next)) : p));
+    },
+    end(cancel = false) {
+      if (cancel) cancelGesture();
+      else endGesture();
+    },
+  };
+}
+
+/** A drag that sets a pitch; `end(true)` cancels it. */
+export interface PitchDrag {
+  to(pitch: Pitch): void;
+  end(cancel?: boolean): void;
+}
+
+/**
+ * Adds a note point at `at` with `from` = `to` = `from` (§11.3 Note points), selects it and keeps
+ * the gesture open: `to(p)` sets its `to`; the add and the drag are one undo entry ("Add note").
+ */
+export function addNoteDrag(at: Seconds, from: Pitch): PitchDrag & { id: MomentId } {
+  const t = Math.max(0, at);
+  const piece = usePlayer.getState().piece;
+  const [id] = newMomentIds(piece, 1);
+  const base = defaultMoment('note', t, id, piece, scoreOf(piece));
+  const m: NoteMoment = { ...(base as NoteMoment), from, to: from };
+  beginGesture(`Add ${LABELS.note}`);
+  updateGesture((p) => insertMoments(p, [m]));
+  select([id]);
+  return {
+    id,
+    to(pitch) {
+      updateGesture((p) => insertMoments(p, [{ ...m, to: pitch }]));
+    },
+    end(cancel = false) {
+      if (cancel) cancelGesture();
+      else endGesture();
+    },
+  };
+}
+
+function noteOf(piece: Piece, id: MomentId): NoteMoment | null {
+  const m = piece.moments.find((x) => x.id === id);
+  return m?.type === 'note' ? m : null;
+}
+
+/** Steps note `id`'s `to` one scale step (in the key at its time). False if nothing changed. */
+export function stepNote(id: MomentId, dir: 1 | -1): boolean {
+  const piece = usePlayer.getState().piece;
+  const m = noteOf(piece, id);
+  if (!m) return false;
+  const to = stepNoteTo(m.to, dir, keyAt(scoreOf(piece), m.at));
+  return updateMoment(id, { to }, 'Move note');
+}
+
+/** A drag of note `id`'s `to` (its score dot): one undo entry. Null if there is no such note. */
+export function dragNote(id: MomentId): PitchDrag | null {
+  if (!noteOf(usePlayer.getState().piece, id)) return null;
+  beginGesture('Move note');
+  return {
+    to(pitch) {
+      updateGesture((p) => patchMoment(p, id, { to: pitch }));
     },
     end(cancel = false) {
       if (cancel) cancelGesture();

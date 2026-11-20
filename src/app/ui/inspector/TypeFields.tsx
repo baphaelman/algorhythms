@@ -41,6 +41,7 @@ import {
   toggleStep,
 } from './fields';
 import { ChordNotes } from './ChordNotes';
+import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
 
@@ -73,6 +74,8 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
       return <SpreadFields m={m} />;
     case 'walk':
       return <WalkFields m={m} ctx={ctx} />;
+    case 'note':
+      return <NoteFields m={m} keyAt={ctx.keyAt} />;
     case 'pin':
       return <PinFields m={m} ctx={ctx} />;
     case 'key':

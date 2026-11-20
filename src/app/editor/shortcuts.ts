@@ -1,6 +1,6 @@
 /**
  * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the ten letters add a
- * moment at the playhead, Delete/Backspace delete the selection, Escape clears it, `\` toggles
+ * moment at the playhead (the palette's `note` has no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles
  * the loop region (revision 6).
  */
 
@@ -11,8 +11,8 @@ import { select, useEditor } from './history';
 
 export interface PaletteEntry {
   type: MomentType;
-  /** Shortcut letter, upper case for display. */
-  key: string;
+  /** Shortcut letter, upper case for display; none for `note` (N + click adds one, §11.3). */
+  key?: string;
   /** Short name on the button. */
   name: string;
   /** Glyph shown before the name. */
@@ -29,13 +29,14 @@ export const PALETTE: readonly PaletteEntry[] = [
   { type: 'shift', key: 'T', name: 'shift', icon: '⇅', hint: 'Transpose by scale steps' },
   { type: 'spread', key: 'P', name: 'spread', icon: '⇔', hint: 'Widen or narrow the spacing' },
   { type: 'walk', key: 'W', name: 'walk', icon: '▭', hint: 'Random steps over a region' },
+  { type: 'note', name: 'note', icon: '•', hint: 'Change one note (or double-click a line)' },
   { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one voice' },
   { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
   { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade voices' },
 ];
 
 const BY_KEY: ReadonlyMap<string, MomentType> = new Map(
-  PALETTE.map((e) => [e.key.toLowerCase(), e.type]),
+  PALETTE.flatMap((e) => (e.key ? [[e.key.toLowerCase(), e.type] as const] : [])),
 );
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'> & {

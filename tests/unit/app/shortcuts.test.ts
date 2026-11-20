@@ -73,8 +73,13 @@ describe('key mapping', () => {
       expect(momentTypeForKey(key(k))).toBe(type);
       expect(editorKey(key(k))).toEqual({ kind: 'add', type });
     }
-    expect(PALETTE).toHaveLength(10);
-    expect(new Set(PALETTE.map((e) => e.key)).size).toBe(10);
+    expect(PALETTE).toHaveLength(11);
+    const keyed = PALETTE.filter((e) => e.key);
+    expect(keyed).toHaveLength(10);
+    expect(new Set(keyed.map((e) => e.key)).size).toBe(10);
+    // The palette's note point has no letter: N + click adds one on a line (§11.3).
+    expect(PALETTE.find((e) => e.type === 'note')?.key).toBeUndefined();
+    expect(momentTypeForKey(key('n'))).toBeNull();
     expect(momentTypeForKey(key('x'))).toBeNull();
   });
 

@@ -53,7 +53,13 @@ export function Palette() {
             data-moment={e.type}
             data-no-effect={off || undefined}
             aria-disabled={off || undefined}
-            title={off ? `${e.name}: ${reason} (drag to another time)` : `${e.hint} (${e.key})`}
+            title={
+              off
+                ? `${e.name}: ${reason} (drag to another time)`
+                : e.key
+                  ? `${e.hint} (${e.key})`
+                  : e.hint
+            }
             aria-keyshortcuts={e.key}
             draggable
             onDragStart={(ev) => {

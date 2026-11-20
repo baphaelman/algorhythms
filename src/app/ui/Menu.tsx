@@ -211,7 +211,7 @@ export function Menu() {
           </dl>
           <h2>Editing</h2>
           <dl className="shortcuts" data-testid="editor-shortcuts">
-            {PALETTE.map((e) => (
+            {PALETTE.filter((e) => e.key).map((e) => (
               <Fragment key={e.type}>
                 <dt>
                   <kbd>{e.key}</kbd>
@@ -219,6 +219,14 @@ export function Menu() {
                 <dd>Add {e.name} at the playhead</dd>
               </Fragment>
             ))}
+            <dt>
+              <kbd>N</kbd> + click, or double-click a line
+            </dt>
+            <dd>Add a note point there; drag up or down to change the note</dd>
+            <dt>
+              <kbd>▲</kbd> <kbd>▼</kbd>
+            </dt>
+            <dd>Move the selected note point a scale step</dd>
             <dt>
               <kbd>Delete</kbd> <kbd>⌫</kbd>
             </dt>

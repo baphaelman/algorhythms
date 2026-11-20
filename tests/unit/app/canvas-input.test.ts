@@ -37,6 +37,7 @@ const fns = vi.hoisted(() => ({
   select: vi.fn(),
   addMoment: vi.fn(),
   deleteMoments: vi.fn(() => true),
+  stepNote: vi.fn((id: string) => id === 'note1'),
   togglePlay: vi.fn(),
   seekBy: vi.fn(),
   zoomBy: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock('../../../src/app/editor/history', () => ({
 vi.mock('../../../src/app/editor/actions', () => ({
   addMoment: fns.addMoment,
   deleteMoments: fns.deleteMoments,
+  stepNote: fns.stepNote,
 }));
 vi.mock('../../../src/app/editor/palette-effects', () => ({
   playheadEffect: (type: string) => ({ effect: !h.state.noEffect.has(type) }),
@@ -266,5 +268,29 @@ describe('player keys', () => {
     h.state.dialogOpen = true;
     press(' ');
     expect(fns.togglePlay).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('▲/▼ on a selected note point', () => {
+  it('steps its `to` and only then prevents the default', () => {
+    expect(press('ArrowUp').defaultPrevented).toBe(false);
+    expect(fns.stepNote).not.toHaveBeenCalled();
+    h.state.selection = ['note1'];
+    expect(press('ArrowUp').defaultPrevented).toBe(true);
+    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', 1);
+    expect(press('ArrowDown').defaultPrevented).toBe(true);
+    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', -1);
+    h.state.selection = ['chord1'];
+    expect(press('ArrowUp').defaultPrevented).toBe(false);
+  });
+
+  it('is ignored when handled, with Shift, in fields and outside the wide layout', () => {
+    h.state.selection = ['note1'];
+    press('ArrowUp', { defaultPrevented: true });
+    press('ArrowUp', { shiftKey: true });
+    press('ArrowDown', { target: el('input', 'range') });
+    h.state.wide = false;
+    press('ArrowDown');
+    expect(fns.stepNote).not.toHaveBeenCalled();
   });
 });
