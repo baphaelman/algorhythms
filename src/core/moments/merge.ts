@@ -1,8 +1,8 @@
 /**
  * `merge` (§6.2, §7.4): lowers the active count to `count`. The dying voices are chosen among the
  * targeted ones by `which`; each glides to the committed destination of its nearest surviving
- * neighbour (any active survivor; ties: the lower one), then fades out over `fade` and becomes
- * dormant. With no survivors left, the dying voices fade where they are.
+ * neighbour (`absorbers`), then fades out over `fade` and becomes dormant. With no survivors
+ * left, the dying voices fade where they are.
  */
 
 import { Purpose } from '../rng';
@@ -26,24 +26,43 @@ export function mergeMoment(m: MergeMoment, env: MomentEnv): MomentPlan | null {
     return null;
   }
   const dying = chooseDying(env, vs, m.which, n);
-  const survivors = env.active.filter((v) => !dying.has(v));
   const fade = Number.isFinite(m.fade) && m.fade > 0 ? m.fade : 0;
   const intents: Intent[] = [];
+  const into = absorbers(env, dying);
   for (const v of vs) {
     if (!dying.has(v)) continue;
-    const d = env.dest(v);
-    let to = d;
-    let best = Infinity;
-    for (const s of survivors) {
-      const dist = Math.abs(env.dest(s) - d);
-      if (dist < best) {
-        best = dist;
-        to = env.dest(s);
-      }
-    }
-    intents.push({ voice: v, to, kind: IntentKind.Death, fade });
+    const s = into.get(v) ?? -1;
+    const to = s >= 0 ? env.dest(s) : env.dest(v);
+    intents.push({ voice: v, to, kind: IntentKind.Death, fade, into: s });
   }
   return { ordered: true, intents };
+}
+
+/**
+ * The survivor each dying voice merges into (−1: none left): its nearest surviving neighbour in
+ * the order of the active voices (by committed destination, ties: pool index), the closer of the
+ * one below and the one above (ties: below). Taking an order neighbour, not just the nearest
+ * pitch, keeps lines apart when survivors share a pitch but move to different targets (a chord
+ * with `count`): the dying voice then ends where its neighbour ends, never past it.
+ */
+export function absorbers(env: MomentEnv, dying: ReadonlySet<number>): Map<number, number> {
+  const act = env.active;
+  const out = new Map<number, number>();
+  for (let i = 0; i < act.length; i++) {
+    const v = act[i];
+    if (!dying.has(v)) continue;
+    let lo = i - 1;
+    while (lo >= 0 && dying.has(act[lo])) lo--;
+    let hi = i + 1;
+    while (hi < act.length && dying.has(act[hi])) hi++;
+    const d = env.dest(v);
+    const below = lo >= 0 ? act[lo] : -1;
+    const above = hi < act.length ? act[hi] : -1;
+    if (below < 0) out.set(v, above);
+    else if (above < 0) out.set(v, below);
+    else out.set(v, env.dest(above) - d < d - env.dest(below) ? above : below);
+  }
+  return out;
 }
 
 /** The n voices of `vs` (sorted by committed destination) that die, by `which` (§6.2 merge). */

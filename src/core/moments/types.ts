@@ -29,6 +29,11 @@ export interface Intent {
   parent?: number;
   /** Deaths: fade-out length after the glide ends. */
   fade?: Seconds;
+  /**
+   * Deaths: pool index of the survivor it merges into (−1 or absent: none). The dying voice
+   * follows that voice's later moves until its fade ends (§7.4, M4.5-17).
+   */
+  into?: number;
 }
 
 export interface MomentPlan {

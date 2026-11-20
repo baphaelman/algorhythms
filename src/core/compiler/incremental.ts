@@ -49,10 +49,10 @@ const STRIDE = 2;
 /**
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
- * and the tail's t1 and p1 (the fields `finishAt` mutates). References, REFS per voice: pending
- * moves (a copy), pending birth, open life, tail, tail curve.
+ * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade. References, REFS per
+ * voice: pending moves (a copy), pending birth, open life, tail, tail curve.
  */
-const NUMS = 11;
+const NUMS = 13;
 const REFS = 5;
 const NO_MOVES: readonly Move[] = [];
 
@@ -209,6 +209,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       f.bornMid ? 1 : 0,
       tail ? tail.t1 : 0,
       tail ? tail.p1 : 0,
+      run.into,
+      run.deathFade,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -272,6 +274,8 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     const r = v * REFS;
     run.status = nums[n] as Status;
     run.diedAt = nums[n + 1];
+    run.into = nums[n + 11];
+    run.deathFade = nums[n + 12];
     run.segs.length = 0;
     pushPrefix(run.segs, prev.segs[v], nums[n + 2]);
     run.lives.length = 0;

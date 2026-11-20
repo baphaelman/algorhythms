@@ -10,9 +10,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   compile as compileRaw,
   compileWithTrace as compileWithTraceRaw,
+  type CompileTrace,
 } from '../../../src/core/compiler/compile';
 import { CHECK_SAMPLES } from '../../../src/core/interrupt';
-import { pitchAt } from '../../../src/core/query';
+import { lifeAt, pitchAt } from '../../../src/core/query';
 import { evalSegment, evalSegmentVelocity } from '../../../src/core/segment';
 import { easeCodeOf, easeRaw, bezierOf } from '../../../src/core/ease';
 import type { CompiledScore, Piece, Segment } from '../../../src/core/types';
@@ -65,7 +66,7 @@ function check<T>(name: string, prop: fc.IProperty<[T]>, numRuns: number): void 
       if (dir && out.counterexample) {
         writeFileSync(`${dir}/${name}.json`, JSON.stringify(out.counterexample[0], null, 1));
       }
-      throw new Error(fc.defaultReportMessage(out));
+      throw new Error(`${String(out.errorInstance)}\n${fc.defaultReportMessage(out)}`);
     },
   });
 }
@@ -99,6 +100,22 @@ function ownOvershoot(g: Segment): { up: number; down: number } {
 const plannedEnd = (s: Segment): { t1: number; p1: number } =>
   s.curve ? s.curve : { t1: s.t1, p1: s.p1 };
 
+/**
+ * Whether segment g of voice v follows a survivor (M4.5-17): a dying voice's segments after its
+ * death glide copy the moves of the voice it merges into.
+ */
+function isFollow(trace: CompileTrace, score: CompiledScore, v: number, g: Segment): boolean {
+  const voice = score.voices[v];
+  for (const m of trace.moments) {
+    if (m.t > g.t0) break;
+    if (!(m.intents ?? []).some((it) => it.kind === 'death' && it.voice === v)) continue;
+    const died = lifeAt(voice, m.t)?.died ?? Infinity;
+    const glide = voice.segments.find((x) => x.momentId === m.id && x.t0 >= m.t);
+    if (glide && g.t0 > glide.t0 && g.t0 < died) return true;
+  }
+  return false;
+}
+
 /** Counts for the crossing property (pairs checked, crossings not caused by a bézier's own overshoot). */
 interface CrossingStats {
   pairsChecked: number;
@@ -123,10 +140,16 @@ function checkCrossings(p: Piece, stats: CrossingStats): void {
       (d) => d.momentId === m.id && d.code === 'crossing-unresolved',
     );
     const [ws, we] = plan.window;
+    // Dying voices merge into a survivor and follow it (M4.5-17): two merging into the same
+    // voice end on one line, and their order on the way does not matter.
+    const into = new Map<number, number>();
+    for (const it of m.intents ?? []) if (it.kind === 'death') into.set(it.voice, it.into ?? -1);
     for (let k = 0; k + 1 < plan.order.length; k++) {
       const lo = score.voices[plan.order[k]];
       const hi = score.voices[plan.order[k + 1]];
       if (!plan.movers.includes(lo.index) && !plan.movers.includes(hi.index)) continue;
+      const a = into.get(lo.index);
+      if (a !== undefined && a >= 0 && a === into.get(hi.index)) continue;
       // The window ends when a later moment (or walk) takes over either voice.
       let end = Math.min(we, takeover(lo.index), takeover(hi.index));
       for (const v of [lo, hi]) {
@@ -335,7 +358,7 @@ describe('compiler properties (§14)', () => {
         for (const v of score.voices) {
           const range = p.voices[v.index].range;
           for (const g of v.segments) {
-            if (!g.m0) continue;
+            if (!g.m0 || isFollow(trace, score, v.index, g)) continue; // a copy of another's
             checked++;
             const end = plannedEnd(g);
             const lo = Math.min(g.p0, end.p1);
@@ -416,6 +439,7 @@ describe('compiler properties (§14)', () => {
             const next = v.segments[i + 1];
             // Walks step only idle voices: a running move is never cut by a walk step.
             if (next.t0 === g.t1 && next.t0 < plannedEnd(g).t1 && !isWalk(g)) {
+              if (isFollow(trace, score, v.index, next)) continue;
               expect(isWalk(next), `${v.id}: walk step cuts ${g.momentId} at ${next.t0}`).toBe(
                 false,
               );
