@@ -320,13 +320,12 @@ test('the examples gallery loads each example, stopped', async ({ page }) => {
   await expect(page.getByTestId('time')).toHaveText('00:00.0');
 });
 
-test('Generate and Export are disabled placeholders; Escape closes the menu', async ({ page }) => {
+test('menu offers Generate and Export; Escape closes it and returns focus', async ({ page }) => {
   await openApp(page);
   await page.getByTestId('menu-button').click();
   const panel = page.getByTestId('menu-panel');
-  await expect(panel.getByRole('button', { name: /Generate/ })).toBeDisabled();
-  await expect(panel.getByRole('button', { name: /Generate/ })).toContainText('coming soon');
-  await expect(panel.getByRole('button', { name: /Export/ })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: /Generate/ })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: /Export/ })).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await expect(page.getByTestId('menu-button')).toBeFocused();
