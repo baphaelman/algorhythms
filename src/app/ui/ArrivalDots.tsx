@@ -50,11 +50,6 @@ function place(el: HTMLElement, v: View, d: ArrivalDot): void {
   if (el.hidden === show) el.hidden = !show;
 }
 
-/** The dot being dragged: drawn at the pointer, not where the score has it. */
-let follow: { el: HTMLElement; t: number; pitch: number } | null = null;
-const at = (el: HTMLElement, d: ArrivalDot): ArrivalDot =>
-  follow?.el === el ? { ...d, t: follow.t, pitch: follow.pitch } : d;
-
 /** Hover index, rebuilt when the compiled score changes. */
 let index: { score: CompiledScore; piece: Piece; dots: ArrivalDot[] } | null = null;
 function arrivalsOf(score: CompiledScore): ArrivalDot[] {
@@ -83,6 +78,9 @@ export function ArrivalDots() {
   const box = useRef<HTMLDivElement>(null);
   const els = useRef<(HTMLButtonElement | null)[]>([]);
   const hoverEls = useRef<(HTMLButtonElement | null)[]>([]);
+  /** The dragged dot, drawn at the pointer (the pressed one hides while the score catches up). */
+  const ghost = useRef<HTMLDivElement>(null);
+  const follow = useRef<ArrivalDot | null>(null);
   const view = useRef<View | null>(null);
   const geo = useRef<ArrivalDot[]>([]);
   const selectedId = useRef<string | null>(null);
@@ -104,7 +102,7 @@ export function ArrivalDots() {
         const g = geo.current;
         for (let i = 0; i < g.length; i++) {
           const el = els.current[i];
-          if (el) place(el, v, at(el, g[i]));
+          if (el) place(el, v, g[i]);
         }
         // Hover: re-picked when the pointer, the camera or the score changed; held while the
         // pointer is on a hover dot (the canvas then reports a leave) or a drag runs.
@@ -127,10 +125,15 @@ export function ArrivalDots() {
               : [];
           }
         }
+        const gh = ghost.current;
+        if (gh) {
+          if (follow.current) place(gh, v, follow.current);
+          else if (!gh.hidden) gh.hidden = true;
+        }
         for (let i = 0; i < HOVER_MAX; i++) {
           const el = hoverEls.current[i];
           if (!el) continue;
-          const d = h.dots[i];
+          const d = h.dragging ? undefined : h.dots[i];
           if (!d) {
             if (!el.hidden) el.hidden = true;
             continue;
@@ -138,7 +141,7 @@ export function ArrivalDots() {
           el.dataset.moment = d.momentId;
           el.dataset.type = d.type;
           el.dataset.pitch = String(d.pitch);
-          place(el, v, at(el, d));
+          place(el, v, d);
         }
       }),
     [],
@@ -183,8 +186,9 @@ export function ArrivalDots() {
         const bpm = usePlayer.getState().piece.view.gridBpm;
         t = ev.altKey || !bpm ? Math.max(0, Math.round(raw * 1000) / 1000) : snapToGrid(raw, bpm);
       }
-      follow = { el, t, pitch: p };
-      place(el, v, { ...dot, t, pitch: p });
+      follow.current = { ...dot, t, pitch: p };
+      if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+      if (ghost.current) place(ghost.current, v, follow.current);
       if (p === last && t === lastT) return;
       last = p;
       lastT = t;
@@ -198,7 +202,9 @@ export function ArrivalDots() {
       h.dragging = false;
       h.held = false;
       h.key = '';
-      follow = null;
+      follow.current = null;
+      el.style.visibility = '';
+      if (ghost.current) ghost.current.hidden = true;
       if (drag) {
         const cancel = ev.type === 'pointercancel';
         drag.end(cancel);
@@ -242,6 +248,7 @@ export function ArrivalDots() {
         </div>
       )}
       <div ref={box} className="walk-dots" data-testid="hover-dots" aria-hidden="true">
+        <div ref={ghost} className="walk-dot on drag-dot" data-testid="drag-dot" hidden />
         {Array.from({ length: HOVER_MAX }, (_, i) => (
           <button
             key={i}

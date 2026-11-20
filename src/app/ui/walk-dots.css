@@ -61,3 +61,8 @@
   opacity: 1;
   border-style: solid;
 }
+
+/* The dot being dragged, at the pointer (§11.3, revision 6). */
+.walk-dots .drag-dot {
+  pointer-events: none;
+}

@@ -353,7 +353,10 @@ export function dragArrival(dot: ArrivalDot): DotDrag | null {
       ({ ...(pitch !== dot.pitch ? { to: pitch, order } : {}), ...timed(t) }) as MomentPatch;
   } else if (a.kind === 'override' && voice !== undefined) {
     beginGesture(`Move ${LABELS[m.type]} note`);
-    patchOf = (pitch, t) => {
+    // Kept inside the voice's range: the compiler would fold it by an octave (§7.8).
+    const [lo, hi] = piece.voices[voice]?.range ?? [0, 127];
+    patchOf = (pitch0, t) => {
+      const pitch = Math.min(hi, Math.max(lo, pitch0));
       const list = pitch !== dot.pitch ? withOverride(m.overrides, voice, { pitch }) : m.overrides;
       const p = timed(t, list);
       return Object.keys(p).length > 0 || list === m.overrides
