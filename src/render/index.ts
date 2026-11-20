@@ -1,0 +1,42 @@
+/** Score renderer (PLAN.md §10). Imports only core. */
+export {
+  BLEND_START,
+  DEFAULT_PLAYHEAD_X,
+  MIN_WINDOW,
+  OVERVIEW_TWEEN_MS,
+  cameraAt,
+  cameraScore,
+  clampWindow,
+  easeOverview,
+  pitchExtent,
+  pitchToY,
+  sliderToWindow,
+  smootherstep,
+  timeToX,
+  windowBlend,
+  windowRange,
+  windowToSlider,
+  xToTime,
+  yToPitch,
+  zoomWindow,
+  type CameraScore,
+} from './camera';
+export { DEFAULT_MONO, GLIDE_STEP_PX, drawScore, formatTime, keyName, type Ctx2D } from './draw';
+export {
+  DARK_TOKENS,
+  GOLDEN_ANGLE,
+  LIGHT_TOKENS,
+  PITCH_HUES,
+  isDarkColor,
+  lchColor,
+  lineColor,
+  pitchColor,
+  pitchStops,
+  readTokens,
+  supportsOklch,
+  tokensOf,
+  voiceColor,
+  voiceHue,
+  type PaletteInput,
+} from './palettes';
+export type { CameraState, MomentLabels, ScoreStyle, ThemeName, ThemeTokens, View } from './types';
