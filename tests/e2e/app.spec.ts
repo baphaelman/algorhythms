@@ -252,13 +252,11 @@ test('line colours change the picture', async ({ page }) => {
   );
   expect((await getState(page)).view.colors).toBe('ink');
   const ink = await canvasInfo(page);
-  await page.getByRole('button', { name: 'Per voice', exact: true }).click();
-  expect((await getState(page)).view.colors).toBe('voice');
-  const voice = await canvasInfo(page);
+  await expect(page.getByRole('button', { name: 'Per voice' })).toHaveCount(0);
   await page.getByRole('button', { name: 'By pitch', exact: true }).click();
   expect((await getState(page)).view.colors).toBe('pitch');
   const pitch = await canvasInfo(page);
-  expect(new Set([ink.url, voice.url, pitch.url]).size).toBe(3);
+  expect(ink.url).not.toBe(pitch.url);
 });
 
 test('themes: system default, light and dark toggle, and the choice is remembered', async ({

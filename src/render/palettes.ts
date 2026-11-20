@@ -77,10 +77,6 @@ export function supportsOklch(): boolean {
   }
 }
 
-/** Degrees between successive voice hues: the golden angle. */
-export const GOLDEN_ANGLE = 137.508;
-/** Hue of voice 0. */
-const HUE_BASE = 25;
 /** Hues of the pitch gradient, from the lowest pitch (cool) to the highest (warm). */
 export const PITCH_HUES: readonly number[] = [280, 240, 195, 150, 95, 50, 20];
 
@@ -95,17 +91,6 @@ export function lchColor(L: number, c: number, hue: number, oklch: boolean): str
   return oklch
     ? `oklch(${L} ${c} ${Math.round(h * 10) / 10})`
     : `hsl(${Math.round(h)} 65% ${Math.round(L * 88)}%)`;
-}
-
-/** Hue in degrees of voice `index`: golden-angle steps. */
-export function voiceHue(index: number): number {
-  return (HUE_BASE + index * GOLDEN_ANGLE) % 360;
-}
-
-/** Colour of pool voice `index` in 'voice' mode. */
-export function voiceColor(index: number, dark: boolean, oklch: boolean): string {
-  const [L, c] = lc(dark);
-  return lchColor(L, c, voiceHue(index), oklch);
 }
 
 /** Gradient stops for 'pitch' mode, from the low end (position 0) to the high end (position 1). */
@@ -136,19 +121,10 @@ export interface PaletteInput {
 /**
  * The solid colour of voice `index` in the given mode, or null in 'pitch' mode (which paints a
  * gradient, see `pitchStops`). 'ink' uses the theme ink; 'custom' uses `VoiceDef.color` and falls
- * back to the voice colour when a voice has none.
+ * back to the ink when a voice has none.
  */
 export function lineColor(p: PaletteInput, index: number): string | null {
-  switch (p.colors) {
-    case 'ink':
-      return p.tokens.ink;
-    case 'pitch':
-      return null;
-    case 'custom': {
-      const c = p.customColors?.[index];
-      return c ? c : voiceColor(index, p.dark, p.oklch);
-    }
-    default:
-      return voiceColor(index, p.dark, p.oklch);
-  }
+  if (p.colors === 'pitch') return null;
+  if (p.colors === 'custom') return p.customColors?.[index] || p.tokens.ink;
+  return p.tokens.ink;
 }

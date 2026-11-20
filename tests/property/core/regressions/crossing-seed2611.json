@@ -307,7 +307,7 @@
   },
   "view": {
     "window": 20,
-    "colors": "voice",
+    "colors": "pitch",
     "hud": true
   }
 }

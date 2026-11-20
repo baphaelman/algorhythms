@@ -4,7 +4,6 @@ import { setColors, setHud, setTheme, setWindow, usePlayer, type ThemePref } fro
 
 const COLORS = [
   ['ink', 'Ink'],
-  ['voice', 'Per voice'],
   ['pitch', 'By pitch'],
 ] as const;
 

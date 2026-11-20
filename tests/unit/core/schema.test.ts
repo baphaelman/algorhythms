@@ -166,11 +166,18 @@ describe('parsePiece: defaults', () => {
         { id: 'w8mm', type: 'walk', at: 52, until: 70, grid: 0.5, density: 0.45 },
       ],
       end: { fade: 6 },
-      view: { window: 20, colors: 'voice', hud: true },
+      view: { window: 20, colors: 'pitch', hud: true },
     };
     const { piece } = ok(parsePiece(example));
     expect(piece.moments[5]).toMatchObject({ steps: [-2, -1, 1, 2], stepGlide: 0.3 });
     expect(piece.moments[3]).toMatchObject({ octaves: false });
+  });
+
+  it("reads the retired colors 'voice' as 'pitch'", () => {
+    const old = { ...newPiece({ seed: 5 }), view: { window: 20, colors: 'voice', hud: true } };
+    const r = ok(parsePiece(JSON.stringify(old)));
+    expect(r.piece.view.colors).toBe('pitch');
+    expect(r.warnings).toEqual([]);
   });
 
   it('round-trips the empty template exactly', () => {

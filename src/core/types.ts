@@ -454,7 +454,7 @@ export interface MixSettings {
 // ---------------------------------------------------------------------------------------------
 
 /** How score lines are colored (§10). */
-export type LineColors = 'ink' | 'voice' | 'pitch' | 'custom';
+export type LineColors = 'ink' | 'pitch' | 'custom';
 
 /** View settings stored with the piece. Theme and other per-user preferences are not here. */
 export interface ViewSettings {

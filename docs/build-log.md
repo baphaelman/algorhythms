@@ -554,3 +554,9 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 
 ### Dev toggle: compile option `crossings`
 `compile(piece, { crossings: "allow" })` (also `compileWithTrace`) skips crossing enforcement and its diagnostics (`CompileOptions` in compiler/compile.ts, `CrossingsMode` in plan.ts); default `"forbid"` is unchanged. Not on Piece or in the schema; tests in tests/unit/core/crossings-option.test.ts (no tests/core dir exists).
+
+### Line colours: "Per voice" removed, "By pitch" default (owner ruling 2026-11-20)
+- **Shared contract:** `LineColors` in core/types.ts drops `'voice'` (now `'ink' | 'pitch' | 'custom'`); `DEFAULT_VIEW.colors` is `'pitch'`. Schema enum and docs/file-format.md updated.
+- **Old files:** `parsePiece` maps `view.colors: 'voice'` to `'pitch'` before validation (`renameRetiredValues` in schema.ts), with no warning and no version bump. Not a migration step because version-1 files carry it. Share links go through `parsePiece`, so they are covered too.
+- **Render:** golden-angle voice palette removed (`GOLDEN_ANGLE`, `voiceHue`, `voiceColor`). In 'custom', a voice with no `VoiceDef.color` now falls back to the theme ink, not a voice hue. draw.ts unchanged.
+- Examples and property regressions now say `"pitch"`. render.spec.ts benchmark: base `'pitch'`; the solid baseline is `'ink'` (`ink-24-flush` holds the 4 ms budget that `voice-24-flush` held).

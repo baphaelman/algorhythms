@@ -88,13 +88,13 @@ export type MomentLabels = Readonly<Record<MomentId, string>>;
 export interface ScoreStyle {
   /** Resolved colour tokens of the current theme. */
   tokens: ThemeTokens;
-  /** True for the dark theme (picks lightness for voice and pitch colours). */
+  /** True for the dark theme (picks lightness for pitch colours). */
   dark: boolean;
   /** Line colouring (PLAN.md §10). */
   colors: LineColors;
   /** Use OKLCH colours; false selects the HSL fallback (see `supportsOklch`). */
   oklch: boolean;
-  /** `VoiceDef.color` by pool index, for `colors: 'custom'`. Missing entries fall back to 'voice'. */
+  /** `VoiceDef.color` by pool index, for `colors: 'custom'`. Missing entries fall back to the ink. */
   customColors?: readonly (string | undefined)[];
   /** Opacity 0..1 of the future lines (the ghost). 0 during playback by default. */
   futureOpacity: number;

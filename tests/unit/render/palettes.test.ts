@@ -1,41 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   DARK_TOKENS,
-  GOLDEN_ANGLE,
   LIGHT_TOKENS,
   isDarkColor,
   lineColor,
   pitchStops,
   readTokens,
-  voiceColor,
-  voiceHue,
   type PaletteInput,
 } from '../../../src/render';
 
-const base: PaletteInput = { tokens: LIGHT_TOKENS, dark: false, oklch: true, colors: 'voice' };
-
-describe('voice colours', () => {
-  it('hues step by the golden angle and the first 32 are pairwise distinct', () => {
-    expect(voiceHue(1) - voiceHue(0)).toBeCloseTo(GOLDEN_ANGLE, 9);
-    const colors = new Set(Array.from({ length: 32 }, (_, i) => voiceColor(i, false, true)));
-    expect(colors.size).toBe(32);
-    // golden-angle spacing keeps neighbours far apart: any two of the first 32 differ by ≥ 5°
-    const hues = Array.from({ length: 32 }, (_, i) => voiceHue(i)).sort((a, b) => a - b);
-    for (let i = 1; i < hues.length; i++) expect(hues[i] - hues[i - 1]).toBeGreaterThan(5);
-  });
-
-  it('is lighter on dark paper and uses oklch() or the HSL fallback', () => {
-    expect(voiceColor(0, false, true)).toMatch(/^oklch\(0\.57 0\.16 \d/);
-    expect(voiceColor(0, true, true)).toMatch(/^oklch\(0\.8 0\.13 \d/);
-    const hsl = voiceColor(3, true, false);
-    expect(hsl).toMatch(/^hsl\(\d+ 65% \d+%\)$/);
-    expect(hsl).not.toContain('oklch');
-    const lightness = (c: string) => Number(/(\d+)%\)$/.exec(c)![1]);
-    expect(lightness(voiceColor(3, true, false))).toBeGreaterThan(
-      lightness(voiceColor(3, false, false)),
-    );
-  });
-});
+const base: PaletteInput = { tokens: LIGHT_TOKENS, dark: false, oklch: true, colors: 'pitch' };
 
 describe('pitch palette', () => {
   it('runs from cool (low) to warm (high)', () => {
@@ -56,11 +30,11 @@ describe('lineColor', () => {
   it('pitch mode has no solid colour (a gradient is used)', () => {
     expect(lineColor({ ...base, colors: 'pitch' }, 0)).toBeNull();
   });
-  it('custom uses VoiceDef.color and falls back to the voice colour', () => {
+  it('custom uses VoiceDef.color and falls back to the ink', () => {
     const p: PaletteInput = { ...base, colors: 'custom', customColors: ['#ff0000', undefined] };
     expect(lineColor(p, 0)).toBe('#ff0000');
-    expect(lineColor(p, 1)).toBe(voiceColor(1, false, true));
-    expect(lineColor(p, 7)).toBe(voiceColor(7, false, true));
+    expect(lineColor(p, 1)).toBe(LIGHT_TOKENS.ink);
+    expect(lineColor(p, 7)).toBe(LIGHT_TOKENS.ink);
   });
 });
 

@@ -108,10 +108,10 @@ export const DEFAULT_MIX: DeepReadonly<MixSettings> = deepFreeze({
   panAuto: 'index',
 });
 
-/** Default view (§10): a 20 s window (the prototype's), colour by voice, HUD on. */
+/** Default view (§10): a 20 s window (the prototype's), colour by pitch, HUD on. */
 export const DEFAULT_VIEW: DeepReadonly<ViewSettings> = deepFreeze({
   window: 20,
-  colors: 'voice',
+  colors: 'pitch',
   hud: true,
 });
 

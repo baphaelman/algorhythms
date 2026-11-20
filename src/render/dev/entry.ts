@@ -94,7 +94,7 @@ function shot(canvas: HTMLCanvasElement, json: unknown, t: number, win: number, 
     {
       tokens: dark ? DARK_TOKENS : LIGHT_TOKENS,
       dark,
-      colors: 'voice',
+      colors: 'pitch',
       oklch: supportsOklch(),
       futureOpacity: t <= 0 ? 1 : 0,
       hud: true,

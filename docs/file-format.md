@@ -2978,11 +2978,10 @@ This is the *input* form: fields with defaults are optional here.
           "exclusiveMinimum": 0
         },
         "colors": {
-          "default": "voice",
+          "default": "pitch",
           "type": "string",
           "enum": [
             "ink",
-            "voice",
             "pitch",
             "custom"
           ]

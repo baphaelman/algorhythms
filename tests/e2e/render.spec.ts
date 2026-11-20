@@ -68,13 +68,14 @@ test('draws 1080p frames within the 4 ms budget', async ({ page, browserName }, 
       { json, o },
     );
 
-  // 24 voices, a 20 s window, the worst-case colour mode (gradient), raster flushed each frame.
-  const base = { frames: 200, window: 20, colors: 'voice', dark: false, voices: 24, flush: true };
+  // 24 voices, a 20 s window, raster flushed each frame. 'pitch' (the default) paints a
+  // gradient, the worst case; 'ink' is the solid-colour baseline.
+  const base = { frames: 200, window: 20, colors: 'pitch', dark: false, voices: 24, flush: true };
   const results: Record<string, Stats> = {};
-  results['voice-24-flush'] = await run(base);
-  results['pitch-24-flush'] = await run({ ...base, colors: 'pitch', dark: true });
-  results['pitch-24-draw-only'] = await run({ ...base, colors: 'pitch', flush: false });
-  results['voice-24-draw-only'] = await run({ ...base, flush: false });
+  results['ink-24-flush'] = await run({ ...base, colors: 'ink' });
+  results['pitch-24-flush'] = await run({ ...base, dark: true });
+  results['pitch-24-draw-only'] = await run({ ...base, flush: false });
+  results['ink-24-draw-only'] = await run({ ...base, colors: 'ink', flush: false });
   results['example-16-overview'] = await run({ ...base, voices: 0, window: 1e6 });
   info.annotations.push({ type: 'render-timing', description: JSON.stringify(results) });
   console.log(`[${browserName}] render timings (ms):`, JSON.stringify(results));
@@ -84,7 +85,7 @@ test('draws 1080p frames within the 4 ms budget', async ({ page, browserName }, 
     expect(Number.isFinite(r.median), name).toBe(true);
   }
   if (browserName === 'chromium') {
-    expect(results['voice-24-flush'].median).toBeLessThanOrEqual(BUDGET_MS);
+    expect(results['ink-24-flush'].median).toBeLessThanOrEqual(BUDGET_MS);
     // The gradient mode is dearer to rasterise; its JS cost alone must fit (flush is reported).
     expect(results['pitch-24-draw-only'].median).toBeLessThanOrEqual(BUDGET_MS);
   }

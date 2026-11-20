@@ -371,7 +371,7 @@ const V = DEFAULT_VIEW;
 
 export const ViewSchema = z.looseObject({
   window: z.number().positive().default(V.window).describe('Visible time window (s).'),
-  colors: z.enum(['ink', 'voice', 'pitch', 'custom']).default(V.colors),
+  colors: z.enum(['ink', 'pitch', 'custom']).default(V.colors),
   hud: z.boolean().default(V.hud),
   gridBpm: z.number().positive().optional(),
   futureOpacity: unitInterval.optional(),
@@ -551,6 +551,16 @@ function formatIssues(
 }
 
 /** Index → raw moment, for moments whose type this build doesn't know. */
+/**
+ * Retired enum values that version-1 files may still hold, mapped to their replacements in place.
+ * No version bump: the old value just reads as the new one. `view.colors: 'voice'` (per-voice
+ * palette, removed 2026-11-20) → 'pitch'.
+ */
+function renameRetiredValues(raw: Record<string, unknown>): void {
+  const view = raw.view;
+  if (isRecord(view) && view.colors === 'voice') view.colors = 'pitch';
+}
+
 function extractUnknownMoments(raw: Record<string, unknown>): Map<number, unknown> {
   const unknown = new Map<number, unknown>();
   if (!Array.isArray(raw.moments)) return unknown;
@@ -609,6 +619,7 @@ export function parsePiece(json: unknown, options: ParsePieceOptions = {}): Pars
   }
   const rec = raw as Record<string, unknown>;
 
+  renameRetiredValues(rec);
   const unknownMoments = extractUnknownMoments(rec);
   const errors: string[] = [];
   if (unknownMoments.size > 0) {
