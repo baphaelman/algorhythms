@@ -16,6 +16,8 @@ import type { CompiledScore, Piece, Segment } from '../../../src/core/types';
 import { pieceArb } from './compiler-arbitraries';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 300);
+// Reproducible by default; set PROP_SEED=random (or a number) to explore other pieces.
+const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
 
 /**
  * fc.assert, and when the DUMP_DIR environment variable is set, writes a failing piece to
@@ -24,6 +26,8 @@ const RUNS = Number(process.env.PROP_RUNS ?? 300);
 function check<T>(name: string, prop: fc.IProperty<[T]>, numRuns: number): void {
   fc.assert(prop, {
     numRuns,
+    seed: SEED,
+    endOnFailure: true, // report at once; shrinking these pieces is slow
     reporter: (out) => {
       if (!out.failed) return;
       const dir = process.env.DUMP_DIR;

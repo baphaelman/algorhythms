@@ -29,17 +29,6 @@ import type { Birth, Move, VoiceRun } from './voice';
 
 /** Order reversals smaller than this are touching, not crossing (semitones). */
 export const CROSS_EPS = 1e-9;
-export const DBG = {
-  resample: 0,
-  tighten: 0,
-  resolve: 0,
-  passes: 0,
-  plans: 0,
-  checks: 0,
-  pruned: 0,
-  parts: 0,
-  movers: 0,
-};
 
 const enum PartKind {
   Fixed = 0,
@@ -112,7 +101,6 @@ export function planMoment(
   subset: boolean,
 ): PlanResult {
   const { voices, t: T, glide, seed } = host;
-  DBG.plans++;
   const ordered = plan.ordered;
 
   // 1. Ranges (§7.8).
@@ -187,8 +175,6 @@ export function planMoment(
     p.deferT = -Infinity;
   }
   const n = parts.length;
-  DBG.parts += n;
-  DBG.movers += parts.filter((p) => p.kind !== PartKind.Fixed).length;
 
   // 3. Timings (§5, §7.4, §7.7): stratified offsets for movers, linked starts for newborns.
   const movers = parts
@@ -365,7 +351,6 @@ export function planMoment(
   for (let j = 0; j < CHECK_SAMPLES; j++) times[j] = T + ((we - T) * j) / (CHECK_SAMPLES - 1);
   const sample = (p: Part): Float64Array => {
     if (!p.sampled || !p.samples) {
-      DBG.resample++;
       const proj = projector.get(p.voice);
       const out = p.samples ?? (p.samples = new Float64Array(CHECK_SAMPLES));
       for (let j = 0; j < CHECK_SAMPLES; j++) out[j] = proj.pitchAt(times[j]);
@@ -386,11 +371,7 @@ export function planMoment(
     // Exact pruning: if lo's highest possible pitch is not above hi's lowest, they cannot cross.
     const bl = boundsOf(lo);
     const bh = boundsOf(hi);
-    DBG.checks++;
-    if (bl[1] <= bh[0] + CROSS_EPS) {
-      DBG.pruned++;
-      return -1;
-    }
+    if (bl[1] <= bh[0] + CROSS_EPS) return -1;
     const a = sample(lo);
     const b = sample(hi);
     let ref = -1;
@@ -433,7 +414,6 @@ export function planMoment(
         sync();
         return false;
       }
-      DBG.tighten++;
       // Scales only ever decrease, so tightening one pair cannot undo another.
       const cap = saved.reduce((m, x) => (x < m ? x : m), 1);
       const a0 = sample(lo).slice();
@@ -463,7 +443,6 @@ export function planMoment(
     const maxPasses = 3 * n + 8;
     for (let pass = 0; pass < maxPasses; pass++) {
       let acted = false;
-      DBG.passes++;
       touched = new Uint8Array(n);
       for (let k = 0; k + 1 < n; k++) {
         const li = order[k];
@@ -487,7 +466,6 @@ export function planMoment(
         }
         const c = { at, ref: crossRef };
         acted = true;
-        DBG.resolve++;
         const sl = sample(lo);
         const su = sample(up);
         const dLo = sl[c.at] - sl[c.ref];

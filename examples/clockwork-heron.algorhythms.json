@@ -1,0 +1,488 @@
+{
+  "format": "algorhythms",
+  "version": 1,
+  "meta": {
+    "title": "Clockwork Heron",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-19T00:00:00.000Z",
+    "modified": "2026-11-19T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 1313,
+  "tuning": {
+    "referenceHz": 440,
+    "system": {
+      "kind": "12tet"
+    }
+  },
+  "key": {
+    "tonic": "A",
+    "scale": "lydian"
+  },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v2",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v3",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v4",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v5",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v6",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v7",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v8",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v9",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v10",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    }
+  ],
+  "start": [
+    {
+      "voice": "v1",
+      "pitch": 57
+    }
+  ],
+  "moments": [
+    {
+      "id": "I8F2uI",
+      "type": "split",
+      "at": 9.2,
+      "count": 3,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [52, 57, 64]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      },
+      "label": "Split"
+    },
+    {
+      "id": "LbjheB",
+      "type": "split",
+      "at": 17.444,
+      "count": 4,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [51, 56, 63, 68]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "PhZY8M",
+      "type": "split",
+      "at": 24.895,
+      "count": 7,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [47, 52, 56, 61, 64, 71, 73]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "hq5tmQ",
+      "type": "split",
+      "at": 32.12,
+      "count": 10,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [42, 45, 51, 54, 57, 63, 66, 69, 75, 78]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "xrNQY8",
+      "type": "chord",
+      "at": 39.504,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [6, 8, 10, 12]
+      },
+      "voicing": "even",
+      "register": [42, 80],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      },
+      "label": "Drift"
+    },
+    {
+      "id": "r4n5FG",
+      "type": "chord",
+      "at": 47.197,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [4, 6, 8, 10]
+      },
+      "voicing": "even",
+      "register": [39, 77],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "jQ5RHg",
+      "type": "chord",
+      "at": 53.271,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [6, 8, 10, 12]
+      },
+      "voicing": "even",
+      "register": [38, 77],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "PxLoRH",
+      "type": "chord",
+      "at": 60.081,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [0, 2, 4, 6]
+      },
+      "voicing": "even",
+      "register": [42, 80],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "CvquXc",
+      "type": "chord",
+      "at": 66.491,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [4, 6, 8, 10]
+      },
+      "voicing": "even",
+      "register": [39, 77],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "ajNfhx",
+      "type": "chord",
+      "at": 72.898,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [0, 2, 4, 6]
+      },
+      "voicing": "even",
+      "register": [43, 81],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "JlkC5r",
+      "type": "unison",
+      "at": 79.084,
+      "pitch": 59,
+      "octaves": false,
+      "glide": {
+        "length": 4.3,
+        "jitter": 0.163,
+        "stagger": 0.9
+      },
+      "label": "Gather"
+    },
+    {
+      "id": "skWxQ5",
+      "type": "chord",
+      "at": 88.584,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [45, 56, 57, 61, 64, 68, 68, 69, 73, 76]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 1.5,
+        "jitter": 0.267,
+        "stagger": 0.25
+      },
+      "label": "Burst"
+    },
+    {
+      "id": "KeposO",
+      "type": "walk",
+      "at": 95.584,
+      "until": 119.584,
+      "grid": 0.5,
+      "density": 0.6,
+      "steps": [-2, -1, 1, 2],
+      "stepGlide": 0.16,
+      "bass": {
+        "leap": [5, 12]
+      },
+      "glide": {
+        "stagger": 0.1,
+        "jitter": 0.185,
+        "ease": "linear"
+      },
+      "label": "Walk"
+    },
+    {
+      "id": "CkPin1",
+      "type": "pin",
+      "at": 99.584,
+      "voice": "v10",
+      "pitch": 88,
+      "label": "Heron rises",
+      "glide": {
+        "length": 1.2,
+        "ease": "expo"
+      }
+    },
+    {
+      "id": "CkPin2",
+      "type": "pin",
+      "at": 104.584,
+      "voice": "v10",
+      "pitch": 76,
+      "glide": {
+        "length": 2,
+        "ease": "expo"
+      }
+    },
+    {
+      "id": "CkPin3",
+      "type": "pin",
+      "at": 109.084,
+      "voice": "v1",
+      "pitch": 41,
+      "glide": {
+        "length": 0.8
+      }
+    },
+    {
+      "id": "CkFree",
+      "type": "chord",
+      "at": 120.334,
+      "notes": {
+        "kind": "chord",
+        "symbol": "Dmaj7#11"
+      },
+      "voicing": "close",
+      "register": [52, 79],
+      "assign": "free",
+      "label": "Gears slip",
+      "glide": {
+        "length": 2.4,
+        "stagger": 0.6,
+        "jitter": 0.3,
+        "ease": {
+          "kind": "bezier",
+          "x1": 0.3,
+          "y1": -0.35,
+          "x2": 0.55,
+          "y2": 1.35
+        }
+      }
+    },
+    {
+      "id": "KeKOs8",
+      "type": "chord",
+      "at": 121.084,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [47, 47, 47, 47, 59, 59, 59, 68, 68, 68]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 4,
+        "jitter": 0.25,
+        "stagger": 1.3
+      },
+      "label": "Thin"
+    },
+    {
+      "id": "6L3Oai",
+      "type": "chord",
+      "at": 130.084,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [47, 47, 47, 47, 59, 59, 59, 68, 68, 68]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 4,
+        "jitter": 0.25,
+        "stagger": 1.3
+      }
+    },
+    {
+      "id": "bS4u8Y",
+      "type": "unison",
+      "at": 139.084,
+      "pitch": 57,
+      "octaves": false,
+      "glide": {
+        "length": 5.25,
+        "jitter": 0.238,
+        "stagger": 1
+      },
+      "label": "Home"
+    }
+  ],
+  "timbres": {
+    "glass": {
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
+      "stretch": 0,
+      "brightness": {
+        "tilt": -1.5,
+        "track": 0.3
+      },
+      "detuneSpread": 1,
+      "accent": 0.25,
+      "articulation": {
+        "amount": 0.35,
+        "attack": 0.004,
+        "decay": 0.7
+      },
+      "vibrato": {
+        "rate": 4.2,
+        "depthCents": 4,
+        "delay": 0.6
+      }
+    }
+  },
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.35
+    },
+    "delay": {
+      "time": 0.375,
+      "feedback": 0.35,
+      "returnLevel": 0
+    },
+    "sends": {
+      "reverb": 0.5,
+      "delay": 0.25
+    },
+    "tone": {
+      "tilt": 0,
+      "lowpassHz": 20000
+    },
+    "limiter": {
+      "ceilingDb": -1
+    },
+    "panAuto": "index"
+  },
+  "end": {
+    "fade": 6
+  },
+  "view": {
+    "window": 20,
+    "colors": "voice",
+    "hud": true
+  }
+}

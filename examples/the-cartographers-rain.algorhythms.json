@@ -1,0 +1,520 @@
+{
+  "format": "algorhythms",
+  "version": 1,
+  "meta": {
+    "title": "The Cartographer's Rain",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-19T00:00:00.000Z",
+    "modified": "2026-11-19T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 77,
+  "tuning": {
+    "referenceHz": 440,
+    "system": {
+      "kind": "12tet"
+    }
+  },
+  "key": {
+    "tonic": "A",
+    "scale": "aeolian"
+  },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v2",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v3",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v4",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v5",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v6",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v7",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v8",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v9",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v10",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v11",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v12",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v13",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v14",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v15",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    },
+    {
+      "id": "v16",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [38, 84]
+    }
+  ],
+  "start": [
+    {
+      "voice": "v1",
+      "pitch": 57
+    }
+  ],
+  "moments": [
+    {
+      "id": "4y4Jom",
+      "type": "split",
+      "at": 8.986,
+      "count": 4,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [52, 57, 60, 67]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      },
+      "label": "Split"
+    },
+    {
+      "id": "COpDKi",
+      "type": "split",
+      "at": 16.824,
+      "count": 7,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [45, 52, 53, 60, 64, 69, 72]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "Zmx4Wv",
+      "type": "split",
+      "at": 24.003,
+      "count": 11,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [40, 43, 48, 52, 55, 60, 64, 67, 71, 76, 79]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "8iD6B0",
+      "type": "split",
+      "at": 32.146,
+      "count": 16,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [38, 41, 43, 47, 50, 53, 55, 59, 62, 65, 67, 71, 74, 77, 79, 83]
+      },
+      "voicing": "even",
+      "glide": {
+        "length": 3.2,
+        "jitter": 0.187,
+        "stagger": 0.5
+      }
+    },
+    {
+      "id": "vsV9fq",
+      "type": "chord",
+      "at": 40.161,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [4, 6, 8, 10]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      },
+      "label": "Drift"
+    },
+    {
+      "id": "G8wxuM",
+      "type": "chord",
+      "at": 47.629,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [1, 3, 5, 7]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "FawuQ2",
+      "type": "chord",
+      "at": 55.45,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [4, 6, 8, 10]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "OMARpv",
+      "type": "chord",
+      "at": 62.853,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [2, 4, 6, 8]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "SZvzfb",
+      "type": "chord",
+      "at": 69.427,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [0, 2, 4, 6]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "xjashB",
+      "type": "chord",
+      "at": 75.337,
+      "notes": {
+        "kind": "degrees",
+        "degrees": [3, 5, 7, 9]
+      },
+      "voicing": "even",
+      "register": [38, 84],
+      "assign": "ordered",
+      "glide": {
+        "length": 3.1,
+        "jitter": 0.29,
+        "stagger": 1.4
+      }
+    },
+    {
+      "id": "CrMrg1",
+      "type": "merge",
+      "at": 81.509,
+      "count": 6,
+      "which": "inner",
+      "fade": 3,
+      "label": "Rain thins"
+    },
+    {
+      "id": "CrChd1",
+      "type": "chord",
+      "at": 88.509,
+      "notes": {
+        "kind": "chord",
+        "symbol": "iv7"
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "register": [41, 76]
+    },
+    {
+      "id": "fE8Zfv",
+      "type": "chord",
+      "at": 91.019,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [47, 41, 45, 47, 50, 53, 57, 59, 62, 65, 69, 71, 74, 77, 81, 83]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 1.5,
+        "jitter": 0.267,
+        "stagger": 0.25
+      },
+      "label": "Burst"
+    },
+    {
+      "id": "CrSpl1",
+      "type": "split",
+      "at": 93.509,
+      "count": 16,
+      "notes": {
+        "kind": "chord",
+        "symbol": "VI/A"
+      },
+      "voicing": "even",
+      "label": "Rain returns"
+    },
+    {
+      "id": "b9C0BY",
+      "type": "walk",
+      "at": 98.019,
+      "until": 122.019,
+      "grid": 1,
+      "density": 0.45,
+      "steps": [-2, -1, 1, 2],
+      "stepGlide": 0.27,
+      "bass": {
+        "leap": [5, 12]
+      },
+      "glide": {
+        "stagger": 0.1,
+        "jitter": 0.185
+      },
+      "label": "Walk"
+    },
+    {
+      "id": "CrChd2",
+      "type": "chord",
+      "at": 99.509,
+      "target": {
+        "rank": [8, 15]
+      },
+      "notes": {
+        "kind": "chord",
+        "symbol": "bVII"
+      },
+      "voicing": "close",
+      "assign": "ordered",
+      "register": [60, 84],
+      "label": "Upper map"
+    },
+    {
+      "id": "4sXeYw",
+      "type": "unison",
+      "at": 105.519,
+      "pitch": 59,
+      "octaves": false,
+      "glide": {
+        "length": 4.3,
+        "jitter": 0.163,
+        "stagger": 0.9
+      },
+      "label": "Gather"
+    },
+    {
+      "id": "AfK2Fm",
+      "type": "chord",
+      "at": 147.519,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [48, 48, 48, 48, 48, 48, 60, 60, 60, 60, 60, 69, 69, 69, 69, 69]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 4,
+        "jitter": 0.25,
+        "stagger": 1.3
+      },
+      "label": "Thin"
+    },
+    {
+      "id": "NeAQNT",
+      "type": "chord",
+      "at": 156.519,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [47, 47, 47, 47, 47, 47, 59, 59, 59, 59, 59, 67, 67, 67, 67, 67]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "glide": {
+        "length": 4,
+        "jitter": 0.25,
+        "stagger": 1.3
+      }
+    },
+    {
+      "id": "UAz5ZL",
+      "type": "unison",
+      "at": 165.519,
+      "pitch": 57,
+      "octaves": false,
+      "glide": {
+        "length": 5.25,
+        "jitter": 0.238,
+        "stagger": 1
+      },
+      "label": "Home"
+    }
+  ],
+  "timbres": {
+    "glass": {
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
+      "stretch": 0,
+      "brightness": {
+        "tilt": -1.5,
+        "track": 0.3
+      },
+      "detuneSpread": 1,
+      "accent": 0.25,
+      "articulation": {
+        "amount": 0.35,
+        "attack": 0.004,
+        "decay": 0.7
+      },
+      "vibrato": {
+        "rate": 4.2,
+        "depthCents": 4,
+        "delay": 0.6
+      }
+    }
+  },
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.35
+    },
+    "delay": {
+      "time": 0.375,
+      "feedback": 0.35,
+      "returnLevel": 0
+    },
+    "sends": {
+      "reverb": 0.5,
+      "delay": 0.25
+    },
+    "tone": {
+      "tilt": 0,
+      "lowpassHz": 20000
+    },
+    "limiter": {
+      "ceilingDb": -1
+    },
+    "panAuto": "index"
+  },
+  "end": {
+    "fade": 6
+  },
+  "view": {
+    "window": 20,
+    "colors": "voice",
+    "hud": true
+  }
+}

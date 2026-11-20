@@ -1,0 +1,326 @@
+{
+  "format": "algorhythms",
+  "version": 1,
+  "meta": {
+    "title": "Untitled",
+    "created": "1970-01-01T00:00:00.000Z",
+    "modified": "1970-01-01T00:00:00.000Z"
+  },
+  "seed": 49038,
+  "tuning": {
+    "referenceHz": 440,
+    "system": {
+      "kind": "12tet"
+    }
+  },
+  "key": {
+    "tonic": "A",
+    "scale": "dorian"
+  },
+  "defaults": {
+    "glide": {
+      "length": 0.9,
+      "jitter": 0.4,
+      "stagger": 0.3,
+      "order": "center-out",
+      "ease": "smoothstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [32, 65]
+    },
+    {
+      "id": "v2",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [62, 83]
+    },
+    {
+      "id": "v3",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [56, 96]
+    },
+    {
+      "id": "v4",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [69, 103]
+    }
+  ],
+  "start": [
+    {
+      "voice": "v1",
+      "pitch": 56
+    },
+    {
+      "voice": "v2",
+      "pitch": 50
+    },
+    {
+      "voice": "v3",
+      "pitch": 42
+    }
+  ],
+  "moments": [
+    {
+      "at": 17,
+      "target": {
+        "voices": ["v2", "v3"]
+      },
+      "glide": {
+        "length": 4.2,
+        "jitter": 0.9,
+        "stagger": 2.1,
+        "order": "random",
+        "ease": {
+          "kind": "bezier",
+          "x1": 0.3,
+          "y1": 1.1,
+          "x2": 0.7,
+          "y2": 0.3
+        }
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "chord",
+        "symbol": "C"
+      },
+      "voicing": "nearest",
+      "assign": "ordered",
+      "register": [49, 64],
+      "id": "m00000"
+    },
+    {
+      "at": 33.1,
+      "target": {
+        "rank": [0, 1]
+      },
+      "glide": {
+        "jitter": 0.4,
+        "ease": "smoothstep"
+      },
+      "type": "shift",
+      "by": 12,
+      "unit": "semitones",
+      "id": "m00001"
+    },
+    {
+      "at": 16.3,
+      "type": "chord",
+      "notes": {
+        "kind": "chord",
+        "symbol": "Bbmaj7"
+      },
+      "voicing": "nearest",
+      "assign": "free",
+      "register": [40, 52],
+      "id": "m00002"
+    },
+    {
+      "at": 11,
+      "glide": {
+        "jitter": 0.1,
+        "stagger": 2.2,
+        "order": "low-first",
+        "ease": "smoothstep"
+      },
+      "type": "split",
+      "count": 6,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [35, 61]
+      },
+      "voicing": "close",
+      "id": "m00003"
+    },
+    {
+      "at": 17.2,
+      "glide": {
+        "length": 0.7,
+        "stagger": 2.2,
+        "order": "high-first",
+        "ease": {
+          "kind": "bezier",
+          "x1": 0.5,
+          "y1": 0.3,
+          "x2": 0.3,
+          "y2": -0.5
+        }
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "current"
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "register": [69, 80],
+      "id": "m00004"
+    },
+    {
+      "at": 35.8,
+      "type": "key",
+      "key": {
+        "tonic": "F#",
+        "scale": "major"
+      },
+      "id": "m00005"
+    },
+    {
+      "at": 16.4,
+      "type": "split",
+      "count": 2,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [61, 65, 72, 31]
+      },
+      "voicing": "close",
+      "id": "m00006"
+    },
+    {
+      "at": 32.8,
+      "glide": {
+        "length": 2.3,
+        "jitter": 0.9,
+        "stagger": 0.2,
+        "ease": "smootherstep"
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "pitches",
+        "pitches": [100, 61, 79, 62, 91, 55, 106]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "register": [57, 83],
+      "id": "m00007"
+    },
+    {
+      "at": 25,
+      "target": {
+        "rank": [1, 1]
+      },
+      "glide": {
+        "length": 6,
+        "jitter": 0.9,
+        "order": "outside-in",
+        "ease": "smootherstep"
+      },
+      "type": "split",
+      "count": 8,
+      "voicing": "close",
+      "id": "m00008"
+    },
+    {
+      "at": 11.4,
+      "glide": {
+        "length": 4.8,
+        "jitter": 0.6,
+        "order": "center-out",
+        "ease": "linear"
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "pitches",
+        "pitches": [51, 101, 74, 26, 29, 70]
+      },
+      "voicing": "close",
+      "assign": "ordered",
+      "register": [48, 56],
+      "id": "m00009"
+    },
+    {
+      "at": 1.1,
+      "glide": {
+        "length": 1.7,
+        "jitter": 1,
+        "stagger": 2.9,
+        "order": "random",
+        "ease": "cosine"
+      },
+      "type": "unison",
+      "pitch": "tonic",
+      "octaves": true,
+      "id": "m0000a"
+    },
+    {
+      "at": 10,
+      "glide": {
+        "length": 0.4,
+        "jitter": 0.7,
+        "stagger": 1.9,
+        "order": "high-first",
+        "ease": "smoothstep"
+      },
+      "type": "merge",
+      "count": 8,
+      "which": "bottom",
+      "fade": 1.2,
+      "id": "m0000b"
+    }
+  ],
+  "timbres": {
+    "glass": {
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
+      "stretch": 0,
+      "brightness": {
+        "tilt": -1.5,
+        "track": 0.3
+      },
+      "detuneSpread": 1,
+      "accent": 0.25,
+      "articulation": {
+        "amount": 0.35,
+        "attack": 0.004,
+        "decay": 0.7
+      },
+      "vibrato": {
+        "rate": 4.2,
+        "depthCents": 4,
+        "delay": 0.6
+      }
+    }
+  },
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.35
+    },
+    "delay": {
+      "time": 0.375,
+      "feedback": 0.35,
+      "returnLevel": 0
+    },
+    "sends": {
+      "reverb": 0.5,
+      "delay": 0.25
+    },
+    "tone": {
+      "tilt": 0,
+      "lowpassHz": 20000
+    },
+    "limiter": {
+      "ceilingDb": -1
+    },
+    "panAuto": "index"
+  },
+  "end": {
+    "fade": 6
+  },
+  "view": {
+    "window": 20,
+    "colors": "voice",
+    "hud": true
+  }
+}
