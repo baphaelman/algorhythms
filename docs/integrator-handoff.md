@@ -19,10 +19,11 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
   - Go higher (Opus high) only for subtle algorithm or DSP work, such as compiler bugs or the unison lock.
   - Pass `model` and `effort` explicitly on every spawn.
 - **Be concise** with the owner, in prompts and in docs.
-- **Offer a handoff at about 200k tokens.** When your own context passes that (a long session, many reports), tell the owner and offer to hand off:
-  - update this file first;
-  - then they start a fresh integrator session.
-  - Background builders report only to the session that spawned them, so let in-flight builders report first, or note them here.
+- **Compact at about 200k tokens (owner, 2026-11-20; replaces the fresh-session handoff).** When your context passes that:
+  - bring this file, the build log and the CLAUDE.md status up to date first (they are the durable memory; the summary is lossy);
+  - ask the owner to type `/compact` (you can't run it), suggesting what to keep: push state, in-flight builders, open owner questions;
+  - the session continues, so in-flight builders still report to it.
+  - A fresh session is still fine when the owner prefers one; this file is written for that case too.
 - **Keep tasks small: about one to three files each.**
   - Point builders at the exact PLAN sections and files they need, never "read all of §4–§7".
   - Tell them to stop and write up a stubborn bug rather than grind.
@@ -48,7 +49,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 - **This Mac is often loaded, so timing tests flake.** The compiler perf guard is loose (100 ms); the strict 5 ms check runs only with `ALGORHYTHMS_PERF_STRICT=1`.
 
 ## Working notes
-- **Check your own context size.** You can't run `/context`, but `mcp__ccd_session_mgmt__get_usage` (session `"self"`; load it with ToolSearch) returns `context.tokensUsed`. Call it after each builder report or push. At about 180k, finish in-flight merges and start the handoff without being asked (the second integrator overran to ~250k and the owner had to flag it).
+- **Check your own context size.** You can't run `/context`, but `mcp__ccd_session_mgmt__get_usage` (session `"self"`; load it with ToolSearch) returns `context.tokensUsed`. Call it after each builder report or push. At about 180k, update the docs and ask the owner to `/compact` without being asked (the second integrator overran to ~250k and the owner had to flag it). Keep context lean: headless checks and DOM reads instead of screenshots; test output to files.
 - **Ping the owner only when something they can test changes** (a deploy with new features, WAVs to hear, a device check) or a decision is needed. No progress narration (owner, 2026-11-20).
 - **Builders run only their own e2e specs**, so a feature can break an older spec (this happened with the menu placeholders). Before pushing app work, have one builder run the whole e2e suite on the merged tree.
 - **Integrating builder branches:** `isolation: worktree` builders branch from **origin/main** (the last push), not local main, so tell a builder to `git merge` a local branch first when it needs unpushed work. Merge finished branches into local main yourself. Their `docs/build-log.md` appends always conflict; keep both sides. A fixture recorded on an older base can need re-hashing after a merge (happened with the generate snapshot).
