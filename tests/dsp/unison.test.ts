@@ -7,7 +7,10 @@
  * at a time; deterministic id sets):
  * - a held unison of N = 2…32 averages within [0.85, 1.1] over 9 s, and its 50 ms envelope varies
  *   by under 1 % (coefficient of variation);
- * - converge, hold and diverge: every 0.25 s window within [0.5, 1.6] of the incoherent sum;
+ * - converge, hold and diverge: every 0.25 s window within [0.5, 1.6] of the incoherent sum, and
+ *   the approach and split steady at 50 ms (CV ≤ 0.1 / 0.15 / 0.2 for N = 2 / 8 / 32);
+ * - only glides into or out of a unison are warped; crossings, passing glides and intervals of a
+ *   semitone sound as with no lock (≤ 1 dB, ≤ 1 cent); a merging glide bends by ≤ 65 cents;
  * - merge: every 0.25 s window within [0.7, 1.3]; the survivor bends by under 8 cents;
  * - a seek into a held unison: level within ±3 % of straight playback, and no click;
  * - `wobble` voices keep beating (envelope variation > 0.2).
@@ -16,7 +19,11 @@
 import { describe, expect, it } from 'vitest';
 import { DRY_MIX, makeScore, unisonScore, type VoiceSpec } from '../../src/audio/fixtures/scores';
 import { renderOffline } from '../../src/audio/offline';
+import { flatten } from '../../src/core/flat';
+import { evalFlatSegment, SEG_STRIDE, SEG_T0 } from '../../src/core/segment';
+import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
+import { computeUnisonWarps, lastAtOrBefore, VoiceData } from '../../src/dsp/voice';
 import { clickScore, Driver, RATE, render, stereoRms } from './helpers';
 
 const HOLD_FROM = 3;
@@ -83,12 +90,38 @@ describe('held unison', () => {
   });
 });
 
+/**
+ * 50 ms windows of the mix ÷ the incoherent sum over [from, to): lowest, highest and coefficient of
+ * variation. `alone` are the voices rendered one at a time (g_n = 1).
+ */
+function steadiness(
+  out: { left: Float32Array; right: Float32Array },
+  alone: { left: Float32Array; right: Float32Array }[],
+  from: number,
+  to: number,
+) {
+  const r: number[] = [];
+  for (let t = from; t + 0.05 <= to + 1e-9; t += 0.05) {
+    let p = 0;
+    for (const a of alone) p += stereoRms(a, t, t + 0.05) ** 2;
+    r.push(stereoRms(out, t, t + 0.05) / Math.sqrt(p / alone.length));
+  }
+  const mean = r.reduce((a, b) => a + b, 0) / r.length;
+  const cv = Math.sqrt(r.reduce((a, b) => a + (b - mean) ** 2, 0) / r.length) / mean;
+  return { low: Math.min(...r), high: Math.max(...r), cv };
+}
+
 describe('converge, hold, diverge', () => {
+  // Approach 0.5–2.5 s and split 7–9 s (2 s smootherstep glides, voices 2 semitones apart). The
+  // 50 ms bands: steady approach and parting (docs/build-log.md, "Unison lock: steady approach and
+  // parting"); before it, the approach and split varied with CV 0.08–0.21 and dipped to −7…−13 dB.
+  const CV_MAX: Record<number, number> = { 2: 0.1, 8: 0.15, 32: 0.2 };
   it.each([2, 8, 32])(
-    '%i voices stay within [0.5, 1.6] of the incoherent sum at pitches 45, 57, 69',
+    '%i voices stay within [0.5, 1.6] of the incoherent sum at pitches 45, 57, 69, and steady at 50 ms',
     (n) => {
       const END = 11;
       const report: string[] = [];
+      const fine: string[] = [];
       for (const pitch of [45, 57, 69]) {
         const specs = unisonSpecs(n, `s${pitch}-`, pitch, 7);
         const out = render(makeScore(specs, END, pitch), DRY_MIX, END);
@@ -106,12 +139,25 @@ describe('converge, hold, diverge', () => {
         report.push(`${pitch}: ${low.toFixed(2)}–${high.toFixed(2)}`);
         expect(low, `pitch ${pitch}`).toBeGreaterThanOrEqual(0.5);
         expect(high, `pitch ${pitch}`).toBeLessThanOrEqual(1.6);
+        for (const [what, from, to] of [
+          ['approach', 0.5, 3],
+          ['split', 7, 9.5],
+        ] as const) {
+          const s = steadiness(out, alone, from, to);
+          fine.push(
+            `${pitch} ${what} ${s.low.toFixed(2)}–${s.high.toFixed(2)} cv ${s.cv.toFixed(3)}`,
+          );
+          expect(s.cv, `pitch ${pitch} ${what}: 50 ms CV`).toBeLessThanOrEqual(CV_MAX[n]);
+          expect(s.low, `pitch ${pitch} ${what}: lowest 50 ms`).toBeGreaterThanOrEqual(0.45);
+          expect(s.high, `pitch ${pitch} ${what}: highest 50 ms`).toBeLessThanOrEqual(1.45);
+        }
       }
       console.info(
-        `converge/hold/diverge N=${n} (0.25 s windows ÷ incoherent): ${report.join(', ')}`,
+        `converge/hold/diverge N=${n} (0.25 s windows ÷ incoherent): ${report.join(', ')}; ` +
+          `50 ms: ${fine.join(', ')}`,
       );
     },
-    60_000,
+    120_000,
   );
 });
 
@@ -209,5 +255,162 @@ describe('seek into a held unison', () => {
     );
     expect(Math.abs(ratio - 1)).toBeLessThanOrEqual(0.03);
     expect(click).toBeLessThanOrEqual(threshold);
+  });
+});
+
+describe('unison warp and capture', () => {
+  /** Warp anchors found for a set of voice specs (NaN-free entries only). */
+  function anchors(specs: VoiceSpec[], end: number): string[] {
+    const flat = flatten(makeScore(specs, end));
+    const data = flat.voices.map((fv, i) =>
+      VoiceData.fromFlat(fv, flat.voiceParams, i, new Int32Array(flat.timbreNames.length)),
+    );
+    computeUnisonWarps(data, 440);
+    const out: string[] = [];
+    data.forEach((d, v) => {
+      for (let i = 0; i < d.nSeg; i++) {
+        if (d.warpInA[i] === d.warpInA[i]) out.push(`${v}:${i} in ${d.warpInA[i]}`);
+        if (d.warpOutA[i] === d.warpOutA[i]) out.push(`${v}:${i} out ${d.warpOutA[i]}`);
+      }
+    });
+    return out;
+  }
+
+  it('warps only glides that arrive at or leave a unison', () => {
+    // Merge onto a held voice, then leave it again.
+    expect(
+      anchors(
+        [
+          { start: 57 },
+          {
+            start: 60,
+            moves: [
+              { at: 1, to: 57, len: 1 },
+              { at: 4, to: 60, len: 1 },
+            ],
+          },
+        ],
+        6,
+      ),
+    ).toEqual(['1:1 in 57', '1:3 out 57']);
+    // Two voices converging on one pitch together.
+    expect(
+      anchors(
+        [
+          { start: 55, moves: [{ at: 1, to: 57, len: 2 }] },
+          { start: 59, moves: [{ at: 1, to: 57, len: 2 }] },
+        ],
+        5,
+      ),
+    ).toEqual(['0:1 in 57', '1:1 in 57']);
+    // A crossing, a glide passing a held voice, a semitone and a 30-cent interval: none.
+    for (const specs of [
+      [
+        { start: 50, moves: [{ at: 1, to: 62, len: 1 }] },
+        { start: 62, moves: [{ at: 1, to: 50, len: 1 }] },
+      ],
+      [{ start: 57 }, { start: 52, moves: [{ at: 1, to: 62, len: 1 }] }],
+      [
+        { start: 55, moves: [{ at: 1, to: 57, len: 2 }] },
+        { start: 60, moves: [{ at: 1, to: 58, len: 2 }] },
+      ],
+      [{ start: 57 }, { start: 59, moves: [{ at: 1, to: 57.3, len: 2 }] }],
+    ] as VoiceSpec[][])
+      expect(anchors(specs, 5)).toEqual([]);
+  });
+
+  it('crossings, passing glides and distinct intervals sound as with no lock at all', () => {
+    // The twin timbre has the same detune (wobble 2.75 = the default detune) and never locks.
+    const timbres = { free: { ...BUILTIN_TIMBRES.sine, wobble: 2.75 } };
+    const cases: Record<string, VoiceSpec[]> = {
+      crossing: [
+        { start: 50, moves: [{ at: 1, to: 62, len: 1 }] },
+        { start: 62, moves: [{ at: 1, to: 50, len: 1 }] },
+      ],
+      passing: [{ start: 57 }, { start: 52, moves: [{ at: 1, to: 62, len: 1 }] }],
+      semitone: [{ start: 57 }, { start: 58 }],
+      'semitone glides': [
+        { start: 55, moves: [{ at: 1, to: 57, len: 2 }] },
+        { start: 60, moves: [{ at: 1, to: 58, len: 2 }] },
+      ],
+    };
+    const END = 5;
+    const frames = Math.ceil((END * RATE) / BLOCK_FRAMES) * BLOCK_FRAMES;
+    const gain = new Float32Array(frames).fill(1);
+    const report: string[] = [];
+    for (const [name, specs] of Object.entries(cases)) {
+      const score = (t: string) =>
+        makeScore(
+          specs.map((s, i) => ({ ...s, id: `x${i}`, timbre: t })),
+          END,
+          5,
+        );
+      const a = { score: score('sine'), mix: DRY_MIX, sampleRate: RATE };
+      const b = { score: score('free'), mix: DRY_MIX, sampleRate: RATE, timbres };
+      const ma = renderOffline(a, frames);
+      const mb = renderOffline(b, frames);
+      let level = 0;
+      for (let t = 0.5; t + 0.05 <= END - 0.5; t += 0.05) {
+        const db = Math.abs(
+          20 * Math.log10(stereoRms(ma, t, t + 0.05) / stereoRms(mb, t, t + 0.05)),
+        );
+        level = Math.max(level, db);
+      }
+      let bend = 0;
+      for (let v = 0; v < specs.length; v++) {
+        const part = { kind: 'voice', index: v, replayGain: gain } as const;
+        const sa = renderOffline(a, frames, part).left;
+        const sb = renderOffline(b, frames, part).left;
+        for (let t = 0.5; t + 0.03 <= END - 0.5; t += 0.01) {
+          const c =
+            1200 * Math.log2(zeroCrossingHz(sa, t, t + 0.03) / zeroCrossingHz(sb, t, t + 0.03));
+          bend = Math.max(bend, Math.abs(c));
+        }
+      }
+      report.push(`${name} ${level.toFixed(2)} dB / ${bend.toFixed(2)} cents`);
+      // A glide passing a held voice meets the plain (20-cent) lock for a moment: well under 1 dB.
+      expect(level, `${name}: level difference (dB)`).toBeLessThanOrEqual(1);
+      expect(bend, `${name}: pitch difference (cents)`).toBeLessThanOrEqual(1);
+    }
+    console.info(`vs no lock (largest 50 ms level / pitch difference): ${report.join(', ')}`);
+  }, 60_000);
+
+  it('bends a merging glide only near its end, and the voices hold their written pitch', () => {
+    const specs: VoiceSpec[] = [
+      { id: 'held', start: 57 },
+      { id: 'merging', start: 60, moves: [{ at: 1, to: 57, len: 1.5 }] },
+    ];
+    const END = 5;
+    const score = makeScore(specs, END, 3);
+    const frames = Math.ceil((END * RATE) / BLOCK_FRAMES) * BLOCK_FRAMES;
+    const gain = new Float32Array(frames).fill(1);
+    const flat = flatten(score);
+    let glide = 0;
+    let hold = 0;
+    for (let v = 0; v < 2; v++) {
+      const stem = renderOffline({ score, mix: DRY_MIX, sampleRate: RATE }, frames, {
+        kind: 'voice',
+        index: v,
+        replayGain: gain,
+      }).left;
+      const segs = flat.voices[v].segments;
+      for (let t = 0.5; t + 0.03 <= END - 0.5; t += 0.01) {
+        let hz = 0;
+        for (let k = 0; k < 8; k++) {
+          const tk = t + (0.03 * (k + 0.5)) / 8;
+          const si = lastAtOrBefore(segs, segs.length / SEG_STRIDE, SEG_STRIDE, SEG_T0, tk);
+          hz += 440 * 2 ** ((evalFlatSegment(segs, Math.max(0, si) * SEG_STRIDE, tk) - 69) / 12);
+        }
+        const c = Math.abs(1200 * Math.log2(zeroCrossingHz(stem, t, t + 0.03) / (hz / 8)));
+        if (t > 1 && t < 2.6) glide = Math.max(glide, c);
+        else hold = Math.max(hold, c);
+      }
+    }
+    console.info(
+      `merge: largest deviation from the written pitch ${glide.toFixed(1)} cents in the glide, ` +
+        `${hold.toFixed(1)} cents elsewhere (detune included)`,
+    );
+    expect(glide).toBeLessThanOrEqual(65);
+    expect(hold).toBeLessThanOrEqual(6);
   });
 });

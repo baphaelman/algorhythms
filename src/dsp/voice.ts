@@ -9,7 +9,9 @@
  * and vibrato-phase pull, a group gain h and (for a voice starting from silence) a phase to start
  * at. Within a group every voice moves to the group's mean pitch (detune and drift included) and
  * level drift and vibrato jitter fade out by λ, so the group sums to one steady tone; h keeps that
- * tone at the level of the same voices spread into a chord.
+ * tone at the level of the same voices spread into a chord. A glide that arrives at or leaves a
+ * unison is warped near the unison pitch (`warpOffset`), so the voices meet early and part late
+ * instead of beating slowly on the way.
  *
  * Evaluation is at control rate: once per CONTROL_PERIOD frames the voice computes its frequency,
  * amplitude, pan and mip position, and the samples in between interpolate linearly (phase
@@ -182,6 +184,16 @@ export class VoiceData {
   prevArrive: Float64Array = EMPTY_F64;
   /** Start of the hold containing segment i (NaN during glides), for vibrato onset. */
   holdStart: Float64Array = EMPTY_F64;
+  /**
+   * Unison warp of glide i (see `computeUnisonWarps`): the unison pitch it arrives at (In) or
+   * leaves from (Out), NaN if none; the zone C in semitones; the partner voice's pool index.
+   */
+  warpInA: Float64Array = EMPTY_F64;
+  warpInC: Float64Array = EMPTY_F64;
+  warpInP: Int32Array = EMPTY_I32;
+  warpOutA: Float64Array = EMPTY_F64;
+  warpOutC: Float64Array = EMPTY_F64;
+  warpOutP: Int32Array = EMPTY_I32;
 
   gain = 1;
   /** −1..1, or NaN for auto. */
@@ -260,6 +272,13 @@ export class VoiceData {
           : s[o + SEG_T0];
     }
 
+    d.warpInA = new Float64Array(n).fill(NaN);
+    d.warpInC = new Float64Array(n);
+    d.warpInP = new Int32Array(n).fill(-1);
+    d.warpOutA = new Float64Array(n).fill(NaN);
+    d.warpOutC = new Float64Array(n);
+    d.warpOutP = new Int32Array(n).fill(-1);
+
     d.levelStart = new Float64Array(d.nLevel);
     const L = d.levels;
     for (let i = 0; i < d.nLevel; i++) {
@@ -288,7 +307,12 @@ export class VoiceData {
     if (this.nSeg === 0) this.probePitch = NaN;
     else {
       const si = lastAtOrBefore(this.segs, this.nSeg, SEG_STRIDE, SEG_T0, t);
-      this.probePitch = evalFlatSegment(this.segs, (si < 0 ? 0 : si) * SEG_STRIDE, t);
+      const s = si < 0 ? 0 : si;
+      const p = evalFlatSegment(this.segs, s * SEG_STRIDE, t);
+      this.probePitch =
+        p +
+        warpOffset(p, this.warpInA[s], this.warpInC[s]) +
+        warpOffset(p, this.warpOutA[s], this.warpOutC[s]);
     }
     if (this.nTimbre === 0) this.probeSlot = -1;
     else {
@@ -300,6 +324,109 @@ export class VoiceData {
 
 /** Shared empty data for voices beyond the pool size. Never mutated. */
 export const EMPTY_VOICE_DATA = new VoiceData();
+
+/**
+ * Unison warp (docs/build-log.md, "Unison lock: steady approach and parting"). Two voices whose
+ * pitches converge beat at their frequency difference, and a glide spends a long time in the
+ * slow-beat zone because eases approach their target slowly. A glide that arrives at (or leaves)
+ * a unison is therefore warped near the unison pitch A: at distance r = |p − A| it sounds at
+ * A ± y(r), with y = r for r ≥ C, y = 0 for r ≤ WARP_CORE·C and y = r·smoothstep between. So the
+ * voices meet (or stay together) while the score still has them up to WARP_CORE·C apart, and the
+ * slow-beat zone passes 2–3× faster. C is the distance that beats at WARP_HZ against A, within
+ * [WARP_MIN, WARP_MAX] semitones, and at most the glide's own span (half of it if both ends warp).
+ */
+const WARP_HZ = 12;
+const WARP_MIN = 0.2;
+const WARP_MAX = 1;
+const WARP_CORE = 0.4;
+/** A partner counts if it is within WARP_TOL semitones of A at the glide's end and WARP_DWELL s on. */
+const WARP_TOL = 0.2;
+const WARP_DWELL = 0.2;
+
+/** The warp's pitch offset (semitones) at score pitch p, for anchor a (NaN = none) and zone c. */
+export function warpOffset(p: number, a: number, c: number): number {
+  if (!(a === a)) return 0;
+  const x = p - a;
+  const r = x < 0 ? -x : x;
+  if (!(r < c)) return 0;
+  const r0 = c * WARP_CORE;
+  let u = (r - r0) / (c - r0);
+  if (u < 0) u = 0;
+  return x * (u * u * (3 - 2 * u) - 1);
+}
+
+/** Score pitch of `d` at time t, or NaN when it is not alive then. Allocates nothing; not hot. */
+function pitchAt(d: VoiceData, t: number): number {
+  const li = lastAtOrBefore(d.lives, d.nLife, LIFE_STRIDE, LIFE_BORN, t);
+  if (li < 0 || !(t < d.lives[li * LIFE_STRIDE + LIFE_DIED]) || d.nSeg === 0) return NaN;
+  const si = lastAtOrBefore(d.segs, d.nSeg, SEG_STRIDE, SEG_T0, t);
+  return evalFlatSegment(d.segs, (si < 0 ? 0 : si) * SEG_STRIDE, t);
+}
+
+/** Whether some voice other than `self` stays within WARP_TOL of a over [t0, t1]; its index or −1. */
+function unisonPartner(data: VoiceData[], self: number, a: number, t0: number, t1: number): number {
+  for (let u = 0; u < data.length; u++) {
+    if (u === self) continue;
+    let ok = true;
+    for (let k = 0; k <= 4 && ok; k++) {
+      const p = pitchAt(data[u], t0 + ((t1 - t0) * k) / 4);
+      ok = Math.abs(p - a) <= WARP_TOL;
+    }
+    if (ok) return u;
+  }
+  return -1;
+}
+
+/**
+ * Finds every glide that arrives at a unison (another voice is at its end pitch from its end time
+ * for WARP_DWELL seconds) or leaves one (another voice was at its start pitch for WARP_DWELL
+ * seconds up to its start), and sets its warp. Only glides that start or end at rest qualify
+ * (not interrupted ones), so the warped pitch stays smooth across segment boundaries. Called
+ * from a message handler (allocates).
+ */
+export function computeUnisonWarps(data: VoiceData[], referenceHz: number): void {
+  for (let v = 0; v < data.length; v++) {
+    const d = data[v];
+    const s = d.segs;
+    for (let i = 0; i < d.nSeg; i++) {
+      d.warpInA[i] = NaN;
+      d.warpOutA[i] = NaN;
+      if (d.segGlide[i] !== 1) continue;
+      const o = i * SEG_STRIDE;
+      const p0 = s[o + SEG_P0];
+      const p1 = s[o + SEG_P1];
+      const span = Math.abs(p1 - p0);
+      if (!(span > WARP_TOL)) continue;
+      const t0 = s[o + SEG_T0];
+      const t1 = s[o + SEG_T1];
+      if (s[o + SEG_CURVE_T1] === t1) {
+        const u = unisonPartner(data, v, p1, t1, t1 + WARP_DWELL);
+        if (u >= 0) {
+          d.warpInA[i] = p1;
+          d.warpInP[i] = u;
+        }
+      }
+      if (s[o + SEG_M0] === 0) {
+        const u = unisonPartner(data, v, p0, t0 - WARP_DWELL, t0);
+        if (u >= 0) {
+          d.warpOutA[i] = p0;
+          d.warpOutP[i] = u;
+        }
+      }
+      const both = d.warpInA[i] === d.warpInA[i] && d.warpOutA[i] === d.warpOutA[i];
+      const limit = both ? span / 2 : span;
+      d.warpInC[i] = Math.min(limit, warpZone(p1, referenceHz));
+      d.warpOutC[i] = Math.min(limit, warpZone(p0, referenceHz));
+    }
+  }
+}
+
+/** Zone C (semitones) at MIDI pitch p: the distance that beats at WARP_HZ against it. */
+function warpZone(p: number, referenceHz: number): number {
+  const hz = referenceHz * Math.pow(2, (p - 69) / 12);
+  const c = 12 * Math.log2(1 + WARP_HZ / hz);
+  return Math.min(WARP_MAX, Math.max(WARP_MIN, c));
+}
 
 /** Life weight of the life record at `o` (smootherstep fades, at least MIN_LIFE_FADE long). */
 function lifeWeight(L: Float64Array, o: number, t: number): number {
@@ -373,7 +500,9 @@ export class VoiceContext {
   /** Accumulated phase pull θ (cycles, wrapped to [−0.5, 0.5)). */
   readonly gTheta = new Float64Array(DSP_MAX_VOICES);
   /** Lockability 0..1 (1 when the timbre's wobble is 0). */
-  readonly gLock = new Float64Array(DSP_MAX_VOICES);
+  readonly gLock = new Float64Array(DSP_MAX_VOICES).fill(1);
+  /** 1 while the voice is inside a unison warp zone (see warpOffset). */
+  readonly gWarp = new Float64Array(DSP_MAX_VOICES);
   /** Lock amount λ (0..1) for this block. */
   readonly gLam = new Float64Array(DSP_MAX_VOICES);
   /** Pitch correction toward the group, cents. */
@@ -455,7 +584,9 @@ const S_LOCKABLE = 45;
  * would be on its own. Leaving a group unwinds it, so voices part with unrelated phases.
  */
 const S_THETA = 46;
-const STATE_SIZE = 47;
+/** 1 while a unison warp zone is active (last tick), for the group pass's capture. */
+const S_WARP = 47;
+const STATE_SIZE = 48;
 
 /**
  * One synthesis voice (or ghost).
@@ -800,6 +931,7 @@ export class Voice {
       else if (st[S_MUTE] > 0) st[S_MUTE] = Math.max(0, st[S_MUTE] - ctx.muteStep);
 
       const lw = this.lifeTick[k + 1];
+      st[S_WARP] = 0;
 
       // Timbre timeline: crossfade from the previous entry's preset (slot A) to this one's (B).
       // A muted voice keeps running silently, so it stays locked in its group and unmuting it
@@ -913,6 +1045,29 @@ export class Voice {
               cp1,
             );
             motion = segmentMotion(t0, t1, s[so + SEG_P0], m0, t, ct1, cp1);
+            // Unison warp (see warpOffset; written out here, not called: render's inlining
+            // budget). Faded by both voices' lockability, so `wobble` timbres glide as written.
+            const wia = d.warpInA[si];
+            const woa = d.warpOutA[si];
+            if (wia === wia || woa === woa) {
+              let off = 0;
+              for (let e = 0; e < 2; e++) {
+                const a = e === 0 ? wia : woa;
+                const c = e === 0 ? d.warpInC[si] : d.warpOutC[si];
+                const xw = p - a;
+                const r = xw < 0 ? -xw : xw;
+                if (r < c) {
+                  const r0 = c * WARP_CORE;
+                  let u = (r - r0) / (c - r0);
+                  if (u < 0) u = 0;
+                  const lk = ctx.gLock[e === 0 ? d.warpInP[si] : d.warpOutP[si]];
+                  off += xw * (u * u * (3 - 2 * u) - 1) * lk;
+                  if (st[S_WARP] !== 1) st[S_WARP] = e === 0 ? 1 : 2;
+                }
+              }
+              const wl = (A.wobble > 0 ? 0 : xa) + (B.wobble > 0 ? 0 : x);
+              p += off * wl;
+            }
           }
 
           // Vibrato: only while holding, after its onset delay.
@@ -1170,6 +1325,7 @@ export class Voice {
       ctx.gLfo[gi] = st[S_LFO];
       ctx.gInc[gi] = st[S_OWN_INC];
       ctx.gLock[gi] = st[S_LOCKABLE];
+      ctx.gWarp[gi] = st[S_WARP];
       let th = st[S_THETA];
       th -= Math.floor(th + 0.5);
       st[S_THETA] = th;
