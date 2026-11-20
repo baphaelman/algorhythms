@@ -635,7 +635,8 @@ export class Voice {
       }
       if (!d.mute && (!ctx.anySolo || d.solo)) {
         if (st[S_MUTE] < 1) st[S_MUTE] = Math.min(1, st[S_MUTE] + ctx.muteStep);
-      } else if (st[S_MUTE] > 0) st[S_MUTE] = Math.max(0, st[S_MUTE] - ctx.muteStep);
+      } else if (this.fresh) st[S_MUTE] = 0; // silent anyway: start muted, no ramp
+      else if (st[S_MUTE] > 0) st[S_MUTE] = Math.max(0, st[S_MUTE] - ctx.muteStep);
 
       const lw = this.lifeTick[k + 1];
 
