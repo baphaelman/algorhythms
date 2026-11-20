@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { EXAMPLES } from '../examples';
 import { openExample, openFile, usePlayer } from '../store';
+import { openGenerate } from './GeneratePanel';
 
 /** The ⋯ menu: examples, open a file, placeholders for Generate and Export, and help. */
 export function Menu() {
@@ -107,8 +108,15 @@ export function Menu() {
               </button>
             </li>
             <li>
-              <button type="button" disabled aria-disabled="true">
-                Generate <small>coming soon</small>
+              <button
+                type="button"
+                data-testid="open-generate"
+                onClick={() => {
+                  close();
+                  openGenerate();
+                }}
+              >
+                Generate…
               </button>
             </li>
             <li>
