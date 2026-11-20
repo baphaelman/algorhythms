@@ -805,3 +805,11 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Generate confirms** before replacing an edited piece (§11.3).
 - Tablet touch editing (M5): low priority but in scope.
 - Integrator may push to `main`. Cloud: `git push` works; `gh` is not authenticated, use the GitHub MCP tools for CI.
+
+## M4.5-5 Inspector chord picker (builder, 2026-11-20)
+- **Core:** new `src/core/chord-spec.ts`: `CHORD_QUALITIES` (the 13 of §11.3), `chordSymbol` (root, quality, bass → ASCII symbol, spelled in the key), `readChord` (symbol → choices; bass read from the text after '/'), `romanNumeral` (scale degree with accidental against major: ♭III in minor, vii°, iiø7), `diatonicChords` (stacked-third triads of 7-note scales; empty otherwise). The parser already accepted `C/C` (bass = root, pcs unchanged); round-trip tested over every root, quality, bass and four keys.
+- **UI:** `inspector/ChordPicker.tsx` above the symbol field: header (name, numeral, live notes), From the key, Root, Quality, Bass, Voicing chips. Each pick is one `updateMoment` (labels "Pick chord", "Change chord root/quality/bass", "Change voicing"). `NoteSetField` puts the kind selector, degrees and pitches under a `<details>` "Other notes", open unless the notes are a chord. The Voicing select moved from `TypeFields` into the picker.
+- **Live notes** (`fields.ts liveNotes`): each voice's destination from the moment's segments, else the segment sounding at the moment's span end. A voice already on its target gets a hold segment without `momentId`, so the moment's own segments alone under-report.
+- **Choices:** picks write letter symbols ("Dm7/F"), not Roman numerals, so a Roman symbol becomes a letter one on the first pick. The symbol text field stays for anything the chips can't express (C13, V7/V); such a chord shows no quality chip pressed, and Bass shows none pressed for a non-chord-tone bass.
+- **Tests:** `tests/unit/core/chord-spec.test.ts`, `liveNotes` in `inspector-fields.test.ts`, e2e `inspector.spec.ts` "chord picker…". The existing drag-label e2e now scrolls the Length label into view (the inspector got taller).
+- Cloud e2e: Playwright 1.65 wants chromium 1255 but only 1243 is installed and the download is blocked; ran with `PLAYWRIGHT_BROWSERS_PATH` pointing at symlinks named 1255 → 1243.
