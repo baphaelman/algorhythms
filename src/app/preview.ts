@@ -1,6 +1,7 @@
 /**
  * Palette hover preview (PLAN.md §11.3, revision 6): plays about 3 s from the playhead with a
- * default moment of the hovered type inserted, then restores the real score.
+ * default moment of the hovered type inserted, then restores the real score. A next-move
+ * suggestion previews the same way, from its own time.
  *
  * The preview compiles a temporary piece and hot-swaps it into the engine, plays it, and on stop
  * pauses (the engine's 5 ms pause crossfade, so no click) and swaps the real score back while
@@ -9,7 +10,7 @@
  */
 
 import { compile } from '../core/compiler/compile';
-import type { MomentType, Seconds } from '../core/types';
+import type { Moment, MomentType, Seconds } from '../core/types';
 import { getEngine, primeAudio, resumeAudio, swapAudio } from './audio';
 import { insertMoments } from './editor/ops';
 import { defaultMoment } from './editor/new-moment';
@@ -31,6 +32,8 @@ export const previewState = {
   count: 0,
   /** Where the latest preview starts, seconds. */
   from: NaN as Seconds,
+  /** The suggestion label being previewed (next-move suggestions), or null. */
+  label: null as string | null,
 };
 
 let token = 0;
@@ -38,21 +41,37 @@ let stopTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Starts a preview of `type` at the playhead; false if the transport is busy. */
 export function startPreview(type: MomentType): boolean {
+  const { piece, compiled } = usePlayer.getState();
+  const t = addTime();
+  let m: Moment;
+  try {
+    m = defaultMoment(type, t, PROBE_ID, piece, compiled);
+  } catch {
+    return false;
+  }
+  return startMomentPreview(m, null);
+}
+
+/**
+ * Starts a preview of `moment` (a next-move suggestion, `label`) from its time; false if the
+ * transport is busy.
+ */
+export function startMomentPreview(moment: Moment, label: string | null): boolean {
   stopPreview();
-  const { piece, compiled, transport } = usePlayer.getState();
+  const { piece, transport } = usePlayer.getState();
   if (transport.status === 'playing' || transport.scrubbing || transport.audio !== 'ready') {
     return false;
   }
-  const t = addTime();
+  const t = moment.at;
   let score;
   try {
-    const m = defaultMoment(type, t, PROBE_ID, piece, compiled);
-    score = compile(insertMoments(piece, [m]));
+    score = compile(insertMoments(piece, [{ ...moment, id: PROBE_ID }]));
   } catch {
     return false;
   }
   const my = ++token;
-  previewState.type = type;
+  previewState.type = moment.type;
+  previewState.label = label;
   previewState.playing = false;
   previewState.count++;
   previewState.from = t;
@@ -80,6 +99,7 @@ export function stopPreview(): void {
   stopTimer = null;
   if (previewState.playing) getEngine()?.pause();
   previewState.type = null;
+  previewState.label = null;
   previewState.playing = false;
   const { piece, compiled } = usePlayer.getState();
   void swapAudio(compiled, piece.timbres).catch(() => undefined);
