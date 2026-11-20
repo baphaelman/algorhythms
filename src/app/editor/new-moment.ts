@@ -1,0 +1,125 @@
+/**
+ * Default moments for the palette and the add shortcuts (§11.3). Each default reads the piece's
+ * state at `at` from the compiled score, so a fresh moment does something audible there when it
+ * can. The choices are listed in docs/build-log.md (M4b).
+ */
+
+import { mod } from '../../core/math';
+import { activeAt, keyAt, pitchAt } from '../../core/query';
+import {
+  FLAT_NAMES,
+  SHARP_NAMES,
+  degreesToPcs,
+  pitchClassOf,
+  stepByScale,
+} from '../../core/scales';
+import type {
+  CompiledScore,
+  Moment,
+  MomentId,
+  MomentOf,
+  MomentType,
+  Piece,
+  Seconds,
+} from '../../core/types';
+
+/** Length of a new walk region, seconds. */
+export const NEW_WALK_LENGTH = 16;
+
+/** What the piece is doing at `at`: sounding voices (pool order) and the key. */
+function stateAt(score: CompiledScore, at: Seconds) {
+  const active = activeAt(score, at).map((i) => ({
+    id: score.voices[i].id,
+    pitch: pitchAt(score.voices[i], at) ?? 0,
+  }));
+  return { active, key: keyAt(score, at) };
+}
+
+/**
+ * A new moment of `type` at `at` with id `id`, given the piece and its compiled score. The glide
+ * and target are left to the piece defaults ('all').
+ */
+export function defaultMoment<T extends MomentType>(
+  type: T,
+  at: Seconds,
+  id: MomentId,
+  piece: Piece,
+  score: CompiledScore,
+): MomentOf<T> {
+  const { active, key } = stateAt(score, at);
+  const n = active.length;
+  const pool = piece.voices.length;
+  const base = { id, at };
+  let m: Moment;
+  switch (type as MomentType) {
+    case 'chord': {
+      // The tonic triad; the IV triad when the sounding notes already all belong to it.
+      const tonic = degreesToPcs([0, 2, 4], key);
+      const sounding = active.map((v) => mod(Math.round(v.pitch), 12));
+      const onTonic = n > 0 && sounding.every((pc) => tonic.includes(pc));
+      const degrees = onTonic ? [3, 5, 7] : [0, 2, 4];
+      m = {
+        ...base,
+        type: 'chord',
+        notes: { kind: 'degrees', degrees },
+        voicing: 'even',
+        assign: 'ordered',
+      };
+      break;
+    }
+    case 'unison':
+      m = { ...base, type: 'unison', pitch: n >= 2 ? 'center' : 'tonic', octaves: false };
+      break;
+    case 'split':
+      m = { ...base, type: 'split', count: Math.min(pool, Math.max(n + 2, 3)), voicing: 'even' };
+      break;
+    case 'merge':
+      m = {
+        ...base,
+        type: 'merge',
+        count: Math.max(1, Math.ceil(n / 2)),
+        which: 'top',
+        fade: 2,
+      };
+      break;
+    case 'shift':
+      m = { ...base, type: 'shift', by: 2, unit: 'scaleSteps' };
+      break;
+    case 'spread':
+      m = { ...base, type: 'spread', factor: 1.5, around: 'mean', snap: 'scale' };
+      break;
+    case 'walk':
+      m = {
+        ...base,
+        type: 'walk',
+        until: at + NEW_WALK_LENGTH,
+        grid: 1,
+        density: 0.45,
+        steps: [-2, -1, 1, 2],
+        stepGlide: 0.3,
+      };
+      break;
+    case 'pin': {
+      // The top sounding voice, two scale steps up (the first pool voice if nothing sounds).
+      const top = active.reduce<(typeof active)[number] | null>(
+        (best, v) => (best === null || v.pitch > best.pitch ? v : best),
+        null,
+      );
+      const voice = top?.id ?? piece.voices[0]?.id ?? 'v1';
+      const from = top?.pitch ?? piece.start[0]?.pitch ?? 60;
+      m = { ...base, type: 'pin', voice, pitch: stepByScale(from, 2, key) };
+      break;
+    }
+    case 'key': {
+      // Up a fifth, same scale; spelled with flats if the current tonic is.
+      const names = key.tonic.includes('b') ? FLAT_NAMES : SHARP_NAMES;
+      const tonic = names[mod(pitchClassOf(key.tonic) + 7, 12)];
+      m = { ...base, type: 'key', key: { tonic, scale: key.scale } };
+      break;
+    }
+    case 'level':
+      m = { ...base, type: 'level', gain: 0.5, over: 2 };
+      break;
+  }
+  return m as MomentOf<T>;
+}

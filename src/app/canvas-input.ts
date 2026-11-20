@@ -3,12 +3,14 @@
  * - a click or tap on the canvas plays or pauses;
  * - dragging pans the view while paused;
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
- * - `−` / `=` change the window, Space plays and pauses, ←/→ seek.
+ * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
+ * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo).
  *
  * Handlers write the store (`setWindow`, `panBy`); the animation loop picks the change up on its
  * next frame, so no React render sits on the pointer path.
  */
 
+import { redo, undo } from './editor/history';
 import { currentPps } from './loop';
 import { currentTime, panBy, seekBy, togglePlay, usePlayer, zoomBy } from './store';
 
@@ -142,8 +144,16 @@ function ownsKeys(target: EventTarget | null, key: string): boolean {
 /** Installs the player's document-level keys; returns a function that removes them. */
 export function attachKeys(): () => void {
   const onKey = (e: KeyboardEvent): void => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (document.querySelector('dialog[open]')) return;
+    const k = e.key.toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === 'z' || (k === 'y' && e.ctrlKey))) {
+      if (ownsKeys(e.target, e.key)) return;
+      e.preventDefault();
+      if (k === 'z' && !e.shiftKey) undo();
+      else redo();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '-' || e.key === '_') {
       zoomBy(1.25);
       e.preventDefault();
