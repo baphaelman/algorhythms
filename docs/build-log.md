@@ -375,3 +375,16 @@ The four tests are:
   - Fix it by default: converged voices must sound steady (no beating, never cancelling).
   - Keep the effect as an opt-in sound: a timbre-level setting and a new "wobble" preset.
 - §8.4 and P2 in PLAN.md will be updated once the fix's design lands.
+
+## M3b: MIDI export (recorded by the integrator from the builder's report)
+
+- **Accuracy:** the worst round-trip pitch error is 1.04 cents (a 36-semitone glide in 0.05 s at ±48). Note timing is within 1 tick. A test-only SMF parser reconstructs the pitch paths, which is the automatic verification promised in §16 until the owner has a DAW.
+- **CC11:** `127 · gain / peak`, with `peak = max(1, the largest level gain in the score)`, so level boosts above 1 don't clip. Static `VoiceDef.gain` is not included.
+- **Exact boundaries:** a tick on a segment boundary writes the exact boundary pitch.
+- **Bend density:** bends are sampled on a 1/250 s grid and refined adaptively until linear interpolation stays within 0.5 cent. The 200 events/s floor can't be met below about 12 BPM, because PPQ is fixed at 960.
+- **Re-strikes:** a re-strike falls on the last tick the old note can reach, on `round(pitch)`.
+- **The MPE configuration message** is in the conductor track at tick 0.
+- **Reference tuning:** `referenceHz ≠ 440` is applied through the bends (option `applyReferenceTuning`, default true).
+- **Notes-only:** a glide into a birth is dropped, and consecutive holds at one pitch merge into one note.
+- **Channel 10:** per-voice mode skips channel 10 (the GM drum channel). This is an integrator decision; the spec said wrap after 16.
+- **Compiler quirk noticed by the MIDI builder:** a life's `died` can be later than its last segment's `t1` (the end fade). Consumers hold the last pitch until `died`. Consider making the compiler extend the final hold to `died`.
