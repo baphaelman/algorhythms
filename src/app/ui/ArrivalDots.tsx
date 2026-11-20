@@ -4,8 +4,10 @@
  *   any other moment's landings (./editor/arrival-points).
  * - Hover: with the mouse near another moment's arrival, that moment's dots (a walk: the near
  *   steps), from a fixed pool of buttons written per frame, so no React render on pointer moves.
- * Dragging any dot vertically changes that note (`dragArrival`: snapped to the key, Shift =
- * chromatic, one undo entry). A click without a drag selects the walk step, or the hovered moment.
+ * Dragging a dot moves it (`dragArrival`, revision 6): vertically its pitch (snapped to the key,
+ * Shift = chromatic), horizontally its arrival (snapped to the grid, Alt = free; only once the
+ * pointer has moved sideways past the slop), one undo entry; the dot follows the pointer. A click
+ * without a drag selects the walk step, or the hovered moment.
  * DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
  */
 
@@ -17,6 +19,7 @@ import { dragArrival } from '../editor/actions';
 import { allArrivals, hoverPick, momentArrivals, type ArrivalDot } from '../editor/arrival-points';
 import { dragPitch } from '../editor/chord-notes';
 import { select, useEditor } from '../editor/history';
+import { snapToGrid } from '../editor/shortcuts';
 import { selectStep, useStepSelection } from '../editor/step-selection';
 import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
@@ -46,6 +49,11 @@ function place(el: HTMLElement, v: View, d: ArrivalDot): void {
   if (el.style.transform !== tf) el.style.transform = tf;
   if (el.hidden === show) el.hidden = !show;
 }
+
+/** The dot being dragged: drawn at the pointer, not where the score has it. */
+let follow: { el: HTMLElement; t: number; pitch: number } | null = null;
+const at = (el: HTMLElement, d: ArrivalDot): ArrivalDot =>
+  follow?.el === el ? { ...d, t: follow.t, pitch: follow.pitch } : d;
 
 /** Hover index, rebuilt when the compiled score changes. */
 let index: { score: CompiledScore; piece: Piece; dots: ArrivalDot[] } | null = null;
@@ -96,7 +104,7 @@ export function ArrivalDots() {
         const g = geo.current;
         for (let i = 0; i < g.length; i++) {
           const el = els.current[i];
-          if (el) place(el, v, g[i]);
+          if (el) place(el, v, at(el, g[i]));
         }
         // Hover: re-picked when the pointer, the camera or the score changed; held while the
         // pointer is on a hover dot (the canvas then reports a leave) or a drag runs.
@@ -130,7 +138,7 @@ export function ArrivalDots() {
           el.dataset.moment = d.momentId;
           el.dataset.type = d.type;
           el.dataset.pitch = String(d.pitch);
-          place(el, v, d);
+          place(el, v, at(el, d));
         }
       }),
     [],
@@ -141,6 +149,7 @@ export function ArrivalDots() {
     e: React.PointerEvent<HTMLButtonElement>,
     dot: ArrivalDot,
     onClick?: () => void,
+    onDragEnd?: () => void,
   ) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -154,6 +163,8 @@ export function ArrivalDots() {
     const h = hover.current;
     let drag: ReturnType<typeof dragArrival> | undefined;
     let last = dot.pitch;
+    let lastT = dot.t;
+    let sideways = false;
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       if (drag === undefined) {
@@ -165,9 +176,19 @@ export function ArrivalDots() {
       const rect = box.current?.getBoundingClientRect();
       if (!drag || !v || !rect) return;
       const p = dragPitch(yToPitch(v, ev.clientY - rect.top), key, ev.shiftKey);
-      if (p === last) return;
+      if (Math.abs(ev.clientX - x0) > SLOP) sideways = true;
+      let t = dot.t;
+      if (sideways) {
+        const raw = xToTime(v, ev.clientX - rect.left);
+        const bpm = usePlayer.getState().piece.view.gridBpm;
+        t = ev.altKey || !bpm ? Math.max(0, Math.round(raw * 1000) / 1000) : snapToGrid(raw, bpm);
+      }
+      follow = { el, t, pitch: p };
+      place(el, v, { ...dot, t, pitch: p });
+      if (p === last && t === lastT) return;
       last = p;
-      drag.to(p);
+      lastT = t;
+      drag.to(p, t);
     };
     const done = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
@@ -177,8 +198,12 @@ export function ArrivalDots() {
       h.dragging = false;
       h.held = false;
       h.key = '';
-      if (drag) drag.end(ev.type === 'pointercancel');
-      else if (drag === undefined && ev.type === 'pointerup') onClick?.();
+      follow = null;
+      if (drag) {
+        const cancel = ev.type === 'pointercancel';
+        drag.end(cancel);
+        if (!cancel) onDragEnd?.();
+      } else if (drag === undefined && ev.type === 'pointerup') onClick?.();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', done);
@@ -239,10 +264,20 @@ export function ArrivalDots() {
             onPointerDown={(e) => {
               const d = hover.current.dots[i];
               if (!d) return;
-              press(e, d, () => {
-                select([d.momentId]);
-                if (d.step) selectStep(d.step);
-              });
+              press(
+                e,
+                d,
+                () => {
+                  select([d.momentId]);
+                  if (d.step) selectStep(d.step);
+                },
+                () => {
+                  // Keep the step a walk drag selected (select() clears another walk's step).
+                  const step = useStepSelection.getState().step;
+                  select([d.momentId]);
+                  if (step) selectStep(step);
+                },
+              );
             }}
           />
         ))}

@@ -56,16 +56,25 @@ export function stepNoteTo(to: Pitch, dir: 1 | -1, key: Key): Pitch {
  * that ends on `to` (not the return), else `at`.
  */
 export function noteArrival(score: CompiledScore, m: NoteMoment): Seconds {
+  return noteLanding(score, m).t;
+}
+
+/** `noteArrival` and the pool index of the voice that lands on `to` (undefined if none). */
+export function noteLanding(score: CompiledScore, m: NoteMoment): { t: Seconds; voice?: number } {
   let best = Infinity;
+  let voice: number | undefined;
   for (const v of score.voices) {
     for (const s of v.segments) {
       if (s.momentId !== m.id || s.t0 < m.at - 1e-9) continue;
       const end = s.curve ? s.curve.t1 : s.t1;
       const p1 = s.curve ? s.curve.p1 : s.p1;
-      if (Math.abs(p1 - m.to) < 0.5 && end < best) best = end;
+      if (Math.abs(p1 - m.to) < 0.5 && end < best) {
+        best = end;
+        voice = v.index;
+      }
     }
   }
-  return Number.isFinite(best) ? best : m.at;
+  return Number.isFinite(best) ? { t: best, voice } : { t: m.at };
 }
 
 /**

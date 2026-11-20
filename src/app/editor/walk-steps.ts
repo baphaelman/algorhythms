@@ -4,13 +4,15 @@
  */
 
 import { freezeWalk, walkTickTime } from '../../core/moments/walk';
-import { keyAt } from '../../core/query';
+import { activeAt, keyAt, pitchAt, segmentAt } from '../../core/query';
 import { snapToScale, stepByScale } from '../../core/scales';
 import type {
   CompiledScore,
   Key,
   MomentId,
+  Piece,
   Pitch,
+  Seconds,
   VoiceId,
   WalkMoment,
   WalkNote,
@@ -84,4 +86,101 @@ export function fixedWith(
   if (pitch < 0 || pitch > 127) return null;
   const base = w.fixed ?? freezeWalk(score, w.id);
   return withNote(base, { tick: ref.tick, voice: ref.voice, pitch });
+}
+
+/**
+ * The walk tick whose step starts at `t`: an integer when within 0.001 of one, else fractional
+ * (to 1e-4; a step between ticks, §11.3). Null before the walk or at/after its end.
+ */
+export function tickAt(w: WalkMoment, t: Seconds): number | null {
+  const x = (t - w.at) / w.grid;
+  const r = Math.round(x);
+  const k = Math.abs(x - r) < 1e-3 ? r : Math.round(x * 1e4) / 1e4;
+  if (!(k >= 0) || !(w.at + k * w.grid < w.until)) return null;
+  return k;
+}
+
+/**
+ * Step `ref` moved to `tick` with `pitch` (a dot drag, §11.3): the walk's `fixed` (frozen first
+ * if needed) without the old note and with the new one, and the step's new ref. Null if `pitch`
+ * is outside MIDI 0..127.
+ */
+export function movedStep(
+  w: WalkMoment,
+  score: CompiledScore,
+  ref: StepRef,
+  pitch: Pitch,
+  tick: number,
+): { fixed: WalkNote[]; ref: StepRef } | null {
+  if (pitch < 0 || pitch > 127) return null;
+  const base = (w.fixed ?? freezeWalk(score, w.id)).filter(
+    (n) => !(n.tick === ref.tick && n.voice === ref.voice),
+  );
+  return {
+    fixed: withNote(base, { tick, voice: ref.voice, pitch }),
+    ref: { momentId: w.id, tick, voice: ref.voice },
+  };
+}
+
+/** True if walk `w` targets pool voice `v` at t (its selector, read at t as the compiler does). */
+function targets(
+  score: CompiledScore,
+  piece: Piece,
+  w: WalkMoment,
+  v: number,
+  t: Seconds,
+): boolean {
+  const sel = w.target;
+  if (sel === undefined || sel === 'all') return true;
+  if ('voices' in sel) return sel.voices.includes(piece.voices[v]?.id ?? '');
+  const active = activeAt(score, t)
+    .map((i) => ({ i, p: pitchAt(score.voices[i], t) ?? 0 }))
+    .sort((a, b) => a.p - b.p || a.i - b.i);
+  const r = active.findIndex((a) => a.i === v);
+  const [a, b] = sel.rank;
+  return r >= Math.min(a, b) && r <= Math.max(a, b);
+}
+
+/**
+ * The walk that drives pool voice `v` at t (§7.1: the latest-starting unmuted walk whose span
+ * holds t and that targets v), or null.
+ */
+export function walkAt(
+  piece: Piece,
+  score: CompiledScore,
+  v: number,
+  t: Seconds,
+): WalkMoment | null {
+  let best: WalkMoment | null = null;
+  piece.moments.forEach((m) => {
+    if (m.type !== 'walk' || m.muted || !(m.at <= t && t < m.until)) return;
+    if (best && m.at < best.at) return;
+    if (targets(score, piece, m, v, t)) best = m;
+  });
+  return best;
+}
+
+/**
+ * Where a note added on voice `v` at `t` becomes a walk step instead (§11.3): the driving walk
+ * and the step's tick. On a voice still gliding at t the step starts when the glide ends (the
+ * compiler ignores a step on a moving voice). Null outside a walk, or past its end.
+ */
+export function walkInsertAt(
+  piece: Piece,
+  score: CompiledScore,
+  v: number,
+  t: Seconds,
+): { walk: WalkMoment; tick: number } | null {
+  const w = walkAt(piece, score, v, t);
+  if (!w) return null;
+  const voice = score.voices[v];
+  const seg = voice && segmentAt(voice, t);
+  if (!seg) return null;
+  if (seg.p0 !== seg.p1 && t < seg.t1) {
+    let k = Math.ceil(((seg.t1 - w.at) / w.grid) * 1e4) / 1e4;
+    if (w.at + k * w.grid < seg.t1) k = Math.round(k * 1e4 + 1) / 1e4;
+    return w.at + k * w.grid < w.until ? { walk: w, tick: k } : null;
+  }
+  const tick = tickAt(w, t);
+  return tick === null ? null : { walk: w, tick };
 }

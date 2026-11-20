@@ -2,7 +2,8 @@
  * Pointer, wheel and keyboard input for the score view (PLAN.md §10 camera, §11.5):
  * - a click or tap on the canvas plays or pauses;
  * - editor layout: double-clicking a line, or clicking it with `N` held, adds a note point there
- *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry). A double-click
+ *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry); on a line a walk
+ *   drives there it inserts a walk step instead (freezing the walk). A double-click
  *   puts the transport back as it was before its first click;
  * - dragging pans the view (during playback this turns Follow off);
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
@@ -20,7 +21,7 @@
 import { keyAt } from '../core/query';
 import type { Key, Pitch } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, xToTime, yToPitch, type View } from '../render';
-import { addNoteDrag, stepNote, type PitchDrag } from './editor/actions';
+import { addPointDrag, stepNote, type PitchDrag } from './editor/actions';
 import { dragPitch } from './editor/chord-notes';
 import { redo, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
@@ -90,7 +91,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     const at = exact ? Math.max(0, t) : snapToGrid(t, piece.view.gridBpm);
     const from = noteFrom(compiled, hit.voice, at, hit.pitch);
     if (from === null) return false;
-    note = { drag: addNoteDrag(at, from), key: keyAt(compiled, at), last: from };
+    note = { drag: addPointDrag(at, hit.voice, from), key: keyAt(compiled, at), last: from };
     return true;
   };
 

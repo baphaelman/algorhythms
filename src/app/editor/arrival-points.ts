@@ -4,9 +4,11 @@
  * the piece-wide index for hover, the hover pick, and what a drag of a dot does.
  */
 
+import { noteAt } from '../../core/query';
 import type {
   ChordMoment,
   CompiledScore,
+  CompiledVoice,
   Moment,
   MomentId,
   MomentType,
@@ -17,7 +19,7 @@ import type {
   WalkMoment,
 } from '../../core/types';
 import { chordArrival } from './chord-notes';
-import { noteArrival } from './note-points';
+import { noteLanding } from './note-points';
 import type { StepRef } from './walk-steps';
 
 /** One dot: moment `momentId` brings a voice to `pitch` at `t`. */
@@ -26,8 +28,35 @@ export interface ArrivalDot {
   type: MomentType;
   t: Seconds;
   pitch: Pitch;
+  /** Pool index of the voice that lands there, when known. */
+  voice?: number;
   /** Walk dots: the step. */
   step?: StepRef;
+}
+
+/** True if voice `v` is fading out (a merge's dying voice) at t. */
+function dyingAt(v: CompiledVoice, t: Seconds): boolean {
+  return v.lives.some(
+    (l) => l.born <= t && l.died !== undefined && l.died - (l.fadeOut ?? 0) <= t + SAME_T,
+  );
+}
+
+/**
+ * Adds a landing to `list` unless one is already there; a dot shared with a dying voice belongs
+ * to the survivor. Returns the entry added, or null.
+ */
+function addLanding(
+  list: { t: Seconds; p: Pitch; v: number }[],
+  score: CompiledScore,
+  b: { t: Seconds; p: Pitch; v: number },
+): { t: Seconds; p: Pitch; v: number } | null {
+  const o = list.find((o) => Math.abs(o.t - b.t) < SAME_T && Math.abs(o.p - b.p) < SAME_P);
+  if (!o) {
+    list.push(b);
+    return b;
+  }
+  if (dyingAt(score.voices[o.v], o.t) && !dyingAt(score.voices[b.v], b.t)) o.v = b.v;
+  return null;
 }
 
 /** Dots closer than this in time (s) and pitch (st) are one dot. */
@@ -39,22 +68,26 @@ const SAME_P = 0.05;
  * segment of the moment that moves and wasn't interrupted. A dying voice that glides onto a
  * neighbour lands on that neighbour's dot, so duplicates are merged. Sorted by t, then pitch.
  */
-export function segmentArrivals(score: CompiledScore, id: MomentId): { t: Seconds; p: Pitch }[] {
-  const out: { t: Seconds; p: Pitch }[] = [];
+export function segmentArrivals(
+  score: CompiledScore,
+  id: MomentId,
+): { t: Seconds; p: Pitch; v: number }[] {
+  const out: { t: Seconds; p: Pitch; v: number }[] = [];
   for (const v of score.voices) {
-    let best: { t: Seconds; p: Pitch } | null = null;
+    let best: { t: Seconds; p: Pitch; v: number } | null = null;
     for (const s of v.segments) {
       if (s.momentId !== id || s.p0 === s.p1) continue;
       if (s.curve && s.curve.t1 > s.t1 + 1e-9) continue;
-      if (!best || s.t1 >= best.t) best = { t: s.t1, p: s.p1 };
+      if (!best || s.t1 >= best.t) best = { t: s.t1, p: s.p1, v: v.index };
     }
-    if (
-      best &&
-      !out.some((o) => Math.abs(o.t - best.t) < SAME_T && Math.abs(o.p - best.p) < SAME_P)
-    )
-      out.push(best);
+    if (best) addLanding(out, score, best);
   }
   return out.sort((a, b) => a.t - b.t || a.p - b.p);
+}
+
+/** Pool index of a voice id in `score`, or undefined. */
+function voiceIndex(score: CompiledScore, id: string): number | undefined {
+  return score.voices.find((v) => v.id === id)?.index;
 }
 
 function walkDots(score: CompiledScore, w: WalkMoment): ArrivalDot[] {
@@ -66,6 +99,7 @@ function walkDots(score: CompiledScore, w: WalkMoment): ArrivalDot[] {
       type: 'walk',
       t: s.t + (w.stepGlide ?? 0),
       pitch: s.to,
+      voice: voiceIndex(score, s.voice),
       step: { momentId: w.id, tick: s.tick, voice: s.voice },
     });
   }
@@ -73,7 +107,10 @@ function walkDots(score: CompiledScore, w: WalkMoment): ArrivalDot[] {
 }
 
 function noteDot(score: CompiledScore, m: NoteMoment): ArrivalDot {
-  return { momentId: m.id, type: 'note', t: noteArrival(score, m), pitch: m.to };
+  const { t, voice } = noteLanding(score, m);
+  const d: ArrivalDot = { momentId: m.id, type: 'note', t, pitch: m.to };
+  if (voice !== undefined) d.voice = voice;
+  return d;
 }
 
 /**
@@ -90,13 +127,19 @@ export function momentArrivals(
   if (m.type === 'note') return [noteDot(score, m)];
   if (m.type === 'chord' && chordNotes) {
     const t = chordArrival(score, m);
-    return chordNotes.map((pitch) => ({ momentId: m.id, type: 'chord', t, pitch }));
+    return chordNotes.map((pitch) => {
+      const d: ArrivalDot = { momentId: m.id, type: 'chord', t, pitch };
+      const v = noteAt(score, t, pitch, 0.25)?.voice;
+      if (v !== undefined) d.voice = v;
+      return d;
+    });
   }
-  return segmentArrivals(score, m.id).map(({ t, p }) => ({
+  return segmentArrivals(score, m.id).map(({ t, p, v }) => ({
     momentId: m.id,
     type: m.type,
     t,
     pitch: p,
+    voice: v,
   }));
 }
 
@@ -108,8 +151,8 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
   const byId = new Map<MomentId, Moment>();
   for (const m of piece.moments) if (!m.muted) byId.set(m.id, m);
   const out: ArrivalDot[] = [];
-  const landings = new Map<MomentId, { t: Seconds; p: Pitch }[]>();
-  const best = new Map<MomentId, { t: Seconds; p: Pitch }>();
+  const landings = new Map<MomentId, { t: Seconds; p: Pitch; v: number }[]>();
+  const best = new Map<MomentId, { t: Seconds; p: Pitch; v: number }>();
   for (const v of score.voices) {
     best.clear();
     for (const s of v.segments) {
@@ -117,18 +160,20 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
       if (id === undefined || s.p0 === s.p1) continue;
       if (s.curve && s.curve.t1 > s.t1 + 1e-9) continue;
       const b = best.get(id);
-      if (!b || s.t1 >= b.t) best.set(id, { t: s.t1, p: s.p1 });
+      if (!b || s.t1 >= b.t) best.set(id, { t: s.t1, p: s.p1, v: v.index });
     }
     for (const [id, b] of best) {
       const type = byId.get(id)?.type;
       if (type === undefined || type === 'walk' || type === 'note') continue;
       let list = landings.get(id);
       if (!list) landings.set(id, (list = []));
-      if (!list.some((o) => Math.abs(o.t - b.t) < SAME_T && Math.abs(o.p - b.p) < SAME_P)) {
-        list.push(b);
-        out.push({ momentId: id, type, t: b.t, pitch: b.p });
-      }
+      if (addLanding(list, score, b)) out.push({ momentId: id, type, t: b.t, pitch: b.p });
     }
+  }
+  // Voices, after merging shared landings (the survivor owns a shared dot).
+  for (const d of out) {
+    const l = landings.get(d.momentId)?.find((o) => o.t === d.t && o.p === d.pitch);
+    if (l) d.voice = l.v;
   }
   for (const s of score.walkSteps) {
     const w = byId.get(s.momentId);
@@ -138,6 +183,7 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
       type: 'walk',
       t: s.t + (w.stepGlide ?? 0),
       pitch: s.to,
+      voice: voiceIndex(score, s.voice),
       step: { momentId: w.id, tick: s.tick, voice: s.voice },
     });
   }
@@ -202,12 +248,17 @@ export function hoverPick(
   return out;
 }
 
-/** What dragging a dot does (§11.3). */
+/**
+ * What dragging a dot does (§11.3, revision 6): it moves that dot by editing its moment. Chord:
+ * that note (freezing) and that voice's arrival; walk: that step's tick and pitch; note: `to` and
+ * the arrival; anything else: a per-voice override. `none`: the moment is gone.
+ */
 export type DotAction =
-  | { kind: 'chord'; id: MomentId; index: number }
+  | { kind: 'chord'; id: MomentId; index: number; voice?: number }
   | { kind: 'walk'; step: StepRef }
-  | { kind: 'note'; id: MomentId }
-  | { kind: 'add'; at: Seconds; from: Pitch };
+  | { kind: 'note'; id: MomentId; voice?: number }
+  | { kind: 'override'; id: MomentId; voice: number }
+  | { kind: 'none' };
 
 /** The index in `notes` nearest `pitch` (ties low); -1 when empty. */
 export function nearestIndex(notes: readonly Pitch[], pitch: Pitch): number {
@@ -218,23 +269,25 @@ export function nearestIndex(notes: readonly Pitch[], pitch: Pitch): number {
   return best;
 }
 
-/**
- * The action for a drag of `dot`: a chord edits its nearest note (`chordNotes(m)`, the chord's
- * note list), a walk moves its step, a note sets `to`; anything else (or a moment that's gone)
- * adds a note at the arrival (rounded to the ms) with `from` = the dot's pitch.
- */
+/** The action for a drag of `dot` (`chordNotes(m)`: the chord's note list). */
 export function dotAction(
   piece: Piece,
   dot: ArrivalDot,
   chordNotes: (m: ChordMoment) => readonly Pitch[] | null,
 ): DotAction {
   const m = piece.moments.find((x) => x.id === dot.momentId);
-  if (m?.type === 'chord') {
+  if (!m) return { kind: 'none' };
+  const voice = dot.voice;
+  if (m.type === 'chord') {
     const notes = chordNotes(m);
     const index = notes ? nearestIndex(notes, dot.pitch) : -1;
-    if (index >= 0) return { kind: 'chord', id: m.id, index };
+    if (index >= 0)
+      return voice === undefined
+        ? { kind: 'chord', id: m.id, index }
+        : { kind: 'chord', id: m.id, index, voice };
   }
-  if (m?.type === 'walk' && dot.step) return { kind: 'walk', step: dot.step };
-  if (m?.type === 'note') return { kind: 'note', id: m.id };
-  return { kind: 'add', at: Math.round(dot.t * 1000) / 1000, from: dot.pitch };
+  if (m.type === 'walk') return dot.step ? { kind: 'walk', step: dot.step } : { kind: 'none' };
+  if (m.type === 'note')
+    return voice === undefined ? { kind: 'note', id: m.id } : { kind: 'note', id: m.id, voice };
+  return voice === undefined ? { kind: 'none' } : { kind: 'override', id: m.id, voice };
 }

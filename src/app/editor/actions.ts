@@ -20,7 +20,18 @@ import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-n
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
 import { stepNoteTo } from './note-points';
-import { fixedWith, movedFixed, scaleNeighbour, type StepRef } from './walk-steps';
+import { freezeWalk } from '../../core/moments/walk';
+import { arrivalEnd, withOverride, withoutOverride } from './overrides';
+import { selectStep } from './step-selection';
+import {
+  movedFixed,
+  movedStep,
+  scaleNeighbour,
+  tickAt,
+  walkInsertAt,
+  withNote,
+  type StepRef,
+} from './walk-steps';
 import { dotAction, type ArrivalDot } from './arrival-points';
 import { keepOrder, noteOrder } from './line-order';
 import {
@@ -266,43 +277,145 @@ export function dragNote(id: MomentId): PitchDrag | null {
   };
 }
 
+/** A drag of an arrival dot: `to(pitch, t)` with `t` its arrival; `end(true)` cancels it. */
+export interface DotDrag {
+  to(pitch: Pitch, t: Seconds): void;
+  end(cancel?: boolean): void;
+}
+
+/** Closes a gesture: `end(true)` cancels it. */
+function finish(cancel: boolean): void {
+  if (cancel) cancelGesture();
+  else endGesture();
+}
+
 /**
- * A drag of walk step `ref` (its score dot): sets the step's pitch, freezing the walk on the first
- * change; one undo entry. Null if there is no such walk.
+ * A drag of walk step `ref` (its score dot, §11.3): sets the step's pitch and, when `t` differs
+ * from `t0` (the dot's arrival), its tick (the step then arrives at `t`), freezing the walk on
+ * the first change; one undo entry. The selected step follows. Null if there is no such walk.
  */
-export function dragWalkStep(ref: StepRef): PitchDrag | null {
+export function dragWalkStep(ref: StepRef, t0: Seconds): DotDrag | null {
   const piece = usePlayer.getState().piece;
   const w = piece.moments.find((m) => m.id === ref.momentId);
   if (w?.type !== 'walk') return null;
   const score = scoreOf(piece);
+  let cur = ref;
   beginGesture(w.fixed ? 'Move walk step' : 'Freeze walk and move step');
   return {
-    to(pitch) {
-      const fixed = fixedWith(w, score, ref, pitch);
-      updateGesture((p) => (fixed ? patchMoment(p, w.id, { fixed }) : p));
+    to(pitch, t) {
+      const tick = t === t0 ? ref.tick : (tickAt(w, t - (w.stepGlide ?? 0)) ?? ref.tick);
+      const r = movedStep(w, score, ref, pitch, tick);
+      if (!r) return;
+      cur = r.ref;
+      updateGesture((p) => patchMoment(p, w.id, { fixed: r.fixed }));
     },
     end(cancel = false) {
-      if (cancel) cancelGesture();
-      else endGesture();
+      finish(cancel);
+      if (!cancel) selectStep(cur);
     },
   };
 }
 
 /**
- * A drag of arrival dot `dot` (§11.3 "Every dot is draggable"): edits that chord note, walk step
- * or note's `to`, or adds a note at the arrival with `from` = the dot's pitch. One undo entry.
+ * A drag of arrival dot `dot` (§11.3 "Every dot is draggable", revision 6): moves that dot by
+ * editing its moment, never adding one. Chord: that note (freezing) and that voice's arrival
+ * (`overrides`); walk: the step's pitch and tick; note: `to` and the arrival; any other moment:
+ * that voice's override. The pitch changes only when it differs from the dot's, the arrival only
+ * when `t` differs from `dot.t`. One undo entry. Null if the moment is gone.
  */
-export function dragArrival(dot: ArrivalDot): PitchDrag | null {
+export function dragArrival(dot: ArrivalDot): DotDrag | null {
   const piece = usePlayer.getState().piece;
-  const a = dotAction(piece, dot, (m) => chordNotes(piece, scoreOf(piece), m));
-  switch (a.kind) {
-    case 'chord':
-      return dragChordNote(a.id, a.index);
-    case 'walk':
-      return dragWalkStep(a.step);
-    case 'note':
-      return dragNote(a.id);
-    case 'add':
-      return addNoteDrag(a.at, a.from);
-  }
+  const score = scoreOf(piece);
+  const a = dotAction(piece, dot, (m) => chordNotes(piece, score, m));
+  if (a.kind === 'none') return null;
+  if (a.kind === 'walk') return dragWalkStep(a.step, dot.t);
+  const m = piece.moments.find((x) => x.id === a.id);
+  if (!m) return null;
+  const voice = a.voice;
+  /** The arrival part of a patch: that voice's override `end` (merged into `list`). */
+  const timed = (t: Seconds, list = m.overrides): MomentPatch =>
+    voice === undefined || t === dot.t
+      ? {}
+      : ({ overrides: withOverride(list, voice, { end: arrivalEnd(m, t) }) } as MomentPatch);
+  let patchOf: (pitch: Pitch, t: Seconds) => MomentPatch;
+  if (a.kind === 'chord' && m.type === 'chord') {
+    const notes = chordNotes(piece, score, m);
+    const keep = keepOrder();
+    beginGesture(m.frozenFrom ? 'Move chord note' : 'Freeze chord and move note');
+    patchOf = (pitch, t) => {
+      const next = notes && pitch !== dot.pitch ? withChordNote(notes, a.index, pitch, keep) : null;
+      return { ...(next ? frozenPatch(m, next, keep) : {}), ...timed(t) } as MomentPatch;
+    };
+  } else if (a.kind === 'note' && m.type === 'note') {
+    const order = noteOrder();
+    beginGesture('Move note');
+    patchOf = (pitch, t) =>
+      ({ ...(pitch !== dot.pitch ? { to: pitch, order } : {}), ...timed(t) }) as MomentPatch;
+  } else if (a.kind === 'override' && voice !== undefined) {
+    beginGesture(`Move ${LABELS[m.type]} note`);
+    patchOf = (pitch, t) => {
+      const list = pitch !== dot.pitch ? withOverride(m.overrides, voice, { pitch }) : m.overrides;
+      const p = timed(t, list);
+      return Object.keys(p).length > 0 || list === m.overrides
+        ? p
+        : ({ overrides: list } as MomentPatch);
+    };
+  } else return null;
+  return {
+    to(pitch, t) {
+      const patch = patchOf(pitch, t);
+      updateGesture((p) => (Object.keys(patch).length > 0 ? patchMoment(p, m.id, patch) : p));
+    },
+    end(cancel = false) {
+      finish(cancel);
+    },
+  };
+}
+
+/** Removes voice `voice`'s override from moment `id` ("Clear override"). False if none. */
+export function clearOverride(id: MomentId, voice: number): boolean {
+  const m = usePlayer.getState().piece.moments.find((x) => x.id === id);
+  if (!m?.overrides?.some((o) => o.voice === voice)) return false;
+  return updateMoment(
+    id,
+    { overrides: withoutOverride(m.overrides, voice) } as MomentPatch,
+    'Clear override',
+  );
+}
+
+/** Removes all of moment `id`'s overrides ("Clear overrides"). False if none. */
+export function clearOverrides(id: MomentId): boolean {
+  return updateMoment(id, { overrides: undefined } as MomentPatch, 'Clear overrides');
+}
+
+/**
+ * Adds a note on pool voice `voice` at `at` with `from` (a double-click or N-click on a line,
+ * §11.3) and keeps the gesture open: `to(p)` sets its pitch. Inside a walk that drives the voice,
+ * this inserts a step into the walk (freezing it) instead of a note moment; one undo entry
+ * either way ("Add walk step" / "Freeze walk and add step" / "Add note").
+ */
+export function addPointDrag(at: Seconds, voice: number, from: Pitch): PitchDrag {
+  const piece = usePlayer.getState().piece;
+  const score = scoreOf(piece);
+  const ins = walkInsertAt(piece, score, voice, at);
+  const id = score.voices[voice]?.id;
+  if (!ins || id === undefined) return addNoteDrag(at, from);
+  const w = ins.walk;
+  const ref: StepRef = { momentId: w.id, tick: ins.tick, voice: id };
+  const base = w.fixed ?? freezeWalk(score, w.id);
+  beginGesture(w.fixed ? 'Add walk step' : 'Freeze walk and add step');
+  const set = (pitch: Pitch): void =>
+    updateGesture((p) =>
+      patchMoment(p, w.id, { fixed: withNote(base, { tick: ins.tick, voice: id, pitch }) }),
+    );
+  set(from);
+  select([w.id]);
+  selectStep(ref);
+  return {
+    to: set,
+    end(cancel = false) {
+      finish(cancel);
+      if (cancel) selectStep(null);
+    },
+  };
 }

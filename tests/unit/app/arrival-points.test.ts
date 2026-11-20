@@ -47,10 +47,10 @@ describe('arrival points', () => {
   it('lands each moving voice at the end of its glide', () => {
     const s = compile(make([shift]));
     expect(segmentArrivals(s, 'sh')).toEqual([
-      { t: 3, p: 50 },
-      { t: 3, p: 57 },
-      { t: 3, p: 62 },
-      { t: 3, p: 66 },
+      { t: 3, p: 50, v: 0 },
+      { t: 3, p: 57, v: 1 },
+      { t: 3, p: 62, v: 2 },
+      { t: 3, p: 66, v: 3 },
     ]);
   });
 
@@ -144,21 +144,29 @@ describe('dot actions', () => {
     });
   });
 
-  it('adds a note at the arrival for any other moment', () => {
-    expect(dotAction(p, { momentId: 'sh', type: 'shift', t: 3.00049, pitch: 57 }, notes)).toEqual({
-      kind: 'add',
-      at: 3,
-      from: 57,
-    });
+  it('any other moment: a per-voice override; a dot without a voice, or a gone moment: none', () => {
+    expect(
+      dotAction(p, { momentId: 'sh', type: 'shift', t: 3, pitch: 57, voice: 1 }, notes),
+    ).toEqual({ kind: 'override', id: 'sh', voice: 1 });
     expect(dotAction(p, { momentId: 'sp', type: 'split', t: 27, pitch: 62 }, notes)).toEqual({
-      kind: 'add',
-      at: 27,
-      from: 62,
+      kind: 'none',
     });
-    // A chord that doesn't apply, or a moment that's gone: add too.
     expect(dotAction(p, { momentId: 'zz', type: 'chord', t: 1, pitch: 50 }, () => null).kind).toBe(
-      'add',
+      'none',
     );
+  });
+
+  it('dots carry their voice', () => {
+    const s = compile(p);
+    for (const id of ['sh', 'n', 'sp']) {
+      for (const d of momentArrivals(s, byId(p, id))) {
+        expect(d.voice).toBeDefined();
+        const seg = s.voices[d.voice!].segments.find(
+          (x) => x.momentId === id && Math.abs(x.t1 - d.t) < 1e-6,
+        );
+        expect(seg).toBeDefined();
+      }
+    }
   });
 
   it('nearestIndex picks the closest note, ties low', () => {
