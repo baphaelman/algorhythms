@@ -80,7 +80,7 @@ The owner moved the integrator to a cloud session to use it from their phone. Li
 6. **Transition/level/voices controls** (after 5, shares `TypeFields.tsx`/`CommonFields.tsx`).
 7. **Walk steps UI** (after 1, 2): steps list + dots overlay.
 8. **Generate confirm** (small, independent): `GeneratePanel.tsx`.
-Rev 6 queue (owner 2026-11-20): 9. arrive together + `no-effect` + palette helper (core; running). 10. chord `count` (core, after 9). 11. per-voice chord editor + Arrive toggle (inspector, after 7 and 10). 12. dimmed no-op markers + context palette with hover preview (after 4 and 9). 13. next-move suggestions (after 12).
+Rev 6 queue (owner 2026-11-20): 9. arrive together + `no-effect` + palette helper (core; running). 10. chord `count` (core, after 9). 11. chord "Notes: n" + per-note editor + Arrive toggle + hide targeting under Advanced, drop Top/Bottom n (inspector, after 10). 12. dimmed no-op markers + context palette with hover preview (after 4 and 9). 13. next-move suggestions (after 12).
 Then one builder runs the full e2e on the merged tree.
 
 Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871/871 tests, lint, typecheck, build, 224 e2e on Chromium + Firefox, 0 failed). CI: see `gh run list`.
