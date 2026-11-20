@@ -52,7 +52,7 @@ export function runGenerate(): boolean {
     return false;
   }
   try {
-    loadPiece(generateFromRequest(check.request));
+    loadPiece(generateFromRequest(check.request), { source: 'generated' });
   } catch (e) {
     pushNotice('error', 'Could not generate a piece', [e instanceof Error ? e.message : String(e)]);
     return false;
