@@ -777,3 +777,14 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - **Undo:** every editor action goes through `history.ts` (M4b tests); spot-checked undo of a delete. Pass.
 - **Edit during playback ≤ 50 ms, no clicks:** measured `setPiece` → `swap` posted to the worklet in headless Chromium (dev server, load ~7), 15 edits each; the worklet applies a swap at the next 2.7 ms block. Example piece (21 moments): median 12 ms, max 14 ms. Generated 10-min, 24-voice piece (57 moments): edit at 10 % median 23 / max 43 ms, 50 % 15 / 28, 90 % 12 / 14. Worst case ≈ 46 ms before device output latency (excluded, as in M7's criterion). Mostly the rAF wait plus compile; the production bundle is faster. Clicks on swap: `tests/dsp/clicks.test.ts`. Pass, thin margin on long pieces when editing early; a compile worker would widen it.
 - **Storage status + Download all:** My pieces shows the persistence status and "Download all (n not in a file)"; `tests/e2e/my-pieces.spec.ts` checks the zip. Pass.
+
+## Editor view redesign: owner direction (integrator, 2026-11-20)
+The owner looked at M4 and wants the editor reworked before M5. Mockup (interactive, made-up music): https://claude.ai/artifact/29KnYtonhJGSZKEj12Jogm (v3). Nothing built yet; owner said not to start builders yet.
+- **One time axis.** The bottom scrubber (whole piece) never lined up with the graph's playhead (follow camera, 20 s window). Replace it with a time ruler above the graph (click/drag to seek); one playhead line through ruler, lines and every lane row.
+- **Whole piece drawn;** future lines **dimmed** by default (today they are hidden, as in the prototype video).
+- **Follow:** Smooth (default; view scrolls, playhead held near 35 %), Page, or Off, as a toggle.
+- **No overview strip;** a big zoom slider (2–5 s to whole piece) with −/+ and Fit is enough.
+- **Lanes under the moments** on the same axis: Transitions (each moment's glide incl. stagger; walks as regions), Level (volume curve from level moments), Effects (timbre changes, M6).
+- **Inspector: much more customisation.** Chords picked, not typed: diatonic suggestions from the key, root + quality + bass, voicing; live notes and Roman numeral. Transition sliders (length, stagger, curve). Level sliders.
+- **Walks: move individual steps** (dots on the lines + step list with up/down). Needs a model change: walk steps are seeded, so edited steps must be stored as overrides (or the walk frozen); decide in the PLAN revision.
+- Next: integrator revises PLAN §10 (view) and the editor sections, then splits the work into builder tasks once the owner says go.

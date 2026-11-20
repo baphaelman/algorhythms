@@ -72,7 +72,8 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 ## Next tasks
 - **Push state:** see the build log tail / `git log origin/main`. If local main is ahead, verify HEAD in a clean worktree and push (routine above).
 - **M4 follow-ups (optional):** compile in a worker if edit latency on long pieces gets tight (worst ≈ 46 ms); incremental compile could stop early once the resumed state re-converges; palette drag has no touch path (M5 touch work).
-- **Next milestone: M5** (PLAN §15). Confirm with the owner whether tablet touch editing is in scope (phones are not a priority).
+- **Editor view redesign before M5 (owner, 2026-11-20).** Owner direction and mockup link: build log "Editor view redesign". Revise PLAN (§10 view, editor sections) first; **don't start builders until the owner says go.**
+- **Then M5** (PLAN §15). Confirm with the owner whether tablet touch editing is in scope (phones are not a priority).
 - **E2E ports:** give every builder distinct `E2E_DEV_PORT`/`E2E_PROD_PORT`/`E2E_OUT_DIR` in its brief; Playwright reuses whatever is on 5180 (the integrator's dev server).
 - **Builder Alt rule (integrator call):** Alt at press duplicates; Alt held disables snapping (PLAN gives Alt both meanings).
 - **Machine load:** parallel builders push load to 40–60, so their full `pnpm test` runs fail timing tests (rtf, compiler-perf, dsp export, stems). Rerun those alone; don't treat them as regressions.
