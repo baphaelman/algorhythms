@@ -235,6 +235,16 @@ const MOMENT_SCHEMAS = {
           .refine(([lo, hi]) => lo <= hi, { message: 'The smaller leap must come first.' }),
       })
       .optional(),
+    fixed: z
+      .array(
+        z.looseObject({
+          tick: z.number().int().min(0).describe('Tick index: time = at + tick·grid.'),
+          voice: id,
+          pitch,
+        }),
+      )
+      .optional()
+      .describe('Frozen walk: absolute notes per tick; when present the walk draws nothing.'),
   }),
   pin: z.looseObject({ type: z.literal('pin'), ...momentBase, voice: id, pitch }),
   key: z.looseObject({ type: z.literal('key'), ...momentBase, key: KeySchema }),
@@ -397,7 +407,7 @@ function checkPiece(
   p: {
     voices: { id: string }[];
     start: { voice: string }[];
-    moments: { id: string }[];
+    moments: { id: string; fixed?: { tick: number; voice: string }[] }[];
   },
   ctx: z.RefinementCtx,
 ): void {
@@ -446,6 +456,27 @@ function checkPiece(
       });
     }
     momentIds.add(m.id);
+    // Frozen walk notes: one per (tick, voice), on pool voices.
+    if (Array.isArray(m.fixed)) {
+      const seen = new Set<string>();
+      m.fixed.forEach((n, j) => {
+        const k = `${n.tick}\u0000${n.voice}`;
+        if (!voiceIds.has(n.voice)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['moments', i, 'fixed', j, 'voice'],
+            message: `'${n.voice}' is not a voice in the pool.`,
+          });
+        } else if (seen.has(k)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['moments', i, 'fixed', j],
+            message: `Voice '${n.voice}' has two fixed notes on tick ${n.tick}.`,
+          });
+        }
+        seen.add(k);
+      });
+    }
   });
 }
 
@@ -661,6 +692,10 @@ export function parsePiece(json: unknown, options: ParsePieceOptions = {}): Pars
   if (errors.length > 0 || !result.success) return { ok: false, errors };
 
   const piece = result.data as unknown as Piece & Record<string, unknown>;
+  // Frozen walk notes are kept in tick order (stable within a tick).
+  for (const m of piece.moments) {
+    if (m.type === 'walk' && m.fixed) m.fixed.sort((a, b) => a.tick - b.tick);
+  }
   if (newerVersion) (piece as { version: number }).version = version;
   if (unknownMoments.size > 0) {
     const moments: unknown[] = [...piece.moments];

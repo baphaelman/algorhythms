@@ -340,6 +340,7 @@ export function unflatten(flat: FlatScore): CompiledScore {
   return {
     duration: flat.duration,
     voices,
+    walkSteps: [],
     momentSpans: [],
     diagnostics: [],
     keys: [],

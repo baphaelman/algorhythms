@@ -805,3 +805,13 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Generate confirms** before replacing an edited piece (§11.3).
 - Tablet touch editing (M5): low priority but in scope.
 - Integrator may push to `main`. Cloud: `git push` works; `gh` is not authenticated, use the GitHub MCP tools for CI.
+
+## M4.5-1: frozen walks in core (2026-11-20)
+- `types.ts`: `WalkNote`, `WalkMoment.fixed?`, `WalkStepRecord`; `CompiledScore.walkSteps` (required, §7.9). Hand-built scores (flat.ts `fromFlat`, audio fixtures, test fixtures) get `walkSteps: []`.
+- `schema.ts`: `fixed` = `{ tick: int ≥ 0, voice, pitch }[]`; rejects unknown voices and duplicate (tick, voice); parse sorts by tick (stable). Additive, no migration or version bump. docs/file-format.md regenerated.
+- Compiler: a walk with `fixed` (even `[]`) never calls `walkTick`, so no draws. Ticks are queued only where notes exist (tick 0 always). Per tick: each listed voice that is active, in target, idle and not driven by a later walk glides (`stepGlide`, walk ease) to its note. A moving note that leaves the range, or crosses/touches a neighbour's final destination, holds; reverting repeats until stable (`warn walk-note-blocked`). Notes on inactive/untargeted voices, voices still moving or claimed by a later walk, or at/after `until` → `info walk-note-ignored` (one per tick/kind). Unknown voice → `warn unknown-voice`.
+- **Clarification (not in §6.2):** busy voices (mid-glide, pending moves) skip a fixed note, like generated walks (§7.1: a walk never overwrites a chord). A blocked note appears in `walkSteps` with `to === from` (what sounds), not its stored pitch.
+- `walkSteps`: generated = each step taken (`fixed: false`); frozen = every applied note incl. holds and blocked. Emitted in event order (already sorted by t; ties walk order then low→high). Incremental: checkpointed by length like `harmony`.
+- `freezeWalk(score, momentId)` in `core/moments/walk.ts`: snapshot for `fixed`. Freezing every walk of every example reproduces its voices exactly (test).
+- Golden hashes regenerated: only `walkSteps` was added (verified: hashes without it match the old goldens).
+- Tests: `tests/unit/core/walk-frozen.test.ts` (13).

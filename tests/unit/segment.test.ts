@@ -99,6 +99,7 @@ describe('evalFlatSegment', () => {
           sends: {},
         },
       ],
+      walkSteps: [],
       momentSpans: [],
       diagnostics: [],
       keys: [],

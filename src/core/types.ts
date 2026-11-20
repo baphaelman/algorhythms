@@ -307,6 +307,33 @@ export interface WalkMoment extends MomentBase {
   stepGlide: Seconds;
   /** When present, the lowest voice leaps by a random interval in [min, max] semitones. */
   bass?: { leap: [number, number] };
+  /**
+   * Frozen walk (§6.2, revision 5): when present the walk draws nothing; on each listed tick each
+   * listed voice glides to its pitch, unlisted voices hold. density, steps, bass and seed are ignored.
+   */
+  fixed?: WalkNote[];
+}
+
+/** One note of a frozen walk: the absolute target of `voice` at tick `tick` (§6.2). */
+export interface WalkNote {
+  /** Tick index: time = at + tick·grid. */
+  tick: number;
+  voice: VoiceId;
+  pitch: Pitch;
+}
+
+/** A step a walk took, or a frozen walk's note (§7.9, revision 5). */
+export interface WalkStepRecord {
+  momentId: MomentId;
+  /** Tick index. */
+  tick: number;
+  voice: VoiceId;
+  t: Seconds;
+  from: Pitch;
+  /** The pitch it glides to; equal to `from` for a frozen note that holds or is blocked. */
+  to: Pitch;
+  /** From the walk's `fixed` notes. */
+  fixed: boolean;
 }
 
 /** Moves one voice to an exact pitch; may cross other voices. */
@@ -681,6 +708,11 @@ export interface CompiledScore {
   voices: CompiledVoice[];
   /** Per-moment spans, for the moment lane. */
   momentSpans: MomentSpan[];
+  /**
+   * Every step a walk took (from !== to), or every applied `fixed` note incl. holds; sorted by t
+   * (ties: walk order, then low to high). Revision 5, §6.2.
+   */
+  walkSteps: WalkStepRecord[];
   /** Compiler messages. */
   diagnostics: Diagnostic[];
   /** Key timeline, sorted; the first entry is { t: 0, key: piece.key }. Extension of §7.9. */

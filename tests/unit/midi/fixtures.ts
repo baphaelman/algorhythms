@@ -69,6 +69,7 @@ export function score(voices: CompiledVoice[], duration: number, referenceHz = 4
   return {
     duration,
     voices,
+    walkSteps: [],
     momentSpans: [],
     diagnostics: [],
     keys: [{ t: 0, key: { tonic: 'C', scale: 'major' } }],

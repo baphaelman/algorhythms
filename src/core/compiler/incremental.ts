@@ -14,7 +14,7 @@
  * pending moves and birth, the frontier tail with the fields `finishAt` mutates by value, the open
  * Life, and the lengths of the append-only arrays (segments, lives, level); the queued move starts
  * and walk ticks with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
- * key, keys/harmony/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
+ * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
  * returned scores stay intact). Restored tails and lives are fresh copies.
@@ -34,6 +34,7 @@ import type {
   Piece,
   Seconds,
   Segment,
+  WalkStepRecord,
 } from '../types';
 import { Compiler, SUB_MOVE, SUB_STRIDE, type CompileOptions } from './compile';
 import { EventClass, type QueuedEvent } from './queue';
@@ -69,6 +70,7 @@ interface Checkpoint {
   key: Key;
   keys: number;
   harmony: number;
+  walkSteps: number;
   /** Diagnostics raised by the simulation (after the init ones). */
   diags: number;
   lastActivity: Seconds;
@@ -89,6 +91,7 @@ interface State {
   level: VoiceRun['level'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
+  walkSteps: WalkStepRecord[];
   diags: Diagnostic[];
   initDiags: number;
   spanStart: number[];
@@ -219,6 +222,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
     key: c.key,
     keys: c.keys.length,
     harmony: c.harmony.length,
+    walkSteps: c.walkSteps.length,
     diags: c.diags.length - initDiags,
     lastActivity: c.lastActivity,
     spans,
@@ -299,6 +303,7 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   c.key = cp.key;
   pushPrefix(c.keys, prev.keys, cp.keys, 1); // keys[0] is the new piece's own (equal) start key
   pushPrefix(c.harmony, prev.harmony, cp.harmony);
+  pushPrefix(c.walkSteps, prev.walkSteps, cp.walkSteps);
   c.lastActivity = cp.lastActivity;
   // Spans of the moments handled before the checkpoint (all below k): final ones from the
   // previous run, then the ones that were still open.
@@ -388,6 +393,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       level: c.voices.map((r) => r.level),
       keys: c.keys,
       harmony: c.harmony,
+      walkSteps: c.walkSteps,
       diags: c.diags,
       initDiags,
       spanStart: c.spanStart,

@@ -1,6 +1,6 @@
 {
   "clockwork-heron.algorhythms.json": {
-    "hash": "507bc49268f5b2f5",
+    "hash": "3c2665b69df22274",
     "duration": 148.77068412655453,
     "voices": [
       {
@@ -68,7 +68,7 @@
     "spans": 20
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "5d8cda25b60df21a",
+    "hash": "c4db88c56394475b",
     "duration": 185.62219474003876,
     "voices": [
       {
@@ -148,7 +148,7 @@
     "spans": 24
   },
   "seven-doors-in-fog.algorhythms.json": {
-    "hash": "9136810b7765221b",
+    "hash": "8bfcabb32d5a6ba2",
     "duration": 153.29124117922365,
     "voices": [
       {
@@ -228,7 +228,7 @@
     "spans": 24
   },
   "the-cartographers-rain.algorhythms.json": {
-    "hash": "0dc6ef4691535820",
+    "hash": "fa23faa06bd13149",
     "duration": 176.18141972626782,
     "voices": [
       {
@@ -332,7 +332,7 @@
     "spans": 20
   },
   "tidewater-hymn.algorhythms.json": {
-    "hash": "80d4896fd64502cb",
+    "hash": "fe278f2c72eff05f",
     "duration": 161.3296197212335,
     "voices": [
       {
