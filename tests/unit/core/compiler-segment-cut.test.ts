@@ -57,6 +57,7 @@ describe('cut segments', () => {
           sends: {},
         },
       ],
+      walkSteps: [],
       momentSpans: [],
       diagnostics: [],
       keys: [],

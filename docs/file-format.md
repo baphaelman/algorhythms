@@ -2029,6 +2029,35 @@ This is the *input* form: fields with defaults are optional here.
                   "leap"
                 ],
                 "additionalProperties": {}
+              },
+              "fixed": {
+                "description": "Frozen walk: absolute notes per tick; when present the walk draws nothing.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tick": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Tick index: time = at + tick·grid."
+                    },
+                    "voice": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    }
+                  },
+                  "required": [
+                    "tick",
+                    "voice",
+                    "pitch"
+                  ],
+                  "additionalProperties": {}
+                }
               }
             },
             "required": [

@@ -83,6 +83,7 @@ function fixture(): CompiledScore {
       }),
       voice(2, { timbre: [{ t: 0, preset: 'organ', fade: 0 }] }),
     ],
+    walkSteps: [],
     momentSpans: [{ id: 'k3f9aa', start: 4, end: 7 }],
     diagnostics: [{ level: 'info', code: 'demo', message: 'demo' }],
     keys: [{ t: 0, key: { tonic: 'A', scale: 'dorian' } }],

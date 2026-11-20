@@ -39,6 +39,16 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'info',
     meaning: 'More notes than voices; the extra notes were dropped.',
   },
+  'walk-note-ignored': {
+    level: 'info',
+    meaning:
+      'A frozen walk note is invalid, past the walk, or for a voice not active, still moving or driven by another walk.',
+  },
+  'walk-note-blocked': {
+    level: 'warn',
+    meaning:
+      'A frozen walk note would cross or touch a neighbour or leave the range; the voice holds.',
+  },
   'pin-inactive': { level: 'error', meaning: 'The pinned voice is not active at that time.' },
   // Births and deaths
   'pool-exhausted': {

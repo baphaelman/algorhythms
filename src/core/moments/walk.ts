@@ -17,7 +17,7 @@
 
 import { Purpose, randHashed } from '../rng';
 import { pitchesWithPcs, scalePcs, stepByScale } from '../scales';
-import type { Key, Pitch, Seconds, WalkMoment } from '../types';
+import type { CompiledScore, Key, MomentId, Pitch, Seconds, WalkMoment, WalkNote } from '../types';
 
 /** Default step set (§6.2). */
 export const DEFAULT_WALK_STEPS: readonly number[] = [-2, -1, 1, 2];
@@ -45,6 +45,8 @@ export interface WalkEnv {
 
 export interface WalkStep {
   voice: number;
+  /** Committed destination before the step. */
+  from: Pitch;
   to: Pitch;
 }
 
@@ -95,7 +97,7 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
     }
     if (Number.isFinite(to)) {
       d[i] = to;
-      out.push({ voice: v, to });
+      out.push({ voice: v, from: cur, to });
     }
   }
   return out;
@@ -104,4 +106,18 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
 /** Tick count of a walk region: ticks at at + k·grid while < until. */
 export function walkTickTime(w: WalkMoment, k: number): Seconds {
   return w.at + k * w.grid;
+}
+
+/**
+ * The `fixed` notes that reproduce what walk `momentId` does in `score` (§6.2, revision 5): every
+ * step it took (or, for a frozen walk, every applied note), in tick order. Setting the walk's
+ * `fixed` to this freezes it without changing its sound.
+ */
+export function freezeWalk(score: CompiledScore, momentId: MomentId): WalkNote[] {
+  const out: WalkNote[] = [];
+  for (const s of score.walkSteps) {
+    if (s.momentId === momentId) out.push({ tick: s.tick, voice: s.voice, pitch: s.to });
+  }
+  // walkSteps is sorted by t, so by tick within one walk; keep it explicit for safety.
+  return out.sort((a, b) => a.tick - b.tick);
 }

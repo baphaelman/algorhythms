@@ -48,6 +48,7 @@ import {
   type Seconds,
   type VoiceSelector,
   type WalkMoment,
+  type WalkStepRecord,
 } from '../types';
 import { MIN_GLIDE, mergeGlide, sanitizeGlide } from './glide';
 import { planMoment, type CrossingsMode, type PlanTrace } from './plan';
@@ -123,6 +124,14 @@ export interface CompileTrace {
   end: Seconds;
 }
 
+/** A frozen walk's notes (§6.2, revision 5), validated at setup. */
+interface FrozenWalk {
+  /** Tick indices that have notes, ascending. */
+  ticks: number[];
+  /** Notes per tick, in file order. */
+  notes: Map<number, { voice: number; pitch: Pitch }[]>;
+}
+
 interface CloseRec {
   voice: number;
   died: Seconds;
@@ -147,6 +156,10 @@ export class Compiler {
   readonly spanStart: number[] = [];
   readonly spanEnd: number[] = [];
   readonly walks: number[] = [];
+  /** Per moment: the frozen walk's notes, or null (not a frozen walk). */
+  readonly frozen: (FrozenWalk | null)[] = [];
+  /** Steps taken by walks, in event (= time) order (§7.9 walkSteps). */
+  readonly walkSteps: WalkStepRecord[] = [];
   key: Key;
   readonly keys: KeyChange[];
   readonly harmony: HarmonyChange[] = [];
@@ -249,6 +262,7 @@ export class Compiler {
     const ids = new Set<string>();
     this.moments.forEach((m, i) => {
       this.valid.push(false);
+      this.frozen.push(null);
       this.seeds.push(0);
       this.glides.push(defaults);
       this.spanStart.push(NaN);
@@ -289,9 +303,57 @@ export class Compiler {
       this.queue.push({ t: m.at, cls: EventClass.Moment, key: i, sub: 0, ref: i });
       if (m.type === 'walk') {
         this.walks.push(i);
+        if (Array.isArray(m.fixed)) this.frozen[i] = this.initFrozen(m);
         this.queue.push({ t: m.at, cls: EventClass.Tick, key: i, sub: 0, ref: 0 });
       }
     });
+  }
+
+  /** Validates a frozen walk's notes (§6.2): unusable ones are dropped with a diagnostic. */
+  private initFrozen(w: WalkMoment): FrozenWalk {
+    const notes = new Map<number, { voice: number; pitch: Pitch }[]>();
+    let past = 0;
+    let bad = 0;
+    for (const n of w.fixed ?? []) {
+      const k = n?.tick;
+      if (!(typeof k === 'number' && Number.isInteger(k) && k >= 0 && Number.isFinite(n.pitch))) {
+        bad++;
+        continue;
+      }
+      const v = this.byId.get(n.voice);
+      if (v === undefined) {
+        this.diag('warn', 'unknown-voice', `A fixed note names no voice '${n.voice}'.`, w.id);
+        continue;
+      }
+      if (!(w.at + k * w.grid < w.until)) {
+        past++;
+        continue;
+      }
+      let list = notes.get(k);
+      if (!list) notes.set(k, (list = []));
+      if (list.some((x) => x.voice === v)) {
+        bad++;
+        continue;
+      }
+      list.push({ voice: v, pitch: n.pitch });
+    }
+    if (bad > 0) {
+      this.diag(
+        'info',
+        'walk-note-ignored',
+        `${bad} fixed note(s) are invalid or repeat a voice on a tick; they are ignored.`,
+        w.id,
+      );
+    }
+    if (past > 0) {
+      this.diag(
+        'info',
+        'walk-note-ignored',
+        `${past} fixed note(s) lie at or past the walk's end; they are ignored.`,
+        w.id,
+      );
+    }
+    return { ticks: [...notes.keys()].sort((a, b) => a - b), notes };
   }
 
   // -------------------------------------------------------------------------------------------
@@ -718,22 +780,32 @@ export class Compiler {
   private onTick(wi: number, k: number): void {
     const w = this.moments[wi] as WalkMoment;
     const t = w.at + k * w.grid;
-    const next = w.at + (k + 1) * w.grid;
-    if (next < w.until)
-      this.queue.push({ t: next, cls: EventClass.Tick, key: wi, sub: 0, ref: k + 1 });
-    const inTarget = new Set(this.resolveTarget(w.target, k === 0 ? w.id : null));
-    if (inTarget.size === 0) return;
-    // §7.1: when two walks target a voice, the one that started later drives it.
-    const claimed = new Set<number>();
-    for (const wj of this.walks) {
-      if (wj === wi) continue;
-      const o = this.moments[wj] as WalkMoment;
-      if (!(o.at <= t && t < o.until)) continue;
-      if (!(o.at > w.at || (o.at === w.at && wj > wi))) continue;
-      for (const v of this.resolveTarget(o.target, null)) claimed.add(v);
+    const fz = this.frozen[wi];
+    if (fz) {
+      // A frozen walk ticks only where it has notes (tick 0 is always queued, see initMoments).
+      const next = fz.ticks.find((j) => j > k);
+      if (next !== undefined)
+        this.queue.push({
+          t: w.at + next * w.grid,
+          cls: EventClass.Tick,
+          key: wi,
+          sub: 0,
+          ref: next,
+        });
+    } else {
+      const next = w.at + (k + 1) * w.grid;
+      if (next < w.until)
+        this.queue.push({ t: next, cls: EventClass.Tick, key: wi, sub: 0, ref: k + 1 });
     }
+    const inTarget = new Set(this.resolveTarget(w.target, k === 0 ? w.id : null));
+    if (fz) {
+      const notes = fz.notes.get(k);
+      if (notes) this.frozenTick(wi, w, k, t, notes, inTarget);
+      return;
+    }
+    if (inTarget.size === 0) return;
+    const claimed = this.claimedAt(wi, w, t);
     const order = this.sortedActive();
-    const glide = this.glides[wi];
     const steps = walkTick(w, {
       t,
       tick: k,
@@ -746,22 +818,137 @@ export class Compiler {
       range: (v) => this.voices[v].range,
       hash: (v) => this.voices[v].hash,
     });
-    const dur = Number.isFinite(w.stepGlide) && w.stepGlide > MIN_GLIDE ? w.stepGlide : MIN_GLIDE;
-    for (const s of steps) {
-      this.startMove({
-        voice: s.voice,
-        t0: t,
-        dur,
-        to: s.to,
-        ease: glide.ease,
-        momentId: w.id,
-        limits: FREE_LIMITS,
-        crossScale: 1,
-        cancelled: false,
-        momentIndex: wi,
-      });
-    }
+    for (const s of steps) this.walkStep(wi, w, k, t, s.voice, s.from, s.to, false);
     if (steps.length > 0) this.touch();
+  }
+
+  /** Voices driven at t by a walk that started after walk wi (§7.1: the later walk drives). */
+  private claimedAt(wi: number, w: WalkMoment, t: Seconds): Set<number> {
+    const claimed = new Set<number>();
+    for (const wj of this.walks) {
+      if (wj === wi) continue;
+      const o = this.moments[wj] as WalkMoment;
+      if (!(o.at <= t && t < o.until)) continue;
+      if (!(o.at > w.at || (o.at === w.at && wj > wi))) continue;
+      for (const v of this.resolveTarget(o.target, null)) claimed.add(v);
+    }
+    return claimed;
+  }
+
+  /**
+   * One tick of a frozen walk (§6.2): each listed voice glides to its note, unlisted voices hold.
+   * A note that would cross or touch a neighbour's destination, or leave the voice's range, holds
+   * (warn). Notes for voices not active in the walk are ignored (info), as are notes for voices
+   * still moving or driven by a later walk (§7.1).
+   */
+  private frozenTick(
+    wi: number,
+    w: WalkMoment,
+    k: number,
+    t: Seconds,
+    notes: readonly { voice: number; pitch: Pitch }[],
+    inTarget: ReadonlySet<number>,
+  ): void {
+    const order = this.sortedActive();
+    const n = order.length;
+    const from = order.map((v) => this.destOf(v));
+    const to = from.slice();
+    const listed: boolean[] = new Array<boolean>(n).fill(false);
+    const blocked: boolean[] = new Array<boolean>(n).fill(false);
+    const inactive: string[] = [];
+    const busy: string[] = [];
+    let claimed: Set<number> | null = null;
+    for (const note of notes) {
+      const v = note.voice;
+      const i = order.indexOf(v);
+      if (i < 0 || !inTarget.has(v)) {
+        inactive.push(this.voices[v].id);
+        continue;
+      }
+      claimed ??= this.claimedAt(wi, w, t);
+      if (claimed.has(v) || !this.idle(v, t)) {
+        busy.push(this.voices[v].id);
+        continue;
+      }
+      listed[i] = true;
+      const r = this.voices[v].range;
+      if (note.pitch < r[0] || note.pitch > r[1]) blocked[i] = true;
+      else to[i] = note.pitch;
+    }
+    // Revert moving notes that cross or touch a neighbour until none does; reverting only ever
+    // removes moves, so this ends.
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let i = 0; i < n; i++) {
+        if (to[i] === from[i]) continue;
+        if ((i > 0 && to[i] <= to[i - 1]) || (i < n - 1 && to[i] >= to[i + 1])) {
+          to[i] = from[i];
+          blocked[i] = true;
+          changed = true;
+        }
+      }
+    }
+    let moved = false;
+    const held: string[] = [];
+    for (let i = 0; i < n; i++) {
+      if (!listed[i]) continue;
+      if (blocked[i]) held.push(this.voices[order[i]].id);
+      if (to[i] !== from[i]) moved = true;
+      this.walkStep(wi, w, k, t, order[i], from[i], to[i], true);
+    }
+    if (inactive.length > 0) {
+      this.diag(
+        'info',
+        'walk-note-ignored',
+        `Tick ${k}: fixed notes for ${inactive.join(', ')} are ignored (not active in the walk).`,
+        w.id,
+      );
+    }
+    if (busy.length > 0) {
+      this.diag(
+        'info',
+        'walk-note-ignored',
+        `Tick ${k}: fixed notes for ${busy.join(', ')} are ignored (still moving, or another walk drives them).`,
+        w.id,
+      );
+    }
+    if (held.length > 0) {
+      this.diag(
+        'warn',
+        'walk-note-blocked',
+        `Tick ${k}: ${held.join(', ')} hold: the fixed note would cross or touch a neighbour, or leave the range.`,
+        w.id,
+      );
+    }
+    if (moved) this.touch();
+  }
+
+  /** Records a walk step and, if it moves, starts its glide. */
+  private walkStep(
+    wi: number,
+    w: WalkMoment,
+    k: number,
+    t: Seconds,
+    v: number,
+    from: Pitch,
+    to: Pitch,
+    fixed: boolean,
+  ): void {
+    this.walkSteps.push({ momentId: w.id, tick: k, voice: this.voices[v].id, t, from, to, fixed });
+    if (to === from) return;
+    const dur = Number.isFinite(w.stepGlide) && w.stepGlide > MIN_GLIDE ? w.stepGlide : MIN_GLIDE;
+    this.startMove({
+      voice: v,
+      t0: t,
+      dur,
+      to,
+      ease: this.glides[wi].ease,
+      momentId: w.id,
+      limits: FREE_LIMITS,
+      crossScale: 1,
+      cancelled: false,
+      momentIndex: wi,
+    });
   }
 
   /** Active, sounding, no move in progress and nothing pending (§7.1 walk rules). */
@@ -854,6 +1041,7 @@ export class Compiler {
       duration,
       voices,
       momentSpans,
+      walkSteps: this.walkSteps,
       diagnostics: this.diags,
       keys: this.keys,
       harmony: this.harmony,

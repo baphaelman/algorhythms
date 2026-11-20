@@ -85,6 +85,7 @@ const v1 = voice(1, [seg(0, 40, 67, 67, 'm0')]);
 const SCORE: CompiledScore = {
   duration: 40,
   voices: [v0, v1],
+  walkSteps: [],
   momentSpans: [],
   diagnostics: [],
   keys: [{ t: 0, key: { tonic: 'D', scale: 'major' } }],

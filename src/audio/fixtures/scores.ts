@@ -120,6 +120,7 @@ export function makeScore(specs: VoiceSpec[], end: number, seed = 1): CompiledSc
   return {
     duration,
     voices,
+    walkSteps: [],
     momentSpans: [],
     diagnostics: [],
     keys: [{ t: 0, key: { tonic: 'A', scale: 'minor' } }],

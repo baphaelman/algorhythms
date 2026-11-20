@@ -76,6 +76,7 @@ function score(voices: CompiledVoice[]): CompiledScore {
   return {
     duration: 100,
     voices,
+    walkSteps: [],
     momentSpans: [
       { id: 'm1', start: 10, end: 14 },
       { id: 'm2', start: 40, end: 44 },
