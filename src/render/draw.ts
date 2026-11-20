@@ -4,12 +4,12 @@
  *
  *   1. background          2. octave grid (A lines labelled in Hz)   3. moment/section markers
  *   4. lines (past solid, future ghost)   5. heads (dots, motion rings, Hz labels ×N)
- *   6. playhead            7. HUD (key, voices, time)
+ *   6. playhead            7. HUD (chord, key, voices, time)
  *
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
-import { activeAt, keyAt, motionAt, pitchAt, sample } from '../core/query';
+import { activeAt, chordAt, keyAt, motionAt, pitchAt, sample } from '../core/query';
 import { hzOf } from '../core/tuning';
 import type { CompiledScore, Key, MomentSpan, Seconds } from '../core/types';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
@@ -297,6 +297,15 @@ function drawHeads(
   g.globalAlpha = 1;
 }
 
+/** Width of the last chord label drawn, re-measured only when the label or font changes. */
+let measured = { label: '', font: '', width: 0 };
+function chordWidth(g: CanvasRenderingContext2D, label: string, font: string): number {
+  if (label !== measured.label || font !== measured.font) {
+    measured = { label, font, width: g.measureText(label).width };
+  }
+  return measured.width;
+}
+
 function drawHud(
   g: CanvasRenderingContext2D,
   compiled: CompiledScore,
@@ -312,20 +321,36 @@ function drawHud(
   const active = activeAt(compiled, t);
   const pool = compiled.voices.length;
   g.globalAlpha = 1;
+
+  // The chord (top right): label precomputed at compile time, width measured once per label.
+  const chord = chordAt(compiled, t);
+  let chordW = 0;
+  if (chord) {
+    g.font = `500 12px ${MONO}`;
+    chordW = chordWidth(g, chord.label, MONO);
+  }
+
   g.font = `10.5px ${MONO}`;
   g.fillStyle = C.ink2;
   g.textAlign = 'left';
-  g.fillText(`f(n) = ${Math.round(compiled.referenceHz * 100) / 100}·2^((n−69)/12)`, padL, hy);
+  const formula = `f(n) = ${Math.round(compiled.referenceHz * 100) / 100}·2^((n−69)/12)`;
+  // On narrow screens a long chord takes the formula's place.
+  if (!chord || padL + formula.length * 6.4 + 16 + chordW < W - padR) {
+    g.fillText(formula, padL, hy);
+  }
   g.fillText(`voices  ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
   g.fillText(`t       ${formatTime(t)} / ${formatTime(view.duration)}`, padL, hy + 28);
 
   g.textAlign = 'right';
-  g.fillStyle = C.ink;
-  g.font = `500 10.5px ${MONO}`;
-  g.fillText(keyName(keyAt(compiled, t)).toLowerCase(), W - padR, hy);
+  if (chord) {
+    g.fillStyle = C.ink;
+    g.font = `500 12px ${MONO}`;
+    g.fillText(chord.label, W - padR, hy);
+  }
   g.fillStyle = C.ink2;
   g.font = `10.5px ${MONO}`;
-  g.fillText(`${view.blend > 0.5 ? 'whole piece' : 'following'}`, W - padR, hy + 14);
+  const mode = view.blend > 0.5 ? 'whole piece' : 'following';
+  g.fillText(`${keyName(keyAt(compiled, t)).toLowerCase()} · ${mode}`, W - padR, hy + 14);
   let lo = Infinity;
   let hi = -Infinity;
   for (const i of active) {
