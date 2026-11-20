@@ -427,10 +427,13 @@ interface Segment {
   momentId?: MomentId;
 }
 // Plus a piece-level key timeline: { t: Seconds; key: Key }[]
+// and a harmony timeline: harmony?: { t, pitch classes, bass, label }[], one entry per applied
+// moment that changes the chord (a written chord symbol always starts one; walk, key and level don't)
 
 pitchAt(voice, t): Pitch | null           // binary search, O(log n); null when dormant
 motionAt(voice, t): number                // 0..1, sin(π·x) during a glide, 0 while holding
 sample(voice, t0, t1, maxStep): [t, p][]  // holds emit 2 points; glides are sampled adaptively
+chordAt(score, t): HarmonyChange | null   // the chord in effect at t (HUD), O(log n)
 ```
 
 ### 7.10 Performance target
@@ -627,7 +630,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   3. Lines: the past at full opacity; the future as a ghost at a configurable opacity, 0 during playback by default.
   4. Heads: a dot per voice; a ring while moving, with opacity equal to `motionAt`; and Hz labels de-duplicated with ×N counts.
   5. Playhead.
-  6. HUD.
+  6. HUD, including the chord being played (`chordAt`; e.g. `ii7 · Dm7`, `Am7/E`), owner request 2026-11-20.
   7. Editor overlay (§11).
 - **Colors:** by pitch (the default: a vertical gradient, low cool to high warm); ink; or custom per voice (`VoiceDef.color`, falling back to ink). An HSL fallback covers browsers without OKLCH. The per-voice hue mode was removed (owner, 2026-11-20); old files with `"voice"` load as `"pitch"`.
 
