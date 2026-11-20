@@ -20,6 +20,12 @@ import {
 } from '../interrupt';
 import type { EaseRef, Life, Pitch, Seconds, Segment, VoiceDef } from '../types';
 
+/** Local aliases for the hot paths: under Vitest's module runner an imported binding is a getter. */
+const segAt = evalSegment;
+const segVelocity = evalSegmentVelocity;
+const carryOf = carriedVelocity;
+const fromCarried = segmentFromCarried;
+
 /** Ease stored on hold segments (p0 = p1, so it never matters; linear is cheapest to evaluate). */
 export const HOLD_EASE: EaseRef = 'linear';
 
@@ -126,16 +132,16 @@ export class Frontier {
       return { p: s.p0, v: 0, mid: false };
     }
     if (t < s.t1 && isGlide(s)) {
-      return { p: evalSegment(s, t), v: evalSegmentVelocity(s, t), mid: true };
+      return { p: segAt(s, t), v: segVelocity(s, t), mid: true };
     }
-    return { p: t < s.t1 ? evalSegment(s, t) : s.p1, v: 0, mid: false };
+    return { p: t < s.t1 ? segAt(s, t) : s.p1, v: 0, mid: false };
   }
 
   /** Pitch at t ≥ tail.t0 (the tail's value; after a glide ends, its target). */
   pitchAt(t: Seconds): Pitch {
     const s = this.tail!;
     if (this.open) return s.p0;
-    return evalSegment(s, t);
+    return segAt(s, t);
   }
 
   /** The pitch the tail is heading to (its target, or the hold pitch). */
@@ -213,10 +219,10 @@ export class Frontier {
     ) {
       carried = k.carried;
     } else {
-      carried = carriedVelocity(st, dur, to, ease, { up, down });
+      carried = carryOf(st, dur, to, ease, { up, down });
       if (holder) holder.memo = { p: st.p, v: st.v, mid: st.mid, dur, to, up, down, carried };
     }
-    return segmentFromCarried(st.p, t0, dur, to, ease, carried, crossScale, momentId);
+    return fromCarried(st.p, t0, dur, to, ease, carried, crossScale, momentId);
   }
 
   /**
@@ -245,7 +251,7 @@ export class Frontier {
   close(t: Seconds): void {
     if (!this.tail) return;
     const s = this.tail;
-    const p = this.open ? s.p0 : t < s.t1 ? evalSegment(s, t) : s.p1;
+    const p = this.open ? s.p0 : t < s.t1 ? segAt(s, t) : s.p1;
     this.finishAt(t, p);
     this.tail = null;
     this.open = false;

@@ -25,7 +25,7 @@ import { CHECK_SAMPLES, FREE_LIMITS, MAX_OVERSHOOT, type OvershootLimits } from 
 import type { DiagnosticLevel, Glide, Pitch, Seconds } from '../types';
 import { IntentKind, type MomentPlan } from '../moments/types';
 import { birthFadeIn, drawTimings, glideDuration } from './glide';
-import { Projector, type Tentative } from './project';
+import { Projector, type Projection, type Tentative } from './project';
 import { foldIntoRange } from './range';
 import type { Birth, Move, VoiceRun } from './voice';
 
@@ -98,6 +98,8 @@ interface Part {
   slot: number;
   /** Cached pitch bounds over the window (valid for the current projection). */
   bnd: [Pitch, Pitch] | null;
+  /** The part's projection, cached (cleared with `gen`). */
+  proj: Projection | null;
 }
 
 /** What the planner needs from the compiler. */
@@ -211,6 +213,7 @@ export function planMoment(
       gen: nextGen(),
       slot: parts.length,
       bnd: null,
+      proj: null,
     };
     partOf.set(voice, parts.length);
     parts.push(p);
@@ -373,6 +376,7 @@ export function planMoment(
     const pi = partOf.get(v);
     if (pi !== undefined) {
       parts[pi].gen = nextGen();
+      parts[pi].proj = null;
       parts[pi].bnd = null;
       touched[pi] = 1;
       ver[pi]++;
@@ -422,11 +426,12 @@ export function planMoment(
   const sampStamp = SAMP_STAMP;
   const blk = BLK;
   const blkStamp = BLK_STAMP;
+  const projOf = (p: Part): Projection => p.proj ?? (p.proj = projector.get(p.voice));
   /** Pitch of a part at check time j (cached). */
   const sampleAt = (p: Part, j: number): Pitch => {
     const k = p.slot * SAMPLES + j;
     if (sampStamp[k] !== p.gen) {
-      samp[k] = projector.get(p.voice).pitchAt(times[j]);
+      samp[k] = projOf(p).pitchAt(times[j]);
       sampStamp[k] = p.gen;
     }
     return samp[k];
@@ -437,14 +442,13 @@ export function planMoment(
     const o = p.slot * SAMPLES;
     return samp.subarray(o, o + SAMPLES);
   };
-  const boundsOf = (p: Part): [Pitch, Pitch] =>
-    p.bnd ?? (p.bnd = projector.get(p.voice).bounds(T, we));
+  const boundsOf = (p: Part): [Pitch, Pitch] => p.bnd ?? (p.bnd = projOf(p).bounds(T, we));
   /** Bounds of a part over check block b: the offset of [low, high] in `blk`. */
   const blockOf = (p: Part, b: number): number => {
     const k = p.slot * BLOCKS + b;
     if (blkStamp[k] !== p.gen) {
       const j = b * BLOCK;
-      projector.get(p.voice).boundsIn(times[j], times[j + BLOCK - 1], blk, 2 * k);
+      projOf(p).boundsIn(times[j], times[j + BLOCK - 1], blk, 2 * k);
       blkStamp[k] = p.gen;
     }
     return 2 * k;
@@ -465,7 +469,7 @@ export function planMoment(
     const bl = boundsOf(lo);
     const bh = boundsOf(hi);
     if (bl[1] <= bh[0] + CROSS_EPS) return -1;
-    if (!projector.get(lo.voice).anyOrder || !projector.get(hi.voice).anyOrder) {
+    if (!projOf(lo).anyOrder || !projOf(hi).anyOrder) {
       sample(lo); // fill in time order, as `pitchAt` then requires
       sample(hi);
     }

@@ -78,10 +78,9 @@ const SUB_BIRTH = 1;
 const SUB_MOVE = 2;
 const SUB_STRIDE = 64;
 
-/** harmonyLabel is pure; the editor recompiles the same harmonies every frame (§7.10). */
-const labelCache = new Map<string, string>();
-
+/** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
 function cachedHarmonyLabel(
+  cache: Map<string, string>,
   symbol: string | undefined,
   pcs: readonly number[],
   bass: number,
@@ -89,11 +88,10 @@ function cachedHarmonyLabel(
 ): string {
   const scale = typeof key.scale === 'string' ? key.scale : JSON.stringify(key.scale);
   const k = `${symbol ?? ''}\u0000${pcs.join(',')}\u0000${bass}\u0000${key.tonic}\u0000${scale}`;
-  let label = labelCache.get(k);
+  let label = cache.get(k);
   if (label === undefined) {
     label = harmonyLabel(symbol, pcs, bass, key);
-    if (labelCache.size >= 1024) labelCache.clear();
-    labelCache.set(k, label);
+    cache.set(k, label);
   }
   return label;
 }
@@ -151,6 +149,7 @@ class Compiler {
   readonly endFade: Seconds;
   readonly trace: CompileTrace | null;
   private readonly emptyHash = hash32('');
+  private readonly labels = new Map<string, string>();
 
   // Committed-destination cache, invalidated by bumping the epoch.
   private epoch = 1;
@@ -618,7 +617,7 @@ class Compiler {
       momentId: m.id,
       pcs,
       bass,
-      label: cachedHarmonyLabel(symbol, pcs, bass, this.key),
+      label: cachedHarmonyLabel(this.labels, symbol, pcs, bass, this.key),
     });
   }
 
