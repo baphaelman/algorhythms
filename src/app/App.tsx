@@ -1,9 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
+import { startPersistence } from './persist';
 import { startPlayer } from './store';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Menu } from './ui/Menu';
+import { MyPieces } from './ui/MyPieces';
 import { Notices, SilentHint } from './ui/Notices';
 import { ScoreView } from './ui/ScoreView';
 import { Scrubber, Transport } from './ui/Transport';
@@ -35,6 +37,7 @@ export function App() {
   const wide = useWide();
 
   useEffect(() => {
+    startPersistence();
     startPlayer();
     return attachKeys();
   }, []);
@@ -46,6 +49,7 @@ export function App() {
       </Transport>
       <GeneratePanel />
       <ExportDialog />
+      <MyPieces />
       <SilentHint />
       <Notices />
       <main className="workspace">

@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { EXAMPLES } from '../examples';
+import { canLinkFiles, linkToFile, newPieceNow, openMyPieces, saveAsFile } from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
 
-/** The ⋯ menu: examples, open a file, Generate, Export, and help. */
+/** The ⋯ menu: examples, pieces (New, My pieces, files), Generate, Export, and help. */
 export function Menu() {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -99,6 +100,30 @@ export function Menu() {
             <li>
               <button
                 type="button"
+                data-testid="new-piece"
+                onClick={() => {
+                  close();
+                  newPieceNow();
+                }}
+              >
+                New
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-testid="open-my-pieces"
+                onClick={() => {
+                  close();
+                  openMyPieces();
+                }}
+              >
+                My pieces…
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
                 data-testid="open-file"
                 onClick={() => {
                   setOpen(false);
@@ -108,6 +133,32 @@ export function Menu() {
                 Open file…
               </button>
             </li>
+            <li>
+              <button
+                type="button"
+                data-testid="save-file"
+                onClick={() => {
+                  close();
+                  void saveAsFile();
+                }}
+              >
+                Save as file…
+              </button>
+            </li>
+            {canLinkFiles() && (
+              <li>
+                <button
+                  type="button"
+                  data-testid="link-file"
+                  onClick={() => {
+                    close();
+                    void linkToFile();
+                  }}
+                >
+                  Link to a file…
+                </button>
+              </li>
+            )}
             <li>
               <button
                 type="button"

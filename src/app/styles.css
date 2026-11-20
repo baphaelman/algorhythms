@@ -571,6 +571,71 @@ dialog.dialog::backdrop {
   margin-top: 4px;
 }
 
+/* ---- My pieces ---------------------------------------------------------------------------- */
+
+dialog.my-pieces {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.piece-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 50dvh;
+  overflow: auto;
+  border-top: 1px solid var(--rule);
+}
+
+.piece-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.piece-list li[aria-current='true'] .piece-title::after {
+  content: ' (open)';
+  color: var(--ink-2);
+}
+
+.piece-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  border-color: transparent;
+}
+
+.piece-open small {
+  font: 11px/1.2 var(--f-mono);
+  color: var(--ink-2);
+}
+
+.piece-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.piece-unsaved {
+  color: var(--accent);
+}
+
+.piece-confirm {
+  display: flex;
+  gap: 4px;
+}
+
+button.danger {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---- export dialog ---------------------------------------------------------- */
 
 dialog.dialog.export {

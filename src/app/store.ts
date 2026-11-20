@@ -246,6 +246,16 @@ export interface LoadOptions {
   notices?: Omit<Notice, 'id'>[];
   /** Keep the notices already showing (and add `notices` after them). */
   keepNotices?: boolean;
+  /** Where the piece came from, for autosave (persist/). @default 'other' */
+  source?: 'generated' | 'new' | 'library' | 'other';
+}
+
+/** Counts `loadPiece` calls, so a `usePlayer.subscribe` listener can tell loads from edits. */
+const lastLoad = { count: 0, source: 'other' as NonNullable<LoadOptions['source']> };
+
+/** The number of loads so far and the latest one's source. */
+export function loadInfo(): Readonly<typeof lastLoad> {
+  return lastLoad;
 }
 
 function clearShareHash(): void {
@@ -278,6 +288,8 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
       lines: errors.slice(0, 5).map((d) => d.message),
     });
   }
+  lastLoad.count++;
+  lastLoad.source = opts.source ?? 'other';
   set((s) => ({
     piece,
     compiled,
