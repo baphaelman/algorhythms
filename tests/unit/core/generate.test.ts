@@ -270,9 +270,11 @@ describe('generate: options', () => {
       expect(c.sections).toEqual([...SECTION_NAMES]);
       expect(Math.abs(c.end - length) / length).toBeLessThan(0.1);
     }
-    const short = count({ mode: 'dorian', length: 30 });
-    expect(short).toMatchObject({ drifts: 1, ticks: 4 });
-    expect(short.sections).toEqual([...SECTION_NAMES]);
+    const floor = count({ mode: 'dorian', length: 100 });
+    expect(floor).toMatchObject({ drifts: 1, ticks: 4 });
+    expect(floor.sections).toEqual([...SECTION_NAMES]);
+    // Below 100 s: the short form (generate-length.test.ts).
+    expect(count({ mode: 'dorian', length: 30 }).end).toBe(30);
   });
 
   it('density sets the walk density, clamped to 0..1', () => {
