@@ -69,7 +69,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 | M5–M7 | Not started. |
 
 ## Running in the cloud (owner, 2026-11-20)
-The owner moved the integrator to a cloud session to use it from their phone. Linux, 4 cores; repo `/home/user/algorhythms`; `git push origin <sha>:main` works (owner OK); `gh` isn't authenticated, so watch CI with the GitHub MCP tools (`mcp__github__actions_list`). There: no Homebrew (skip the `brew shellenv` lines); localhost demo links don't reach the phone, so the demo is the Pages deploy after a push; check whether `gh` is authenticated before relying on it.
+The owner moved the integrator to a cloud session to use it from their phone. Linux, 4 cores; repo `/home/user/algorhythms`; `git push origin <sha>:main` works (owner OK); `gh` isn't authenticated, so watch CI with the GitHub MCP tools (`mcp__github__actions_list`). **Demo links from the cloud:** the owner wants a link right away, not after CI. Build with `ALGORHYTHMS_BASE=./ pnpm exec vite build --outDir dist-art --sourcemap false`, drop fixtures.html and its chunk, and publish index.html plus `assets/*` with the Artifact tool (`files` map), republishing the same file path to keep the URL (https://claude.ai/artifact/PkiBVk62JzhoWUaqqDKGgJ). There: no Homebrew (skip the `brew shellenv` lines); localhost demo links don't reach the phone, so the demo is the Pages deploy after a push; check whether `gh` is authenticated before relying on it.
 
 ## M4.5 builder split (approved; walk = freeze into `fixed`, not `edits`)
 1. **Core frozen walks** (Opus medium): `types.ts`, `schema.ts`, `moments/walk.ts`, compiler emit of `walkSteps`; tests incl. incremental compile. Independent.
