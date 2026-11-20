@@ -943,3 +943,5 @@ Owner said go; the editor mockup looks good. Rulings:
 ## Owner notes 2026-11-20: chord count artifacts, draggable dots
 - Changing a chord's Notes: n gave lines that cross and lines that start or stop in mid-air. Assigned M4.5-17 (compiler).
 - "Generalize the note points to all circles": every arrival dot is draggable (PLAN §11.3 "Every dot is draggable"). Assigned M4.5-18 (UI).
+
+- Owner: hand edits may cross lines; a visible "Keep lines in order" toggle, off by default (PLAN §11.3). Added to M4.5-18; `note.order` field.
