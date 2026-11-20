@@ -56,6 +56,10 @@ export class EventQueue {
   push(e: Omit<QueuedEvent, 'seq'>): void {
     const ev = e as QueuedEvent;
     ev.seq = this.counter++;
+    this.insert(ev);
+  }
+
+  private insert(ev: QueuedEvent): void {
     const h = this.heap;
     let i = h.length;
     h.push(ev);
@@ -70,6 +74,26 @@ export class EventQueue {
 
   peek(): QueuedEvent | undefined {
     return this.heap[0];
+  }
+
+  /** The queued events, in heap order (do not mutate). For incremental-compile snapshots. */
+  get items(): readonly QueuedEvent[] {
+    return this.heap;
+  }
+
+  /** The insertion counter (the next `seq`). */
+  get next(): number {
+    return this.counter;
+  }
+
+  /**
+   * Replaces the contents with `events`, keeping their `seq`; later pushes continue from `next`.
+   * Pop order depends only on the events (`before` is a total order), not on the heap layout.
+   */
+  restore(events: readonly QueuedEvent[], next: number): void {
+    this.heap = [];
+    for (const ev of events) this.insert(ev);
+    this.counter = next;
   }
 
   pop(): QueuedEvent | undefined {

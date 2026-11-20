@@ -96,9 +96,9 @@ function selectorArb(ids: string[]): fc.Arbitrary<VoiceSelector | undefined> {
   );
 }
 
-type Draft = Omit<Moment, 'id'>;
+export type Draft = Omit<Moment, 'id'>;
 
-function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
+export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
   const at = tenths(0, maxT);
   const base = {
     at,

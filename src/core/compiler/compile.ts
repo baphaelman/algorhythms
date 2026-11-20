@@ -73,10 +73,10 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
 ]);
 
 /** Move-start sub-order at equal times (queue `key` = sub·64 + pool index). */
-const SUB_CLOSE = 0;
-const SUB_BIRTH = 1;
-const SUB_MOVE = 2;
-const SUB_STRIDE = 64;
+export const SUB_CLOSE = 0;
+export const SUB_BIRTH = 1;
+export const SUB_MOVE = 2;
+export const SUB_STRIDE = 64;
 
 /** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
 function cachedHarmonyLabel(
@@ -129,7 +129,13 @@ interface CloseRec {
   fade: Seconds;
 }
 
-class Compiler {
+/** The simulation. Exported for incremental.ts only; use `compile`. */
+export class Compiler {
+  /**
+   * Called before each moment event is handled (after it is popped), for incremental.ts to take
+   * a checkpoint. Moment events are the only points where it restores.
+   */
+  onMomentEvent: ((t: Seconds, i: number) => void) | null = null;
   readonly voices: VoiceRun[] = [];
   readonly byId = new Map<string, number>();
   readonly diags: Diagnostic[] = [];
@@ -430,6 +436,7 @@ class Compiler {
       // invalidate the caches.
       switch (ev.cls) {
         case EventClass.Moment:
+          if (this.onMomentEvent) this.onMomentEvent(ev.t, ev.ref);
           this.touch();
           this.onMoment(ev.ref);
           break;
