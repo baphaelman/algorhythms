@@ -725,6 +725,7 @@ Tablets such as iPads are wider than 900 px, so they get the editor. Touch rules
   - The fragment never reaches a server.
 
 ### 11.5 Mobile, accessibility and theming
+- **Priority (owner, 2026-11-20):** desktop is the focus. Phones get a usable layout, without phone-specific testing or polish beyond what exists.
 - **Mobile:** below about 900 px wide the layout is player-only (transport, score view, scrubber and view controls). Editing shows a "use a larger screen" note. Tablets get the editor with touch (§11.3b).
 - **iOS silent switch:** on iPhones, the ring/silent switch mutes Web Audio by default, so "phones: playback" would be silent for many users. Where supported, set `navigator.audioSession.type = 'playback'` before starting audio. Where it isn't, show a one-line hint ("turn off silent mode to hear sound") on iOS.
 - **Keyboard and screen readers:**
