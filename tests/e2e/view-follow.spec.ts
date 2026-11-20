@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 
 async function openApp(page: Page): Promise<void> {
   await page.goto('./');
@@ -53,7 +53,7 @@ const frames = (page: Page) =>
   );
 
 async function playFrom(page: Page, t: number): Promise<void> {
-  await page.getByTestId('scrubber').fill(String(t));
+  await seek(page, t);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   // The engine has started, so the time is advancing.
   await page.waitForFunction(() => window.__algorhythms?.engine()?.isPlaying === true, null, {
@@ -115,7 +115,7 @@ test('zoom: −/+, Fit and keys; the playhead keeps its x; the future is dimmed'
   page,
 }) => {
   await openApp(page);
-  await page.getByTestId('scrubber').fill('60');
+  await seek(page, 60);
   await page.getByTestId('window-slider').fill('500');
   await frames(page);
   const a = await cam(page);

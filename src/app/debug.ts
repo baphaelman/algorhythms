@@ -8,7 +8,7 @@ import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
 import { frameStats } from './loop';
 import { encodeShareLink } from './share';
-import { loadPiece, recompileNow, setPiece, usePlayer } from './store';
+import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
 export interface AlgoRhythmsDebug {
   /** The player store (`getState()`, `setState`, `subscribe`). */
@@ -27,6 +27,8 @@ export interface AlgoRhythmsDebug {
     recompileNow: typeof recompileNow;
     /** Editor selection (moment ids). */
     select: typeof select;
+    /** Moves the playhead (the editor layout has no scrubber). */
+    seek: typeof seekTo;
   };
   /** `encodeShareLink`, for round-trip tests. */
   encodeShareLink: typeof encodeShareLink;
@@ -59,7 +61,7 @@ export function installDebug(): void {
       return tap;
     },
     frameStats,
-    actions: { loadPiece, setPiece, recompileNow, select },
+    actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,
     editor: { state: useEditor, select, undo, redo },
   };

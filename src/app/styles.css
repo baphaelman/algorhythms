@@ -320,18 +320,112 @@ input[type='range'] {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--inspector-w);
-  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   grid-template-areas:
     'score inspector'
-    'lane inspector'
     'scrub inspector'
     'view inspector';
   column-gap: 16px;
   row-gap: 10px;
 }
 
-.stage {
+/* The ruler, score and lane rows on one time axis, under one playhead (§10, §11.2). The ruler's
+   and stage's 1 px side borders keep their content boxes aligned with the canvas. */
+.timeline {
   grid-area: score;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app[data-layout='full'] .workspace {
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'score inspector'
+    'view inspector';
+}
+
+.ruler {
+  position: relative;
+  flex: none;
+  height: 22px;
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  background: var(--panel);
+  overflow: clip;
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.ruler:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ruler-ticks,
+.ruler-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ruler-grid {
+  top: auto;
+  height: 5px;
+  background-image: linear-gradient(to right, var(--rule) 1px, transparent 1px);
+}
+
+.ruler-grid[hidden] {
+  display: none;
+}
+
+.ruler-tick {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  padding: 4px 0 0 4px;
+  border-left: 1px solid var(--rule);
+  font: 10.5px/1 var(--f-mono);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.ruler-tick[hidden] {
+  display: none;
+}
+
+/* The editor's playhead: one line over the ruler, score and rows, placed by Playhead.tsx. */
+.playhead {
+  position: absolute;
+  left: -0.5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  border: 4.5px solid transparent;
+  border-top: 6px solid var(--ink);
+}
+
+.playhead[hidden] {
+  display: none;
+}
+
+.stage {
+  flex: 1 1 0;
   position: relative;
   min-height: 240px;
   border: 1px solid var(--rule);
@@ -366,8 +460,8 @@ input[type='range'] {
   display: none;
 }
 
-.slot.lane {
-  grid-area: lane;
+.timeline .slot.lane {
+  margin-top: 10px;
 }
 
 .slot.inspector {

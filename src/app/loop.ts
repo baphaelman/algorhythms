@@ -134,6 +134,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let highlight: ReadonlySet<MomentId> = new Set();
   let hoverVersion = -1;
   let lastTip = '';
+  let domHead = false;
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -187,8 +188,10 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     // Camera: follow while playing or after the playhead moved (a seek); else just clamp.
     const D = compiled.duration;
     const win = clampWindow(view.window, D);
+    const held = camera.hold;
+    if (camera.release) camera.hold = camera.release = false;
     camera.start =
-      transport.status === 'playing' || t !== lastT
+      !held && (transport.status === 'playing' || t !== lastT)
         ? followStart(view.follow, camera.start, t, win, D)
         : clampStart(camera.start, win, D);
     lastT = t;
@@ -248,6 +251,12 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       for (const fn of frameListeners) fn(v, compiled);
     }
 
+    // The editor layout's DOM playhead replaces the canvas one (§10 Drawing rules 5).
+    if ((live.playhead !== null) !== domHead) {
+      domHead = live.playhead !== null;
+      dirty = true;
+    }
+
     let drew = false;
     if (transport.status === 'playing' || ghosting || dirty) {
       dirty = false;
@@ -264,6 +273,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           labels,
           markerTimes,
           highlight,
+          playhead: !domHead,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.drawn++;

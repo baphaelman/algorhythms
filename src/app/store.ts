@@ -143,7 +143,16 @@ function setView(patch: Partial<ViewState>): void {
  * loop applies the follow mode to it each frame (`followStart`) while playing or after the
  * playhead moved; pans and zooms write it here. Read it with the window through `cameraOf()`.
  */
-export const camera = { start: 0 };
+export const camera = {
+  start: 0,
+  /**
+   * True while the ruler is pressed: the view holds still instead of following (§10). On release
+   * the ruler sets `release`; the loop clears both after one more held frame, so the seek itself
+   * never scrolls the view.
+   */
+  hold: false,
+  release: false,
+};
 
 /** The camera now: `{ start, window }`, both clamped to the piece. */
 export function cameraOf(): { start: Seconds; window: Seconds } {

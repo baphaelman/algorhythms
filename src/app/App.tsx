@@ -9,6 +9,8 @@ import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
 import { Notices, SilentHint } from './ui/Notices';
+import { Playhead } from './ui/Playhead';
+import { Ruler } from './ui/Ruler';
 import { ScoreView } from './ui/ScoreView';
 import { Scrubber, Transport } from './ui/Transport';
 import { ViewBar } from './ui/ViewBar';
@@ -32,9 +34,9 @@ function useWide(): boolean {
 }
 
 /**
- * The player (PLAN.md §11.1–§11.5). Layout leaves room for the editor (M4): a moment-lane slot
- * under the score and an inspector column, both empty and hidden until the editor fills them. On
- * screens under 900 px only the player parts are rendered.
+ * The player and editor (PLAN.md §11.1–§11.5). The editor layout puts the ruler, score and lane
+ * rows in one `.timeline` box under a single DOM playhead; screens under 900 px get the player
+ * only (score and scrubber, the canvas drawing the playhead).
  */
 export function App() {
   const wide = useWide();
@@ -56,9 +58,14 @@ export function App() {
       <SilentHint />
       <Notices />
       <main className="workspace">
-        <ScoreView />
-        {wide && <Lane />}
-        <Scrubber />
+        {/* Everything on the shared time axis (§10); the editor's one playhead spans it all. */}
+        <div className="timeline" data-testid="timeline">
+          {wide && <Ruler />}
+          <ScoreView />
+          {wide && <Lane />}
+          {wide && <Playhead />}
+        </div>
+        {!wide && <Scrubber />}
         <ViewBar />
         {wide && <Inspector />}
       </main>

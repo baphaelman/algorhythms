@@ -142,13 +142,15 @@ export function drawScore(
     drawHeads(g, compiled, style, view, headA, MONO);
   }
 
-  // 6. playhead
-  g.strokeStyle = C.rule;
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(Math.round(xH) + 0.5, padT - 6);
-  g.lineTo(Math.round(xH) + 0.5, H - padB + 6);
-  g.stroke();
+  // 6. playhead (the editor layout draws a DOM one instead)
+  if (style.playhead !== false) {
+    g.strokeStyle = C.rule;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(Math.round(xH) + 0.5, padT - 6);
+    g.lineTo(Math.round(xH) + 0.5, H - padB + 6);
+    g.stroke();
+  }
 
   // 7. HUD
   if (style.hud) drawHud(g, compiled, style, view, MONO, padL, padR);
