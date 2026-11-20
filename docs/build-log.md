@@ -955,3 +955,9 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Playwright browser cache** (`actions/cache@v4`, `~/.cache/ms-playwright` Linux, `~/Library/Caches/ms-playwright` macOS), keyed OS + browser + `hashFiles('pnpm-lock.yaml')` (pins the playwright version). Linux hit runs `playwright install-deps <browser>`; miss runs `install --with-deps`. macOS always runs `install webkit` (no-op when cached).
 - **`check` job** was already on ubuntu-latest; nothing to move. Only WebKit needs macOS.
 - No test or engine removed. YAML validated with python yaml; not run on GitHub yet, so the first run is the real check.
+## Timing gates split from `pnpm test` (2026-11-20)
+- `vite.config.ts` now has two Vitest projects. `unit` = the old include minus `PERF_TESTS`: `tests/dsp/rtf.test.ts`, `tests/dsp/no-gc.test.ts` and `tests/unit/core/compiler-perf.test.ts`. `perf` = those three. `pnpm test` = `--project unit`, new `pnpm test:perf` = `--project perf`; CI's check job runs both.
+- **Why:** these assert on CPU time or GC behaviour, so they failed in builders' full runs under load 40–60 and were rerun alone. Builders spent 36 % of their wall-clock on checks (session analysis, 2026-11-20).
+- **Not moved:** `stems` and `dsp/export` are correctness tests that are only slow (30 s timeouts); they stay in `pnpm test`.
+- **For the integrator:** the handoff's verify routine no longer needs to rerun rtf, compiler-perf or no-gc; run `pnpm test:perf` alone when DSP or compiler code changed. CI still gates on them.
+

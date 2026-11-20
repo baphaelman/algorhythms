@@ -30,7 +30,8 @@ The integrator continues the work with a fresh agent.
   - If `node --version` is not v22 (for example after something installs the `node` formula), run `brew link --force --overwrite node@22`. Or put it first on the PATH: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`.
 - Playwright's browsers live in `~/Library/Caches/ms-playwright`. Reinstall them with `pnpm exec playwright install chromium firefox webkit`.
 - Commands, set up in M0:
-  - `pnpm test` runs Vitest;
+  - `pnpm test` runs Vitest without the timing and GC gates;
+  - `pnpm test:perf` runs those gates (rtf, no-gc, compile perf). CI runs both. Run it on a quiet machine after touching `src/dsp` or the compiler;
   - `pnpm lint` runs ESLint, including the import boundaries and the core math ban;
   - `pnpm typecheck`;
   - `pnpm build`;
