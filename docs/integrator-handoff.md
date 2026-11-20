@@ -4,7 +4,7 @@ This is for the Claude session that orchestrates AlgoRhythms. Read it top to bot
 
 Also read `CLAUDE.md` (rules and the status table) and `docs/build-log.md`, which records every decision, deviation and owner ruling. `PLAN.md` is the spec; read only the sections a task needs.
 
-Last updated: 2026-11-20, by the second integrator session.
+Last updated: 2026-11-20, end of the second integrator session (handoff at ~240k tokens).
 
 ## Your role (the owner's standing instructions)
 - **Don't write project code yourself.** Delegate all coding to builder subagents. You:
@@ -48,7 +48,10 @@ Last updated: 2026-11-20, by the second integrator session.
 ## Working notes
 - **Ping the owner only when something they can test changes** (a deploy with new features, WAVs to hear, a device check) or a decision is needed. No progress narration (owner, 2026-11-20).
 - **Builders run only their own e2e specs**, so a feature can break an older spec (this happened with the menu placeholders). Before pushing app work, have one builder run the whole e2e suite on the merged tree.
-- **Integrating builder branches:** builders in worktrees branch from local main. Their `docs/build-log.md` appends conflict with each other; keep both sides.
+- **Integrating builder branches:** `isolation: worktree` builders branch from **origin/main** (the last push), not local main, so tell a builder to `git merge` a local branch first when it needs unpushed work. Merge finished branches into local main yourself. Their `docs/build-log.md` appends always conflict; keep both sides. A fixture recorded on an older base can need re-hashing after a merge (happened with the generate snapshot).
+- **Local e2e is muted** (`--mute-audio` on Chromium, `media.volume_scale` 0 on Firefox). WebKit can't be muted, so it runs locally only with `E2E_WEBKIT=1` (CI always runs it). The owner heard tests playing before this; keep audio off.
+- **Builder worktrees live in `.claude/worktrees/`** inside the repo, so `pnpm lint` (prettier) in the main checkout trips on their files. Use the clean verify worktree for checks, or add `.claude/` to `.prettierignore` and the ESLint ignores (small task, not done).
+- **Push routine that worked:** merge into local main, check out the HEAD in a clean worktree in your scratchpad (`git worktree add --detach`), run lint, typecheck, test, build and `pnpm e2e` (with distinct `E2E_*` ports), re-run load-sensitive failures alone (rtf, compiler-perf, no-gc, stems timeouts flake on this Mac), then push the sha and watch `gh run watch <id> --exit-status` in the background. The deploy is live when the Pages job passes; confirm the bundle hash with curl.
 
 ## Milestone state
 | Milestone | State |
@@ -56,13 +59,17 @@ Last updated: 2026-11-20, by the second integrator session.
 | M0 | Done. CI is green on Chromium, Firefox and WebKit; the Pages deploy works. |
 | M1 compiler | Done; the owner said the generated pieces "sound lovely". Open: about 16 ms compile against 5 ms (deal with it in M4: a worker or incremental compile); about 2 unresolved crossings per thousands of pieces, both involving newborns from a split (reported as diagnostics, written up in the build log); the compiler should extend the final hold to `died` (noticed by the MIDI builder). |
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
-| M3 | Feature-complete: renderer, MIDI, stems, player, Generate panel, Export dialog, `?dev` panel (crossings toggle), unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: owner device checks and owner answers (below), then announce the first public release. |
+| M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: the unison glide fix (in flight), owner device checks, then announce the first public release. |
 | M4–M7 | Not started. |
 
-Last pushed: `61f6f0e`, verified in a clean worktree (719/719 tests, lint, typecheck, build; the full e2e suite passed locally on all three engines).
+Last pushed: `f77952c`, verified in a clean worktree (745/745 tests, lint, typecheck, build, 170 e2e on Chromium + Firefox); CI green on all three engines and deployed (bundle `main-RYkdSH3g.js`).
 
 ## Next tasks
-- **In flight (2026-11-20, second session):** HUD chord readout (src/render + core query); unison lock steady during glide in/out (src/dsp, Opus high); `generate()` real short pieces down to 30 s (src/core/generate.ts). Merged locally, not yet pushed: colours (per-voice removed) and Generate 30–900 s / `?dev` removal. Check `git log` and the build log if their reports didn't reach you.
+- **In flight: unison lock, steady glide in/out** (Opus high, started by the second integrator; its report goes to that session).
+  - **Problem (owner):** holds are steady now, but the level still wobbles as voices glide into a unison and as they split. Measured on `renders/unison8-after.wav` (50 ms RMS, CV per 2 s): hold 0.000, approach 0.17–0.20, split 0.25. Cause: between ~20 and ~2 cents the voices beat before the lock engages, and eases linger there.
+  - **Brief:** a metric (mix envelope ÷ incoherent sum at 50 ms, approach and split, N = 2/8/32), target ±1 dB; keep holds, merges, seek, clicks, exact stems, determinism, no-GC, RTF ≥ 10×, wobble preset, and leave intervals ≥ a semitone and passing glides alone. WAVs `renders/unison8-glide-after.wav`, `merge-glide-after.wav`, `gen-1-dorian-glide-after.wav`. Build-log entry "Unison lock: steady approach and parting".
+  - **Where:** worktree `.claude/worktrees/agent-a9f5e3a18c67e3bb7`, branch `worktree-agent-a9f5e3a18c67e3bb7`, based on `06a437c`. At handoff it had uncommitted edits to `src/dsp/graph.ts` and `voice.ts` and no commits.
+  - **If its report never reaches you:** check that branch and worktree (`git -C <wt> log`, `status`, its build-log entry). If it committed, merge into main (build-log conflict: keep both), verify, push, update PLAN §8.4 per its deviations, and send the owner the WAVs with a one-line comparison to the `-after` files. If it stopped mid-way, start a fresh Opus-high builder in that worktree from its handoff note.
 - **Stems speed:** since the lock, each stem pass runs every voice silently, so stems are about 6× slower (0.46× real time of CPU for 24 voices). Optimisation: skip voices that can never join the stem voice's group. Not urgent.
 - **M4 editor:** next milestone. Includes the compiler perf work (worker or incremental compile).
 - **Later backlog:** the expo/bezier allocation fix (M6); choir ideas (breath noise in M6, two oscillators per voice, formants per register, more partials for bass).
@@ -70,6 +77,8 @@ Last pushed: `61f6f0e`, verified in a clean worktree (719/719 tests, lint, typec
 ## Waiting on the owner
 - **Device checks:** the iPhone silent-switch test on the live site; MIDI in FL Studio once they have it (until then the automatic round-trip tests stand, as agreed).
 - **Generate:** warn before replacing the open piece? Unanswered; it doesn't warn.
+- **To hear:** `renders/gen-30s.wav`, `gen-60s.wav` (short Generate pieces); the unison glide WAVs once they exist.
+- **HUD chord choices to review if the owner cares:** written chord symbols get no inversion slash; a single pitch class reads "A (unison)"; the key and follow mode share one HUD line.
 - **Older, unanswered:** reed A/B (`reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (numerals read against the major scale: in A dorian, `III` = C♯ major, `bIII` = C; keep unless they object). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
 
 ## Owner rulings so far (details in the build log)
@@ -77,8 +86,8 @@ Last pushed: `61f6f0e`, verified in a clean worktree (719/719 tests, lint, typec
 - **Line crossing:** forbidden in the app. The core compile option `crossings: 'allow'` remains for tests; the `?dev` panel was removed (2026-11-20).
 - **Unisons and merges:** steady by default (the unison lock); wobble is its own opt-in timbre setting and preset. After the lock: holds were fine, but the owner still heard wobble as voices glide in/out (fix in flight).
 - **Choir:** reworked; the owner heard the difference (2026-11-20).
-- **Line colours:** "Per voice" removed; "By pitch" is the default (2026-11-20).
-- **HUD:** must show the chord currently playing (2026-11-20).
+- **Line colours:** "Per voice" removed; "By pitch" is the default (2026-11-20). Old files with `"voice"` load as `"pitch"`.
+- **HUD:** shows the chord currently playing (2026-11-20, done: `chordAt`, harmony timeline in the compiled score).
 - **Generate:** length 30–900 s, slider default 2:30, "natural length" optional and off by default (2026-11-20).
 - **Export:** closing the dialog mid-export cancels it (2026-11-20).
 - **MIDI:** per-voice tracks skip channel 10 (integrator call).
