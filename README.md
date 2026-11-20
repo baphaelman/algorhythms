@@ -14,6 +14,7 @@ You need Node 22 LTS and pnpm (the version is pinned in `package.json`).
 pnpm install
 pnpm dev          # Vite dev server at http://localhost:5173/
 pnpm test         # unit, property, golden and DSP tests (Vitest)
+pnpm test:perf    # timing and GC gates (load-sensitive; CI runs them)
 pnpm lint         # ESLint (import boundaries, portable math in core/) and Prettier
 pnpm typecheck    # TypeScript, strict
 pnpm build        # production build into dist/ (base /algorhythms/ for GitHub Pages)

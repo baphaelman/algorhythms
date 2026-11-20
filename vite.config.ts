@@ -1,5 +1,15 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
+
+/**
+ * Timing and GC gates. Their results depend on machine load, so they fail when parallel builders
+ * load the dev machine. `pnpm test` skips them; `pnpm test:perf` runs them, and CI runs both.
+ */
+const PERF_TESTS = [
+  'tests/dsp/rtf.test.ts',
+  'tests/dsp/no-gc.test.ts',
+  'tests/unit/core/compiler-perf.test.ts',
+];
 
 /**
  * GitHub Pages serves a project site from /<repo>/. Production builds (and `vite preview`, which
@@ -25,7 +35,17 @@ export default defineConfig(({ command, isPreview }) => ({
     },
   },
   test: {
-    include: ['tests/{unit,property,golden,dsp}/**/*.test.ts'],
     environment: 'node',
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['tests/{unit,property,golden,dsp}/**/*.test.ts'],
+          exclude: [...configDefaults.exclude, ...PERF_TESTS],
+        },
+      },
+      { extends: true, test: { name: 'perf', include: PERF_TESTS } },
+    ],
   },
 }));

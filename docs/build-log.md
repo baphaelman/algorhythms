@@ -898,3 +898,10 @@ Owner said go; the editor mockup looks good. Rulings:
 - **Tests:** `tests/unit/core/chord-count.test.ts` (count equal/up/down, pool-exhausted, count-limited, stagger + arrive together + no crossings, no-effect, palette agreement and chord-death dying, schema, incremental == full, freezeChord); `arrive.test.ts` updated for the new end (+ pin/one-voice and two-voice end tests). The crossing test now checks the planner's 64 points strictly and a 5 ms grid within 0.05 st: linear glides could touch between samples before this change too (seeds 68, 73, 77, 119, 122 at base). Chord arbitrary in property tests gets an optional `count`; 2×1000 random-seed runs of the core property tests passed.
 - **For the editor:** `src/app/editor/voices.ts` clamps split/merge `count` when the pool shrinks but not chord `count` (the schema rejects count > pool); the inspector has no `count` control yet.
 - **Owner (2026-11-20):** select part of the timeline and loop it. PLAN §11.3 "Loop region"; builder M4.5-16.
+
+## Timing gates split from `pnpm test` (2026-11-20)
+- `vite.config.ts` now has two Vitest projects. `unit` = the old include minus `PERF_TESTS`: `tests/dsp/rtf.test.ts`, `tests/dsp/no-gc.test.ts` and `tests/unit/core/compiler-perf.test.ts`. `perf` = those three. `pnpm test` = `--project unit`, new `pnpm test:perf` = `--project perf`; CI's check job runs both.
+- **Why:** these assert on CPU time or GC behaviour, so they failed in builders' full runs under load 40–60 and were rerun alone. Builders spent 36 % of their wall-clock on checks (session analysis, 2026-11-20).
+- **Not moved:** `stems` and `dsp/export` are correctness tests that are only slow (30 s timeouts); they stay in `pnpm test`.
+- **For the integrator:** the handoff's verify routine no longer needs to rerun rtf, compiler-perf or no-gc; run `pnpm test:perf` alone when DSP or compiler code changed. CI still gates on them.
+
