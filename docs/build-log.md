@@ -847,3 +847,4 @@ Owner said go; the editor mockup looks good. Rulings:
 - Voices that start moving together should arrive together (today stagger 0.8 s + jitter 0.2 make arrivals differ).
 - Chord/split: choose how many voices sound, and edit voices individually.
 - Moments that do nothing in context (merge on already-stacked voices) are confusing; owner asked for options (grey-out, context-driven "flow chart" of next moves). Options sent; awaiting the owner's pick.
+- **Owner picked (2026-11-20):** 1A arrive together (default on), 2A chord `count` + 2B per-voice chord editing (freezes the chord), 3A dimmed no-op moments + 3B context palette with hover preview; next-move suggestions after. PLAN rev 6; all in M4.5. Note: arrive-together as the default changes how every existing piece sounds (golden hashes will change).

@@ -184,6 +184,7 @@ interface Glide {
   length: Seconds;              // glide duration per voice
   jitter: number;               // 0..1, length varies by ±jitter·length (seeded)
   stagger: Seconds;             // spread of start times across affected voices
+  arrive?: 'together' | 'spread'; // revision 6 (owner): default 'together' = every moving voice of the moment lands at the same time
   order: 'random' | 'low-first' | 'high-first' | 'center-out' | 'outside-in';
   ease: EaseRef;
 }
@@ -258,7 +259,7 @@ interface MomentBase {
 
 | Type | Specific fields | What it does |
 |---|---|---|
-| **chord** | `notes: NoteSet`, `voicing: 'even' \| 'close' \| 'nearest'`, `register?: [Pitch, Pitch]`, `assign: 'ordered' \| 'free'` | Moves the targeted voices to a voicing of `notes` (§7.3) by voice leading (§7.2). The voice count is unchanged; doubling happens if there are fewer notes than voices. |
+| **chord** | `notes: NoteSet`, `voicing: 'even' \| 'close' \| 'nearest'`, `register?: [Pitch, Pitch]`, `assign: 'ordered' \| 'free'`, `count?: number` | Moves the targeted voices to a voicing of `notes` (§7.3) by voice leading (§7.2); doubling happens if there are fewer notes than voices. Without `count` the voice count is unchanged. With `count` (revision 6) the active count becomes `count` first: extra voices are born as in split (§7.4) and surplus voices die as in merge (`which: 'outer'`, `fade` = the glide length), all as part of this one moment. |
 | **unison** | `pitch: Pitch \| 'center' \| 'tonic'`, `octaves: boolean` | All targeted voices go to one pitch. With `octaves`, each goes to the nearest octave of that pitch class instead. |
 | **split** | `count: number`, `notes?: NoteSet` (default `current`), `voicing` | Raises the active count to `count` by activating dormant voices from the pool. Each newborn forks from its nearest parent (§7.4). |
 | **merge** | `count: number`, `which: 'top' \| 'bottom' \| 'inner' \| 'outer' \| 'random'`, `fade: Seconds` | Lowers the active count. Each dying voice glides into its nearest surviving neighbour's pitch, then fades out and becomes dormant; a later split can revive it. |
@@ -341,6 +342,7 @@ Sort the active targeted voices by committed destination (§7.1), breaking ties 
 - **`free`:** the Hungarian algorithm on |p − q|, which allows crossings. When k ≠ a, pad with duplicated targets (for k < a) or dummy columns (for k > a).
 
 **Crossing guarantee under `ordered`.** An order-preserving assignment keeps the start and end points in order, but that is not enough. Stagger and jitter give neighbouring voices different start times and durations, so a fast low voice can pass a slow high one mid-glide. The prototype already does this. The guarantee is therefore enforced, not assumed:
+- **Arrive together (revision 6, owner 2026-11-20).** With `glide.arrive: 'together'` (the default; files without the field load as `'together'`), every voice the moment moves ends at one time: `at + stagger + length` (jitter lengthens or shortens that shared end once, seeded). Stagger still spreads the starts, so early starters glide longer. `'spread'` keeps the earlier behaviour (each voice ends at its own start + its own jittered length). Interruption (§7.5) still cuts individual voices.
 - **Rule:** after stagger and jitter are drawn, the compiler checks each adjacent pair of moving targeted voices for a mid-glide crossing by sampling both curves (64 points). If they would cross, the overtaking voice adopts the overtaken voice's start time and duration. Repeat until no pair crosses. This converges, since in the worst case the whole group shares one timing.
 - **Why this works:** two voices with the same timing and the same ease, whose endpoints are in order, cannot cross. Their difference is (b₀ − a₀)(1 − e) + (b₁ − a₁)·e, which is ≥ 0. The interruption velocity term (§7.5) can break this, so the sampled check, not the algebra, is the authority. Where adopting timing doesn't remove a crossing caused by carried velocity, the overshoot clamp in §7.5 is tightened to the gap.
 - **Scope:** the guarantee covers the targeted voices only. A `rank` or `voices` selector may move a subset through a voice outside the target; the compiler reports that as an `info` diagnostic. `pin` and `free` are exempt.
@@ -424,6 +426,8 @@ interface CompiledScore {
   walkSteps: { momentId: MomentId; tick: number; voice: VoiceId; t: Seconds; from: Pitch; to: Pitch; fixed: boolean }[];
                                 // every step a walk took (from !== to), or every `fixed` note incl. holds; sorted by t (revision 5, §6.2)
   diagnostics: Diagnostic[];    // { momentId?, level: 'info'|'warn'|'error', message }
+                                // revision 6: code 'no-effect' (info) when a moment changes nothing at its time: no pitch,
+                                // count, gain or key change (e.g. merge on voices already in unison); message says why
 }
 interface CompiledVoice {
   id: VoiceId;
@@ -704,6 +708,10 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Add at playhead:** the palette, under the rows.
 
 ### 11.3 Interactions
+- **Context-aware moments (revision 6, owner 2026-11-20):**
+  - A moment with a `no-effect` diagnostic is drawn dimmed on the Moments row, with the reason as its tooltip and in the inspector.
+  - The palette reads the state at the playhead: a moment type that would have no effect there is greyed out with the reason (merge when all voices share one pitch or one voice is active, split at the pool size, unison when already a unison, and so on). Hovering an enabled one plays a short audible preview of that moment from the playhead (about 3 s, no undo entry).
+  - Later (after these): **next-move suggestions**: after the selected moment, 3–4 suggested moves drawn from the Generate composer's grammar, each one click to add and hover to preview.
 - **Add a moment:** from a palette (click or drag), or by shortcut at the playhead: `C` chord, `U` unison, `S` split, `M` merge, `T` shift, `P` spread, `W` walk, `I` pin, `K` key, `L` level. These shortcuts are disabled while musical typing is on (§9).
 - **Edit on the lane:**
   - Drag a marker to move the moment; it snaps to the grid when one is enabled, and Alt disables snapping.
@@ -723,6 +731,8 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
   - **Level:** sliders for Level and Ramp.
   - **Walk:** sliders for region, grid, density (%) and step glide; the allowed steps as toggle chips (−3…+3); bass leap range; Re-roll; and a **Steps** list (time, voice, note) with ▲/▼. Selecting a step highlights its dot on the lines, and clicking a dot selects its row. The first ▲/▼ freezes the walk (§6.2); a "Frozen" badge and an **Unfreeze** button then show, and the generator controls are disabled.
   - **Voices:** All, Top n, Bottom n (a `rank` selector) or Pick… (a voice checklist).
+  - **Chord voices (revision 6):** a **Voices** count (writes `count`), and a per-voice list (one row per voice: voice, target note, ▲/▼, plus draggable target dots on the score). The first per-voice change freezes the chord (Freeze below: `pitches` NoteSet, `assign: 'ordered'`, `count` kept) as one undo entry; **Unfreeze** restores the original NoteSet.
+  - **Arrive together** toggle in Transition (default on).
   - Every slider drag is one undo entry.
 - **Inspector, carried over from M4:**
   - a degree picker (under "Other notes");
@@ -977,6 +987,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - every walk control (density, allowed steps, grid, glide, bass leap) is heard within 50 ms;
   - moving a walk step freezes the walk and changes only that note; the frozen walk survives save, load and undo, ignores earlier edits, and Unfreeze restores the generated walk;
   - Generate asks before replacing an edited piece;
+  - (revision 6) by default all voices moved by one moment arrive within 1 ms of each other; a chord with `count` changes the voice count; a per-voice chord edit freezes only that chord and Unfreeze restores it; a merge on a unison shows `no-effect`, its marker is dimmed, and the palette greys merge out there; palette hover previews are heard;
   - 60 fps at 1080p with 24 voices while following;
   - the M4 acceptance checks still pass.
 
@@ -1067,6 +1078,12 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 6 (2026-11-20): owner notes on the M4.5 demo
+- **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.
+- **Chord voices (§6.2, §11.3):** `count` on chord; per-voice editing freezes the chord.
+- **Context (§7.9, §11.3):** `no-effect` diagnostic; dimmed markers; a palette that greys out no-op moments and previews on hover. Next-move suggestions follow.
+- All in M4.5.
 
 ### Revision 5 (2026-11-20): editor view redesign (owner direction; approved 2026-11-20)
 - **View (§10):** one time axis shared by a new time ruler, the score, the lanes and a single playhead; the bottom scrubber goes (phones keep it). Follow: Smooth (35%, default), Page, Off. Zoom slider with Fit; no overview blend. The whole piece is drawn, the future dimmed.
