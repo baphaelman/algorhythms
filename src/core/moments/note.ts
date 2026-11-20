@@ -1,7 +1,8 @@
 /**
- * `note` (§6.2, revision 6): a note point. The sounding note `from` becomes `to`: the target set
- * is the targeted voices' destinations with ONE instance of `from` replaced by `to`, reached by
- * ordered voice leading (§7.2). Sorting the new set and assigning in order moves only the voices
+ * `note` (§6.2, revision 6): a note point. The sounding note `from` becomes `to`. By default
+ * (`order` unset or false) only the voice sounding `from` moves, and it may cross its neighbours.
+ * With `order: true` the target set is the targeted voices' destinations with ONE instance of
+ * `from` replaced by `to`, reached by ordered voice leading (§7.2). Sorting the new set and assigning in order moves only the voices
  * between `from`'s and `to`'s places: if `to` stays between its neighbours only that voice moves;
  * if it passes neighbours they each shift one place, so no lines cross. Several voices on `from`:
  * still only one note changes.
@@ -104,6 +105,19 @@ export function noteMoment(m: NoteMoment, env: MomentEnv, returning = false): Mo
       );
     }
     return null;
+  }
+  if (!m.order) {
+    // Only the voice sounding `from` moves; it may cross its neighbours (like a pin). The others
+    // keep their destinations (re-planned if this note cancelled their pending moves).
+    return {
+      ordered: false,
+      intents: vs.map((voice, i) => ({
+        voice,
+        to: i === k ? m.to : ps[i],
+        kind: IntentKind.Move,
+      })),
+      note: { intent: k, from: ps[k] },
+    };
   }
   const { q, at } = noteTargets(ps, k, m.to);
   return {

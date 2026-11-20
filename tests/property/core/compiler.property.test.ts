@@ -535,7 +535,7 @@ describe('compiler properties (§14)', () => {
     );
   });
 
-  it('note moments: one note changes, in order; returns run (§6.2 note)', () => {
+  it('note moments: one note changes, in order unless `order` is off; returns run (§6.2 note)', () => {
     let applied = 0;
     let returns = 0;
     check(
@@ -548,8 +548,12 @@ describe('compiler properties (§14)', () => {
           if (seen.has(m.id)) returns++;
           else applied++;
           seen.add(m.id);
-          expect(m.plan.ordered).toBe(true);
           expect(m.intents.length).toBe(m.targeted.length);
+          const nm = p.moments.find((x) => x.id === m.id);
+          const ordered = nm?.type === 'note' && nm.order === true;
+          expect(m.plan.ordered).toBe(ordered);
+          // Without `order`, only the voice sounding `from` moves; the rest may be out of order.
+          if (!ordered) continue;
           // Intents list the voices low to high by destination; unless range folding moved a
           // target, their targets are in the same order (ordered voice leading, §7.2).
           const folded = score.diagnostics.some(

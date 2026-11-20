@@ -13,6 +13,7 @@ import { NumberField, TextField, fieldSetter } from './inspector/controls';
 import { GlideFields, SeedField, TargetField } from './inspector/CommonFields';
 import { formatTime, keyAt } from './inspector/fields';
 import { TypeFields } from './inspector/TypeFields';
+import { Overrides } from './inspector/Overrides';
 import './inspector.css';
 
 const TYPE_NAMES: Record<Moment['type'], string> = {
@@ -152,6 +153,7 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
       />
 
       <TypeFields m={m} ctx={{ piece, keyAt: key }} />
+      <Overrides m={m} piece={piece} keyAt={key} />
 
       {m.type !== 'key' && <TargetField m={m} piece={piece} />}
       {pitched && <GlideFields m={m} piece={piece} />}

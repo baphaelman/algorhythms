@@ -49,6 +49,7 @@ import {
   type WalkStepRecord,
 } from '../types';
 import { MIN_GLIDE, mergeGlide, sanitizeGlide } from './glide';
+import { applyOverrideEnds, applyOverridePitches, overridesOf } from './overrides';
 import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from './plan';
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
@@ -350,7 +351,7 @@ export class Compiler {
     let bad = 0;
     for (const n of w.fixed ?? []) {
       const k = n?.tick;
-      if (!(typeof k === 'number' && Number.isInteger(k) && k >= 0 && Number.isFinite(n.pitch))) {
+      if (!(typeof k === 'number' && Number.isFinite(k) && k >= 0 && Number.isFinite(n.pitch))) {
         bad++;
         continue;
       }
@@ -727,7 +728,11 @@ export class Compiler {
       diag: (level: DiagnosticLevel, code: string, message: string) =>
         this.diag(level, code, message, m.id),
     };
+    // Per-voice overrides (§11.3, revision 6): not on a note's return.
+    const ov = back ? null : overridesOf(m, this.voices.length);
+    if (ov) applyOverridePitches(plan, ov, targeted);
     const res = planMoment(host, plan, targeted, subset);
+    if (ov) applyOverrideEnds(res, ov, T, this.voices);
     for (const b of res.births) {
       const run = this.voices[b.voice];
       run.status = Status.Active;

@@ -1,6 +1,7 @@
 /**
  * Note point fields (§11.3, revision 6): `from → to` as note names with ▲/▼ on `to` (one scale
- * step in the key), the chord before → after (compiled harmony), and "Return after" (`back`).
+ * step in the key), the chord before → after (compiled harmony), "Keep lines in order" (`order`) and
+ * "Return after" (`back`).
  */
 
 import type { Key, NoteMoment } from '../../../core/types';
@@ -48,6 +49,18 @@ export function NoteFields({ m, keyAt }: { m: NoteMoment; keyAt: Key }) {
           <span data-testid="insp-note-chord-after">{after ?? '—'}</span>
         </span>
       </Row>
+      <CheckField
+        label="Keep lines in order"
+        checked={m.order === true}
+        testId="insp-note-order"
+        onChange={(on) =>
+          updateMoment(
+            m.id,
+            { order: on ? true : undefined },
+            on ? 'Keep lines in order' : 'Let lines cross',
+          )
+        }
+      />
       <CheckField
         label="Return after"
         checked={m.back !== undefined}

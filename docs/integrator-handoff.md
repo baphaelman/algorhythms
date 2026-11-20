@@ -46,13 +46,15 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
   git -C ~/algorhythms push origin <sha>:main
   gh run watch <id> --exit-status     # in the background
   ```
+  `pnpm test` skips the timing/GC gates (rtf, no-gc, compiler-perf); run `pnpm test:perf` alone, on a quiet box, only when DSP or compiler code changed. CI runs both (build log "Timing gates split from `pnpm test`").
 - **This Mac is often loaded, so timing tests flake.** The compiler perf guard is loose (100 ms); the strict 5 ms check runs only with `ALGORHYTHMS_PERF_STRICT=1`.
 
 ## Merge routine in the cloud (this session)
 - `git merge --no-edit <branch>` aborts silently if the tree is dirty: commit doc edits first and check the merged files exist (once a commit was titled "Merge M4.5-12" with only a PLAN change; fixed by 694709e).
 - build-log conflicts: strip the conflict markers (keep both sides), `git add`, commit.
-- Verify in `<scratchpad>/verify-head` (detached worktree): lint, typecheck, test, build. `no-gc`, rtf, perf tests flake under load: rerun alone. `render.spec` 4 ms budget always fails on this box (software raster); CI's guard is 12 ms.
-- E2E here: `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` (symlinks Chromium 1243 as the 1255 Playwright wants).
+- Verify in `<scratchpad>/verify-head` (detached worktree): lint, typecheck, test, build; add `pnpm test:perf` (run alone) when DSP or compiler code changed. Other unit timeouts under load: rerun alone. `render.spec` 4 ms budget always fails on this box (software raster); CI's guard is 12 ms.
+- E2E here: `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` (symlinks Chromium 1243 as the 1255 Playwright wants; Firefox 1572 installed there via the "algorhythms" cloud environment, which allows Playwright's download hosts). Audio specs need a sink: `apt-get install -y pulseaudio; pulseaudio --start --exit-idle-time=-1; pactl load-module module-null-sink sink_name=ci_null; pactl set-default-sink ci_null`. WebKit runs only on CI (macOS).
+- CI skips docs-only pushes (`paths` in ci.yml, M4.5-19), so batch doc commits freely.
 - After each push, rebuild and republish the preview artifact (see "Demo links").
 - Owner: one line per builder return; keep the placeholder commit author despite the stop hook.
 

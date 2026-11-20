@@ -241,6 +241,22 @@ export interface MomentBase {
   label?: string;
   /** Skipped by the compiler, still shown on the lane. */
   muted?: boolean;
+  /**
+   * Per-voice hand edits (§11.3 "Every dot is draggable", revision 6), applied by the compiler to
+   * that voice's move in a point moment. A moment with overrides is not re-ordered (its lines may
+   * cross). Key, level and walk moments ignore them.
+   */
+  overrides?: VoiceOverride[];
+}
+
+/** One per-voice override of a point moment's move (§11.3). */
+export interface VoiceOverride {
+  /** Pool index. */
+  voice: number;
+  /** Target pitch instead of the moment's (folded into the voice's range like any target). */
+  pitch?: Pitch;
+  /** The voice's arrival, as an offset from the moment's `at` (s). */
+  end?: Seconds;
 }
 
 /** Moves the targeted voices to a voicing of `notes`; the voice count is unchanged. */
@@ -265,6 +281,12 @@ export interface ChordMoment extends MomentBase {
    * and `assign` it had before, restored by Unfreeze. The compiler ignores it.
    */
   frozenFrom?: { notes: NoteSet; assign: AssignMode };
+  /**
+   * Revision 6, "Keep lines in order" off: with a `pitches` NoteSet, pitch i goes to the i-th
+   * targeted voice (by committed destination), unsorted, and lines may cross. Applies only when
+   * there is one pitch per targeted voice and the voice count doesn't change.
+   */
+  byVoice?: boolean;
 }
 
 /** All targeted voices go to one pitch (or its nearest octaves). */
@@ -345,7 +367,7 @@ export interface WalkMoment extends MomentBase {
 
 /** One note of a frozen walk: the absolute target of `voice` at tick `tick` (§6.2). */
 export interface WalkNote {
-  /** Tick index: time = at + tick·grid. */
+  /** Tick index: time = at + tick·grid. May be fractional (a step added between ticks, §11.3). */
   tick: number;
   voice: VoiceId;
   pitch: Pitch;
@@ -366,8 +388,9 @@ export interface WalkStepRecord {
 }
 
 /**
- * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. The target set is the
- * current pitches with one `from` replaced by `to`, reached by ordered voice leading (§7.2).
+ * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. With `order`, the target
+ * set is the current pitches with one `from` replaced by `to`, reached by ordered voice leading
+ * (§7.2); without, only that voice moves.
  */
 export interface NoteMoment extends MomentBase {
   type: 'note';
@@ -377,6 +400,11 @@ export interface NoteMoment extends MomentBase {
   to: Pitch;
   /** When present, the note returns this many seconds after its glide ends. */
   back?: Seconds;
+  /**
+   * Keep lines in order (revision 6): true = ordered voice leading, no crossings; false or absent
+   * = only the voice sounding `from` moves, and may cross its neighbours.
+   */
+  order?: boolean;
 }
 
 /** Moves one voice to an exact pitch; may cross other voices. */

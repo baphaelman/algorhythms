@@ -281,13 +281,33 @@ describe('frozen walks in the file format', () => {
     expect(compile(r.piece).voices).toStrictEqual(compile(p).voices);
   });
 
+  it('honours a fractional tick (a step added between ticks)', () => {
+    const p0 = base();
+    const s0 = compile(p0);
+    const fixed = freezeWalk(s0, 'w');
+    const v = p0.voices[1].id;
+    // A tick where voice 1 holds, a quarter grid past an integer tick.
+    const holds = (k: number) =>
+      !s0.walkSteps.some((x) => x.voice === v && Math.abs(x.tick - k) < 1.6);
+    let k = 2.25;
+    while (!holds(k)) k += 1;
+    const t = 1 + k * 0.5;
+    const from = pitchAt(s0.voices[1], t)!;
+    const target = stepByScale(from, 1, p0.key);
+    const s = compile(withFixed(p0, 'w', [...fixed, { tick: k, voice: v, pitch: target }]));
+    const rec = s.walkSteps.find((x) => x.tick === k && x.voice === v);
+    expect(rec).toMatchObject({ t, from, to: target, fixed: true });
+    expect(pitchAt(s.voices[1], t + 0.31)).toBeCloseTo(target, 9);
+    expect(s.walkSteps.length).toBe(s0.walkSteps.length + 1);
+  });
+
   it('rejects bad ticks, unknown voices and duplicate (tick, voice) notes', () => {
     const p = base();
     const v = p.voices[0].id;
     const bad = (fixed: unknown[]) => parsePiece(withFixed(p, 'w', fixed as WalkNote[])).ok;
     expect(bad([{ tick: 1, voice: v, pitch: 60 }])).toBe(true);
     expect(bad([{ tick: -1, voice: v, pitch: 60 }])).toBe(false);
-    expect(bad([{ tick: 1.5, voice: v, pitch: 60 }])).toBe(false);
+    expect(bad([{ tick: 1.5, voice: v, pitch: 60 }])).toBe(true); // between ticks (M4.5-20)
     expect(bad([{ tick: 1, voice: 'nobody', pitch: 60 }])).toBe(false);
     expect(
       bad([
