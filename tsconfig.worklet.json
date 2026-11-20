@@ -1,0 +1,11 @@
+{
+  // Files named *.worklet.ts run in the AudioWorkletGlobalScope: no DOM, no window,
+  // no importScripts. Their globals are declared in src/audio/worklet/audioworklet-globals.d.ts.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": [],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worklet.tsbuildinfo"
+  },
+  "include": ["src/**/*.worklet.ts", "src/audio/worklet/audioworklet-globals.d.ts"]
+}

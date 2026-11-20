@@ -1,0 +1,12 @@
+{
+  // Browser main-thread code: app, render, midi, audio (bridge side) and everything they import.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.worklet.ts", "src/audio/worklet/audioworklet-globals.d.ts"]
+}

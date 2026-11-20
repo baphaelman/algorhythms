@@ -1,0 +1,11 @@
+{
+  // core/ and dsp/ must run in Node, a Web Worker and an AudioWorklet (PLAN.md P3).
+  // No DOM or Web Audio types are available here, so touching them is a type error.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": [],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.pure.tsbuildinfo"
+  },
+  "include": ["src/core", "src/dsp"]
+}

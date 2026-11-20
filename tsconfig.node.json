@@ -1,0 +1,11 @@
+{
+  // Tooling config files and every test (Vitest in Node, Playwright drivers). DOM is included
+  // because Playwright's page.evaluate callbacks run in the browser.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo"
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "tests"]
+}
