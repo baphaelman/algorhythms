@@ -703,3 +703,19 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - **app:** `app/hover.ts` holds the mouse position (mouse only, no button down; cleared on press and pointerleave). The loop passes `useEditor` selection each frame (Set rebuilt only when the array changes; editor store changes mark dirty) and re-hit-tests when it drew or the pointer moved, writing a `.score-hover` div (`data-testid="score-hover"`) by direct DOM writes. Future lines are hoverable only while the ghost is visible.
 - **debug:** `actions.select` added to `window.__algorhythms`.
 - Tests: `tests/unit/render/selection.test.ts`, `tests/e2e/score-hover.spec.ts` (Chromium). render.spec bench unchanged and within budget (it does not exercise a selection; the extra pass covers only selected segments in view).
+
+## M4d: moment lane (2026-11-20)
+
+**Files:** `src/app/ui/Lane.tsx` (+ `lane.css`), pure helpers `src/app/editor/lane.ts`; `App.tsx` renders `<Lane />` in the wide layout; `loop.ts` gains `onScoreFrame(fn)` (each frame's camera `View`; the `cam` object is now built once per frame). Tests: `tests/unit/app/lane.test.ts`, `tests/e2e/lane.spec.ts` (Chromium); `app.spec.ts` now expects the lane slot visible.
+
+**Design:** React renders items (on piece/score/selection change). Positions: one inner container gets `translateX(xAnchor − tc·pps)` each frame; items sit at `at·pps` and are rewritten only when pps or items change. Three rows of 20 px, greedy packing in pixel space (frozen during a drag). Bars: compiled `MomentSpan` when the moment hasn't moved since that compile and the span is non-empty, else an estimate (stagger + length; walk `until`; level `over`; key = point). Drags preview by direct transform writes and commit once per rAF via `beginGesture/updateGesture/endGesture` (Escape → `cancelGesture`).
+
+**Behaviour choices:**
+- Lane marker = `moment.at`; the canvas draws its marker line at the span start (first move), so they differ by up to the stagger/jitter offset.
+- Alt at press = duplicate; Alt held at any time = no snap. So an Alt-drag copy is unsnapped unless Alt is released mid-drag.
+- Span-end drags are not snapped. They edit `glide.length` (Shift: `glide.stagger`), a walk's `until`, a level's `over`; key moments have no handle. Handles hide on bars < 6 px.
+- Pressing a selected item keeps the selection (group drag); click without drag then selects it alone. Shift-click toggles. Empty-lane click clears.
+- Keys on a focused item (stopPropagation): ←/→ nudge (grid step to the next line, else 0.1 s; acts on the selection if the item is in it, else the item); ↑/↓/Home/End roving focus in time order; Delete/Backspace delete (focus moves to a neighbour); Enter/Space select (Shift toggles). So Space on a focused lane item selects rather than plays.
+- Live region announces moves, duplicates, glide/stagger/until/over changes, deletes, cancelled drags.
+
+**Not done:** focusing an off-screen item doesn't pan the view; no touch long-press menu (§11.3b); marquee and copy/paste (M5).

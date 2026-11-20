@@ -419,7 +419,7 @@ test('desktop layout leaves hidden slots for the editor lane and inspector', asy
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await expect(page.locator('.app')).toHaveAttribute('data-layout', 'full');
-  await expect(page.locator('[data-slot="lane"]')).toBeHidden();
+  await expect(page.locator('[data-slot="lane"]')).toBeVisible(); // M4d: the moment lane
   await expect(page.locator('[data-slot="inspector"]')).toBeHidden();
   expect(await page.locator('[data-slot]').count()).toBe(2);
 });

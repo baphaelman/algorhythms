@@ -5,6 +5,7 @@ import { startPlayer } from './store';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
+import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
 import { Notices, SilentHint } from './ui/Notices';
@@ -56,7 +57,7 @@ export function App() {
       <Notices />
       <main className="workspace">
         <ScoreView />
-        {wide && <div className="slot lane" data-slot="lane" hidden />}
+        {wide && <Lane />}
         <Scrubber />
         <ViewBar />
         {wide && <Inspector />}
