@@ -1,0 +1,42 @@
+/* Walk step dots over the score (§10 Drawing rules 7; M4.5-7). */
+
+.walk-dots {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.walk-dot {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.walk-dot[hidden] {
+  display: none;
+}
+
+.walk-dot:hover {
+  border-color: var(--accent);
+}
+
+.walk-dot.on {
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--paper);
+}

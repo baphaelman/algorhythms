@@ -41,6 +41,7 @@ import {
   toggleStep,
 } from './fields';
 import { NoteSetField } from './NoteSetField';
+import { WalkSteps } from './WalkSteps';
 
 interface Ctx {
   piece: Piece;
@@ -70,7 +71,7 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
     case 'spread':
       return <SpreadFields m={m} />;
     case 'walk':
-      return <WalkFields m={m} />;
+      return <WalkFields m={m} ctx={ctx} />;
     case 'pin':
       return <PinFields m={m} ctx={ctx} />;
     case 'key':
@@ -284,7 +285,7 @@ function SpreadFields({ m }: { m: SpreadMoment }) {
   );
 }
 
-function WalkFields({ m }: { m: WalkMoment }) {
+function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
   const region = fieldSetter<number>(m.id, 'Edit walk region', (x, v) => ({ until: x.at + v }));
   const grid = field<number>(m.id, 'grid', 'Edit grid');
   const density = fieldSetter<number>(m.id, 'Edit density', (_x, v) => ({ density: v / 100 }));
@@ -410,6 +411,7 @@ function WalkFields({ m }: { m: WalkMoment }) {
           </>
         )}
       </fieldset>
+      <WalkSteps m={m} piece={ctx.piece} />
     </>
   );
 }

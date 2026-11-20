@@ -9,6 +9,7 @@ import type { CompiledScore, MomentId, MomentType, Piece, Seconds } from '../../
 import { usePlayer } from '../store';
 import { edit, select } from './history';
 import { defaultMoment } from './new-moment';
+import { movedFixed, type StepRef } from './walk-steps';
 import {
   copyMoments,
   insertMoments,
@@ -109,4 +110,17 @@ export function reroll(id: MomentId): number | null {
   while (seed === m.seed) seed = randomU32();
   updateMoment(id, { seed }, 'Reroll');
   return seed;
+}
+
+/**
+ * Moves walk step `ref` one scale step up or down (§6.2). On an unfrozen walk this freezes it and
+ * moves the note as one undo entry. False if nothing changed.
+ */
+export function moveWalkStep(ref: StepRef, dir: 1 | -1): boolean {
+  const piece = usePlayer.getState().piece;
+  const w = piece.moments.find((m) => m.id === ref.momentId);
+  if (w?.type !== 'walk') return false;
+  const fixed = movedFixed(w, scoreOf(piece), ref, dir);
+  if (!fixed) return false;
+  return updateMoment(w.id, { fixed }, w.fixed ? 'Move walk step' : 'Freeze walk and move step');
 }
