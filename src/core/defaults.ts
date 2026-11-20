@@ -42,12 +42,20 @@ function deepFreeze<T>(value: T): DeepReadonly<T> {
   return value as DeepReadonly<T>;
 }
 
+/**
+ * Sets an own, enumerable data property, even for keys like `__proto__` (where plain assignment
+ * would change the prototype instead).
+ */
+export function setOwn(obj: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
+}
+
 /** A deep copy of plain JSON data (objects, arrays, strings, numbers, booleans, null). */
 export function cloneJson<T>(value: T): T {
   if (Array.isArray(value)) return value.map(cloneJson) as T;
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = cloneJson(v);
+    for (const [k, v] of Object.entries(value)) setOwn(out, k, cloneJson(v));
     return out as T;
   }
   return value;

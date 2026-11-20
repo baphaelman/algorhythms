@@ -18,7 +18,11 @@ function objectNodes(value: unknown, parentKey = '', out: Record<string, unknown
 }
 
 const NODE_COUNT = objectNodes(fullPiece()).length;
-const extraKey = fc.string({ minLength: 1, maxLength: 8 }).map((s) => `x-${s}`);
+const extraKey = fc.oneof(
+  fc.string({ minLength: 1, maxLength: 8 }).map((s) => `x-${s}`),
+  // Names that `in` finds on Object.prototype (a past bug dropped these on save).
+  fc.constantFrom('valueOf', 'toString', 'constructor', 'hasOwnProperty', 'isPrototypeOf'),
+);
 const injection = fc.record({
   node: fc.nat({ max: NODE_COUNT - 1 }),
   key: extraKey,

@@ -3,7 +3,8 @@
  * (PLAN.md §5).
  *
  * - **Unknown fields survive.** Every object schema is `z.looseObject`, so a field this build
- *   doesn't know is kept, at every level, and written back on save.
+ *   doesn't know is kept, at every level, and written back on save. The one exception is a key
+ *   named `__proto__`, which Zod drops to guard against prototype pollution.
  * - **Defaults are filled.** A parsed piece has every field that types.ts marks as non-optional;
  *   the values come from core/defaults.ts.
  * - **Versions.** Older files are migrated forward (core/migrations.ts). Newer files open with a
@@ -29,6 +30,7 @@ import {
   TIMBRE_DEFAULTS,
   cloneJson,
   defaultVoices,
+  setOwn,
 } from './defaults';
 import { DEFAULT_MIGRATIONS, migratePiece, type MigrationRegistry } from './migrations';
 import { DEFAULT_REFERENCE_HZ } from './tuning';
@@ -705,17 +707,25 @@ function canonical(value: unknown, schema: AnySchema | null): unknown {
   const def = s
     ? (s._zod.def as { type: string; shape?: Record<string, AnySchema>; valueType?: AnySchema })
     : null;
+  // Own-property checks only: `'valueOf' in {}` is true, and `out['__proto__'] = x` would set
+  // the prototype instead of a field, so either would silently drop a user's unknown field.
   const out: Record<string, unknown> = {};
   if (def?.type === 'record') {
-    for (const k of Object.keys(value).sort()) out[k] = canonical(value[k], def.valueType ?? null);
+    for (const k of Object.keys(value).sort()) {
+      setOwn(out, k, canonical(value[k], def.valueType ?? null));
+    }
     return out;
   }
   const shape = def?.type === 'object' ? (def.shape ?? {}) : {};
   for (const k of Object.keys(shape)) {
-    if (k in value && value[k] !== undefined) out[k] = canonical(value[k], shape[k]);
+    if (Object.hasOwn(value, k) && value[k] !== undefined) {
+      setOwn(out, k, canonical(value[k], shape[k]));
+    }
   }
   for (const k of Object.keys(value).sort()) {
-    if (!(k in shape) && value[k] !== undefined) out[k] = canonical(value[k], null);
+    if (!Object.hasOwn(shape, k) && value[k] !== undefined) {
+      setOwn(out, k, canonical(value[k], null));
+    }
   }
   return out;
 }

@@ -210,6 +210,31 @@ describe('parsePiece: unknown fields at every level', () => {
   });
 });
 
+describe('parsePiece: unknown fields named like Object.prototype members', () => {
+  it('keeps valueOf, toString, constructor and hasOwnProperty; drops only __proto__', () => {
+    // Regression: `'valueOf' in {}` is true, which once dropped such fields on save.
+    const text = `{"format": "algorhythms", "version": 1,
+      "valueOf": false, "toString": {"valueOf": 1}, "constructor": [1],
+      "meta": {"hasOwnProperty": "x", "__proto__": {"deep": true}}}`;
+    const first = ok(parsePiece(text)).piece as unknown as Record<string, unknown>;
+    expect(Object.hasOwn(first, 'valueOf')).toBe(true);
+    expect(first.toString).toEqual({ valueOf: 1 });
+    expect(first.constructor).toEqual([1]);
+    const meta = first.meta as Record<string, unknown>;
+    expect(meta.hasOwnProperty).toBe('x');
+    // Zod drops an own __proto__ key (a prototype-pollution guard); nothing is polluted.
+    expect(Object.hasOwn(meta, '__proto__')).toBe(false);
+    expect(Object.getPrototypeOf(meta)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).deep).toBeUndefined();
+
+    const saved = serializePiece(first as unknown as Piece);
+    const back = JSON.parse(saved) as Record<string, unknown>;
+    expect(back.valueOf).toBe(false);
+    expect(back.toString).toEqual({ valueOf: 1 });
+    expect(ok(parsePiece(saved)).piece).toEqual(first);
+  });
+});
+
 describe('parsePiece: errors', () => {
   it('rejects duplicate moment ids', () => {
     const errs = errors(
