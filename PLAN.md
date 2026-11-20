@@ -266,6 +266,7 @@ interface MomentBase {
 | **shift** | `by: number`, `unit: 'semitones' \| 'scaleSteps'` | Transposes the targeted voices. Scale steps are counted in `Piece.key`; off-scale pitches snap to the scale first. |
 | **spread** | `factor: number`, `around: Pitch \| 'mean' \| 'median'`, `snap: 'scale' \| 'chromatic' \| 'none'` | Each pitch becomes c + factor·(p − c), then snaps. A factor above 1 widens the voicing; below 1 squeezes it. |
 | **walk** (region) | `until: Seconds`, `grid: Seconds`, `density: 0..1`, `steps: number[]` (scale steps, default [-2,-1,1,2]), `stepGlide: Seconds`, `bass?: { leap: [number, number] }`, `fixed?: WalkNote[]` | Independent stepwise melodies until `until`. It keeps pitch order (no crossing or touching), and the bass leaps. This is the prototype's algorithm. A walk with hand-moved steps is frozen into `fixed` (below). |
+| **note** (revision 6, owner 2026-11-20) | `from: Pitch`, `to: Pitch`, `back?: Seconds` | A note point: the sounding note `from` becomes `to`. The target set is the current pitches with one `from` replaced by `to`; voices reach it by ordered voice leading (§7.2), so no lines cross even when `to` passes a neighbour. The chord label follows (§7.9 harmony). With `back`, the note returns to `from` after `back` seconds (a passing note or deliberate break). If `from` isn't sounding at `at`: `warn`, no effect. Uses the moment's glide. |
 | **pin** | `voice: VoiceId`, `pitch: Pitch` | Moves one voice to an exact pitch. It is the hand-editing escape hatch and may cross other voices. |
 | **key** | `key: Key` | Changes the key from `at` onwards; no pitch effect. Everything that depends on the key (shift by scale steps, walk, `snap: 'scale'`, `degrees`, Roman numerals) reads the key in effect at its own time. The compiler emits a key timeline. Without it, "move to D minor 9" followed by a walk would walk in the initial key. |
 | **level** | `gain: number`, `over: Seconds` | Ramps the targeted voices' gain to `gain` over `over` seconds: swells, fades, "breath". Moved up from M6 because dynamics are central to G1. |
@@ -708,6 +709,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Add at playhead:** the palette, under the rows.
 
 ### 11.3 Interactions
+- **Note points (revision 6, owner 2026-11-20):** in the editor, double-click a line on the score (or click it with `N` held) to add a `note` moment at that time with `from` = that line's pitch, then drag vertically to set `to` (snaps to the key; Shift = chromatic; ▲/▼ keys). Its dot is drawn on the line like walk steps; the inspector shows `from → to`, the chord before → after, and a "Return after" toggle with a slider (`back`). This is how a single note is changed, including a deliberate break from a chord.
 - **Context-aware moments (revision 6, owner 2026-11-20):**
   - A moment with a `no-effect` diagnostic is drawn dimmed on the Moments row, with the reason as its tooltip and in the inspector.
   - The palette reads the state at the playhead: a moment type that would have no effect there is greyed out with the reason (merge when all voices share one pitch or one voice is active, split at the pool size, unison when already a unison, and so on). Hovering an enabled one plays a short audible preview of that moment from the playhead (about 3 s, no undo entry).
@@ -987,6 +989,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - every walk control (density, allowed steps, grid, glide, bass leap) is heard within 50 ms;
   - moving a walk step freezes the walk and changes only that note; the frozen walk survives save, load and undo, ignores earlier edits, and Unfreeze restores the generated walk;
   - Generate asks before replacing an edited piece;
+  - (revision 6) double-clicking a line and dragging adds a note point; the chord label updates; lines never cross; `back` returns the note;
   - (revision 6) by default all voices moved by one moment arrive within 1 ms of each other; a chord with `count` changes the voice count; a per-voice chord edit freezes only that chord and Unfreeze restores it; a merge on a unison shows `no-effect`, its marker is dimmed, and the palette greys merge out there; palette hover previews are heard;
   - 60 fps at 1080p with 24 voices while following;
   - the M4 acceptance checks still pass.
@@ -1083,6 +1086,7 @@ The original questions follow for reference.
 - **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.
 - **Chord notes (§6.2, §11.3):** `count` on chord shown as "Notes: n"; per-note editing freezes the chord; voice targeting (Top/Bottom n) removed from the main inspector (owner).
 - **Context (§7.9, §11.3):** `no-effect` diagnostic; dimmed markers; a palette that greys out no-op moments and previews on hover. Next-move suggestions follow.
+- **Note points (§6.2, §11.3):** new `note` moment (`from` → `to`, optional `back`), added by double-clicking a line.
 - All in M4.5.
 
 ### Revision 5 (2026-11-20): editor view redesign (owner direction; approved 2026-11-20)
