@@ -722,6 +722,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "notes": {
                 "oneOf": [
                   {
@@ -1107,6 +1135,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "pitch": {
                 "default": "center",
                 "anyOf": [
@@ -1296,6 +1352,34 @@ This is the *input* form: fields with defaults are optional here.
               },
               "muted": {
                 "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "count": {
                 "type": "integer",
@@ -1559,6 +1643,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "count": {
                 "type": "integer",
                 "minimum": 0,
@@ -1751,6 +1863,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "by": {
                 "type": "number"
               },
@@ -1932,6 +2072,34 @@ This is the *input* form: fields with defaults are optional here.
               },
               "muted": {
                 "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "factor": {
                 "type": "number"
@@ -2132,6 +2300,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "until": {
                 "type": "number",
                 "minimum": 0,
@@ -2200,10 +2396,9 @@ This is the *input* form: fields with defaults are optional here.
                   "type": "object",
                   "properties": {
                     "tick": {
-                      "type": "integer",
+                      "type": "number",
                       "minimum": 0,
-                      "maximum": 9007199254740991,
-                      "description": "Tick index: time = at + tick·grid."
+                      "description": "Tick index: time = at + tick·grid (may be fractional)."
                     },
                     "voice": {
                       "type": "string",
@@ -2392,6 +2587,34 @@ This is the *input* form: fields with defaults are optional here.
               },
               "muted": {
                 "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "from": {
                 "type": "number",
@@ -2582,6 +2805,34 @@ This is the *input* form: fields with defaults are optional here.
               "muted": {
                 "type": "boolean"
               },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "voice": {
                 "type": "string",
                 "minLength": 1
@@ -2761,6 +3012,34 @@ This is the *input* form: fields with defaults are optional here.
               },
               "muted": {
                 "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "key": {
                 "type": "object",
@@ -3016,6 +3295,34 @@ This is the *input* form: fields with defaults are optional here.
               },
               "muted": {
                 "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "gain": {
                 "type": "number",

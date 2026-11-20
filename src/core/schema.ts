@@ -177,6 +177,16 @@ const momentBase = {
   seed: z.number().int().optional(),
   label: z.string().optional(),
   muted: z.boolean().optional(),
+  overrides: z
+    .array(
+      z.looseObject({
+        voice: z.number().int().min(0).describe('Pool index.'),
+        pitch: pitch.optional(),
+        end: nonNegative.optional().describe("The voice's arrival, seconds after `at`."),
+      }),
+    )
+    .optional()
+    .describe('Per-voice hand edits of a point moment (dot drags); its lines may cross.'),
 };
 
 const D = MOMENT_DEFAULTS;
@@ -258,7 +268,10 @@ const MOMENT_SCHEMAS = {
     fixed: z
       .array(
         z.looseObject({
-          tick: z.number().int().min(0).describe('Tick index: time = at + tick·grid.'),
+          tick: z
+            .number()
+            .min(0)
+            .describe('Tick index: time = at + tick·grid (may be fractional).'),
           voice: id,
           pitch,
         }),

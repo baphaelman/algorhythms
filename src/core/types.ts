@@ -241,6 +241,22 @@ export interface MomentBase {
   label?: string;
   /** Skipped by the compiler, still shown on the lane. */
   muted?: boolean;
+  /**
+   * Per-voice hand edits (§11.3 "Every dot is draggable", revision 6), applied by the compiler to
+   * that voice's move in a point moment. A moment with overrides is not re-ordered (its lines may
+   * cross). Key, level and walk moments ignore them.
+   */
+  overrides?: VoiceOverride[];
+}
+
+/** One per-voice override of a point moment's move (§11.3). */
+export interface VoiceOverride {
+  /** Pool index. */
+  voice: number;
+  /** Target pitch instead of the moment's (folded into the voice's range like any target). */
+  pitch?: Pitch;
+  /** The voice's arrival, as an offset from the moment's `at` (s). */
+  end?: Seconds;
 }
 
 /** Moves the targeted voices to a voicing of `notes`; the voice count is unchanged. */
@@ -351,7 +367,7 @@ export interface WalkMoment extends MomentBase {
 
 /** One note of a frozen walk: the absolute target of `voice` at tick `tick` (§6.2). */
 export interface WalkNote {
-  /** Tick index: time = at + tick·grid. */
+  /** Tick index: time = at + tick·grid. May be fractional (a step added between ticks, §11.3). */
   tick: number;
   voice: VoiceId;
   pitch: Pitch;
