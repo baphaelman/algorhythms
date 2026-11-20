@@ -6,6 +6,13 @@
 
 **Be concise:** in reports, build-log entries, commit messages and code comments. Say what matters, and skip the narration.
 
+**Builders don't spawn subagents.** If your context passes about 200k tokens, stop at a stable point and do this:
+- write a concise handoff note in `docs/build-log.md`: the design, what's done, what's left, the test status and any traps;
+- commit if typecheck and tests pass, otherwise list the WIP files;
+- report back.
+
+The integrator continues the work with a fresh agent.
+
 ## Roles
 - The **owner** decides product questions (PLAN.md §2, §16).
 - The **integrator** (the main Claude session) assigns milestones and verifies their acceptance criteria. It does not write code.

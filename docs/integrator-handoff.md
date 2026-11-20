@@ -93,6 +93,7 @@ Their reports go to the old session. If you don't have them, check `git log`, `g
    - **Asked for:** steady converged voices by default (phase lock or equivalent), group-aware normalisation, no clicks, stems still exact, RTF ≥ 10×, an opt-in timbre wobble control and a `wobble` preset.
    - Owner A/B WAVs go in `renders/` (`unison8-*`, `merge-*`, `wobble-preset`, `gen-1-dorian-after`).
    - The design goes in the build log under "Unison lock". **Then you update PLAN.md §8.4 and P2** to match.
+   - **Handoff:** at 300k tokens this builder was told to stop and write "Unison lock (handoff)" in the build log. Finish the work with a fresh agent (Opus; medium, or high if the remaining work is subtle) that starts from that note.
 
 ## Next tasks (queued)
 - **Compile option `crossings: 'allow'`** (Sonnet medium, `src/core/compiler`): skips crossing enforcement.
