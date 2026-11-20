@@ -32,7 +32,6 @@ import {
 } from './audio';
 import { writeMeter } from './dom';
 import { featuredExample } from './examples';
-import { compileOptions } from './dev-options';
 import { decodeSharePayload, sharePayloadOf } from './share';
 
 // ---------------------------------------------------------------------------------------------
@@ -111,7 +110,7 @@ function viewFor(piece: Piece, compiled: CompiledScore, theme: ThemePref): ViewS
 }
 
 const initialPiece = parseOrThrow(featuredExample().json);
-const initialCompiled = compile(initialPiece, compileOptions());
+const initialCompiled = compile(initialPiece);
 
 /** The store. `usePlayer(selector)` in components; `usePlayer.getState()` everywhere else. */
 export const usePlayer = create<PlayerState>()(() => ({
@@ -268,7 +267,7 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
   clock.pos = 0;
   clock.started = false;
   clock.resume = false;
-  const compiled = opts.compiled ?? compile(piece, compileOptions());
+  const compiled = opts.compiled ?? compile(piece);
   const notices: Notice[] = (opts.notices ?? []).map((n) => ({ ...n, id: ++noticeId }));
   const errors = compiled.diagnostics.filter((d) => d.level === 'error');
   if (errors.length > 0) {
@@ -313,7 +312,7 @@ export function setPiece(piece: Piece): void {
 /** Compiles the current piece immediately and swaps it into the engine. */
 export function recompileNow(): CompiledScore {
   const { piece } = get();
-  const compiled = compile(piece, compileOptions());
+  const compiled = compile(piece);
   set({ compiled });
   void swapAudio(compiled, piece.timbres).catch(() => undefined);
   return compiled;

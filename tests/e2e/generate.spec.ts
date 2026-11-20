@@ -126,10 +126,9 @@ test('text seeds work, "New seed" draws a number, blank seeds are refused, lengt
   await expect(page.getByTestId('generate-panel')).toBeVisible();
   await expect(seed).toHaveAttribute('aria-invalid', 'true');
 
-  // A chosen length: the slider is off until "natural length" is switched off.
+  // A chosen length: the slider is live by default; "natural length" turns it off.
   await seed.fill('7');
-  await expect(panel(page).getByLabel('Length', { exact: true })).toBeDisabled();
-  await page.getByTestId('generate-natural').uncheck();
+  await expect(panel(page).getByLabel('Length', { exact: true })).toBeEnabled();
   await panel(page).getByLabel('Length', { exact: true }).fill('400');
   await page.getByTestId('generate-run').click();
   const long = await snapshot(page);

@@ -18,11 +18,11 @@ export const GENERATE_MODES: readonly { id: GenerateMode; label: string }[] = [
 /** Voice count range: `generate()` clamps to 2..MAX_VOICES. */
 export const VOICES_MIN = 2;
 export const VOICES_MAX = MAX_VOICES;
-/** Length range in seconds. Every section is kept, so about 100 s is the shortest piece. */
-export const LENGTH_MIN = 100;
+/** Length range in seconds. */
+export const LENGTH_MIN = 30;
 export const LENGTH_MAX = 900;
 export const LENGTH_STEP = 10;
-/** The slider's starting point when the length is switched from "natural" to chosen. */
+/** The slider's default (2:30). */
 export const LENGTH_START = 150;
 
 /** What the panel's controls hold. */
@@ -32,7 +32,7 @@ export interface GenerateForm {
   mode: GenerateMode;
   /** Chosen length in seconds; used only when `naturalLength` is false. */
   length: number;
-  /** True: the prototype's proportions (about 2.5 minutes), as `generate()` does with no length. */
+  /** True: the prototype's proportions (about 2.5 minutes), as `generate()` does with no length. Off by default. */
   naturalLength: boolean;
   voices: number;
   /** Walk density, 0..1. */
@@ -43,7 +43,7 @@ export interface GenerateForm {
 export const DEFAULT_FORM: Omit<GenerateForm, 'seed'> = {
   mode: 'dorian',
   length: LENGTH_START,
-  naturalLength: true,
+  naturalLength: false,
   voices: 12,
   density: 0.45,
 };

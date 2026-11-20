@@ -560,3 +560,8 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
 - **Old files:** `parsePiece` maps `view.colors: 'voice'` to `'pitch'` before validation (`renameRetiredValues` in schema.ts), with no warning and no version bump. Not a migration step because version-1 files carry it. Share links go through `parsePiece`, so they are covered too.
 - **Render:** golden-angle voice palette removed (`GOLDEN_ANGLE`, `voiceHue`, `voiceColor`). In 'custom', a voice with no `VoiceDef.color` now falls back to the theme ink, not a voice hue. draw.ts unchanged.
 - Examples and property regressions now say `"pitch"`. render.spec.ts benchmark: base `'pitch'`; the solid baseline is `'ink'` (`ink-24-flush` holds the 4 ms budget that `voice-24-flush` held).
+
+## Generate length 30-900 s; `?dev` panel removed (2026-11-20, owner rulings)
+- Length slider 30-900 s, default 2:30 (150 s); "natural length" stays but is off by default (`DEFAULT_FORM.naturalLength = false`).
+- **Core floor, not fixed (src/core untouched):** `generate()` keeps every section, so any length below about 100 s still yields about 100 s (11 moments, 8 to 10 s apart, ends 99.6 to 103.7 s for seeds 1, 7, 99, 12345 at 30 s and 60 s; identical to each other). So the 30-100 s part of the slider has no effect. Needs a core decision (shorter fixed sections) if real 30 s pieces are wanted.
+- `?dev` panel removed as in the M3d2b recipe: `dev-options.ts`, `DevPanel.tsx`, its unit test, its e2e test, `.dev-panel` styles, and the `compileOptions()` arguments in `store.ts`. Core `CompileOptions.crossings` left as is.
