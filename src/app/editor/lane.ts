@@ -1,10 +1,12 @@
 /**
- * Pure helpers for the moment lane (PLAN.md §11.3): what each lane item shows, grid snapping,
- * keyboard nudges, span-end drags and row packing. No DOM, no store.
+ * Pure helpers for the lane rows (PLAN.md §11.2, §11.3): what each lane item shows, grid
+ * snapping, keyboard nudges, span-end drags, row packing and the level curve. No DOM, no store.
  */
 
 import type {
+  CompiledScore,
   Glide,
+  HarmonyChange,
   Moment,
   MomentId,
   MomentSpan,
@@ -12,6 +14,7 @@ import type {
   Piece,
   Seconds,
 } from '../../core/types';
+import { keyName } from '../../render/draw';
 import type { MomentPatch } from './ops';
 
 /** Nudge step without a grid, seconds. */
@@ -32,7 +35,7 @@ export type EndEdit =
 export interface LaneItem {
   id: MomentId;
   type: MomentType;
-  /** `label`, else the type. */
+  /** `label`, else the chord name, `level 55%`, the key name, or the type (§11.2). */
   text: string;
   at: Seconds;
   /** Span start and end (seconds); equal to `at` for a point. */
@@ -103,19 +106,32 @@ export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
   return [m.at, m.at + Math.max(0, g.stagger) + Math.max(0, g.length)];
 }
 
+/** A moment's name on the Moments row: its label, else chord name, `level 55%`, key, or type. */
+export function momentText(m: Moment, chordName?: string): string {
+  const label = m.label?.trim();
+  if (label) return label;
+  if (m.type === 'chord' && chordName) return chordName;
+  if (m.type === 'level') return `level ${Math.round(m.gain * 100)}%`;
+  if (m.type === 'key') return keyName(m.key);
+  return m.type;
+}
+
 /**
  * Lane items in piece order. Spans come from the compiled score when it has one for the moment
  * and the moment has not moved since (`compiledAt` maps ids to the times the score was built
  * with) and the span is not empty (a moment that moves nothing still shows its intended glide);
- * otherwise they are estimated from the glide.
+ * otherwise they are estimated from the glide. `harmony` (the compiled timeline) names chords.
  */
 export function laneItems(
   piece: Piece,
   spans: readonly MomentSpan[],
   compiledAt?: ReadonlyMap<MomentId, Seconds>,
+  harmony?: readonly HarmonyChange[],
 ): LaneItem[] {
   const byId = new Map<MomentId, MomentSpan>();
   for (const s of spans) byId.set(s.id, s);
+  const chordName = new Map<MomentId, string>();
+  for (const h of harmony ?? []) chordName.set(h.momentId, h.label);
   const defaults = piece.defaults.glide;
   return piece.moments.map((m) => {
     const s = byId.get(m.id);
@@ -131,7 +147,7 @@ export function laneItems(
     return {
       id: m.id,
       type: m.type,
-      text: m.label?.trim() || m.type,
+      text: momentText(m, chordName.get(m.id)),
       at: m.at,
       start,
       end,
@@ -168,27 +184,121 @@ export function endDragPatch(
   return { glide: { ...m.glide, [key]: v } };
 }
 
-/** Pixel extent an item needs on its row: its bar or its label, whichever is longer. */
-export function itemExtentPx(item: LaneItem, pps: number): number {
-  const label = 14 + item.text.length * 6.5;
-  return Math.max(label, (item.end - item.at) * pps) + 6;
+/** Pixel extent a moment needs on the Moments row: marker plus label. */
+export function itemExtentPx(item: LaneItem): number {
+  return 14 + item.text.length * 6.5 + 6;
+}
+
+/** Pixel extent a transition bar needs on the Transitions row (bar, or room for a short label). */
+export function barExtentPx(item: LaneItem, pps: number): number {
+  return Math.max(4, (item.end - item.start) * pps) + 4;
 }
 
 /**
- * Greedy row packing in pixel space: each item (in time order) goes on the first row whose last
- * item ends before it starts; when all `rows` are taken, on the row that frees up first.
- * Returns the row index per item, in input order.
+ * Greedy row packing in pixel space: each item (ordered by its left edge) goes on the first row
+ * whose last item ends before it starts; when all `rows` are taken, on the row that frees up
+ * first. Returns the row index per item, in input order.
  */
-export function packRows(items: readonly LaneItem[], pps: number, rows: number): number[] {
-  const order = items.map((_, i) => i).sort((a, b) => items[a].at - items[b].at || a - b);
+function pack(
+  items: readonly LaneItem[],
+  rows: number,
+  left: (it: LaneItem) => number,
+  extent: (it: LaneItem) => number,
+): number[] {
+  const order = items.map((_, i) => i).sort((a, b) => left(items[a]) - left(items[b]) || a - b);
   const ends = new Array<number>(Math.max(1, rows)).fill(-Infinity);
   const out = new Array<number>(items.length).fill(0);
   for (const i of order) {
-    const x = items[i].at * pps;
+    const x = left(items[i]);
     let r = ends.findIndex((e) => e <= x);
     if (r < 0) r = ends.indexOf(Math.min(...ends));
     out[i] = r;
-    ends[r] = x + itemExtentPx(items[i], pps);
+    ends[r] = x + extent(items[i]);
+  }
+  return out;
+}
+
+/** Rows for the moments' markers and labels. */
+export function packRows(items: readonly LaneItem[], pps: number, rows: number): number[] {
+  return pack(items, rows, (it) => it.at * pps, itemExtentPx);
+}
+
+/** Rows for the transition bars (by span). */
+export function packBars(items: readonly LaneItem[], pps: number, rows: number): number[] {
+  return pack(
+    items,
+    rows,
+    (it) => it.start * pps,
+    (it) => barExtentPx(it, pps),
+  );
+}
+
+/** One point of the level curve: time and mean level. */
+export interface LevelPoint {
+  t: Seconds;
+  v: number;
+}
+
+/**
+ * A voice's level at `t` (its limit from the left when `left`) from its timeline: linear ramps in
+ * amplitude, 1 before the first change.
+ */
+function levelOf(
+  changes: CompiledScore['voices'][number]['level'],
+  t: Seconds,
+  left: boolean,
+): number {
+  const before = (x: Seconds): boolean => (left ? x < t : x <= t);
+  // v: the level at the start of change i (each ramp starts from the level in effect then).
+  let v = 1;
+  for (let i = 0; i < changes.length && before(changes[i].t); i++) {
+    const c = changes[i];
+    const next = changes[i + 1];
+    const e = next && before(next.t) ? next.t : t;
+    const u = c.over > 0 ? (e - c.t) / c.over : 1;
+    v += (c.gain - v) * Math.min(1, u);
+  }
+  return v;
+}
+
+/**
+ * The Level row (§11.2): the mean level of the voices alive at each time, from the compiled
+ * `level` timelines, as a polyline (exact: between breakpoints every term is linear). 0 where no
+ * voice sounds. Steps appear as two points at the same time.
+ */
+export function levelCurve(score: Pick<CompiledScore, 'voices' | 'duration'>): LevelPoint[] {
+  const D = score.duration;
+  const times = new Set<number>([0, D]);
+  for (const v of score.voices) {
+    for (const l of v.lives) {
+      times.add(l.born);
+      if (l.died !== undefined) times.add(l.died);
+    }
+    for (const c of v.level) {
+      times.add(c.t);
+      times.add(c.t + Math.max(0, c.over));
+    }
+  }
+  const ts = [...times].filter((t) => t >= 0 && t <= D).sort((a, b) => a - b);
+  const mean = (t: Seconds, left: boolean): number => {
+    let sum = 0;
+    let n = 0;
+    for (const v of score.voices) {
+      const alive = v.lives.some((l) =>
+        left ? l.born < t && t <= (l.died ?? Infinity) : l.born <= t && t < (l.died ?? Infinity),
+      );
+      if (!alive) continue;
+      sum += levelOf(v.level, t, left);
+      n++;
+    }
+    return n > 0 ? sum / n : 0;
+  };
+  const out: LevelPoint[] = [];
+  for (const t of ts) {
+    const before = mean(t, true);
+    const at = mean(t, false);
+    if (out.length > 0 && Math.abs(before - at) > 1e-9) out.push({ t, v: before });
+    out.push({ t, v: at });
   }
   return out;
 }

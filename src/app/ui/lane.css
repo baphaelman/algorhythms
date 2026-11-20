@@ -1,26 +1,90 @@
 /*
- * The moment lane (PLAN.md §11.2): a strip under the score view, horizontally aligned with the
- * canvas (same 1 px border). Items are absolutely placed by Lane.tsx (transforms); three rows of
- * 20 px (ROWS, ROW_H there).
+ * The lane rows (PLAN.md §11.2) under the score view, horizontally aligned with the canvas (same
+ * 1 px border; Lane.tsx also measures it). Items are absolutely placed by Lane.tsx (transforms).
+ * Rows, top to bottom (keep in step with the constants there): Moments 0–44 px (two rows of
+ * 20 px), Transitions 44–76 (two rows of 14 px bars), Level 76–108. Row names sit in a left
+ * gutter over the axis.
  */
 
 .lane-track {
   position: relative;
-  height: 64px;
+  height: 110px;
   border: 1px solid var(--rule);
   background: var(--paper);
   overflow: clip;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
+  cursor: grab;
+}
+
+.lane-track.panning {
+  cursor: grabbing;
+}
+
+.lane-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.lane-row[data-row='moments'] {
+  top: 0;
+  height: 44px;
+}
+
+.lane-row[data-row='transitions'] {
+  top: 44px;
+  height: 32px;
+  border-top: 1px dashed var(--rule);
+}
+
+.lane-row[data-row='level'] {
+  top: 76px;
+  height: 32px;
+  border-top: 1px dashed var(--rule);
+}
+
+.lane-row-name {
+  position: absolute;
+  left: 4px;
+  bottom: 2px;
+  padding: 0 3px;
+  font: 9px/1.3 var(--f-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--paper) 80%, transparent);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .lane-inner {
   position: absolute;
   left: 0;
-  top: 2px;
+  top: 0;
   width: 0;
-  height: 60px;
+  height: 100%;
+}
+
+.lane-level {
+  position: absolute;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.lane-level-line {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.lane-level-fill {
+  fill: color-mix(in srgb, var(--ink-2) 12%, transparent);
+  stroke: none;
 }
 
 .lane-item {
@@ -65,21 +129,41 @@
   color: var(--ink-2);
 }
 
+/* Transitions row: left, top and width are set by Lane.tsx. */
 .lane-bar {
   position: absolute;
   left: 5px;
-  bottom: 3px;
-  height: 4px;
+  top: 0;
+  height: 12px;
   width: 0;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--c) 45%, transparent);
+  background: color-mix(in srgb, var(--c) 30%, transparent);
+}
+
+.lane-bar-text {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding-left: 3px;
+  font: 9px/12px var(--f-mono);
+  color: var(--ink-2);
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+.lane-item[data-type='walk'] .lane-bar {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--c) 40%, transparent) 0 3px,
+    color-mix(in srgb, var(--c) 12%, transparent) 3px 6px
+  );
 }
 
 .lane-end {
   display: none;
   position: absolute;
   right: -4px;
-  top: -6px;
+  top: -2px;
   width: 8px;
   height: 16px;
   cursor: ew-resize;
@@ -89,9 +173,9 @@
   content: '';
   position: absolute;
   left: 3px;
-  top: 3px;
+  top: 2px;
   width: 2px;
-  height: 10px;
+  height: 12px;
   border-radius: 1px;
   background: var(--c);
 }

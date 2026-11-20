@@ -1,6 +1,8 @@
 /**
- * The moment lane (PLAN.md §11.2, §11.3, §11.3a, §11.5): one DOM item per moment under the score
- * view, aligned with it at every frame.
+ * The lane rows under the score (PLAN.md §11.2, §11.3, §11.3a, §11.5), on the score's time axis
+ * at every frame: **Moments** (marker and name, two staggered rows), **Transitions** (each
+ * moment's compiled span as a bar; walks striped) and **Level** (the mean level curve). One DOM
+ * item per moment holds its marker and its bar, so selection, focus and drags act on both.
  *
  * React renders the items (on piece, score or selection changes only). Positions are written
  * directly: the loop's per-frame camera (`onScoreFrame`) translates one inner container, and item
@@ -8,7 +10,8 @@
  * change. Drags write transforms at once and commit the piece once per animation frame through
  * an editor gesture (one undo entry per drag; Escape cancels).
  *
- * Pointer: click selects, Shift-click toggles, a click on empty lane clears; drag moves (snapping
+ * Pointer: click selects, Shift-click toggles, a click on empty lane clears and a drag there pans
+ * (Follow turns off during playback); drag an item to move it (snapping
  * to the BPM grid unless Alt is held); Alt at press duplicates; dragging a span end changes the
  * glide length (Shift: stagger; a walk's end, a level ramp's length). Keys on a focused item:
  * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter/Space select. Focusing an
@@ -32,11 +35,14 @@ import {
   endDragPatch,
   gridStep,
   laneItems,
+  levelCurve,
   nudgeDt,
+  packBars,
   packRows,
   revealPan,
   spokenTime,
   type LaneItem,
+  type LevelPoint,
 } from '../editor/lane';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
 import { onScoreFrame } from '../loop';
@@ -44,9 +50,20 @@ import { attachPaletteDrop } from '../palette-drop';
 import { panBy, usePlayer } from '../store';
 import './lane.css';
 
-/** Rows items are packed into, and their height (px; keep in step with lane.css). */
-const ROWS = 3;
+/** Row geometry (px; keep in step with lane.css). Moments: two rows of markers and names. */
+const ROWS = 2;
 const ROW_H = 20;
+const MOM_TOP = 2;
+/** Transitions: two rows of bars. */
+const BAR_ROWS = 2;
+const BAR_H = 14;
+const TRANS_TOP = 46;
+/** Level: the curve's box. */
+const LEVEL_TOP = 78;
+const LEVEL_H = 28;
+const LEVEL_PAD = 3;
+/** Half the marker's width: an item's box starts this far left of its time. */
+const MARKER_HALF = 5;
 /** Horizontal travel (px) before a press becomes a drag. */
 const DRAG_SLOP = 3;
 /** Bars narrower than this (px) hide their end handle, so the marker stays clickable. */
@@ -68,6 +85,15 @@ usePlayer.subscribe((s, prev) => {
 const pieceNow = (): Piece => usePlayer.getState().piece;
 const momentOf = (p: Piece, id: MomentId): Moment | undefined => p.moments.find((m) => m.id === id);
 const nameOf = (m: Pick<Moment, 'type' | 'label'>): string => m.label?.trim() || m.type;
+
+/** A press on the lane background: a click clears the selection, a drag pans. */
+interface Pan {
+  pointerId: number;
+  x0: number;
+  lastX: number;
+  shift: boolean;
+  started: boolean;
+}
 
 interface Drag {
   pointerId: number;
@@ -100,24 +126,48 @@ class LaneController {
   track: HTMLElement | null = null;
   inner: HTMLElement | null = null;
   liveRegion: HTMLElement | null = null;
+  levelLine: SVGPolylineElement | null = null;
+  levelFill: SVGPolygonElement | null = null;
+  levelSvg: SVGSVGElement | null = null;
   items: LaneItem[] = [];
+  curve: LevelPoint[] = [];
   readonly els = new Map<MomentId, HTMLElement>();
   private view: View | null = null;
   private offset = NaN;
   private pps = NaN;
   private dirty = true;
+  /** x of the score canvas's left edge relative to the track's padding box (0 when aligned). */
+  private axisLeft = 0;
   private rowOf = new Map<MomentId, number>();
+  private barRowOf = new Map<MomentId, number>();
   /** Preview times of moved items, and the preview end of an end drag. */
   private previewAt = new Map<MomentId, Seconds>();
   private previewEnd: { id: MomentId; end: Seconds } | null = null;
   drag: Drag | null = null;
+  private pan: Pan | null = null;
   private raf = 0;
   private flip = false;
 
-  setItems(items: LaneItem[]): void {
+  setItems(items: LaneItem[], curve: LevelPoint[]): void {
     this.items = items;
+    this.curve = curve;
     this.invalidate();
   }
+
+  /** Re-measures the score canvas's left edge against the track (on resize). */
+  measure = (): void => {
+    const track = this.track;
+    const canvas = document.getElementById('score');
+    if (!track || !canvas) return;
+    const a = canvas.getBoundingClientRect().left + canvas.clientLeft;
+    const b = track.getBoundingClientRect().left + track.clientLeft;
+    const left = Math.round((a - b) * 100) / 100;
+    if (left !== this.axisLeft) {
+      this.axisLeft = left;
+      this.offset = NaN;
+      if (this.view) this.layout(this.view);
+    }
+  };
 
   invalidate(): void {
     this.dirty = true;
@@ -129,7 +179,7 @@ class LaneController {
     this.view = view;
     const inner = this.inner;
     if (!inner || !(view.pps > 0)) return;
-    const offset = -view.start * view.pps;
+    const offset = this.axisLeft - view.start * view.pps;
     if (offset !== this.offset) {
       this.offset = offset;
       inner.style.transform = `translateX(${offset.toFixed(2)}px)`;
@@ -140,32 +190,58 @@ class LaneController {
     const pps = view.pps;
     if (!this.drag?.started) {
       const rows = packRows(this.items, pps, ROWS);
+      const bars = packBars(this.items, pps, BAR_ROWS);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
+      this.barRowOf = new Map(this.items.map((it, i) => [it.id, bars[i]]));
     }
     for (const it of this.items) this.place(it, pps);
+    this.placeLevel(pps);
+  }
+
+  /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
+  private placeLevel(pps: number): void {
+    const { levelLine, levelFill, levelSvg } = this;
+    if (!levelLine || !levelFill || !levelSvg) return;
+    const c = this.curve;
+    let peak = 1.2;
+    for (const p of c) if (p.v > peak) peak = p.v;
+    const h = LEVEL_H - 2 * LEVEL_PAD;
+    const line = c
+      .map((p) => `${(p.t * pps).toFixed(2)},${(LEVEL_PAD + (1 - p.v / peak) * h).toFixed(2)}`)
+      .join(' ');
+    levelLine.setAttribute('points', line);
+    const last = c.at(-1);
+    levelFill.setAttribute(
+      'points',
+      last ? `0,${LEVEL_H} ${line} ${(last.t * pps).toFixed(2)},${LEVEL_H}` : '',
+    );
+    levelSvg.style.width = `${((last?.t ?? 0) * pps).toFixed(2)}px`;
   }
 
   private place(it: LaneItem, pps: number): void {
     const el = this.els.get(it.id);
     if (!el) return;
     const at = this.previewAt.get(it.id) ?? it.at;
-    const row = this.rowOf.get(it.id) ?? this.rowOfCopy(it.id);
-    el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${row * ROW_H}px)`;
+    const row = this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
+    const barRow = this.barRowOf.get(it.id) ?? this.rowOfCopy(it.id, this.barRowOf);
+    const y = MOM_TOP + row * ROW_H;
+    el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
     const bar = el.firstElementChild as HTMLElement | null;
     if (!bar) return;
     const end = this.previewEnd?.id === it.id ? Math.max(it.start, this.previewEnd.end) : it.end;
     const w = Math.max(0, (end - it.start) * pps);
-    bar.style.left = `${((it.start - it.at) * pps).toFixed(2)}px`;
+    bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
+    bar.style.top = `${TRANS_TOP + barRow * BAR_H - y}px`;
     bar.style.width = `${w.toFixed(2)}px`;
     const handle = it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
   }
 
-  /** A copy made mid-drag sits on its original's row. */
-  private rowOfCopy(id: MomentId): number {
+  /** A copy made mid-drag sits on its original's rows. */
+  private rowOfCopy(id: MomentId, rows: Map<MomentId, number>): number {
     const d = this.drag;
     const i = d ? d.newIds.indexOf(id) : -1;
-    return i >= 0 && d ? (this.rowOf.get(d.ids[i]) ?? 0) : 0;
+    return i >= 0 && d ? (rows.get(d.ids[i]) ?? 0) : 0;
   }
 
   /** Pans the (paused) view so item `id` is visible: Tab focus onto an off-screen item. */
@@ -195,11 +271,18 @@ class LaneController {
   // ---- pointer ------------------------------------------------------------------------------
 
   onDown = (e: PointerEvent): void => {
-    if (this.drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (this.drag || this.pan || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const target = e.target instanceof Element ? e.target : null;
     const itemEl = target?.closest<HTMLElement>('[data-moment]');
     if (!itemEl) {
-      if (!e.shiftKey) select([]);
+      this.track?.setPointerCapture(e.pointerId);
+      this.pan = {
+        pointerId: e.pointerId,
+        x0: e.clientX,
+        lastX: e.clientX,
+        shift: e.shiftKey,
+        started: false,
+      };
       return;
     }
     const id = itemEl.dataset.moment as MomentId;
@@ -228,7 +311,31 @@ class LaneController {
     };
   };
 
+  /** Background drag: the content follows the pointer. */
+  private onPanMove(e: PointerEvent, p: Pan): void {
+    if (!p.started) {
+      if (Math.abs(e.clientX - p.x0) <= DRAG_SLOP) return;
+      p.started = true;
+      this.track?.classList.add('panning');
+    }
+    const dx = e.clientX - p.lastX;
+    p.lastX = e.clientX;
+    if (dx !== 0 && this.pps > 0) panBy(-dx / this.pps);
+  }
+
+  private endPan(e: PointerEvent, p: Pan): void {
+    this.pan = null;
+    this.track?.classList.remove('panning');
+    if (this.track?.hasPointerCapture(p.pointerId)) this.track.releasePointerCapture(p.pointerId);
+    if (!p.started && e.type !== 'pointercancel' && !p.shift) select([]);
+  }
+
   onMove = (e: PointerEvent): void => {
+    const p = this.pan;
+    if (p && e.pointerId === p.pointerId) {
+      this.onPanMove(e, p);
+      return;
+    }
     const d = this.drag;
     if (!d || e.pointerId !== d.pointerId) return;
     if (!d.started) {
@@ -312,6 +419,11 @@ class LaneController {
   }
 
   onUp = (e: PointerEvent): void => {
+    const p = this.pan;
+    if (p && e.pointerId === p.pointerId) {
+      this.endPan(e, p);
+      return;
+    }
     const d = this.drag;
     if (!d || e.pointerId !== d.pointerId) return;
     if (e.type === 'pointercancel') {
@@ -397,16 +509,25 @@ class LaneController {
     this.inner = inner;
     this.track = track;
     this.liveRegion = track.parentElement?.querySelector<HTMLElement>('[aria-live]') ?? null;
+    this.levelSvg = inner.querySelector<SVGSVGElement>('.lane-level');
+    this.levelLine = inner.querySelector<SVGPolylineElement>('.lane-level-line');
+    this.levelFill = inner.querySelector<SVGPolygonElement>('.lane-level-fill');
     track.addEventListener('pointerdown', this.onDown);
     track.addEventListener('pointermove', this.onMove);
     track.addEventListener('pointerup', this.onUp);
     track.addEventListener('pointercancel', this.onUp);
     const off = onScoreFrame((v) => this.layout(v));
     const offDrop = attachPaletteDrop(track);
+    const ro = new ResizeObserver(this.measure);
+    ro.observe(track);
+    const canvas = document.getElementById('score');
+    if (canvas) ro.observe(canvas);
+    this.measure();
     return () => {
       this.cancel();
       off();
       offDrop();
+      ro.disconnect();
       track.removeEventListener('pointerdown', this.onDown);
       track.removeEventListener('pointermove', this.onMove);
       track.removeEventListener('pointerup', this.onUp);
@@ -414,6 +535,12 @@ class LaneController {
       this.track = null;
     };
   }
+}
+
+/** A span's length as shown on its bar. */
+function barText(it: LaneItem): string {
+  const len = it.end - it.start;
+  return len > 1e-3 ? `${len.toFixed(1)} s` : '';
 }
 
 function itemLabel(it: LaneItem): string {
@@ -428,15 +555,16 @@ export function Lane() {
   const compiled = usePlayer((s) => s.compiled);
   const selection = useEditor((s) => s.selection);
   const items = useMemo(
-    () => laneItems(piece, compiled.momentSpans, sourceAt.get(compiled)),
+    () => laneItems(piece, compiled.momentSpans, sourceAt.get(compiled), compiled.harmony),
     [piece, compiled],
   );
+  const curve = useMemo(() => levelCurve(compiled), [compiled]);
   const ctl = useMemo(() => new LaneController(), []);
   const track = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [focusId, setFocusId] = useState<MomentId | null>(null);
 
-  useLayoutEffect(() => ctl.setItems(items));
+  useLayoutEffect(() => ctl.setItems(items, curve));
   useEffect(
     () => (track.current && inner.current ? ctl.attach(track.current, inner.current) : undefined),
     [ctl],
@@ -538,7 +666,26 @@ export function Lane() {
         aria-describedby="lane-help"
         onKeyDown={onKeyDown}
       >
+        <div className="lane-row" data-row="moments" aria-hidden="true">
+          <span className="lane-row-name">Moments</span>
+        </div>
+        <div className="lane-row" data-row="transitions" aria-hidden="true">
+          <span className="lane-row-name">Transitions</span>
+        </div>
+        <div className="lane-row" data-row="level" aria-hidden="true">
+          <span className="lane-row-name">Level</span>
+        </div>
         <div ref={inner} className="lane-inner">
+          <svg
+            className="lane-level"
+            data-testid="lane-level"
+            height={LEVEL_H}
+            style={{ top: LEVEL_TOP }}
+            aria-hidden="true"
+          >
+            <polygon className="lane-level-fill" />
+            <polyline className="lane-level-line" />
+          </svg>
           {items.map((it) => (
             <div
               key={it.id}
@@ -561,6 +708,7 @@ export function Lane() {
               }}
             >
               <span className="lane-bar">
+                <span className="lane-bar-text">{barText(it)}</span>
                 {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
               </span>
               <span className="lane-marker" />
