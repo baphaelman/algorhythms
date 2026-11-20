@@ -736,3 +736,28 @@ stems.test.ts export tests: explicit 30 s timeout. render.spec.ts: 12 ms guard w
   - *Incremental compile* (recommended): feasible, since the simulation is causal. Snapshot per moment event: each `VoiceRun` (status, diedAt, pending moves, pendingBirth, frontier tail **by value** since `finishAt` mutates it, open `Life` by value, array lengths of segs/lives/level), the event queue, key, keys/harmony/diags lengths, lastActivity, and spanStart/spanEnd (later moves extend earlier moments' spans). Moves carry mutable `cancelled` and `memo`. Restore at the last checkpoint before min(old at, new at) of the edited moment; a reordered moment list, voice-def or init-time diagnostic change means a full compile.
   - A cross-compile memo of `carriedVelocity` (pure; keyed by its 8 inputs) would make repeat compiles much cheaper, but it also makes the benchmark measure a warm cache, so it was not done.
 - **Perf test:** unchanged. It runs under Vitest's module runner, which nearly doubled the cost before the aliases (347 M vs 186 M bundled) and now adds about 1 %.
+
+## M4j: incremental compile (2026-11-20)
+
+- **API:** `createIncrementalCompiler(options?)` in `src/core/compiler/incremental.ts` → `{ compile(piece), reset(), stats }`. Output equals `compile(piece, options)`; `compile` itself is unchanged (it gained an `onMomentEvent` hook, null by default; `Compiler` and the move-start sub-order constants are exported for incremental.ts; `EventQueue` gained `items`, `next`, `restore`). Wired into `src/app/store.ts`: one instance; the initial piece, `loadPiece` (after `reset()`) and `recompileNow` use it.
+- **Design:** a checkpoint before every 2nd moment event. Next compile: k = first moment index whose moment differs (identity, then structural), T* = earliest `at` of any moment at index ≥ k in the old or new array; resume from the last checkpoint at or before (T*, k) in event order. Correct for unsorted arrays too (it resumes earlier). The rebuilt queue = the new piece's moment events and first walk ticks not yet handled + the checkpoint's move starts and later ticks (original `seq` kept). Checkpoint contents: see the file header. To keep GC low, per-voice state is two flat arrays; tails and open lives are stored as a reference plus the fields the run mutates (tail t1/p1/curve), and restored as fresh copies; only the spans of moments with a queued move or tick are stored (other handled moments' spans are final, read from the previous run).
+- **Full compile when:** no previous state; seed, key, end, start, `defaults.glide`, or voice ids/ranges differ; moments are not arrays; or no checkpoint precedes the change. Output-only voice fields (gain, pan, timbre, sends, mute, solo) and `tuning` resume normally (`finish` reads them fresh).
+- **Numbers** (benchmark piece, bundled with rolldown, Node 22). Instructions per compile (`time -l`, (250 − 50 runs)/200), and median wall time at load 3–6:
+
+  | | instructions | % of full | median ms |
+  |---|---|---|---|
+  | full `compile` | 145 M | 100 | 8.3 |
+  | incremental, first (full + checkpoints) | 154 M | 106 | 8.45 |
+  | edit at 10 % | 149 M | 103 | 8.0 |
+  | edit at 50 % | 90 M | 62 | 4.6 |
+  | edit at 75 % | 55 M | 38 | 2.5 |
+  | edit at 90 % | 25 M | 17 | 0.8 |
+  | unchanged piece | ~6 M | 4 | |
+
+  Cost ≈ 6 M fixed (setup, restore, `finish`) + the simulation after the checkpoint. A checkpoint before every moment event cost +11 % on a full compile (+27 % before the flat layout: GC).
+- **Tests:** `tests/property/core/incremental.property.test.ts` (150 pieces × up to 10 edits: editor ops move/patch/insert/remove, raw replace, unsorted swaps, mute, voice gain, start change, JSON clone; after each, deep-equal to `compile` and the previous score unmutated; ~2/3 of edits resume; 4,000 random-seed runs passed). `tests/unit/core/compiler-incremental.test.ts`: bench edits at 10/50/90 %, every example (moves ±0.5 s, deletes at four positions), `crossings: 'allow'`, setup fallback, reset. `momentArb` is now exported from compiler-arbitraries.ts.
+- **Traps:**
+  - Successive scores share segment and closed-life objects: consumers must not mutate a compiled score.
+  - It relies on these invariants of compile.ts/voice.ts: pushed segments, closed lives, level points and diagnostics are never mutated; `finishAt` mutates only the tail's t1/p1/curve; an open life has only `born`/`fadeIn`; a scheduled Move changes only `cancelled` and `memo` (`memo` is a pure cache); a span changes only through its own moment, its moves or its walk ticks. A compiler change that breaks one must update incremental.ts; the property test should catch it.
+  - A resumed score may hold structurally equal objects from an earlier piece (e.g. a key after a JSON round trip), so `toStrictEqual` can fail on prototypes alone; the test compares `structuredClone`s.
+- **Left:** an edit at exactly 50 % costs ~62 % (the fixed part plus the tail). Stopping early when the resumed state converges to the old run's would help, but states rarely match exactly after an edit; not attempted.
