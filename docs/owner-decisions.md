@@ -16,7 +16,11 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
   - When a part's notes differ, its controls say "Mixed": timbre shows a disabled Mixed choice, pan and gain read Mixed and a drag sets every note, and a range field left blank leaves that bound alone.
   - Two parts can't share a name. Deleting a part unassigns its notes; moments that targeted it ask inline, then target those same notes directly.
   - The inspector's Part chooser sits after Time. A moment that targets a part says so in its header and lane tooltip. New notes from growing the pool start unassigned.
-- **Naming prompt.** Skip is remembered per piece for the session, so the popup asks at most once per piece. Untouched pieces (fresh New, unchanged example or generated piece) never ask.
+- **Naming prompt.**
+  - The popup reads "Name this piece?". Skip is remembered per piece for the session, so it asks at most once per piece. Untouched pieces never ask: a fresh New, or an unchanged example or generated piece.
+  - Pieces that still have Generate's or Compose's automatic title count as unnamed, so an edited generated piece asks.
+  - An empty name or "Untitled" counts as Skip, and so does a click outside the popup. Undoing every edit still counts as edited.
+  - Generate's old "Replace the current piece?" confirm is gone, since opening never warns.
 - **Key at 0:00 and lane previews (M4.5-39).**
   - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
   - Adding a key at exactly 0:00 selects the piece's key instead of adding a moment. An old file with key moments at the very start folds them into the piece's key.
