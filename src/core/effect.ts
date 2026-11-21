@@ -444,10 +444,10 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     return sanitizeRange((u < piece.voices.length ? own : def)?.range ?? [0, 127]);
   });
   if (m.type === 'tune') {
-    // The tune's line: the first of the target in pitch order. It has an effect if some note
-    // (folded into its range) is not where the line is heading.
+    // The tune's line: the lowest (or with line 'high' the highest) of the target in pitch order.
+    // It has an effect if some note (folded into its range) is not where the line is heading.
     if (m.notes.length === 0 || targeted.length === 0) return no(noEffectReason(m, ctx()));
-    const v = targeted[0];
+    const v = m.line === 'high' ? targeted[targeted.length - 1] : targeted[0];
     const r = ranges[v] ?? [0, 127];
     const moves = m.notes.some(
       (x) => Number.isFinite(x.pitch) && !same(foldIntoRange(x.pitch, r[0], r[1]).p, st.dest[v]),

@@ -235,6 +235,18 @@ export function auditionAfterEdit(id: MomentId, only?: readonly Pitch[]): void {
   afterEdit(() => auditionMoment(id, only));
 }
 
+/**
+ * A tune's "Melody on" pick: once the edit has compiled, `pitch` (its first note) on the line that
+ * now plays tune `id`, at `t`.
+ */
+export function auditionTuneAfterEdit(id: MomentId, pitch: Pitch, t: Seconds): void {
+  afterEdit(() => {
+    const score = usePlayer.getState().compiled;
+    const v = score.voices.find((x) => x.segments.some((s) => s.momentId === id));
+    if (v) audition([{ voice: v.index, pitch }], t);
+  });
+}
+
 /** A walk step (Steps list ▲/▼): once the edit has compiled, the step's voice at its new pitch. */
 export function auditionStepAfterEdit(step: {
   momentId: MomentId;

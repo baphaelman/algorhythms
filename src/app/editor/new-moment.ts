@@ -161,18 +161,21 @@ export function defaultMoment<T extends MomentType>(
       break;
     }
     case 'tune': {
-      // Up and back down the scale from the lowest sounding note (the line a tune targets
-      // first), a beat a note (0.5 s without a tempo).
-      const low = active.reduce<number | null>(
-        (best, v) => (best === null || v.pitch < best ? v.pitch : best),
+      // With more than one line sounding the melody goes on top (`line: 'high'`; a product call,
+      // build log "Tune: Melody on"). Up and back down the scale from that line's note, a beat a
+      // note (0.5 s without a tempo).
+      const high = n > 1;
+      const edge = active.reduce<number | null>(
+        (best, v) => (best === null || (high ? v.pitch > best : v.pitch < best) ? v.pitch : best),
         null,
       );
-      const from = low ?? 60;
+      const from = edge ?? 60;
       const len = beatOf(piece) ?? 0.5;
       m = {
         ...base,
         type: 'tune',
         notes: [0, 1, 2, 1].map((k) => ({ pitch: stepByScale(from, k, key), len })),
+        ...(high ? { line: 'high' as const } : {}),
       };
       break;
     }

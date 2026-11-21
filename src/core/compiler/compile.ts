@@ -1433,9 +1433,10 @@ export class Compiler {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Note `st.k` of tune i, then queues the next one. The first note picks the line: the first of
-   * the target in pitch order (committed destinations). Later notes follow that line through
-   * merges (`tuneLine`); if it is gone, the first of the target again. Each note is a pin-like
+   * Note `st.k` of tune i, then queues the next one. The first note picks the line: the lowest
+   * (or with `line: 'high'` the highest) of the target in pitch order (committed destinations).
+   * Later notes follow that line through merges (`tuneLine`); if it is gone, the target's
+   * lowest/highest again. Each note is a pin-like
    * move of the whole line (it may cross other lines; joins stay within its part, `onJoin`).
    * `no-effect` when the tune has no notes, targets nothing, or no note moved its line (raised
    * at the last note).
@@ -1455,7 +1456,7 @@ export class Compiler {
     let v = k > 0 ? this.tuneLine(st.voice) : -1;
     if (v < 0 && n > 0) {
       const ts = this.resolveTarget(m.target, k === 0 ? m.id : null);
-      v = ts.length > 0 ? ts[0] : -1;
+      v = ts.length === 0 ? -1 : m.line === 'high' ? ts[ts.length - 1] : ts[0];
     }
     if (v < 0) {
       if (k === 0) {

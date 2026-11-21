@@ -4093,6 +4093,14 @@ This is the *input* form: fields with defaults are optional here.
                   ],
                   "additionalProperties": {}
                 }
+              },
+              "line": {
+                "description": "Which line of the target, in pitch order at `at`, carries the tune (absent: 'low').",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "high"
+                ]
               }
             },
             "required": [
