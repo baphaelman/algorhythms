@@ -1,16 +1,22 @@
 /**
- * Next-move suggestions (PLAN.md §11.3, revision 6): `core/suggest` at the end of the selected
- * moment (the latest end when several are selected), or at the grid-snapped playhead when nothing
- * is selected. `watchSuggestions` keeps `useSuggestions` current (200 ms poll, paused while playing).
+ * Next-move suggestions (PLAN.md §11.3, revision 7 "Add vs Next"): `core/suggest` at the end of
+ * the piece's last moment (the latest end of any unmuted moment), appended there. Independent of
+ * the playhead and the selection. Adding one extends `end.at` when the piece has one and the new
+ * moment would reach past it. `watchSuggestions` keeps `useSuggestions` current.
  */
 
 import { create } from 'zustand';
 import { suggestNext, type Suggestion } from '../../core/suggest';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
 import { usePlayer } from '../store';
-import { edit, select, useEditor } from './history';
+import { edit, select } from './history';
+import { estimateSpan } from './lane';
 import { insertMoments, newMomentIds } from './ops';
-import { addTime } from './palette-effects';
+
+/** Silence kept after an appended moment (as the compiler's END_TAIL). */
+const MIN_TAIL: Seconds = 4;
+
+const round3 = (t: Seconds): Seconds => Math.round(t * 1000) / 1000;
 
 /** Where a moment's effect ends: its span's end, else its region (walk, level), else `at`. */
 function momentEnd(m: Moment, score: CompiledScore): Seconds {
@@ -19,25 +25,41 @@ function momentEnd(m: Moment, score: CompiledScore): Seconds {
   return Math.max(own, span?.end ?? -Infinity);
 }
 
-/** The time suggestions are for, given the piece, its score and the selection. */
-export function suggestionTime(
-  piece: Piece,
-  score: CompiledScore,
-  selection: readonly MomentId[],
-  playhead: Seconds,
-): Seconds {
-  let end = -Infinity;
-  for (const id of selection) {
-    const m = piece.moments.find((x) => x.id === id);
-    if (m) end = Math.max(end, momentEnd(m, score));
-  }
-  if (end === -Infinity) return playhead;
-  const bpm = piece.view.gridBpm;
-  if (bpm && bpm > 0) {
-    const beat = 60 / bpm;
-    end = Math.ceil(end / beat - 1e-9) * beat;
-  }
-  return Math.round(end * 1000) / 1000;
+/** The time suggestions are for: the latest end of the piece's unmuted moments (0 with none). */
+export function suggestionTime(piece: Piece, score: CompiledScore): Seconds {
+  let end = 0;
+  for (const m of piece.moments) if (!m.muted) end = Math.max(end, momentEnd(m, score));
+  return round3(end);
+}
+
+/** `m` moved by `dt` (a walk's `until` too). */
+function shifted(m: Moment, dt: Seconds): Moment {
+  if (dt === 0) return m;
+  const at = round3(m.at + dt);
+  return m.type === 'walk' ? { ...m, at, until: round3(m.until + dt) } : { ...m, at };
+}
+
+/**
+ * Suggestions appended at `t`. The state is read at `t`, or just before an explicit `end.at` that
+ * comes first (voices are closed there), and the moments are moved to `t`.
+ */
+export function suggestionsAt(piece: Piece, score: CompiledScore, t: Seconds): Suggestion[] {
+  const endAt = piece.end.at;
+  const read = endAt !== undefined && endAt - 0.01 < t ? Math.max(0, round3(endAt - 0.01)) : t;
+  const out = suggestNext(piece, score, read);
+  return read === t ? out : out.map((s) => ({ ...s, moment: shifted(s.moment, t - read) }));
+}
+
+/**
+ * The piece with `moment` appended: an explicit `end.at` that would leave less than 4 s after the
+ * moment's span moves out to that. Used for adding and for the hover preview.
+ */
+export function appendMoment(piece: Piece, moment: Moment): Piece {
+  const next = insertMoments(piece, [moment]);
+  const endAt = piece.end.at;
+  if (endAt === undefined) return next;
+  const need = round3(estimateSpan(moment, piece.defaults.glide)[1] + MIN_TAIL);
+  return need > endAt ? { ...next, end: { ...next.end, at: need } } : next;
 }
 
 interface SuggestionsState {
@@ -50,25 +72,28 @@ export const useSuggestions = create<SuggestionsState>()(() => ({ t: NaN, items:
 
 let last: { t: Seconds; score: CompiledScore | null } = { t: NaN, score: null };
 
-/** Recomputes the suggestions if their time or the score changed (or `force`). */
+/** Recomputes the suggestions if the score changed (or `force`). */
 export function refreshSuggestions(force = false): void {
   const { piece, compiled } = usePlayer.getState();
-  const t = suggestionTime(piece, compiled, useEditor.getState().selection, addTime());
-  if (!force && t === last.t && compiled === last.score) return;
+  if (!force && compiled === last.score) return;
+  const t = suggestionTime(piece, compiled);
   last = { t, score: compiled };
   let items: Suggestion[];
   try {
-    items = suggestNext(piece, compiled, t);
+    items = suggestionsAt(piece, compiled, t);
   } catch {
     items = [];
   }
   useSuggestions.setState({ t, items });
 }
 
-/** Adds a suggestion's moment with a fresh id (one undo entry), selects it and returns its id. */
+/**
+ * Appends a suggestion's moment with a fresh id (one undo entry, extending the end if needed),
+ * selects it and returns its id.
+ */
 export function addSuggestion(s: Suggestion): MomentId {
   const [id] = newMomentIds(usePlayer.getState().piece, 1);
-  edit((p) => insertMoments(p, [{ ...s.moment, id }]), s.label);
+  edit((p) => appendMoment(p, { ...s.moment, id }), s.label);
   select([id]);
   return id;
 }
@@ -76,20 +101,14 @@ export function addSuggestion(s: Suggestion): MomentId {
 const POLL_MS = 200;
 
 /**
- * Starts keeping `useSuggestions` current; returns a stop function. Frozen during playback (the
- * strip is for editing; refreshing it as the playhead moves cost frames).
+ * Starts keeping `useSuggestions` current; returns a stop function. A 200 ms poll recomputes
+ * only when the compiled score changed (so a drag recomputes at most 5 times a second, and
+ * playback costs nothing).
  */
 export function watchSuggestions(): () => void {
   refreshSuggestions(true);
-  const unsub = useEditor.subscribe((s, prev) => {
-    if (s.selection !== prev.selection) refreshSuggestions();
-  });
   const timer = setInterval(() => {
-    if (document.hidden || usePlayer.getState().transport.status === 'playing') return;
-    refreshSuggestions();
+    if (!document.hidden) refreshSuggestions();
   }, POLL_MS);
-  return () => {
-    clearInterval(timer);
-    unsub();
-  };
+  return () => clearInterval(timer);
 }

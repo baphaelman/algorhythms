@@ -139,7 +139,7 @@ describe('actions at the playhead', () => {
     loadPiece(newPiece({ seed: 7 }));
   });
 
-  it('adds at the playhead, not snapped to the bar grid (revision 7)', () => {
+  it('adds exactly at the playhead, also when the piece has a grid (revision 7)', () => {
     seekTo(3.3);
     const a = addAtPlayhead('chord');
     const p = usePlayer.getState().piece;

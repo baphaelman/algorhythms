@@ -225,3 +225,66 @@ test('dragging the lane background pans; during playback it turns Follow off', a
   expect(b).toBe(a);
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying)).toBe(true);
 });
+
+test('overlapping moments stack in sub-rows; the lane grows; bars stay with their markers', async ({
+  page,
+}) => {
+  const chord = (id: string, at: number, length: number) => ({
+    id,
+    type: 'chord',
+    at,
+    notes: { kind: 'degrees', degrees: [0, 2, 4] },
+    voicing: 'even',
+    glide: { length, stagger: 0 },
+  });
+  await load(page, [], false);
+  await setWindow(page, 20);
+  await frames(page);
+  const h0 = (await page.locator('.lane-track').boundingBox())!.height;
+  await load(
+    page,
+    [
+      chord('stk001', 4, 6),
+      { id: 'stk002', type: 'level', at: 4, gain: 0.5, over: 4 },
+      { id: 'stk003', type: 'shift', at: 5, steps: 1, glide: { length: 2, stagger: 0 } },
+      chord('stk004', 30, 1),
+    ],
+    false,
+  );
+  await setWindow(page, 20);
+  await frames(page, 4);
+  const box = async (id: string, part: string) =>
+    (await page.locator(`[data-moment="${id}"] ${part}`).boundingBox())!;
+  const ids = ['stk001', 'stk002', 'stk003'];
+  const markers = await Promise.all(ids.map((id) => box(id, '.lane-marker')));
+  const labels = await Promise.all(ids.map((id) => box(id, '.lane-label')));
+  const bars = await Promise.all(ids.map((id) => box(id, '.lane-bar')));
+  // Three distinct sub-rows, in piece order; no two labels or bars overlap.
+  expect(markers[1].y).toBeGreaterThan(markers[0].y + 10);
+  expect(markers[2].y).toBeGreaterThan(markers[1].y + 10);
+  const apart = (a: { y: number; height: number }, b: { y: number; height: number }) =>
+    a.y + a.height <= b.y + 0.5 || b.y + b.height <= a.y + 0.5;
+  for (let i = 0; i < 3; i++)
+    for (let j = i + 1; j < 3; j++) {
+      expect(apart(labels[i], labels[j])).toBe(true);
+      expect(apart(bars[i], bars[j])).toBe(true);
+    }
+  // Each bar starts at its marker, and the bars keep the markers' order in the Transitions row.
+  for (let i = 0; i < 3; i++) {
+    expect(Math.abs(bars[i].x - (markers[i].x + markers[i].width / 2))).toBeLessThanOrEqual(1);
+  }
+  expect(bars[1].y).toBeGreaterThan(bars[0].y);
+  expect(bars[2].y).toBeGreaterThan(bars[1].y);
+  // The lane grew to fit; the bars stay inside the Transitions row.
+  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', '3');
+  expect((await page.locator('.lane-track').boundingBox())!.height).toBeGreaterThan(h0 + 10);
+  const transitions = (await page.locator('[data-row="transitions"]').boundingBox())!;
+  for (const b of bars) {
+    expect(b.y).toBeGreaterThanOrEqual(transitions.y);
+    expect(b.y + b.height).toBeLessThanOrEqual(transitions.y + transitions.height);
+  }
+  // Hit-testing: clicking the third sub-row's marker selects it.
+  await page.locator('[data-moment="stk003"] .lane-marker').click();
+  await expect(page.locator('[data-moment="stk003"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-moment="stk001"]')).toHaveAttribute('aria-pressed', 'false');
+});

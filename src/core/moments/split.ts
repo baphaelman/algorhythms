@@ -4,9 +4,10 @@
  * The targeted voices and the newborns are voiced together (`notes`, default `current`). The
  * targeted voices take an order-preserving injective subset of the targets (§7.2, the prototype's
  * `retarget`); the targets left over go to the newborns, lowest pool index first, in ascending
- * order. Each newborn's parent is the sounding targeted voice whose committed destination is
- * nearest its target (ties: the lower voice); the compiler starts it on the parent's pitch at the
- * parent's departure (§7.4). With too few dormant voices the split is truncated (`pool-exhausted`).
+ * order. Each newborn's parent is the nearer (by committed destination; ties: the lower) of the
+ * sounding targeted voices whose targets are next below and above its own, so no line crosses
+ * (M4.5-17); the compiler starts it on the parent's pitch at the parent's departure (§7.4). With
+ * too few dormant voices the split is truncated (`pool-exhausted`).
  */
 
 import { assignFree, assignOrdered } from '../voice-leading';
@@ -66,8 +67,8 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
  * The split rule (§7.4), shared with chord `count`: the targeted voices `vs` (sorted; committed
  * destinations `p`) take an injective subset of the targets (order-preserving, or Hungarian when
  * `free`), or double them (surjective) when there are fewer; the newborns take the leftover
- * targets in ascending order (doubling evenly when too few), each parented by the sounding
- * targeted voice nearest its target (ties: the lower one).
+ * targets in ascending order (doubling evenly when too few), each parented by a sounding targeted
+ * voice near its target: an order neighbour (`orderParent`), or under `free` the nearest.
  */
 export function voiceWithBirths(
   env: MomentEnv,
@@ -110,19 +111,75 @@ export function voiceWithBirths(
         : Array.from({ length: extra }, (_, i) => q[i % q.length]);
     birthTargets = [...leftover, ...fill].sort((a, b) => a - b);
   }
+  // Order neighbours exist when the existing voices' targets keep their order (`nearest`
+  // voicing too: each voice's nearest candidate rises with its pitch).
+  const tv = intents.map((it) => it.to);
+  let ordered = !free && vs.some((v) => env.sounding(v));
+  for (let j = 1; ordered && j < tv.length; j++) if (tv[j] < tv[j - 1]) ordered = false;
   newborns.forEach((voice, i) => {
     const to = birthTargets[i];
-    let parent = -1;
-    let best = Infinity;
-    for (let j = 0; j < vs.length; j++) {
-      if (!env.sounding(vs[j])) continue;
-      const d = Math.abs(p[j] - to);
-      if (d < best) {
-        best = d;
-        parent = vs[j];
-      }
-    }
+    const parent = ordered ? orderParent(env, vs, p, tv, to) : nearestParent(env, vs, p, to);
     intents.push({ voice, to, kind: IntentKind.Birth, parent });
   });
   return intents;
+}
+
+/**
+ * The sounding voice of `vs` whose committed destination is nearest `to` (ties: lower); with none
+ * sounding, the nearest sounding active voice (§7.4: "the active voice nearest to the birth
+ * target"), so a newborn never appears from nowhere while something sounds; −1 if nothing does.
+ */
+function nearestParent(
+  env: MomentEnv,
+  vs: readonly number[],
+  p: readonly Pitch[],
+  to: Pitch,
+): number {
+  let parent = -1;
+  let best = Infinity;
+  for (let j = 0; j < vs.length; j++) {
+    if (!env.sounding(vs[j])) continue;
+    const d = Math.abs(p[j] - to);
+    if (d < best) {
+      best = d;
+      parent = vs[j];
+    }
+  }
+  if (parent >= 0) return parent;
+  for (const v of env.active) {
+    if (!env.sounding(v)) continue;
+    const d = Math.abs(env.dest(v) - to);
+    if (d < best) {
+      best = d;
+      parent = v;
+    }
+  }
+  return parent;
+}
+
+/**
+ * Under ordered voice leading (M4.5-17): the parent is one of the newborn's order neighbours, the
+ * targeted voices whose targets `tv` (non-decreasing, parallel to `vs`) lie next below and next
+ * above `to`, whichever is nearer by committed destination (ties: below). A newborn forked from
+ * a voice further away would start on the far side of a neighbour and cross it. A neighbour
+ * that is not sounding yet (a pending birth) passes to the next sounding voice outward; with
+ * none on either side, the nearest sounding voice.
+ */
+function orderParent(
+  env: MomentEnv,
+  vs: readonly number[],
+  p: readonly Pitch[],
+  tv: readonly Pitch[],
+  to: Pitch,
+): number {
+  let lo = -1;
+  while (lo + 1 < vs.length && tv[lo + 1] <= to) lo++;
+  let hi = vs.length;
+  while (hi - 1 >= 0 && tv[hi - 1] >= to) hi--;
+  while (lo >= 0 && !env.sounding(vs[lo])) lo--;
+  while (hi < vs.length && !env.sounding(vs[hi])) hi++;
+  if (lo < 0 && hi >= vs.length) return nearestParent(env, vs, p, to);
+  if (lo < 0) return vs[hi];
+  if (hi >= vs.length) return vs[lo];
+  return Math.abs(p[hi] - to) < Math.abs(p[lo] - to) ? vs[hi] : vs[lo];
 }

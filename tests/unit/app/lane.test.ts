@@ -10,8 +10,8 @@ import {
   levelCurve,
   momentText,
   nudgeDt,
-  packBars,
-  packRows,
+  itemBoxPx,
+  stackRows,
   revealPan,
   snapTime,
   type LaneItem,
@@ -142,11 +142,11 @@ describe('spans and end drags', () => {
   });
 });
 
-describe('packRows', () => {
-  const item = (id: string, at: number, end = at): LaneItem => ({
+describe('stackRows (revision 7)', () => {
+  const item = (id: string, at: number, end = at, text = 'chord'): LaneItem => ({
     id,
     type: 'chord',
-    text: 'chord',
+    text,
     at,
     start: at,
     end,
@@ -154,17 +154,43 @@ describe('packRows', () => {
     endEdit: 'glide',
   });
 
-  it('puts overlapping items on separate rows and reuses freed rows', () => {
+  it('puts overlapping items on new sub-rows, without a cap, and reuses freed ones', () => {
     // At 10 px/s a 5-letter label needs ~53 px, i.e. 5.3 s.
     const items = [item('a', 0), item('b', 1), item('c', 2), item('d', 20), item('e', 2.5)];
-    expect(packRows(items, 10, 3)).toEqual([0, 1, 2, 0, 0]);
+    expect(stackRows(items, 10)).toEqual({ rows: [0, 1, 2, 0, 3], count: 4 });
   });
 
-  it('bars pack on their own rows by span; labels do not reserve bar rows', () => {
-    const items = [item('a', 0, 100), item('b', 30, 31), item('c', 200, 201)];
-    expect(packRows(items, 10, 2)).toEqual([0, 0, 0]);
-    expect(packBars(items, 10, 2)).toEqual([0, 1, 0]);
-    expect(packBars(items, 10, 1)).toEqual([0, 0, 0]);
+  it('stacks overlapping spans even when the labels are short', () => {
+    const items = [item('a', 0, 100, 'x'), item('b', 30, 31, 'y'), item('c', 200, 201, 'z')];
+    expect(stackRows(items, 10)).toEqual({ rows: [0, 1, 0], count: 2 });
+  });
+
+  it('stacks moments at the same time in input order (stable)', () => {
+    const items = [item('a', 5), item('b', 5), item('c', 5)];
+    expect(stackRows(items, 10).rows).toEqual([0, 1, 2]);
+    expect(stackRows([...items].reverse(), 10).rows).toEqual([0, 1, 2]);
+  });
+
+  it('is one sub-row when nothing overlaps; zero items use none', () => {
+    const items = [item('a', 0, 4), item('b', 10, 14), item('c', 20, 24)];
+    expect(stackRows(items, 10)).toEqual({ rows: [0, 0, 0], count: 1 });
+    expect(stackRows([], 10)).toEqual({ rows: [], count: 0 });
+  });
+
+  it('no two items on one sub-row overlap', () => {
+    const items = Array.from({ length: 40 }, (_, i) =>
+      item(`m${i}`, (i * 7919) % 97, ((i * 7919) % 97) + (i % 5) * 3),
+    );
+    const pps = 12;
+    const { rows } = stackRows(items, pps);
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        if (rows[i] !== rows[j]) continue;
+        const [a0, a1] = itemBoxPx(items[i], pps);
+        const [b0, b1] = itemBoxPx(items[j], pps);
+        expect(a1 <= b0 || b1 <= a0).toBe(true);
+      }
+    }
   });
 });
 

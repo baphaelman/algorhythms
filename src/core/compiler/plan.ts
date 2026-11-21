@@ -92,6 +92,8 @@ interface Part {
   /** Births: pool index of the parent, or −1. */
   parent: number;
   fade: Seconds;
+  /** Deaths: the survivor it merges into, or −1. */
+  into: number;
   /** The voice is not born yet: its move cannot start before this time. */
   deferT: Seconds;
   limits: OvershootLimits;
@@ -215,6 +217,7 @@ export function planMoment(
       preDest,
       parent: -1,
       fade: 0,
+      into: -1,
       deferT: run.pendingBirth ? run.pendingBirth.t : -Infinity,
       limits: FREE_LIMITS,
       crossScale: 1,
@@ -233,7 +236,9 @@ export function planMoment(
     if (it.kind === IntentKind.Birth) continue;
     const d = host.dest(it.voice);
     if (it.kind === IntentKind.Death) {
-      mk(it.voice, PartKind.Death, it.to, d).fade = it.fade ?? 0;
+      const p = mk(it.voice, PartKind.Death, it.to, d);
+      p.fade = it.fade ?? 0;
+      p.into = it.into ?? -1;
     } else if (it.to !== d) {
       mk(it.voice, PartKind.Move, it.to, d);
     } else if (ordered) {
@@ -298,6 +303,14 @@ export function planMoment(
     const s = gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
     return s > parts[i].deferT ? s : parts[i].deferT;
   };
+  // A dying voice glides into its survivor in step with it (M4.5-17): when the survivor moves in
+  // this moment, the two share one timing, so the dying line meets it without passing it.
+  for (let i = 0; i < n; i++) {
+    const p = parts[i];
+    if (p.kind !== PartKind.Death || p.into < 0) continue;
+    const s = partOf.get(p.into);
+    if (s !== undefined && parts[s].kind === PartKind.Move) adopt(i, s);
+  }
   // Arrive together (§7.2, revision 6): every duration runs to one shared end, the latest drawn
   // start plus the moment's jittered length. Fix-ups (adoption, pull-back) only copy existing
   // starts or move them earlier, and keep that end.
@@ -357,7 +370,7 @@ export function planMoment(
     momentId: host.momentId,
     limits: p.limits,
     crossScale: p.crossScale,
-    death: p.kind === PartKind.Death ? { fade: p.fade } : undefined,
+    death: p.kind === PartKind.Death ? { fade: p.fade, into: p.into } : undefined,
     cancelled: false,
     momentIndex: host.momentIndex,
   });
@@ -484,9 +497,12 @@ export function planMoment(
 
   /** Reference sample of the last `crossing` call (first sample where both sound). */
   let crossRef = 0;
+  /** Part index of the newborn of the last `crossing` call that returned −3. */
+  let crossBirth = -1;
   /**
    * First sample index where lo is above hi; −1 if none; −2 if they are already out of order at
-   * the first sample where both sound (not this moment's doing). Sets `crossRef`.
+   * the first sample where both sound (not this moment's doing); −3 if a newborn of this moment
+   * starts out of order (sets `crossBirth`). Sets `crossRef`.
    *
    * Samples are read lazily: after the reference sample, a block of BLOCK samples is skipped when
    * the pair's bounds over it (`Projection.boundsIn`) prove no sample there can be out of order.
@@ -500,6 +516,19 @@ export function planMoment(
     if (!projOf(lo).anyOrder || !projOf(hi).anyOrder) {
       sample(lo); // fill in time order, as `pitchAt` then requires
       sample(hi);
+    } else {
+      // A newborn of this moment starts in order with its neighbour (M4.5-17): checked at its
+      // birth instant, which the sample grid can miss.
+      for (const p of [lo, hi]) {
+        if (p.kind !== PartKind.Birth || !p.birth) continue;
+        const tb = p.birth.t;
+        const x = projOf(lo).pitchAt(tb);
+        const y = projOf(hi).pitchAt(tb);
+        if (x > y + CROSS_EPS) {
+          crossBirth = p.slot;
+          return -3;
+        }
+      }
     }
     let j = 0;
     for (; j < SAMPLES; j++) {
@@ -618,7 +647,33 @@ export function planMoment(
           clearAt[k] = ver[li] + ver[hi] * 65536 + 1;
           continue;
         }
-        if (at === -2) {
+        if (at === -2 || at === -3) {
+          // Out of order at a newborn's birth, or where both first sound with a newborn born
+          // there: this moment's doing (M4.5-17). The newborn takes the other's timing, so it
+          // forks when the other departs and glides like it (siblings of one parent then fork
+          // together); a voice still gliding from an earlier moment is re-timed with it instead.
+          const nb = at === -3 ? crossBirth : lateBirth(li, hi);
+          const other = nb === li ? hi : li;
+          const o = parts[other];
+          if (nb >= 0 && o.kind === PartKind.Fixed) {
+            if (projector.get(o.voice).lastGlideEnd() > T) {
+              retime(other);
+              adopt(other, nb);
+              invalidate(o.voice);
+              acted = true;
+              sync();
+              touched[li] = 1;
+              touched[hi] = 1;
+              continue;
+            }
+          } else if (nb >= 0 && find(nb) !== find(other)) {
+            adopt(nb, other);
+            acted = true;
+            sync();
+            touched[li] = 1;
+            touched[hi] = 1;
+            continue;
+          }
           unresolved.add(key); // already out of order when the moment starts: not its doing
           continue;
         }
@@ -638,10 +693,7 @@ export function planMoment(
           const fixed = parts[fixedI];
           if (projector.get(fixed.voice).lastGlideEnd() > T) {
             // Re-time the voice still gliding from an earlier moment with this group.
-            fixed.kind = PartKind.Move;
-            fixed.limits = limitsOf(fixedI);
-            fixed.move = makeMove(fixed, fixedI);
-            tentative.set(fixed.voice, { birth: null, moves: [fixed.move] });
+            retime(fixedI);
             if (fixedI === ai) adopt(ai, bi);
             else adopt(bi, ai);
             invalidate(fixed.voice);
@@ -662,7 +714,8 @@ export function planMoment(
       const up = parts[order[k + 1]];
       if (!isMover(lo) && !isMover(up)) continue;
       if (clearAt[k] === ver[order[k]] + ver[order[k + 1]] * 65536 + 1) continue; // known clear
-      if (crossing(lo, up) >= 0) left++;
+      const c = crossing(lo, up);
+      if (c >= 0 || c === -3) left++;
     }
     if (left > 0) {
       host.diag(
@@ -671,6 +724,33 @@ export function planMoment(
         `${left} pair(s) of voices still cross mid-glide after timing merges.`,
       );
     }
+  }
+
+  /** Turns a fixed part (a voice still gliding from an earlier moment) into a move to its own
+   * destination, so it can take a group's timing. */
+  function retime(i: number): void {
+    const p = parts[i];
+    p.kind = PartKind.Move;
+    p.limits = limitsOf(i);
+    p.move = makeMove(p, i);
+    tentative.set(p.voice, { birth: null, moves: [p.move] });
+  }
+
+  /**
+   * Of a pair out of order at its first common sample (crossRef): a newborn of this moment born
+   * since the previous sample (the later-born if both are); else −1.
+   */
+  function lateBirth(li: number, hi: number): number {
+    const t = times[crossRef];
+    const tPrev = crossRef > 0 ? times[crossRef - 1] : -Infinity;
+    const bornHere = (i: number): number => {
+      const b = parts[i].kind === PartKind.Birth ? parts[i].birth : null;
+      return b && b.t > tPrev && b.t <= t ? b.t : -Infinity;
+    };
+    const bl = bornHere(li);
+    const bh = bornHere(hi);
+    if (bl === -Infinity && bh === -Infinity) return -1;
+    return bh > bl ? hi : li;
   }
 
   function adopt(a: number, b: number): void {

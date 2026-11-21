@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { Suggestion } from '../../core/suggest';
-import { addSuggestion, useSuggestions, watchSuggestions } from '../editor/suggestions';
+import {
+  addSuggestion,
+  appendMoment,
+  useSuggestions,
+  watchSuggestions,
+} from '../editor/suggestions';
 import { PREVIEW_DELAY_MS, startMomentPreview, stopPreview } from '../preview';
 import './palette.css';
 
@@ -22,9 +27,10 @@ function clock(t: number): string {
 }
 
 /**
- * Next-move suggestions (PLAN.md §11.3, revision 6): 3–4 moves after the selected moment (or at
- * the playhead), from the Generate composer's grammar (core/suggest.ts). Click adds one (one undo
- * entry) and selects it; hovering for 300 ms previews it (../preview.ts).
+ * Next-move suggestions, "Next" (PLAN.md §11.3, revisions 6–7): 3–4 moves appended at the end of
+ * the piece's last moment, from the Generate composer's grammar (core/suggest.ts). Its own group,
+ * styled apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering
+ * for 300 ms previews it (../preview.ts).
  */
 export function Suggestions() {
   const items = useSuggestions((s) => s.items);
@@ -48,7 +54,7 @@ export function Suggestions() {
     cancelHover();
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = null;
-      startMomentPreview(s.moment, s.label);
+      startMomentPreview(s.moment, s.label, appendMoment);
     }, PREVIEW_DELAY_MS);
   };
 
@@ -56,12 +62,14 @@ export function Suggestions() {
     <div
       className="palette suggestions"
       role="toolbar"
-      aria-label="Suggested next moments"
+      aria-label="Suggested next moments, added at the end"
       data-testid="suggestions"
       data-t={Number.isFinite(t) ? t : undefined}
     >
-      <span className="palette-label">Next</span>
-      {items.length === 0 && <span className="suggest-none">nothing sounding here</span>}
+      <span className="palette-label" aria-hidden="true">
+        Next <span className="palette-where">at end{Number.isFinite(t) ? ` ${clock(t)}` : ''}</span>
+      </span>
+      {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => (
         <button
           key={`${t}:${s.label}`}
@@ -69,7 +77,7 @@ export function Suggestions() {
           data-suggestion={i}
           data-kind={s.kind}
           data-label={s.label}
-          title={`Add at ${clock(s.moment.at)} (hover to hear)`}
+          title={`Append at ${clock(s.moment.at)} (hover to hear)`}
           onPointerEnter={() => hover(s)}
           onPointerLeave={cancelHover}
           onClick={() => {
