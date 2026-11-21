@@ -3,7 +3,8 @@
  * edits inside an open moment, played only while the transport is stopped.
  *
  * - `auditionAfterEdit(id)`: an inspector pick; once the edit has compiled, the moment's resulting
- *   notes sound once for `AUDITION_SECONDS`.
+ *   notes sound once for `AUDITION_SECONDS`. `auditionStepAfterEdit` (a walk step) and
+ *   `auditionPointsAfterEdit` (moved dots) do the same for one step or a set of notes.
  * - `auditionMoment(id)`: selecting a moment; its resulting notes once (not the transition).
  * - `holdNote(voice, pitch, t)`: a note drag; the note at its snapped pitch, held until
  *   `stopAudition()` (the release). Each new pitch replaces the sound.
@@ -231,6 +232,50 @@ let pendingEdit: { stop: () => void } | null = null;
  * replaces a pending one. Call from the input handler, so the audio context can resume.
  */
 export function auditionAfterEdit(id: MomentId, only?: readonly Pitch[]): void {
+  afterEdit(() => auditionMoment(id, only));
+}
+
+/** A walk step (Steps list ▲/▼): once the edit has compiled, the step's voice at its new pitch. */
+export function auditionStepAfterEdit(step: {
+  momentId: MomentId;
+  tick: number;
+  voice: string;
+}): void {
+  afterEdit(() => {
+    const score = usePlayer.getState().compiled;
+    const s = score.walkSteps.find(
+      (r) => r.momentId === step.momentId && r.tick === step.tick && r.voice === step.voice,
+    );
+    const voice = score.voices.findIndex((v) => v.id === step.voice);
+    if (s && voice >= 0) audition([{ voice, pitch: s.to }], s.t);
+  });
+}
+
+/**
+ * Moved arrival points (Shift+▲/▼ on dots): once the edit has compiled, their pitches together,
+ * each on its voice (else the voice sounding nearest it at its time), at the first one's time.
+ */
+export function auditionPointsAfterEdit(
+  points: readonly { pitch: Pitch; t: Seconds; voice?: number }[],
+): void {
+  if (points.length === 0) return;
+  afterEdit(() => {
+    const score = usePlayer.getState().compiled;
+    const notes: AuditionNote[] = [];
+    for (const p of points) {
+      const voice = p.voice ?? nearestVoice(score, p.pitch, p.t);
+      if (voice !== undefined && !notes.some((n) => n.voice === voice))
+        notes.push({ voice, pitch: p.pitch });
+    }
+    audition(notes, points[0].t);
+  });
+}
+
+/**
+ * Runs `play` once the edit just made has compiled (or after EDIT_WAIT_MS). A newer call replaces
+ * a pending one; refused while the transport plays.
+ */
+function afterEdit(play: () => void): void {
   pendingEdit?.stop();
   pendingEdit = null;
   if (busy()) {
@@ -244,7 +289,7 @@ export function auditionAfterEdit(id: MomentId, only?: readonly Pitch[]): void {
   const fire = (): void => {
     if (done) return;
     stop();
-    auditionMoment(id, only);
+    play();
   };
   const unsubscribe = usePlayer.subscribe((s) => {
     if (s.compiled !== before) fire();

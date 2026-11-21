@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The store needs a few browser globals and the audio module; stub them before importing it.
 vi.hoisted(() => {
@@ -48,7 +48,10 @@ vi.mock('../../../src/app/audio', () => {
 
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
-import type { CompiledScore, Moment, Piece } from '../../../src/core/types';
+import type { ChordMoment, CompiledScore, Moment, Piece } from '../../../src/core/types';
+import { moveChordNote, moveWalkStep, octaveDots } from '../../../src/app/editor/actions';
+import { momentArrivals } from '../../../src/app/editor/arrival-points';
+import { piece as fixture } from '../core/compiler-fixtures';
 import {
   AUDITION_SECONDS,
   audition,
@@ -189,5 +192,106 @@ describe('auditioning', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('step edits audition the moved notes', () => {
+  const heard = (job: Job): number[] =>
+    job.score.voices
+      .filter((v) => v.lives.length > 0)
+      .map((v) => v.segments[0].p0)
+      .sort((x, y) => x - y);
+  const byId = (id: string) => usePlayer.getState().piece.moments.find((m) => m.id === id)!;
+  const stepOf = (tick: number, voice: string) =>
+    usePlayer
+      .getState()
+      .compiled.walkSteps.find((s) => s.momentId === 'w' && s.tick === tick && s.voice === voice)!;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    loadPiece(
+      fixture({
+        start: [48, 55, 60, 64],
+        key: { tonic: 'C', scale: 'major' },
+        glide: { length: 1, jitter: 0, stagger: 0 },
+        moments: [
+          {
+            id: 'c',
+            type: 'chord',
+            at: 2,
+            notes: { kind: 'chord', symbol: 'Am' },
+            voicing: 'even',
+            assign: 'ordered',
+          },
+          {
+            id: 'w',
+            type: 'walk',
+            at: 10,
+            until: 14,
+            grid: 1,
+            density: 1,
+            steps: [-1, 1],
+            stepGlide: 0.25,
+          },
+        ],
+      }),
+    );
+    audio.jobs = [];
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The edits compile synchronously here, so the audition fires on the fallback wait. */
+  const settle = (): void => {
+    vi.advanceTimersByTime(600);
+  };
+
+  it('▲/▼ on a walk step plays its voice at the new pitch', () => {
+    const s0 = usePlayer.getState().compiled.walkSteps.find((s) => s.momentId === 'w')!;
+    const ref = { momentId: 'w', tick: s0.tick, voice: s0.voice };
+    expect(moveWalkStep(ref, 1)).toBe(true);
+    settle();
+    const s1 = stepOf(ref.tick, ref.voice);
+    expect(s1.to).not.toBe(s0.to);
+    expect(audio.jobs).toHaveLength(1);
+    expect(heard(audio.jobs[0])).toEqual([s1.to]);
+    const voice = usePlayer.getState().piece.voices.findIndex((v) => v.id === ref.voice);
+    expect(audio.jobs[0].score.voices[voice].lives).toHaveLength(1);
+  });
+
+  it('▲/▼ on a chord note plays that note; a newer step replaces the pending one', () => {
+    const before = liveNotes(usePlayer.getState().compiled, 'c');
+    expect(moveChordNote('c', 0, 1)).toBe(true);
+    expect(moveChordNote('c', 0, 1)).toBe(true);
+    settle();
+    const after = (byId('c') as ChordMoment).notes;
+    expect(after.kind).toBe('pitches');
+    expect(audio.jobs).toHaveLength(1);
+    const [p] = heard(audio.jobs[0]);
+    expect(p).toBeGreaterThan(before[0]);
+    expect(after.kind === 'pitches' && after.pitches).toContain(p);
+  });
+
+  it('Shift+▲/▼ on selected dots plays them an octave on', () => {
+    const { piece: p, compiled } = usePlayer.getState();
+    const dots = momentArrivals(
+      compiled,
+      p.moments.find((m) => m.id === 'c')!,
+    ).slice(0, 2);
+    expect(dots).toHaveLength(2);
+    expect(octaveDots(dots, 1)).not.toBeNull();
+    settle();
+    expect(audio.jobs).toHaveLength(1);
+    expect(heard(audio.jobs[0])).toEqual(dots.map((d) => d.pitch + 12).sort((x, y) => x - y));
+  });
+
+  it('plays nothing while the transport plays', () => {
+    setStatus('playing');
+    const s0 = usePlayer.getState().compiled.walkSteps.find((s) => s.momentId === 'w')!;
+    moveWalkStep({ momentId: 'w', tick: s0.tick, voice: s0.voice }, -1);
+    moveChordNote('c', 1, -1);
+    settle();
+    expect(audio.jobs).toHaveLength(0);
   });
 });

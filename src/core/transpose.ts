@@ -8,22 +8,30 @@
  *
  * `remapMoment` applies it to one moment's fixed notes; `fixedNoteMoments` finds the moments with
  * fixed notes in a key moment's span (its `at` to the next key moment, in compile order);
- * `carryKey` does both. Key-relative notes (degrees, Roman numerals, 'tonic', 'center') are left
+ * `carryKey` does both (a note point's `from` only when its line gets that pitch in the span).
+ * Key-relative notes (degrees, Roman numerals, 'tonic', 'center') are left
  * alone: they already follow the key.
  *
  * Integer and exact floating-point operations only (§7.11).
  */
 
+import { compile } from './compiler/compile';
+import { createIncrementalCompiler } from './compiler/incremental';
 import { sanitizeRange, foldIntoRange } from './compiler/range';
 import { sameKey } from './effect';
+import { NOTE_MATCH } from './moments/note';
+import { lifeAt, segmentIndexAt } from './query';
+import { evalSegment } from './segment';
 import { spellPc } from './harmony';
 import { mod } from './math';
 import { parsePitchClass, pitchClassOf, scaleIntervals } from './scales';
 import type {
   ChordMoment,
+  CompiledScore,
   Key,
   Moment,
   MomentId,
+  NoteMoment,
   NoteSet,
   Piece,
   Pitch,
@@ -344,9 +352,91 @@ export interface CarryResult {
   skipped: MomentId[];
 }
 
+/** A voice's destination and pitch just before moment `momentId` at t; null while silent. */
+function stateBefore(
+  score: CompiledScore,
+  voice: number,
+  t: Seconds,
+  momentId: MomentId,
+): { dest: Pitch; now: Pitch } | null {
+  const v = score.voices[voice];
+  if (!lifeAt(v, t)) return null;
+  let i = segmentIndexAt(v, t);
+  // Skip the moment's own glides.
+  while (i >= 0 && v.segments[i].t0 >= t && v.segments[i].momentId === momentId) i--;
+  if (i < 0) return null;
+  const s = v.segments[i];
+  if (s.t1 < t - 1e-9) return null;
+  return { dest: s.curve ? s.curve.p1 : s.p1, now: evalSegment(s, Math.min(t, s.t1)) };
+}
+
+/** How far a voice's state is from `p`: by destination or by the pitch at t, the nearer. */
+const distance = (st: { dest: Pitch; now: Pitch }, p: Pitch): number =>
+  Math.min(Math.abs(st.dest - p), Math.abs(st.now - p));
+
+/**
+ * The voices note moment `m`'s `froms` match in `score` (−1: none). As the compiler matches
+ * (nearest within NOTE_MATCH, ties: the lower voice, one voice per change), but over every
+ * sounding voice: targeting is not checked.
+ */
+function matchedVoices(score: CompiledScore, m: NoteMoment, froms: readonly Pitch[]): number[] {
+  const states = score.voices.map((_, i) => stateBefore(score, i, m.at, m.id));
+  const taken = new Set<number>();
+  return froms.map((p) => {
+    let best = -1;
+    let dist = NOTE_MATCH;
+    states.forEach((st, i) => {
+      if (!st || taken.has(i)) return;
+      const d = distance(st, p);
+      if (d < dist || (d === dist && best < 0)) {
+        best = i;
+        dist = d;
+      }
+    });
+    if (best >= 0) taken.add(best);
+    return best;
+  });
+}
+
+/**
+ * `remapped` (note moment `m` with every fixed note moved from `from` to `to`) with each `from`
+ * put back where the line it matches still has its old pitch: a line held from before the key.
+ * `before` is the score `m` was written against, `after` the carried piece's score up to `m`. A
+ * `from` that matches no line in `before` stays moved.
+ */
+function keepHeldFroms(
+  m: NoteMoment,
+  remapped: NoteMoment,
+  from: Key,
+  to: Key,
+  before: CompiledScore,
+  after: CompiledScore,
+): NoteMoment {
+  const many = (m.changes?.length ?? 0) > 0;
+  const froms = many ? m.changes!.map((c) => c.from) : m.from !== undefined ? [m.from] : [];
+  const voices = matchedVoices(before, m, froms);
+  const keep = froms.map((p, j) => {
+    const rp = remapPitch(p, from, to);
+    if (voices[j] < 0 || rp === p) return false;
+    const st = stateBefore(after, voices[j], m.at, m.id);
+    return st !== null && distance(st, p) < distance(st, rp);
+  });
+  if (!keep.some(Boolean)) return remapped;
+  const n = { ...remapped };
+  if (many && remapped.changes) {
+    n.changes = remapped.changes.map((c, j) => (keep[j] ? { ...c, from: m.changes![j].from } : c));
+  } else if (keep[0]) {
+    n.from = m.from;
+  }
+  return n;
+}
+
 /**
  * Moves the fixed notes in key moment `keyId`'s span from key `from` to the key moment's key.
- * Returns `piece` itself when nothing changes.
+ * A note point's `from` moves only when the line it matches gets its pitch in the span; a line
+ * held from before the key keeps its pitch, so its `from` stays (else `note-not-sounding`).
+ * Decided on compiled scores, note by note in compile order. Returns `piece` itself when nothing
+ * changes.
  */
 export function carryKey(
   piece: Piece,
@@ -360,17 +450,33 @@ export function carryKey(
   const { ids } = fixedNoteMoments(piece, keyId);
   if (ids.length === 0) return none;
   const want = new Set(ids);
-  const moved: MomentId[] = [];
   const folds: CarryFold[] = [];
   const skipped: MomentId[] = [];
-  const moments = piece.moments.map((m) => {
+  const notes: number[] = [];
+  const moments = piece.moments.map((m, i) => {
     if (!want.has(m.id)) return m;
     const res = remapMoment(piece, m, from, k.key, opts);
     folds.push(...res.folds);
     if (res.skipped) skipped.push(m.id);
-    if (res.moment !== m) moved.push(m.id);
+    if (m.type === 'note' && res.moment !== m) notes.push(i);
     return res.moment;
   });
+  if (notes.length > 0) {
+    // The score the notes were written against: the key moment still in the old key.
+    const written = piece.moments.map((m) => (m.id === keyId ? { ...m, key: from } : m));
+    const before = compile({ ...piece, moments: written });
+    const inc = createIncrementalCompiler();
+    notes.sort((a, b) => piece.moments[a].at - piece.moments[b].at || a - b);
+    // Undecided notes keep their old `from`s; only moments before each note matter to it.
+    const decided = new Map(notes.map((i) => [i, moments[i] as NoteMoment]));
+    for (const i of notes) moments[i] = piece.moments[i];
+    for (const i of notes) {
+      const after = inc.compile({ ...piece, moments: moments.slice() });
+      const m = piece.moments[i] as NoteMoment;
+      moments[i] = keepHeldFroms(m, decided.get(i)!, from, k.key, before, after);
+    }
+  }
+  const moved = piece.moments.filter((m, i) => moments[i] !== m).map((m) => m.id);
   if (moved.length === 0) return { ...none, skipped };
   return { piece: { ...piece, moments }, moved, folds, skipped };
 }
