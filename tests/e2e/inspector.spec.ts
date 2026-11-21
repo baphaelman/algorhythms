@@ -3,7 +3,7 @@
  * the debug hook. Chromium only.
  */
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { seek } from './app-hook';
 
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough for the inspector');
@@ -239,6 +239,9 @@ const WALK = '6nVoFa';
 
 interface WalkM {
   density: number;
+  grid: number;
+  stepGlide: number;
+  bass?: { leap: [number, number] };
   steps: number[];
   fixed?: { tick: number; voice: string; pitch: number }[];
   target?: unknown;
@@ -293,6 +296,65 @@ test('walk: density and allowed steps change the score; each undoes', async ({ p
   await expect.poll(() => walkSteps(page)).toBe(before);
 });
 
+/** A fingerprint of the compiled segments inside the walk's region (step glides change these). */
+const walkSegments = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      store: {
+        getState(): {
+          compiled: { voices: { segments: { t0: number; t1: number; p1: number }[] }[] };
+        };
+      };
+    };
+    const segs = h.store
+      .getState()
+      .compiled.voices.flatMap((v) => v.segments)
+      .filter((g) => g.t0 >= 98.8 && g.t0 < 122.9);
+    return JSON.stringify(segs.map((g) => [g.t0, g.t1, g.p1]));
+  });
+
+test('walk: grid, step glide and bass leap change the score; each undoes', async ({ page }) => {
+  const insp = page.getByTestId('inspector');
+  await hook(page, 'select', [WALK]);
+  await expect(insp.getByRole('heading')).toContainText('Walk');
+  const steps0 = await walkSteps(page);
+  const segs0 = await walkSegments(page);
+  const set = async (field: Locator, v: string) => {
+    await field.fill(v);
+    await field.press('Enter');
+    // Leave the field, as a click on Undo would: a focused field keeps its typed text.
+    await field.blur();
+  };
+
+  // Grid 1 s -> 0.5 s: twice the ticks, so the steps move.
+  await set(insp.getByTestId('insp-walk-grid'), '0.5');
+  expect((await walk(page))?.grid).toBe(0.5);
+  await expect.poll(() => walkSteps(page)).not.toBe(steps0);
+  expect(await undoLabel(page)).toBe('Edit grid');
+  await hook(page, 'undo');
+  expect((await walk(page))?.grid).toBe(1);
+  await expect.poll(() => walkSteps(page)).toBe(steps0);
+
+  // Step glide 0.27 s -> 0.8 s: longer glides.
+  await set(insp.getByTestId('insp-walk-step-glide'), '0.8');
+  expect((await walk(page))?.stepGlide).toBe(0.8);
+  await expect.poll(() => walkSegments(page)).not.toBe(segs0);
+  expect(await undoLabel(page)).toBe('Edit step glide');
+  await hook(page, 'undo');
+  expect((await walk(page))?.stepGlide).toBe(0.27);
+  await expect.poll(() => walkSegments(page)).toBe(segs0);
+
+  // Bass leap [5, 12] -> [12, 12]: the bass always leaps an octave.
+  await set(insp.getByRole('textbox', { name: 'Leap min' }), '12');
+  expect((await walk(page))?.bass?.leap).toEqual([12, 12]);
+  await expect.poll(() => walkSteps(page)).not.toBe(steps0);
+  expect(await undoLabel(page)).toBe('Edit bass leap');
+  await hook(page, 'undo');
+  expect((await walk(page))?.bass?.leap).toEqual([5, 12]);
+  await expect.poll(() => walkSteps(page)).toBe(steps0);
+  await expect.poll(() => walkSegments(page)).toBe(segs0);
+});
+
 test('a slider drag is one undo entry', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [WALK]);
@@ -314,6 +376,8 @@ test('a slider drag is one undo entry', async ({ page }) => {
 });
 
 test('a frozen walk shows its badge, locks the generator and unfreezes', async ({ page }) => {
+  // The generated steps, before freezing.
+  const generated = await walkSteps(page);
   // Load the featured piece with its walk frozen to two notes.
   await page.evaluate((id) => {
     const h = window.__algorhythms as unknown as {
@@ -352,7 +416,9 @@ test('a frozen walk shows its badge, locks the generator and unfreezes', async (
   expect((await walk(page))?.fixed).toBeUndefined();
   await expect(insp.getByTestId('insp-walk-frozen')).toHaveCount(0);
   await expect(insp.getByTestId('insp-walk-density')).toBeEnabled();
-  await expect.poll(() => walkSteps(page)).not.toBe(frozen);
+  // Unfreeze restores exactly the generated walk.
+  await expect.poll(() => walkSteps(page)).toBe(generated);
+  expect(generated).not.toBe(frozen);
   expect(await undoLabel(page)).toBe('Unfreeze walk');
   await hook(page, 'undo');
   expect((await walk(page))?.fixed).toHaveLength(2);
@@ -427,6 +493,32 @@ const notePitches = (page: Page): Promise<number[]> =>
     .getByTestId('chord-note')
     .evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-pitch'))));
 
+/** Every chord but CHORD: its notes in the piece and its compiled harmony entries. */
+const otherChords = (page: Page) =>
+  page.evaluate((id) => {
+    const h = window.__algorhythms as unknown as {
+      store: {
+        getState(): {
+          piece: {
+            moments: { id: string; type: string; notes?: unknown; frozenFrom?: unknown }[];
+          };
+          compiled: { harmony?: { momentId: string; pcs: number[] }[] };
+        };
+      };
+    };
+    const s = h.store.getState();
+    const chords = s.piece.moments.filter((m) => m.type === 'chord' && m.id !== id);
+    const ids = new Set(chords.map((m) => m.id));
+    const harmony = (s.compiled.harmony ?? [])
+      .filter((x) => ids.has(x.momentId))
+      .map((x) => [x.momentId, x.pcs]);
+    return {
+      n: chords.length,
+      notes: chords.map((m) => [m.id, m.notes, m.frozenFrom ?? null]),
+      harmony,
+    };
+  }, CHORD);
+
 test('chord Notes: n changes how many notes sound', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [CHORD]);
@@ -458,6 +550,8 @@ test('a per-note ▲ freezes the chord and changes one note; undo; Unfreeze', as
   await expect(rows.first()).toBeVisible();
   const before = await notePitches(page);
 
+  const others0 = await otherChords(page);
+  expect(others0.n).toBeGreaterThan(0);
   await rows.nth(1).getByTestId('chord-note-up').click();
   const m = await chordM(page);
   expect(m?.notes.kind).toBe('pitches');
@@ -469,6 +563,8 @@ test('a per-note ▲ freezes the chord and changes one note; undo; Unfreeze', as
   const after = await notePitches(page);
   expect(after).toHaveLength(before.length);
   expect(before.filter((p) => !after.includes(p))).toHaveLength(1);
+  // Only this chord froze: every other chord's notes and compiled harmony are unchanged.
+  expect(await otherChords(page)).toEqual(others0);
 
   // One undo entry restores the unfrozen chord.
   await hook(page, 'undo');

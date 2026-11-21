@@ -143,14 +143,14 @@ test('a background rectangle selects two dots; dragging one moves both as one un
   await drag(page, { x: d0.x - 20, y: d0.y + 12 }, { x: d0.x + 20, y: (d1.y + d2.y) / 2 });
   const picked = page.locator('[data-testid=arrival-dot][data-picked=true]');
   await expect(picked).toHaveCount(2);
-  expect(await page.getByTestId('marquee').isHidden()).toBe(true);
+  await expect(page.getByTestId('marquee')).toBeHidden();
   // Up by about two semitones.
   const g = await center(picked.first());
   await drag(page, g, { x: g.x, y: g.y - (d0.y - d1.y) / 3 });
+  await expect.poll(async () => (await byId(page, 'shift1')).overrides?.length).toBe(2);
   const shift = await byId(page, 'shift1');
-  expect(shift.overrides).toHaveLength(2);
   expect(shift.overrides!.every((o) => o.pitch !== undefined)).toBe(true);
-  expect(await undoLabel(page)).toBe('Move notes');
+  await expect.poll(() => undoLabel(page)).toBe('Move notes');
   // Both stay selected where they landed.
   await expect(picked).toHaveCount(2);
   await undo(page);
@@ -180,7 +180,7 @@ test('a click on a line selects its moment; on empty background it seeks and doe
   const k = await pps(page);
   // The lowest line holds C♯3+1 after the shift (its section belongs to the shift).
   await page.mouse.click(d0.x + 4 * k, d0.y);
-  expect(await selection(page)).toEqual(['shift1']);
+  await expect.poll(() => selection(page)).toEqual(['shift1']);
   expect(await status(page)).not.toBe('playing');
 
   const box = (await page.locator('#score').boundingBox())!;
@@ -222,8 +222,8 @@ test('two note adds at one time are one Shift moment; dragging one apart splits 
   await page.keyboard.down('Alt');
   await drag(page, ds[0], { x: ds[0].x + 2 * k, y: ds[0].y });
   await page.keyboard.up('Alt');
+  await expect.poll(async () => (await notes(page)).length).toBe(2);
   const after = await notes(page);
-  expect(after).toHaveLength(2);
   expect(after.every((m) => m.changes === undefined && m.from !== undefined)).toBe(true);
   expect(Math.abs(after[1].at - after[0].at - 2)).toBeLessThan(0.05);
   await undo(page);

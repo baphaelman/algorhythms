@@ -88,7 +88,7 @@ export function moveKeyCarry(): boolean {
   const lines: string[] = [];
   if (folds > 0) {
     lines.push(
-      `${folds} ${folds === 1 ? 'note was' : 'notes were'} folded by an octave into ${folds === 1 ? 'its voice’s range' : 'their voices’ ranges'}.`,
+      `${folds} ${folds === 1 ? 'note was' : 'notes were'} folded by an octave into ${folds === 1 ? 'its range' : 'their ranges'}.`,
     );
   }
   if (skipped > 0) {

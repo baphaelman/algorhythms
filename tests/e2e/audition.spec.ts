@@ -158,6 +158,32 @@ test('a palette drag shows ghost lines at the drop time; Escape clears them', as
   expect(Number.isNaN((await hook(page)).ghostAt)).toBe(true);
 });
 
+test('dragging out of the score cancels the drag preview', async ({ page }) => {
+  const n0 = await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length);
+  const unison = page.getByTestId('palette').locator('[data-moment="unison"]');
+  const score = page.locator('#score');
+  const box = (await score.boundingBox())!;
+  const ub = (await unison.boundingBox())!;
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
+  await page.mouse.down();
+  const x = box.x + box.width * 0.5;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y, { steps: 8 });
+  await page.mouse.move(x + 3, y, { steps: 2 });
+  await expect.poll(async () => Number.isFinite((await hook(page)).ghostAt)).toBe(true);
+  await expect(score).toHaveAttribute('data-palette-drop', '');
+
+  // Back over the palette: off the score and the lane.
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2, { steps: 8 });
+  await expect.poll(async () => Number.isNaN((await hook(page)).ghostAt)).toBe(true);
+  expect((await hook(page)).preview).toBeNull();
+  await expect(score).not.toHaveAttribute('data-palette-drop');
+  await page.mouse.up();
+  expect(
+    await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length),
+  ).toBe(n0);
+});
+
 test('a palette drop still adds the moment, and the ghost goes', async ({ page }) => {
   const n0 = await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length);
   const box = (await page.locator('#score').boundingBox())!;
