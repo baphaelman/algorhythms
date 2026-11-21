@@ -226,7 +226,11 @@ export function Menu() {
             <dt>
               <kbd>▲</kbd> <kbd>▼</kbd>
             </dt>
-            <dd>Move the selected note point a scale step</dd>
+            <dd>
+              Move the selected note point a scale step (Shift: an octave, also selected dots)
+            </dd>
+            <dt>Drag a dot</dt>
+            <dd>Move it in the key (Shift: by octaves; Alt: chromatic, off the grid)</dd>
             <dt>
               <kbd>Delete</kbd> <kbd>⌫</kbd>
             </dt>

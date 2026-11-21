@@ -41,6 +41,7 @@ const fns = vi.hoisted(() => ({
   addMoment: vi.fn(),
   deleteMoments: vi.fn(() => true),
   stepNote: vi.fn((id: string) => id === 'note1'),
+  octaveDots: vi.fn(() => null),
   togglePlay: vi.fn(),
   seekBy: vi.fn(),
   zoomBy: vi.fn(),
@@ -70,6 +71,7 @@ vi.mock('../../../src/app/editor/actions', () => ({
   addMoment: fns.addMoment,
   deleteMoments: fns.deleteMoments,
   stepNote: fns.stepNote,
+  octaveDots: fns.octaveDots,
 }));
 vi.mock('../../../src/app/editor/palette-effects', () => ({
   playheadEffect: (type: string) => ({ effect: !h.state.noEffect.has(type) }),
@@ -295,17 +297,20 @@ describe('▲/▼ on a selected note point', () => {
     expect(fns.stepNote).not.toHaveBeenCalled();
     h.state.selection = ['note1'];
     expect(press('ArrowUp').defaultPrevented).toBe(true);
-    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', 1);
+    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', 1, undefined, false);
     expect(press('ArrowDown').defaultPrevented).toBe(true);
-    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', -1);
+    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', -1, undefined, false);
+    // Shift: an octave (no dots selected, so the note point).
+    expect(press('ArrowUp', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(fns.stepNote).toHaveBeenLastCalledWith('note1', 1, undefined, true);
     h.state.selection = ['chord1'];
     expect(press('ArrowUp').defaultPrevented).toBe(false);
   });
 
-  it('is ignored when handled, with Shift, in fields and outside the wide layout', () => {
+  it('is ignored when handled, in fields and outside the wide layout', () => {
     h.state.selection = ['note1'];
     press('ArrowUp', { defaultPrevented: true });
-    press('ArrowUp', { shiftKey: true });
+    press('ArrowUp', { shiftKey: true, defaultPrevented: true });
     press('ArrowDown', { target: el('input', 'range') });
     h.state.wide = false;
     press('ArrowDown');
