@@ -1,0 +1,631 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Switchyard",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 112,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "D", "scale": "dorian" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Bass",
+      "timbre": "organ",
+      "pan": 0,
+      "gain": 3.9,
+      "range": [28, 52],
+      "sends": { "reverb": 0.15 }
+    },
+    { "id": "v2", "part": "Brass", "timbre": "brass", "pan": -0.4, "gain": 4, "range": [48, 74] },
+    { "id": "v3", "part": "Brass", "timbre": "brass", "pan": 0, "gain": 4, "range": [48, 74] },
+    { "id": "v4", "part": "Brass", "timbre": "brass", "pan": 0.4, "gain": 4, "range": [48, 74] },
+    { "id": "v5", "part": "Pluck", "timbre": "pluck", "pan": -0.6, "gain": 4.2, "range": [57, 86] },
+    { "id": "v6", "part": "Pluck", "timbre": "pluck", "pan": 0.1, "gain": 4.2, "range": [57, 86] },
+    { "id": "v7", "part": "Pluck", "timbre": "pluck", "pan": 0.6, "gain": 4.2, "range": [57, 86] },
+    {
+      "id": "v8",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": -0.3,
+      "gain": 4,
+      "range": [72, 100]
+    },
+    {
+      "id": "v9",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": 0.3,
+      "gain": 4,
+      "range": [72, 100]
+    },
+    {
+      "id": "v10",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": 0.8,
+      "gain": 4,
+      "range": [72, 100]
+    }
+  ],
+  "moments": [
+    {
+      "id": "sw0001",
+      "type": "chord",
+      "at": 0,
+      "notes": { "kind": "pitches", "pitches": [38, 55, 60, 65, 69, 74, 79, 84, 89, 93] },
+      "count": 10,
+      "byVoice": true,
+      "label": "Fourths"
+    },
+    {
+      "id": "sw0002",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Bass" },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "sw0003",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Brass" },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "sw0004",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Marimba" },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "sw0005",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Pluck" },
+      "gain": 0.4,
+      "over": 0
+    },
+    {
+      "id": "sw0006",
+      "type": "pulse",
+      "at": 0,
+      "target": { "part": "Pluck" },
+      "until": 68.571,
+      "step": 0.267857,
+      "mode": "up",
+      "pattern": [1, 0.5, 0.7, 0.5],
+      "decay": 0.3,
+      "floor": 0.2,
+      "strike": true
+    },
+    {
+      "id": "sw0007",
+      "type": "level",
+      "at": 0.01,
+      "target": { "part": "Pluck" },
+      "gain": 1,
+      "over": 8.571
+    },
+    {
+      "id": "sw0008",
+      "type": "shift",
+      "at": 4.286,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0009",
+      "type": "shift",
+      "at": 8.571,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0010",
+      "type": "shift",
+      "at": 12.857,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0011",
+      "type": "shift",
+      "at": 17.143,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0012",
+      "type": "pulse",
+      "at": 17.143,
+      "target": { "part": "Bass" },
+      "until": 68.571,
+      "step": 0.267857,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0.8, 0, 0, 0.9, 0],
+      "decay": 0.22,
+      "floor": 0.12,
+      "strike": false
+    },
+    {
+      "id": "sw0013",
+      "type": "level",
+      "at": 17.143,
+      "target": { "part": "Bass" },
+      "gain": 1,
+      "over": 0
+    },
+    {
+      "id": "sw0014",
+      "type": "shift",
+      "at": 21.429,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0015",
+      "type": "shift",
+      "at": 25.714,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0016",
+      "type": "shift",
+      "at": 30,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0017",
+      "type": "shift",
+      "at": 34.286,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0018",
+      "type": "pulse",
+      "at": 34.286,
+      "target": { "part": "Marimba" },
+      "until": 85.714,
+      "step": 0.133929,
+      "mode": "random",
+      "pattern": [1, 0, 0.6, 0, 0, 0.8, 0, 0.5, 0, 0],
+      "decay": 0.25,
+      "floor": 0.15,
+      "strike": true
+    },
+    {
+      "id": "sw0019",
+      "type": "level",
+      "at": 34.286,
+      "target": { "part": "Marimba" },
+      "gain": 1,
+      "over": 4.286
+    },
+    {
+      "id": "sw0020",
+      "type": "shift",
+      "at": 38.572,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0021",
+      "type": "shift",
+      "at": 42.857,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0022",
+      "type": "shift",
+      "at": 47.143,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0023",
+      "type": "shift",
+      "at": 51.429,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0024",
+      "type": "pulse",
+      "at": 51.429,
+      "target": { "part": "Brass" },
+      "until": 68.571,
+      "step": 0.267857,
+      "mode": "together",
+      "pattern": [0, 0, 1, 0, 0, 0, 0, 0.7, 0, 0, 0.9, 0, 0, 0, 0, 0],
+      "decay": 0.3,
+      "floor": 0.1,
+      "strike": false
+    },
+    {
+      "id": "sw0025",
+      "type": "level",
+      "at": 51.429,
+      "target": { "part": "Brass" },
+      "gain": 1,
+      "over": 0
+    },
+    {
+      "id": "sw0026",
+      "type": "shift",
+      "at": 55.715,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0027",
+      "type": "shift",
+      "at": 60,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0028",
+      "type": "shift",
+      "at": 64.286,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0029",
+      "type": "shift",
+      "at": 68.571,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0030",
+      "type": "timbre",
+      "at": 68.571,
+      "target": { "part": "Pluck" },
+      "preset": "bell",
+      "fade": 0.5
+    },
+    {
+      "id": "sw0031",
+      "type": "pulse",
+      "at": 68.571,
+      "target": { "part": "Pluck" },
+      "until": 85.714,
+      "step": 0.535714,
+      "mode": "down",
+      "pattern": [1, 0.6, 0.8, 0.6],
+      "decay": 2,
+      "floor": 0.1,
+      "strike": true
+    },
+    {
+      "id": "sw0032",
+      "type": "level",
+      "at": 68.571,
+      "target": { "part": "Brass" },
+      "gain": 0.08,
+      "over": 0
+    },
+    {
+      "id": "sw0033",
+      "type": "level",
+      "at": 68.571,
+      "target": { "part": "Bass" },
+      "gain": 0.15,
+      "over": 2.143
+    },
+    {
+      "id": "sw0034",
+      "type": "level",
+      "at": 68.571,
+      "target": { "part": "Pluck" },
+      "gain": 0.6,
+      "over": 0
+    },
+    {
+      "id": "sw0035",
+      "type": "level",
+      "at": 68.581,
+      "target": { "part": "Brass" },
+      "gain": 0.25,
+      "over": 12.857
+    },
+    {
+      "id": "sw0036",
+      "type": "spread",
+      "at": 70.714,
+      "factor": 1.5,
+      "around": "median",
+      "snap": "scale",
+      "glide": { "length": 3, "stagger": 1, "order": "center-out" },
+      "label": "Break"
+    },
+    {
+      "id": "sw0037",
+      "type": "level",
+      "at": 77.143,
+      "target": { "part": "Marimba" },
+      "gain": 0,
+      "over": 6.429
+    },
+    {
+      "id": "sw0038",
+      "type": "key",
+      "at": 85.714,
+      "key": { "tonic": "E", "scale": "dorian" },
+      "label": "E dorian"
+    },
+    {
+      "id": "sw0039",
+      "type": "chord",
+      "at": 85.714,
+      "notes": { "kind": "pitches", "pitches": [40, 57, 62, 67, 71, 76, 81, 86, 91, 95] },
+      "byVoice": true,
+      "glide": { "length": 0.4, "stagger": 0, "land": true },
+      "label": "E"
+    },
+    {
+      "id": "sw0040",
+      "type": "timbre",
+      "at": 85.714,
+      "target": { "part": "Pluck" },
+      "preset": "pluck",
+      "fade": 0.2
+    },
+    {
+      "id": "sw0041",
+      "type": "level",
+      "at": 85.714,
+      "target": { "part": "Brass" },
+      "gain": 1,
+      "over": 0.2
+    },
+    {
+      "id": "sw0042",
+      "type": "level",
+      "at": 85.714,
+      "target": { "part": "Bass" },
+      "gain": 1,
+      "over": 0.2
+    },
+    {
+      "id": "sw0043",
+      "type": "level",
+      "at": 85.714,
+      "target": { "part": "Marimba" },
+      "gain": 1.5,
+      "over": 0.5
+    },
+    {
+      "id": "sw0044",
+      "type": "level",
+      "at": 85.714,
+      "target": { "part": "Pluck" },
+      "gain": 1.1,
+      "over": 0
+    },
+    {
+      "id": "sw0045",
+      "type": "pulse",
+      "at": 85.714,
+      "target": { "part": "Pluck" },
+      "until": 120,
+      "step": 0.267857,
+      "mode": "up",
+      "pattern": [1, 0.5, 0.7, 0.5],
+      "decay": 0.3,
+      "floor": 0.2,
+      "strike": true
+    },
+    {
+      "id": "sw0046",
+      "type": "pulse",
+      "at": 85.714,
+      "target": { "part": "Bass" },
+      "until": 120,
+      "step": 0.267857,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0.8, 0, 0, 0.9, 0],
+      "decay": 0.22,
+      "floor": 0.12,
+      "strike": false
+    },
+    {
+      "id": "sw0047",
+      "type": "pulse",
+      "at": 85.714,
+      "target": { "part": "Marimba" },
+      "until": 120,
+      "step": 0.133929,
+      "mode": "random",
+      "pattern": [1, 0, 0.6, 0, 0, 0.8, 0, 0.5, 0, 0],
+      "decay": 0.25,
+      "floor": 0.15,
+      "strike": true
+    },
+    {
+      "id": "sw0048",
+      "type": "pulse",
+      "at": 85.714,
+      "target": { "part": "Brass" },
+      "until": 120,
+      "step": 0.267857,
+      "mode": "together",
+      "pattern": [0, 0, 1, 0, 0, 0, 0, 0.7, 0, 0, 0.9, 0, 0, 0, 0, 0],
+      "decay": 0.3,
+      "floor": 0.1,
+      "strike": false
+    },
+    {
+      "id": "sw0049",
+      "type": "walk",
+      "at": 85.714,
+      "target": { "part": "Marimba" },
+      "until": 120,
+      "grid": 0.267857,
+      "density": 0.45,
+      "steps": [-2, -1, 1, 2],
+      "stepGlide": 0.03,
+      "label": "Solo"
+    },
+    {
+      "id": "sw0050",
+      "type": "shift",
+      "at": 90,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0051",
+      "type": "shift",
+      "at": 94.286,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0052",
+      "type": "shift",
+      "at": 98.571,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0053",
+      "type": "shift",
+      "at": 102.857,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0054",
+      "type": "shift",
+      "at": 107.143,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0055",
+      "type": "shift",
+      "at": 111.429,
+      "by": -1,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0056",
+      "type": "shift",
+      "at": 115.714,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.18, "stagger": 0, "land": true }
+    },
+    {
+      "id": "sw0057",
+      "type": "level",
+      "at": 119.55,
+      "target": { "part": "Brass" },
+      "gain": 0.2,
+      "over": 0.4
+    },
+    {
+      "id": "sw0058",
+      "type": "level",
+      "at": 119.55,
+      "target": { "part": "Bass" },
+      "gain": 0.3,
+      "over": 0.4
+    },
+    {
+      "id": "sw0059",
+      "type": "shift",
+      "at": 120,
+      "by": 3,
+      "unit": "scaleSteps",
+      "glide": { "length": 0.3, "stagger": 0.05, "land": true },
+      "label": "Home"
+    },
+    {
+      "id": "sw0060",
+      "type": "unison",
+      "at": 120,
+      "target": { "part": "Bass" },
+      "pitch": 40,
+      "octaves": false,
+      "glide": { "length": 0.3, "land": true }
+    },
+    {
+      "id": "sw0061",
+      "type": "pulse",
+      "at": 120,
+      "target": { "part": "Pluck" },
+      "until": 124.286,
+      "step": 0.267857,
+      "mode": "up",
+      "pattern": [1, 0.7, 0.5, 0.35, 0.25, 0.15],
+      "decay": 0.8,
+      "floor": 0,
+      "strike": true
+    },
+    { "id": "sw0062", "type": "level", "at": 120.5, "gain": 0, "over": 6.429 }
+  ],
+  "mix": {
+    "reverb": {
+      "size": 0.75,
+      "decay": 3.5,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.35
+    },
+    "delay": { "time": 0.4017857142857143, "feedback": 0.35, "returnLevel": 0.16 },
+    "sends": { "reverb": 0.35, "delay": 0.2 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 128.571, "fade": 3 },
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 112, "meter": 4 }
+}

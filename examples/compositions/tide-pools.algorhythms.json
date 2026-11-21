@@ -1,0 +1,483 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Tide Pools",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 731,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "D", "scale": "pentatonic-minor" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": 0,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v2",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": -0.5,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v3",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": 0.5,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v4",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": -0.25,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v5",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": 0.25,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v6",
+      "part": "Mallets",
+      "timbre": "marimba",
+      "pan": -0.7,
+      "gain": 1.4,
+      "range": [50, 88]
+    },
+    {
+      "id": "v7",
+      "part": "Pad",
+      "timbre": "choir",
+      "pan": -0.3,
+      "gain": 0.55,
+      "range": [48, 69],
+      "sends": { "reverb": 0.7 }
+    },
+    {
+      "id": "v8",
+      "part": "Pad",
+      "timbre": "choir",
+      "pan": 0,
+      "gain": 0.55,
+      "range": [48, 69],
+      "sends": { "reverb": 0.7 }
+    },
+    {
+      "id": "v9",
+      "part": "Pad",
+      "timbre": "choir",
+      "pan": 0.3,
+      "gain": 0.55,
+      "range": [48, 69],
+      "sends": { "reverb": 0.7 }
+    }
+  ],
+  "moments": [
+    {
+      "id": "tp0001",
+      "type": "unison",
+      "at": 0,
+      "target": { "part": "Mallets" },
+      "pitch": 62,
+      "octaves": false,
+      "label": "One line"
+    },
+    {
+      "id": "tp0002",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Mallets" },
+      "gain": 0.45,
+      "over": 0
+    },
+    {
+      "id": "tp0003",
+      "type": "walk",
+      "at": 0,
+      "target": { "part": "Mallets" },
+      "until": 10,
+      "grid": 0.3125,
+      "density": 0.6,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.04
+    },
+    {
+      "id": "tp0004",
+      "type": "level",
+      "at": 10,
+      "target": { "part": "Mallets" },
+      "gain": 0.75,
+      "over": 5
+    },
+    {
+      "id": "tp0005",
+      "type": "split",
+      "at": 10,
+      "target": { "part": "Mallets" },
+      "count": 3,
+      "notes": { "kind": "chord", "symbol": "Dm7" },
+      "voicing": "even",
+      "glide": { "length": 0.4, "stagger": 0.3 }
+    },
+    {
+      "id": "tp0006",
+      "type": "walk",
+      "at": 10,
+      "target": { "part": "Mallets" },
+      "until": 25,
+      "grid": 0.3125,
+      "density": 0.45,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.04
+    },
+    {
+      "id": "tp0007",
+      "type": "chord",
+      "at": 20,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Dm7" },
+      "count": 3,
+      "voicing": "close",
+      "register": [50, 67],
+      "label": "Pad"
+    },
+    {
+      "id": "tp0008",
+      "type": "split",
+      "at": 25,
+      "target": { "part": "Mallets" },
+      "count": 5,
+      "voicing": "even",
+      "glide": { "length": 0.5, "stagger": 0.4 }
+    },
+    {
+      "id": "tp0009",
+      "type": "walk",
+      "at": 25,
+      "target": { "part": "Mallets" },
+      "until": 50,
+      "grid": 0.3125,
+      "density": 0.35,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.04,
+      "bass": { "leap": [5, 7] },
+      "label": "Five"
+    },
+    {
+      "id": "tp0010",
+      "type": "level",
+      "at": 25,
+      "target": { "part": "Mallets" },
+      "gain": 0.95,
+      "over": 5
+    },
+    {
+      "id": "tp0011",
+      "type": "chord",
+      "at": 30,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "F6" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0012",
+      "type": "chord",
+      "at": 40,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Csus2" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0013",
+      "type": "chord",
+      "at": 45,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Gsus4" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0014",
+      "type": "chord",
+      "at": 50,
+      "target": { "part": "Mallets" },
+      "notes": { "kind": "chord", "symbol": "Dm7add11" },
+      "count": 6,
+      "voicing": "even",
+      "register": [62, 88],
+      "glide": { "length": 0.6, "stagger": 0.5 },
+      "label": "Rain"
+    },
+    {
+      "id": "tp0015",
+      "type": "pulse",
+      "at": 50,
+      "target": { "part": "Mallets" },
+      "until": 70,
+      "step": 0.15625,
+      "mode": "random",
+      "pattern": [1, 0.35, 0.6, 0, 0.8, 0.3, 0, 0.5],
+      "decay": 0.35,
+      "floor": 0.02,
+      "strike": true
+    },
+    {
+      "id": "tp0016",
+      "type": "level",
+      "at": 50,
+      "target": { "part": "Mallets" },
+      "gain": 1.9,
+      "over": 2.5
+    },
+    {
+      "id": "tp0017",
+      "type": "chord",
+      "at": 50,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "F6" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0018",
+      "type": "chord",
+      "at": 60,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Csus2" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0019",
+      "type": "chord",
+      "at": 65,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Gsus4" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0020",
+      "type": "key",
+      "at": 70,
+      "key": { "tonic": "G", "scale": "pentatonic-minor" },
+      "label": "Up a fourth"
+    },
+    {
+      "id": "tp0021",
+      "type": "shift",
+      "at": 70,
+      "by": 5,
+      "unit": "semitones",
+      "glide": { "length": 2, "stagger": 0.6, "order": "low-first" }
+    },
+    {
+      "id": "tp0022",
+      "type": "timbre",
+      "at": 70,
+      "target": { "part": "Mallets" },
+      "preset": "bell",
+      "fade": 3
+    },
+    {
+      "id": "tp0023",
+      "type": "merge",
+      "at": 70,
+      "target": { "part": "Mallets" },
+      "count": 4,
+      "which": "inner",
+      "fade": 1
+    },
+    {
+      "id": "tp0024",
+      "type": "level",
+      "at": 70,
+      "target": { "part": "Mallets" },
+      "gain": 0.55,
+      "over": 5
+    },
+    {
+      "id": "tp0025",
+      "type": "walk",
+      "at": 75,
+      "target": { "part": "Mallets" },
+      "until": 100,
+      "grid": 0.3125,
+      "density": 0.4,
+      "steps": [-2, -1, 1, 2, 3],
+      "stepGlide": 0.04,
+      "label": "Bells"
+    },
+    {
+      "id": "tp0026",
+      "type": "chord",
+      "at": 80,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Bb6" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0027",
+      "type": "chord",
+      "at": 90,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Gm7" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0028",
+      "type": "key",
+      "at": 100,
+      "key": { "tonic": "D", "scale": "pentatonic-minor" },
+      "label": "Home"
+    },
+    {
+      "id": "tp0029",
+      "type": "shift",
+      "at": 100,
+      "by": -5,
+      "unit": "semitones",
+      "glide": { "length": 3, "stagger": 0.8, "order": "high-first" }
+    },
+    {
+      "id": "tp0030",
+      "type": "timbre",
+      "at": 100,
+      "target": { "part": "Mallets" },
+      "preset": "marimba",
+      "fade": 2
+    },
+    {
+      "id": "tp0031",
+      "type": "level",
+      "at": 100,
+      "target": { "part": "Mallets" },
+      "gain": 1,
+      "over": 5
+    },
+    {
+      "id": "tp0032",
+      "type": "walk",
+      "at": 105,
+      "target": { "part": "Mallets" },
+      "until": 120,
+      "grid": 0.3125,
+      "density": 0.5,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.04
+    },
+    {
+      "id": "tp0033",
+      "type": "chord",
+      "at": 105,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Dm7" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0034",
+      "type": "chord",
+      "at": 115,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "F6" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0035",
+      "type": "timbre",
+      "at": 120,
+      "target": { "part": "Mallets" },
+      "preset": "flute",
+      "fade": 4,
+      "label": "Flutes"
+    },
+    {
+      "id": "tp0036",
+      "type": "level",
+      "at": 120,
+      "target": { "part": "Mallets" },
+      "gain": 0.4,
+      "over": 4
+    },
+    {
+      "id": "tp0037",
+      "type": "walk",
+      "at": 120,
+      "target": { "part": "Mallets" },
+      "until": 140,
+      "grid": 0.625,
+      "density": 0.4,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.35
+    },
+    {
+      "id": "tp0038",
+      "type": "chord",
+      "at": 125,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Csus2" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0039",
+      "type": "chord",
+      "at": 135,
+      "target": { "part": "Pad" },
+      "notes": { "kind": "chord", "symbol": "Dm7" },
+      "voicing": "nearest",
+      "register": [50, 67]
+    },
+    {
+      "id": "tp0040",
+      "type": "unison",
+      "at": 140,
+      "pitch": "tonic",
+      "octaves": true,
+      "glide": { "length": 6, "stagger": 2, "order": "outside-in" },
+      "label": "D"
+    }
+  ],
+  "mix": {
+    "reverb": { "size": 0.85, "decay": 4.5, "damping": 0.5, "preDelay": 0.03, "returnLevel": 0.4 },
+    "delay": { "time": 0.9375, "feedback": 0.35, "returnLevel": 0.2 },
+    "sends": { "reverb": 0.5, "delay": 0.25 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 155, "fade": 5 },
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 96, "meter": 4 }
+}

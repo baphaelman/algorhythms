@@ -7,7 +7,8 @@
  * `view.meter` line up with the music and Snap to beats works.
  */
 type Json = Record<string, unknown>;
-export type Target = { part: string } | { voices: string[] } | undefined;
+export type Target =
+  { part: string } | { voices: string[] } | { rank: [number, number] } | undefined;
 
 const r3 = (x: number): number => Math.round(x * 1e3) / 1e3;
 const r4 = (x: number): number => Math.round(x * 1e4) / 1e4;

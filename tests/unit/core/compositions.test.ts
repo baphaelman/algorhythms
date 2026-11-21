@@ -42,14 +42,24 @@ describe('compositions', () => {
       expect(canonicalPiece(json)).toEqual(json);
     });
 
-    it(`${f}: compiles without warnings and no line dies before the ending`, () => {
+    it(`${f}: compiles without warnings and no tune's line dies before the ending`, () => {
       const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
       if (!r.ok) throw new Error(r.errors.join('; '));
       const score = compile(r.piece);
       const bad = score.diagnostics.filter((d) => d.level !== 'info');
       expect(bad, f).toEqual([]);
       const ending = r.piece.end.at ?? score.duration;
-      for (const v of score.voices) {
+      // Parts that sing a tune: a merge there loses the rest of the melody. Other parts may
+      // merge on purpose (Tide Pools, Interference).
+      const sung = new Set(
+        r.piece.moments.flatMap((m) =>
+          m.type === 'tune' && m.target && typeof m.target === 'object' && 'part' in m.target
+            ? [m.target.part]
+            : [],
+        ),
+      );
+      for (const [i, v] of score.voices.entries()) {
+        if (!sung.has(r.piece.voices[i].part ?? '')) continue;
         for (const life of v.lives) {
           if (life.died !== undefined)
             expect(life.died, `${f} ${v.id}`).toBeGreaterThanOrEqual(ending - 1);

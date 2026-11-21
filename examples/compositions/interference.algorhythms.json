@@ -1,0 +1,226 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Interference",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 4242,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "A", "scale": "dorian" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    { "id": "v1", "part": "L1", "timbre": "sine", "pan": -0.8, "gain": 0.5, "range": [33, 93] },
+    { "id": "v2", "part": "L2", "timbre": "sine", "pan": 0.8, "gain": 0.5, "range": [33, 93] },
+    { "id": "v3", "part": "L3", "timbre": "sine", "pan": -0.6, "gain": 0.5, "range": [33, 93] },
+    { "id": "v4", "part": "L4", "timbre": "sine", "pan": 0.6, "gain": 0.5, "range": [33, 93] },
+    { "id": "v5", "part": "L5", "timbre": "sine", "pan": -0.4, "gain": 0.5, "range": [33, 93] },
+    { "id": "v6", "part": "L6", "timbre": "sine", "pan": 0.4, "gain": 0.5, "range": [33, 93] },
+    { "id": "v7", "part": "L7", "timbre": "sine", "pan": -0.2, "gain": 0.5, "range": [33, 93] },
+    { "id": "v8", "part": "L8", "timbre": "sine", "pan": 0.2, "gain": 0.5, "range": [33, 93] },
+    { "id": "v9", "part": "L9", "timbre": "sine", "pan": -0.1, "gain": 0.5, "range": [33, 93] },
+    { "id": "v10", "part": "L10", "timbre": "sine", "pan": 0.1, "gain": 0.5, "range": [33, 93] },
+    { "id": "v11", "part": "L11", "timbre": "sine", "pan": 0, "gain": 0.5, "range": [33, 93] },
+    { "id": "v12", "part": "L12", "timbre": "sine", "pan": 0, "gain": 0.5, "range": [33, 93] }
+  ],
+  "moments": [
+    {
+      "id": "if0001",
+      "type": "chord",
+      "at": 0,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [57, 57.07, 56.94, 57.12, 56.87, 57.18, 56.83, 57.04, 56.97, 57.24, 56.78, 57.01]
+      },
+      "count": 12,
+      "byVoice": true,
+      "label": "Beating"
+    },
+    { "id": "if0002", "type": "level", "at": 0, "gain": 0, "over": 0 },
+    { "id": "if0003", "type": "level", "at": 0.01, "gain": 1, "over": 10 },
+    {
+      "id": "if0004",
+      "type": "spread",
+      "at": 16,
+      "factor": 4,
+      "around": "mean",
+      "snap": "none",
+      "glide": {
+        "length": 12,
+        "stagger": 2,
+        "order": "random",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      },
+      "label": "Faster"
+    },
+    {
+      "id": "if0005",
+      "type": "spread",
+      "at": 32,
+      "factor": 7,
+      "around": "mean",
+      "snap": "none",
+      "glide": {
+        "length": 12,
+        "stagger": 3,
+        "order": "center-out",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      }
+    },
+    { "id": "if0006", "type": "timbre", "at": 34, "preset": "glass", "fade": 10 },
+    {
+      "id": "if0007",
+      "type": "shift",
+      "at": 48,
+      "by": 0,
+      "unit": "scaleSteps",
+      "glide": {
+        "length": 2.5,
+        "stagger": 1.5,
+        "order": "random",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      },
+      "label": "Snap"
+    },
+    {
+      "id": "if0008",
+      "type": "spread",
+      "at": 56,
+      "factor": 3,
+      "around": "median",
+      "snap": "scale",
+      "glide": {
+        "length": 9,
+        "stagger": 2.5,
+        "order": "center-out",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      },
+      "label": "Open"
+    },
+    { "id": "if0009", "type": "timbre", "at": 56, "preset": "choir", "fade": 8 },
+    {
+      "id": "if0010",
+      "type": "shift",
+      "at": 70,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": {
+        "length": 3,
+        "stagger": 1.2,
+        "order": "low-first",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      }
+    },
+    {
+      "id": "if0011",
+      "type": "shift",
+      "at": 78,
+      "by": 1,
+      "unit": "scaleSteps",
+      "glide": {
+        "length": 3,
+        "stagger": 1.2,
+        "order": "low-first",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      }
+    },
+    {
+      "id": "if0012",
+      "type": "shift",
+      "at": 86,
+      "by": -3,
+      "unit": "scaleSteps",
+      "glide": {
+        "length": 4,
+        "stagger": 1.6,
+        "order": "high-first",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      }
+    },
+    {
+      "id": "if0013",
+      "type": "timbre",
+      "at": 92,
+      "target": { "rank": [0, 3] },
+      "preset": "brass",
+      "fade": 6
+    },
+    {
+      "id": "if0014",
+      "type": "walk",
+      "at": 94,
+      "until": 122,
+      "grid": 2,
+      "density": 0.35,
+      "steps": [-1, 1],
+      "stepGlide": 1.6,
+      "label": "Stir"
+    },
+    { "id": "if0015", "type": "timbre", "at": 120, "preset": "sine", "fade": 10 },
+    {
+      "id": "if0016",
+      "type": "spread",
+      "at": 124,
+      "factor": 0,
+      "around": "mean",
+      "snap": "none",
+      "glide": {
+        "length": 14,
+        "stagger": 4,
+        "order": "outside-in",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      },
+      "label": "Gather"
+    },
+    {
+      "id": "if0017",
+      "type": "chord",
+      "at": 144,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [
+          57, 57.035, 56.97, 57.06, 56.935, 57.09, 56.915, 57.02, 56.985, 57.12, 56.89, 57.005
+        ]
+      },
+      "byVoice": true,
+      "glide": {
+        "length": 6,
+        "stagger": 0,
+        "order": "random",
+        "ease": "smootherstep",
+        "jitter": 0.1
+      }
+    },
+    { "id": "if0018", "type": "level", "at": 150, "gain": 0, "over": 14 }
+  ],
+  "mix": {
+    "reverb": { "size": 0.9, "decay": 6, "damping": 0.55, "preDelay": 0.04, "returnLevel": 0.45 },
+    "delay": { "time": 0.75, "feedback": 0.4, "returnLevel": 0.1 },
+    "sends": { "reverb": 0.55, "delay": 0.1 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 166, "fade": 2 },
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 60, "meter": 4 }
+}
