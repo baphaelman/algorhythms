@@ -330,7 +330,9 @@ test('with Keep lines in order off (default) a dragged note crosses its neighbou
 
 test('with Keep lines in order on it does not cross', async ({ page }) => {
   const toggle = page.getByTestId('keep-order-toggle');
+  await page.getByTestId('view-options').click();
   await toggle.click();
+  await page.keyboard.press('Escape');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   const n = await notePastNeighbour(page);
   expect(n.order).toBe(true);

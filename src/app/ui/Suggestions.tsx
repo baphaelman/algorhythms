@@ -66,8 +66,13 @@ export function Suggestions() {
       data-testid="suggestions"
       data-t={Number.isFinite(t) ? t : undefined}
     >
-      <span className="palette-label" aria-hidden="true">
-        Next <span className="palette-where">at end{Number.isFinite(t) ? ` ${clock(t)}` : ''}</span>
+      <span
+        className="palette-label"
+        aria-hidden="true"
+        title={`Next, appended at the end${Number.isFinite(t) ? ` (${clock(t)})` : ''}`}
+      >
+        Next{' '}
+        <span className="visually-hidden">at end{Number.isFinite(t) ? ` ${clock(t)}` : ''}</span>
       </span>
       {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => (

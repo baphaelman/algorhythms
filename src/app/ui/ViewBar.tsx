@@ -4,6 +4,7 @@ import { MIN_WINDOW, sliderToWindow, windowRange, windowToSlider } from '../../r
 import { formatWindow } from '../platform';
 import { Palette } from './Palette';
 import { Suggestions } from './Suggestions';
+import { BarPopover } from './BarPopover';
 import {
   fitWindow,
   setColors,
@@ -40,7 +41,11 @@ const THEMES: readonly (readonly [ThemePref, string])[] = [
   ['dark', 'Dark'],
 ];
 
-/** Zoom (log slider, −/+, Fit), Follow, line colours, HUD and theme (PLAN.md §10, §11.2). */
+/**
+ * The bar under the lanes (PLAN.md §10, §11.2), compact (build-log "Compact view bar"): Add and
+ * Next on one row when they fit; then Zoom, Follow, Snap, the drawer toggles, and the "View ▾"
+ * (line colours, theme, HUD, line order) and "?" (help) popovers.
+ */
 export function ViewBar() {
   const win = usePlayer((s) => s.view.window);
   const duration = usePlayer((s) => s.compiled.duration);
@@ -77,151 +82,172 @@ export function ViewBar() {
     <div ref={bar} className="viewbar" data-region="view">
       <Palette />
       <Suggestions />
-      <div className="ctl zoom" role="group" aria-label="Zoom">
-        <span>Zoom</span>
-        <button
-          type="button"
-          className="zoom-step"
-          aria-label="Zoom out"
-          title="Zoom out (−)"
-          data-testid="zoom-out"
-          disabled={widest}
-          onClick={() => zoomBy(1.25)}
-        >
-          −
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(windowToSlider(win, duration) * 1000)}
-          data-testid="window-slider"
-          aria-label="Visible window"
-          aria-valuetext={formatWindow(win)}
-          onChange={(e) => setWindow(sliderToWindow(Number(e.target.value) / 1000, duration))}
-        />
-        <button
-          type="button"
-          className="zoom-step"
-          aria-label="Zoom in"
-          title="Zoom in (=)"
-          data-testid="zoom-in"
-          disabled={win <= MIN_WINDOW + 1e-6}
-          onClick={() => zoomBy(0.8)}
-        >
-          +
-        </button>
-        <output data-testid="window-out">{formatWindow(win)}</output>
-        <button
-          type="button"
-          aria-pressed={fit}
-          data-testid="zoom-fit"
-          title="Show the whole piece"
-          onClick={fitWindow}
-        >
-          Fit
-        </button>
-      </div>
+      <div className="vb-row">
+        <div className="ctl zoom" role="group" aria-label="Zoom">
+          <button
+            type="button"
+            className="zoom-step"
+            aria-label="Zoom out"
+            title="Zoom out (−)"
+            data-testid="zoom-out"
+            disabled={widest}
+            onClick={() => zoomBy(1.25)}
+          >
+            −
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1000}
+            step={1}
+            value={Math.round(windowToSlider(win, duration) * 1000)}
+            data-testid="window-slider"
+            aria-label="Visible window"
+            aria-valuetext={formatWindow(win)}
+            title="Visible window"
+            onChange={(e) => setWindow(sliderToWindow(Number(e.target.value) / 1000, duration))}
+          />
+          <button
+            type="button"
+            className="zoom-step"
+            aria-label="Zoom in"
+            title="Zoom in (=)"
+            data-testid="zoom-in"
+            disabled={win <= MIN_WINDOW + 1e-6}
+            onClick={() => zoomBy(0.8)}
+          >
+            +
+          </button>
+          <output data-testid="window-out">{formatWindow(win)}</output>
+          <button
+            type="button"
+            aria-pressed={fit}
+            data-testid="zoom-fit"
+            title="Show the whole piece"
+            onClick={fitWindow}
+          >
+            Fit
+          </button>
+        </div>
 
-      <div className="ctl" role="group" aria-label="Follow">
-        <span>Follow</span>
-        <div className="seg">
-          {FOLLOW.map(([value, label, title]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={follow === value}
-              data-follow={value}
-              title={title}
-              onClick={() => setFollow(value)}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="ctl" role="group" aria-label="Follow">
+          <span>Follow</span>
+          <div className="seg">
+            {FOLLOW.map(([value, label, title]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={follow === value}
+                data-follow={value}
+                title={title}
+                onClick={() => setFollow(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {hasTempo && (
+          <button
+            type="button"
+            className="toggle snap-beats-toggle"
+            aria-pressed={snapBeats}
+            data-testid="snap-beats-toggle"
+            title="Adding and dragging moments, dots and notes snap to beats (Alt: free)"
+            onClick={() => {
+              setSnapBeats(!snapBeats);
+              refreshSuggestions(true);
+            }}
+          >
+            Snap to beats
+          </button>
+        )}
+
+        <div className="vb-end">
+          <VoicesToggle />
+          <SoundToggle />
+          <BarPopover
+            label="View ▾"
+            title="Line colours, theme, HUD, line order"
+            panelLabel="View options"
+            testId="view-options"
+          >
+            <div className="ctl" role="group" aria-label="Line colour">
+              <span>Lines</span>
+              <div className="seg">
+                {COLORS.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={colors === value}
+                    data-color={value}
+                    onClick={() => setColors(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ctl" role="group" aria-label="Theme">
+              <span>Theme</span>
+              <div className="seg">
+                {THEMES.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={theme === value}
+                    data-theme-choice={value}
+                    onClick={() => setTheme(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="vb-pop-toggles">
+              <button
+                type="button"
+                className="toggle"
+                aria-pressed={hud}
+                data-testid="hud-toggle"
+                title="Heads-up display"
+                onClick={() => setHud(!hud)}
+              >
+                HUD
+              </button>
+
+              <button
+                type="button"
+                className="toggle keep-order-toggle"
+                aria-pressed={keepOrder}
+                data-testid="keep-order-toggle"
+                title="Hand edits (dragged dots, note points, chord notes) keep lines from crossing"
+                onClick={() => setKeepOrder(!keepOrder)}
+              >
+                Keep lines in order
+              </button>
+            </div>
+          </BarPopover>
+          <BarPopover
+            label="?"
+            ariaLabel="Help"
+            title="Playing, zooming and panning"
+            panelLabel="Help"
+            testId="view-help"
+            className="vb-help"
+          >
+            <p className="keys">
+              <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
+              <kbd>−</kbd> <kbd>=</kbd> zooms. Scroll sideways or drag to pan (editor: middle-drag
+              or <kbd>Space</kbd>-drag; a plain drag selects dots); panning while playing turns
+              Follow off. More keys: Menu → Help.
+            </p>
+          </BarPopover>
         </div>
       </div>
-
-      <div className="ctl" role="group" aria-label="Line colour">
-        <span>Lines</span>
-        <div className="seg">
-          {COLORS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={colors === value}
-              data-color={value}
-              onClick={() => setColors(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="ctl" role="group" aria-label="Theme">
-        <span>Theme</span>
-        <div className="seg">
-          {THEMES.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={theme === value}
-              data-theme-choice={value}
-              onClick={() => setTheme(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        className="toggle"
-        aria-pressed={hud}
-        data-testid="hud-toggle"
-        title="Heads-up display"
-        onClick={() => setHud(!hud)}
-      >
-        HUD
-      </button>
-
-      <button
-        type="button"
-        className="toggle keep-order-toggle"
-        aria-pressed={keepOrder}
-        data-testid="keep-order-toggle"
-        title="Hand edits (dragged dots, note points, chord notes) keep lines from crossing"
-        onClick={() => setKeepOrder(!keepOrder)}
-      >
-        Keep lines in order
-      </button>
-
-      {hasTempo && (
-        <button
-          type="button"
-          className="toggle snap-beats-toggle"
-          aria-pressed={snapBeats}
-          data-testid="snap-beats-toggle"
-          title="Adding and dragging moments, dots and notes snap to beats (Alt: free)"
-          onClick={() => {
-            setSnapBeats(!snapBeats);
-            refreshSuggestions(true);
-          }}
-        >
-          Snap to beats
-        </button>
-      )}
-
-      <VoicesToggle />
-      <SoundToggle />
-
-      <p className="keys">
-        <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
-        <kbd>−</kbd> <kbd>=</kbd> zooms. Scroll sideways or drag to pan (editor: middle-drag or{' '}
-        <kbd>Space</kbd>-drag; a plain drag selects dots); panning while playing turns Follow off.
-      </p>
     </div>
   );
 }

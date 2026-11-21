@@ -360,7 +360,7 @@ input[type='range'] {
   grid-template-rows: minmax(var(--timeline-min), 1fr) auto;
   grid-template-areas:
     'score inspector'
-    'view inspector';
+    'view view';
 }
 
 .ruler {
@@ -593,12 +593,80 @@ input[type='range'] {
   accent-color: var(--accent);
 }
 
+/* Compact (build-log "Compact view bar"): Add + Next, then one row of view controls; it spans
+   under the inspector in the editor layout. */
 .viewbar {
   grid-area: view;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 24px;
+  gap: 6px 8px;
+}
+
+.vb-row {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+
+.vb-row button {
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.vb-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.vb-pop {
+  position: relative;
+}
+
+.vb-pop-button[aria-expanded='true'] {
+  border-color: var(--ink-2);
+  background: var(--panel);
+}
+
+.vb-help .vb-pop-button {
+  min-width: 30px;
+  padding: 6px 0;
+}
+
+/* Opens upward: the bar sits at the bottom of the workspace. */
+.vb-pop-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.vb-pop-panel[hidden] {
+  display: none;
+}
+
+.vb-pop-panel .ctl > span {
+  min-width: 5.5ch;
+}
+
+.vb-pop-toggles {
+  display: flex;
+  gap: 8px;
 }
 
 .ctl {
@@ -615,12 +683,16 @@ input[type='range'] {
   width: clamp(120px, 24vw, 240px);
 }
 
-/* Zoom (§10 revision 5): a large log slider between − and +. */
-.ctl.zoom input[type='range'] {
-  width: clamp(160px, 30vw, 360px);
+/* Zoom (§10 revision 5): a log slider between − and +. */
+.ctl.zoom {
+  gap: 6px;
 }
 
-.ctl .zoom-step {
+.ctl.zoom input[type='range'] {
+  width: clamp(110px, 14vw, 220px);
+}
+
+.vb-row .ctl .zoom-step {
   min-width: 30px;
   padding: 6px 0;
   font-size: 15px;
@@ -650,14 +722,20 @@ input[type='range'] {
   letter-spacing: 0;
 }
 
+.vb-row .seg button {
+  padding: 6px 9px;
+}
+
 .seg button + button {
   border-left: 1px solid var(--rule);
 }
 
 .keys {
-  margin: 0 0 0 auto;
+  margin: 0;
+  width: min(360px, calc(100vw - 56px));
   color: var(--ink-2);
   font-size: 13px;
+  line-height: 1.6;
 }
 
 /* ---- dialogs (Generate; shared `.dialog` look) -------------------------------------------- */
@@ -952,10 +1030,6 @@ dialog.dialog.export {
 
   .app {
     padding-top: 8px;
-  }
-
-  .keys {
-    display: none;
   }
 
   .title {
