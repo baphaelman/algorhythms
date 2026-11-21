@@ -6,6 +6,7 @@ import { openExample, openFile, usePlayer } from '../store';
 import { openCompose } from '../compose';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
+import { openShare } from './ShareDialog';
 import { MOD_KEY } from '../platform';
 
 /** The examples menu, in two groups (owner, 2026-11-20). */
@@ -172,6 +173,18 @@ export function Menu() {
                 }}
               >
                 Save as file…
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-testid="open-share"
+                onClick={() => {
+                  setOpen(false);
+                  openShare();
+                }}
+              >
+                Share link…
               </button>
             </li>
             {canLinkFiles() && (

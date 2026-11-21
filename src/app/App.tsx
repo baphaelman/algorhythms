@@ -12,6 +12,7 @@ import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
 import { NamePrompt } from './ui/NamePrompt';
+import { ShareDialog } from './ui/ShareDialog';
 import { Notices, SilentHint } from './ui/Notices';
 import { LoopRegion } from './ui/LoopRegion';
 import { Playhead } from './ui/Playhead';
@@ -63,6 +64,7 @@ export function App() {
       <ExportDialog />
       <MyPieces />
       <NamePrompt />
+      <ShareDialog />
       <SilentHint />
       <Notices />
       <main className="workspace">

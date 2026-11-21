@@ -32,6 +32,7 @@ import {
   defaultVoices,
   setOwn,
 } from './defaults';
+import { canonicalPiece } from './canonical';
 import { DEFAULT_MIGRATIONS, migratePiece, type MigrationRegistry } from './migrations';
 import { DEFAULT_REFERENCE_HZ } from './tuning';
 import { MAX_VOICES, PIECE_FORMAT, PIECE_VERSION, type MomentType, type Piece } from './types';
@@ -843,9 +844,11 @@ export function parsePiece(json: unknown, options: ParsePieceOptions = {}): Pars
       `Tuning system '${piece.tuning.system.kind}' is not supported yet; 12-TET is used.`,
     );
   }
+  // Canonical numbers (§11.4): a silent normalisation, so share links round-trip exactly.
+  const canon = canonicalPiece(piece);
   return migratedFrom === undefined
-    ? { ok: true, piece, warnings, newerVersion }
-    : { ok: true, piece, warnings, newerVersion, migratedFrom };
+    ? { ok: true, piece: canon, warnings, newerVersion }
+    : { ok: true, piece: canon, warnings, newerVersion, migratedFrom };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -997,4 +1000,99 @@ export function pieceJsonSchema(): Record<string, unknown> {
     string,
     unknown
   >;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Default stripping (share links, §11.4)
+// ---------------------------------------------------------------------------------------------
+
+/** Deep equality of plain JSON data (key order ignored). */
+export function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a)) {
+    return Array.isArray(b) && a.length === b.length && a.every((v, i) => jsonEqual(v, b[i]));
+  }
+  if (!isRecord(a) || !isRecord(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => Object.hasOwn(b, k) && jsonEqual(a[k], b[k]));
+}
+
+const omitted = new WeakMap<AnySchema, { value: unknown }>();
+
+/** The value a schema gives an omitted field, or undefined when it fills none. */
+function omittedValue(schema: AnySchema): unknown {
+  let hit = omitted.get(schema);
+  if (!hit) {
+    const r = z.safeParse(schema, undefined);
+    hit = { value: r.success ? r.data : undefined };
+    omitted.set(schema, hit);
+  }
+  return hit.value;
+}
+
+/** The union option `value` belongs to (the first it satisfies), unwrapped; null if none. */
+function unionBranch(schema: AnySchema, value: unknown): AnySchema | null {
+  let s: AnySchema | null = unwrap(schema);
+  while (s && (s._zod.def as { type: string }).type === 'union') {
+    const options: AnySchema[] = (s._zod.def as unknown as { options: AnySchema[] }).options;
+    const match: AnySchema | undefined = options.find((o) => z.safeParse(o, value).success);
+    s = match ? unwrap(match) : null;
+  }
+  return s;
+}
+
+function strip(value: unknown, schema: AnySchema | null): unknown {
+  if (Array.isArray(value)) {
+    const def = schema
+      ? (unwrap(schema)._zod.def as { type: string; element?: AnySchema; items?: AnySchema[] })
+      : null;
+    return value.map((v, i) =>
+      strip(
+        v,
+        def?.type === 'array'
+          ? (def.element ?? null)
+          : def?.type === 'tuple'
+            ? (def.items?.[i] ?? null)
+            : null,
+      ),
+    );
+  }
+  if (!isRecord(value)) return value;
+  if (!schema) return canonical(value, null);
+  const s = unionBranch(schema, value);
+  const def = s
+    ? (s._zod.def as { type: string; shape?: Record<string, AnySchema>; valueType?: AnySchema })
+    : null;
+  const out: Record<string, unknown> = {};
+  if (def?.type === 'record') {
+    for (const k of Object.keys(value).sort()) {
+      setOwn(out, k, strip(value[k], def.valueType ?? null));
+    }
+    return out;
+  }
+  // Keys in `canonical`'s order (schema order, then unknown keys alphabetically), so equal pieces
+  // always strip to the same text.
+  const shape = def?.type === 'object' ? (def.shape ?? {}) : {};
+  for (const k of Object.keys(shape)) {
+    const v = Object.hasOwn(value, k) ? value[k] : undefined;
+    if (v === undefined) continue;
+    const filled = omittedValue(shape[k]);
+    if (filled !== undefined && jsonEqual(filled, v)) continue;
+    setOwn(out, k, strip(v, shape[k]));
+  }
+  for (const k of Object.keys(value).sort()) {
+    if (!Object.hasOwn(shape, k) && value[k] !== undefined)
+      setOwn(out, k, canonical(value[k], null));
+  }
+  return out;
+}
+
+/**
+ * A copy of a parsed piece without the fields `parsePiece` would fill with the same value
+ * (§11.4 default stripping): `parsePiece(stripDefaults(p))` gives back `p` for any parsed `p`.
+ * Unknown fields are kept.
+ */
+export function stripDefaults(piece: Piece): Record<string, unknown> {
+  return strip(piece, PieceSchema) as Record<string, unknown>;
 }

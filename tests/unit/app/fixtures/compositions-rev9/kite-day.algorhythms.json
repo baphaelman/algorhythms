@@ -1,0 +1,1054 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Kite Day",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 1001,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "C", "scale": "pentatonic-major" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Melody",
+      "timbre": "reed",
+      "pan": -0.05,
+      "gain": 2.32,
+      "range": [60, 80],
+      "sends": { "reverb": 0.4, "delay": 0.15 }
+    },
+    {
+      "id": "v2",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": -0.5,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v3",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": -0.15,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v4",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": 0.15,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v5",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": 0.5,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v6",
+      "part": "Bass",
+      "timbre": "organ",
+      "pan": 0,
+      "gain": 1.28,
+      "range": [26, 52],
+      "sends": { "reverb": 0.2, "delay": 0 }
+    },
+    {
+      "id": "v7",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": -0.65,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    },
+    {
+      "id": "v8",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": 0,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    },
+    {
+      "id": "v9",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": 0.65,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    }
+  ],
+  "moments": [
+    {
+      "id": "start0",
+      "type": "chord",
+      "at": 0,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [72, 52, 55, 60, 64, 36, 81, 84, 88]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "byVoice": true
+    },
+    { "id": "kd0001", "type": "level", "at": 0, "gain": 0, "over": 0 },
+    {
+      "id": "kd0002",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Chords" },
+      "gain": 0.7,
+      "over": 2.75,
+      "label": "Intro"
+    },
+    {
+      "id": "kd0003",
+      "type": "tune",
+      "at": 0,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.15 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0004",
+      "type": "chord",
+      "at": 2.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0005",
+      "type": "chord",
+      "at": 4.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0006",
+      "type": "level",
+      "at": 4.8,
+      "target": { "part": "Bass" },
+      "gain": 0.7,
+      "over": 2
+    },
+    {
+      "id": "kd0007",
+      "type": "chord",
+      "at": 7.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0008",
+      "type": "tune",
+      "at": 9.55,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0009",
+      "type": "level",
+      "at": 9.6,
+      "target": { "part": "Sparkle" },
+      "gain": 0.75,
+      "over": 4,
+      "label": "Sparkle"
+    },
+    {
+      "id": "yofgAy",
+      "type": "walk",
+      "at": 9.6,
+      "until": 96,
+      "target": { "part": "Sparkle" },
+      "grid": 0.3,
+      "density": 0.5,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.06,
+      "glide": { "stagger": 0, "jitter": 0, "ease": "smoothstep" },
+      "label": "Walk"
+    },
+    {
+      "id": "kd0010",
+      "type": "chord",
+      "at": 9.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0011",
+      "type": "chord",
+      "at": 12,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0012",
+      "type": "chord",
+      "at": 14.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0013",
+      "type": "chord",
+      "at": 16.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0014",
+      "type": "chord",
+      "at": 19.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0015",
+      "type": "chord",
+      "at": 21.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0016",
+      "type": "chord",
+      "at": 24,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0017",
+      "type": "chord",
+      "at": 26.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0018",
+      "type": "level",
+      "at": 28.75,
+      "target": { "part": "Melody" },
+      "gain": 0.9,
+      "over": 0.1
+    },
+    {
+      "id": "kd0019",
+      "type": "tune",
+      "at": 28.75,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 28, "len": 1.2 },
+        { "pitch": 35, "len": 0.6 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0020",
+      "type": "tune",
+      "at": 28.76,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 69, "len": 0.6 },
+        { "pitch": 71, "len": 1.2 },
+        { "pitch": 67, "len": 3 },
+        { "pitch": 64, "len": 0.6 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 74, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" },
+      "label": "Tune"
+    },
+    {
+      "id": "kd0021",
+      "type": "level",
+      "at": 28.8,
+      "target": { "part": "Bass" },
+      "gain": 0.85,
+      "over": 2
+    },
+    {
+      "id": "kd0022",
+      "type": "chord",
+      "at": 31.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0023",
+      "type": "chord",
+      "at": 33.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0024",
+      "type": "chord",
+      "at": 36,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0025",
+      "type": "chord",
+      "at": 38.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0026",
+      "type": "chord",
+      "at": 40.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0027",
+      "type": "chord",
+      "at": 43.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0028",
+      "type": "tune",
+      "at": 47.95,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0029",
+      "type": "tune",
+      "at": 47.96,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 72, "len": 0.6 },
+        { "pitch": 74, "len": 1.8 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 79, "len": 1.8 },
+        { "pitch": 77, "len": 0.6 },
+        { "pitch": 76, "len": 0.6 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 76, "len": 0.6 },
+        { "pitch": 72, "len": 2.4 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0030",
+      "type": "level",
+      "at": 48,
+      "target": { "part": "Chords" },
+      "gain": 1.1,
+      "over": 0.015
+    },
+    {
+      "id": "kd0031",
+      "type": "pulse",
+      "at": 48,
+      "target": { "part": "Chords" },
+      "until": 67.2,
+      "step": 0.6,
+      "pattern": [1, 0.55, 0.8, 0.55],
+      "decay": 1.2,
+      "floor": 0.5,
+      "mode": "together",
+      "strike": false
+    },
+    {
+      "id": "kd0032",
+      "type": "level",
+      "at": 48,
+      "target": { "part": "Sparkle" },
+      "gain": 0.9,
+      "over": 2
+    },
+    {
+      "id": "kd0033",
+      "type": "chord",
+      "at": 50.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0034",
+      "type": "chord",
+      "at": 52.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0035",
+      "type": "chord",
+      "at": 55.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0036",
+      "type": "chord",
+      "at": 57.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0037",
+      "type": "chord",
+      "at": 60,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0038",
+      "type": "chord",
+      "at": 62.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0039",
+      "type": "chord",
+      "at": 64.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0040",
+      "type": "tune",
+      "at": 67.15,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 28, "len": 1.2 },
+        { "pitch": 35, "len": 0.6 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0041",
+      "type": "tune",
+      "at": 67.16,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 69, "len": 0.6 },
+        { "pitch": 71, "len": 1.2 },
+        { "pitch": 67, "len": 3 },
+        { "pitch": 64, "len": 0.6 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 74, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0042",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Melody" },
+      "gain": 1.1,
+      "over": 2
+    },
+    {
+      "id": "kd0043",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Bass" },
+      "gain": 1,
+      "over": 2
+    },
+    {
+      "id": "kd0044",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Chords" },
+      "gain": 1.3,
+      "over": 0.015
+    },
+    {
+      "id": "kd0045",
+      "type": "pulse",
+      "at": 67.2,
+      "target": { "part": "Chords" },
+      "until": 86.4,
+      "step": 0.6,
+      "pattern": [1, 0.55, 0.8, 0.55],
+      "decay": 1.2,
+      "floor": 0.5,
+      "mode": "together",
+      "strike": false
+    },
+    {
+      "id": "kd0046",
+      "type": "chord",
+      "at": 69.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0047",
+      "type": "chord",
+      "at": 72,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0048",
+      "type": "chord",
+      "at": 74.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0049",
+      "type": "chord",
+      "at": 76.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0050",
+      "type": "chord",
+      "at": 79.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0051",
+      "type": "chord",
+      "at": 81.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0052",
+      "type": "tune",
+      "at": 86.35,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0053",
+      "type": "tune",
+      "at": 86.36,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 76, "len": 2.4 },
+        { "pitch": 77, "len": 2.4 },
+        { "pitch": 76, "len": 2.4 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0054",
+      "type": "level",
+      "at": 86.4,
+      "target": { "part": "Chords" },
+      "gain": 0.3575,
+      "over": 0
+    },
+    {
+      "id": "kd0055",
+      "type": "level",
+      "at": 86.41,
+      "target": { "part": "Chords" },
+      "gain": 0.7,
+      "over": 2
+    },
+    {
+      "id": "kd0056",
+      "type": "chord",
+      "at": 88.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0057",
+      "type": "chord",
+      "at": 91.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0058",
+      "type": "level",
+      "at": 91.2,
+      "target": { "part": "Sparkle" },
+      "gain": 0,
+      "over": 5
+    },
+    {
+      "id": "kd0059",
+      "type": "chord",
+      "at": 93.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "IgzFKj",
+      "type": "chord",
+      "at": 95.7,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [48, 55, 64, 67] },
+      "assign": "ordered",
+      "glide": { "stagger": 0.5, "length": 1.5 },
+      "label": "End"
+    },
+    {
+      "id": "kd0060",
+      "type": "tune",
+      "at": 95.96,
+      "target": { "part": "Bass" },
+      "notes": [{ "pitch": 36, "len": 2.4 }],
+      "glide": { "length": 0.3, "ease": "smoothstep" }
+    },
+    { "id": "kd0061", "type": "level", "at": 98.4, "gain": 0, "over": 6 }
+  ],
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.32
+    },
+    "delay": { "time": 0.45, "feedback": 0.3, "returnLevel": 0.18 },
+    "sends": { "reverb": 0.5, "delay": 0.25 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 108, "fade": 2 },
+  "view": {
+    "window": 20,
+    "colors": "pitch",
+    "hud": true,
+    "gridBpm": 100,
+    "meter": 4
+  }
+}

@@ -1,10 +1,23 @@
 /**
- * Share links (PLAN.md §11.4): `#p=` + base64url(deflate-raw(JSON)).
+ * Share links (PLAN.md §11.4): `#p=<payload>`. The fragment never reaches a server.
  *
- * Decoding is complete. Encoding writes the piece as it is; M5 extends `encodeShareLink` with
- * default stripping (and restores the defaults in `decodeShareLink`'s caller, `parsePiece`, which
- * already fills every omitted field). The fragment never reaches a server.
+ * Two payload versions:
+ * - **v1** (unmarked, the first links): base64url(deflate-raw(JSON of the piece)). Still opens.
+ * - **v2** (`2.` + base64url): the piece with its defaults stripped (`stripDefaults`), unchanged
+ *   built-in timbres written as `1`, moment ids that just count up from the previous one omitted,
+ *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
+ *   `[pitch, len, …]` lists; then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
+ *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
+ *
+ * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
+ * `decode(encode(p))` is exactly `p` and `encode(decode(link))` gives the same link back.
  */
+
+import { cloneJson } from '../core/defaults';
+import { TimbreSchema, jsonEqual, parsePiece, stripDefaults } from '../core/schema';
+import { BUILTIN_TIMBRES } from '../core/timbres';
+import type { Piece } from '../core/types';
+import { SHARE_DICTIONARY_V2 } from './share-dict';
 
 /** The fragment key: `#p=<payload>`. */
 export const SHARE_KEY = 'p';
@@ -12,8 +25,17 @@ export const SHARE_KEY = 'p';
 /** Decoded JSON larger than this is refused (a guard against decompression bombs). */
 export const MAX_DECODED_BYTES = 8 * 1024 * 1024;
 
-/** Links longer than this are truncated by some chat apps; the UI should offer a file instead (§11.4). */
+/** Links longer than this are truncated by some chat apps; the UI offers a file instead (§11.4). */
 export const LONG_LINK_CHARS = 2000;
+
+/** Marks a v2 payload ('.' is not in the base64url alphabet, so v1 payloads never start so). */
+const V2 = '2.';
+
+type Rec = Record<string, unknown>;
+
+function isRec(x: unknown): x is Rec {
+  return x !== null && typeof x === 'object' && !Array.isArray(x);
+}
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -32,6 +54,18 @@ function fromBase64Url(text: string): Uint8Array {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
 }
+
+function concat(chunks: Uint8Array[], total: number): Uint8Array {
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
+
+const TOO_BIG = 'The link expands to more data than a piece can hold.';
 
 /** Runs bytes through a (de)compression stream, stopping once the output exceeds `limit` bytes. */
 async function pipe(
@@ -52,31 +86,214 @@ async function pipe(
     total += value.length;
     if (total > limit) {
       await reader.cancel().catch(() => undefined);
-      throw new Error('The link expands to more data than a piece can hold.');
+      throw new Error(TOO_BIG);
     }
     chunks.push(value);
   }
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.length;
+  return concat(chunks, total);
+}
+
+const dictionary = (): Uint8Array => new TextEncoder().encode(SHARE_DICTIONARY_V2);
+
+/** fflate is loaded on demand: only sharing and opening a v2 link need it. */
+async function deflateV2(bytes: Uint8Array): Promise<Uint8Array> {
+  const { deflateSync } = await import('fflate');
+  return deflateSync(bytes, { level: 9, mem: 9, dictionary: dictionary() });
+}
+
+async function inflateV2(bytes: Uint8Array, limit: number): Promise<Uint8Array> {
+  const { Inflate } = await import('fflate');
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const inflater = new Inflate({ dictionary: dictionary() }, (chunk) => {
+    total += chunk.length;
+    if (total > limit) throw new Error(TOO_BIG);
+    chunks.push(chunk);
+  });
+  // Small input steps bound how far one push can overshoot the limit.
+  const STEP = 1024;
+  for (let i = 0; i < bytes.length || i === 0; i += STEP) {
+    inflater.push(bytes.subarray(i, i + STEP), i + STEP >= bytes.length);
+  }
+  return concat(chunks, total);
+}
+
+// ---------------------------------------------------------------------------------------------
+// v2 packing
+// ---------------------------------------------------------------------------------------------
+
+/** `kd0041` → `kd0042` (same width); null when the id has no digit suffix or would widen. */
+export function nextId(id: string): string | null {
+  const m = /^(.*?)(\d+)$/.exec(id);
+  if (!m) return null;
+  const n = String(Number(m[2]) + 1).padStart(m[2].length, '0');
+  return n.length > m[2].length || !Number.isSafeInteger(Number(m[2])) ? null : m[1] + n;
+}
+
+/** Whole milliseconds, or null when `t` is not on the 1 ms grid. */
+function wholeMs(t: unknown): number | null {
+  if (typeof t !== 'number' || !Number.isFinite(t)) return null;
+  const k = Math.round(t * 1000);
+  return k / 1000 === t && Number.isSafeInteger(k) ? k : null;
+}
+
+const parsedBuiltins = new Map<string, unknown>();
+
+/** The built-in timbre `name` as `parsePiece` fills it, or undefined. */
+function builtin(name: string): unknown {
+  if (!Object.hasOwn(BUILTIN_TIMBRES, name)) return undefined;
+  if (!parsedBuiltins.has(name)) {
+    parsedBuiltins.set(name, TimbreSchema.parse(cloneJson(BUILTIN_TIMBRES[name])));
+  }
+  return parsedBuiltins.get(name);
+}
+
+/** A tune note that packs into a `[pitch, len]` pair (no other fields). */
+function plainNote(n: unknown): n is { pitch: number; len: number } {
+  return (
+    isRec(n) &&
+    Object.keys(n).length === 2 &&
+    typeof n.pitch === 'number' &&
+    typeof n.len === 'number'
+  );
+}
+
+/** The v2 form of a piece (JSON data), or null when it can't express this piece exactly. */
+export function packPiece(piece: Piece): Rec | null {
+  const out = stripDefaults(piece);
+  if (isRec(out.timbres)) {
+    const timbres: Rec = {};
+    for (const [name, t] of Object.entries(out.timbres)) {
+      const full = piece.timbres[name];
+      const b = builtin(name);
+      timbres[name] = b !== undefined && jsonEqual(full, b) ? 1 : t;
+    }
+    out.timbres = timbres;
+  }
+  if (Array.isArray(out.voices)) {
+    out.voices = out.voices.map((v: unknown, i) => {
+      if (!isRec(v) || v.id !== `v${i + 1}`) return v;
+      const { id: _id, ...rest } = v;
+      return rest;
+    });
+  }
+  if (Array.isArray(out.moments)) {
+    let prevId: unknown = null;
+    let prevMs = 0;
+    const moments: unknown[] = [];
+    for (const raw of out.moments) {
+      if (!isRec(raw)) return null;
+      const ms = wholeMs(raw.at);
+      if (ms === null) return null;
+      const m: Rec = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (k === 'id' && typeof prevId === 'string' && v === nextId(prevId)) continue;
+        if (k === 'at') m.at = ms - prevMs;
+        else if (k === 'notes' && raw.type === 'tune' && Array.isArray(v) && v.every(plainNote))
+          m.notes = v.flatMap((n) => [n.pitch, n.len]);
+        else m[k] = v;
+      }
+      if (typeof raw.id !== 'string') return null;
+      prevId = raw.id;
+      prevMs = ms;
+      moments.push(m);
+    }
+    out.moments = moments;
   }
   return out;
 }
 
-/** The base64url(deflate-raw(JSON)) payload of a piece (or any JSON value). */
+/** The inverse of `packPiece`: JSON that `parsePiece` reads (defaults are filled there). */
+export function unpackPiece(packed: unknown): unknown {
+  if (!isRec(packed)) return packed;
+  const out: Rec = { ...packed };
+  if (isRec(out.timbres)) {
+    const timbres: Rec = {};
+    for (const [name, t] of Object.entries(out.timbres)) {
+      timbres[name] =
+        t === 1 && Object.hasOwn(BUILTIN_TIMBRES, name) ? cloneJson(BUILTIN_TIMBRES[name]) : t;
+    }
+    out.timbres = timbres;
+  }
+  if (Array.isArray(out.voices)) {
+    out.voices = out.voices.map((v: unknown, i) =>
+      isRec(v) && !('id' in v) ? { id: `v${i + 1}`, ...v } : v,
+    );
+  }
+  if (Array.isArray(out.moments)) {
+    let prevId: string | null = null;
+    let prevMs = 0;
+    out.moments = out.moments.map((raw: unknown) => {
+      if (!isRec(raw)) return raw;
+      const m: Rec = {};
+      if (!('id' in raw) && prevId !== null) {
+        const id = nextId(prevId);
+        if (id !== null) m.id = id;
+      }
+      for (const [k, v] of Object.entries(raw)) {
+        if (k === 'at' && typeof v === 'number') {
+          prevMs += v;
+          m.at = prevMs / 1000;
+        } else if (
+          k === 'notes' &&
+          raw.type === 'tune' &&
+          Array.isArray(v) &&
+          v.every((x) => typeof x === 'number')
+        ) {
+          const notes: Rec[] = [];
+          for (let i = 0; i + 1 < v.length; i += 2) notes.push({ pitch: v[i], len: v[i + 1] });
+          m.notes = notes;
+        } else m[k] = v;
+      }
+      if (typeof m.id === 'string') prevId = m.id;
+      return m;
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Payloads and links
+// ---------------------------------------------------------------------------------------------
+
+/** The v1 payload, base64url(deflate-raw(JSON)), of any JSON value. */
 export async function encodeSharePayload(value: unknown): Promise<string> {
   const json = new TextEncoder().encode(JSON.stringify(value));
   const packed = await pipe(json, new CompressionStream('deflate-raw'));
   return toBase64Url(packed);
 }
 
-/** Decodes a payload to the JSON value inside it. Throws an Error with a readable message. */
+/**
+ * The shortest exact payload for a piece: v2 when it packs, else v1 of the stripped piece. A
+ * piece that is not canonical (not as `parsePiece` returns it) is written as v1, unstripped.
+ */
+export async function encodePiecePayload(piece: Piece): Promise<string> {
+  const read = (json: unknown): Piece | null => {
+    const r = parsePiece(json);
+    return r.ok ? r.piece : null;
+  };
+  // Belt and braces: each form is checked to read back as the piece, else the next is tried.
+  const packed = packPiece(piece);
+  if (packed !== null) {
+    const text = JSON.stringify(packed);
+    if (jsonEqual(read(unpackPiece(JSON.parse(text))), piece)) {
+      return V2 + toBase64Url(await deflateV2(new TextEncoder().encode(text)));
+    }
+  }
+  const stripped = stripDefaults(piece);
+  return encodeSharePayload(jsonEqual(read(stripped), piece) ? stripped : piece);
+}
+
+/**
+ * Decodes a payload (v1 or v2) to piece JSON for `parsePiece`. Throws an Error with a readable
+ * message.
+ */
 export async function decodeSharePayload(payload: string): Promise<unknown> {
+  const text = payload.trim();
+  const v2 = text.startsWith(V2);
   let bytes: Uint8Array;
   try {
-    bytes = fromBase64Url(payload.trim());
+    bytes = fromBase64Url(v2 ? text.slice(V2.length) : text);
   } catch (e) {
     throw new Error(
       e instanceof Error && /base64url/.test(e.message)
@@ -87,16 +304,20 @@ export async function decodeSharePayload(payload: string): Promise<unknown> {
   }
   let json: Uint8Array;
   try {
-    json = await pipe(bytes, new DecompressionStream('deflate-raw'), MAX_DECODED_BYTES);
+    json = v2
+      ? await inflateV2(bytes, MAX_DECODED_BYTES)
+      : await pipe(bytes, new DecompressionStream('deflate-raw'), MAX_DECODED_BYTES);
   } catch (e) {
-    if (e instanceof Error && /more data/.test(e.message)) throw e;
+    if (e instanceof Error && e.message === TOO_BIG) throw e;
     throw new Error('The link is damaged: it could not be decompressed.', { cause: e });
   }
+  let value: unknown;
   try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json)) as unknown;
+    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json)) as unknown;
   } catch (e) {
     throw new Error('The link is damaged: its contents are not valid JSON.', { cause: e });
   }
+  return v2 ? unpackPiece(value) : value;
 }
 
 /** The payload in a URL fragment (`#p=…`, with or without the `#`), or null when there is none. */
@@ -107,12 +328,12 @@ export function sharePayloadOf(hash: string): string | null {
 }
 
 /**
- * A share link for a piece: `base#p=<payload>`. `base` defaults to the current page without its
- * fragment. M5 strips defaults before encoding.
+ * A share link for a piece: `base#p=<payload>`, defaults stripped. `base` defaults to the current
+ * page without its fragment.
  */
-export async function encodeShareLink(piece: unknown, base?: string): Promise<string> {
+export async function encodeShareLink(piece: Piece, base?: string): Promise<string> {
   const url = base ?? (typeof location === 'undefined' ? '' : location.href.split('#')[0]);
-  return `${url}#${SHARE_KEY}=${await encodeSharePayload(piece)}`;
+  return `${url}#${SHARE_KEY}=${await encodePiecePayload(piece)}`;
 }
 
 /** Decodes the piece JSON from a link or a bare fragment; null when it carries no `#p=`. */
