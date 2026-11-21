@@ -26,6 +26,7 @@
  */
 
 import type { Timbre } from '../core/types';
+import { MIN_ARTICULATION_ATTACK } from './constants';
 
 /** Points in one table cycle (a guard point follows, so reads never wrap). */
 export const WAVETABLE_SIZE = 2048;
@@ -63,7 +64,7 @@ export interface TimbreParams {
   accent: number;
   /** Articulation depth 0..1. */
   artAmount: number;
-  /** Articulation attack, seconds (≥ 1 ms). */
+  /** Articulation attack, seconds (≥ MIN_ARTICULATION_ATTACK). */
   artAttack: number;
   /** Articulation decay to about 1 % (−40 dB), seconds (≥ 1 ms). */
   artDecay: number;
@@ -109,7 +110,7 @@ export function timbreParams(t: Timbre): TimbreParams {
     detuneSpread: finiteOr(t.detuneSpread, 0),
     accent: Math.max(0, finiteOr(t.accent, 0)),
     artAmount: Math.min(1, Math.max(0, finiteOr(t.articulation.amount, 0))),
-    artAttack: Math.max(0.001, finiteOr(t.articulation.attack, 0.01)),
+    artAttack: Math.max(MIN_ARTICULATION_ATTACK, finiteOr(t.articulation.attack, 0.01)),
     artDecay: Math.max(0.001, finiteOr(t.articulation.decay, 0.2)),
     vibRate: Math.max(0, finiteOr(t.vibrato.rate, 0)),
     vibDepthCents: Math.max(0, finiteOr(t.vibrato.depthCents, 0)),

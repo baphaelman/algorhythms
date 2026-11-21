@@ -30,6 +30,12 @@ export const VOICE_BASE_GAIN = 0.25;
 /** Shortest life fade, so a zero-length fade still cannot click (seconds). */
 export const MIN_LIFE_FADE = 0.005;
 
+/**
+ * Shortest articulation attack (seconds; M4.5-32). The attack is a smootherstep; shorter ones
+ * tick at arrivals, loudest when every moving voice arrives on the same sample.
+ */
+export const MIN_ARTICULATION_ATTACK = 0.012;
+
 /** Crossfade length for seek, loop wrap, play and pause (§8.7), in seconds. */
 export const SEEK_FADE = 0.005;
 

@@ -1204,7 +1204,10 @@ export class Voice {
             vibCents = vibDepthNow * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
           }
 
-          // Articulation: attack from the decaying envelope, then exponential decay to 1 %.
+          // Articulation: attack from the decaying envelope, then exponential decay to 1 %. The
+          // attack is a smootherstep of at least MIN_ARTICULATION_ATTACK (timbreParams): a short
+          // or linear one ticks, on every moving voice at once under `arrive: 'together'`
+          // (M4.5-32).
           let artic = 1;
           const amount = A.artAmount * xa + B.artAmount * x;
           if (amount > 0) {
@@ -1218,12 +1221,14 @@ export class Voice {
                 let e0 = 0;
                 if (pa === pa) {
                   const tp = d.arrive[si] - pa;
+                  const v = tp / attack;
                   e0 =
-                    tp < attack
-                      ? tp / attack
+                    v < 1
+                      ? v * v * v * (v * (v * 6 - 15) + 10)
                       : Math.exp((-(tp - attack) * ARTICULATION_DECAY) / decay);
                 }
-                env = e0 + ((1 - e0) * ta) / attack;
+                const u = ta / attack;
+                env = e0 + (1 - e0) * u * u * u * (u * (u * 6 - 15) + 10);
               } else env = Math.exp((-(ta - attack) * ARTICULATION_DECAY) / decay);
             }
             artic = 1 - amount + amount * env;
