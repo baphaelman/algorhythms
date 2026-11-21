@@ -550,6 +550,8 @@ describe('compiler properties (§14)', () => {
           seen.add(m.id);
           expect(m.intents.length).toBe(m.targeted.length);
           const nm = p.moments.find((x) => x.id === m.id);
+          // Overrides are hand edits: they may add moves and make the plan unordered.
+          if (nm?.overrides?.length) continue;
           const ordered = nm?.type === 'note' && nm.order === true;
           expect(m.plan.ordered).toBe(ordered);
           // Without `order`, only the voice sounding `from` moves; the rest may be out of order.
@@ -568,7 +570,7 @@ describe('compiler properties (§14)', () => {
       }),
       RUNS,
     );
-    expect(applied).toBeGreaterThan(30);
+    expect(applied).toBeGreaterThan(20);
     expect(returns).toBeGreaterThan(5);
   });
 

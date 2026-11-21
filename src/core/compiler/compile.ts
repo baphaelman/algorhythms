@@ -930,20 +930,26 @@ export class Compiler {
       if (chain !== null) d.into = chain;
       if (!d.frontier.alive || d.pending.length > 0 || !(d.diedAt > mv.t0)) continue;
       if (to < d.range[0] || to > d.range[1]) continue;
-      // A voice already gliding there with it (this moment's own glide) needs no new segment.
+      // A voice already gliding there in this moment (its own glide, maybe with its own `end`
+      // override) keeps that glide and only waits for the survivor.
       let end = mv.t0 + mv.dur;
       const tail = d.frontier.tail!;
-      if (d.frontier.heading !== to || d.frontier.open || tail.t1 !== end) {
-        end = d.frontier.start(
+      const own = !d.frontier.open && tail.momentId === mv.momentId && tail.t1 > mv.t0;
+      if (d.frontier.heading !== to || !(own || (!d.frontier.open && tail.t1 === end))) {
+        // Replacing a glide that starts now drops it: keep its C⁰ flag on the replacement.
+        const wasClamped = tail.t0 === mv.t0 && tail.clamped === true;
+        const seg = d.frontier.start(
           mv.t0,
           mv.dur,
           to,
           mv.ease,
           mv.limits,
-          mv.crossScale,
+          1, // the leader's crossing scale is for its own neighbours
           d.range,
           mv.momentId,
-        ).t1;
+        );
+        if (wasClamped) seg.clamped = true;
+        end = seg.t1;
         this.activity(end);
       }
       const fadeStart = d.diedAt - d.deathFade;

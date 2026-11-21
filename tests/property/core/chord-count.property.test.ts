@@ -118,6 +118,7 @@ function draftArb(pool: number): fc.Arbitrary<Draft> {
         type: fc.constant('note'),
         from: fc.integer({ min: 48, max: 72 }),
         to: fc.integer({ min: 40, max: 80 }),
+        order: fc.constant(true), // "Keep lines in order" (off, a note may cross by design)
         gap: fc.constant(0),
       }),
     },
