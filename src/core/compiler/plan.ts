@@ -253,7 +253,10 @@ export function planMoment(
     const parent = it.parent ?? -1;
     const p = mk(it.voice, PartKind.Birth, it.to, parent >= 0 ? host.dest(parent) : it.to);
     p.parent = parent;
-    p.deferT = -Infinity;
+    // A parent not born yet (a newborn of an earlier moment) cannot be forked from before it
+    // sounds: the newborn waits for it (§7.4).
+    const pb = parent >= 0 ? voices[parent].pendingBirth : null;
+    p.deferT = pb ? pb.t : -Infinity;
   }
   const n = parts.length;
 
@@ -670,6 +673,15 @@ export function planMoment(
             adopt(nb, other);
             acted = true;
             sync();
+            touched[li] = 1;
+            touched[hi] = 1;
+            continue;
+          }
+          // Born in step with it, the newborn still swaps with it right after its birth: their
+          // carried velocities differ (m₀ = v·d − Δ·e′(0) cancels a steep ease's start by its
+          // own interval). Equal timing and m₀ = 0 keep them in order (tighten checks that).
+          if (nb >= 0 && tighten(lo, up)) {
+            acted = true;
             touched[li] = 1;
             touched[hi] = 1;
             continue;

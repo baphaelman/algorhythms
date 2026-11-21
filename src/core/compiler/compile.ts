@@ -146,6 +146,8 @@ export interface MomentTrace {
         kind: 'move' | 'birth' | 'death';
         parent?: number;
         into?: number;
+        /** `logical` only: the target was folded into the voice's range (§7.8). */
+        folded?: true;
       }[]
     | null;
   /**
@@ -483,7 +485,7 @@ export class Compiler {
   private birthPitch(b: Birth): Pitch {
     if (b.parent < 0) return b.pitch;
     if (!this.birthProjector) this.birthProjector = new Projector(this.voices, () => undefined);
-    const st = this.birthProjector.get(b.parent).stateBefore(b.t);
+    const st = this.birthProjector.birthState(b);
     return st ? st.p : b.pitch;
   }
 
@@ -819,7 +821,8 @@ export class Compiler {
       if (plan) {
         for (const v of lines(pre)) this.voices[v].cancelPending();
         this.touch();
-        x.active = sortU(x.active.slice());
+        // x.active keeps the pre-cancel order the note was planned in: collapse lists the pool
+        // intents in it, so an ordered note's intents stay sorted by target.
         targeted = sortU(pre.slice());
       }
     } else {
@@ -1107,7 +1110,14 @@ export class Compiler {
     const run = this.voices[b.voice];
     if (run.pendingBirth !== b) return;
     run.pendingBirth = null;
-    const parent = b.parent >= 0 ? this.voices[b.parent].frontier.stateAt(b.t) : null;
+    // A parent not born yet (its own birth moved later) is still on its parent's note: start there.
+    let src = b.parent;
+    for (let k = 0; src >= 0 && k <= this.voices.length; k++) {
+      const pr = this.voices[src];
+      if (pr.frontier.alive || !pr.pendingBirth || !(pr.pendingBirth.t >= b.t)) break;
+      src = pr.pendingBirth.parent;
+    }
+    const parent = src >= 0 ? this.voices[src].frontier.stateAt(b.t) : null;
     run.frontier.openAt(b.t, parent ?? { p: b.pitch, v: 0, mid: false });
     run.life = { born: b.t, fadeIn: b.fadeIn };
     run.lives.push(run.life);
@@ -1291,6 +1301,14 @@ export class Compiler {
     }
     if (s < 0 || s === d.index) return;
     const sr = this.voices[s];
+    // A survivor not born yet (a newborn of the dying line, say) is born now, on the dying line's
+    // note, rather than later in mid-air once nothing sounds there.
+    const pb = sr.pendingBirth;
+    if (!sr.frontier.alive && pb && pb.t > t && d.frontier.alive) {
+      const nb: Birth = { ...pb, t };
+      sr.pendingBirth = nb;
+      this.onBirth(nb);
+    }
     if (sr.status === Status.Dormant || !sr.frontier.alive) return;
     const gs = this.levelOf(s);
     const gd = this.levelOf(d.index);
@@ -1395,7 +1413,48 @@ export class Compiler {
       run.life = null;
     }
     if (run.status === Status.Dying) run.status = Status.Dormant;
+    if (run.into >= 0) this.passOn(run.index, run.into, rec.died);
     run.into = -1;
+  }
+
+  /**
+   * Line `from` has just merged into `to` and closed (revision 8). What still depended on it
+   * depends on `to` instead, so nothing follows or forks from the voice once it is reused: lines
+   * dying into it follow `to` (and hand their weight to it); newborns waiting to fork from it fork
+   * from `to`, on the note `from` joined, not in mid-air.
+   */
+  private passOn(from: number, to: number, t: Seconds): void {
+    for (const run of this.voices) {
+      if (run.status === Status.Dying && run.into === from) run.into = to;
+      for (let k = 0; k < run.pending.length; k++) {
+        const mv = run.pending[k];
+        if (mv.cancelled || !mv.death || mv.death.into !== from) continue;
+        const nm: Move = { ...mv, death: { ...mv.death, into: to } };
+        mv.cancelled = true;
+        run.pending[k] = nm;
+        this.queue.push({
+          t: nm.t0,
+          cls: EventClass.MoveStart,
+          key: SUB_MOVE * SUB_STRIDE + nm.voice,
+          sub: 0,
+          ref: 0,
+          obj: nm,
+        });
+      }
+      const b = run.pendingBirth;
+      if (!b || b.parent !== from || run.index === to || !(b.t >= t)) continue;
+      const nb: Birth = { ...b, parent: to };
+      run.pendingBirth = nb;
+      this.touch();
+      this.queue.push({
+        t: nb.t,
+        cls: EventClass.MoveStart,
+        key: SUB_BIRTH * SUB_STRIDE + nb.voice,
+        sub: 0,
+        ref: 0,
+        obj: nb,
+      });
+    }
   }
 
   private onTick(wi: number, k: number): void {
@@ -1612,15 +1671,19 @@ export class Compiler {
       list
         ? list.map((it) => {
             let to = it.to;
+            let folded = false;
             if (fold && Number.isFinite(to)) {
               const r = fold(it.voice);
-              to = foldIntoRange(to, r[0], r[1]).p;
+              const f = foldIntoRange(to, r[0], r[1]);
+              to = f.p;
+              folded = f.folded || f.clampedToRange;
             }
             const r: NonNullable<MomentTrace['intents']>[number] = {
               voice: it.voice,
               to,
               kind: kinds[it.kind],
             };
+            if (folded) r.folded = true;
             if (it.kind === IntentKind.Birth) r.parent = it.parent ?? -1;
             if (it.kind === IntentKind.Death) r.into = it.into ?? -1;
             return r;

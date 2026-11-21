@@ -1,0 +1,311 @@
+{
+  "format": "algorhythms",
+  "version": 1,
+  "meta": {
+    "title": "Untitled",
+    "created": "1970-01-01T00:00:00.000Z",
+    "modified": "1970-01-01T00:00:00.000Z"
+  },
+  "seed": 29304,
+  "tuning": {
+    "referenceHz": 440,
+    "system": {
+      "kind": "12tet"
+    }
+  },
+  "key": {
+    "tonic": "A",
+    "scale": "dorian"
+  },
+  "defaults": {
+    "glide": {
+      "length": 4.6,
+      "jitter": 0.8,
+      "stagger": 2.9,
+      "order": "high-first",
+      "ease": "linear"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v2",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v3",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v4",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v5",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v6",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v7",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v8",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v9",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v10",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    },
+    {
+      "id": "v11",
+      "timbre": "glass",
+      "pan": "auto",
+      "gain": 1,
+      "range": [36, 96]
+    }
+  ],
+  "start": [],
+  "moments": [
+    {
+      "at": 0.2,
+      "type": "key",
+      "key": {
+        "tonic": "C",
+        "scale": "whole-tone"
+      },
+      "id": "m00000"
+    },
+    {
+      "at": 17.1,
+      "type": "key",
+      "key": {
+        "tonic": "F#",
+        "scale": "whole-tone"
+      },
+      "id": "m00001"
+    },
+    {
+      "at": 24.4,
+      "target": {
+        "rank": [3, 8]
+      },
+      "glide": {
+        "length": 3,
+        "jitter": 0.8,
+        "stagger": 1,
+        "order": "center-out",
+        "ease": "linear"
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "degrees",
+        "degrees": [9, 5, 9, 8]
+      },
+      "voicing": "even",
+      "assign": "free",
+      "register": [67, 73],
+      "count": 8,
+      "byVoice": false,
+      "id": "m00002"
+    },
+    {
+      "at": 17.5,
+      "target": {
+        "voices": ["v2"]
+      },
+      "glide": {
+        "length": 2.7,
+        "jitter": 0.1,
+        "stagger": 1.1,
+        "ease": "cosine"
+      },
+      "type": "unison",
+      "pitch": "center",
+      "octaves": false,
+      "id": "m00003"
+    },
+    {
+      "at": 16.8,
+      "type": "split",
+      "count": 8,
+      "voicing": "close",
+      "id": "m00004"
+    },
+    {
+      "at": 1.8,
+      "glide": {
+        "length": 1.8,
+        "jitter": 0.1,
+        "stagger": 0.9,
+        "order": "outside-in",
+        "ease": "cosine"
+      },
+      "type": "spread",
+      "factor": 1,
+      "around": "mean",
+      "snap": "chromatic",
+      "id": "m00005"
+    },
+    {
+      "at": 33,
+      "target": {
+        "rank": [4, 7]
+      },
+      "glide": {
+        "length": 0.5,
+        "jitter": 0.8
+      },
+      "type": "spread",
+      "factor": -0.6,
+      "around": 43,
+      "snap": "none",
+      "id": "m00006"
+    },
+    {
+      "at": 12.9,
+      "target": {
+        "rank": [1, 5]
+      },
+      "type": "level",
+      "gain": 0.1,
+      "over": 3.2,
+      "id": "m00007"
+    },
+    {
+      "at": 32.5,
+      "target": {
+        "voices": ["v3", "v5", "v8", "v9"]
+      },
+      "glide": {
+        "length": 0.6,
+        "jitter": 0.4,
+        "stagger": 1.2,
+        "order": "center-out",
+        "ease": "smootherstep"
+      },
+      "type": "chord",
+      "notes": {
+        "kind": "current"
+      },
+      "voicing": "close",
+      "assign": "ordered",
+      "register": [62, 70],
+      "count": 1,
+      "id": "m00008"
+    },
+    {
+      "at": 21.5,
+      "glide": {
+        "length": 4.9,
+        "jitter": 0.4,
+        "stagger": 2.7,
+        "order": "outside-in",
+        "ease": "linear"
+      },
+      "type": "split",
+      "count": 14,
+      "notes": {
+        "kind": "current"
+      },
+      "voicing": "even",
+      "id": "m00009"
+    }
+  ],
+  "timbres": {
+    "glass": {
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
+      "stretch": 0,
+      "brightness": {
+        "tilt": -1.5,
+        "track": 0.3
+      },
+      "detuneSpread": 1,
+      "accent": 0.25,
+      "articulation": {
+        "amount": 0.35,
+        "attack": 0.004,
+        "decay": 0.7
+      },
+      "vibrato": {
+        "rate": 4.2,
+        "depthCents": 4,
+        "delay": 0.6
+      }
+    }
+  },
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.35
+    },
+    "delay": {
+      "time": 0.375,
+      "feedback": 0.35,
+      "returnLevel": 0
+    },
+    "sends": {
+      "reverb": 0.5,
+      "delay": 0.25
+    },
+    "tone": {
+      "tilt": 0,
+      "lowpassHz": 20000
+    },
+    "limiter": {
+      "ceilingDb": -1
+    },
+    "panAuto": "index"
+  },
+  "end": {
+    "fade": 6
+  },
+  "view": {
+    "window": 20,
+    "colors": "pitch",
+    "hud": true
+  }
+}

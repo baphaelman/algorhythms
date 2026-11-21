@@ -144,14 +144,26 @@ function checkCrossings(p: Piece, stats: CrossingStats): void {
     // voice end on one line, and their order on the way does not matter.
     const into = new Map<number, number>();
     for (const it of m.intents ?? []) if (it.kind === 'death') into.set(it.voice, it.into ?? -1);
+    // Revision 8: lines sent to one note join there on arrival, so they too end as one line (two
+    // converging on it may touch out of order by a hair as they meet).
+    const target = new Map<number, number>();
+    for (const it of m.intents ?? []) if (it.kind !== 'death') target.set(it.voice, it.to);
+    // A dying voice goes where its survivor goes: a later moment that moves the survivor takes
+    // the dying voice over too (its death glide, started later, aims at the new destination).
+    const takeoverOf = (v: number): number => {
+      const s = into.get(v);
+      return s !== undefined && s >= 0 ? Math.min(takeover(v), takeover(s)) : takeover(v);
+    };
     for (let k = 0; k + 1 < plan.order.length; k++) {
       const lo = score.voices[plan.order[k]];
       const hi = score.voices[plan.order[k + 1]];
       if (!plan.movers.includes(lo.index) && !plan.movers.includes(hi.index)) continue;
       const a = into.get(lo.index);
       if (a !== undefined && a >= 0 && a === into.get(hi.index)) continue;
+      const qa = target.get(lo.index);
+      if (qa !== undefined && qa === target.get(hi.index)) continue;
       // The window ends when a later moment (or walk) takes over either voice.
-      let end = Math.min(we, takeover(lo.index), takeover(hi.index));
+      let end = Math.min(we, takeoverOf(lo.index), takeoverOf(hi.index));
       for (const v of [lo, hi]) {
         for (const g of v.segments) {
           if (g.t0 >= ws && g.momentId !== undefined && g.momentId !== m.id && g.t0 < end) {
@@ -459,11 +471,14 @@ describe('compiler properties (§14)', () => {
           }
         }
         // A voice with a pending (staggered) move from a point moment does not walk before it.
-        for (const m of trace.moments) {
-          if (!m.plan) continue;
+        trace.moments.forEach((m, mi) => {
+          if (!m.plan) return;
+          // A note's return is a later run of the same moment: its moves are not this run's.
+          const ret = trace.moments.slice(mi + 1).find((o) => o.id === m.id);
+          const until = ret ? ret.t : Infinity;
           for (const vi of m.plan.movers) {
             const v = score.voices[vi];
-            const own = v.segments.find((g) => g.momentId === m.id && g.t0 >= m.t);
+            const own = v.segments.find((g) => g.momentId === m.id && g.t0 >= m.t && g.t0 < until);
             if (!own) continue; // cancelled by a later moment
             for (const g of v.segments) {
               if (isWalk(g) && g.t0 >= m.t && g.t0 < own.t0) {
@@ -471,7 +486,7 @@ describe('compiler properties (§14)', () => {
               }
             }
           }
-        }
+        });
       }),
       RUNS,
     );
@@ -566,10 +581,14 @@ describe('compiler properties (§14)', () => {
           if (!ordered) continue;
           // Intents list the voices low to high by destination; unless range folding moved a
           // target, their targets are in the same order (ordered voice leading, §7.2).
-          const folded = score.diagnostics.some(
-            (d) =>
-              d.momentId === m.id && (d.code === 'range-fold' || d.code === 'range-too-narrow'),
-          );
+          // A stacked line's copy is folded per logical voice (`folded`); when that copy never
+          // becomes a pool voice (pool exhausted), no pool target folds and no diagnostic says so.
+          const folded =
+            its!.some((it) => it.folded) ||
+            score.diagnostics.some(
+              (d) =>
+                d.momentId === m.id && (d.code === 'range-fold' || d.code === 'range-too-narrow'),
+            );
           if (folded) continue;
           for (let k = 1; k < its!.length; k++) {
             expect(its![k].to).toBeGreaterThanOrEqual(its![k - 1].to);
