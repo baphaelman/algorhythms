@@ -26,6 +26,11 @@ describe('number field draft rule', () => {
     expect(draftReduce(clean, { type: 'external', shown: '3.1' })).toBe(clean);
   });
 
+  it('a chord-symbol (text) draft is dropped by an outside change', () => {
+    const d = draftReduce({ text: 'Am7', dirty: true }, { type: 'external', shown: 'C' });
+    expect(d).toEqual({ text: 'C', dirty: false });
+  });
+
   it('a field-set text (step, commit, Escape) is not a draft', () => {
     expect(draftReduce({ text: '9', dirty: true }, { type: 'set', text: '3.1' }).dirty).toBe(false);
   });

@@ -559,21 +559,28 @@ export function TextField({
   testId?: string;
 }) {
   const id = useId();
-  const [text, setText] = useState(value);
+  const [draft, dispatch] = useReducer(draftReduce, { text: value, dirty: false });
+  const text = draft.text;
+  const setText = (t: string): void => dispatch({ type: 'set', text: t });
   const [shownError, setShownError] = useState<string | null>(null);
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) setText(value);
-  }, [value]);
+  // An outside change (undo, another edit) drops a typed draft: blur must not commit it.
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    dispatch({ type: 'external', shown: value });
+    setShownError(null);
+  }
 
   const live = feedback ? feedback(text) : null;
   const submit = (): void => {
+    if (!draft.dirty) return;
     const r = parse(text);
     if (!r.ok) {
       setShownError(r.error);
       return;
     }
     setShownError(null);
+    setText(text);
     if (text !== value) onCommit(text);
   };
   const error = shownError ?? (live && !live.ok ? live.text : null);
@@ -592,13 +599,9 @@ export function TextField({
           data-testid={testId}
           aria-invalid={error ? true : undefined}
           aria-describedby={`${id}-fb`}
-          onFocus={() => (focused.current = true)}
-          onBlur={() => {
-            focused.current = false;
-            submit();
-          }}
+          onBlur={submit}
           onChange={(e) => {
-            setText(e.target.value);
+            dispatch({ type: 'type', text: e.target.value });
             setShownError(null);
           }}
           onKeyDown={(e) => {
