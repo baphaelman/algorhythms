@@ -6,10 +6,17 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - Nothing open.
 
 ## Answered
+- 2026-11-21 (night): the compact lane rows are rejected ("I would prefer scrolling through the old one"); try something else (PLAN "Dense lanes"). A light pop at the end of every moment in version 29 is being bisected.
+- 2026-11-21 (night): thickness for loudness is good in the editor (an option for video export later). Merging lines should bundle into the thick line, with no swell after arrival, and merges and splits crossfade their sound across the approach.
 - 2026-11-21 (later): M4.5 looks good (done); M2 sound is fine (done); no vetoes on the calls below. Generate doesn't warn before replacing a piece, but an edited, unnamed piece gets a popup offering to name it before the next piece opens (PLAN §11.4, being built). Roman numerals stay read against the major scale. No M3 release announcement.
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Land at the marker (R9-2, engine; the toggle comes with R9-9).**
+  - A land moment starts its glide length + stagger before its marker, so its notes arrive on the marker. Near 0:00 the glide shortens to fit instead of arriving late.
+  - It reads the key at its marker. If nothing is sounding when its lead-in starts, it waits and acts at the marker.
+  - A later moment whose marker falls inside the lead-in interrupts it.
+  - Splits and merges now use the moment's stagger and order like other moments, which you approved in rev 9. The five original examples change timing slightly; the compositions are unchanged.
 - **Parts in the editor (R9-6).**
   - The Notes drawer shows one group per part. Each header has a name field, delete, and whole-part timbre, pan, gain and range. Notes without a part sit under "Unassigned", and each note row has a Part menu.
   - A piece without parts gains one "New part" button. With no parts it puts every note in "Part 1"; with parts it groups the unassigned notes into "Part n". A note's own "New part…" puts just that note in a new part.

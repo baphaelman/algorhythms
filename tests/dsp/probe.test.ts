@@ -4,7 +4,7 @@
  * the functions it replaces, so the sound is unchanged.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lockStressScore, unisonChordScore } from '../../src/audio/fixtures/scores';
 import { flatten } from '../../src/core/flat';
 import {
@@ -19,6 +19,9 @@ import {
 } from '../../src/core/segment';
 import { MIN_LIFE_FADE } from '../../src/dsp/constants';
 import { computeUnisonWarps, lastAtOrBefore, VoiceData, warpOffset } from '../../src/dsp/voice';
+
+// Slowest test 0.5 s on 1 worker; ~10x so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RATE = 48000;
 

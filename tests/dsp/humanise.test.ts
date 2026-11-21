@@ -4,7 +4,7 @@
  * seed and voice id.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import type { Timbre } from '../../src/core/types';
 import { createLoadedGraph, renderOffline } from '../../src/audio/offline';
@@ -20,6 +20,9 @@ import {
   type WavetableSet,
 } from '../../src/dsp/wavetable';
 import { clickScore, RATE } from './helpers';
+
+// Slowest test 1.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Amplitude of harmonic n in mip `mip`, by DFT. */
 function harmonic(set: WavetableSet, mip: number, n: number): number {

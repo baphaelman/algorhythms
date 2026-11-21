@@ -2,7 +2,8 @@
  * The lane rows under the score (PLAN.md §11.2, §11.3, §11.3a, §11.5), on the score's time axis
  * at every frame: **Moments** (marker and name) and **Transitions** (each moment's compiled span
  * as a bar; walks striped), both stacked in sub-rows so overlapping moments never share one
- * (revision 7; the lane grows to fit) and **Level** (the mean level curve). One DOM
+ * (revision 7; the lane grows to fit, up to a cap that keeps the score ≥ 55 % of the timeline,
+ * then scrolls vertically; dense rows go compact) and **Level** (the mean level curve). One DOM
  * item per moment holds its marker and its bar, so selection, focus and drags act on both.
  *
  * React renders the items (on piece, score or selection changes only). Positions are written
@@ -41,36 +42,40 @@ import {
   endDragPatch,
   gridStep,
   laneItems,
+  laneMaxPx,
+  laneStack,
   levelCurve,
+  NORMAL_ROWS,
   nudgeDt,
   revealPan,
-  stackRows,
+  revealScroll,
   spokenTime,
   type LaneItem,
   type LevelPoint,
+  type RowGeometry,
 } from '../editor/lane';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
 import { changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
-import { panBy, usePlayer } from '../store';
+import { panBy, usePlayer, zoomBy } from '../store';
+import { wheelIntent } from '../wheel';
 import './lane.css';
 
 /**
  * Row geometry (px; lane.css reads `--mom-h` and `--trans-h`). Moments and Transitions each hold
  * `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and name per Moments sub-row,
- * a bar per Transitions sub-row; a moment uses the same sub-row index in both.
+ * a bar per Transitions sub-row; a moment uses the same sub-row index in both. Sub-row heights
+ * come from `laneStack` (normal, or compact when dense; lane.css `[data-compact]`).
  */
 const MIN_SUBROWS = 2;
-const ROW_H = 20;
 /** The Key row on top (lane.css `--key-h`): the piece key at 0:00 (M4.5-39). */
 const KEY_H = 18;
 const MOM_TOP = KEY_H + 2;
-const BAR_H = 14;
 /** Moments row height, Transitions row height and the first bar's top for `n` sub-rows. */
-const momH = (n: number): number => n * ROW_H + 4;
-const transH = (n: number): number => n * BAR_H + 4;
-const transTop = (n: number): number => KEY_H + momH(n) + 2;
+const momH = (n: number, g: RowGeometry): number => n * g.rowH + 4;
+const transH = (n: number, g: RowGeometry): number => n * g.barH + 4;
+const transTop = (n: number, g: RowGeometry): number => KEY_H + momH(n, g) + 2;
 /** Level: the curve's box. */
 const LEVEL_H = 28;
 const LEVEL_PAD = 3;
@@ -146,7 +151,12 @@ interface KeyPress {
 /** The imperative half of the lane: element registry, layout and pointer drags. */
 class LaneController {
   track: HTMLElement | null = null;
+  /** The lane area's vertical scroller (capped height, PLAN rev 7 lane stacking amended). */
+  scroller: HTMLElement | null = null;
   inner: HTMLElement | null = null;
+  /** Called when dense-row compaction turns on or off (React shows labels in tooltips). */
+  onCompact: ((compact: boolean) => void) | null = null;
+  private geom: RowGeometry = NORMAL_ROWS;
   /** The preview's would-be moment (owner 2026-11-21), drawn ghosted; hidden when none. */
   ghostEl: HTMLElement | null = null;
   private ghost: LaneItem | null = null;
@@ -188,6 +198,7 @@ class LaneController {
     const track = this.track;
     const canvas = document.getElementById('score');
     if (!track || !canvas) return;
+    this.capHeight();
     const a = canvas.getBoundingClientRect().left + canvas.clientLeft;
     const b = track.getBoundingClientRect().left + track.clientLeft;
     const left = Math.round((a - b) * 100) / 100;
@@ -195,6 +206,36 @@ class LaneController {
       this.axisLeft = left;
       this.offset = NaN;
       if (this.view) this.layout(this.view);
+    }
+  };
+
+  /** Caps the lane slot so the score keeps its share of the timeline; the rest scrolls. */
+  private capHeight(): void {
+    const slot = this.scroller?.parentElement;
+    const timeline = slot?.parentElement;
+    if (!slot || !timeline) return;
+    const ruler = timeline.querySelector<HTMLElement>('.ruler');
+    const gap = parseFloat(getComputedStyle(slot).marginTop) || 0;
+    const max = laneMaxPx(timeline.clientHeight, ruler?.offsetHeight ?? 0, gap);
+    const v = `${max}px`;
+    if (slot.style.maxHeight !== v) slot.style.maxHeight = v;
+    this.updateMore();
+  }
+
+  /** Marks the slot when rows are hidden above or below (lane.css draws a fade there). */
+  updateMore = (): void => {
+    const sc = this.scroller;
+    const slot = sc?.parentElement;
+    if (!sc || !slot) return;
+    const below = sc.scrollTop + sc.clientHeight < sc.scrollHeight - 1;
+    const above = sc.scrollTop > 1;
+    if ((slot.dataset.moreBelow !== undefined) !== below) {
+      if (below) slot.dataset.moreBelow = '';
+      else delete slot.dataset.moreBelow;
+    }
+    if ((slot.dataset.moreAbove !== undefined) !== above) {
+      if (above) slot.dataset.moreAbove = '';
+      else delete slot.dataset.moreAbove;
     }
   };
 
@@ -222,10 +263,10 @@ class LaneController {
       // The ghost is stacked with the real items, so it shows the sub-row it would take (and
       // what it would push down).
       const all = this.ghost ? [...this.items, this.ghost] : this.items;
-      const { rows, count } = stackRows(all, pps);
+      const { rows, count, geom } = laneStack(all, pps);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
       this.ghostRow = this.ghost ? rows[this.items.length] : 0;
-      this.setSubRows(Math.max(MIN_SUBROWS, count));
+      this.setSubRows(Math.max(MIN_SUBROWS, count), geom);
     }
     for (const it of this.items) this.place(it, pps);
     if (this.ghost && this.ghostEl) this.place(this.ghost, pps, this.ghostEl, this.ghostRow);
@@ -255,14 +296,19 @@ class LaneController {
     if (barLabel) barLabel.textContent = barText(it);
   }
 
-  /** Grows or shrinks the Moments and Transitions rows to `n` sub-rows. */
-  private setSubRows(n: number): void {
+  /** Grows or shrinks the Moments and Transitions rows to `n` sub-rows of geometry `g`. */
+  private setSubRows(n: number, g: RowGeometry): void {
     const track = this.track;
-    if (n === this.subRows || !track) return;
+    if ((n === this.subRows && g === this.geom) || !track) return;
     this.subRows = n;
-    track.style.setProperty('--mom-h', `${momH(n)}px`);
-    track.style.setProperty('--trans-h', `${transH(n)}px`);
+    const flipped = g.compact !== this.geom.compact;
+    this.geom = g;
+    track.style.setProperty('--mom-h', `${momH(n, g)}px`);
+    track.style.setProperty('--trans-h', `${transH(n, g)}px`);
     track.dataset.subrows = String(n);
+    if (g.compact) track.dataset.compact = '';
+    else delete track.dataset.compact;
+    if (flipped) this.onCompact?.(g.compact);
   }
 
   /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
@@ -290,14 +336,15 @@ class LaneController {
     const at = this.previewAt.get(it.id) ?? it.at;
     const row = fixedRow ?? this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
     if (fixedRow !== undefined) el.dataset.row = String(row);
-    const y = MOM_TOP + row * ROW_H;
+    const g = this.geom;
+    const y = MOM_TOP + row * g.rowH;
     el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
     const bar = el.firstElementChild as HTMLElement | null;
     if (!bar) return;
     const end = this.previewEnd?.id === it.id ? Math.max(it.start, this.previewEnd.end) : it.end;
     const w = Math.max(0, (end - it.start) * pps);
     bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
-    bar.style.top = `${transTop(Math.max(MIN_SUBROWS, this.subRows)) + row * BAR_H - y}px`;
+    bar.style.top = `${transTop(Math.max(MIN_SUBROWS, this.subRows), g) + row * g.barH - y}px`;
     bar.style.width = `${w.toFixed(2)}px`;
     const handle = fixedRow === undefined && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
@@ -318,7 +365,32 @@ class LaneController {
     const x = (this.previewAt.get(id) ?? it.at) * this.pps + this.offset;
     const dt = revealPan(x, width, this.pps, REVEAL_MARGIN);
     if (dt !== 0) panBy(dt);
+    this.revealY(id);
   }
+
+  /** Scrolls the lane area vertically so item `id`'s marker is in view. */
+  revealY(id: MomentId): void {
+    const sc = this.scroller;
+    if (!sc || this.drag?.started || sc.scrollHeight <= sc.clientHeight) return;
+    if (this.dirty && this.view) this.layout(this.view);
+    const row = this.rowOf.get(id);
+    if (row === undefined) return;
+    const top = (this.track?.clientTop ?? 0) + MOM_TOP + row * this.geom.rowH;
+    const next = revealScroll(top, this.geom.rowH, sc.scrollTop, sc.clientHeight);
+    if (next !== sc.scrollTop) sc.scrollTop = next;
+  }
+
+  /** Wheel over the lane area: zoom and pan as on the score; a plain vertical wheel scrolls it. */
+  private onWheel = (e: WheelEvent): void => {
+    const w = wheelIntent(e);
+    if (w.kind === 'zoom') {
+      e.preventDefault();
+      zoomBy(w.factor);
+    } else if (w.kind === 'pan') {
+      e.preventDefault();
+      if (this.pps > 0) panBy(w.px / this.pps);
+    }
+  };
 
   announce(text: string): void {
     const el = this.liveRegion;
@@ -609,11 +681,32 @@ class LaneController {
     this.cancel();
   };
 
-  attach(track: HTMLElement, inner: HTMLElement, ghost: HTMLElement | null): () => void {
+  attach(
+    scroller: HTMLElement,
+    track: HTMLElement,
+    inner: HTMLElement,
+    ghost: HTMLElement | null,
+    onCompact: (compact: boolean) => void,
+  ): () => void {
+    this.scroller = scroller;
+    this.onCompact = onCompact;
+    // Report the current mode (a remount keeps the controller's geometry).
+    onCompact(this.geom.compact);
     this.inner = inner;
     this.ghostEl = ghost;
     this.track = track;
-    this.liveRegion = track.parentElement?.querySelector<HTMLElement>('[aria-live]') ?? null;
+    scroller.addEventListener('wheel', this.onWheel, { passive: false });
+    scroller.addEventListener('scroll', this.updateMore, { passive: true });
+    // A newly selected moment (from the score, inspector or keys) is scrolled into view.
+    let revealRaf = 0;
+    const offSel = useEditor.subscribe((s, prev) => {
+      if (s.selection === prev.selection) return;
+      const id = s.selection.find((x) => !prev.selection.includes(x)) ?? s.selection[0];
+      if (!id) return;
+      cancelAnimationFrame(revealRaf);
+      revealRaf = requestAnimationFrame(() => this.revealY(id));
+    });
+    this.liveRegion = scroller.parentElement?.querySelector<HTMLElement>('[aria-live]') ?? null;
     this.levelSvg = inner.querySelector<SVGSVGElement>('.lane-level');
     this.levelLine = inner.querySelector<SVGPolylineElement>('.lane-level-line');
     this.levelFill = inner.querySelector<SVGPolygonElement>('.lane-level-fill');
@@ -625,20 +718,29 @@ class LaneController {
     const offDrop = attachPaletteDrop(track);
     const ro = new ResizeObserver(this.measure);
     ro.observe(track);
+    ro.observe(scroller);
     const canvas = document.getElementById('score');
     if (canvas) ro.observe(canvas);
+    const timeline = scroller.parentElement?.parentElement;
+    if (timeline) ro.observe(timeline);
     this.measure();
     return () => {
       this.cancel();
       this.keyPress = null;
       off();
       offDrop();
+      offSel();
+      cancelAnimationFrame(revealRaf);
+      scroller.removeEventListener('wheel', this.onWheel);
+      scroller.removeEventListener('scroll', this.updateMore);
       ro.disconnect();
       track.removeEventListener('pointerdown', this.onDown);
       track.removeEventListener('pointermove', this.onMove);
       track.removeEventListener('pointerup', this.onUp);
       track.removeEventListener('pointercancel', this.onUp);
       this.track = null;
+      this.scroller = null;
+      this.onCompact = null;
     };
   }
 }
@@ -668,9 +770,18 @@ function momentParts(piece: Piece): Map<MomentId, string> {
   return out;
 }
 
-/** The lane item's tooltip: its part, then the no-effect reason; undefined when neither. */
-function itemTitle(part: string | undefined, reason: string | undefined): string | undefined {
-  const lines = [part !== undefined ? `Part: ${part}` : '', reason ?? ''].filter(Boolean);
+/**
+ * The lane item's tooltip: its name (compact rows hide it), its part, then the no-effect reason;
+ * undefined when none.
+ */
+function itemTitle(
+  name: string | undefined,
+  part: string | undefined,
+  reason: string | undefined,
+): string | undefined {
+  const lines = [name ?? '', part !== undefined ? `Part: ${part}` : '', reason ?? ''].filter(
+    Boolean,
+  );
   return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
@@ -700,9 +811,11 @@ export function Lane() {
   );
   const curve = useMemo(() => levelCurve(compiled), [compiled]);
   const ctl = useMemo(() => new LaneController(), []);
+  const scroller = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [focusId, setFocusId] = useState<MomentId | null>(null);
+  const [compact, setCompact] = useState(false);
   const pieceKeyEl = useRef<HTMLDivElement>(null);
   const ghost = useRef<HTMLDivElement>(null);
   const keyText = keyName(piece.key);
@@ -710,8 +823,8 @@ export function Lane() {
   useLayoutEffect(() => ctl.setItems(items, curve));
   useEffect(
     () =>
-      track.current && inner.current
-        ? ctl.attach(track.current, inner.current, ghost.current)
+      scroller.current && track.current && inner.current
+        ? ctl.attach(scroller.current, track.current, inner.current, ghost.current, setCompact)
         : undefined,
     [ctl],
   );
@@ -850,89 +963,100 @@ export function Lane() {
 
   return (
     <div className="slot lane" data-slot="lane" data-testid="lane">
-      <div
-        ref={track}
-        className="lane-track"
-        role="group"
-        aria-label="Moments"
-        aria-describedby="lane-help"
-        onKeyDown={onKeyDown}
-      >
-        <div className="lane-row" data-row="key" aria-hidden="true" />
-        <div className="lane-row" data-row="moments" aria-hidden="true">
-          <span className="lane-row-name">Moments</span>
-        </div>
-        <div className="lane-row" data-row="transitions" aria-hidden="true">
-          <span className="lane-row-name">Transitions</span>
-        </div>
-        <div className="lane-row" data-row="level" aria-hidden="true">
-          <span className="lane-row-name">Level</span>
-        </div>
-        <div ref={inner} className="lane-inner">
-          <svg className="lane-level" data-testid="lane-level" height={LEVEL_H} aria-hidden="true">
-            <polygon className="lane-level-fill" />
-            <polyline className="lane-level-line" />
-          </svg>
-          <div
-            ref={pieceKeyEl}
-            className="lane-item lane-piece-key"
-            data-piece-key=""
-            data-type="key"
-            data-testid="lane-piece-key"
-            data-selected={selected.has(PIECE_KEY_ID) || undefined}
-            title="The piece's key: edit it in the inspector. It stays at 0:00."
-            role="button"
-            aria-pressed={selected.has(PIECE_KEY_ID)}
-            aria-label={`Piece key ${keyText} at 0 s, fixed`}
-            tabIndex={0}
-          >
-            <span className="lane-marker" />
-            <span className="lane-label">{keyText}</span>
+      <div ref={scroller} className="lane-scroll" data-testid="lane-scroll">
+        <div
+          ref={track}
+          className="lane-track"
+          role="group"
+          aria-label="Moments"
+          aria-describedby="lane-help"
+          onKeyDown={onKeyDown}
+        >
+          <div className="lane-row" data-row="key" aria-hidden="true" />
+          <div className="lane-row" data-row="moments" aria-hidden="true">
+            <span className="lane-row-name">Moments</span>
           </div>
-          <div
-            ref={ghost}
-            className="lane-item lane-ghost"
-            data-testid="lane-ghost"
-            aria-hidden="true"
-            hidden
-          >
-            <span className="lane-bar">
-              <span className="lane-bar-text" />
-            </span>
-            <span className="lane-marker" />
-            <span className="lane-label" />
+          <div className="lane-row" data-row="transitions" aria-hidden="true">
+            <span className="lane-row-name">Transitions</span>
           </div>
-          {items.map((it) => (
+          <div className="lane-row" data-row="level" aria-hidden="true">
+            <span className="lane-row-name">Level</span>
+          </div>
+          <div ref={inner} className="lane-inner">
+            <svg
+              className="lane-level"
+              data-testid="lane-level"
+              height={LEVEL_H}
+              aria-hidden="true"
+            >
+              <polygon className="lane-level-fill" />
+              <polyline className="lane-level-line" />
+            </svg>
             <div
-              key={it.id}
-              ref={(el) => {
-                if (el) ctl.els.set(it.id, el);
-                else ctl.els.delete(it.id);
-              }}
-              className="lane-item"
-              data-moment={it.id}
-              data-type={it.type}
-              data-selected={selected.has(it.id) || undefined}
-              data-muted={it.muted || undefined}
-              data-no-effect={noEffect.has(it.id) || undefined}
-              title={itemTitle(partOfMoment.get(it.id), noEffect.get(it.id))}
+              ref={pieceKeyEl}
+              className="lane-item lane-piece-key"
+              data-piece-key=""
+              data-type="key"
+              data-testid="lane-piece-key"
+              data-selected={selected.has(PIECE_KEY_ID) || undefined}
+              title="The piece's key: edit it in the inspector. It stays at 0:00."
               role="button"
-              aria-pressed={selected.has(it.id)}
-              aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}
-              tabIndex={it.id === tabId ? 0 : -1}
-              onFocus={() => {
-                setFocusId(it.id);
-                ctl.reveal(it.id);
-              }}
+              aria-pressed={selected.has(PIECE_KEY_ID)}
+              aria-label={`Piece key ${keyText} at 0 s, fixed`}
+              tabIndex={0}
+            >
+              <span className="lane-marker" />
+              <span className="lane-label">{keyText}</span>
+            </div>
+            <div
+              ref={ghost}
+              className="lane-item lane-ghost"
+              data-testid="lane-ghost"
+              aria-hidden="true"
+              hidden
             >
               <span className="lane-bar">
-                <span className="lane-bar-text">{barText(it)}</span>
-                {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
+                <span className="lane-bar-text" />
               </span>
               <span className="lane-marker" />
-              <span className="lane-label">{it.text}</span>
+              <span className="lane-label" />
             </div>
-          ))}
+            {items.map((it) => (
+              <div
+                key={it.id}
+                ref={(el) => {
+                  if (el) ctl.els.set(it.id, el);
+                  else ctl.els.delete(it.id);
+                }}
+                className="lane-item"
+                data-moment={it.id}
+                data-type={it.type}
+                data-selected={selected.has(it.id) || undefined}
+                data-muted={it.muted || undefined}
+                data-no-effect={noEffect.has(it.id) || undefined}
+                title={itemTitle(
+                  compact ? it.text : undefined,
+                  partOfMoment.get(it.id),
+                  noEffect.get(it.id),
+                )}
+                role="button"
+                aria-pressed={selected.has(it.id)}
+                aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}
+                tabIndex={it.id === tabId ? 0 : -1}
+                onFocus={() => {
+                  setFocusId(it.id);
+                  ctl.reveal(it.id);
+                }}
+              >
+                <span className="lane-bar">
+                  <span className="lane-bar-text">{barText(it)}</span>
+                  {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
+                </span>
+                <span className="lane-marker" />
+                <span className="lane-label">{it.text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <p id="lane-help" className="visually-hidden">

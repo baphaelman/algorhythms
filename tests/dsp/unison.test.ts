@@ -16,7 +16,7 @@
  * - a seek into a held unison: level within ±3 % of straight playback, and no click.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DRY_MIX, makeScore, unisonScore, type VoiceSpec } from '../../src/audio/fixtures/scores';
 import { renderOffline } from '../../src/audio/offline';
 import { flatten } from '../../src/core/flat';
@@ -24,6 +24,9 @@ import { evalFlatSegment, SEG_STRIDE, SEG_T0 } from '../../src/core/segment';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { computeUnisonWarps, lastAtOrBefore, VoiceData } from '../../src/dsp/voice';
 import { clickScore, Driver, RATE, render, stereoRms } from './helpers';
+
+// Slowest test 12 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 120_000 });
 
 const HOLD_FROM = 3;
 const HOLD_TO = 12;
@@ -78,7 +81,7 @@ describe('held unison', () => {
       }
       console.info(`unison N=${n} (hold avg × one voice / envelope CV): ${report.join(' ')}`);
     },
-    60_000,
+    90_000, // 8 s (32 voices, 1 worker)
   );
 });
 
@@ -149,7 +152,7 @@ describe('converge, hold, diverge', () => {
           `50 ms: ${fine.join(', ')}`,
       );
     },
-    120_000,
+    600_000, // 52 s (32 voices, 1 worker)
   );
 });
 

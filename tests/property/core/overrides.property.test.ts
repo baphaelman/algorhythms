@@ -5,13 +5,16 @@
  * while overrides are set, edited and cleared.
  */
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { patchMoment, type MomentPatch } from '../../../src/app/editor/ops';
 import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
 import { MIN_GLIDE } from '../../../src/core/compiler/glide';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import type { Piece, VoiceOverride } from '../../../src/core/types';
 import { pieceArb } from './compiler-arbitraries';
+
+// Slowest test 1.2 s on 1 worker; ~10x so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RUNS = Number(process.env.PROP_RUNS ?? 150);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);

@@ -3,7 +3,7 @@
  * delay, × the recorded g_L) plus the FX-returns render sum to the mix, residual ≤ −90 dBFS.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   FIXTURE_MIX,
   lockStressScore,
@@ -15,6 +15,9 @@ import { flatten } from '../../src/core/flat';
 import { renderOffline } from '../../src/audio/offline';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { dbfs, RATE } from './helpers';
+
+// Slowest test 5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 60_000 });
 
 /**
  * Renders the mix (capturing g_L), every voice stem and the FX stem; returns the worst sample
@@ -70,7 +73,7 @@ describe('stems exact sum', () => {
       `stems residual: ${dbfs(worst).toFixed(1)} dBFS (peak mix ${dbfs(level).toFixed(1)} dBFS)`,
     );
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
-  }, 30_000); // every stem pass runs every voice's controls (unison lock): slow on a loaded machine
+  }, 90_000); // 9 s, 1 worker. Every stem pass runs every voice's controls (unison lock): slow on a loaded machine
 
   it('holds through unisons, merges, births into unisons and a muted voice in a group', () => {
     // The group pass sees every voice's state in every render mode, so locked voices' stems
@@ -88,7 +91,7 @@ describe('stems exact sum', () => {
     );
     expect(dbfs(a.worst)).toBeLessThanOrEqual(-90);
     expect(dbfs(b.worst)).toBeLessThanOrEqual(-90);
-  }, 60_000);
+  }, 360_000); // 36 s, 1 worker
 
   it('replaying the recorded g_L reproduces the mix bit for bit', () => {
     const score = stressScore(6, 6, 1, 2);

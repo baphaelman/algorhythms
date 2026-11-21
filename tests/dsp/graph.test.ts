@@ -1,6 +1,6 @@
 /** DSP graph properties (PLAN.md §8.4–§8.8, §14): finiteness, ceiling, detune, tables, pitch. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import type { Timbre } from '../../src/core/types';
 import { flatten } from '../../src/core/flat';
@@ -22,6 +22,9 @@ import {
   WAVETABLE_STRIDE,
 } from '../../src/dsp/wavetable';
 import { allFinite, Driver, peak, RATE, render, rms } from './helpers';
+
+// Slowest test 6 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 60_000 });
 
 const CEILING = Math.pow(10, -1 / 20);
 

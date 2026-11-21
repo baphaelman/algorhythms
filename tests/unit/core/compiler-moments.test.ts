@@ -307,13 +307,15 @@ describe('split (§7.4)', () => {
       start: [57],
       glide: { length: 2, jitter: 0, stagger: 3 },
       moments: [
-        // The parent stays on 57, so the newborn is born after a seeded birth stagger.
+        // The parent stays on 57; high-first (revision 9: newborns take ranked stagger offsets)
+        // births v3 (→ 69) first and v2 (→ 64) at least half the stagger later.
         {
           type: 'split',
           at: 1,
-          count: 2,
-          notes: { kind: 'pitches', pitches: [57, 64] },
+          count: 3,
+          notes: { kind: 'pitches', pitches: [57, 64, 69] },
           voicing: 'even',
+          glide: { order: 'high-first' },
         },
         // Cancels the newborn's pending move before it is born (births are never cancelled).
         { type: 'pin', at: 1.01, voice: 'v2', pitch: 70, glide: { stagger: 0 } },

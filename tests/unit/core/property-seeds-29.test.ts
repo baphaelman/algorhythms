@@ -178,8 +178,10 @@ describe('a line that joins another passes on what depended on it (chord-count 4
   });
 
   it('a fork still waiting on it is born from its survivor, on the note it joined (/429)', () => {
-    // At 33.4 the spread forks a copy of v6 (hand-set to 43.4) while v6 is gliding onto v4's
-    // note 52, where it joins and closes at 33.56; the fork is born at 34.76, after that.
+    // At 33.4 the spread forked a copy of v6 (hand-set to 43.4) while v6 was gliding onto v4's
+    // note 52, where it joined and closed at 33.56; the fork was born at 34.76, after that.
+    // Revision 9 birth timings (ranked stagger offsets) no longer set this up; the piece stays
+    // as a no-artifact regression.
     const s = compile(
       piece({
         seed: 25284,
@@ -257,19 +259,16 @@ describe('a line that joins another passes on what depended on it (chord-count 4
         ],
       }),
     );
-    const v7 = s.voices[6];
-    const life = v7.lives[v7.lives.length - 1];
-    expect(life.born).toBeGreaterThan(34);
-    expect(pitchAt(v7, life.born + 1e-6)).toBeCloseTo(52, 3); // on v4, which v6 joined
     expect(lineArtifacts(s, { noCross: true })).toEqual([]);
   });
 });
 
 describe('a fork whose move a later moment replaces (crossings −1185324365/156)', () => {
   it('goes where its parent goes and rejoins it on arrival', () => {
-    // The pin forks a copy of the stacked line toward 50 (born later, by its stagger); the shift
-    // cancels that move before the birth, so the fork moves with its parent and joins it. The
-    // two meet on one note (the crossing property no longer counts such a pair as crossing).
+    // The pin forks a copy of the stacked line toward 50; the shift at the same time cancels that
+    // move before the birth (revision 9: a lone newborn starts on time, so the shift no longer
+    // waits for a birth stagger), so the fork moves with its parent and joins it. The two meet on
+    // one note (the crossing property no longer counts such a pair as crossing).
     const s = compile(
       piece({
         pool: 3,
@@ -278,7 +277,7 @@ describe('a fork whose move a later moment replaces (crossings −1185324365/156
         end: { at: 12, fade: 1 },
         moments: [
           { type: 'pin', at: 1, voice: 'v2', pitch: 50, glide: { stagger: 3 } },
-          { type: 'shift', at: 1.1, by: -2, unit: 'semitones' },
+          { type: 'shift', at: 1, by: -2, unit: 'semitones' },
         ],
       }),
     );
@@ -437,12 +436,17 @@ describe('a newborn re-planned before its birth (crossings 439040815/675, sweep)
     const reported = s.diagnostics.some(
       (d) => d.momentId === 'm00001' && d.code === 'crossing-unresolved',
     );
+    // Revision 9 timings make v4 the lower line here: any change of order counts.
     let crossed = false;
+    let sign = 0;
     for (let j = 0; j <= 400; j++) {
       const t = 1.2 + (4.3 * j) / 400;
       const a = pitchAt(v5, t);
       const b = pitchAt(v4, t);
-      if (a !== null && b !== null && a > b + 1e-9) crossed = true;
+      if (a === null || b === null || Math.abs(a - b) <= 1e-9) continue;
+      const sg = a > b ? 1 : -1;
+      if (sign !== 0 && sg !== sign) crossed = true;
+      sign = sg;
     }
     expect(crossed && !reported).toBe(false);
   });

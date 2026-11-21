@@ -64,6 +64,9 @@ async function playFrom(page: Page, t: number): Promise<void> {
 test('Follow: Smooth holds the playhead at 35 %, Page jumps at 92 % to 8 %, Off stays', async ({
   page,
 }) => {
+  // Each phase waits for its state to settle rather than sampling at a set moment: on a loaded
+  // machine the engine starts late and frames arrive in bursts.
+  test.slow();
   await openApp(page);
   await expect(page.locator('[data-follow="smooth"]')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('window-slider').fill('150'); // a few seconds wide
@@ -71,14 +74,25 @@ test('Follow: Smooth holds the playhead at 35 %, Page jumps at 92 % to 8 %, Off 
   const { window: w } = await cam(page);
 
   await playFrom(page, 40);
-  await expect.poll(async () => (await cam(page)).head).toBeCloseTo(0.35, 2);
-  for (const f of await sample(page, 600)) expect(Math.abs(f.head - 0.35)).toBeLessThan(0.01);
+  // Smooth: once settled, a 600 ms run of frames all hold the playhead within 1 % of 35 %.
+  await expect
+    .poll(
+      async () => {
+        const s = await sample(page, 600);
+        return Math.max(...s.map((f) => Math.abs(f.head - 0.35)));
+      },
+      { timeout: 20_000 },
+    )
+    .toBeLessThan(0.01);
 
   await page.locator('[data-follow="page"]').click();
   await expect(page.locator('[data-follow="page"]')).toHaveAttribute('aria-pressed', 'true');
-  const paged = await sample(page, w * 1000 * 1.5);
+  // Page: sample until the view has turned at least once (up to 6 windows of wall time).
+  const paged: { start: number; head: number }[] = [];
+  const turned = () => new Set(paged.map((f) => f.start)).size > 1;
+  for (let i = 0; i < 6 && !turned(); i++) paged.push(...(await sample(page, w * 1000)));
   const starts = new Set(paged.map((f) => f.start));
-  // The view holds still between page turns, and turns at least once.
+  // The view holds still between page turns, and turns at least once (about once a window).
   expect(starts.size).toBeGreaterThan(1);
   expect(starts.size).toBeLessThan(6);
   for (const f of paged) expect(f.head).toBeLessThan(0.93);
@@ -88,9 +102,19 @@ test('Follow: Smooth holds the playhead at 35 %, Page jumps at 92 % to 8 %, Off 
   }
 
   await page.locator('[data-follow="off"]').click();
-  const off = await sample(page, 800);
+  await expect(page.locator('[data-follow="off"]')).toHaveAttribute('aria-pressed', 'true');
+  // Off: the playhead advances (sampled until it does) and the view never moves.
+  const off: { start: number; head: number }[] = [];
+  await expect
+    .poll(
+      async () => {
+        off.push(...(await sample(page, 800)));
+        return off[off.length - 1].head - off[0].head;
+      },
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
   expect(new Set(off.map((f) => f.start)).size).toBe(1);
-  expect(off[off.length - 1].head).toBeGreaterThan(off[0].head);
 });
 
 test('a middle-button drag on the score during playback pans and turns Follow off', async ({
@@ -154,7 +178,7 @@ test('zoom: −/+, Fit and keys; the playhead keeps its x; the future is dimmed'
 
   // At Fit nothing scrolls during playback; the future is dimmed to 0.35.
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect.poll(async () => (await cam(page)).ghost, { timeout: 3000 }).toBe(0.35);
+  await expect.poll(async () => (await cam(page)).ghost, { timeout: 15_000 }).toBe(0.35);
   const still = await sample(page, 400);
   expect(new Set(still.map((f) => f.start))).toEqual(new Set([0]));
 });

@@ -1,9 +1,12 @@
 /** Property tests for core/schema.ts: unknown fields survive load and save (PLAN.md §5, §14). */
 
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parsePiece, serializePiece } from '../../../src/core/schema';
 import { fullPiece } from '../../unit/core/schema-fixtures';
+
+// Slowest test 1.4 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Every plain object in `value` that may take extra keys (all but the `timbres` record). */
 function objectNodes(value: unknown, parentKey = '', out: Record<string, unknown>[] = []) {

@@ -142,6 +142,12 @@ export interface Glide {
    * at + stagger + length (jitter applied once). 'spread': each ends at its own start + length.
    */
   arrive?: GlideArrive;
+  /**
+   * Revision 9 "Land on the beat" (absent = false): `at` is when the voices arrive. The glide
+   * starts length + stagger before `at` (clamped at 0, shortening the glide), and the moment
+   * decides there. Point moments only (not key, level or walk).
+   */
+  land?: boolean;
   /** Which voices start first within the stagger. */
   order: GlideOrder;
   /** Easing curve of each glide. */

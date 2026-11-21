@@ -9,10 +9,14 @@
  * Durations are length·(1 + jitter·(2u − 1)) with u a Purpose.Jitter draw, never below MIN_GLIDE.
  * Under `arrive: 'together'` (revision 6) the planner instead ends every move at one shared time,
  * `sharedEnd`: the latest start + the jittered length, with u drawn once per moment (voice id '').
+ *
+ * Revision 9 `land` (`landing`): the moment decides and starts length + stagger before `at`, and
+ * its voices arrive at `at` (under 'together' exactly; under 'spread' the last one about then).
  */
 
+import { defaultGlide } from '../defaults';
 import { hash32, Purpose, randHashed } from '../rng';
-import type { EaseRef, Glide, GlideArrive, GlideOrder, Seconds } from '../types';
+import type { EaseRef, Glide, GlideArrive, GlideOrder, Moment, Piece, Seconds } from '../types';
 
 /** Shortest glide; a 0-length glide would be a jump and break C⁰ continuity. */
 export const MIN_GLIDE: Seconds = 0.01;
@@ -65,6 +69,7 @@ export function sanitizeGlide(g: Partial<Glide> | undefined, fallback: Glide): G
   }
   if (g.arrive !== undefined && ARRIVE.includes(g.arrive)) out.arrive = g.arrive;
   if (out.arrive !== 'spread') out.arrive = 'together';
+  if (typeof g.land === 'boolean') out.land = g.land;
   if (g.order !== undefined && ORDERS.includes(g.order)) out.order = g.order;
   if (g.ease !== undefined && validEase(g.ease)) out.ease = g.ease;
   return out;
@@ -157,4 +162,59 @@ export function sharedEnd(lastStart: Seconds, glide: Glide, seed: number): Secon
 /** Fade-in of a newborn: max(0.5 s, glide length / 2) (§7.4). */
 export function birthFadeIn(glide: Glide): Seconds {
   return glide.length / 2 > 0.5 ? glide.length / 2 : 0.5;
+}
+
+/** Moment types whose glide `land` applies to: the point moments that move pitch (revision 9). */
+export function glides(m: Pick<Moment, 'type'>): boolean {
+  return m.type !== 'key' && m.type !== 'level' && m.type !== 'walk';
+}
+
+/** A land moment's lead-in (revision 9): where it starts and decides, and the glide it uses. */
+export interface Landing {
+  /** Decision and earliest start time: `at` − length − stagger, clamped at 0. */
+  start: Seconds;
+  /** The arrival: `at`. */
+  end: Seconds;
+  /** The glide, its length and stagger scaled down when the start was clamped at 0. */
+  glide: Glide;
+}
+
+/**
+ * `glide.land` (revision 9): the glide starts length + stagger before `at`. A start before 0 is
+ * clamped to 0, and length and stagger shrink in proportion so the arrival stays at `at`.
+ */
+export function landing(at: Seconds, glide: Glide): Landing {
+  const lead = glide.length + glide.stagger;
+  if (at >= lead) return { start: at - lead, end: at, glide };
+  const k = lead > 0 ? at / lead : 0;
+  const length = glide.length * k;
+  return {
+    start: 0,
+    end: at,
+    glide: {
+      ...glide,
+      length: length > MIN_GLIDE ? length : MIN_GLIDE,
+      stagger: glide.stagger * k,
+    },
+  };
+}
+
+/** True when moment `m` (its glide merged as `glide`) lands with a lead-in before `at`. */
+export function lands(m: Pick<Moment, 'type' | 'at'>, glide: Glide): boolean {
+  return glide.land === true && glides(m) && landing(m.at, glide).start < m.at;
+}
+
+/**
+ * When the compiler handles moment `m` (§7.1): `at`, or a land moment's lead-in start (its
+ * decisions read the state there). `defaults`: the piece's sanitised default glide.
+ */
+export function decisionTime(m: Moment, defaults: Glide): Seconds {
+  if (!glides(m)) return m.at;
+  const g = mergeGlide(defaults, m.glide);
+  return g.land === true ? landing(m.at, g).start : m.at;
+}
+
+/** `decisionTime` with the piece's own default glide. */
+export function pieceDecisionTime(piece: Pick<Piece, 'defaults'>, m: Moment): Seconds {
+  return decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
 }

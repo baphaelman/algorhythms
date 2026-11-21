@@ -150,65 +150,74 @@ function treeRssMb(userDataDir: string): number {
   return rows.filter((r) => family.has(r.pid)).reduce((n, r) => n + r.rss, 0) / 1024;
 }
 
-test('5 min × 24 voices streamed to a file handle stays under the memory budget', async ({
-  browserName,
-}, testInfo) => {
-  test.skip(browserName !== 'chromium', 'File System Access is Chromium-only');
-  test.skip(!testInfo.project.name.endsWith('prod'), 'measured once, on the production build');
-  test.setTimeout(15 * 60_000);
-  // A persistent profile (a real on-disk origin), because an incognito context's OPFS quota is
-  // too small for a 2 GB file.
-  const userDataDir = mkdtempSync(join(tmpdir(), 'stems-mem-'));
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: true,
-    baseURL: testInfo.project.use.baseURL,
-  });
-  try {
-    const page = await context.newPage();
-    await openFixtures(page, true);
-    const isolated = await page.evaluate(() => self.crossOriginIsolated);
-    await page.waitForTimeout(1500);
-    const idle = treeRssMb(userDataDir);
+test(
+  '5 min × 24 voices streamed to a file handle stays under the memory budget',
+  {
+    tag: '@perf',
+  },
+  async ({ browserName }, testInfo) => {
+    test.skip(browserName !== 'chromium', 'File System Access is Chromium-only');
+    test.skip(!testInfo.project.name.endsWith('prod'), 'measured once, on the production build');
+    test.setTimeout(15 * 60_000);
+    // A persistent profile (a real on-disk origin), because an incognito context's OPFS quota is
+    // too small for a 2 GB file.
+    const userDataDir = mkdtempSync(join(tmpdir(), 'stems-mem-'));
+    const context = await chromium.launchPersistentContext(userDataDir, {
+      headless: true,
+      baseURL: testInfo.project.use.baseURL,
+    });
+    try {
+      const page = await context.newPage();
+      await openFixtures(page, true);
+      const isolated = await page.evaluate(() => self.crossOriginIsolated);
+      await page.waitForTimeout(1500);
+      const idle = treeRssMb(userDataDir);
 
-    let peak = idle;
-    let peakUam = 0;
-    let sampling = true;
-    const sampler = (async () => {
-      while (sampling) {
-        peak = Math.max(peak, treeRssMb(userDataDir));
-        await new Promise((r) => setTimeout(r, 250));
-      }
-    })();
-    const uamSampler = (async () => {
-      while (sampling && isolated) {
-        const b = await page.evaluate(() =>
-          (window as unknown as { __fixtures: { stems: StemsHook } }).__fixtures.stems.memory(),
-        );
-        if (!b) break;
-        peakUam = Math.max(peakUam, b);
-      }
-    })();
+      let peak = idle;
+      let peakUam = 0;
+      let sampling = true;
+      const sampler = (async () => {
+        while (sampling) {
+          peak = Math.max(peak, treeRssMb(userDataDir));
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      })();
+      const uamSampler = (async () => {
+        while (sampling && isolated) {
+          const b = await page.evaluate(() =>
+            (window as unknown as { __fixtures: { stems: StemsHook } }).__fixtures.stems.memory(),
+          );
+          if (!b) break;
+          peakUam = Math.max(peakUam, b);
+        }
+      })();
 
-    const r = await run(page, { fixture: 'dense-24', seconds: 300, bitDepth: 24, target: 'opfs' });
-    sampling = false;
-    await Promise.all([sampler, uamSampler]);
+      const r = await run(page, {
+        fixture: 'dense-24',
+        seconds: 300,
+        bitDepth: 24,
+        target: 'opfs',
+      });
+      sampling = false;
+      await Promise.all([sampler, uamSampler]);
 
-    expect(r.ok, r.error).toBe(true);
-    const delta = peak - idle;
-    console.info(
-      [
-        `stems memory: ${r.plan!.entries.length} files, zip ${(r.bytes! / 1e9).toFixed(2)} GB, ${(r.ms / 1000).toFixed(0)} s`,
-        `idle total RSS ${idle.toFixed(0)} MB, peak ${peak.toFixed(0)} MB, delta ${delta.toFixed(0)} MB`,
-        `measureUserAgentSpecificMemory: ${peakUam > 0 ? `peak ${(peakUam / 1e6).toFixed(0)} MB` : 'unavailable in this browser build'}`,
-      ].join('\n'),
-    );
-    expect(r.fileBytes).toBe(r.bytes);
-    expect(r.cdEntries).toBe(r.plan!.entries.length);
-    expect(r.firstEntryIsMixWav).toBe(true);
-    expect(r.bytes!).toBeGreaterThan(1.5e9);
-    expect(delta).toBeLessThan(500);
-  } finally {
-    await context.close();
-    rmSync(userDataDir, { recursive: true, force: true });
-  }
-});
+      expect(r.ok, r.error).toBe(true);
+      const delta = peak - idle;
+      console.info(
+        [
+          `stems memory: ${r.plan!.entries.length} files, zip ${(r.bytes! / 1e9).toFixed(2)} GB, ${(r.ms / 1000).toFixed(0)} s`,
+          `idle total RSS ${idle.toFixed(0)} MB, peak ${peak.toFixed(0)} MB, delta ${delta.toFixed(0)} MB`,
+          `measureUserAgentSpecificMemory: ${peakUam > 0 ? `peak ${(peakUam / 1e6).toFixed(0)} MB` : 'unavailable in this browser build'}`,
+        ].join('\n'),
+      );
+      expect(r.fileBytes).toBe(r.bytes);
+      expect(r.cdEntries).toBe(r.plan!.entries.length);
+      expect(r.firstEntryIsMixWav).toBe(true);
+      expect(r.bytes!).toBeGreaterThan(1.5e9);
+      expect(delta).toBeLessThan(500);
+    } finally {
+      await context.close();
+      rmSync(userDataDir, { recursive: true, force: true });
+    }
+  },
+);

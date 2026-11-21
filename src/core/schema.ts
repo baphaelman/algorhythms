@@ -135,6 +135,10 @@ export const GlideSchema = z.looseObject({
     .enum(GLIDE_ARRIVE)
     .default(DEFAULT_GLIDE.arrive ?? 'together')
     .describe("'together': every moving voice lands at once; 'spread': each after its own length."),
+  land: z
+    .boolean()
+    .optional()
+    .describe('Land on the beat: `at` is when the voices arrive (absent = false).'),
   order: z.enum(GLIDE_ORDERS).default(DEFAULT_GLIDE.order),
   ease: EaseSchema.default(DEFAULT_GLIDE.ease),
 });
@@ -145,6 +149,7 @@ export const PartialGlideSchema = z.looseObject({
   jitter: unitInterval.optional(),
   stagger: nonNegative.optional(),
   arrive: z.enum(GLIDE_ARRIVE).optional(),
+  land: z.boolean().optional(),
   order: z.enum(GLIDE_ORDERS).optional(),
   ease: EaseSchema.optional(),
 });

@@ -259,6 +259,10 @@ This is the *input* form: fields with defaults are optional here.
                 "spread"
               ]
             },
+            "land": {
+              "description": "Land on the beat: `at` is when the voices arrive (absent = false).",
+              "type": "boolean"
+            },
             "order": {
               "default": "random",
               "type": "string",
@@ -645,6 +649,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",
@@ -1077,6 +1084,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -1312,6 +1322,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",
@@ -1621,6 +1634,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -1859,6 +1875,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -2086,6 +2105,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",
@@ -2331,6 +2353,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",
@@ -2638,6 +2663,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -2894,6 +2922,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -3119,6 +3150,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",
@@ -3421,6 +3455,9 @@ This is the *input* form: fields with defaults are optional here.
                       "spread"
                     ]
                   },
+                  "land": {
+                    "type": "boolean"
+                  },
                   "order": {
                     "type": "string",
                     "enum": [
@@ -3646,6 +3683,9 @@ This is the *input* form: fields with defaults are optional here.
                       "together",
                       "spread"
                     ]
+                  },
+                  "land": {
+                    "type": "boolean"
                   },
                   "order": {
                     "type": "string",

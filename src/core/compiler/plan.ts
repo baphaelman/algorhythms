@@ -3,11 +3,12 @@
  *
  * Given the intents a moment function returned, the planner:
  * 1. folds targets into ranges (§7.8);
- * 2. draws start offsets and durations (stagger, order, jitter; §5, §7.7); a newborn starts at its
- *    parent's departure, or at a seeded birth stagger if the parent does not move (§7.4); under
- *    `arrive: 'together'` (default, revision 6) every duration instead runs to one shared end
- *    (the latest start + the moment's jittered length), so start changes below (adoption,
- *    pull-back) keep that end;
+ * 2. draws start offsets and durations (stagger, order, jitter; §5, §7.7) for every moving,
+ *    newborn and dying voice alike (revision 9: splits and merges honour stagger and order); a
+ *    newborn forks from its parent's pitch at its own start (§7.4); under `arrive: 'together'`
+ *    (default, revision 6) every duration instead runs to one shared end (the latest start + the
+ *    moment's jittered length, or the arrival of a `land` moment), so start changes below
+ *    (adoption, pull-back) keep that end;
  * 3. under `ordered`, sets each mover's overshoot limit L = min(1 semitone, gap to its neighbour)
  *    (§7.5) and enforces the crossing guarantee (§7.2): every adjacent pair of targeted voices is
  *    sampled at 64 points over the moment's window; if a pair crosses, the overtaking voice adopts
@@ -23,18 +24,10 @@
  * All curves are read from projections (project.ts), which run the simulation's own code.
  */
 
-import { Purpose, randHashed } from '../rng';
 import { CHECK_SAMPLES, FREE_LIMITS, MAX_OVERSHOOT, type OvershootLimits } from '../interrupt';
 import type { DiagnosticLevel, Glide, Pitch, Seconds } from '../types';
 import { IntentKind, type MomentPlan } from '../moments/types';
-import {
-  arrivesTogether,
-  birthFadeIn,
-  drawTimings,
-  glideDuration,
-  MIN_GLIDE,
-  sharedEnd,
-} from './glide';
+import { arrivesTogether, birthFadeIn, drawTimings, MIN_GLIDE, sharedEnd } from './glide';
 import { Projector, type Projection, type Tentative } from './project';
 import { foldIntoRange } from './range';
 import type { Birth, Move, VoiceRun } from './voice';
@@ -127,6 +120,11 @@ export interface PlanHost {
   readonly seed: number;
   /** 'allow' skips crossing enforcement and its diagnostics (dev toggle). */
   readonly crossings?: CrossingsMode;
+  /**
+   * Revision 9 `land`: the arrival time (`at`; `t` is then the lead-in start). Under 'together'
+   * every move ends there; under 'spread' the timings are as usual from `t`.
+   */
+  readonly land?: Seconds;
   /** Committed destination (after the targeted voices' pending moves were cancelled). */
   dest(v: number): Pitch;
   diag(level: DiagnosticLevel, code: string, message: string): void;
@@ -260,11 +258,18 @@ export function planMoment(
   }
   const n = parts.length;
 
-  // 3. Timings (§5, §7.4, §7.7): stratified offsets for movers, linked starts for newborns.
+  // 3. Timings (§5, §7.4, §7.7): stratified offsets over every mover, newborn and dying voice,
+  // ranked by `order` from the pitch it starts on (newborns: the parent's), then its target
+  // (revision 9: splits and merges honour stagger and order).
   const movers = parts
     .map((_, i) => i)
-    .filter((i) => parts[i].kind === PartKind.Move || parts[i].kind === PartKind.Death)
-    .sort((a, b) => parts[a].preDest - parts[b].preDest || parts[a].voice - parts[b].voice);
+    .filter((i) => parts[i].kind !== PartKind.Fixed)
+    .sort(
+      (a, b) =>
+        parts[a].preDest - parts[b].preDest ||
+        parts[a].to - parts[b].to ||
+        parts[a].voice - parts[b].voice,
+    );
   const drawn = drawTimings(
     movers.map((i) => ({ hash: voices[parts[i].voice].hash, index: parts[i].voice })),
     glide,
@@ -279,21 +284,6 @@ export function planMoment(
     gStart[i] = T + drawn[r].offset;
     gDur[i] = drawn[r].dur;
   });
-  for (let i = 0; i < n; i++) {
-    const p = parts[i];
-    if (p.kind !== PartKind.Birth) continue;
-    const hash = voices[p.voice].hash;
-    gDur[i] = glideDuration(glide, seed, hash);
-    const pp = p.parent >= 0 ? partOf.get(p.parent) : undefined;
-    if (
-      pp !== undefined &&
-      (parts[pp].kind === PartKind.Move || parts[pp].kind === PartKind.Death)
-    ) {
-      gLink[i] = pp;
-    } else {
-      gStart[i] = T + glide.stagger * randHashed(seed, hash, 0, Purpose.Birth);
-    }
-  }
   const find = (i: number): number => {
     while (uf[i] !== i) {
       uf[i] = uf[uf[i]];
@@ -306,14 +296,6 @@ export function planMoment(
     const s = gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
     return s > parts[i].deferT ? s : parts[i].deferT;
   };
-  // A dying voice glides into its survivor in step with it (M4.5-17): when the survivor moves in
-  // this moment, the two share one timing, so the dying line meets it without passing it.
-  for (let i = 0; i < n; i++) {
-    const p = parts[i];
-    if (p.kind !== PartKind.Death || p.into < 0) continue;
-    const s = partOf.get(p.into);
-    if (s !== undefined && parts[s].kind === PartKind.Move) adopt(i, s);
-  }
   // Arrive together (§7.2, revision 6): every duration runs to one shared end, the latest drawn
   // start plus the moment's jittered length. Fix-ups (adoption, pull-back) only copy existing
   // starts or move them earlier, and keep that end.
@@ -326,7 +308,8 @@ export function planMoment(
       if (s > lastStart) lastStart = s;
     }
   }
-  const endT = together ? sharedEnd(lastStart, glide, seed) : 0;
+  // Land (revision 9): the caller started the moment its lead-in before the arrival.
+  const endT = together ? (host.land ?? sharedEnd(lastStart, glide, seed)) : 0;
   const durOf = together
     ? (i: number): Seconds => {
         const d = endT - startOf(i);

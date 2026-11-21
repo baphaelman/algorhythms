@@ -4,11 +4,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FIXTURE_MIX, stressScore, unisonChordScore } from '../../src/audio/fixtures/scores';
 import { parseWavHeader } from '../../src/audio/wav';
 import { renderWav, wavExportChunks, wavExportSize } from '../../src/audio/wav-export';
 import { renderOffline } from '../../src/audio/offline';
+
+// Slowest test 4.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 60_000 });
 
 const score = stressScore(10, 8, 1.1, 4);
 const input = { score, mix: FIXTURE_MIX };
@@ -45,7 +48,7 @@ describe('WAV export', () => {
     );
     hashes.push(digest([renderWav(phrase, { sampleRate: 48000, bitDepth: 24 })]));
     expect(new Set(hashes).size).toBe(1);
-  }, 30_000);
+  }, 60_000);
 
   it('reports progress up to 1', () => {
     const seen: number[] = [];

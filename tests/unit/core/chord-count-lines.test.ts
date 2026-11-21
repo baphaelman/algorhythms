@@ -4,13 +4,16 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
 import { activeAt, pitchAt } from '../../../src/core/query';
 import { parsePiece } from '../../../src/core/schema';
 import type { ChordMoment, CompiledScore, Piece } from '../../../src/core/types';
 import { piece, type MomentInput } from './compiler-fixtures';
 import { lineArtifacts, type Artifact } from './line-artifacts';
+
+// Slowest test 4 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 60_000 });
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const GLIDE = { length: 3, jitter: 0.3, stagger: 1.5, ease: 'smootherstep' as const };
@@ -195,9 +198,14 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
       for (const it of c.intents!) {
         if (it.kind !== 'birth') continue;
         const v = s.voices[it.voice];
-        const p0 = v.segments.find((g) => g.t0 === v.lives[0].born)!.p0;
-        // Forked on the pitch its parent held when the chord planned it.
-        expect(p0, `seed ${seed} ${v.id}`).toBe(pitchAt(s.voices[it.parent!], 4));
+        const born = v.lives[0].born;
+        const p0 = v.segments.find((g) => g.t0 === born)!.p0;
+        const parent = s.voices[it.parent!];
+        // Forked on its parent's pitch at its birth (revision 9: at its own staggered start)...
+        expect(p0, `seed ${seed} ${v.id}`).toBeCloseTo(pitchAt(parent, born)!, 9);
+        // ...which a parent with no move of its own in the chord held since the chord planned it.
+        const moves = parent.segments.some((g) => g.momentId === 'c4' && g.p0 !== g.p1);
+        if (!moves) expect(pitchAt(parent, born), `seed ${seed} ${v.id}`).toBe(pitchAt(parent, 4));
         forks++;
       }
     }

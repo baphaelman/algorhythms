@@ -15,8 +15,18 @@ import {
   stackRows,
   revealPan,
   snapTime,
+  COMPACT_AFTER,
+  COMPACT_EXTENT_PX,
+  COMPACT_ROWS,
+  NORMAL_ROWS,
+  compactBoxPx,
+  laneMaxPx,
+  laneStack,
+  revealScroll,
+  rowGeometry,
   type LaneItem,
 } from '../../../src/app/editor/lane';
+import { wheelIntent, type WheelLike } from '../../../src/app/wheel';
 
 const G: Glide = { length: 2, jitter: 0, stagger: 0.5, order: 'random', ease: 'smoothstep' };
 
@@ -217,6 +227,83 @@ describe('stackRows (revision 7)', () => {
         expect(a1 <= b0 || b1 <= a0).toBe(true);
       }
     }
+  });
+
+  it('laneStack: up to 3 labelled sub-rows stay normal; more go compact and repack without labels', () => {
+    const three = [item('a', 0), item('b', 1), item('c', 2)];
+    const normal = laneStack(three, 10);
+    expect(normal).toEqual({ ...stackRows(three, 10), geom: NORMAL_ROWS });
+    // Four labels overlap (4 sub-rows labelled), but the markers alone (10 px = 1 s) don't.
+    const four = [item('a', 0), item('b', 1), item('c', 2), item('d', 3)];
+    expect(stackRows(four, 10).count).toBe(4);
+    const dense = laneStack(four, 10);
+    expect(dense.geom).toBe(COMPACT_ROWS);
+    expect(dense.count).toBe(1);
+    // Overlapping spans still need their own compact sub-rows.
+    const spans = [item('a', 0, 5), item('b', 1, 6), item('c', 2, 7), item('d', 3, 8)];
+    expect(laneStack(spans, 10).count).toBe(4);
+    expect(compactBoxPx(item('x', 2), 10)).toEqual([20, 20 + COMPACT_EXTENT_PX]);
+  });
+});
+
+describe('dense lanes: row geometry, the cap and scrolling into view', () => {
+  it('rowGeometry: normal rows up to COMPACT_AFTER sub-rows, compact (8–10 px) beyond', () => {
+    expect(rowGeometry(1)).toBe(NORMAL_ROWS);
+    expect(rowGeometry(COMPACT_AFTER)).toBe(NORMAL_ROWS);
+    expect(rowGeometry(COMPACT_AFTER + 1)).toBe(COMPACT_ROWS);
+    expect(NORMAL_ROWS).toMatchObject({ rowH: 20, barH: 14 });
+    expect(COMPACT_ROWS.rowH).toBeGreaterThanOrEqual(8);
+    expect(COMPACT_ROWS.rowH).toBeLessThanOrEqual(10);
+  });
+
+  it('laneMaxPx leaves the score 55 % of the timeline after the ruler and gap', () => {
+    // 341 px timeline (Kite Day at 1024×768): 45 % = 153.45, minus ruler 30 and gap 10.
+    expect(laneMaxPx(341, 30, 10)).toBe(113);
+    const H = 600;
+    const lane = laneMaxPx(H, 30, 10);
+    expect(H - 30 - 10 - lane).toBeGreaterThanOrEqual(0.55 * H);
+    // Never below the floor; unmeasured falls back to it.
+    expect(laneMaxPx(100, 30, 10)).toBe(60);
+    expect(laneMaxPx(0, 30, 10)).toBe(60);
+    expect(laneMaxPx(1000, 30, 10, 0.5, 0)).toBe(460);
+  });
+
+  it('revealScroll keeps the scroll when visible, else brings the range in with a margin', () => {
+    expect(revealScroll(50, 8, 40, 100)).toBe(40);
+    expect(revealScroll(20, 8, 40, 100)).toBe(16);
+    expect(revealScroll(2, 8, 40, 100)).toBe(0);
+    // Below: its bottom lands margin px above the view's bottom.
+    expect(revealScroll(150, 8, 40, 100)).toBe(62);
+    // Taller than the view: its top wins.
+    expect(revealScroll(150, 200, 40, 100)).toBe(146);
+  });
+});
+
+describe('wheelIntent (score and lane rows)', () => {
+  const w = (o: Partial<WheelLike>): WheelLike => ({
+    deltaX: 0,
+    deltaY: 0,
+    deltaMode: 0,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...o,
+  });
+
+  it('zooms with Ctrl/Cmd/Alt, pans sideways or with Shift, leaves a plain wheel alone', () => {
+    expect(wheelIntent(w({ deltaY: 10, ctrlKey: true }))).toEqual({
+      kind: 'zoom',
+      factor: Math.exp(0.1),
+    });
+    expect(wheelIntent(w({ deltaY: -10, metaKey: true })).kind).toBe('zoom');
+    expect(wheelIntent(w({ deltaX: 30, deltaY: 5 }))).toEqual({ kind: 'pan', px: 30 });
+    expect(wheelIntent(w({ deltaY: 40, shiftKey: true }))).toEqual({ kind: 'pan', px: 40 });
+    expect(wheelIntent(w({ deltaY: 3, shiftKey: true, deltaMode: 1 }))).toEqual({
+      kind: 'pan',
+      px: 48,
+    });
+    expect(wheelIntent(w({ deltaY: 40 }))).toEqual({ kind: 'none' });
   });
 });
 

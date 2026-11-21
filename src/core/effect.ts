@@ -18,7 +18,7 @@
 import { defaultGlide } from './defaults';
 import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
-import { mergeGlide, sanitizeGlide } from './compiler/glide';
+import { decisionTime, mergeGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
 import { establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
@@ -226,9 +226,17 @@ const kills = (m: Moment): boolean =>
 export function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
   const byId = new Map<string, Moment>();
   for (const m of piece.moments) if (m && !m.muted) byId.set(m.id, m);
+  // Moments decided by t (a land moment decides at its lead-in start, revision 9).
+  const defaults = sanitizeGlide(piece.defaults?.glide, defaultGlide());
+  const decided = new Map<string, boolean>();
+  const isDecided = (m: Moment): boolean => {
+    let d = decided.get(m.id);
+    if (d === undefined) decided.set(m.id, (d = decisionTime(m, defaults) <= t));
+    return d;
+  };
   const scheduled = (id: string | undefined): boolean => {
     const m = id === undefined ? undefined : byId.get(id);
-    return !!m && m.type !== 'walk' && m.at <= t;
+    return !!m && m.type !== 'walk' && isDecided(m);
   };
   const n = score.voices.length;
   const dest = new Float64Array(n).fill(NaN);
@@ -254,7 +262,7 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
         const id = segs[j].momentId;
         if (id === undefined) continue;
         const m = byId.get(id);
-        if (m && kills(m) && m.at <= t) return;
+        if (m && kills(m) && isDecided(m)) return;
         break;
       }
     }
@@ -439,11 +447,35 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
 }
 
 /**
- * Would adding `m` at `m.at` change anything? Reads the state at that time from `score` (the
- * compiled `piece`), without recompiling.
+ * Would adding `m` at `m.at` change anything? Reads the state where the compiler would decide it
+ * from `score` (the compiled `piece`), without recompiling.
  */
 export function momentEffectAt(piece: Piece, score: CompiledScore, m: Moment): MomentEffect {
-  return effectOn(piece, score, readState(piece, score, m.at), m);
+  return effectOn(piece, score, stateFor(piece, score, m, new Map()), m);
+}
+
+/**
+ * The state moment `m` decides on: at `m.at`, or for a land moment (revision 9) at its lead-in
+ * start with the key in effect at `m.at`; a land moment that finds nothing sounding there acts at
+ * `m.at` (compile.ts SUB_LANDED). `cache`: states by time.
+ */
+function stateFor(
+  piece: Piece,
+  score: CompiledScore,
+  m: Moment,
+  cache: Map<Seconds, StateAt>,
+): StateAt {
+  const read = (t: Seconds): StateAt => {
+    let st = cache.get(t);
+    if (!st) cache.set(t, (st = readState(piece, score, t)));
+    return st;
+  };
+  const t = decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
+  if (!(t < m.at)) return read(m.at);
+  const st = read(t);
+  if (st.active.length === 0) return read(m.at);
+  const key = keyAt(score, m.at);
+  return { ...st, key, stacked: st.stacked && { ...st.stacked, key } };
 }
 
 /**
@@ -457,9 +489,12 @@ export function momentEffectsAt(
   t: Seconds,
   make: (type: MomentType, at: Seconds) => Moment,
 ): Record<MomentType, MomentEffect> {
-  const st = readState(piece, score, t);
   // Only EFFECT_MOMENT_TYPES are filled (no `pulse` yet).
+  const cache = new Map<Seconds, StateAt>();
   const out = {} as Record<MomentType, MomentEffect>;
-  for (const type of EFFECT_MOMENT_TYPES) out[type] = effectOn(piece, score, st, make(type, t));
+  for (const type of EFFECT_MOMENT_TYPES) {
+    const m = make(type, t);
+    out[type] = effectOn(piece, score, stateFor(piece, score, m, cache), m);
+  }
   return out;
 }

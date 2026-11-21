@@ -1,6 +1,6 @@
 /** generate() target lengths: the short form below 100 s, and byte identity at or above it. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import {
   SECTION_NAMES,
@@ -11,6 +11,9 @@ import {
 import { parsePiece } from '../../../src/core/schema';
 import { hashPiece, hashPieceAsV1, snapshotCases } from './generate-snapshot-cases';
 import snapshot from './generate-snapshot.json';
+
+// Slowest test 2 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const MODES: GenerateMode[] = ['dorian', 'aeolian', 'lydian', 'pentatonic'];
 const SEEDS = [1, 2, 7, 42, 2611, 31337, 99999];

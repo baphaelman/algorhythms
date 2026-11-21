@@ -49,55 +49,59 @@ interface Hook {
   shot(canvas: HTMLCanvasElement, json: unknown, t: number, win: number, dark: boolean): number;
 }
 
-test('draws 1080p frames within the 4 ms budget', async ({ page, browserName }, info) => {
-  test.skip(info.project.name.endsWith('-prod'), 'engine-only test: run once per engine');
-  test.setTimeout(120_000);
-  const json = JSON.parse(readFileSync(EXAMPLE, 'utf8')) as unknown;
-  await page.goto('about:blank');
-  await page.setContent(
-    '<body style="margin:0"><canvas id="c" width="1920" height="1080"></canvas></body>',
-  );
-  await page.addScriptTag({ content: await renderBundle() });
-
-  const run = (o: Record<string, unknown>) =>
-    page.evaluate(
-      ({ json, o }) => {
-        const hook = (globalThis as unknown as { __render: Hook }).__render;
-        return hook.bench(document.getElementById('c') as HTMLCanvasElement, json, o);
-      },
-      { json, o },
+test(
+  'draws 1080p frames within the 4 ms budget',
+  { tag: '@perf' },
+  async ({ page, browserName }, info) => {
+    test.skip(info.project.name.endsWith('-prod'), 'engine-only test: run once per engine');
+    test.setTimeout(120_000);
+    const json = JSON.parse(readFileSync(EXAMPLE, 'utf8')) as unknown;
+    await page.goto('about:blank');
+    await page.setContent(
+      '<body style="margin:0"><canvas id="c" width="1920" height="1080"></canvas></body>',
     );
+    await page.addScriptTag({ content: await renderBundle() });
 
-  // 24 voices, a 20 s window, raster flushed each frame. 'pitch' (the default) paints a
-  // gradient, the worst case; 'ink' is the solid-colour baseline.
-  const base = { frames: 200, window: 20, colors: 'pitch', dark: false, voices: 24, flush: true };
-  const results: Record<string, Stats> = {};
-  results['ink-24-flush'] = await run({ ...base, colors: 'ink' });
-  results['pitch-24-flush'] = await run({ ...base, dark: true });
-  results['pitch-24-draw-only'] = await run({ ...base, flush: false });
-  results['ink-24-draw-only'] = await run({ ...base, colors: 'ink', flush: false });
-  results['example-16-overview'] = await run({ ...base, voices: 0, window: 1e6 });
-  info.annotations.push({ type: 'render-timing', description: JSON.stringify(results) });
-  console.log(`[${browserName}] render timings (ms):`, JSON.stringify(results));
+    const run = (o: Record<string, unknown>) =>
+      page.evaluate(
+        ({ json, o }) => {
+          const hook = (globalThis as unknown as { __render: Hook }).__render;
+          return hook.bench(document.getElementById('c') as HTMLCanvasElement, json, o);
+        },
+        { json, o },
+      );
 
-  for (const [name, r] of Object.entries(results)) {
-    expect(r.voices, name).toBeGreaterThanOrEqual(16);
-    expect(Number.isFinite(r.median), name).toBe(true);
-  }
-  if (browserName === 'chromium') {
-    expect(results['ink-24-flush'].median).toBeLessThanOrEqual(BUDGET_MS);
-    // The gradient mode is dearer to rasterise; its JS cost alone must fit (flush is reported).
-    expect(results['pitch-24-draw-only'].median).toBeLessThanOrEqual(BUDGET_MS);
-  }
+    // 24 voices, a 20 s window, raster flushed each frame. 'pitch' (the default) paints a
+    // gradient, the worst case; 'ink' is the solid-colour baseline.
+    const base = { frames: 200, window: 20, colors: 'pitch', dark: false, voices: 24, flush: true };
+    const results: Record<string, Stats> = {};
+    results['ink-24-flush'] = await run({ ...base, colors: 'ink' });
+    results['pitch-24-flush'] = await run({ ...base, dark: true });
+    results['pitch-24-draw-only'] = await run({ ...base, flush: false });
+    results['ink-24-draw-only'] = await run({ ...base, colors: 'ink', flush: false });
+    results['example-16-overview'] = await run({ ...base, voices: 0, window: 1e6 });
+    info.annotations.push({ type: 'render-timing', description: JSON.stringify(results) });
+    console.log(`[${browserName}] render timings (ms):`, JSON.stringify(results));
 
-  // Screenshot for the integrator: mid-piece, follow camera, dark theme.
-  const duration = await page.evaluate(
-    ({ json }) => {
-      const hook = (globalThis as unknown as { __render: Hook }).__render;
-      return hook.shot(document.getElementById('c') as HTMLCanvasElement, json, 60, 24, true);
-    },
-    { json },
-  );
-  expect(duration).toBeGreaterThan(60);
-  await page.locator('#c').screenshot({ path: info.outputPath(`render-${browserName}.png`) });
-});
+    for (const [name, r] of Object.entries(results)) {
+      expect(r.voices, name).toBeGreaterThanOrEqual(16);
+      expect(Number.isFinite(r.median), name).toBe(true);
+    }
+    if (browserName === 'chromium') {
+      expect(results['ink-24-flush'].median).toBeLessThanOrEqual(BUDGET_MS);
+      // The gradient mode is dearer to rasterise; its JS cost alone must fit (flush is reported).
+      expect(results['pitch-24-draw-only'].median).toBeLessThanOrEqual(BUDGET_MS);
+    }
+
+    // Screenshot for the integrator: mid-piece, follow camera, dark theme.
+    const duration = await page.evaluate(
+      ({ json }) => {
+        const hook = (globalThis as unknown as { __render: Hook }).__render;
+        return hook.shot(document.getElementById('c') as HTMLCanvasElement, json, 60, 24, true);
+      },
+      { json },
+    );
+    expect(duration).toBeGreaterThan(60);
+    await page.locator('#c').screenshot({ path: info.outputPath(`render-${browserName}.png`) });
+  },
+);

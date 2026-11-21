@@ -5,7 +5,7 @@
 import { writeFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   insertMoments,
   moveMomentsBy,
@@ -18,6 +18,9 @@ import { createIncrementalCompiler } from '../../../src/core/compiler/incrementa
 import type { Glide, Moment, Piece } from '../../../src/core/types';
 import { glideArb, momentArb, pieceArb, type Draft } from './compiler-arbitraries';
 import { withStart } from '../../unit/core/compiler-fixtures';
+
+// Slowest test 2.2 s on 1 worker; ~10x so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RUNS = Number(process.env.PROP_RUNS ?? 150);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);

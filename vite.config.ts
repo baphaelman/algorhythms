@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
 
@@ -36,6 +37,14 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   test: {
     environment: 'node',
+    // fast-check with a hang watchdog: a property run that never returns fails with its seed and
+    // path (tests/support/fast-check.ts).
+    alias: [
+      {
+        find: /^fast-check$/,
+        replacement: fileURLToPath(new URL('./tests/support/fast-check.ts', import.meta.url)),
+      },
+    ],
     projects: [
       {
         extends: true,

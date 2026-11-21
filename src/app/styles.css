@@ -553,8 +553,18 @@ input[type='range'] {
   display: none;
 }
 
+/* The lane area: capped by Lane.tsx (max-height) so the score keeps ≥ 55 % of the timeline;
+   taller rows scroll inside `.lane-scroll`. */
 .timeline .slot.lane {
   margin-top: 10px;
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app[data-layout='full'] .stage {
+  min-height: 0;
 }
 
 .slot.inspector {

@@ -7,10 +7,13 @@
  * control (a hard splice, i.e. what a seek without the crossfade would do) must exceed it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { flatten } from '../../src/core/flat';
 import { DRY_MIX, FIXTURE_MIX, stressScore, swapPair } from '../../src/audio/fixtures/scores';
 import { clickScore, Driver, RATE, render } from './helpers';
+
+// Slowest test 1.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const TIMBRES = ['sine', 'organ', 'pluck'] as const;
 

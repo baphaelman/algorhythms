@@ -7,6 +7,7 @@
  * frame only binary-searches them.
  */
 
+import { pulseBreaks, pulseGainAt } from '../core/pulse';
 import { lifeAt } from '../core/query';
 import type { CompiledVoice, Life, Seconds } from '../core/types';
 
@@ -54,12 +55,9 @@ function ramp(start: number, k: number, voice: CompiledVoice, t: Seconds): numbe
   return c.over > 0 && t < c.t + c.over ? start + ((c.gain - start) * (t - c.t)) / c.over : c.gain;
 }
 
-/**
- * Pulse envelope at t (revision 9 `pulse`). HOOK: R9-3a adds per-voice hit records to
- * core/flat.ts; evaluate them here and add their times to `opacityBreaks`. Until then: 1.
- */
-export function pulseLevel(_voice: CompiledVoice, _t: Seconds): number {
-  return 1;
+/** Pulse envelope at t (core/pulse): 1 outside any pulse. */
+export function pulseLevel(voice: CompiledVoice, t: Seconds): number {
+  return pulseGainAt(voice, t);
 }
 
 /** Opacity factor of voice `v` at t: level × life × pulse, clamped to 0..1. */
@@ -74,6 +72,7 @@ interface Breaks {
   level: CompiledVoice['level'];
   levels: number;
   lives: CompiledVoice['lives'];
+  pulse: CompiledVoice['pulse'];
   out: Float64Array | null;
 }
 const cache = new WeakMap<CompiledVoice, Breaks>();
@@ -89,7 +88,8 @@ export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
     hit &&
     hit.level === voice.level &&
     hit.levels === voice.level.length &&
-    hit.lives === voice.lives
+    hit.lives === voice.lives &&
+    hit.pulse === voice.pulse
   ) {
     return hit.out;
   }
@@ -98,6 +98,10 @@ export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
   for (const c of voice.level) {
     ts.push(c.t);
     if (c.over > 0) ts.push(c.t + c.over);
+  }
+  if (voice.pulse && voice.pulse.length > 0) {
+    flat = false;
+    ts.push(...pulseBreaks(voice));
   }
   for (const l of voice.lives) {
     ts.push(l.born);
@@ -115,6 +119,12 @@ export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
     }
   }
   const out = flat ? null : Float64Array.from(ts).sort();
-  cache.set(voice, { level: voice.level, levels: voice.level.length, lives: voice.lives, out });
+  cache.set(voice, {
+    level: voice.level,
+    levels: voice.level.length,
+    lives: voice.lives,
+    pulse: voice.pulse,
+    out,
+  });
   return out;
 }

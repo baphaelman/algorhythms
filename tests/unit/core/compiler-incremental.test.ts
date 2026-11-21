@@ -4,7 +4,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { moveMomentsBy, patchMoment, removeMoments } from '../../../src/app/editor/ops';
 import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
@@ -12,6 +12,9 @@ import { parsePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 import { benchmarkPiece } from './compiler-bench-piece';
 import { withStart } from './compiler-fixtures';
+
+// Slowest test 1.1 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 

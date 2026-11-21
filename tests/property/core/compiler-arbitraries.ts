@@ -1,7 +1,8 @@
 /**
  * fast-check generators of valid, varied pieces for the compiler property tests (PLAN.md §14).
  *
- * Pieces overlap moments on purpose: dense moment times, long glides with stagger and jitter, walk
+ * Pieces overlap moments on purpose: dense moment times, long glides with stagger and jitter (and
+ * `land` lead-ins, revision 9; splits and merges stagger their births and deaths too), walk
  * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
  * note points (with and without returns, some with grouped `changes`; `from` often a start pitch,
  * so it sounds), out-of-range
@@ -49,10 +50,17 @@ const orderArb = fc.constantFrom<GlideOrder>(
   'outside-in',
 );
 
+/** Revision 9 `land`: a lead-in before `at`, often overlapping other moments. */
+const landArb = fc.oneof(
+  { weight: 3, arbitrary: fc.constant(false) },
+  { weight: 1, arbitrary: fc.constant(true) },
+);
+
 export const glideArb: fc.Arbitrary<Glide> = fc.record({
   length: tenths(0.2, 5),
   jitter: tenths(0, 1),
   stagger: tenths(0, 3),
+  land: landArb,
   order: orderArb,
   ease: easeArb,
 });
@@ -62,6 +70,7 @@ const partialGlideArb: fc.Arbitrary<Partial<Glide>> = fc.record(
     length: tenths(0.2, 6),
     jitter: tenths(0, 1),
     stagger: tenths(0, 3),
+    land: fc.boolean(),
     order: orderArb,
     ease: easeArb,
   },
