@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { MomentType } from '../../core/types';
 import { playheadEffect, usePaletteEffects, watchPaletteEffects } from '../editor/palette-effects';
 import { addAtPlayhead, PALETTE } from '../editor/shortcuts';
-import { startPaletteDrag } from '../palette-drop';
+import { endPaletteDrag, startPaletteDrag } from '../palette-drop';
 import { PREVIEW_DELAY_MS, startPreview, stopPreview } from '../preview';
 import './palette.css';
 
@@ -13,7 +13,8 @@ import './palette.css';
  *
  * Revision 6: a type that would change nothing at the playhead is greyed out with the reason as
  * its tooltip; its click is disabled but it can still be dragged elsewhere. Hovering an enabled
- * one for 300 ms previews it (../preview.ts); leaving stops the preview.
+ * one for 300 ms previews it silently on the score (../preview.ts); leaving stops the preview.
+ * Dragging one over the score or lane previews it at the drop time (../palette-drop.ts).
  */
 export function Palette() {
   const effects = usePaletteEffects((s) => s.effects);
@@ -77,6 +78,7 @@ export function Palette() {
             onPointerEnter={() => {
               if (!off) hover(e.type);
             }}
+            onDragEnd={endPaletteDrag}
             onPointerLeave={cancelHover}
             onClick={() => {
               cancelHover();

@@ -3,7 +3,7 @@
  * data so the player, the editor and (later) export can share one `drawScore`.
  */
 
-import type { LineColors, MomentId, Seconds } from '../core/types';
+import type { CompiledScore, LineColors, MomentId, Seconds } from '../core/types';
 
 /** The colour tokens of one theme (the prototype's `--paper`, `--ink`, ...; §11.5). */
 export interface ThemeTokens {
@@ -119,4 +119,9 @@ export interface ScoreStyle {
   bars?: { bpm?: number; meter?: number };
   /** Draw the playhead line. The editor layout draws its own DOM playhead (§10). @default true */
   playhead?: boolean;
+  /**
+   * A moment preview (§11.3, palette hover and drag): this score's lines from `from` on, drawn
+   * dashed over the real ones. Absent: none.
+   */
+  preview?: { score: CompiledScore; from: Seconds };
 }

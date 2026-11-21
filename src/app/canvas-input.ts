@@ -27,6 +27,7 @@
 import { keyAt } from '../core/query';
 import type { Key, Pitch, Seconds } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
+import { auditionMoment, holdNote, stopAudition } from './audition';
 import { addPointDrag, octaveDots, stepNote, type PitchDrag } from './editor/actions';
 import { cachedArrivals } from './editor/arrival-points';
 import { dragPitch } from './editor/chord-notes';
@@ -87,6 +88,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   let lastClick: Press | null = null;
   let note: {
     drag: PitchDrag;
+    /** The pool voice of the line (its timbre and level are auditioned). */
+    voice: number;
     key: Key;
     at: Seconds;
     from: Pitch;
@@ -101,6 +104,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   const endNote = (cancel: boolean): void => {
     note?.drag.end(cancel);
     note = null;
+    stopAudition();
     camera.pitch = null;
     hideOctaves();
   };
@@ -125,6 +129,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       note.last = q;
       note.drag.to(q);
     }
+    // Sounds the note at its snapped pitch while it moves (§11.3 auditioning).
+    holdNote(note.voice, q, note.at);
   };
   const endMarquee = (): void => {
     marquee.on = false;
@@ -149,6 +155,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (from === null) return false;
     note = {
       drag: addPointDrag(at, hit.voice, from),
+      voice: hit.voice,
       key: keyAt(compiled, at),
       at,
       from,
@@ -172,8 +179,11 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (owner) {
       clearDots();
       const sel = useEditor.getState().selection;
-      if (!add) select([owner]);
-      else select(sel.includes(owner) ? sel.filter((id) => id !== owner) : [...sel, owner]);
+      if (!add) {
+        select([owner]);
+        // Plays what the moment moves to (§11.3 auditioning; stopped transport only).
+        auditionMoment(owner);
+      } else select(sel.includes(owner) ? sel.filter((id) => id !== owner) : [...sel, owner]);
       return;
     }
     clearDots();

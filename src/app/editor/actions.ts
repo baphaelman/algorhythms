@@ -15,6 +15,7 @@ import type {
   Seconds,
 } from '../../core/types';
 import { keyAt } from '../../core/query';
+import { auditionAfterEdit } from '../audition';
 import { usePlayer } from '../store';
 import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
@@ -297,11 +298,18 @@ export function stepNote(id: MomentId, dir: 1 | -1, change?: number, octave = fa
       : c,
   );
   const next = withNoteChanges(m, list);
-  return updateMoment(
+  const moved = updateMoment(
     id,
     { from: next.from, to: next.to, changes: next.changes, order: noteOrder() },
     'Move note',
   );
+  // Sounds the stepped note(s) once the edit has compiled (§11.3 auditioning).
+  if (moved)
+    auditionAfterEdit(
+      id,
+      list.filter((_, i) => change === undefined || i === change).map((c) => c.to),
+    );
+  return moved;
 }
 
 /** A drag of an arrival dot: `to(pitch, t)` with `t` its arrival; `end(true)` cancels it. */

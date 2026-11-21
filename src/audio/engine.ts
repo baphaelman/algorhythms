@@ -92,6 +92,10 @@ export class AudioEngine {
   private durationValue = 0;
   private playingValue = false;
   private timbresValue: Record<string, Timbre> | undefined;
+  /** The last score given to `load` or `swap` (restored after an audition). */
+  private real: CompiledScore | null = null;
+  /** An audition holds the worklet's score (see `audition`). */
+  private auditioning = false;
 
   private constructor(context: BaseAudioContext, node: AudioWorkletNode) {
     this.context = context;
@@ -157,7 +161,9 @@ export class AudioEngine {
   ): Promise<void> {
     const flat = flatten(score);
     this.timbresValue = timbres;
+    this.real = score;
     const sets = await this.prepareTables(flat, timbres, true);
+    this.auditioning = false;
     this.durationValue = score.duration;
     this.anchors = [];
     this.optimistic = { time: 0, playing: false };
@@ -167,18 +173,66 @@ export class AudioEngine {
     this.postTables(sets);
   }
 
-  /** Hot-swaps the score (after an edit) without stopping; new timbres are built first. */
+  /**
+   * Hot-swaps the score (after an edit) without stopping; new timbres are built first. During an
+   * audition the score is kept and sent when the audition ends.
+   */
   async swap(score: CompiledScore, timbres?: Record<string, Timbre>): Promise<void> {
     const flat = flatten(score);
     if (timbres) this.timbresValue = timbres;
+    this.real = score;
     const sets = await this.prepareTables(flat, this.timbresValue, false);
     this.postTables(sets);
     this.durationValue = score.duration;
+    if (this.real !== score) return;
+    if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+  }
+
+  /**
+   * Auditions `score` (a few held notes on the real voice path, PLAN.md §11.3 "Drag preview and
+   * auditioning"): swaps it in and plays it from 0, replacing any audition already sounding. The
+   * loop range and `ended` are suspended until `endAudition`, which pauses and swaps the last
+   * loaded score back. Resolves false (and does nothing) while the transport is playing.
+   */
+  async audition(score: CompiledScore, timbres?: Record<string, Timbre>): Promise<boolean> {
+    if (!this.auditioning && this.isPlaying) return false;
+    const flat = flatten(score);
+    const sets = await this.prepareTables(flat, timbres ?? this.timbresValue, false);
+    if (!this.auditioning && this.isPlaying) return false;
+    this.postTables(sets);
+    if (!this.auditioning) {
+      this.auditioning = true;
+      this.post({ type: 'loop', range: null });
+    }
+    const ctx = this.context;
+    if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
     this.post({ type: 'swap', score: flat }, transferList(flat));
+    this.post({ type: 'play', from: 0 });
+    this.optimistic = { time: 0, playing: true };
+    return true;
+  }
+
+  /** True while an audition holds the engine. */
+  get isAuditioning(): boolean {
+    return this.auditioning;
+  }
+
+  /** Ends the audition (if any): pauses, then restores the real score and the loop range. */
+  endAudition(): void {
+    if (!this.auditioning) return;
+    this.auditioning = false;
+    this.optimistic = { time: 0, playing: false };
+    this.post({ type: 'pause' });
+    if (this.real) {
+      const flat = flatten(this.real);
+      this.post({ type: 'swap', score: flat }, transferList(flat));
+    }
+    this.post({ type: 'loop', range: this.loopRange });
   }
 
   /** Starts playback, from `from` seconds if given (from 0 after the end). */
   play(from?: number): void {
+    this.endAudition();
     const ctx = this.context;
     if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
     let start = from;
@@ -189,12 +243,14 @@ export class AudioEngine {
 
   /** Pauses; the FX tail keeps ringing. */
   pause(): void {
+    this.endAudition();
     this.optimistic = { time: this.currentTime(), playing: false };
     this.post({ type: 'pause' });
   }
 
   /** Moves the playhead (crossfading if playing). */
   seek(to: number): void {
+    this.endAudition();
     const t = Math.max(0, to);
     this.optimistic = { time: t, playing: this.isPlaying };
     this.post({ type: 'seek', to: t });
@@ -205,13 +261,14 @@ export class AudioEngine {
     // Re-anchor at the time heard now, so the old anchor is not wrapped by the new range (a
     // region set ahead of or behind the playhead must not move it).
     const a = this.anchors[0];
-    if (!this.optimistic && a?.playing) {
+    if (!this.auditioning && !this.optimistic && a?.playing) {
       const pieceTime = this.currentTime();
       this.anchors = [
         { contextTime: this.heardContextTime(), pieceTime, playing: true, reason: 'pos' },
       ];
     }
     this.loopRange = range && range.end > range.start ? { ...range } : null;
+    if (this.auditioning) return;
     this.post({ type: 'loop', range: this.loopRange });
   }
 
@@ -309,6 +366,7 @@ export class AudioEngine {
       }
       case 'ended':
         this.playingValue = false;
+        if (this.auditioning) break;
         this.onEnded?.();
         break;
       case 'meter':

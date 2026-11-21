@@ -138,6 +138,7 @@ export function drawScore(
 
   // 4. lines
   drawLines(g, compiled, style, view);
+  if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
 
   // 5. heads
   const headA = style.heads === false ? 0 : 1;
@@ -296,6 +297,41 @@ function drawLines(
     }
   }
   g.globalAlpha = 1;
+}
+
+/** Opacity of the preview's dashed lines. */
+export const PREVIEW_ALPHA = 0.9;
+/** Dash pattern of the preview's lines, px. */
+const PREVIEW_DASH = [5, 4];
+
+/** The preview score's lines from `from` to the right edge: dashed, in each voice's colour. */
+function drawPreview(
+  g: CanvasRenderingContext2D,
+  score: CompiledScore,
+  from: Seconds,
+  style: ScoreStyle,
+  view: View,
+): void {
+  const a = Math.max(from, view.tL);
+  if (!(a < view.tR)) return;
+  const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
+  const maxStep = GLIDE_STEP_PX / view.pps;
+  const tolerance = 0.35 / pxPerSemitone;
+  let gradient: CanvasGradient | null = null;
+  if (style.colors === 'pitch') {
+    gradient = g.createLinearGradient(0, pitchToY(view, view.pLo), 0, pitchToY(view, view.pHi));
+    for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
+  }
+  g.save();
+  g.setLineDash(PREVIEW_DASH);
+  g.lineWidth = 2;
+  g.globalAlpha = PREVIEW_ALPHA;
+  for (const v of score.voices) {
+    if (v.segments.length === 0) continue;
+    g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+    trace(g, view, sample(v, a, view.tR, maxStep, tolerance));
+  }
+  g.restore();
 }
 
 /** Calls `fn(a, b)` for each run of contiguous segments in `ids`, clipped to [tL, tR]. */

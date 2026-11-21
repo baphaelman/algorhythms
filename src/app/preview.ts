@@ -1,125 +1,96 @@
 /**
- * Palette hover preview (PLAN.md §11.3, revision 6): plays about 3 s from the playhead with a
- * default moment of the hovered type inserted, then restores the real score. A next-move
- * suggestion previews the same way, from its own time.
+ * Score previews (PLAN.md §11.3; owner 2026-11-21: silent): hovering a palette item or a next-move
+ * suggestion, or dragging a palette item over the score or lane, shows what the moment would do
+ * as ghost lines on the score from its time. Nothing sounds.
  *
- * The preview compiles a temporary piece and hot-swaps it into the engine, plays it, and on stop
- * pauses (the engine's 5 ms pause crossfade, so no click) and swaps the real score back while
- * paused. The store, the undo history and the saved piece are never touched. Only while the
- * transport is not playing; any transport or piece change stops it first.
+ * A preview compiles a temporary piece with the moment inserted; the score loop (./loop.ts) draws
+ * its lines from `from` on top of the real score. The store, the undo history, the saved piece and
+ * the engine are never touched. Any piece change clears it (it would be stale).
  */
 
 import { compile } from '../core/compiler/compile';
-import type { Moment, MomentType, Piece, Seconds } from '../core/types';
-import { getEngine, primeAudio, resumeAudio, swapAudio } from './audio';
+import type { CompiledScore, Moment, MomentType, Piece, Seconds } from '../core/types';
 import { extendEnd } from './editor/end';
 import { insertMoments } from './editor/ops';
 import { defaultMoment } from './editor/new-moment';
 import { PROBE_ID, addTime } from './editor/palette-effects';
 import { usePlayer } from './store';
 
-/** Preview length, seconds. */
-export const PREVIEW_SECONDS = 3;
 /** Hover time before a preview starts, ms. */
 export const PREVIEW_DELAY_MS = 300;
 
-/** What the preview is doing (read by tests through the debug hook). */
+/** The previewed score and where its ghost lines start. */
+export interface PreviewGhost {
+  score: CompiledScore;
+  from: Seconds;
+}
+
+/** What the preview is doing (read by the score loop, and by tests through the debug hook). */
 export const previewState = {
   /** The type being previewed, or null. */
   type: null as MomentType | null,
-  /** The engine was told to play the preview. */
-  playing: false,
+  /** The ghost the score draws (a new object per preview), or null. */
+  ghost: null as PreviewGhost | null,
   /** Previews started so far. */
   count: 0,
   /** Where the latest preview starts, seconds. */
   from: NaN as Seconds,
   /** The suggestion label being previewed (next-move suggestions), or null. */
   label: null as string | null,
+  /** The preview comes from a palette drag. */
+  drag: false,
 };
 
-let token = 0;
-let stopTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Starts a preview of `type` at the playhead; false if the transport is busy. */
-export function startPreview(type: MomentType): boolean {
+/** Previews a default `type` at `t` (default: the playhead); false if it cannot be built. */
+export function startPreview(type: MomentType, t: Seconds = addTime(), drag = false): boolean {
   const { piece, compiled } = usePlayer.getState();
-  const t = addTime();
   let m: Moment;
   try {
-    m = defaultMoment(type, t, PROBE_ID, piece, compiled);
+    m = defaultMoment(type, Math.max(0, t), PROBE_ID, piece, compiled);
   } catch {
     return false;
   }
-  return startMomentPreview(m, null);
+  return startMomentPreview(m, null, undefined, drag);
 }
 
 /**
- * Starts a preview of `moment` (a next-move suggestion, `label`) from its time; false if the
- * transport is busy. `build` makes the temporary piece (default: the moment inserted).
+ * Previews `moment` (a next-move suggestion, `label`) from its time; false if it does not compile.
+ * `build` makes the temporary piece (default: the moment inserted).
  */
 export function startMomentPreview(
   moment: Moment,
   label: string | null,
   build: (piece: Piece, m: Moment) => Piece = (p, m) => extendEnd(insertMoments(p, [m]), [m]),
+  drag = false,
 ): boolean {
-  stopPreview();
-  const { piece, transport } = usePlayer.getState();
-  if (transport.status === 'playing' || transport.scrubbing || transport.audio !== 'ready') {
-    return false;
-  }
-  const t = moment.at;
-  let score;
+  const { piece } = usePlayer.getState();
+  let score: CompiledScore;
   try {
     score = compile(build(piece, { ...moment, id: PROBE_ID }));
   } catch {
+    stopPreview();
     return false;
   }
-  const my = ++token;
   previewState.type = moment.type;
   previewState.label = label;
-  previewState.playing = false;
   previewState.count++;
-  previewState.from = t;
-  void primeAudio().catch(() => undefined);
-  resumeAudio();
-  swapAudio(score, piece.timbres).then(
-    (e) => {
-      if (my !== token) return;
-      e.play(t);
-      previewState.playing = true;
-      stopTimer = setTimeout(stopPreview, PREVIEW_SECONDS * 1000);
-    },
-    () => {
-      if (my === token) stopPreview();
-    },
-  );
+  previewState.from = moment.at;
+  previewState.drag = drag;
+  previewState.ghost = { score, from: moment.at };
   return true;
 }
 
-/** Stops the preview (if any) and puts the real score back into the engine. */
+/** Clears the preview (if any). */
 export function stopPreview(): void {
   if (previewState.type === null) return;
-  token++;
-  if (stopTimer !== null) clearTimeout(stopTimer);
-  stopTimer = null;
-  if (previewState.playing) getEngine()?.pause();
   previewState.type = null;
   previewState.label = null;
-  previewState.playing = false;
-  const { piece, compiled } = usePlayer.getState();
-  void swapAudio(compiled, piece.timbres).catch(() => undefined);
+  previewState.ghost = null;
+  previewState.drag = false;
 }
 
-// Play, seek-to-play, scrubbing, loads and edits all go back to the real score first. The restore
-// swap is queued before play's own wait on the engine, so play never starts on the preview.
 usePlayer.subscribe((s, prev) => {
-  if (previewState.type === null) return;
-  if (
-    s.piece !== prev.piece ||
-    s.compiled !== prev.compiled ||
-    s.transport.status !== prev.transport.status ||
-    s.transport.scrubbing !== prev.transport.scrubbing
-  ) {
+  if (previewState.type !== null && (s.piece !== prev.piece || s.compiled !== prev.compiled)) {
     stopPreview();
   }
 });

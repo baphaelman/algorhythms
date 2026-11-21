@@ -110,3 +110,27 @@ export function mixAudio(mix: MixSettings): Promise<AudioEngine> {
 export function whenReady(): Promise<AudioEngine> {
   return enqueue(async () => undefined);
 }
+
+/**
+ * Auditions a short score (../audition.ts) after any queued load or swap. `current()` says whether
+ * this audition is still the latest one wanted: if not by its turn it is skipped; if it was stopped
+ * meanwhile (`wanted()` false) it is ended at once. Resolves false if it did not start.
+ */
+export function auditionAudio(
+  score: CompiledScore,
+  timbres: Record<string, Timbre>,
+  current: () => boolean,
+  wanted: () => boolean,
+): Promise<boolean> {
+  let ok = false;
+  return enqueue(async (e) => {
+    if (!current()) return;
+    ok = await e.audition(score, timbres);
+    if (ok && !wanted()) e.endAudition();
+  }).then(() => ok);
+}
+
+/** Ends the audition now if the engine exists (sync), so a following play starts on the piece. */
+export function endAuditionAudio(): void {
+  engine?.endAudition();
+}

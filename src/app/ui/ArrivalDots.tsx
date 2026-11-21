@@ -40,6 +40,7 @@ import {
   useDotSelection,
 } from '../editor/dot-selection';
 import { useEditor } from '../editor/history';
+import { holdNote, stopAudition } from '../audition';
 import { edgePitch } from '../editor/drag-edge';
 import { dotSnaps, ofVoice, snapTime, type SnapSet } from '../editor/snap';
 import { selectStep, useStepSelection } from '../editor/step-selection';
@@ -270,6 +271,8 @@ export function ArrivalDots() {
       else hideOctaves();
       if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
       if (ghost.current) place(ghost.current, v, follow.current);
+      // Sounds the dragged note at its snapped pitch (§11.3 auditioning); a new pitch replaces it.
+      holdNote(dot.voice, p, dot.t);
       if (p === last && t === lastT) return;
       last = p;
       lastT = t;
@@ -319,6 +322,7 @@ export function ArrivalDots() {
       follow.current = null;
       el.style.visibility = '';
       if (ghost.current) ghost.current.hidden = true;
+      stopAudition();
       if (drag) {
         const r = drag.end(ev.type === 'pointercancel');
         if (!r) return;

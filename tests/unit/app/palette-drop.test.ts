@@ -4,6 +4,11 @@ vi.mock('../../../src/app/editor/actions', () => ({ addMoment: vi.fn() }));
 vi.mock('../../../src/app/store', () => ({ currentTime: () => 0, usePlayer: {} }));
 vi.mock('../../../src/app/editor/history', () => ({ select: vi.fn(), useEditor: {} }));
 vi.mock('../../../src/app/loop', () => ({ onScoreFrame: () => () => undefined }));
+vi.mock('../../../src/app/preview', () => ({
+  previewState: { drag: false },
+  startPreview: vi.fn(),
+  stopPreview: vi.fn(),
+}));
 
 import { droppedType, dropTime } from '../../../src/app/palette-drop';
 import type { View } from '../../../src/render';

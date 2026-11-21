@@ -78,6 +78,11 @@ vi.mock('../../../src/app/editor/palette-effects', () => ({
 }));
 vi.mock('../../../src/app/hover', () => ({ clearHover: vi.fn(), setHover: vi.fn() }));
 vi.mock('../../../src/app/loop', () => ({ currentPps: () => 100 }));
+vi.mock('../../../src/app/audition', () => ({
+  auditionMoment: vi.fn(),
+  holdNote: vi.fn(),
+  stopAudition: vi.fn(),
+}));
 
 import { attachKeys } from '../../../src/app/canvas-input';
 

@@ -39,14 +39,18 @@ async function open(page: Page): Promise<void> {
 
 interface PreviewState {
   label: string | null;
-  playing: boolean;
+  shown: boolean;
   from: number;
 }
 /** The preview debug state (not in the e2e Hook type). */
 const previewOf = (page: Page): Promise<PreviewState> =>
   page.evaluate(() => {
-    const p = (window.__algorhythms as unknown as { preview: PreviewState }).preview;
-    return { label: p.label, playing: p.playing, from: p.from };
+    const p = (
+      window.__algorhythms as unknown as {
+        preview: { label: string | null; ghost: object | null; from: number };
+      }
+    ).preview;
+    return { label: p.label, shown: p.ghost !== null, from: p.from };
   });
 
 const moments = (page: Page) =>
@@ -141,7 +145,7 @@ test('appending past an explicit end extends the piece', async ({ page }) => {
   expect(diags).not.toContain('after-end');
 });
 
-test('hovering a suggestion previews it without touching the piece', async ({ page }) => {
+test('hovering a suggestion previews it silently without touching the piece', async ({ page }) => {
   await open(page);
   await seek(page, 1);
   await expect
@@ -155,8 +159,10 @@ test('hovering a suggestion previews it without touching the piece', async ({ pa
   const label = await first.getAttribute('data-label');
   await first.hover();
   await expect.poll(async () => (await previewOf(page)).label).toBe(label);
-  await expect.poll(async () => (await previewOf(page)).playing).toBe(true);
+  await expect.poll(async () => (await previewOf(page)).shown).toBe(true);
   expect((await previewOf(page)).from).toBeCloseTo(t, 3);
+  // Silent (owner 2026-11-21): the engine is not playing.
+  expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
 
   await page.mouse.move(2, 400);
   await expect.poll(async () => (await previewOf(page)).label).toBeNull();
