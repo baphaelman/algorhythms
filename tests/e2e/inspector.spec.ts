@@ -146,13 +146,19 @@ test('dragging a number label is one undo entry', async ({ page }) => {
   ).toBe(false);
 });
 
-test('keyboard: degree picker toggles with Space', async ({ page }) => {
+test('keyboard: degree picker toggles with Enter; Space plays instead', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [CHORD]);
   const deg2 = insp.getByRole('button', { name: /^Degree 2 / });
   await expect(deg2).toHaveAttribute('aria-pressed', 'false');
   await deg2.focus();
   await page.keyboard.press('Space');
+  await expect
+    .poll(() => page.evaluate(() => window.__algorhythms!.store.getState().transport.status))
+    .toBe('playing');
+  await expect(deg2).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
   await expect(deg2).toHaveAttribute('aria-pressed', 'true');
   expect(
     await page.evaluate((id) => {
