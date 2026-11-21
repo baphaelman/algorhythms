@@ -1080,3 +1080,4 @@ Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow t
 - Owner: "Notes: n" counts lines heard; weight is loudness only (PLAN rev 8). Integrator: every join passes on weight, including explicit merges and `count` deaths (owner: "merges keep a summed weight"); the WIP's no-transfer rule is dropped.
 - M4.5-29 split: **29a** (core: merge main, count = lines, weight on every join, the skipped distinct-notes property, walk steps skip held pitches); **29b** after 29a (DSP wobble removal + √w test, MIDI velocity, inspector weight field, line thickness by weight after M4.5-25).
 - CI failed since M4.5-21/22 on `lane.spec` Escape (exact 5 after grid snap removal) and a `view-follow` frame race: fixed (entry above). WebKit e2e stays on CI (it can't be muted on the Mac).
+- Owner withdrew the future-dimming fix ("it looks fine"); M4.5-25 is only the "notes" wording.
