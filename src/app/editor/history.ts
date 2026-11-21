@@ -84,7 +84,7 @@ export function edit(recipe: Recipe, label = 'Edit'): boolean {
   const after = followContent(before, recipe(before));
   if (after === before) return false;
   push(before, label, selection());
-  setPiece(after);
+  setPiece(after, { now: true });
   return true;
 }
 
@@ -105,7 +105,7 @@ export function amend(entry: object | null, recipe: Recipe, label = 'Edit'): boo
   if (after === before) return false;
   future = [];
   publish();
-  setPiece(after);
+  setPiece(after, { now: true });
   return true;
 }
 
@@ -147,7 +147,7 @@ export function cancelGesture(): void {
   if (!gesture) return;
   const { start } = gesture;
   gesture = null;
-  if (piece() !== start) setPiece(start);
+  if (piece() !== start) setPiece(start, { now: true });
 }
 
 /** Reverts the last edit. During a gesture, cancels the gesture instead. */
@@ -160,7 +160,7 @@ export function undo(): boolean {
   if (!e) return false;
   future.push({ piece: piece(), label: e.label, selection: selection() });
   publish();
-  setPiece(e.piece);
+  setPiece(e.piece, { now: true });
   select(e.selection);
   return true;
 }
@@ -172,7 +172,7 @@ export function redo(): boolean {
   if (!e) return false;
   past.push({ piece: piece(), label: e.label, selection: selection() });
   publish();
-  setPiece(e.piece);
+  setPiece(e.piece, { now: true });
   select(e.selection);
   return true;
 }

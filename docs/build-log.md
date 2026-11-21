@@ -1307,3 +1307,17 @@ A focused NumberField (and WeightBox) kept its typed text through an outside und
 - `draftReduce` (`inspector/fields.ts`): typing makes a draft; a changed underlying value drops it and shows the new value; blur commits only a draft. NumberField and WeightBox use it via `useReducer`. The Voices/Notes drawer `NumberField` clears its draft when `value` changes.
 - Tests: `tests/unit/app/number-draft.test.ts`; `tests/e2e/number-field-undo.spec.ts` (type, undo via the editor hook, blur: undone value stays; an undisturbed draft still commits). The app has no Undo button, and a real click would blur first, so the hook stands in.
 - The inspector.spec workaround (blur after Enter) is no longer needed but left alone. TextField (chord symbol) has the same pattern; not changed (not a number field).
+
+## Edit latency: click → swap (app, 2026-11-21)
+CI (2 vCPU) missed the 50 ms gate on inspector clicks (`clickChord` medians 54–62 ms prod, 85–113 ms dev). Profiled locally with `E2E_CPU_THROTTLE=4` (CDP `Emulation.setCPUThrottlingRate`) and temporary timestamps.
+- **Before (4×, prod, ms from the click's `timeStamp`):** event dispatch 2–15 (main thread busy) · history push + recipe < 1 · React render of the piece change (sync, `useSyncExternalStore` flushes in a microtask) + wait for the next frame 20–30 · incremental compile 1–2 · second React render (of `compiled`, again ahead of the swap job's microtasks) 15–20 · flatten + post < 1. Median 50.6 prod, 74 dev. Autosave, stats, previews and history were all < 1 ms; the audition is off while playing and never added a compile.
+- **Fix:** one-off edits skip the frame and the renders.
+  - `setPiece(piece, { now: true })` (store): compile, post the swap, then one store update `{ piece, compiled }` (one render instead of two). `edit`, `amend`, `undo`, `redo` and `cancelGesture` use it; drags (`updateGesture`) and plain `setPiece` keep the once-per-frame compile, which skips if a `now` edit already compiled the piece.
+  - `app/audio.ts` queue: with the engine created and no job running, a job starts synchronously (ordering unchanged: behind a running job it waits).
+  - `AudioEngine.swap`: when no wavetables need building (any edit that doesn't change a timbre) it posts at once instead of after an `await`.
+  - Audition after an inspector pick: the edit is already compiled, so it plays at the end of the task (`compiledThisTask()`) instead of waiting for the next compile; a newer edit in the same task still replaces it.
+  - No memoisation needed: render cost is now after the swap.
+- **After:** unthrottled clicks 0.8–1.7 ms (was 13–34). 4×, 3 runs each: prod `clickChord` 15–22, `clickWalk` 21–23, `setPiece` 10–16; dev `clickChord` 16–18, `clickWalk` 23. What is left is event dispatch while a frame or render holds the main thread.
+- **Gate:** chromium-prod ≤ 50 ms median per path; chromium-dev ≤ 150 ms (React dev mode, not shipped). `E2E_CPU_THROTTLE` is an optional env for local slow-machine runs.
+- **Tests:** `unit/app/edit-swap.test.ts` (swap before the store update, one update, drags per frame, no double compile), `unit/app/audio-queue.test.ts`; `audition.test.ts` step tests now flush a microtask.
+- **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 1288/1288. E2E edit-latency, inspector, audition, app on chromium-dev and -prod 83/83.

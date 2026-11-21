@@ -22,6 +22,8 @@ let context: AudioContext | null = null;
 let creating: Promise<AudioEngine> | null = null;
 let engine: AudioEngine | null = null;
 let queue: Promise<unknown> = Promise.resolve();
+/** Jobs queued and not yet settled; at 0 a new job can start synchronously. */
+let running = 0;
 
 /** Registers the engine callbacks (applied to the engine when it is created, or right away). */
 export function configureAudio(h: AudioHandlers): void {
@@ -68,14 +70,35 @@ export function resumeAudio(): void {
   if (context && context.state !== 'running' && context.state !== 'closed') void context.resume();
 }
 
-/** Queues `job` after everything queued before it; resolves to the engine when the job is done. */
+/**
+ * Queues `job` after everything queued before it; resolves to the engine when the job is done.
+ * With the engine created and the queue idle, the job starts now (an edit's swap is posted before
+ * the caller returns, ahead of any render).
+ */
 function enqueue(job: (e: AudioEngine) => Promise<void>): Promise<AudioEngine> {
-  const next = queue.then(async () => {
-    const e = await primeAudio();
-    await job(e);
-    return e;
-  });
-  queue = next.catch(() => undefined);
+  let next: Promise<AudioEngine>;
+  const ready = engine;
+  if (running === 0 && ready) {
+    let run: Promise<void>;
+    try {
+      run = job(ready);
+    } catch (err) {
+      run = Promise.reject(err);
+    }
+    next = run.then(() => ready);
+  } else {
+    next = queue.then(async () => {
+      const e = await primeAudio();
+      await job(e);
+      return e;
+    });
+  }
+  running++;
+  // Each job waits for the one before, so the count reaches 0 only when all have settled.
+  queue = next.then(
+    () => void running--,
+    () => void running--,
+  );
   return next;
 }
 

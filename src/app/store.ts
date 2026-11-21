@@ -11,6 +11,7 @@
  * - `onLoadPiece(fn)`: run `fn` after every `loadPiece` (the editor resets its undo history).
  * - `setPiece(piece)`: replace the piece after an edit; recompiles once per animation frame and
  *   hot-swaps the engine. `usePlayer.getState().compiled` follows one frame later.
+ *   `setPiece(piece, { now: true })` (one-off edits, undo) compiles and swaps before returning.
  * - `usePlayer.getState().compiled` / `.piece`: the current score and piece.
  * - `getEngine()` (from ./audio): the AudioEngine once created (null before); `whenReady()`
  *   resolves with it after the latest load or swap.
@@ -341,6 +342,7 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
   clock.resume = false;
   incremental.reset();
   const compiled = opts.compiled ?? incremental.compile(piece);
+  compiledPiece = piece;
   const notices: Notice[] = (opts.notices ?? []).map((n) => ({ ...n, id: ++noticeId }));
   const errors = compiled.diagnostics.filter((d) => d.level === 'error');
   if (errors.length > 0) {
@@ -369,36 +371,65 @@ export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
 }
 
 let recompilePending = false;
+/** The piece `compiled` was last built from (the rAF compile skips when it is current). */
+let compiledPiece: Piece | null = null;
+/** True from a `now` compile until the end of the current task (see `compiledThisTask`). */
+let compiledInTask = false;
 
 /**
  * Replaces the piece after an edit. The store's `piece` changes now; `compiled` follows within one
  * animation frame (several edits in a frame cost one compile), and the engine is hot-swapped.
+ * With `now` (a one-off edit, not a drag) it compiles at once and posts the swap before the store
+ * (and React) sees the change, so the edit is heard without waiting for a render or a frame.
  */
-export function setPiece(next: Piece): void {
+export function setPiece(next: Piece, opts: { now?: boolean } = {}): void {
   const prev = get().piece;
   // The loop region is view state, not an edit: undo and edits keep the current one.
   const piece =
     next.view.loop === prev.view.loop
       ? next
       : { ...next, view: withLoop(next.view, prev.view.loop) };
-  set({ piece });
   if (piece.mix !== prev.mix) void mixAudio(piece.mix).catch(() => undefined);
+  if (opts.now) {
+    commitCompile(piece, true);
+    return;
+  }
+  set({ piece });
   if (recompilePending) return;
   recompilePending = true;
   requestAnimationFrame(() => {
     recompilePending = false;
-    recompileNow();
+    if (compiledPiece !== get().piece) recompileNow();
   });
 }
 
 /** Compiles the current piece immediately and swaps it into the engine. */
 export function recompileNow(): CompiledScore {
-  const { piece } = get();
+  return commitCompile(get().piece, false);
+}
+
+/** Compiles `piece`, posts the swap, then stores both (one store update, one render). */
+function commitCompile(piece: Piece, now: boolean): CompiledScore {
   const compiled = incremental.compile(piece);
-  set({ compiled });
+  compiledPiece = piece;
   void swapAudio(compiled, piece.timbres).catch(() => undefined);
+  if (now && !compiledInTask) {
+    compiledInTask = true;
+    queueMicrotask(() => {
+      compiledInTask = false;
+    });
+  }
+  set(get().piece === piece ? { compiled } : { piece, compiled });
   syncLoop();
   return compiled;
+}
+
+/**
+ * True if a `setPiece(…, { now: true })` compiled during the current task: the edit just made is
+ * already in `compiled` (the audition after an inspector pick plays it at once).
+ */
+export function compiledThisTask(): boolean {
+  return compiledInTask;
 }
 
 /** Parses piece JSON (text or value) and opens it; shows errors and warnings as notices. */

@@ -25,7 +25,7 @@ import type {
   Segment,
 } from '../core/types';
 import { auditionAudio, endAuditionAudio, primeAudio, resumeAudio } from './audio';
-import { usePlayer } from './store';
+import { compiledThisTask, usePlayer } from './store';
 
 /** Length of a one-shot audition, seconds. */
 export const AUDITION_SECONDS = 1.5;
@@ -272,8 +272,9 @@ export function auditionPointsAfterEdit(
 }
 
 /**
- * Runs `play` once the edit just made has compiled (or after EDIT_WAIT_MS). A newer call replaces
- * a pending one; refused while the transport plays.
+ * Runs `play` once the edit just made has compiled (at the end of this task if it already has;
+ * else on the next compile, or after EDIT_WAIT_MS). A newer call replaces a pending one; refused
+ * while the transport plays.
  */
 function afterEdit(play: () => void): void {
   pendingEdit?.stop();
@@ -291,10 +292,16 @@ function afterEdit(play: () => void): void {
     stop();
     play();
   };
-  const unsubscribe = usePlayer.subscribe((s) => {
-    if (s.compiled !== before) fire();
-  });
-  const wait = setTimeout(fire, EDIT_WAIT_MS);
+  // A one-off edit compiles before returning, so it is already in the score: play at the end of
+  // this task (a newer edit in the same task still replaces it). Else wait for the next compile.
+  const now = compiledThisTask();
+  if (now) queueMicrotask(fire);
+  const unsubscribe = now
+    ? () => undefined
+    : usePlayer.subscribe((s) => {
+        if (s.compiled !== before) fire();
+      });
+  const wait = now ? undefined : setTimeout(fire, EDIT_WAIT_MS);
   const stop = (): void => {
     done = true;
     unsubscribe();
