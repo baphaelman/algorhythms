@@ -64,13 +64,13 @@ test('a no-effect moment is dimmed on the lane, with the reason as tooltip and i
   await openUnison(page);
   const merge = page.getByTestId('lane').locator('[data-moment="mrg001"]');
   await expect(merge).toHaveAttribute('data-no-effect', 'true');
-  await expect(merge).toHaveAttribute('title', /No effect: all notes already on one pitch/);
+  await expect(merge).toHaveAttribute('title', /No effect: only one note is sounding\./);
   await expect(page.getByTestId('lane').locator('[data-moment="uni001"]')).not.toHaveAttribute(
     'data-no-effect',
   );
   await page.evaluate(() => window.__algorhythms!.actions.select(['mrg001']));
   await expect(page.getByTestId('insp-diags').locator('[data-code="no-effect"]')).toHaveText(
-    /No effect: all notes already on one pitch/,
+    /No effect: only one note is sounding\./,
   );
 });
 
@@ -80,7 +80,10 @@ test('the palette greys out merge on a unison and enables it elsewhere', async (
   const merge = palette.locator('[data-moment="merge"]');
   await seek(page, 5);
   await expect(merge).toHaveAttribute('aria-disabled', 'true');
-  await expect(merge).toHaveAttribute('title', /all notes already on one pitch/);
+  await expect(merge).toHaveAttribute(
+    'title',
+    /merge: No effect here: only one note is sounding \(drag to another time\)/,
+  );
   await expect(palette.locator('[data-moment="chord"]')).not.toHaveAttribute('aria-disabled');
 
   // Disabled for click and shortcut at the playhead.
