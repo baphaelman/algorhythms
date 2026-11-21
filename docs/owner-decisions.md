@@ -11,6 +11,11 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Dense lanes (Kite Day fix).**
+  - The score keeps at least 55 % of the timeline's height. Lane rows past that scroll inside the lane area, and a fade shows when rows are hidden above or below.
+  - A plain wheel over the lanes scrolls them. Shift-wheel or a sideways trackpad swipe pans time, on the score too. Ctrl/Cmd-wheel zooms.
+  - Rows that need more than 3 stacked sub-rows go compact (8 px moments, 7 px transitions), with labels on hover, focus or selection. At 1024×768, Kite Day still needs a short scroll to reach Level.
+  - Selecting a moment scrolls it into view.
 - **Parts in the editor (R9-6).**
   - The Notes drawer shows one group per part. Each header has a name field, delete, and whole-part timbre, pan, gain and range. Notes without a part sit under "Unassigned", and each note row has a Part menu.
   - A piece without parts gains one "New part" button. With no parts it puts every note in "Part 1"; with parts it groups the unassigned notes into "Part n". A note's own "New part…" puts just that note in a new part.
