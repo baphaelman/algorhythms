@@ -1,6 +1,6 @@
 {
   "format": "algorhythms",
-  "version": 1,
+  "version": 2,
   "meta": {
     "title": "Untitled",
     "created": "1970-01-01T00:00:00.000Z",
@@ -91,21 +91,19 @@
       "range": [36, 96]
     }
   ],
-  "start": [
-    {
-      "voice": "v1",
-      "pitch": 64
-    },
-    {
-      "voice": "v2",
-      "pitch": 76
-    },
-    {
-      "voice": "v3",
-      "pitch": 62
-    }
-  ],
   "moments": [
+    {
+      "id": "start0",
+      "type": "chord",
+      "at": 0,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [64, 76, 62]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "byVoice": true
+    },
     {
       "at": 29.6,
       "glide": {

@@ -6,6 +6,9 @@
  * its parent's pitch), and no level or key changes. Unison voices sound as one (§8.4 lock), so such
  * count changes are not heard.
  *
+ * From silence only an establishing moment (a chord with notes, a unison; moments/establish.ts)
+ * has an effect.
+ *
  * The compiler (compile.ts) checks every applied moment against its own state. `momentEffectAt`
  * answers the same question for the palette from a compiled score, without recompiling: it reads
  * the state at t (sounding voices and where they are heading, the key, the levels) and runs the
@@ -17,6 +20,7 @@ import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
 import { mergeGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
+import { establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
@@ -116,7 +120,12 @@ export interface EffectContext {
 /** Why a moment with no effect has none, for the `no-effect` message and the palette. */
 export function noEffectReason(m: Moment, c: EffectContext): string {
   const n = c.active.length;
-  if (n === 0 && m.type !== 'key') return 'no note is sounding';
+  if (n === 0 && m.type !== 'key') {
+    // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
+    return isEstablishing(m) || m.type === 'level'
+      ? 'no note is sounding'
+      : 'no note is sounding; start with a chord or a unison';
+  }
   if (c.targeted.length === 0 && m.type !== 'key' && m.type !== 'split' && m.type !== 'merge') {
     return 'it targets no sounding note';
   }
@@ -382,7 +391,13 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     },
     rand: (v, step, purpose) => randHashed(seed, v >= 0 ? hashes[v] : emptyHash, step, purpose),
   };
-  const plan = pointMomentPlan(m, env);
+  // From silence only an establishing moment acts (M4.5-27).
+  const plan =
+    st.active.length > 0
+      ? pointMomentPlan(m, env)
+      : isEstablishing(m)
+        ? establishPlan(m, env)
+        : null;
   if (error !== null) return no(error);
   if (!plan) return no(noEffectReason(m, ctx()));
   const after = Float64Array.from(st.dest);

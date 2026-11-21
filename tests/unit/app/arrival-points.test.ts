@@ -176,3 +176,19 @@ describe('dot actions', () => {
     expect(nearestIndex([], 55)).toBe(-1);
   });
 });
+
+describe('the opening (M4.5-27)', () => {
+  it('an establishing chord has one dot per note where it comes in, for hover too', () => {
+    const p = piece({ start: [50, 57] });
+    const s = compile(p);
+    const dots = allArrivals(p, s).filter((d) => d.momentId === 'start0');
+    expect(dots.map((d) => [d.t, d.pitch, d.voice])).toEqual([
+      [0, 50, 0],
+      [0, 57, 1],
+    ]);
+    expect(segmentArrivals(s, 'start0')).toEqual([
+      { t: 0, p: 50, v: 0 },
+      { t: 0, p: 57, v: 1 },
+    ]);
+  });
+});

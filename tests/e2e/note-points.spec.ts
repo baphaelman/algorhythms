@@ -60,17 +60,25 @@ async function openHeld(page: Page): Promise<void> {
     const h = window.__algorhythms!;
     const p = structuredClone(h.store.getState().piece) as unknown as {
       voices: { id: string }[];
-      start: { voice: string; pitch: number }[];
       moments: unknown[];
       key: unknown;
       end: unknown;
       view: { gridBpm?: number };
     };
-    p.start = [48, 55, 60, 64].map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
+    // The start is a moment (schema v2): an opening chord at 0.
+    const opening = {
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [48, 55, 60, 64] },
+      voicing: 'even',
+      assign: 'ordered',
+    };
     p.moments = [];
     p.key = { tonic: 'C', scale: 'major' };
     p.end = { at: 40, fade: 2 };
     p.view = { ...p.view, gridBpm: 60 };
+    p.moments.unshift(opening);
     h.actions.loadPiece(p);
   });
   await seek(page, 0);
@@ -178,15 +186,15 @@ test('N + click adds a note point; ▲/▼ step it; Return after writes back', a
   await insp.getByTestId('insp-note-back').press('Enter');
   await expect.poll(async () => (await notes(page))[0].back).toBe(2.5);
   // The note returns: C4 sounds again after the return.
-  const back = await page.evaluate(() => {
+  const back = await page.evaluate((id) => {
     const s = window.__algorhythms!.store.getState() as unknown as {
       compiled: { voices: { segments: { t1: number; p1: number; momentId?: string }[] }[] };
     };
     return s.compiled.voices
       .flatMap((v) => v.segments)
-      .filter((g) => g.momentId)
+      .filter((g) => g.momentId === id) // not the opening's holds
       .map((g) => g.p1);
-  });
+  }, n.id);
   expect(back).toContain(62);
   expect(back.at(-1)).toBe(60);
   await ret.uncheck();

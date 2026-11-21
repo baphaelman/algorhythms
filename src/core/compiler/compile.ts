@@ -14,6 +14,10 @@
  *   segment. A birth opens a life on the parent's pitch; a death glide schedules its life's close.
  * - tick: one walk step for every eligible voice (moments/walk.ts).
  * Then every voice is closed at the end (`end.at`, or the last activity + 4 s) with the end fade.
+ *
+ * Schema v2 (M4.5-27): every voice starts dormant. A chord or unison that comes when nothing is
+ * sounding establishes: its voices come in on their notes with no glide (`establish`). Every
+ * other moment has no effect from silence.
  */
 
 import { defaultGlide } from '../defaults';
@@ -23,6 +27,7 @@ import { mod } from '../math';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
+import { establishPlan, isEstablishing } from '../moments/establish';
 import { noteMoment } from '../moments/note';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
@@ -266,7 +271,6 @@ export class Compiler {
     this.initVoices();
     this.destEpoch = new Int32Array(this.voices.length);
     this.destVal = new Float64Array(this.voices.length);
-    this.initStart();
     this.initMoments();
     this.initWobble();
   }
@@ -314,47 +318,6 @@ export class Compiler {
       }
       this.byId.set(def.id, i);
       this.voices.push(new VoiceRun(i, def, sanitizeRange(def.range), hash32(def.id)));
-    }
-  }
-
-  private initStart(): void {
-    const start = Array.isArray(this.piece.start) ? this.piece.start : [];
-    let folded = 0;
-    for (const s of start) {
-      const v = this.byId.get(s.voice);
-      if (v === undefined) {
-        this.diag('warn', 'unknown-voice', `start: there is no voice '${s.voice}'.`);
-        continue;
-      }
-      const run = this.voices[v];
-      if (run.status === Status.Active) {
-        this.diag('warn', 'start-duplicate', `start: voice '${s.voice}' is listed twice.`);
-        continue;
-      }
-      if (!Number.isFinite(s.pitch)) {
-        this.diag('warn', 'invalid-moment', `start: voice '${s.voice}' has no valid pitch.`);
-        continue;
-      }
-      const f = foldIntoRange(s.pitch, run.range[0], run.range[1]);
-      if (f.folded) folded++;
-      // Start voices on one pitch are one line from the start (revision 8).
-      const same = this.voices.find(
-        (r) => r.status === Status.Active && Math.abs(r.frontier.heading - f.p) <= SAME_PITCH,
-      );
-      if (same) {
-        same.setCount(0, same.count + 1);
-        same.weight++;
-        same.members.push(v);
-        same.rampWeight(0, same.weight, 0);
-        continue;
-      }
-      run.status = Status.Active;
-      run.frontier.openAt(0, { p: f.p, v: 0, mid: false });
-      run.life = { born: 0, fadeIn: 0 };
-      run.lives.push(run.life);
-    }
-    if (folded > 0) {
-      this.diag('info', 'start-out-of-range', `${folded} start pitch(es) were folded into range.`);
     }
   }
 
@@ -766,6 +729,7 @@ export class Compiler {
         }
       : m0;
     const T = m.at;
+    if (!back && this.sortedActive().length === 0) return this.establish(i);
     // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices,
     // or once when the moment's count is a number of lines (`countsLines`).
     const dormant = this.dormantAt(T);
@@ -939,6 +903,72 @@ export class Compiler {
     let lost = 0;
     for (const l of col.lose.values()) lost += l.count;
     return { targeted: targetedLines, res, lost, absorbed: col.absorbed };
+  }
+
+  /**
+   * A point moment when nothing is sounding (M4.5-27). An establishing one (a chord with notes, a
+   * unison) brings its voices in on their notes at its time, with no glide and no fade-in, each
+   * holding its note as the moment's segment; voices sent to one pitch stack into one line
+   * (count, weight and members, as a coincidence merge). Any other has nothing to act on: the
+   * caller reports `no-effect`.
+   */
+  private establish(i: number): {
+    targeted: number[];
+    res: PlanResult | null;
+    lost: number;
+    absorbed: number;
+  } {
+    const m = this.moments[i];
+    const T = m.at;
+    const subset = m.target !== undefined && m.target !== 'all';
+    const none = { targeted: [], res: null, lost: 0, absorbed: 0 };
+    const free = this.dormantAt(T);
+    const x = expand(this.voices, [], free, (v) => this.destOf(v), true);
+    const plan = isEstablishing(m)
+      ? establishPlan(
+          m,
+          this.env(i, [], T, this.seeds[i], x, (v) => this.destOf(v), free),
+        )
+      : null;
+    this.span(i, T, T);
+    if (!plan || plan.intents.length === 0) {
+      this.traceMoment(i, [], subset, null, null, T);
+      return none;
+    }
+    let folded = 0;
+    const lines: VoiceRun[] = [];
+    for (const it of plan.intents) {
+      const run = this.voices[it.voice];
+      const f = foldIntoRange(it.to, run.range[0], run.range[1]);
+      if (f.folded || f.clampedToRange) folded++;
+      it.to = f.p;
+      // Voices on one pitch are one line (revision 8): the first one in carries the others.
+      const same = lines.find((r) => Math.abs(r.frontier.heading - f.p) <= SAME_PITCH);
+      if (same) {
+        same.setCount(T, same.count + 1);
+        same.weight++;
+        same.members.push(it.voice);
+        same.rampWeight(T, same.weight, 0);
+        continue;
+      }
+      run.status = Status.Active;
+      run.frontier.openAt(T, { p: f.p, v: 0, mid: false }, m.id);
+      run.life = { born: T, fadeIn: 0 };
+      run.lives.push(run.life);
+      lines.push(run);
+    }
+    if (folded > 0) {
+      this.diag(
+        'info',
+        'range-fold',
+        `${folded} target(s) outside a voice's range were folded by octave.`,
+        m.id,
+      );
+    }
+    this.touch();
+    this.recordHarmony(i, T);
+    this.traceMoment(i, [], subset, null, plan.intents, T);
+    return none;
   }
 
   /**
@@ -1740,6 +1770,17 @@ export class Compiler {
       if (fo > 0) life.fadeOut = fo;
       else delete life.fadeOut;
       run.life = null;
+    }
+    // A walk that starts in silence and never steps has no effect (M4.5-27).
+    for (const wi of this.walks) {
+      const w = this.moments[wi];
+      if (this.walkSteps.some((s) => s.momentId === w.id)) continue;
+      const sounding = this.voices.some((r) =>
+        r.lives.some((l) => l.born <= w.at && (l.died === undefined || l.died > w.at)),
+      );
+      if (sounding) continue;
+      const none = { targeted: [], active: [], births: 0, deaths: 0, dormant: 0 };
+      this.diag('info', 'no-effect', `No effect: ${noEffectReason(w, none)}.`, w.id);
     }
     const voices: CompiledVoice[] = this.voices.map((run) => {
       const def = run.def;

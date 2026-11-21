@@ -40,6 +40,7 @@ test.beforeEach(async ({ page }) => {
       view: Record<string, unknown>;
     };
     p.moments = [
+      ...(p.moments as { id: string }[]).filter((m) => m.id === 'start0'), // the opening (v2)
       {
         id: 'aaaaaa',
         type: 'chord',
@@ -54,7 +55,7 @@ test.beforeEach(async ({ page }) => {
     p.view = { ...p.view, gridBpm: 60, window: 20 };
     h.actions.loadPiece(p);
   });
-  await expect(page.getByTestId('lane').locator('[data-moment]')).toHaveCount(2);
+  await expect(page.getByTestId('lane').locator('[data-moment]')).toHaveCount(3); // + the opening
 });
 
 for (const target of ['lane', 'score'] as const) {

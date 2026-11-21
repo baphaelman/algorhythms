@@ -55,7 +55,7 @@ function piece(end?: number): Piece {
       glide: { length: 0.5, stagger: 0 },
     },
   ] as unknown as Moment[];
-  const out: Piece = { ...p, moments, end: { ...p.end } };
+  const out: Piece = { ...p, moments: [...p.moments, ...moments], end: { ...p.end } };
   if (end === undefined) delete out.end.at;
   else out.end.at = end;
   return out;

@@ -20,6 +20,7 @@ import { lifeAt, pitchAt } from '../../../src/core/query';
 import type { CompiledScore, EaseRef, Moment, NoteSet, Piece } from '../../../src/core/types';
 import { lineArtifacts } from '../../unit/core/line-artifacts';
 import { pieceArb } from './compiler-arbitraries';
+import { withStart } from '../../unit/core/compiler-fixtures';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 200);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
@@ -161,7 +162,7 @@ const spacedArb: fc.Arbitrary<Piece> = fc
         arrive: r.arrive,
       };
       p.voices.forEach((v) => (v.range = [24, 108]));
-      p.start = r.starts.slice(0, r.pool).map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
+      const starts = r.starts.slice(0, r.pool);
       // Glides end by at + stagger + length·(1 + jitter); leave a little more.
       const span = r.stagger + r.length * (1 + r.jitter) + 0.3;
       let at = 1;
@@ -172,6 +173,7 @@ const spacedArb: fc.Arbitrary<Piece> = fc
         at = Math.round((at + (d.type === 'walk' ? gap : span)) * 1000) / 1000;
         return m as unknown as Moment;
       });
+      p.moments = withStart(p, starts);
       return p;
     }),
   );

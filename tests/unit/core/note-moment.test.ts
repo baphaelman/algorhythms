@@ -136,7 +136,7 @@ describe('note moment', () => {
     const s = compile(p);
     expect(codes(s)).toEqual(['no-effect']);
     expect(s.diagnostics[0].message).toContain('the note does not change');
-    const e = momentEffectAt(p, compile(piece({ start: START })), p.moments[0]);
+    const e = momentEffectAt(p, compile(piece({ start: START })), p.moments[1]);
     expect(e).toEqual({ effect: false, reason: 'the note does not change' });
   });
 
@@ -149,11 +149,11 @@ describe('note moment', () => {
         note(0, 72, { at: 1 }),
       ],
     });
-    const base = compile({ ...p, moments: [p.moments[0]] });
+    const base = compile({ ...p, moments: p.moments.slice(0, 2) }); // the opening and the shift
     const mid = pitchAt(base.voices[2], 1)!;
     expect(mid).toBeGreaterThan(60.5);
     expect(mid).toBeLessThan(61.5);
-    (p.moments[1] as NoteMoment).from = mid;
+    (p.moments[2] as NoteMoment).from = mid;
     const s = compile(p);
     expect(codes(s)).toEqual([]);
     expect(chordAt(s, 8)).toEqual([50, 57, 66, 69, 72]);
@@ -168,8 +168,8 @@ describe('note moment', () => {
     });
     const { score: s, trace } = compileWithTrace(p);
     expect(codes(s)).toEqual([]);
-    expect(trace.moments.map((m) => m.t)).toHaveLength(2);
-    const [first, ret] = trace.moments;
+    expect(trace.moments.map((m) => m.t)).toHaveLength(3); // the opening, the note, its return
+    const [, first, ret] = trace.moments;
     expect(ret.t).toBeCloseTo(first.plan!.window[1] + 2, 9);
     expect(chordAt(s, first.plan!.window[1] + 1)).toEqual([48, 55, 64, 67, 70]);
     expect(s.voices.slice(0, 5).map(finalPitch)).toEqual(START);
@@ -201,9 +201,11 @@ describe('note moment', () => {
       moments: [note(64, 63, { back: 2 })],
     });
     const s = compile(p);
+    // The opening chord, the note, its return.
     const labels = s.harmony!.map((h) => h.label);
-    expect(labels).toHaveLength(2);
-    expect(labels[0]).not.toEqual(labels[1]);
+    expect(labels).toHaveLength(3);
+    expect(labels[1]).not.toEqual(labels[2]);
+    expect(labels[0]).toEqual(labels[2]);
     expect(harmonyAt(s, 1.5)!.pcs).toEqual([0, 3, 7]);
     expect(harmonyAt(s, 19)!.pcs).toEqual([0, 4, 7]);
   });
@@ -279,7 +281,7 @@ describe('note moment', () => {
     expect(parsed.ok && parsed.piece.moments).toEqual(p.moments);
     const bad = (f: (m: Record<string, unknown>) => void) => {
       const j = JSON.parse(serializePiece(p));
-      f(j.moments[0]);
+      f(j.moments[1]); // after the opening
       return parsePiece(j).ok;
     };
     expect(bad((m) => delete m.to)).toBe(false);

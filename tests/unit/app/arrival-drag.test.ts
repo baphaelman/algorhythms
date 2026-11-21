@@ -103,7 +103,7 @@ describe('dragging arrival dots (revision 6: the dot moves)', () => {
     expect(dot).toMatchObject({ t: 3, pitch: 57 });
     expect(dot.voice).toBeDefined();
     drag(dot, 58, 59);
-    expect(moments()).toHaveLength(4);
+    expect(moments()).toHaveLength(5); // with the opening
     expect(byId('sh').overrides).toEqual([{ voice: dot.voice, pitch: 59 }]);
     expect(useEditor.getState().undoLabel).toBe('Move shift note');
     // The dot stays at its time, on the new pitch.
@@ -233,7 +233,7 @@ describe('adding a point (double-click / N-click)', () => {
     d.end();
     const w = byId('w') as WalkMoment;
     expect(w.fixed).toBeDefined();
-    expect(moments()).toHaveLength(4);
+    expect(moments()).toHaveLength(5); // with the opening
     expect(w.fixed!.find((f) => f.voice === v.id && f.tick === 1.6)).toEqual({
       tick: 1.6,
       voice: v.id,

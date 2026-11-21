@@ -80,7 +80,7 @@ function piece(): Piece {
       glide: { length: 0.5, stagger: 0 },
     },
   ] as unknown as Moment[];
-  return { ...p, moments };
+  return { ...p, moments: [...p.moments, ...moments] }; // after the opening (v1 at A3)
 }
 
 const setStatus = (status: 'idle' | 'paused' | 'playing'): void =>

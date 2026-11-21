@@ -16,6 +16,7 @@ import {
   MAX_VOICES,
   PIECE_FORMAT,
   PIECE_VERSION,
+  type ChordMoment,
   type Glide,
   type Key,
   type MixSettings,
@@ -197,6 +198,21 @@ export function builtinTimbresFor(voices: readonly VoiceDef[]): Record<string, T
   return out;
 }
 
+/** Id of the opening chord of a new piece (and of a migrated version 1 `start`). */
+export const OPENING_ID = 'start0';
+
+/** The opening of a new piece: a chord at t = 0 with the single note `pitch`. */
+export function openingNote(pitch: Pitch): ChordMoment {
+  return {
+    id: OPENING_ID,
+    type: 'chord',
+    at: 0,
+    notes: { kind: 'pitches', pitches: [pitch] },
+    voicing: 'even',
+    assign: 'ordered',
+  };
+}
+
 /** Options for `newPiece`. */
 export interface NewPieceOptions {
   /** The piece seed (§7.7). */
@@ -211,14 +227,15 @@ export interface NewPieceOptions {
   key?: Key;
   /** Timbre preset of every voice. @default 'glass' */
   timbre?: string;
-  /** Pitch of the one voice active at t = 0. @default 57 (A3) */
+  /** Pitch of the opening note: the chord at t = 0 (M4.5-27). @default 57 (A3) */
   startPitch?: Pitch;
 }
 
 /**
  * The empty template (§11.3 M4 acceptance: "build a piece from the empty template"): a pool of
- * 12 voices v1–v12, one active (v1 at A3), A dorian, no moments, default glide, mix and view.
- * The voices' built-in timbre is copied into `timbres`, so the file is self-contained.
+ * 12 voices v1–v12, A dorian, default glide, mix and view, and one moment: a chord at t = 0 with a
+ * single note (A3), which brings v1 in (M4.5-27, "the start is a moment"). The voices' built-in
+ * timbre is copied into `timbres`, so the file is self-contained.
  */
 export function newPiece(opts: NewPieceOptions): Piece {
   const size = Math.max(1, Math.min(MAX_VOICES, Math.floor(opts.poolSize ?? DEFAULT_POOL_SIZE)));
@@ -233,8 +250,7 @@ export function newPiece(opts: NewPieceOptions): Piece {
     key: cloneJson((opts.key ?? DEFAULT_KEY) as Key),
     defaults: { glide: defaultGlide() },
     voices,
-    start: [{ voice: voices[0].id, pitch: opts.startPitch ?? DEFAULT_START_PITCH }],
-    moments: [],
+    moments: [openingNote(opts.startPitch ?? DEFAULT_START_PITCH)],
     timbres: builtinTimbresFor(voices),
     mix: defaultMix(),
     end: { fade: DEFAULT_END_FADE },

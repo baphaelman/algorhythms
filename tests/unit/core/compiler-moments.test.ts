@@ -276,16 +276,17 @@ describe('split (§7.4)', () => {
     expect(s.voices.every((v) => v.lives.length === 1)).toBe(true);
   });
 
-  it('newborns without a parent appear on their target; a later moment can retarget them', () => {
+  it('a chord from silence brings its voices in on their notes; a later moment retargets them', () => {
     const p = tight({
       start: [],
       moments: [
         {
-          type: 'split',
+          type: 'chord',
           at: 1,
           count: 2,
           notes: { kind: 'pitches', pitches: [55, 62] },
           voicing: 'even',
+          assign: 'ordered',
         },
         {
           type: 'chord',
@@ -616,6 +617,7 @@ describe('the end, spans and robustness', () => {
       }),
     );
     expect(s.momentSpans).toEqual([
+      { id: 'start0', start: 0, end: 0 },
       { id: 'm0', start: 1, end: 3 },
       { id: 'm1', start: 4, end: 4 },
     ]);
@@ -643,7 +645,7 @@ describe('the end, spans and robustness', () => {
       }),
     );
     expect(pitchAt(s.voices[0], 3)).toBe(50);
-    expect(s.momentSpans).toEqual([]);
+    expect(s.momentSpans).toEqual([{ id: 'start0', start: 0, end: 0 }]);
   });
 
   it('lists the whole pool in order, with static voice params', () => {
@@ -673,11 +675,12 @@ describe('query API (§7.9)', () => {
       moments: [
         { type: 'pin', at: 1, voice: 'v1', pitch: 62 },
         { type: 'merge', at: 5, count: 0, which: 'top', fade: 1 },
+        // Silence, then a chord brings the voice back (M4.5-27).
         {
-          type: 'split',
+          type: 'chord',
           at: 9,
-          count: 1,
           voicing: 'even',
+          assign: 'ordered',
           notes: { kind: 'pitches', pitches: [55] },
         },
       ],

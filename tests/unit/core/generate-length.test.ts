@@ -9,7 +9,7 @@ import {
   type GenerateMode,
 } from '../../../src/core/generate';
 import { parsePiece } from '../../../src/core/schema';
-import { hashPiece, snapshotCases } from './generate-snapshot-cases';
+import { hashPiece, hashPieceAsV1, snapshotCases } from './generate-snapshot-cases';
 import snapshot from './generate-snapshot.json';
 
 const MODES: GenerateMode[] = ['dorian', 'aeolian', 'lydian', 'pentatonic'];
@@ -45,7 +45,8 @@ describe('generate: length', () => {
         const splits = piece.moments.filter((m) => m.type === 'split');
         expect(splits[splits.length - 1]).toMatchObject({ count: 12 });
         // Labels sit on each section's first moment.
-        expect(piece.moments.filter((m) => m.label).map((m) => m.label)).toEqual(names.slice(1));
+        // (Seed's is the opening chord at 0.)
+        expect(piece.moments.filter((m) => m.label).map((m) => m.label)).toEqual(names);
       }
   });
 
@@ -110,7 +111,8 @@ describe('generate: length', () => {
       const piece = generate(c.seed, c.opts);
       expect(piece.defaults.glide.arrive).toBe('together');
       delete piece.defaults.glide.arrive;
-      expect(hashPiece(piece), c.key).toBe((snapshot as Record<string, string>)[c.key]);
+      // Schema v2 (M4.5-27): compared as the version 1 file (the opening back in `start`).
+      expect(hashPieceAsV1(piece), c.key).toBe((snapshot as Record<string, string>)[c.key]);
     }
   });
 });

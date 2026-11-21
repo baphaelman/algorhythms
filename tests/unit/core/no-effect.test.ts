@@ -167,7 +167,7 @@ describe('no-effect diagnostic', () => {
     const inc = createIncrementalCompiler();
     inc.compile(p);
     const q = structuredClone(p);
-    (q.moments[1] as Extract<Moment, { type: 'shift' }>).by = 3;
+    (q.moments.find((m) => m.id === 'b') as Extract<Moment, { type: 'shift' }>).by = 3;
     expect(inc.compile(q)).toEqual(compile(q));
     expect(noEffect(compile(q), 'b')).toEqual([]);
     expect(noEffect(compile(p), 'b')).toHaveLength(1);
@@ -216,21 +216,13 @@ describe('momentEffectsAt (palette)', () => {
       moments: [{ type: 'merge', at: 1, count: 0, which: 'top', fade: 1 }],
     });
     const r = effects(p, 8);
+    // Only an establishing moment (chord, unison) acts from silence (M4.5-27).
     expect(off(r)).toEqual(
-      [
-        'chord',
-        'level',
-        'merge',
-        'note',
-        'pin',
-        'shift',
-        'split',
-        'spread',
-        'unison',
-        'walk',
-      ].sort(),
+      ['level', 'merge', 'note', 'pin', 'shift', 'split', 'spread', 'walk'].sort(),
     );
-    expect(r.chord.reason).toBe('no note is sounding');
+    for (const t of ['merge', 'note', 'pin', 'shift', 'split', 'spread', 'walk'] as const)
+      expect(r[t].reason, t).toBe('no note is sounding; start with a chord or a unison');
+    expect(r.level.reason).toBe('no note is sounding');
   });
 
   it('agrees with the compiler at settled times', () => {

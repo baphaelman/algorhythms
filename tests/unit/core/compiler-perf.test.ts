@@ -17,7 +17,7 @@ describe('compile performance (§7.10)', () => {
   const limit = process.env.ALGORHYTHMS_PERF_STRICT ? 5 : 100;
   it(`a 5-minute, 24-voice, 200-moment piece compiles in a median ≤ ${limit} ms`, () => {
     const piece = benchmarkPiece();
-    expect(piece.moments.length).toBe(200);
+    expect(piece.moments.length).toBe(201); // 200 and the opening chord (schema v2)
     const score = compile(piece);
     expect(score.duration).toBeGreaterThan(290);
     expect(score.duration).toBeLessThan(320);

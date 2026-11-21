@@ -8,8 +8,8 @@ import type { CompiledScore, MomentId, Seconds } from '../../core/types';
 
 /**
  * The moment owning voice `voice`'s line at `t`: the moment of the segment there, or for a hold
- * (which no moment produced) that of the latest earlier move in the same life. Null when none
- * (before the first move, or no line).
+ * (which no moment produced) that of the latest earlier move in the same life; an establishing
+ * moment owns the hold it opens (M4.5-27). Null when none (no line).
  */
 export function sectionOwner(score: CompiledScore, voice: number, t: Seconds): MomentId | null {
   const v = score.voices[voice];

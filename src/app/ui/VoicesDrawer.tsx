@@ -1,6 +1,6 @@
 /**
- * The Voices drawer (PLAN.md §11.3): pool size, voices active at start, and per voice colour,
- * timbre, pan, gain, range, mute and solo. Wide layout only. Every change is one undo entry
+ * The Voices drawer (PLAN.md §11.3): pool size, and per voice colour, timbre, pan, gain, range,
+ * mute and solo. What sounds at the start is the moment at t = 0 (M4.5-27), not a drawer setting. Wide layout only. Every change is one undo entry
  * (`edit`), and a slider or colour drag is one gesture. Edits reach the engine through the store's
  * recompile and hot-swap, so playback keeps going.
  */
@@ -29,11 +29,6 @@ import {
   poolShrinkEffects,
   resizePool,
   setAllTimbres,
-  setStartCount,
-  setStartPitch,
-  setStarts,
-  startCount,
-  startPitchOf,
   timbreOptions,
   toggleMute,
   toggleSolo,
@@ -224,7 +219,6 @@ const fmtGain = (g: number): string => (g <= 0 ? '−∞ dB' : `${(20 * Math.log
 function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; heard: boolean }) {
   const id = voice.id;
   const piece = usePlayer((s) => s.piece);
-  const startPitch = startPitchOf(piece, id);
   const pan = voice.pan;
   const name = voice.name ? `${voice.name} (${id})` : id;
   return (
@@ -232,37 +226,6 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
       <th scope="row" title={`Pool index ${index}`}>
         {name}
       </th>
-      <td>
-        <span className="vd-start">
-          <button
-            type="button"
-            className="vd-mini"
-            aria-pressed={startPitch !== undefined}
-            aria-label={`${id} active at start`}
-            onClick={() =>
-              edit(
-                (p) => setStarts(p, id, startPitch === undefined),
-                startPitch === undefined ? 'Start note' : 'Stop note at start',
-              )
-            }
-          >
-            ▸
-          </button>
-          {startPitch !== undefined && (
-            <>
-              <NumberField
-                className="vd-num"
-                value={Math.round(startPitch)}
-                min={PITCH_MIN}
-                max={PITCH_MAX}
-                label={`Start pitch of ${id}`}
-                onCommit={(n) => edit((p) => setStartPitch(p, id, n), 'Start pitch')}
-              />
-              <span className="vd-note">{noteName(startPitch)}</span>
-            </>
-          )}
-        </span>
-      </td>
       <td>
         <ColorField voice={voice} />
       </td>
@@ -442,18 +405,6 @@ export function VoicesDrawer() {
           />
         </label>
         <label className="ctl">
-          <span>At start</span>
-          <NumberField
-            className="vd-num"
-            value={startCount(piece)}
-            min={0}
-            max={voices.length}
-            label="Notes active at start"
-            testId="start-count"
-            onCommit={(n) => edit((p) => setStartCount(p, n), 'Notes at start')}
-          />
-        </label>
-        <label className="ctl">
           <span>All notes</span>
           <select
             aria-label="Timbre of all notes"
@@ -494,7 +445,6 @@ export function VoicesDrawer() {
           <thead>
             <tr>
               <th scope="col">Note</th>
-              <th scope="col">Start</th>
               <th scope="col">Colour</th>
               <th scope="col">Timbre</th>
               <th scope="col">Pan</th>

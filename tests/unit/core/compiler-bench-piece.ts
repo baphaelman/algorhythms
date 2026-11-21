@@ -13,7 +13,6 @@ const SYMBOLS = ['Am9', 'Dm7', 'G7', 'Cmaj7', 'Fmaj7', 'Bm7b5', 'E7', 'Am7', 'ii
 export function benchmarkPiece(): Piece {
   const p = newPiece({ seed: 2611, poolSize: 24, title: 'Benchmark' });
   p.voices.forEach((v) => (v.range = [33, 93]));
-  p.start = [{ voice: 'v1', pitch: 57 }];
   const moments: Moment[] = [];
   let t = 2;
   let k = 0;
@@ -105,7 +104,7 @@ export function benchmarkPiece(): Piece {
     t += 1.45;
     i++;
   }
-  p.moments = moments;
+  p.moments = [...p.moments, ...moments]; // the opening (v1 at 57), then the rest
   p.defaults.glide = {
     length: 3.5,
     jitter: 0.3,

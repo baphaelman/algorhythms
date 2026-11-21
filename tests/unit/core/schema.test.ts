@@ -13,7 +13,7 @@ import {
   cloneJson,
   newPiece,
 } from '../../../src/core/defaults';
-import { migrationRegistry } from '../../../src/core/migrations';
+import { DEFAULT_MIGRATIONS, migrationRegistry } from '../../../src/core/migrations';
 import {
   MOMENT_TYPES,
   PieceSchema,
@@ -40,7 +40,7 @@ function errors(r: ParsePieceResult): string[] {
   return r.errors;
 }
 
-const MINIMAL = { format: 'algorhythms', version: 1 };
+const MINIMAL = { format: 'algorhythms', version: 2 };
 
 describe('parsePiece: defaults', () => {
   it('fills a minimal file to the full parsed form', () => {
@@ -66,7 +66,7 @@ describe('parsePiece: defaults', () => {
       gain: 1,
       range: [38, 84],
     });
-    expect(piece.start).toEqual([]);
+    expect(piece).not.toHaveProperty('start');
     expect(piece.moments).toEqual([]);
     expect(piece.timbres).toEqual({});
     expect(piece.mix).toEqual(DEFAULT_MIX);
@@ -168,9 +168,17 @@ describe('parsePiece: defaults', () => {
       end: { fade: 6 },
       view: { window: 20, colors: 'pitch', hud: true },
     };
+    // A version 1 file: its `start` becomes the opening chord, first in `moments`.
     const { piece } = ok(parsePiece(example));
-    expect(piece.moments[5]).toMatchObject({ steps: [-2, -1, 1, 2], stepGlide: 0.3 });
-    expect(piece.moments[3]).toMatchObject({ octaves: false });
+    expect(piece.version).toBe(2);
+    expect(piece.moments[0]).toMatchObject({
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [57] },
+    });
+    expect(piece.moments[6]).toMatchObject({ steps: [-2, -1, 1, 2], stepGlide: 0.3 });
+    expect(piece.moments[4]).toMatchObject({ octaves: false });
   });
 
   it('keeps view.loop (revision 6)', () => {
@@ -266,7 +274,7 @@ describe('parsePiece: errors', () => {
     ]);
   });
 
-  it('rejects duplicate voice ids, an oversized pool and bad start entries', () => {
+  it('rejects duplicate voice ids, an oversized pool and bad v1 start entries', () => {
     expect(errors(parsePiece({ ...MINIMAL, voices: [{ id: 'a' }, { id: 'a' }] }))).toEqual([
       "voices[1].id: Duplicate voice id 'a'.",
     ]);
@@ -274,20 +282,21 @@ describe('parsePiece: errors', () => {
     expect(errors(parsePiece({ ...MINIMAL, voices: big }))[0]).toMatch(
       /33 voices; the maximum is 32/,
     );
-    expect(errors(parsePiece({ ...MINIMAL, start: [{ voice: 'v99', pitch: 60 }] }))).toEqual([
-      "start[0].voice: 'v99' is not a voice in the pool.",
+    const v1 = { ...MINIMAL, version: 1 };
+    expect(errors(parsePiece({ ...v1, start: [{ voice: 'v99', pitch: 60 }] }))).toEqual([
+      "Upgrading from file format 1 failed: start[0].voice: 'v99' is not a voice in the pool.",
     ]);
     expect(
       errors(
         parsePiece({
-          ...MINIMAL,
+          ...v1,
           start: [
             { voice: 'v1', pitch: 60 },
             { voice: 'v1', pitch: 62 },
           ],
         }),
       ),
-    ).toEqual(["start[1].voice: Voice 'v1' is started twice."]);
+    ).toEqual(["Upgrading from file format 1 failed: start[1].voice: 'v1' is started twice."]);
   });
 
   it('rejects things that are not pieces', () => {
@@ -356,7 +365,7 @@ describe('parsePiece: versions', () => {
   it('opens a newer file with a warning, keeping its version and unknown moments', () => {
     const input = {
       ...MINIMAL,
-      version: 2,
+      version: 3,
       futureTopLevel: { a: 1 },
       moments: [
         { id: 'a', type: 'split', at: 1, count: 2 },
@@ -366,9 +375,9 @@ describe('parsePiece: versions', () => {
     };
     const r = ok(parsePiece(input));
     expect(r.newerVersion).toBe(true);
-    expect(r.warnings[0]).toMatch(/newer AlgoRhythms \(file format 2; this version reads 1\)/);
+    expect(r.warnings[0]).toMatch(/newer AlgoRhythms \(file format 3; this version reads 2\)/);
     expect(r.warnings[1]).toMatch(/1 moment\(s\) of a type this version doesn't know \(mirror\)/);
-    expect(r.piece.version).toBe(2);
+    expect(r.piece.version).toBe(3);
     expect(r.piece.moments.map((m) => m.id)).toEqual(['a', 'b', 'c']);
     expect(r.piece.moments[1]).toEqual({ id: 'b', type: 'mirror', at: 2, axis: 60 });
     expect((r.piece as unknown as Record<string, unknown>).futureTopLevel).toEqual({ a: 1 });
@@ -392,6 +401,7 @@ describe('parsePiece: versions', () => {
 
   it('migrates older files with the registry it is given', () => {
     const registry = migrationRegistry([
+      DEFAULT_MIGRATIONS.get(1)!,
       {
         from: 0,
         description: 'v0 kept the title at the top level',
@@ -405,10 +415,10 @@ describe('parsePiece: versions', () => {
       parsePiece({ format: 'algorhythms', version: 0, title: 'Old' }, { migrations: registry }),
     );
     expect(r.migratedFrom).toBe(0);
-    expect(r.piece.version).toBe(1);
+    expect(r.piece.version).toBe(2);
     expect(r.piece.meta.title).toBe('Old');
     expect('title' in r.piece).toBe(false);
-    // The shipped registry has no steps yet.
+    // The shipped registry starts at version 1.
     expect(errors(parsePiece({ format: 'algorhythms', version: 0 }))[0]).toMatch(/cannot upgrade/);
   });
 
@@ -468,7 +478,6 @@ describe('serializePiece', () => {
       'key',
       'defaults',
       'voices',
-      'start',
       'moments',
       'timbres',
       'mix',
@@ -498,7 +507,7 @@ describe('serializePiece', () => {
     for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(100);
     // Short values stay on one line.
     expect(text).toContain('"range": [38, 84]');
-    expect(text).toContain('{ "voice": "v1", "pitch": 57 }');
+    expect(text).toContain('"pitches": [57, 64.5]');
     expect(text).toContain(
       '{ "id": "aaaab2", "type": "pin", "at": 30, "voice": "v3", "pitch": 72 }'.replace(
         '"id": "aaaab2", "type": "pin"',

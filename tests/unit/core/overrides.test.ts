@@ -86,8 +86,8 @@ describe('overrides', () => {
     const r = parsePiece(JSON.parse(serializePiece(p)));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.piece.moments[0].overrides).toEqual([{ voice: 1, pitch: 61.5, end: 2.25 }]);
-    const bad = { ...p, moments: [{ ...p.moments[0], overrides: [{ voice: -1 }] }] };
+    expect(r.piece.moments[1].overrides).toEqual([{ voice: 1, pitch: 61.5, end: 2.25 }]);
+    const bad = { ...p, moments: [p.moments[0], { ...p.moments[1], overrides: [{ voice: -1 }] }] };
     expect(parsePiece(bad).ok).toBe(false);
   });
 

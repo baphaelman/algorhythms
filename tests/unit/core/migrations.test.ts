@@ -31,14 +31,14 @@ const V1_TO_V2: MigrationStep = {
 };
 
 describe('migratePiece', () => {
-  it('ships an empty registry, since version 1 is the first format', () => {
-    expect(PIECE_VERSION).toBe(1);
-    expect(DEFAULT_MIGRATIONS.size).toBe(0);
+  it('ships one step, 1 → 2 (migration-v2.test.ts)', () => {
+    expect(PIECE_VERSION).toBe(2);
+    expect([...DEFAULT_MIGRATIONS.keys()]).toEqual([1]);
   });
 
   it('runs a v0 → v1 step and sets the version', () => {
     const raw = { format: 'algorhythms', version: 0, title: 'Old', pool: [{ id: 'v1' }], keep: 1 };
-    const r = migratePiece(raw, migrationRegistry([V0_TO_V1]));
+    const r = migratePiece(raw, migrationRegistry([V0_TO_V1]), 1);
     expect(r).toEqual({
       ok: true,
       applied: [0],

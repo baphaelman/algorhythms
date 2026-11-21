@@ -23,7 +23,8 @@ export function isFrozenChord(m: ChordMoment): boolean {
  * gets (`freezeChord`). Null when the chord isn't applied.
  */
 export function chordNotes(piece: Piece, score: CompiledScore, m: ChordMoment): Pitch[] | null {
-  if (m.frozenFrom && m.notes.kind === 'pitches') {
+  // A by-voice opening (a migrated v1 start, M4.5-27) lists its notes in voice order too.
+  if ((m.frozenFrom || m.byVoice) && m.notes.kind === 'pitches') {
     const ps = [...m.notes.pitches];
     return m.byVoice ? ps : ps.sort((a, b) => a - b);
   }

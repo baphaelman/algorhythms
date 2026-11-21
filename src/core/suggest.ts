@@ -2,6 +2,7 @@
  * Next-move suggestions (PLAN.md §11.3, revision 6): 3–4 musically sensible moments to add at t,
  * drawn from the Generate composer's grammar (core/generate.ts):
  *
+ *   silence       → start on the tonic triad, or the tonic alone  (Seed; M4.5-27)
  *   one voice     → split into the next stage on a chord          (Split)
  *   a unison      → open into a diatonic chord, or a related one  (Burst)
  *   a chord       → move to a related chord (composer's moves:    (Drift)
@@ -23,7 +24,7 @@ import { splitStages } from './generate';
 import { nameChord, spellPc } from './harmony';
 import { mod } from './math';
 import { Purpose, hash32, rand } from './rng';
-import { pitchClassOf, scaleIntervals } from './scales';
+import { degreesToPcs, pitchClassOf, scaleIntervals } from './scales';
 import { sanitizeRange } from './compiler/range';
 import { roundTiesDown } from './voicing';
 import type { CompiledScore, Glide, Moment, Piece, Pitch, Seconds } from './types';
@@ -68,8 +69,42 @@ function round3(x: number): number {
 }
 
 /**
+ * From silence (M4.5-27): what can start the sound, the tonic triad or the tonic alone. Both are
+ * key-relative (degrees, 'tonic').
+ */
+function openings(
+  piece: Piece,
+  score: CompiledScore,
+  at: Seconds,
+  key: Piece['key'],
+  count: number,
+): Suggestion[] {
+  const pcs = degreesToPcs([0, 2, 4], key);
+  const drafts: [SuggestionKind, string, Draft][] = [
+    [
+      'open',
+      `Start on ${nameChord(pcs, pcs[0], key)}`,
+      {
+        type: 'chord',
+        notes: { kind: 'degrees', degrees: [0, 2, 4] },
+        voicing: 'even',
+        assign: 'ordered',
+      },
+    ],
+    ['open', `Start on ${key.tonic}`, { type: 'unison', pitch: 'tonic', octaves: false }],
+  ];
+  const out: Suggestion[] = [];
+  for (const [kind, label, m] of drafts) {
+    const moment = { ...m, id: SUGGEST_ID, at, seed: hash32(piece.seed >>> 0, label) } as Moment;
+    if (out.length < count && momentEffectAt(piece, score, moment).effect)
+      out.push({ kind, label, moment });
+  }
+  return out;
+}
+
+/**
  * Up to `count` suggested next moments at `t` for `piece` (compiled as `score`), most fitting
- * first. Empty when nothing sounds at t.
+ * first. When nothing sounds at t, the openings that can start the sound (`openings`).
  */
 export function suggestNext(
   piece: Piece,
@@ -82,7 +117,8 @@ export function suggestNext(
   const st0 = readState(piece, score, at);
   const st = st0.stacked ?? st0;
   const n = st.active.length;
-  if (n === 0 || count <= 0) return [];
+  if (count <= 0) return [];
+  if (n === 0) return openings(piece, score, at, st.key, count);
   const key = st.key;
   const dests = st.active.map((v) => st.dest[v]); // ascending
   const lowest = dests[0];

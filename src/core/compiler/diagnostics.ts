@@ -19,12 +19,17 @@ export const DIAGNOSTIC_CODES: Readonly<
     meaning: 'Two moments share an id, so they share random draws.',
   },
   'unknown-voice': { level: 'warn', meaning: 'A voice id that is not in the pool.' },
-  'start-duplicate': { level: 'warn', meaning: 'A voice is listed twice in `start`.' },
-  'start-out-of-range': { level: 'info', meaning: 'A start pitch was folded into its range.' },
+  // Retired with schema v1's `start` (M4.5-27); kept so the codes are never reused.
+  'start-duplicate': { level: 'warn', meaning: 'Retired (v1): a voice listed twice in `start`.' },
+  'start-out-of-range': { level: 'info', meaning: 'Retired (v1): a start pitch was folded.' },
+  'wobble-ignored': {
+    level: 'info',
+    meaning: 'A timbre sets `wobble`, which has no effect since lines never share a pitch (rev 8).',
+  },
   // Moment validity
   'unknown-moment-type': {
-    level: 'error',
-    meaning: 'The moment type is not one this build knows.',
+    level: 'info',
+    meaning: 'The moment type is not one this build knows (a newer file); it is kept, not played.',
   },
   'invalid-time': { level: 'error', meaning: 'The moment time is not a non-negative number.' },
   'invalid-moment': { level: 'error', meaning: 'A required field is missing or not a number.' },
@@ -50,6 +55,14 @@ export const DIAGNOSTIC_CODES: Readonly<
       'A frozen walk note would cross or touch a neighbour or leave the range; the voice holds.',
   },
   'pin-inactive': { level: 'error', meaning: 'The pinned voice is not active at that time.' },
+  'note-not-sounding': {
+    level: 'warn',
+    meaning: "A note moment's `from` is not sounding on a targeted voice; nothing changes.",
+  },
+  'note-back-skipped': {
+    level: 'info',
+    meaning: "A note moment's return was skipped: a later moment moved the note away.",
+  },
   // Births and deaths
   'pool-exhausted': {
     level: 'warn',

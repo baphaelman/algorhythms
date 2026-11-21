@@ -37,7 +37,7 @@ describe('chord notes', () => {
     const notes = chordNotes(p, s, chord)!;
     expect(notes).toEqual(at(s));
     const frozen = patchMoment(p, 'c', frozenPatch(chord, notes));
-    const m = frozen.moments[0] as ChordMoment;
+    const m = frozen.moments[1] as ChordMoment;
     expect(isFrozenChord(m)).toBe(true);
     expect(m.assign).toBe('ordered');
     expect(m.frozenFrom).toEqual({ notes: chord.notes, assign: 'free' });
@@ -52,14 +52,14 @@ describe('chord notes', () => {
     const next = withChordNote(notes, 1, notes[1] + 1)!;
     expect(next.filter((x, i) => x !== notes[i])).toHaveLength(1);
     const once = patchMoment(p, 'c', frozenPatch(chord, next));
-    const m1 = once.moments[0] as ChordMoment;
+    const m1 = once.moments[1] as ChordMoment;
     expect(at(compile(once))).toEqual(next);
     // A second change keeps the original notes to unfreeze to.
     const twice = patchMoment(once, 'c', frozenPatch(m1, withChordNote(next, 0, next[0] - 1)!));
-    const m2 = twice.moments[0] as ChordMoment;
+    const m2 = twice.moments[1] as ChordMoment;
     expect(m2.frozenFrom).toEqual(m1.frozenFrom);
     const back = patchMoment(twice, 'c', unfreezePatch(m2)!);
-    expect(back.moments[0]).toEqual(chord);
+    expect(back.moments[1]).toEqual(chord);
     expect(unfreezePatch(chord)).toBeNull();
   });
 
@@ -90,7 +90,7 @@ describe('chord notes', () => {
     const next = withChordNote(notes, 0, up, false)!;
     expect(next).toEqual([up, ...notes.slice(1)]);
     const crossed = patchMoment(p, 'c', frozenPatch(chord, next, false));
-    const m = crossed.moments[0] as ChordMoment;
+    const m = crossed.moments[1] as ChordMoment;
     expect(m).toMatchObject({ byVoice: true, assign: 'free' });
     expect(chordKeepsOrder(m)).toBe(false);
     expect(chordNotes(crossed, compile(crossed), m)).toEqual(next);
@@ -99,14 +99,14 @@ describe('chord notes', () => {
     expect(s.voices.slice(0, 4).map(finalPitch)).toEqual(next);
     // Keeping order instead: sorted, the voices swap places.
     const ordered = patchMoment(crossed, 'c', chordOrderPatch(m, true)!);
-    const o = ordered.moments[0] as ChordMoment;
+    const o = ordered.moments[1] as ChordMoment;
     expect(o.byVoice).toBeUndefined();
     expect(o.assign).toBe('ordered');
     expect(compile(ordered).voices.slice(0, 4).map(finalPitch)).toEqual(
       [...next].sort((a, b) => a - b),
     );
     // Unfreeze drops byVoice too.
-    expect(patchMoment(crossed, 'c', unfreezePatch(m)!).moments[0]).toEqual(chord);
+    expect(patchMoment(crossed, 'c', unfreezePatch(m)!).moments[1]).toEqual(chord);
     expect(chordOrderPatch(chord, true)).toBeNull();
   });
 });

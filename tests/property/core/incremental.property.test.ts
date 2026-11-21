@@ -17,6 +17,7 @@ import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import type { Glide, Moment, Piece } from '../../../src/core/types';
 import { glideArb, momentArb, pieceArb, type Draft } from './compiler-arbitraries';
+import { withStart } from '../../unit/core/compiler-fixtures';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 150);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
@@ -125,7 +126,7 @@ function apply(p: Piece, e: Edit): Piece {
       return { ...p, voices: p.voices.map((d, i) => (i === v ? { ...d, gain: e.gain } : d)) };
     }
     case 'start':
-      return { ...p, start: [{ voice: p.voices[0].id, pitch: e.pitch }] };
+      return { ...p, moments: withStart(p, [e.pitch]) };
     case 'clone':
       return JSON.parse(JSON.stringify(p)) as Piece;
   }

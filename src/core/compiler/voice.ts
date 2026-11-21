@@ -132,9 +132,13 @@ export class Frontier {
     return this.tail !== null;
   }
 
-  /** Opens a life at t: an open hold at p, with the instantaneous motion of the birth. */
-  openAt(t: Seconds, start: StartState): void {
+  /**
+   * Opens a life at t: an open hold at p, with the instantaneous motion of the birth. `momentId`:
+   * an establishing moment's voice (M4.5-27) holds its note as that moment's segment.
+   */
+  openAt(t: Seconds, start: StartState, momentId?: string): void {
     this.tail = { t0: t, t1: t, p0: start.p, p1: start.p, ease: HOLD_EASE };
+    if (momentId !== undefined) this.tail.momentId = momentId;
     this.open = true;
     this.bornT = t;
     this.bornV = start.v;

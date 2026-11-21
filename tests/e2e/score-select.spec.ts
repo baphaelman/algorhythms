@@ -71,17 +71,25 @@ async function open(page: Page): Promise<void> {
     const h = window.__algorhythms!;
     const p = structuredClone(h.store.getState().piece) as unknown as {
       voices: { id: string }[];
-      start: { voice: string; pitch: number }[];
       moments: unknown[];
       key: unknown;
       end: unknown;
       defaults: { glide: Record<string, unknown> };
     };
-    p.start = [48, 55, 60, 64].map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
+    // The start is a moment (schema v2): an opening chord at 0.
+    const opening = {
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [48, 55, 60, 64] },
+      voicing: 'even',
+      assign: 'ordered',
+    };
     p.defaults.glide = { ...p.defaults.glide, length: 2, stagger: 0, jitter: 0 };
     p.moments = [{ id: 'shift1', type: 'shift', at: 2, by: 2, unit: 'semitones' }];
     p.key = { tonic: 'C', scale: 'major' };
     p.end = { at: 20, fade: 1 };
+    p.moments.unshift(opening);
     h.actions.loadPiece(p);
   });
   await seek(page, 0);

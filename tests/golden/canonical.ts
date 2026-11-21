@@ -47,3 +47,25 @@ export function summarize(score: CompiledScore): ScoreSummary {
     spans: score.momentSpans.length,
   };
 }
+
+/**
+ * What is heard (M4.5-27 migration test): the score without its editor-only parts (moment spans,
+ * the HUD harmony, diagnostics) and without the segments' moment ids. Two scores that agree here
+ * sound and export (WAV, stems, MIDI) the same.
+ */
+export function audibleJson(score: CompiledScore): string {
+  return JSON.stringify({
+    duration: score.duration,
+    voices: score.voices.map((v) => ({
+      ...v,
+      segments: v.segments.map((g) => {
+        const { momentId: _, ...rest } = g;
+        return rest;
+      }),
+    })),
+    walkSteps: score.walkSteps,
+    keys: score.keys,
+    referenceHz: score.referenceHz,
+    seed: score.seed,
+  });
+}

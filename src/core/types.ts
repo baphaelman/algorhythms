@@ -39,7 +39,7 @@ export type MomentId = string;
 export const PIECE_FORMAT = 'algorhythms';
 
 /** The newest `Piece.version` this build understands; migrations only run forward (§5). */
-export const PIECE_VERSION = 1;
+export const PIECE_VERSION = 2;
 
 /** Maximum size of the voice pool (§5, owner decision §16.6). */
 export const MAX_VOICES = 32;
@@ -264,7 +264,11 @@ export interface VoiceOverride {
   weight?: number;
 }
 
-/** Moves the targeted voices to a voicing of `notes`; the voice count is unchanged. */
+/**
+ * Moves the targeted voices to a voicing of `notes`; the voice count is unchanged. From silence
+ * it *establishes* (schema v2, M4.5-27): its voices come in on their notes, with no glide (see
+ * core/moments/establish.ts).
+ */
 export interface ChordMoment extends MomentBase {
   type: 'chord';
   /** Target notes. */
@@ -289,12 +293,13 @@ export interface ChordMoment extends MomentBase {
   /**
    * Revision 6, "Keep lines in order" off: with a `pitches` NoteSet, pitch i goes to the i-th
    * targeted voice (by committed destination), unsorted, and lines may cross. Applies only when
-   * there is one pitch per targeted voice and the voice count doesn't change.
+   * there is one pitch per targeted voice and the voice count doesn't change. From silence,
+   * pitch i goes to the i-th voice brought in (the target's listed voices, else pool order).
    */
   byVoice?: boolean;
 }
 
-/** All targeted voices go to one pitch (or its nearest octaves). */
+/** All targeted voices go to one pitch (or its nearest octaves). From silence it establishes. */
 export interface UnisonMoment extends MomentBase {
   type: 'unison';
   /** The pitch, or 'center' (middle of the targeted voices) or 'tonic' (of the key in effect). */
@@ -621,7 +626,7 @@ export interface Piece {
   /** Always 'algorhythms'. */
   format: typeof PIECE_FORMAT;
   /** Schema version; migrations are keyed on it. */
-  version: 1;
+  version: typeof PIECE_VERSION;
   /** Title and bookkeeping; `created`/`modified` are ISO 8601 strings. */
   meta: { title: string; author?: string; created: string; modified: string };
   /** Piece seed; per-moment seeds derive from it (§7.7). The DSP also seeds phases from it. */
@@ -639,8 +644,6 @@ export interface Piece {
   defaults: { glide: Glide };
   /** The voice pool (max 32). Array index = pool index, used for every tie-break. */
   voices: VoiceDef[];
-  /** Voices active and holding at t = 0. */
-  start: { voice: VoiceId; pitch: Pitch }[];
   /** All moments. Array order breaks ties between moments with equal `at`. */
   moments: Moment[];
   /** Timbre presets referenced by `VoiceDef.timbre`, adding to or overriding built-ins. */

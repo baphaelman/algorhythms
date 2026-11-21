@@ -21,15 +21,16 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  * changed with M4.5-17: newborns that forked out of order with a sibling or parent (a small
  * crossing) now take its timing. All five changed with M4.5-29 (revision 8 "Distinct notes":
  * stacked voices merge into weighted lines), and again with M4.5-29a (counts count lines, merges
- * pass weight, chords take free octaves before merging).
+ * pass weight, chords take free octaves before merging), and with M4.5-27 by what is not heard
+ * (the opening chord's span, its harmony entry and the opening holds' moment id).
  */
 const PRE_REV6: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': '82e4709726c9d5bd',
+  'clockwork-heron.algorhythms.json': '608730245a43d643',
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
-  'lanterns-over-salt-flats.algorhythms.json': '1aaaff9d35ddd01d',
-  'seven-doors-in-fog.algorhythms.json': '3627947fb2b5af0c',
-  'the-cartographers-rain.algorhythms.json': 'e8eb60753a611572',
-  'tidewater-hymn.algorhythms.json': '9f194d682b7d4727',
+  'lanterns-over-salt-flats.algorhythms.json': 'cc74d2f001217f38',
+  'seven-doors-in-fog.algorhythms.json': 'aa5e783a1a6079fa',
+  'the-cartographers-rain.algorhythms.json': '5ec74bbcaa89b4b5',
+  'tidewater-hymn.algorhythms.json': 'acc6785548f591b4',
 };
 
 function loadExample(file: string): Piece {
@@ -96,7 +97,8 @@ describe('arrive: together', () => {
       });
       const s = compile(p);
       expect(s.diagnostics.filter((d) => d.level !== 'info')).toEqual([]);
-      for (const m of p.moments) {
+      for (const m of p.moments.slice(1)) {
+        // (moments[0] is the opening chord: no moves)
         const ends = moveEnds(s, m.id);
         expect(ends.length, m.id).toBeGreaterThan(1);
         expect(spreadOf(ends), `${order} ${m.id}`).toBeLessThan(1e-3);
@@ -124,7 +126,7 @@ describe('arrive: together', () => {
       ],
     });
     const s = compile(p);
-    for (const m of p.moments) {
+    for (const m of p.moments.slice(1)) {
       const seedM = momentSeed(p.seed, m.id, m.seed);
       expect(moveStarts(s, m.id)).toEqual([m.at]);
       expect(moveEnds(s, m.id)[0]).toBeCloseTo(sharedEnd(m.at, p.defaults.glide, seedM), 12);
@@ -154,7 +156,7 @@ describe('arrive: together', () => {
   it('is the default, also for files without the field', () => {
     const p = piece({ start: [55, 60, 64], glide: GLIDE });
     delete p.defaults.glide.arrive;
-    p.moments = [{ id: 'c', type: 'shift', at: 1, by: 3, unit: 'semitones' }];
+    p.moments = [...p.moments, { id: 'c', type: 'shift', at: 1, by: 3, unit: 'semitones' }];
     const parsed = parsePiece(JSON.parse(JSON.stringify(p)));
     if (!parsed.ok) throw new Error('parse');
     expect(parsed.piece.defaults.glide.arrive).toBe('together');
@@ -165,6 +167,7 @@ describe('arrive: together', () => {
   it("a moment's own glide can choose spread", () => {
     const p = piece({ start: [55, 60, 64, 67], glide: GLIDE });
     p.moments = [
+      ...p.moments, // the opening
       { id: 'c', type: 'shift', at: 1, by: 3, unit: 'semitones', glide: { arrive: 'spread' } },
     ];
     expect(spreadOf(moveEnds(compile(p), 'c'))).toBeGreaterThan(0.1);
@@ -186,7 +189,7 @@ describe('arrive: together', () => {
       expect(spreadOf(ends)).toBeLessThan(1e-9);
       const starts = moveStarts(score, 'up');
       if (new Set(starts).size < starts.length) fixed++;
-      expect(trace.moments[0].plan?.order.length).toBe(6);
+      expect(trace.moments[1].plan?.order.length).toBe(6);
       // Lines stay in order at the planner's 64 check points (§7.2: the sampled check is the
       // authority), and within 0.05 semitone between them (linear glides can touch over a few
       // ms between samples; this was so before M4.5-10 too).
@@ -243,8 +246,8 @@ describe('arrive: together', () => {
     const inc = createIncrementalCompiler();
     expect(inc.compile(p)).toEqual(compile(p));
     const q = structuredClone(p);
-    (q.moments[2] as Extract<Moment, { type: 'shift' }>).by = -3;
-    q.moments[3].glide = { arrive: 'spread' };
+    (q.moments[3] as Extract<Moment, { type: 'shift' }>).by = -3;
+    q.moments[4].glide = { arrive: 'spread' };
     expect(inc.compile(q)).toEqual(compile(q));
     expect(inc.stats.mode).toBe('resume');
   });
@@ -252,12 +255,13 @@ describe('arrive: together', () => {
   it('round-trips through the schema', () => {
     const p = piece({ glide: { arrive: 'spread' } });
     p.moments = [
+      ...p.moments, // the opening
       { id: 'x', type: 'shift', at: 1, by: 1, unit: 'semitones', glide: { arrive: 'together' } },
     ];
     const parsed = parsePiece(JSON.parse(serializePiece(p)));
     if (!parsed.ok) throw new Error('parse');
     expect(parsed.piece.defaults.glide.arrive).toBe('spread');
-    expect(parsed.piece.moments[0].glide?.arrive).toBe('together');
+    expect(parsed.piece.moments.find((m) => m.id === 'x')!.glide?.arrive).toBe('together');
     const bad = parsePiece({
       ...JSON.parse(serializePiece(p)),
       defaults: { glide: { arrive: 'soon' } },

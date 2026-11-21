@@ -19,6 +19,7 @@ import type {
   VoiceOverride,
   VoiceSelector,
 } from '../../../src/core/types';
+import { withStart } from '../../unit/core/compiler-fixtures';
 
 const tenths = (lo: number, hi: number): fc.Arbitrary<number> =>
   fc.integer({ min: Math.round(lo * 10), max: Math.round(hi * 10) }).map((x) => x / 10);
@@ -359,7 +360,6 @@ export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
           const p = newPiece({ seed: r.seed, poolSize: r.pool });
           p.defaults.glide = r.glide;
           p.voices.forEach((v, i) => (v.range = r.ranges ? r.ranges[i] : [36, 96]));
-          p.start = r.starts.slice(0, r.pool).map((pitch, i) => ({ voice: ids[i], pitch }));
           p.moments = moments.map((m, i) => {
             // Half the notes start on a start pitch, so they often find their note sounding.
             const from =
@@ -379,6 +379,7 @@ export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
             }
             return out as unknown as Moment;
           });
+          p.moments = withStart(p, r.starts.slice(0, r.pool));
           return p;
         });
     });
