@@ -227,6 +227,68 @@ export function itemBoxPx(item: LaneItem, pps: number): [number, number] {
   return [left, right];
 }
 
+/** Marker width plus a gap: what a compact item needs on its sub-row without a label. */
+export const COMPACT_EXTENT_PX = 10;
+
+/** Compact box (dense rows): the marker and the span, no label. */
+export function compactBoxPx(item: LaneItem, pps: number): [number, number] {
+  const left = Math.min(item.start, item.at) * pps;
+  const right = Math.max(item.at * pps + COMPACT_EXTENT_PX, item.end * pps + 2);
+  return [left, right];
+}
+
+/** Rows needing more labelled sub-rows than this switch to compact sub-rows. */
+export const COMPACT_AFTER = 3;
+
+/** Sub-row heights (px) for Moments (`rowH`) and Transitions (`barH`). */
+export interface RowGeometry {
+  compact: boolean;
+  rowH: number;
+  barH: number;
+}
+
+export const NORMAL_ROWS: RowGeometry = { compact: false, rowH: 20, barH: 14 };
+export const COMPACT_ROWS: RowGeometry = { compact: true, rowH: 8, barH: 7 };
+
+/** Normal rows for up to COMPACT_AFTER labelled sub-rows, compact ones beyond. */
+export function rowGeometry(labelledSubRows: number): RowGeometry {
+  return labelledSubRows > COMPACT_AFTER ? COMPACT_ROWS : NORMAL_ROWS;
+}
+
+/**
+ * The lane area's maximum height (px) in a timeline `columnH` tall, so the score keeps at least
+ * `scoreShare` of it: what is left after that share, the ruler and the gap above the lanes.
+ * Never below `floor`.
+ */
+export function laneMaxPx(
+  columnH: number,
+  rulerH: number,
+  gap: number,
+  scoreShare = 0.55,
+  floor = 60,
+): number {
+  if (!(columnH > 0)) return floor;
+  return Math.max(floor, Math.floor(columnH * (1 - scoreShare) - rulerH - gap));
+}
+
+/**
+ * The scrollTop that brings [top, top + h] into a scroller `viewH` tall now at `scrollTop`, with
+ * `margin` px to spare; unchanged when it is already in view.
+ */
+export function revealScroll(
+  top: number,
+  h: number,
+  scrollTop: number,
+  viewH: number,
+  margin = 4,
+): number {
+  if (top < scrollTop) return Math.max(0, top - margin);
+  if (top + h > scrollTop + viewH) {
+    return Math.max(0, Math.min(top - margin, top + h + margin - viewH));
+  }
+  return scrollTop;
+}
+
 /** Sub-row per item (input order) and the number of sub-rows used. */
 export interface Stack {
   rows: number[];
@@ -238,10 +300,15 @@ export interface Stack {
  * left edge (ties keep input order), each go on the first sub-row whose last item ends at or
  * before their left edge, else on a new sub-row. The box is the marker and label plus the span,
  * so overlapping spans (and labels) never share a sub-row. A moment's marker and its transition
- * bar sit on the same sub-row index in the Moments and Transitions rows.
+ * bar sit on the same sub-row index in the Moments and Transitions rows. `box` gives each item's
+ * pixel interval (compact rows pass `compactBoxPx`).
  */
-export function stackRows(items: readonly LaneItem[], pps: number): Stack {
-  const boxes = items.map((it) => itemBoxPx(it, pps));
+export function stackRows(
+  items: readonly LaneItem[],
+  pps: number,
+  box: (item: LaneItem, pps: number) => [number, number] = itemBoxPx,
+): Stack {
+  const boxes = items.map((it) => box(it, pps));
   const order = items.map((_, i) => i).sort((a, b) => boxes[a][0] - boxes[b][0] || a - b);
   const ends: number[] = [];
   const rows = new Array<number>(items.length).fill(0);
@@ -257,6 +324,16 @@ export function stackRows(items: readonly LaneItem[], pps: number): Stack {
     rows[i] = row;
   }
   return { rows, count: ends.length };
+}
+
+/**
+ * Stacking with dense-row compaction: items packed with their labels; when that needs more than
+ * COMPACT_AFTER sub-rows, repacked without labels (compact boxes) onto compact sub-rows.
+ */
+export function laneStack(items: readonly LaneItem[], pps: number): Stack & { geom: RowGeometry } {
+  const labelled = stackRows(items, pps);
+  const geom = rowGeometry(labelled.count);
+  return geom.compact ? { ...stackRows(items, pps, compactBoxPx), geom } : { ...labelled, geom };
 }
 
 /** One point of the level curve: time and mean level. */

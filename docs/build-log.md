@@ -1464,3 +1464,12 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
 
 ### Hardening merged with main (2026-11-21)
 Merged 600e653. Added 30 s per-file timeouts to the `incremental` and `overrides` property suites and `dsp/probe`. The new e2e specs (parts, naming, piece-key, lane-preview) assert only geometry and state, with no time budgets, so they need no change; the fast-check alias (vite `test.alias`) covers every property file. Seen once in 7 runs: `ease.property` "standard eases stay in [0, 1] and are monotone" failed (seed 353562081, values `[0, 0.9999999999995448, 0.9999970971090307]`). Not caused by this merge; needs a look at `core/ease`.
+## Dense lanes: capped lane area + compact rows (owner bug, 2026-11-21)
+Kite Day at 1024×768 pushed Transitions and Level off-screen (lane 638 px; the stage's 240 px min-height plus "the lane grows to fit"). Integrator's design (owner may veto):
+- **Cap:** `laneMaxPx` (editor/lane.ts) caps the lane slot at 45 % of `.timeline` minus ruler and gap (floor 60 px), set by Lane.tsx on resize; the stage's min-height is 0 in the editor layout. Rows beyond the cap scroll inside `.lane-scroll`; a fade marks rows hidden above/below. Time axis, pan and zoom unchanged.
+- **Wheel:** `wheel.ts` `wheelIntent` shared by score and lane: Ctrl/Cmd/Alt zooms, a horizontal trackpad or **Shift-wheel pans** (Shift is new on the score too), a plain vertical wheel scrolls the lane area natively.
+- **Compact rows:** `laneStack`: when the labelled packing needs > 3 sub-rows, repack without labels (`compactBoxPx`: marker + span) on 8 px Moments / 7 px Transitions sub-rows (`[data-compact]`). Labels float on hover, focus or selection and lead the tooltip; bars lose their length text; bar hit target +1 px each side. ≤ 3 sub-rows: unchanged. Deviation: 7 px transition sub-rows (asked ~8–10) to cut scrolling.
+- **Reveal:** a newly selected moment (score, inspector, keys, hook) scrolls its marker into view (`revealScroll`); keyboard focus too.
+- **Sizes:** Kite Day 1024×768: timeline 341, score 188 (55 %), lane area 113 of 180 px (8 compact sub-rows; 67 px scroll to reach Level). 1280×720: score 230/417, lane 147 of 180. Tidewater Hymn: no compaction, no scroll. Kite Day can't fit unscrolled at 1024×768: the spans alone need 8 sub-rows (markers alone 6).
+- Clockwork Heron at Fit also goes compact (piece-key.spec now compares marker centres).
+- Tests: tests/unit/app/lane.test.ts (laneStack, rowGeometry, laneMaxPx, revealScroll, wheelIntent); tests/e2e/lane-dense.spec.ts.

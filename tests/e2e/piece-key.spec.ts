@@ -51,7 +51,8 @@ test('the key at 0:00 is edited, never deleted or moved', async ({ page }) => {
   // On its own row, next to the opening chord, which stays on the first sub-row.
   const kb = (await key.locator('.lane-marker').boundingBox())!;
   const open = (await lane.locator('[data-moment="start0"] .lane-marker').boundingBox())!;
-  expect(Math.abs(kb.x - open.x)).toBeLessThan(1.5);
+  // Centres: dense rows draw a smaller marker (lane-dense).
+  expect(Math.abs(kb.x + kb.width / 2 - (open.x + open.width / 2))).toBeLessThan(1.5);
   expect(open.y).toBeGreaterThan(kb.y + kb.height);
   const ys = await lane
     .locator('[data-moment] .lane-marker')
