@@ -1508,3 +1508,8 @@ Owner (via integrator): no taper after the meeting; meeting lines bundle like st
 - **Perf** (`render.spec` @perf, chromium-dev, load ~20): before: ink-24 flush 3.5 ms, pitch draw-only 1.0, overview 5.6. After: 2.9, 1.3 and 3.7.
 - **Status:** lint, typecheck green; `pnpm test --maxWorkers=2` 1410/1410; e2e:quick thickness, render, score-select, silent-lines and dots on chromium-dev and firefox-dev: 17 passed, 15 skipped (chromium-only specs).
 - **Notes:** Kite Day has no merges or splits (compiled), so its 0–20 s view is unchanged; Tidewater 82–92 s (12-line unison, staggered burst) shows it. A dying line's head is hidden after the meeting, so the Hz label no longer says "×12" on a unison.
+## Fix: smootherstep monotone near 1 (2026-11-21)
+- The flaky "standard eases … monotone" property was smootherstep, not a 3e-6 dip: fast-check printed its *inputs* `[code 0, x, x]`. Near x = 1 the direct polynomial cancels (`x(6x − 15) + 10 → 1`) and dipped by up to 4e-15, beyond the old 1e-15 slack.
+- Fix: for x > 1/2 evaluate `1 − s(1 − x)` (point symmetry; `1 − x` is exact). Output changes ≤ 2.1e-15; no other ease changes. No-GC gate still passes.
+- The-cartographers-rain's compile moves by 7e-15 st in 2 numbers (structure unchanged), so its pinned hashes in examples.golden.json, migration-v2 and arrive tests are updated (outside the ease scope, but forced).
+- The property's slack is now 4·ε (cosine and smoothstep still round by 1 ulp of 1); with the old code it fails 8 of 10 times at 20 000 runs, with the fix 0 of 30. Regression unit test at the seed-353562081 inputs plus a dense sweep below 1.
