@@ -52,6 +52,15 @@ describe('overrides', () => {
     for (const v of [0, 1, 3]) expect(arrival(s, v).t).toBeCloseTo(arrival(s0, v).t, 9);
   });
 
+  // Seed −440599787 (path 279): a land moment is decided at its lead-in start, and `end` was
+  // counted from there, not from `at`.
+  it('with land, end still counts from at', () => {
+    const p = base([{ voice: 2, end: 2.5 }]);
+    p.moments = p.moments.map((m) => (m.id === 'c' ? { ...m, at: 3 } : m));
+    p.defaults.glide = { ...p.defaults.glide, land: true };
+    expect(arrival(compile(p), 2).t).toBeCloseTo(3 + 2.5, 9);
+  });
+
   it('an end earlier than the start pulls the start in (≥ at), never below MIN_GLIDE', () => {
     const s = compile(base([{ voice: 3, end: 0 }]));
     const segs = s.voices[3].segments.filter((x) => x.momentId === 'c' && x.p0 !== x.p1);

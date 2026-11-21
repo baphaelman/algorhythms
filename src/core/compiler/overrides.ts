@@ -75,21 +75,24 @@ export function applyOverridePitches(
 }
 
 /**
- * Applies the `end` overrides to the planned moves in place: the move ends at `T + end` (at least
- * MIN_GLIDE after `T`); its start moves earlier only if the glide would be shorter than MIN_GLIDE,
- * never before `T` or (for a voice born by an earlier moment) its birth.
+ * Applies the `end` overrides to the planned moves in place: the move ends at `at + end` (at least
+ * MIN_GLIDE after `at`); its start moves earlier only if the glide would be shorter than
+ * MIN_GLIDE, never before `T` (the decision time: a land moment's lead-in start, else `at`) or
+ * (for a voice born by an earlier moment) its birth.
  */
 export function applyOverrideEnds(
   res: PlanResult,
   ov: ReadonlyMap<number, VoiceOverride>,
   T: Seconds,
+  at: Seconds,
   voices: readonly VoiceRun[],
 ): void {
+  const base = at > T ? at : T;
   for (const mv of res.moves) {
     const e = ov.get(mv.voice)?.end;
     if (e === undefined) continue;
     const birth = res.births.find((b) => b.voice === mv.voice);
-    const end = T + (e > MIN_GLIDE ? e : MIN_GLIDE);
+    const end = base + (e > MIN_GLIDE ? e : MIN_GLIDE);
     let t0 = mv.t0;
     if (end - t0 < MIN_GLIDE) {
       const deferred = !birth && voices[mv.voice].pendingBirth;
