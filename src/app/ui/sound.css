@@ -166,3 +166,81 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Strike partials (bell redesign): a collapsed list of number fields. */
+.sd-strike {
+  display: block;
+}
+
+.sd-strike summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 0;
+}
+
+.sd-strike-list {
+  display: grid;
+  grid-template-columns: repeat(3, 8ch) auto;
+  gap: 3px 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.sd-strike-h {
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
+.sound-drawer input.sd-num {
+  width: 8ch;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.sd-hint {
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Master tab (§8.6): a one-line note above the sections. */
+.sd-group {
+  flex: 0 0 100%;
+  margin: 0;
+}
+
+.sd-section legend .sd-reset {
+  margin-left: 8px;
+  min-height: 20px;
+  padding: 1px 6px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sd-wide {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+}
+
+/* Timbre | Master tabs. */
+.sd-tabs {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.sd-tabs button[aria-selected='true'] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}

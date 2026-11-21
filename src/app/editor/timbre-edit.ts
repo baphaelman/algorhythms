@@ -33,10 +33,23 @@ interface SoundDrawerState {
   open: boolean;
   /** The timbre being edited; null follows the first note's timbre. */
   name: string | null;
+  /** The tab shown: the timbre editor or the piece's master FX. */
+  tab: SoundTab;
 }
 
+export type SoundTab = 'timbre' | 'master';
+
 /** The drawer's state (not saved with the piece). */
-export const useSoundDrawer = create<SoundDrawerState>()(() => ({ open: false, name: null }));
+export const useSoundDrawer = create<SoundDrawerState>()(() => ({
+  open: false,
+  name: null,
+  tab: 'timbre',
+}));
+
+/** Shows a tab of the drawer. */
+export function selectSoundTab(tab: SoundTab): void {
+  useSoundDrawer.setState({ tab });
+}
 
 /** Opens or closes the drawer. */
 export function toggleSoundDrawer(open = !useSoundDrawer.getState().open): void {
@@ -170,6 +183,51 @@ export const addPartial: TimbreFn = (t) =>
 /** Removes the top partial (keeping at least one). */
 export const removePartial: TimbreFn = (t) =>
   t.harmonics.length <= 1 ? t : { ...t, harmonics: t.harmonics.slice(0, -1) };
+
+/** Most struck partials a timbre has (bell redesign, schema bound). */
+export const MAX_STRIKE_PARTIALS = 16;
+
+export type StrikePartial = NonNullable<Timbre['strikePartials']>[number];
+export type StrikeField = keyof StrikePartial;
+
+/** The first struck partial added to an empty list. */
+export const STRIKE_NEW: StrikePartial = { ratio: 2.76, amp: 0.5, decay: 1 };
+
+/** Appends a struck partial (up to 16): an octave above the last (≤ 32), at half its level. */
+export const addStrikePartial: TimbreFn = (t) => {
+  const list = t.strikePartials ?? [];
+  if (list.length >= MAX_STRIKE_PARTIALS) return t;
+  const last = list[list.length - 1];
+  const next: StrikePartial = last
+    ? {
+        ratio: Math.min(32, Number((last.ratio * 2).toPrecision(4))),
+        amp: Number((last.amp / 2).toPrecision(3)) || STRIKE_NEW.amp,
+        decay: last.decay,
+      }
+    : { ...STRIKE_NEW };
+  return { ...t, strikePartials: [...list, next] };
+};
+
+/** Removes struck partial `i`; an empty list drops the field (absent = no struck partials). */
+export function removeStrikePartial(i: number): TimbreFn {
+  return (t) => {
+    const list = t.strikePartials;
+    if (!list || i < 0 || i >= list.length) return t;
+    if (list.length === 1) return without(t, 'strikePartials');
+    return { ...t, strikePartials: list.filter((_, k) => k !== i) };
+  };
+}
+
+/** Sets one field of struck partial `i`. */
+export function setStrikePartial(i: number, field: StrikeField, value: number): TimbreFn {
+  return (t) => {
+    const list = t.strikePartials;
+    if (!list || i < 0 || i >= list.length || list[i][field] === value) return t;
+    const next = list.slice();
+    next[i] = { ...list[i], [field]: value };
+    return { ...t, strikePartials: next };
+  };
+}
 
 /** Values a section starts from when switched on. */
 export const FM_ON: NonNullable<Timbre['fm']> = { ratio: 2, index: 1, indexTrack: 0.5 };
@@ -322,11 +380,11 @@ export function loadPreset(
 /** How a slider's position maps to its value. */
 export type Curve = 'lin' | 'log' | 'sqrt';
 
-export interface TimbreControl {
+/** A slider's range, curve and rounding (timbre and master FX sliders share these). */
+export interface SliderControl {
   /** Test id suffix and React key. */
   id: string;
   label: string;
-  section: 'shape' | 'fm' | 'noise' | 'articulation' | 'vibrato';
   path: readonly string[];
   min: number;
   max: number;
@@ -334,6 +392,12 @@ export interface TimbreControl {
   step: number;
   curve: Curve;
   unit: string;
+  /** The value an absent optional field means (e.g. `fm.held` = 1). */
+  fallback?: number;
+}
+
+export interface TimbreControl extends SliderControl {
+  section: 'shape' | 'fm' | 'noise' | 'articulation' | 'vibrato';
 }
 
 const c = (
@@ -358,6 +422,7 @@ export const TIMBRE_CONTROLS: readonly TimbreControl[] = [
   c('fm-ratio', 'FM ratio', 'fm', ['fm', 'ratio'], 0.05, 16, 0.01, '', 'log'),
   c('fm-index', 'FM index', 'fm', ['fm', 'index'], 0, 10, 0.01),
   c('fm-track', 'FM index tracking', 'fm', ['fm', 'indexTrack'], -4, 4, 0.05),
+  { ...c('fm-held', 'FM held', 'fm', ['fm', 'held'], 0, 1, 0.01), fallback: 1 },
   c('noise-level', 'Noise level', 'noise', ['noise', 'level'], 0, 2, 0.005, '', 'sqrt'),
   c('noise-band', 'Noise band', 'noise', ['noise', 'bandwidth'], 0.02, 8, 0.01, '', 'log'),
   c('art-amount', 'Articulation', 'articulation', ['articulation', 'amount'], 0, 1, 0.01),
@@ -382,26 +447,62 @@ export const TIMBRE_CONTROLS: readonly TimbreControl[] = [
 /** The partial sliders: amplitude 0..1 on a square-root curve (fine control near silence). */
 export const PARTIAL_CONTROL = c('partial', 'Partial', 'shape', [], 0, 1, 0.001, '', 'sqrt');
 
+/**
+ * The struck-partial fields (number fields; `curve` sets the rounding): ratio and level to 3
+ * decimals, decay to 3 significant digits; all inside the schema bounds.
+ */
+export const STRIKE_CONTROLS: Readonly<Record<StrikeField, SliderControl>> = {
+  ratio: {
+    id: 'ratio',
+    label: 'Ratio',
+    path: [],
+    min: 0.01,
+    max: 32,
+    step: 0.001,
+    curve: 'lin',
+    unit: '×',
+  },
+  amp: { id: 'amp', label: 'Level', path: [], min: 0, max: 4, step: 0.001, curve: 'lin', unit: '' },
+  decay: {
+    id: 'decay',
+    label: 'Decay',
+    path: [],
+    min: 0.01,
+    max: 60,
+    step: 0.01,
+    curve: 'log',
+    unit: ' s',
+  },
+};
+
 /** Slider resolution: positions run 0..SLIDER_STEPS. */
 export const SLIDER_STEPS = 1000;
 
 const sig3 = (x: number): number => (x === 0 ? 0 : Number(x.toPrecision(3)));
 
-/** The value at slider position `pos` (0..SLIDER_STEPS), rounded to the control's resolution. */
-export function valueOf(ctl: TimbreControl, pos: number): number {
-  const u = Math.max(0, Math.min(1, pos / SLIDER_STEPS));
-  let x: number;
-  if (ctl.curve === 'log') x = ctl.min * Math.pow(ctl.max / ctl.min, u);
-  else if (ctl.curve === 'sqrt') x = ctl.min + (ctl.max - ctl.min) * u * u;
-  else x = ctl.min + (ctl.max - ctl.min) * u;
+/** `x` clamped to the control's range and rounded to its resolution. */
+export function roundFor(ctl: SliderControl, x: number): number {
   if (ctl.curve !== 'lin') return Math.max(ctl.min, Math.min(ctl.max, sig3(x)));
   const decimals = Math.max(0, -Math.floor(Math.log10(ctl.step) + 1e-9));
   const r = Number((Math.round(x / ctl.step) * ctl.step).toFixed(decimals));
   return Object.is(r, -0) ? 0 : Math.max(ctl.min, Math.min(ctl.max, r));
 }
 
+/** The unrounded value at slider position `pos` (0..SLIDER_STEPS). */
+export function rawValueOf(ctl: SliderControl, pos: number): number {
+  const u = Math.max(0, Math.min(1, pos / SLIDER_STEPS));
+  if (ctl.curve === 'log') return ctl.min * Math.pow(ctl.max / ctl.min, u);
+  if (ctl.curve === 'sqrt') return ctl.min + (ctl.max - ctl.min) * u * u;
+  return ctl.min + (ctl.max - ctl.min) * u;
+}
+
+/** The value at slider position `pos` (0..SLIDER_STEPS), rounded to the control's resolution. */
+export function valueOf(ctl: SliderControl, pos: number): number {
+  return roundFor(ctl, rawValueOf(ctl, pos));
+}
+
 /** The slider position (0..SLIDER_STEPS) showing `value` (clamped to the range). */
-export function positionOf(ctl: TimbreControl, value: number): number {
+export function positionOf(ctl: SliderControl, value: number): number {
   const x = Math.max(ctl.min, Math.min(ctl.max, value));
   let u: number;
   if (ctl.curve === 'log') u = Math.log(x / ctl.min) / Math.log(ctl.max / ctl.min);
@@ -411,7 +512,7 @@ export function positionOf(ctl: TimbreControl, value: number): number {
 }
 
 /** A value for display: up to 3 decimals, trailing zeros dropped. */
-export function formatValue(ctl: TimbreControl, value: number | undefined): string {
+export function formatValue(ctl: SliderControl, value: number | undefined): string {
   if (value === undefined) return '–';
   const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : value === 0 ? 0 : 3;
   return `${Number(value.toFixed(digits))}${ctl.unit}`;

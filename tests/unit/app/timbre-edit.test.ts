@@ -35,6 +35,7 @@ import type { Piece } from '../../../src/core/types';
 import { edit, undo, useEditor } from '../../../src/app/editor/history';
 import {
   addPartial,
+  addStrikePartial,
   beginTimbreDrag,
   dragTimbre,
   duplicateTimbre,
@@ -45,15 +46,21 @@ import {
   isModified,
   loadPreset,
   MAX_PARTIALS,
+  MAX_STRIKE_PARTIALS,
   PARTIAL_CONTROL,
   positionOf,
   removePartial,
+  removeStrikePartial,
+  roundFor,
   revertTimbre,
   setAt,
   setFmOn,
   setHarmonic,
   setNoiseOn,
   setStrike,
+  setStrikePartial,
+  STRIKE_CONTROLS,
+  STRIKE_NEW,
   SLIDER_STEPS,
   strikeOf,
   TIMBRE_CONTROLS,
@@ -275,5 +282,47 @@ describe('a slider drag is one undo entry', () => {
     expect(usePlayer.getState().piece.timbres.bell.accent).toBe(0.2);
     undo();
     expect(usePlayer.getState().piece.timbres.bell).toBeUndefined();
+  });
+});
+
+describe('strike partials and FM held (bell redesign)', () => {
+  it('adds up to 16 (an octave up, half the level), edits and removes; empty drops the field', () => {
+    let t = BUILTIN_TIMBRES.glass;
+    expect(t.strikePartials).toBeUndefined();
+    t = addStrikePartial(t);
+    expect(t.strikePartials).toEqual([STRIKE_NEW]);
+    t = addStrikePartial(t);
+    expect(t.strikePartials![1]).toEqual({ ratio: 5.52, amp: 0.25, decay: 1 });
+    for (let i = 0; i < 20; i++) t = addStrikePartial(t);
+    expect(t.strikePartials).toHaveLength(MAX_STRIKE_PARTIALS);
+    expect(addStrikePartial(t)).toBe(t);
+    expect(TimbreSchema.safeParse(t).success).toBe(true);
+    const u = setStrikePartial(1, 'decay', 0.4)(t);
+    expect(u.strikePartials![1].decay).toBe(0.4);
+    expect(setStrikePartial(1, 'decay', 0.4)(u)).toBe(u);
+    expect(removeStrikePartial(0)(u).strikePartials![0].decay).toBe(0.4);
+    let one = addStrikePartial(BUILTIN_TIMBRES.glass);
+    one = removeStrikePartial(0)(one);
+    expect('strikePartials' in one).toBe(false);
+    expect(JSON.stringify(BUILTIN_TIMBRES)).toBe(BUILTIN_JSON);
+  });
+
+  it('strike fields round inside the schema bounds', () => {
+    for (const [f, ctl] of Object.entries(STRIKE_CONTROLS)) {
+      for (const x of [-1, 0, 0.0004, 2.7564, 1e6]) {
+        const v = roundFor(ctl, x);
+        const t = setStrikePartial(0, f as 'ratio', v)(addStrikePartial(BUILTIN_TIMBRES.glass));
+        expect(TimbreSchema.safeParse(t).success, `${f} = ${v}`).toBe(true);
+      }
+    }
+    expect(roundFor(STRIKE_CONTROLS.ratio, 2.7564)).toBe(2.756);
+  });
+
+  it('FM held reads 1 when absent', () => {
+    const held = TIMBRE_CONTROLS.find((c) => c.id === 'fm-held')!;
+    expect(held.fallback).toBe(1);
+    const t = setFmOn(true)(BUILTIN_TIMBRES.reed);
+    expect(valueAt(t, held.path)).toBeUndefined();
+    expect(valueAt(setAt(held.path, 0.5)(t), held.path)).toBe(0.5);
   });
 });

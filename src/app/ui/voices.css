@@ -175,3 +175,28 @@
 .vd-confirm td {
   white-space: normal;
 }
+
+/* FX sends (M6): R and D sliders; dim while the note follows the master default. */
+.vd-sends,
+.vd-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vd-sends {
+  gap: 8px;
+}
+
+.voices-drawer .vd-send input[type='range'] {
+  width: 56px;
+}
+
+.vd-send-k {
+  color: var(--ink-2);
+}
+
+.vd-inherited input[type='range'],
+.vd-inherited .vd-out {
+  opacity: 0.55;
+}

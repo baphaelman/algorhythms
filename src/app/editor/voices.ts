@@ -170,6 +170,35 @@ export function normalizeRange(lo: number, hi: number): [Pitch, Pitch] {
   return a <= b ? [a, b] : [b, a];
 }
 
+export type SendKey = 'reverb' | 'delay';
+
+/** The send level voice `v` plays with: its own, else the mix default. */
+export function sendOf(piece: Piece, v: VoiceDef, key: SendKey): number {
+  return v.sends?.[key] ?? piece.mix.sends[key];
+}
+
+/**
+ * Sets voice `id`'s own `key` send (linear 0..1); `undefined` goes back to the mix default (an
+ * empty `sends` is dropped). Same piece when unchanged.
+ */
+export function setVoiceSend(
+  piece: Piece,
+  id: VoiceId,
+  key: SendKey,
+  value: number | undefined,
+): Piece {
+  const i = piece.voices.findIndex((v) => v.id === id);
+  const old = piece.voices[i];
+  if (!old || old.sends?.[key] === value) return piece;
+  const sends = { ...old.sends, [key]: value };
+  if (value === undefined) delete sends[key];
+  const next: VoiceDef = { ...old, sends };
+  if (Object.keys(sends).length === 0) delete next.sends;
+  const voices = [...piece.voices];
+  voices[i] = next;
+  return { ...piece, voices };
+}
+
 /** Timbre names to offer: the piece's own, then built-ins not shadowed, then `current` if unknown. */
 export function timbreOptions(piece: Piece, current?: string): string[] {
   const names = Object.keys(piece.timbres);
