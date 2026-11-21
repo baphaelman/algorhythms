@@ -312,7 +312,7 @@ export function ArrivalDots() {
                   hidden
                   className={cls}
                   data-testid={ids[1]}
-                  data-moment={m.id}
+                  data-dot-moment={m.id}
                   data-index={d.type === 'chord' ? j : undefined}
                   data-change={d.change}
                   data-tick={d.step?.tick}

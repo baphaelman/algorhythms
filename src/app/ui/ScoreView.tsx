@@ -31,7 +31,7 @@ export function ScoreView() {
         ref={canvas}
         id="score"
         role="img"
-        aria-label={`Pitch lines for ${voices} voices over time: ${title}. Click or press Space to play and pause.`}
+        aria-label={`Pitch lines for ${voices} voices over time: ${title}. Press Space to play and pause.`}
       />
       <ArrivalDots />
       <div ref={tip} className="score-hover" data-testid="score-hover" aria-hidden="true" hidden />
