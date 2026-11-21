@@ -258,3 +258,69 @@ describe('fixedNoteMoments and carryKey', () => {
     expect(carryKey(p, 'keyD', D).piece).toBe(p);
   });
 });
+
+describe('carryKey: note points on held lines', () => {
+  const notSounding = (p: Piece) =>
+    compile(p).diagnostics.filter((d) => d.code === 'note-not-sounding');
+  // v3 reaches E (64) before the key and holds it; the pin gives v1 E (52) inside the span.
+  const build = (notes: MomentInput[]) =>
+    piece({
+      pool: 3,
+      start: [48, 55, 60],
+      key: C,
+      moments: [
+        { ...chord(1, { kind: 'pitches', pitches: [48, 55, 64] }), id: 'c1' },
+        key(4, D, 'keyD'),
+        { id: 'pin', type: 'pin', at: 5, voice: 'v1', pitch: 52 },
+        ...notes,
+      ],
+    });
+
+  it('keeps `from` on a line held from before the key; moves it on one set in the span', () => {
+    const p = build([
+      { id: 'held', type: 'note', at: 8, from: 64, to: 65 },
+      { id: 'span', type: 'note', at: 9, from: 52, to: 50 },
+    ]);
+    expect(notSounding(p)).toEqual([]);
+    const r = carryKey(p, 'keyD', C);
+    expect(r.moved).toEqual(['pin', 'held', 'span']);
+    expect(byId(r.piece, 'held')).toMatchObject({ from: 64, to: 67 });
+    expect(byId(r.piece, 'span')).toMatchObject({ from: 54, to: 52 });
+    expect(notSounding(r.piece)).toEqual([]);
+  });
+
+  it('decides each of grouped changes, and a note after a held line moved in the span', () => {
+    const p = build([
+      {
+        id: 'both',
+        type: 'note',
+        at: 9,
+        changes: [
+          { from: 64, to: 65 },
+          { from: 52, to: 50 },
+        ],
+      },
+      // The first change moved v3 (in the span): its new note is remapped.
+      { id: 'later', type: 'note', at: 14, from: 65, to: 64 },
+    ]);
+    expect(notSounding(p)).toEqual([]);
+    const r = carryKey(p, 'keyD', C);
+    expect((byId(r.piece, 'both') as NoteMoment).changes).toEqual([
+      { from: 64, to: 67 },
+      { from: 54, to: 52 },
+    ]);
+    expect(byId(r.piece, 'later')).toMatchObject({ from: 67, to: 66 });
+    expect(notSounding(r.piece)).toEqual([]);
+  });
+
+  it('moves `from` when a fixed chord in the span restates the held note', () => {
+    const p = build([
+      { ...chord(6, { kind: 'pitches', pitches: [52, 55, 64] }), id: 'again' },
+      { id: 'held', type: 'note', at: 8, from: 64, to: 65 },
+    ]);
+    const r = carryKey(p, 'keyD', C);
+    expect(byId(r.piece, 'again')).toMatchObject({ notes: { pitches: [54, 57, 66] } });
+    expect(byId(r.piece, 'held')).toMatchObject({ from: 66, to: 67 });
+    expect(notSounding(r.piece)).toEqual([]);
+  });
+});

@@ -15,7 +15,7 @@ import type {
   Seconds,
 } from '../../core/types';
 import { keyAt } from '../../core/query';
-import { auditionAfterEdit } from '../audition';
+import { auditionAfterEdit, auditionPointsAfterEdit, auditionStepAfterEdit } from '../audition';
 import { usePlayer } from '../store';
 import { keyBefore } from '../../core/transpose';
 import { offerKeyCarry } from './key-carry';
@@ -154,7 +154,14 @@ export function moveWalkStep(ref: StepRef, dir: 1 | -1): boolean {
   if (w?.type !== 'walk') return false;
   const fixed = movedFixed(w, scoreOf(piece), ref, dir);
   if (!fixed) return false;
-  return updateMoment(w.id, { fixed }, w.fixed ? 'Move walk step' : 'Freeze walk and move step');
+  const moved = updateMoment(
+    w.id,
+    { fixed },
+    w.fixed ? 'Move walk step' : 'Freeze walk and move step',
+  );
+  // Sounds the step's new note once the edit has compiled (§11.3 auditioning).
+  if (moved) auditionStepAfterEdit(ref);
+  return moved;
 }
 
 function chordOf(piece: Piece, id: MomentId) {
@@ -185,7 +192,11 @@ export function moveChordNote(id: MomentId, index: number, dir: 1 | -1): boolean
   const score = scoreOf(piece);
   const notes = chordNotes(piece, score, m);
   if (!notes || index < 0 || index >= notes.length) return false;
-  return setChordNote(id, index, scaleNeighbour(notes[index], dir, keyAt(score, m.at)));
+  const pitch = scaleNeighbour(notes[index], dir, keyAt(score, m.at));
+  const moved = setChordNote(id, index, pitch);
+  // Sounds the moved note once the edit has compiled (§11.3 auditioning).
+  if (moved) auditionAfterEdit(id, [pitch]);
+  return moved;
 }
 
 /** Restores chord `id`'s notes from before it was frozen. */
@@ -457,7 +468,10 @@ export function octaveDots(dots: readonly ArrivalDot[], dir: 1 | -1): ArrivalDot
   }
   d.to(pitch, g.t, true);
   const r = d.end();
-  return r && landedDots(r);
+  const landed = r && landedDots(r);
+  // Sounds the moved notes once the edit has compiled (§11.3 auditioning).
+  if (landed) auditionPointsAfterEdit(landed);
+  return landed;
 }
 
 /** Removes voice `voice`'s override from moment `id` ("Clear override"). False if none. */
