@@ -6,6 +6,11 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Compose in play order (M4.5-38).**
+  - Moments appear strictly left to right, already in their final form.
+  - Generate had no refinements for the final sweep, so the composer now adds upper-neighbour notes: on the full split and on each "Thin" chord, the top note steps up one scale tone and back, inside the chord's hold. This changes Generate's output, and nothing else in it moves.
+  - When the detail sweep starts, the view fits the whole piece once and then holds still while each detail lights up left to right. That fit is the one deliberate jump.
+  - After a build finishes, inputs don't rebuild; "Compose again" does. Your own edit, undo or redo closes the panel.
 - **Mouse-only gaps (found by the M4.5 final check; being built).**
   - Undo and Redo buttons go in the editor, since today undo needs the keyboard.
   - A chord added while fewer notes sound than the chord has brings in the extra notes, so a chord dropped on a fresh piece sounds as a triad, not "D (unison)". "Notes: n" defaults to the chord's size there.
