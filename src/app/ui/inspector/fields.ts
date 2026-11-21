@@ -44,14 +44,22 @@ export function toggleStep(steps: readonly number[], s: number): number[] | null
 }
 
 /**
- * The inspector's voice-target modes (§11.3 Voices, under "Advanced"): all, a `rank` range by
- * pitch, or a pick of voices. The owner dropped Top n / Bottom n (revision 6).
+ * The inspector's voice-target modes (§11.3 Voices): all, a `rank` range by pitch, or a pick of
+ * voices (under "Advanced"; the owner dropped Top n / Bottom n, revision 6), or one part (the
+ * main section's Part chooser, revision 9).
  */
-export type TargetMode = 'all' | 'rank' | 'pick';
+export type TargetMode = 'all' | 'rank' | 'pick' | 'part';
 
 export function targetMode(t: VoiceSelector | undefined): TargetMode {
   if (!t || t === 'all') return 'all';
-  return 'voices' in t ? 'pick' : 'rank';
+  if ('voices' in t) return 'pick';
+  if ('part' in t) return 'part';
+  return 'rank';
+}
+
+/** The target the Part chooser writes: undefined (the default, all) for '', else `{ part }`. */
+export function partTarget(part: string): VoiceSelector | undefined {
+  return part === '' ? undefined : { part };
 }
 
 /**

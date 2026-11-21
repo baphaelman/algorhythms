@@ -19,7 +19,8 @@ import { DEFAULT_BPM, DEFAULT_METER } from '../../render';
 import { patchMoment } from '../editor/ops';
 import { usePlayer } from '../store';
 import { NumberField, TextField, fieldSetter, type Setter } from './inspector/controls';
-import { GlideFields, SeedField, TargetField } from './inspector/CommonFields';
+import { GlideFields, PartField, SeedField, TargetField } from './inspector/CommonFields';
+import { selectorPart } from '../../core/parts';
 import { formatTime, keyAt } from './inspector/fields';
 import { KeyFields, TypeFields } from './inspector/TypeFields';
 import { Overrides } from './inspector/Overrides';
@@ -196,12 +197,19 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
   const diags = compiled.diagnostics.filter((d) => d.momentId === m.id);
   const key = keyAt(compiled, m.at, piece.key);
   const pitched = m.type !== 'key' && m.type !== 'level';
+  const part = selectorPart(m.target);
 
   return (
     <div className="insp-one" data-moment-id={m.id} data-moment-type={m.type}>
       <header className="insp-head">
         <h2>
           {TYPE_NAMES[m.type]} <span className="insp-at">@ {formatTime(m.at)}</span>
+          {part !== null && (
+            <span className="insp-head-part" data-testid="insp-head-part">
+              {' '}
+              · {part === '' ? 'Unassigned' : part}
+            </span>
+          )}
         </h2>
         <label className="insp-check">
           <input
@@ -250,6 +258,7 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
         step={0.1}
         testId="insp-at"
       />
+      {m.type !== 'key' && <PartField m={m} piece={piece} />}
 
       <TypeFields m={m} ctx={{ piece, keyAt: key }} />
       <Overrides m={m} piece={piece} keyAt={key} />

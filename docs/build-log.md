@@ -1425,3 +1425,17 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
   - The test also gates the young generation's growth over the run, `newSpaceBytes` ≤ 6000 B in plain and lock. So any allocation fails on every run, not only when it happens to tip a GC. Now 1864 B in both modes. It would have been 102,792 B before the fixes, and ~12.8 KB with the warm-up but the old probe.
 - **Left (V8 tiering, not fixable in `process()`):** after a page load, the seek and birth paths run interpreted for their first ~200 seeks. In this 12-voice stress that is ~100 KB a minute, so a short scavenge every few minutes of constant seeking.
 - **Stress:** 60 'lock' runs, two at a time beside two CPU burners (load ~12), half with `--max-semi-space-size=1`: 0 GC lines, 0 observed, 1864–1872 B in all 60.
+## R9-6: parts UI (2026-11-21)
+`src/app/editor/parts.ts` (pure recipes: `partNames`, `assignPart`, `renamePart`, `deletePart`, `patchPart`, `setPartRangeBound`, `common`); each drawer action is one `edit` (one undo entry, the usual incremental/hot-swap path; a part change forces a full compile per R9-1).
+- **Drawer:** without parts it is as before plus a **New part** header button. With parts, one `<tbody>` per part (pool order of first appearance), then **Unassigned** (a plain header, no controls). A part header row holds a name field (Enter/blur commits; empty or taken names refused, error in the tooltip), × delete, and timbre, pan (A + slider), gain and range for all its notes, plus "n notes". A Part column gives each note a select: Unassigned, the parts, **New part…**.
+- **Inspector:** `PartField` (Part select: All, the parts) after Time whenever the piece has parts (or the moment targets a part). `targetMode` gains `'part'`; a part target keeps Advanced closed with no chip pressed. Header shows "· Part"; the lane tooltip reads "Part: X" above any no-effect reason.
+
+**Decisions (PLAN is silent):**
+- New part (header): no parts → every note goes into "Part 1"; with parts → the unassigned notes form "Part n" (disabled when none). Row "New part…" makes "Part n" holding that note.
+- "Mixed": timbre select shows a disabled "Mixed" option (as All notes); pan/gain readouts say "Mixed" while the slider sits at the first note's value and a drag sets all; range fields are blank with a "Mixed" placeholder, and committing one bound sets that bound on every note, keeping each note's other bound. Pan "A" sets all auto, or all to centre when all are auto.
+- Rename to an existing name is refused (no merging parts).
+- Delete part: notes become unassigned; moments targeting it are retargeted to `{ voices: [its notes] }` (default target if it had none); asks inline in the drawer when any moment targets it.
+- Part chooser: a rank/pick target shows a disabled "Advanced" option; an unknown part shows as "X (no notes)".
+- Pool growth doesn't copy a part; new notes are unassigned.
+
+**Tests:** `tests/unit/app/parts.test.ts` (rename + undo, refused names, whole-part set, range bound, move, delete, target-mode round trip); `tests/e2e/parts.spec.ts` (build parts, Part chooser, header/tooltip, diagnostics reach the UI, rename as one undo, whole-part timbre + Mixed, All, delete confirm).

@@ -1,6 +1,7 @@
 /**
  * The Voices drawer (PLAN.md §11.3): pool size, and per voice colour, timbre, pan, gain, range,
- * mute and solo. What sounds at the start is the moment at t = 0 (M4.5-27), not a drawer setting. Wide layout only. Every change is one undo entry
+ * mute and solo. With parts (revision 9) notes are grouped under part headers that rename the
+ * part and set timbre, pan, gain and range for all its notes; each row has a Part select. What sounds at the start is the moment at t = 0 (M4.5-27), not a drawer setting. Wide layout only. Every change is one undo entry
  * (`edit`), and a slider or colour drag is one gesture. Edits reach the engine through the store's
  * recompile and hot-swap, so playback keeps going.
  */
@@ -17,6 +18,19 @@ import {
   updateGesture,
   type Recipe,
 } from '../editor/history';
+import {
+  assignPart,
+  common,
+  deletePart,
+  freePartName,
+  momentsTargeting,
+  partNames,
+  partVoices,
+  patchPart,
+  renameError,
+  renamePart,
+  setPartRangeBound,
+} from '../editor/parts';
 import {
   anySolo,
   clearSolo,
@@ -70,7 +84,9 @@ export function VoicesToggle() {
  * (typing "12" must not shrink the pool to 1 on the way). Escape reverts.
  */
 function NumberField(props: {
-  value: number;
+  /** null shows `placeholder` (a part's mixed values). */
+  value: number | null;
+  placeholder?: string;
   min: number;
   max: number;
   label: string;
@@ -78,7 +94,7 @@ function NumberField(props: {
   testId?: string;
   className?: string;
 }) {
-  const { value, min, max, label, onCommit, testId, className } = props;
+  const { value, min, max, label, onCommit, testId, className, placeholder } = props;
   const [draft, setDraft] = useState<string | null>(null);
   // An outside change (undo, another edit) drops a typed draft: blur must not commit it.
   const [seen, setSeen] = useState(value);
@@ -102,7 +118,8 @@ function NumberField(props: {
       step={1}
       aria-label={label}
       data-testid={testId}
-      value={draft ?? String(value)}
+      placeholder={placeholder}
+      value={draft ?? (value === null ? '' : String(value))}
       onChange={(e: ChangeEvent<HTMLInputElement>) => {
         // Steppers and arrow keys fire a plain `input` event (no inputType): commit at once.
         if (!(e.nativeEvent as InputEvent).inputType) commit(e.target.value);
@@ -216,7 +233,45 @@ const fmtPan = (pan: number): string =>
   Math.abs(pan) < 0.005 ? 'C' : `${pan < 0 ? 'L' : 'R'}${Math.round(Math.abs(pan) * 100)}`;
 const fmtGain = (g: number): string => (g <= 0 ? '−∞ dB' : `${(20 * Math.log10(g)).toFixed(1)} dB`);
 
-function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; heard: boolean }) {
+const NEW_PART = '\u0000new';
+
+/** A note's Part select: Unassigned, the parts, or "New part…" (a fresh part holding it). */
+function PartSelect({ voice, parts }: { voice: VoiceDef; parts: readonly string[] }) {
+  const id = voice.id;
+  return (
+    <select
+      aria-label={`Part of ${id}`}
+      data-testid={`part-${id}`}
+      value={voice.part ?? ''}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === NEW_PART) edit((p) => assignPart(p, id, freePartName(p)), 'New part');
+        else edit((p) => assignPart(p, id, v), 'Move note to part');
+      }}
+    >
+      <option value="">Unassigned</option>
+      {parts.map((p) => (
+        <option key={p} value={p}>
+          {p}
+        </option>
+      ))}
+      <option value={NEW_PART}>New part…</option>
+    </select>
+  );
+}
+
+function VoiceRow({
+  voice,
+  index,
+  heard,
+  parts,
+}: {
+  voice: VoiceDef;
+  index: number;
+  heard: boolean;
+  /** The piece's parts, when it has any (adds the Part column). */
+  parts: readonly string[] | null;
+}) {
   const id = voice.id;
   const piece = usePlayer((s) => s.piece);
   const pan = voice.pan;
@@ -345,7 +400,220 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
           S
         </button>
       </td>
+      {parts && (
+        <td>
+          <PartSelect voice={voice} parts={parts} />
+        </td>
+      )}
     </tr>
+  );
+}
+
+/** A part's name field: commits on Enter or blur, Escape reverts; a taken name is refused. */
+function PartName({ part }: { part: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [seen, setSeen] = useState(part);
+  if (seen !== part) {
+    setSeen(part);
+    setDraft(null);
+    setError(null);
+  }
+  const commit = (): void => {
+    if (draft === null) return;
+    const err = renameError(usePlayer.getState().piece, part, draft);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setDraft(null);
+    setError(null);
+    edit((p) => renamePart(p, part, draft), 'Rename part');
+  };
+  return (
+    <input
+      type="text"
+      className="vd-part-name"
+      aria-label={`Name of part ${part}`}
+      aria-invalid={error ? true : undefined}
+      title={error ?? undefined}
+      data-testid="part-name"
+      spellCheck={false}
+      autoComplete="off"
+      value={draft ?? part}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        setError(null);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+        else if (e.key === 'Escape') {
+          setDraft(null);
+          setError(null);
+        }
+      }}
+    />
+  );
+}
+
+const panText = (pan: number | 'auto' | undefined): string =>
+  pan === undefined ? 'Mixed' : pan === 'auto' ? 'auto' : fmtPan(pan);
+
+/** A part's header row: name, delete, and timbre, pan, gain and range for all its notes. */
+function PartHeader({ part, cols }: { part: string; cols: number }) {
+  const piece = usePlayer((s) => s.piece);
+  const [confirming, setConfirming] = useState(false);
+  const voices = partVoices(piece, part);
+  const timbre = common(voices, (v) => v.timbre);
+  const allAuto = voices.every((v) => v.pan === 'auto');
+  const pan = common(voices, (v) => v.pan);
+  const panValue = voices.map((v) => v.pan).find((x): x is number => x !== 'auto');
+  const gain = common(voices, (v) => v.gain);
+  const lo = common(voices, (v) => v.range[0]);
+  const hi = common(voices, (v) => v.range[1]);
+  const targeting = momentsTargeting(piece, part).length;
+  const remove = (): void => {
+    setConfirming(false);
+    edit((p) => deletePart(p, part), 'Delete part');
+  };
+  const label = `part ${part}`;
+  return (
+    <>
+      <tr className="vd-part" data-part={part}>
+        <th scope="rowgroup">
+          <span className="vd-part-head">
+            <PartName part={part} />
+            <button
+              type="button"
+              className="vd-mini"
+              aria-label={`Delete part ${part}`}
+              title="Delete part (its notes become unassigned)"
+              data-testid="part-delete"
+              onClick={() => (targeting > 0 ? setConfirming(true) : remove())}
+            >
+              ×
+            </button>
+          </span>
+        </th>
+        <td />
+        <td>
+          <select
+            aria-label={`Timbre of ${label}`}
+            data-testid="part-timbre"
+            value={timbre ?? MIXED}
+            onChange={(e) => {
+              const t = e.target.value;
+              if (t !== MIXED) edit((p) => patchPart(p, part, { timbre: t }), 'Part timbre');
+            }}
+          >
+            {timbre === undefined && (
+              <option value={MIXED} disabled>
+                Mixed
+              </option>
+            )}
+            {timbreOptions(piece, timbre).map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td>
+          <span className="vd-pan">
+            <button
+              type="button"
+              className="vd-mini"
+              aria-pressed={allAuto}
+              aria-label={`Automatic pan for ${label}`}
+              title="Auto pan"
+              onClick={() =>
+                edit((p) => patchPart(p, part, { pan: allAuto ? 0 : 'auto' }), 'Part pan')
+              }
+            >
+              A
+            </button>
+            <GestureSlider
+              value={panValue ?? 0}
+              min={-1}
+              max={1}
+              step={0.01}
+              disabled={allAuto}
+              label={`Pan of ${label}`}
+              gestureLabel="Part pan"
+              valueText={panText(pan)}
+              recipe={(x) => (p) => patchPart(p, part, { pan: x })}
+            />
+            <output className="vd-out">{panText(pan)}</output>
+          </span>
+        </td>
+        <td>
+          <span className="vd-gain">
+            <GestureSlider
+              value={gain ?? voices[0]?.gain ?? 1}
+              min={0}
+              max={2}
+              step={0.01}
+              label={`Gain of ${label}`}
+              gestureLabel="Part gain"
+              valueText={gain === undefined ? 'Mixed' : fmtGain(gain)}
+              recipe={(x) => (p) => patchPart(p, part, { gain: x })}
+            />
+            <output className="vd-out" data-testid="part-gain-out">
+              {gain === undefined ? 'Mixed' : fmtGain(gain)}
+            </output>
+          </span>
+        </td>
+        <td>
+          <span className="vd-range">
+            <NumberField
+              className="vd-num"
+              value={lo ?? null}
+              placeholder="Mixed"
+              min={PITCH_MIN}
+              max={PITCH_MAX}
+              label={`Lowest pitch of ${label}`}
+              onCommit={(n) => edit((p) => setPartRangeBound(p, part, 0, n), 'Part range')}
+            />
+            <span className="vd-note">{lo !== undefined ? noteName(lo) : ''}</span>
+            <span aria-hidden="true">–</span>
+            <NumberField
+              className="vd-num"
+              value={hi ?? null}
+              placeholder="Mixed"
+              min={PITCH_MIN}
+              max={PITCH_MAX}
+              label={`Highest pitch of ${label}`}
+              onCommit={(n) => edit((p) => setPartRangeBound(p, part, 1, n), 'Part range')}
+            />
+            <span className="vd-note">{hi !== undefined ? noteName(hi) : ''}</span>
+          </span>
+        </td>
+        <td />
+        <td className="vd-count">
+          {voices.length} {voices.length === 1 ? 'note' : 'notes'}
+        </td>
+      </tr>
+      {confirming && (
+        <tr className="vd-confirm">
+          <td colSpan={cols} role="alert">
+            {targeting} {targeting === 1 ? 'moment targets' : 'moments target'} {part}. Deleting the
+            part makes {targeting === 1 ? 'it' : 'them'} target its notes by pick.{' '}
+            <button
+              type="button"
+              className="danger"
+              data-testid="part-delete-confirm"
+              onClick={remove}
+            >
+              Delete part
+            </button>{' '}
+            <button type="button" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -377,6 +645,16 @@ export function VoicesDrawer() {
   const heard = heardVoices(voices);
   const soloed = anySolo(voices);
   const allTimbre = commonTimbre(voices);
+  const parts = partNames(piece);
+  const grouped = parts.length > 0;
+  const unassigned = voices.filter((v) => !v.part);
+  const cols = grouped ? 8 : 7;
+  const row = (v: VoiceDef) => {
+    const i = voices.indexOf(v);
+    return (
+      <VoiceRow key={v.id} voice={v} index={i} heard={heard[i]} parts={grouped ? parts : null} />
+    );
+  };
   return (
     <section
       id="voices-drawer"
@@ -430,6 +708,24 @@ export function VoicesDrawer() {
         <button type="button" disabled={!soloed} onClick={() => edit(clearSolo, 'Clear solo')}>
           Clear solo
         </button>
+        <button
+          type="button"
+          data-testid="new-part"
+          disabled={grouped && unassigned.length === 0}
+          title={
+            grouped
+              ? 'Puts the unassigned notes in a new part'
+              : 'Puts every note in a part; move notes to other parts on their rows'
+          }
+          onClick={() =>
+            edit((p) => {
+              const name = freePartName(p);
+              return p.voices.reduce((acc, v) => (v.part ? acc : assignPart(acc, v.id, name)), p);
+            }, 'New part')
+          }
+        >
+          New part
+        </button>
         <p className="vd-hint">Colours show when Lines is Custom.</p>
         <button
           type="button"
@@ -451,13 +747,27 @@ export function VoicesDrawer() {
               <th scope="col">Gain</th>
               <th scope="col">Range</th>
               <th scope="col">Mute · Solo</th>
+              {grouped && <th scope="col">Part</th>}
             </tr>
           </thead>
-          <tbody>
-            {voices.map((v, i) => (
-              <VoiceRow key={v.id} voice={v} index={i} heard={heard[i]} />
+          {!grouped && <tbody>{voices.map(row)}</tbody>}
+          {grouped &&
+            parts.map((part) => (
+              <tbody key={part} data-testid="part-group" data-part={part}>
+                <PartHeader part={part} cols={cols} />
+                {partVoices(piece, part).map(row)}
+              </tbody>
             ))}
-          </tbody>
+          {grouped && unassigned.length > 0 && (
+            <tbody data-testid="part-group" data-part="">
+              <tr className="vd-part">
+                <th scope="rowgroup" colSpan={cols}>
+                  Unassigned
+                </th>
+              </tr>
+              {unassigned.map(row)}
+            </tbody>
+          )}
         </table>
       </div>
     </section>
