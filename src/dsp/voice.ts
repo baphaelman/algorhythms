@@ -684,6 +684,11 @@ export class Voice {
   private readonly st = new Float64Array(STATE_SIZE);
   private readonly invRate: number = 0;
 
+  /** Amplitude at the last control tick (before pan and the limiter); for tests. */
+  get amplitude(): number {
+    return this.st[S_CUR_AMP];
+  }
+
   // Cursors (monotonic between jumps).
   private segCur = 0;
   private lifeCur = -1;

@@ -443,6 +443,11 @@ export class Graph {
     this.limiter.cursor = 0;
   }
 
+  /** Voice `index`'s amplitude at the end of the last block (tests: envelope continuity). */
+  voiceAmplitude(index: number): number {
+    return this.voices[index].amplitude;
+  }
+
   /** The limiter's look-ahead in frames: every output is delayed by this much. */
   get limiterDelayFrames(): number {
     return this.limiter.delay;
