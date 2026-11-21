@@ -20,7 +20,7 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 /** The timer and flag calls around the run allocate ~2 KB; one interpreted seek ~8 KB. */
 const MAX_BYTES = 6000;
 
-function runHarness(mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre'): {
+function runHarness(mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx'): {
   gcLines: string[];
   summary: { ms: number; observedGc: number; newSpaceBytes: number };
 } {
@@ -79,6 +79,18 @@ describe('no GC in process()', () => {
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);
     expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
+  }, 120_000);
+
+  it('runs 60 s of master FX edits (tilt, low-pass, size and delay crossfades) with no scavenge', () => {
+    const { gcLines, summary } = runHarness('fx');
+    console.info(
+      `no-GC run (FX edits): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
+    );
+    expect(gcLines).toEqual([]);
+    expect(summary.observedGc).toBe(0);
+    // 240 edits; setMix (message handling) boxes the doubles it passes on, ~170 B per edit (a
+    // real edit's postMessage allocates far more). 8 B per block in process() would be 180 KB.
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES + 240 * 256);
   }, 120_000);
 
   it('reports the GC rate when expo and bézier glides are included', () => {

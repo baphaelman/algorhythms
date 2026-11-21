@@ -357,9 +357,8 @@ describe('click detector, hot-swap', () => {
 /**
  * Master FX edits during playback (Sound drawer, M6): `setMix` is what the store sends on every
  * mix edit (a drag sends one per frame; Reset jumps). The engine smooths every parameter per
- * block. Known gaps (dsp follow-up, `it.fails` below): a jump of the tone tilt, the low-pass or
- * the room size clicks (dragged, low-pass and size are clean), and a big delay-time jump while
- * the delay is loud (send or return) swoops: the smoothed read pointer races through the buffer.
+ * block and interpolates it per sample; the tilt shelves keep running at tilt 0, the low-pass is a
+ * TPT state-variable filter, and room-size and big delay-time changes crossfade between read taps.
  */
 describe('click detector, mix changes', () => {
   const F = FIXTURE_MIX;
@@ -428,36 +427,56 @@ describe('click detector, mix changes', () => {
     expect(w).toBeLessThanOrEqual(2 * clean);
   });
 
-  // Known gaps, glass, detector vs clean: tilt 0 → 6 jump 2.07 vs 0.27 (dragged over 40 frames
-  // 0.56 vs 0.23: borderline, not asserted); low-pass 18 k → 600 Hz 0.61 vs 0.08; room size
-  // 0.6 → 0.15 0.36 vs 0.09; sine, delay 1.2 → 0.375 s at return 0.8 0.28 vs 0.07 (at send 0.9
-  // 0.47). When the
-  // engine smooths these per sample (or crossfades big delay jumps), make them plain `it`.
+  // Fixed (build log, "Smooth master FX edits"); before, glass, detector vs clean: tilt 0 → 6
+  // jump 2.07 vs 0.27 (dragged over 40 frames 0.56 vs 0.23); low-pass 18 k → 600 Hz 0.61 vs 0.08;
+  // room size 0.6 → 0.15 0.36 vs 0.09; sine, delay 1.2 → 0.375 s at return 0.8 0.28 vs 0.07 (at
+  // send 0.9 0.47).
   const loudDelay = { ...F.delay, returnLevel: 0.8 };
-  it.fails.each([
-    ['tilt jump', 'glass', F, { ...F, tone: { ...F.tone, tilt: 6 } }],
-    ['low-pass jump', 'glass', F, { ...F, tone: { ...F.tone, lowpassHz: 600 } }],
-    ['room size jump', 'glass', F, { ...F, reverb: { ...F.reverb, size: 0.15 } }],
+  const tilted = (u: number): MixSettings => ({ ...F, tone: { ...F.tone, tilt: 6 * u } });
+  const unfiltered: MixSettings = { ...F, tone: { ...F.tone, lowpassHz: 24000 } };
+  it.each([
+    ['tilt jump', 'glass', F, [tilted(1)]],
+    ['tilt drag', 'glass', F, Array.from({ length: 40 }, (_, i) => tilted((i + 1) / 40))],
+    ['low-pass jump', 'glass', F, [{ ...F, tone: { ...F.tone, lowpassHz: 600 } }]],
+    [
+      'low-pass out of bypass',
+      'glass',
+      unfiltered,
+      [{ ...F, tone: { ...F.tone, lowpassHz: 600 } }],
+    ],
+    ['low-pass into bypass', 'glass', { ...F, tone: { ...F.tone, lowpassHz: 600 } }, [unfiltered]],
+    ['room size jump', 'glass', F, [{ ...F, reverb: { ...F.reverb, size: 0.15 } }]],
     [
       'delay time jump, loud return',
       'sine',
       { ...F, delay: { ...loudDelay, time: 1.2 } },
-      { ...F, delay: loudDelay },
+      [{ ...F, delay: loudDelay }],
     ],
-  ] as const)('known gap: %s clicks', (_name, timbre, from, to) => {
+    [
+      'delay time jump, loud send',
+      'sine',
+      { ...F, sends: { ...F.sends, delay: 0.9 }, delay: { ...F.delay, time: 1.2 } },
+      [{ ...F, sends: { ...F.sends, delay: 0.9 } }],
+    ],
+  ] as const)('%s is click-free', (name, timbre, from, steps) => {
+    const to = steps[steps.length - 1];
     const score = stressScore(8, 20, 1.2, 11, [timbre]);
     const clean = Math.max(cleanOf(score, from), cleanOf(score, to));
     const s = new Session(score, from);
     s.graph.play(0);
     s.run(2);
-    s.mark();
-    s.graph.setMix(to);
+    for (const m of steps) {
+      s.mark();
+      s.graph.setMix(m);
+      s.run(steps.length > 1 ? 1 / 60 : 0);
+    }
     s.run(1);
     const out = s.out();
     const w = Math.max(
       worstAround(out.left, s.events).ratio,
       worstAround(out.right, s.events).ratio,
     );
+    console.info(`${name}: clean ${clean.toFixed(3)}, worst ${w.toFixed(3)}`);
     expect(w).toBeLessThanOrEqual(2 * clean);
   });
 });

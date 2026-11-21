@@ -3,8 +3,10 @@
  * series allpass diffusers, then 8 delay lines mixed by a Householder matrix with a one-pole
  * damping filter and an RT60-calibrated gain in every line. Deterministic, no impulse responses.
  *
- * Parameter changes are smoothed per block; line lengths move gradually (read with linear
- * interpolation), so dragging `size` glides instead of clicking. Allocation-free after construction.
+ * Decay, damping and pre-delay are smoothed per block (the pre-delay read position is
+ * interpolated per sample). A `size` change crossfades every line from its old read tap to the
+ * new one over XFADE_SECONDS (a convex blend of two delays, so the FDN stays passive); the next
+ * change waits for it, so a drag steps through crossfades. Allocation-free after construction.
  */
 
 import { BLOCK_FRAMES } from '../constants';
@@ -26,8 +28,10 @@ const OUT_R = [1, 1, -1, -1, 1, 1, -1, -1];
 const IN_GAIN = 1 / Math.sqrt(LINES);
 /** Output scale: with the default mix (send 0.5, return 0.35, 3.2 s) the return sits ~10 dB under the dry signal. Tune by ear. */
 const OUT_GAIN = 0.7;
-/** Per-block smoothing of lengths, gains and pre-delay. */
+/** Per-block smoothing of decay, damping and pre-delay. */
 const SMOOTH = 0.08;
+/** Read-tap crossfade on a size change. */
+const XFADE_SECONDS = 0.05;
 /** Tiny DC injected so recirculating tails never become denormal. */
 const ANTI_DENORMAL = 1e-24;
 const LN1000 = 6.907755278982137;
@@ -46,6 +50,13 @@ export class Reverb {
   private readonly lenCur = new Float64Array(LINES);
   private readonly lenTarget = new Float64Array(LINES);
   private readonly gain = new Float64Array(LINES);
+  /** Size crossfade: the new lengths, their gains, and progress 0..1 (−1 when idle). */
+  private readonly lenNext = new Float64Array(LINES);
+  private readonly gainNext = new Float64Array(LINES);
+  /** Gains for lenTarget at decayTarget. */
+  private readonly gainTarget = new Float64Array(LINES);
+  private xf = -1;
+  private readonly xfStep: number = 0;
   private readonly damp = new Float64Array(LINES);
   private readonly y = new Float64Array(LINES);
   private writePos = 0;
@@ -55,6 +66,8 @@ export class Reverb {
   private preWrite = 0;
   private preCur = 0;
   private preTarget = 0;
+  /** preCur at the start of the last block. */
+  private prePrev = 0;
 
   private readonly diff: Float64Array[];
   private readonly diffLen: Int32Array;
@@ -67,6 +80,7 @@ export class Reverb {
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
+    this.xfStep = 1 / Math.max(1, Math.round(XFADE_SECONDS * sampleRate));
     const maxLen = Math.ceil(LINE_SECONDS[LINES - 1] * (MIN_SCALE + SCALE_RANGE) * sampleRate) + 4;
     this.lineCap = pow2Above(maxLen);
     this.lineMask = this.lineCap - 1;
@@ -96,11 +110,19 @@ export class Reverb {
     this.decayTarget = Math.max(0.05, Math.min(60, decay));
     this.dampTarget = 1 - 0.85 * Math.min(1, Math.max(0, damping));
     this.preTarget = Math.min(MAX_PREDELAY, Math.max(0, preDelay)) * this.sampleRate;
+    // The target taps' gains, so starting a size crossfade computes nothing in process().
+    for (let k = 0; k < LINES; k++) {
+      pmath.R[0] = (-LN1000 * this.lenTarget[k]) / (this.sampleRate * this.decayTarget);
+      pmath.expR();
+      this.gainTarget[k] = pmath.R[0];
+    }
     if (immediate) {
       this.lenCur.set(this.lenTarget);
+      this.xf = -1;
       this.decay = this.decayTarget;
       this.dampCoef = this.dampTarget;
       this.preCur = this.preTarget;
+      this.prePrev = this.preCur;
       this.updateGains();
     }
   }
@@ -119,16 +141,31 @@ export class Reverb {
       pmath.R[0] = (-LN1000 * this.lenCur[k]) / (this.sampleRate * this.decay);
       pmath.expR();
       this.gain[k] = pmath.R[0];
+      if (this.xf >= 0) {
+        pmath.R[0] = (-LN1000 * this.lenNext[k]) / (this.sampleRate * this.decay);
+        pmath.expR();
+        this.gainNext[k] = pmath.R[0];
+      }
     }
   }
 
   private smoothParams(): void {
     let changed = false;
-    for (let k = 0; k < LINES; k++) {
-      const d = this.lenTarget[k] - this.lenCur[k];
-      if (d !== 0) {
-        this.lenCur[k] = Math.abs(d) < 1e-3 ? this.lenTarget[k] : this.lenCur[k] + d * SMOOTH;
-        changed = true;
+    if (this.xf >= 1) {
+      // Crossfade done: the new taps take over.
+      this.lenCur.set(this.lenNext);
+      this.gain.set(this.gainNext);
+      this.xf = -1;
+    }
+    if (this.xf < 0) {
+      for (let k = 0; k < LINES; k++) {
+        if (this.lenTarget[k] !== this.lenCur[k]) {
+          this.lenNext.set(this.lenTarget);
+          this.xf = 0;
+          if (this.decay === this.decayTarget) this.gainNext.set(this.gainTarget);
+          else changed = true;
+          break;
+        }
       }
     }
     if (this.decay !== this.decayTarget) {
@@ -160,13 +197,27 @@ export class Reverb {
     const dc = this.dampCoef;
     const pre = this.pre;
     const preMask = this.preMask;
-    const preDi = Math.floor(this.preCur);
-    const preFr = this.preCur - preDi;
+    const preFrom = this.prePrev;
+    const preMoving = preFrom !== this.preCur;
+    const dPre = (this.preCur - preFrom) / BLOCK_FRAMES;
+    this.prePrev = this.preCur;
+    let preDi = Math.floor(this.preCur);
+    let preFr = this.preCur - preDi;
+    const xfOn = this.xf >= 0;
+    let xf = this.xf;
+    const xfStep = this.xfStep;
+    const lenNext = this.lenNext;
+    const gainNext = this.gainNext;
     let w = this.writePos;
     let pw = this.preWrite;
 
     for (let i = 0; i < BLOCK_FRAMES; i++) {
-      // Pre-delay (fractional).
+      // Pre-delay (fractional; interpolated per sample while it moves).
+      if (preMoving) {
+        const p = preFrom + dPre * (i + 1);
+        preDi = Math.floor(p);
+        preFr = p - preDi;
+      }
       pre[pw] = input[i];
       const r0 = pre[(pw - preDi) & preMask];
       const r1 = pre[(pw - preDi - 1) & preMask];
@@ -188,20 +239,44 @@ export class Reverb {
       let sum = 0;
       let l = 0;
       let r = 0;
-      for (let k = 0; k < LINES; k++) {
-        const d = lenCur[k];
-        const di = d | 0;
-        const fr = d - di;
-        const base = k * cap;
-        const a = lines[base + ((w - di) & mask)];
-        const b = lines[base + ((w - di - 1) & mask)];
-        const out = a + (b - a) * fr;
-        l += OUT_L[k] * out;
-        r += OUT_R[k] * out;
-        damp[k] += (out - damp[k]) * dc;
-        const v = damp[k] * gain[k];
-        y[k] = v;
-        sum += v;
+      if (xfOn) {
+        // Smoothstep blend of the old and new taps, and of their gains.
+        xf = xf + xfStep < 1 ? xf + xfStep : 1;
+        const u = xf * xf * (3 - 2 * xf);
+        for (let k = 0; k < LINES; k++) {
+          const base = k * cap;
+          const d0 = lenCur[k];
+          const i0 = d0 | 0;
+          const a0 = lines[base + ((w - i0) & mask)];
+          const o0 = a0 + (lines[base + ((w - i0 - 1) & mask)] - a0) * (d0 - i0);
+          const d1 = lenNext[k];
+          const i1 = d1 | 0;
+          const a1 = lines[base + ((w - i1) & mask)];
+          const o1 = a1 + (lines[base + ((w - i1 - 1) & mask)] - a1) * (d1 - i1);
+          const out = o0 + (o1 - o0) * u;
+          l += OUT_L[k] * out;
+          r += OUT_R[k] * out;
+          damp[k] += (out - damp[k]) * dc;
+          const v = damp[k] * (gain[k] + (gainNext[k] - gain[k]) * u);
+          y[k] = v;
+          sum += v;
+        }
+      } else {
+        for (let k = 0; k < LINES; k++) {
+          const d = lenCur[k];
+          const di = d | 0;
+          const fr = d - di;
+          const base = k * cap;
+          const a = lines[base + ((w - di) & mask)];
+          const b = lines[base + ((w - di - 1) & mask)];
+          const out = a + (b - a) * fr;
+          l += OUT_L[k] * out;
+          r += OUT_R[k] * out;
+          damp[k] += (out - damp[k]) * dc;
+          const v = damp[k] * gain[k];
+          y[k] = v;
+          sum += v;
+        }
       }
       // Householder feedback: y − (2/N)·Σy, plus the input.
       const h = sum * (2 / LINES);
@@ -213,6 +288,7 @@ export class Reverb {
       outL[i] = l * OUT_GAIN;
       outR[i] = r * OUT_GAIN;
     }
+    if (xfOn) this.xf = xf;
     this.writePos = w;
     this.preWrite = pw;
   }
