@@ -13,6 +13,8 @@
  * - move start: read the actual pitch and velocity, interrupt a running glide (§7.5), write the
  *   segment. A birth opens a life on the parent's pitch; a death glide schedules its life's close.
  * - tick: one walk step for every eligible voice (moments/walk.ts).
+ * A timbre moment (M6) only records a change on its voices' timbre timelines (`onTimbre`): it
+ * moves no pitch and leaves every cache and destination as it was, as a pulse tick does.
  * Then every voice is closed at the end (`end.at`, or the last activity + 4 s) with the end fade.
  *
  * Schema v2 (M4.5-27): every voice starts dormant. A chord or unison that comes when nothing is
@@ -26,6 +28,7 @@ import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
 import { selectorPart } from '../parts';
+import { isTimbreName } from '../timbres';
 import { nextPulseIndex, type PulseWalk } from '../pulse';
 import { hash32, momentSeed, Purpose, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
@@ -57,6 +60,8 @@ import {
   type PulseRecord,
   type Seconds,
   type Segment,
+  type TimbreChange,
+  type TimbreMoment,
   type TuneMoment,
   type VoiceOverride,
   type VoiceSelector,
@@ -70,7 +75,7 @@ import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldIntoRange, sanitizeRange } from './range';
 import { collapse, countsLines, expand, type Collapsed, type Expansion } from './lines';
-import { Status, VoiceRun, type Birth, type Move } from './voice';
+import { Status, VoiceRun, type Birth, type Move, type TimbreEntry } from './voice';
 
 /**
  * Distinct notes (revision 8) and merges and splits crossfade (owner 2026-11-21): a line that
@@ -103,6 +108,7 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
   'level',
   'pulse',
   'tune',
+  'timbre',
 ]);
 
 /** Move-start sub-order at equal times (queue `key` = sub·64 + pool index). */
@@ -478,6 +484,22 @@ export class Compiler {
         }
         this.tunes[i] = tuneStarts(m);
       }
+      if (m.type === 'timbre') {
+        if (!(typeof m.preset === 'string' && m.preset !== '')) {
+          this.diag('error', 'invalid-moment', 'A timbre change needs a preset name.', m.id);
+          return;
+        }
+        // Validity reads `piece.timbres` (incremental.ts `sameSetup` compares its names).
+        if (!isTimbreName(m.preset, this.piece.timbres)) {
+          this.diag(
+            'warn',
+            'unknown-timbre',
+            `No timbre is named '${m.preset}'; the change is skipped.`,
+            m.id,
+          );
+          return;
+        }
+      }
       this.valid[i] = true;
       this.seeds[i] = momentSeed(this.piece.seed, m.id, m.seed);
       this.glides[i] = momentGlide(defaults, m);
@@ -739,6 +761,11 @@ export class Compiler {
             break;
           }
           if (this.onMomentEvent) this.onMomentEvent(ev.t, ev.ref);
+          // No touch or reaim: a timbre change leaves pitch state alone (as a pulse tick).
+          if (this.moments[ev.ref].type === 'timbre') {
+            this.onTimbre(ev.ref);
+            break;
+          }
           this.touch();
           this.onMoment(ev.ref);
           this.reaim(ev.t, ev.ref);
@@ -916,6 +943,53 @@ export class Compiler {
       dormant: 0,
     });
     this.diag('info', 'no-effect', `No effect: ${reason}.`, m.id);
+  }
+
+  /**
+   * A timbre moment (M6): appends the change to its voices' timbre records; `finish` builds the
+   * timelines. Silent voices change too, so a later birth sounds the new timbre.
+   */
+  private onTimbre(i: number): void {
+    const m = this.moments[i] as TimbreMoment;
+    const T = this.eventT[i];
+    const fade = typeof m.fade === 'number' && Number.isFinite(m.fade) && m.fade > 0 ? m.fade : 0;
+    const vs = this.timbreTargets(m);
+    for (const v of vs) this.voices[v].timbre.push({ t: T, preset: m.preset, fade, moment: i });
+    if (vs.length === 0)
+      this.diag('info', 'no-targets', 'The timbre change targets no voice.', m.id);
+    this.span(i, T, T + fade);
+    this.activity(T + fade);
+    this.traceMoment(i, vs, m.target !== undefined && m.target !== 'all', null, null);
+  }
+
+  /**
+   * A timbre moment's voices, in pool order: 'all', `{ voices }` and `{ part }` pick pool voices
+   * whether sounding or not; `{ rank }` picks sounding voices by pitch order (§6.1).
+   */
+  private timbreTargets(m: TimbreMoment): number[] {
+    const sel = m.target;
+    const byIndex = (a: number, b: number): number => a - b;
+    if (typeof sel === 'object' && sel !== null && 'rank' in sel) {
+      return this.resolveTarget(sel, m.id).sort(byIndex);
+    }
+    if (typeof sel === 'object' && sel !== null && 'voices' in sel && Array.isArray(sel.voices)) {
+      const want = new Set<number>();
+      for (const id of sel.voices) {
+        const v = this.byId.get(id);
+        if (v === undefined)
+          this.diag('warn', 'unknown-voice', `The target names no voice '${id}'.`, m.id);
+        else want.add(v);
+      }
+      return [...want].sort(byIndex);
+    }
+    const all = this.voices.map((r) => r.index);
+    const part = selectorPart(sel);
+    if (part === null) return all;
+    if (!this.parts.has(part)) {
+      this.diag('warn', 'unknown-part', `The target names no part '${part}'.`, m.id);
+      return [];
+    }
+    return all.filter((v) => this.voices[v].part === part);
   }
 
   /** The level target of a voice now (1 before its first level change). */
@@ -2382,6 +2456,18 @@ export class Compiler {
       const none = { targeted: [], active: [], births: 0, deaths: 0, dormant: 0 };
       this.diag('info', 'no-effect', `No effect: ${noEffectReason(w, none)}.`, w.id);
     }
+    // Timbre timelines (M6) from the fresh VoiceDef.timbre, and timbre moments that changed none.
+    const applied = new Set<number>();
+    const changed = new Set<number>();
+    const timbres = this.voices.map((run) =>
+      timbreTimeline(run.def.timbre, run.timbre, applied, changed),
+    );
+    for (const i of [...applied].sort((a, b) => a - b)) {
+      if (changed.has(i)) continue;
+      const m = this.moments[i];
+      const none = { targeted: [], active: [], births: 0, deaths: 0, dormant: 0 };
+      this.diag('info', 'no-effect', `No effect: ${noEffectReason(m, none)}.`, m.id);
+    }
     const voices: CompiledVoice[] = this.voices.map((run) => {
       const def = run.def;
       const lives: Life[] = run.lives.filter((l) => l.died === undefined || l.died > l.born);
@@ -2393,7 +2479,7 @@ export class Compiler {
         index: run.index,
         lives,
         segments: run.segs,
-        timbre: [{ t: 0, preset: def.timbre, fade: 0 }],
+        timbre: timbres[run.index],
         level: run.level,
         gain: typeof def.gain === 'number' && Number.isFinite(def.gain) ? def.gain : 1,
         pan: def.pan === undefined ? 'auto' : def.pan,
@@ -2433,6 +2519,32 @@ export class Compiler {
       seed: this.piece.seed,
     };
   }
+}
+
+/**
+ * A voice's timbre timeline (§7.9): `initial` at 0, then its timbre moments' changes. A change to
+ * the preset already in effect adds no entry; of two at one time the later wins (never replacing
+ * the initial entry). Records into `applied` every moment with an entry in `entries`, and into
+ * `changed` those whose entry changed the preset then in effect.
+ */
+function timbreTimeline(
+  initial: string,
+  entries: readonly TimbreEntry[],
+  applied: Set<number>,
+  changed: Set<number>,
+): TimbreChange[] {
+  const out: TimbreChange[] = [{ t: 0, preset: initial, fade: 0 }];
+  for (const e of entries) {
+    applied.add(e.moment);
+    let last = out[out.length - 1];
+    if (e.preset !== last.preset) changed.add(e.moment);
+    if (out.length > 1 && e.t === last.t) {
+      out.pop();
+      last = out[out.length - 1];
+    }
+    if (e.preset !== last.preset) out.push({ t: e.t, preset: e.preset, fade: e.fade });
+  }
+  return out;
 }
 
 /** A finite number clamped to 0..1, else `fallback`. */

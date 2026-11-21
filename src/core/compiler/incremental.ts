@@ -12,21 +12,24 @@
  *
  * A checkpoint holds what the simulation mutates (compile.ts, voice.ts): per voice the status,
  * pending moves and birth, the frontier tail with the fields `finishAt` mutates by value, the open
- * Life, and the lengths of the append-only arrays (segments, lives, level, pulse); the queued move
- * starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable), note returns
- * and tunes' next notes (a `TuneStep`, immutable) with each move's `cancelled` flag (a move's
- * `memo` is a pure cache, left as is);
+ * Life, and the lengths of the append-only arrays (segments, lives, level, pulse, timbre); the
+ * queued move starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable),
+ * note returns and tunes' next notes (a `TuneStep`, immutable) with each move's `cancelled` flag
+ * (a move's `memo` is a pure cache, left as is);
  * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
  * returned scores stay intact). Restored tails and lives are fresh copies.
  *
  * Full compile: no previous state, or a different setup (seed, key, end, glide defaults,
- * voice ids, ranges or parts). Voice fields that only reach the output (gain, pan, timbre, …) are read
- * fresh by `finish`, so they resume like any other edit.
+ * voice ids, ranges or parts, or the names of the piece's own timbres, which decide whether a
+ * timbre moment is valid). Voice fields that only reach the output (gain, pan, timbre, …) are read
+ * fresh by `finish`, so they resume like any other edit; so does the timbre moments' `no-effect`
+ * check, which reads VoiceDef.timbre.
  */
 
 import { partOf } from '../parts';
+import { BUILTIN_TIMBRES } from '../timbres';
 import type {
   CompiledScore,
   Diagnostic,
@@ -65,11 +68,12 @@ const STRIDE = 2;
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
  * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
- * length, handed, counts length, pulse length, pulse owner, tune end. References, REFS per voice: pending moves (a copy), pending birth,
- * open life, tail, tail curve, members (a copy), the last weight and stack entries (`rampWeight` and
- * `setCount` may replace them in the shared arrays after the checkpoint).
+ * length, handed, counts length, pulse length, pulse owner, tune end, timbre length. References,
+ * REFS per voice: pending moves (a copy), pending birth, open life, tail, tail curve, members (a
+ * copy), the last weight and stack entries (`rampWeight` and `setCount` may replace them in the
+ * shared arrays after the checkpoint).
  */
-const NUMS = 21;
+const NUMS = 22;
 const REFS = 8;
 const NO_MOVES: readonly Move[] = [];
 
@@ -112,6 +116,7 @@ interface State {
   weights: VoiceRun['weights'][];
   counts: VoiceRun['counts'][];
   pulse: VoiceRun['pulse'][];
+  timbre: VoiceRun['timbre'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
   walkSteps: WalkStepRecord[];
@@ -161,6 +166,16 @@ function same(a: unknown, b: unknown): boolean {
   return true;
 }
 
+/** The piece's own timbre names that are not built-ins, sorted (a timbre moment's validity). */
+function customTimbres(p: Piece): string {
+  const ts: unknown = p.timbres;
+  if (!ts || typeof ts !== 'object') return '';
+  return Object.keys(ts)
+    .filter((k) => !Object.hasOwn(BUILTIN_TIMBRES, k))
+    .sort()
+    .join('\u0000');
+}
+
 /** True when everything `compile` reads besides the moments (and output-only fields) is equal. */
 function sameSetup(a: Piece, b: Piece): boolean {
   if (!(
@@ -171,6 +186,7 @@ function sameSetup(a: Piece, b: Piece): boolean {
   )) {
     return false;
   }
+  if (a.timbres !== b.timbres && customTimbres(a) !== customTimbres(b)) return false;
   const va = a.voices;
   const vb = b.voices;
   if (va === vb) return true;
@@ -244,6 +260,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.pulse.length,
       run.pulseOwner,
       run.tuneUntil,
+      run.timbre.length,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -332,6 +349,8 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     pushPrefix(run.pulse, prev.pulse[v], nums[n + 18]);
     run.pulseOwner = nums[n + 19];
     run.tuneUntil = nums[n + 20];
+    run.timbre.length = 0;
+    pushPrefix(run.timbre, prev.timbre[v], nums[n + 21]);
     run.pending = (refs[r] as Move[]).slice();
     run.pendingBirth = refs[r + 1] as Birth | null;
     // An open life has only `born`, `fadeIn` and `crossIn` (closing sets the rest, and drops it).
@@ -484,6 +503,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       weights: c.voices.map((r) => r.weights),
       counts: c.voices.map((r) => r.counts),
       pulse: c.voices.map((r) => r.pulse),
+      timbre: c.voices.map((r) => r.timbre),
       keys: c.keys,
       harmony: c.harmony,
       walkSteps: c.walkSteps,

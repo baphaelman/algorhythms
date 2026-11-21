@@ -1,6 +1,7 @@
 /**
- * Built-in timbre presets (PLAN.md §8.5, M2 set). Data only: `VoiceDef.timbre` names one of these
- * or a key of `Piece.timbres`, which adds to or overrides them.
+ * Built-in timbre presets (PLAN.md §8.5, M2 set). Data, plus `isTimbreName`: `VoiceDef.timbre` and
+ * a timbre moment's `preset` name one of these or a key of `Piece.timbres`, which adds to or
+ * overrides them.
  *
  * Harmonic amplitudes are relative (the wavetable builder normalises each table's peak), index 0
  * is the fundamental, and missing partials are 0. `stretch`, `fm` and `noise` are M6 features,
@@ -209,3 +210,9 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     drift: { cents: 1.5, rate: 0.2, amp: 0.03 },
   },
 };
+
+/** True if `name` is a key of `timbres` (a piece's own presets) or a built-in preset. */
+export function isTimbreName(name: string, timbres?: Record<string, Timbre> | null): boolean {
+  if (Object.hasOwn(BUILTIN_TIMBRES, name)) return true;
+  return !!timbres && typeof timbres === 'object' && Object.hasOwn(timbres, name);
+}

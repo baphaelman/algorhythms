@@ -3,7 +3,8 @@
  *
  * A moment has no effect when no voice's pitch target changes, the count changes only by unison
  * doublings (a death whose pitch a survivor keeps sounding, as in a merge on a unison; a birth on
- * its parent's pitch), and no level or key changes. Unison voices sound as one (§8.4 lock), so such
+ * its parent's pitch), and no level, key or timbre changes. A timbre moment (M6) acts on silent
+ * voices too, so it has an effect from silence. Unison voices sound as one (§8.4 lock), so such
  * count changes are not heard.
  *
  * From silence only an establishing moment (a chord with notes, a unison; moments/establish.ts)
@@ -42,8 +43,8 @@ import type {
 export const EFFECT_EPS = 1e-6;
 
 /**
- * The palette's moment types, in palette order. `pulse` and `tune` (revision 9) are not listed
- * until the editor can make them (R9-7); `momentEffectAt` handles them already.
+ * The palette's moment types, in palette order. `pulse` and `tune` (revision 9) and `timbre`
+ * (M6) are not listed until the editor can make them; `momentEffectAt` handles them already.
  */
 export const EFFECT_MOMENT_TYPES: readonly MomentType[] = [
   'chord',
@@ -124,6 +125,8 @@ export interface EffectContext {
 /** Why a moment with no effect has none, for the `no-effect` message and the palette. */
 export function noEffectReason(m: Moment, c: EffectContext): string {
   if (m.type === 'tune' && m.notes.length === 0) return 'the tune has no notes';
+  // Silent voices count for a timbre change; the compiler raises `no-targets` when it has none.
+  if (m.type === 'timbre') return 'the notes already have this timbre';
   const n = c.active.length;
   if (n === 0 && m.type !== 'key') {
     // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
@@ -179,6 +182,37 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
     case 'tune':
       return 'the line already plays every note of the tune';
   }
+}
+
+/**
+ * A timbre moment's voices in a compiled score (as compile.ts `timbreTargets`): pool voices,
+ * sounding or not; `{ rank }` picks sounding voices (`active`, in pitch order).
+ */
+function timbreTargetsIn(piece: Piece, m: Moment, active: readonly number[]): number[] {
+  const sel = m.target;
+  const n = piece.voices.length;
+  const all = Array.from({ length: n }, (_, v) => v);
+  if (typeof sel === 'object' && sel !== null && 'rank' in sel && Array.isArray(sel.rank)) {
+    const a = Number(sel.rank[0]);
+    const b = Number(sel.rank[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return [];
+    const lo = Math.max(0, Math.ceil(Math.min(a, b)));
+    const hi = Math.min(active.length - 1, Math.floor(Math.max(a, b)));
+    return lo <= hi ? active.slice(lo, hi + 1) : [];
+  }
+  if (typeof sel === 'object' && sel !== null && 'voices' in sel && Array.isArray(sel.voices)) {
+    const want = new Set(sel.voices);
+    return all.filter((v) => want.has(piece.voices[v].id));
+  }
+  const part = selectorPart(sel);
+  return part === null ? all : all.filter((v) => partOf(piece.voices[v]) === part);
+}
+
+/** The preset a voice's timbre timeline is heading for at `t` (entries at `t` included). */
+function timbreAt(score: CompiledScore, v: number, t: Seconds): string | undefined {
+  let preset: string | undefined;
+  for (const c of score.voices[v]?.timbre ?? []) if (c.t <= t) preset = c.preset;
+  return preset;
 }
 
 /** Same key: same tonic pitch class and scale. */
@@ -383,6 +417,13 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     dormant: dormant.length,
   });
   switch (m.type) {
+    case 'timbre': {
+      const vs = timbreTargetsIn(piece, m, st0.active);
+      if (vs.length === 0) return no('it targets no note');
+      return vs.some((v) => timbreAt(score, v, m.at) !== m.preset)
+        ? { effect: true }
+        : no(noEffectReason(m, ctx()));
+    }
     case 'key':
       return sameKey(m.key, st.key) ? no(noEffectReason(m, ctx())) : { effect: true };
     case 'level':

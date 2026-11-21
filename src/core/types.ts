@@ -222,7 +222,7 @@ export type AssignMode = 'ordered' | 'free';
 // Moments (§6)
 // ---------------------------------------------------------------------------------------------
 
-/** Every v1 moment type (§6.2). `timbre` arrives in M6 (§6.3) and will extend this union. */
+/** Every moment type: the v1 catalog (§6.2) and `timbre` (M6, §6.3). */
 export type MomentType =
   | 'chord'
   | 'unison'
@@ -236,7 +236,8 @@ export type MomentType =
   | 'key'
   | 'level'
   | 'pulse'
-  | 'tune';
+  | 'tune'
+  | 'timbre';
 
 /** Fields common to every moment (§6.1). */
 export interface MomentBase {
@@ -518,7 +519,21 @@ export interface TuneMoment extends MomentBase {
   notes: TuneNote[];
 }
 
-/** Any v1 moment, discriminated by `type`. */
+/**
+ * M6 (§6.3): crossfades the targeted voices to another timbre from `at` over `fade`; no pitch
+ * effect. Unlike other moments it also changes voices that are silent at `at` (a later birth
+ * sounds the new timbre): 'all', `{ voices }` and `{ part }` pick pool voices whether sounding or
+ * not; `{ rank }` picks sounding voices by pitch order. `glide` and `overrides` are ignored.
+ */
+export interface TimbreMoment extends MomentBase {
+  type: 'timbre';
+  /** Key into `Piece.timbres`, or a built-in preset name. */
+  preset: string;
+  /** Crossfade length (≥ 0; 0 = instant). */
+  fade: Seconds;
+}
+
+/** Any moment, discriminated by `type`. */
 export type Moment =
   | ChordMoment
   | UnisonMoment
@@ -532,7 +547,8 @@ export type Moment =
   | KeyMoment
   | LevelMoment
   | PulseMoment
-  | TuneMoment;
+  | TuneMoment
+  | TimbreMoment;
 
 /** Look up a moment interface by its type, e.g. `MomentOf<'walk'>`. */
 export type MomentOf<T extends MomentType> = Extract<Moment, { type: T }>;
@@ -888,7 +904,11 @@ export interface CompiledVoice {
   lives: Life[];
   /** Sorted segments, contiguous within each life (seg[i].t1 === seg[i+1].t0); gaps between lives. */
   segments: Segment[];
-  /** Timbre timeline, sorted; the first entry is { t: 0, preset: VoiceDef.timbre, fade: 0 }. */
+  /**
+   * Timbre timeline, sorted; the first entry is { t: 0, preset: VoiceDef.timbre, fade: 0 }. Later
+   * entries come from timbre moments (M6), at most one per time after the first (the later moment
+   * wins); each names a different preset than the entry before it.
+   */
   timbre: TimbreChange[];
   /** Level timeline, sorted; the level is 1 before the first entry. */
   level: LevelChange[];
