@@ -53,6 +53,7 @@ import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
 import { isSpace, spaceKey, type SpaceHeld } from './space-key';
+import { wheelIntent } from './wheel';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
@@ -357,17 +358,15 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   };
 
   const onWheel = (e: WheelEvent): void => {
-    const unit = e.deltaMode === 1 ? 16 : 1;
-    if (e.ctrlKey || e.metaKey || e.altKey) {
+    const w = wheelIntent(e);
+    if (w.kind === 'zoom') {
       e.preventDefault();
-      zoomBy(Math.exp(Math.max(-60, Math.min(60, e.deltaY * unit)) * 0.01));
-      return;
-    }
-    // Horizontal trackpad scroll pans.
-    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      zoomBy(w.factor);
+    } else if (w.kind === 'pan') {
+      // Horizontal trackpad scroll, or Shift-wheel, pans.
       e.preventDefault();
       const pps = currentPps(canvas);
-      if (pps > 0) panBy((e.deltaX * unit) / pps);
+      if (pps > 0) panBy(w.px / pps);
     }
   };
 

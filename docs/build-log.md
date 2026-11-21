@@ -1446,3 +1446,13 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
 - Save name is an ordinary `edit` (history, autosave). An automatic Generate/Compose title (`generatedTitle` in core/generate.ts, exact match via `isGeneratedTitle`) counts as unnamed like Untitled, so an edited generated piece asks; an untouched one does not (`hasEdited`). A user title that merely resembles one ("Dorian sketch") is a name. (Touches core/generate.ts: extracted the title helper so format and check can't drift.)
 - Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
 - Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.
+
+## Dense lanes: capped lane area + compact rows (owner bug, 2026-11-21)
+Kite Day at 1024×768 pushed Transitions and Level off-screen (lane 638 px; the stage's 240 px min-height plus "the lane grows to fit"). Integrator's design (owner may veto):
+- **Cap:** `laneMaxPx` (editor/lane.ts) caps the lane slot at 45 % of `.timeline` minus ruler and gap (floor 60 px), set by Lane.tsx on resize; the stage's min-height is 0 in the editor layout. Rows beyond the cap scroll inside `.lane-scroll`; a fade marks rows hidden above/below. Time axis, pan and zoom unchanged.
+- **Wheel:** `wheel.ts` `wheelIntent` shared by score and lane: Ctrl/Cmd/Alt zooms, a horizontal trackpad or **Shift-wheel pans** (Shift is new on the score too), a plain vertical wheel scrolls the lane area natively.
+- **Compact rows:** `laneStack`: when the labelled packing needs > 3 sub-rows, repack without labels (`compactBoxPx`: marker + span) on 8 px Moments / 7 px Transitions sub-rows (`[data-compact]`). Labels float on hover, focus or selection and lead the tooltip; bars lose their length text; bar hit target +1 px each side. ≤ 3 sub-rows: unchanged. Deviation: 7 px transition sub-rows (asked ~8–10) to cut scrolling.
+- **Reveal:** a newly selected moment (score, inspector, keys, hook) scrolls its marker into view (`revealScroll`); keyboard focus too.
+- **Sizes:** Kite Day 1024×768: timeline 341, score 188 (55 %), lane area 113 of 180 px (8 compact sub-rows; 67 px scroll to reach Level). 1280×720: score 230/417, lane 147 of 180. Tidewater Hymn: no compaction, no scroll. Kite Day can't fit unscrolled at 1024×768: the spans alone need 8 sub-rows (markers alone 6).
+- Clockwork Heron at Fit also goes compact (piece-key.spec now compares marker centres).
+- Tests: tests/unit/app/lane.test.ts (laneStack, rowGeometry, laneMaxPx, revealScroll, wheelIntent); tests/e2e/lane-dense.spec.ts.
