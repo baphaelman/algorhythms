@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
 import type { CompiledVoice, Glide, Moment, Piece } from '../../../src/core/types';
 import {
@@ -109,6 +110,31 @@ describe('spans and end drags', () => {
     // An empty compiled span (nothing moved): the intended glide.
     const empty = laneItems(piece, [{ id: 'a', start: 1, end: 1 }]);
     expect([empty[0].start, empty[0].end]).toEqual([1, 3.5]);
+  });
+
+  it('an opening from silence is a point: its label alone, no sub-row taken from later moments', () => {
+    const base = newPiece({ seed: 1, poolSize: 4 });
+    const piece: Piece = {
+      ...base,
+      defaults: { glide: { ...G, length: 4, stagger: 0.5 } },
+      moments: [...base.moments, chord('b', 3)],
+    };
+    const opening = piece.moments[0];
+    expect([opening.type, opening.at]).toEqual(['chord', 0]);
+    const score = compile(piece);
+    const items = laneItems(piece, score.momentSpans, undefined, score.harmony, score.voices);
+    expect([items[0].start, items[0].end]).toEqual([0, 0]);
+    expect(items[1].end).toBeGreaterThan(3);
+    // At 40 px/s the opening's label ends near 2 s; its estimated glide (4.5 s) would not.
+    const pps = 40;
+    expect(itemBoxPx(items[0], pps)[1]).toBeLessThan(3 * pps);
+    expect(stackRows(items, pps)).toEqual({ rows: [0, 0], count: 1 });
+    // Without the compiled lines (or muted) it falls back to the glide estimate, as before.
+    const noLines = laneItems(piece, score.momentSpans, undefined, score.harmony);
+    expect(noLines[0].end).toBe(4.5);
+    expect(stackRows(noLines, pps).count).toBe(2);
+    // Labels that really overlap still stack.
+    expect(stackRows(items, 10).count).toBe(2);
   });
 
   it('endDragPatch edits glide length, stagger (shift), until, over', () => {

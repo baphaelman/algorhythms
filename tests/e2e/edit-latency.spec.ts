@@ -11,6 +11,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { seek } from './app-hook';
+import { installLatencyHooks, median, summary, timeClicks, type LatencyHook } from './latency-hook';
 import { generate } from '../../src/core/generate';
 import { serializePiece } from '../../src/core/schema';
 
@@ -19,20 +20,6 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'timing is asserted o
 const BUDGET_MS = 50;
 const DEV_CEILING_MS = 150;
 const THROTTLE = Number(process.env.E2E_CPU_THROTTLE ?? 1);
-
-const median = (xs: number[]): number => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)] ?? NaN;
-};
-const summary = (xs: number[]) => ({
-  n: xs.length,
-  medianMs: Number(median(xs).toFixed(1)),
-  maxMs: Number(Math.max(...xs).toFixed(1)),
-});
-
-interface LatencyHook {
-  __lat: { clicks: number[]; swaps: number[] };
-}
 
 async function openPlaying(page: Page): Promise<void> {
   const piece = generate(7, { mode: 'dorian', voices: 24 });
@@ -54,40 +41,7 @@ async function openPlaying(page: Page): Promise<void> {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
   }
   await page.waitForTimeout(1500); // warm up the JIT and the audio
-  // Record each swap post to the worklet, and each click's event time (same clock).
-  await page.evaluate(() => {
-    const w = window as unknown as Window & LatencyHook;
-    w.__lat = { clicks: [], swaps: [] };
-    const port = (window.__algorhythms!.engine() as unknown as { node: AudioWorkletNode }).node
-      .port;
-    const post = port.postMessage.bind(port) as (m: unknown, t?: Transferable[]) => void;
-    port.postMessage = ((m: { type?: string }, t?: Transferable[]) => {
-      if (m?.type === 'swap') w.__lat.swaps.push(performance.now());
-      post(m, t);
-    }) as typeof port.postMessage;
-    document.addEventListener('click', (e) => w.__lat.clicks.push(e.timeStamp), true);
-  });
-}
-
-const swapCount = (page: Page): Promise<number> =>
-  page.evaluate(() => (window as unknown as LatencyHook).__lat.swaps.length);
-
-/** Clicks `click()` n times; returns each click → swap latency (ms). */
-async function timeClicks(page: Page, n: number, click: (i: number) => Promise<void>) {
-  const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const before = await swapCount(page);
-    await click(i);
-    await expect.poll(() => swapCount(page)).toBeGreaterThan(before);
-    out.push(
-      await page.evaluate((k) => {
-        const l = (window as unknown as LatencyHook).__lat;
-        return l.swaps[k] - l.clicks[l.clicks.length - 1];
-      }, before),
-    );
-    await page.waitForTimeout(200);
-  }
-  return out;
+  await installLatencyHooks(page);
 }
 
 test('chord picks and walk controls reach the worklet within 50 ms (prod) while playing (24 notes)', async ({

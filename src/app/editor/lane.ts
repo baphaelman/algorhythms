@@ -3,9 +3,11 @@
  * snapping, keyboard nudges, span-end drags, sub-row stacking and the level curve. No DOM, no store.
  */
 
+import { isEstablishing } from '../../core/moments/establish';
 import { noteChanges } from '../../core/moments/note';
 import type {
   CompiledScore,
+  CompiledVoice,
   Glide,
   HarmonyChange,
   Moment,
@@ -123,21 +125,42 @@ export function momentText(m: Moment, chordName?: string): string {
 }
 
 /**
+ * Ids of the moments that brought notes in from silence (M4.5-27): a voice's life starts at the
+ * moment's time on a segment the moment produced. Such a moment has no glide.
+ */
+export function establishedIds(
+  voices: readonly Pick<CompiledVoice, 'lives' | 'segments'>[],
+): Set<MomentId> {
+  const out = new Set<MomentId>();
+  for (const v of voices) {
+    for (const seg of v.segments) {
+      if (seg.momentId === undefined || out.has(seg.momentId)) continue;
+      if (v.lives.some((l) => l.born === seg.t0)) out.add(seg.momentId);
+    }
+  }
+  return out;
+}
+
+/**
  * Lane items in piece order. Spans come from the compiled score when it has one for the moment
  * and the moment has not moved since (`compiledAt` maps ids to the times the score was built
  * with) and the span is not empty (a moment that moves nothing still shows its intended glide);
- * otherwise they are estimated from the glide. `harmony` (the compiled timeline) names chords.
+ * otherwise they are estimated from the glide. A chord or unison that establishes notes from
+ * silence (`voices`, the compiled lines, show it) is a point: its box is its label alone.
+ * `harmony` (the compiled timeline) names chords.
  */
 export function laneItems(
   piece: Piece,
   spans: readonly MomentSpan[],
   compiledAt?: ReadonlyMap<MomentId, Seconds>,
   harmony?: readonly HarmonyChange[],
+  voices?: readonly Pick<CompiledVoice, 'lives' | 'segments'>[],
 ): LaneItem[] {
   const byId = new Map<MomentId, MomentSpan>();
   for (const s of spans) byId.set(s.id, s);
   const chordName = new Map<MomentId, string>();
   for (const h of harmony ?? []) chordName.set(h.momentId, h.label);
+  const established = voices ? establishedIds(voices) : new Set<MomentId>();
   const defaults = piece.defaults.glide;
   return piece.moments.map((m) => {
     const s = byId.get(m.id);
@@ -147,6 +170,8 @@ export function laneItems(
     if (s && s.end > s.start && !stale && !m.muted) {
       start = Math.min(s.start, m.at);
       end = Math.max(s.end, m.at);
+    } else if (s && !stale && !m.muted && isEstablishing(m) && established.has(m.id)) {
+      start = end = m.at;
     } else {
       [start, end] = estimateSpan(m, defaults);
     }

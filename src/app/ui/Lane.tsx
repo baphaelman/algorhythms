@@ -587,7 +587,14 @@ export function Lane() {
   const selection = useEditor((s) => s.selection);
   const noEffect = useMemo(() => noEffectReasons(compiled), [compiled]);
   const items = useMemo(
-    () => laneItems(piece, compiled.momentSpans, sourceAt.get(compiled), compiled.harmony),
+    () =>
+      laneItems(
+        piece,
+        compiled.momentSpans,
+        sourceAt.get(compiled),
+        compiled.harmony,
+        compiled.voices,
+      ),
     [piece, compiled],
   );
   const curve = useMemo(() => levelCurve(compiled), [compiled]);

@@ -38,7 +38,9 @@ export interface Hook {
     seek(t: number): void;
   };
   encodeShareLink(piece: unknown, base?: string): Promise<string>;
-  editor: { state: { getState(): { canUndo: boolean; undoLabel: string } } };
+  editor: {
+    state: { getState(): { canUndo: boolean; undoLabel: string; selection: string[] } };
+  };
 }
 
 /** Moves the playhead to `t` s (the editor layout has no scrubber; the ruler seeks by pointer). */
