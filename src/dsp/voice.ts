@@ -94,6 +94,11 @@ import { hash2, Prng, unit } from './rng';
 import { SINE, SINE_TABLE_SIZE, cos2pi, sin2pi } from './sine';
 import type { TimbreExt, TimbreSlot } from './timbre-slot';
 import {
+  COH_NOISE,
+  COH_PER_OCTAVE,
+  COH_REST,
+  COH_ROWS,
+  COH_STRIDE,
   MAX_PARTIALS,
   MIP_BASE_HZ,
   MIP_COUNT,
@@ -139,15 +144,20 @@ const SALT_VJ_DEPTH = 0xde97;
 const SALT_NOISE = 0x4e01;
 
 /**
- * M6 synthesis (`synthExt`). FM sidebands of the top partial H·f must stay below FM_ALIAS_LIMIT ·
- * Nyquist: the index is capped so that H·f + (H·β + FM_SIDEBAND_MARGIN)·r·f fits (Carson's rule
- * with a margin of three sidebands; tests/dsp/m6.test.ts measures what folds over).
+ * M6 synthesis (`synthExt`). FM limits: the values of wavetable.ts's FM_* (which documents them),
+ * written out here: an imported or exported constant is a module cell, and in a phi with a double
+ * it boxes the double (synthExt allocated 1 MB/s). `fmLimits` lets a test check they match.
  */
 const FM_ALIAS_LIMIT = 0.9;
 const FM_SIDEBAND_MARGIN = 3;
-/** β tracking reads the octave above middle C clamped to this range. */
 const FM_TRACK_MIN_OCT = -2;
 const FM_TRACK_MAX_OCT = 4;
+
+/** The FM limits above, for tests/dsp/timbre-moment.test.ts. */
+export function fmLimits(): number[] {
+  return [FM_ALIAS_LIMIT, FM_SIDEBAND_MARGIN, FM_TRACK_MIN_OCT, FM_TRACK_MAX_OCT];
+}
+
 /** Additive partials fade out between these fractions of Nyquist and are skipped above. */
 const PARTIAL_FADE_START = 0.85;
 const PARTIAL_FADE_END = 0.95;
@@ -192,6 +202,9 @@ const VJ_RATE_WOBBLE = 0.08;
 const VJ_DEPTH_SPREAD = 0.25;
 const VJ_DEPTH_WOBBLE = 0.3;
 
+/** A hot swap crossfades when a slot's weight in the timbre mix moves by more than this. */
+const SWAP_MIX_TOLERANCE = 0.01;
+
 /** Crossfade modes. */
 const XF_NONE = 0;
 const XF_IN = 1;
@@ -200,6 +213,89 @@ const XF_OUT = 2;
 const EMPTY_F64 = new Float64Array(0);
 const EMPTY_U8 = new Uint8Array(0);
 const EMPTY_I32 = new Int32Array(0);
+
+/** Timbres a voice can sound at once (timbre moments overlapping their fades), and its tables. */
+const MAX_MIX = 4;
+/**
+ * Most a crossfade's gain law may raise or lower the roles (×2 = +6 dB: two timbres in
+ * anti-phase at half each). See `Voice.balanceRoles`.
+ */
+const BALANCE_MAX = 2;
+const BALANCE_MIN = 0.5;
+/** Shortest timbre fade the engine plays (seconds), as SEEK_FADE: shorter ones would click. */
+const MIN_TIMBRE_FADE = 0.005;
+/**
+ * Inputs of `timbreMix` (doubles never cross a call that might not be inlined): piece time in
+ * seconds, and the render frame for table-replacement fades (NaN: ignore them).
+ */
+const MIX_IN = new Float64Array(2);
+
+/**
+ * The timbre mix at MIX_IN[0] (PLAN.md §6.2 `timbre`, §7.9): timeline entry j fades in over its
+ * fade on top of everything before it, so its weight is x_j · Π_{k>j} (1 − x_k), x_j the entry's
+ * linear progress. A change that arrives mid-fade therefore starts from the mix sounding then (the
+ * earlier fade carries on underneath and is faded out with it), and the mix is a pure function of
+ * time, so a seek or a birth mid-fade starts on it. Entries of one slot add up; past MAX_MIX
+ * distinct slots the rest goes to the oldest kept (only with five timbres overlapping). Changes
+ * after t = 0 fade over at least MIN_TIMBRE_FADE.
+ *
+ * A slot without tables (not yet arrived), or the part of a table-replacement fade that has no
+ * old tables, passes its weight on to the entries before it, so a missing timbre keeps the one
+ * before it sounding instead of going silent. `ti` is the entry in force; writes up to MAX_MIX
+ * slots (newest first) with the weights of their current and old tables; returns how many.
+ * Allocation-free.
+ */
+function timbreMix(
+  d: VoiceData,
+  slots: readonly TimbreSlot[],
+  ti: number,
+  slot: Int32Array,
+  wNew: Float64Array,
+  wPrev: Float64Array,
+): number {
+  const t = MIX_IN[0];
+  const rf = MIX_IN[1];
+  const T = d.timbres;
+  let rem = 1;
+  let n = 0;
+  for (let j = ti; j >= 0 && rem > 0; j--) {
+    const s = d.timbreSlot[j];
+    if (s < 0 || s >= slots.length) continue;
+    const S = slots[s];
+    const o = j * TIMBRE_STRIDE;
+    let fade = T[o + TIMBRE_FADE];
+    // A change after the start never switches outright (fade 0 would click).
+    if (fade < MIN_TIMBRE_FADE && T[o + TIMBRE_T] > 0) fade = MIN_TIMBRE_FADE;
+    let x = 1;
+    if (fade > 0) {
+      x = (t - T[o + TIMBRE_T]) / fade;
+      if (x > 1) x = 1;
+      else if (!(x > 0)) continue;
+    }
+    let sw = 1;
+    if (rf === rf && S.fadeLen > 0) {
+      const u = (rf - S.fadeStart) / S.fadeLen;
+      sw = u >= 1 ? 1 : u <= 0 ? 0 : u;
+    }
+    const gn = S.data !== null ? rem * x * sw : 0;
+    const gp = S.prevData !== null && sw < 1 ? rem * x * (1 - sw) : 0;
+    if (!(gn > 0) && !(gp > 0)) continue;
+    let q = 0;
+    while (q < n && slot[q] !== s) q++;
+    if (q === n) {
+      if (n < MAX_MIX) {
+        slot[n] = s;
+        wNew[n] = 0;
+        wPrev[n] = 0;
+        n++;
+      } else q = n - 1;
+    }
+    wNew[q] += gn;
+    wPrev[q] += gp;
+    rem -= gn + gp;
+  }
+  return n;
+}
 
 /** Index of the last record whose `field` is ≤ t, or −1. Binary search; allocation-free. */
 export function lastAtOrBefore(
@@ -297,10 +393,14 @@ export class VoiceData {
   sendDelay = NaN;
   hash = 0;
 
-  /** Results of `probe()`. */
+  /** Results of `probe()` (life weight, pitch) and `probeMix()` (loudest slot, −1: none; mix). */
   probeLife = 0;
   probePitch = NaN;
   probeSlot = -1;
+  probeMixN = 0;
+  readonly probeMixSlot = new Int32Array(MAX_MIX);
+  readonly probeMixW = new Float64Array(MAX_MIX);
+  private readonly probeMixPrev = new Float64Array(MAX_MIX);
 
   /** Builds data for pool voice `index` of a flat score; `slotOf` maps timbreNames indices. */
   static fromFlat(
@@ -397,9 +497,9 @@ export class VoiceData {
   }
 
   /**
-   * Evaluates life weight, pitch and timbre slot at `frame` / `sampleRate` seconds into
-   * probeLife, probePitch and probeSlot. Pure apart from those fields; integer arguments only,
-   * so calling it from the audio thread boxes nothing once it is optimised.
+   * Evaluates life weight and pitch at `frame` / `sampleRate` seconds into probeLife and
+   * probePitch; `probeMix` then adds the timbre mix. Pure apart from those fields; integer
+   * arguments only, so calling it from the audio thread boxes nothing once it is optimised.
    *
    * The life weight, evalFlatSegment and warpOffset are written out (same arithmetic; tests/dsp/
    * probe.test.ts): with their frames, TurboFan's 920-byte inlining budget could not also hold
@@ -467,13 +567,49 @@ export class VoiceData {
       }
       this.probePitch = p + wIn + wOut;
     }
-    if (this.nTimbre === 0) this.probeSlot = -1;
-    else {
-      const ti = lastAtOrBefore(this.timbres, this.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t);
-      this.probeSlot = this.timbreSlot[ti < 0 ? 0 : ti];
+    MIX_IN[0] = t; // for probeMix
+  }
+
+  /**
+   * The timbre mix at the time of the last `probe` into probeSlot (the loudest slot, −1: none)
+   * and probeMix*; without `slots` the entry in force at full weight. A separate call, not part
+   * of probe: inlined there it took the inlining budget segmentPitch needs (build log, "No-GC
+   * lock flake").
+   */
+  probeMix(slots: readonly TimbreSlot[] = NO_SLOTS): void {
+    const t = MIX_IN[0];
+    this.probeSlot = -1;
+    this.probeMixN = 0;
+    if (this.nTimbre === 0) return;
+    const ti = lastAtOrBefore(this.timbres, this.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t);
+    const at = ti < 0 ? 0 : ti;
+    if (slots.length === 0) {
+      // No slots to ask: the entry in force, at full weight.
+      const s = this.timbreSlot[at];
+      if (s >= 0) {
+        this.probeSlot = s;
+        this.probeMixN = 1;
+        this.probeMixSlot[0] = s;
+        this.probeMixW[0] = 1;
+      }
+      return;
+    }
+    MIX_IN[1] = NaN;
+    const W = this.probeMixW;
+    const n = timbreMix(this, slots, at, this.probeMixSlot, W, this.probeMixPrev);
+    this.probeMixN = n;
+    let best = 0;
+    for (let q = 0; q < n; q++) {
+      W[q] += this.probeMixPrev[q];
+      if (W[q] > best) {
+        best = W[q];
+        this.probeSlot = this.probeMixSlot[q];
+      }
     }
   }
 }
+
+const NO_SLOTS: readonly TimbreSlot[] = [];
 
 /** Shared empty data for voices beyond the pool size. Never mutated. */
 export const EMPTY_VOICE_DATA = new VoiceData();
@@ -775,6 +911,8 @@ export class VoiceContext {
   readonly mixBuf = new Float64Array(CONTROL_PERIOD);
   /** Scratch for FM: the modulator's phase offset per frame, in cycles. */
   readonly modBuf = new Float64Array(CONTROL_PERIOD);
+  /** Scratch for the crossfade gain law: each role's coherence row at its mip position. */
+  readonly cohBuf = new Float64Array(4 * COH_STRIDE);
 
   /**
    * 1: the unison lock is on (always, in the app). 0 turns it off for every voice: only the tests'
@@ -821,6 +959,22 @@ export class VoiceContext {
   readonly gSnapPh = new Float64Array(DSP_MAX_VOICES).fill(NaN);
   readonly gSnapInc = new Float64Array(DSP_MAX_VOICES);
   readonly gSnapLfo = new Float64Array(DSP_MAX_VOICES);
+  /**
+   * What each voice sounds (`Voice.publishTimbre`, on demand), for the group gain h when locked
+   * voices play different timbres: its one table (null when it mixes several); its
+   * phase-locked harmonics, noise level and power (COH_STRIDE: bins, COH_NOISE, then the power at
+   * COH_REST); and per role the table, weight and free-running power.
+   */
+  readonly gTab: (Float32Array | null)[] = new Array<Float32Array | null>(DSP_MAX_VOICES).fill(
+    null,
+  );
+  readonly gCohOk = new Uint8Array(DSP_MAX_VOICES);
+  readonly gCoh = new Float64Array(DSP_MAX_VOICES * COH_STRIDE);
+  readonly gRoleTab: (Float32Array | null)[] = new Array<Float32Array | null>(
+    DSP_MAX_VOICES * 4,
+  ).fill(null);
+  readonly gRoleG = new Float64Array(DSP_MAX_VOICES * 4);
+  readonly gRoleRest = new Float64Array(DSP_MAX_VOICES * 4);
 
   constructor(sampleRate: number, slots: TimbreSlot[]) {
     this.slots = slots;
@@ -886,7 +1040,25 @@ const S_LOCKABLE = 45;
 const S_THETA = 46;
 /** 1 while a unison warp zone is active (last tick), for the group pass's capture. */
 const S_WARP = 47;
-const STATE_SIZE = 48;
+/** Piece time of the current tick (passed to `timbreStage` without a double argument). */
+const S_T = 48;
+const STATE_SIZE = 49;
+
+/** The current tick's timbre parameters, blended over the timbre mix (`Voice.tp`). */
+const TP_DETUNE = 0;
+const TP_ACCENT = 1;
+const TP_ART_AMOUNT = 2;
+const TP_ART_ATTACK = 3;
+const TP_ART_CRISP = 4;
+const TP_ART_DECAY = 5;
+const TP_VIB_RATE = 6;
+const TP_VIB_DEPTH = 7;
+const TP_VIB_DELAY = 8;
+const TP_VIB_JITTER = 9;
+const TP_DRIFT_CENTS = 10;
+const TP_DRIFT_RATE = 11;
+const TP_DRIFT_AMP = 12;
+const TP_SIZE = 13;
 
 /**
  * One synthesis voice (or ghost).
@@ -938,8 +1110,15 @@ export class Voice {
   private timbreCur = 0;
   private pulseCur = -1;
   private strikeCur = -1;
-  /** Timbre slot at the last tick. */
-  private curSlot = -1;
+  /** Timbre mix at the last tick (`timbreMix`): slots, newest first, and their table weights. */
+  private mixN = 0;
+  private readonly mixSlot = new Int32Array(MAX_MIX);
+  private readonly mixNew = new Float64Array(MAX_MIX);
+  private readonly mixPrev = new Float64Array(MAX_MIX);
+  /** Timbre parameters blended over the mix (TP_*); for one slot, which and its version. */
+  private readonly tp = new Float64Array(TP_SIZE);
+  private tpSlot = -1;
+  private tpVersion = -1;
   /** Re-initialise smoothers and interpolation at the next tick. */
   private fresh = true;
 
@@ -949,6 +1128,8 @@ export class Voice {
   private readonly roleG0 = new Float64Array(4);
   private readonly roleG1 = new Float64Array(4);
   private readonly roleClaim = new Uint8Array(4);
+  /** Each role's coherence rows (WavetableSet.coherence), for `balanceRoles`. */
+  private readonly roleCoh: (Float64Array | null)[] = [null, null, null, null];
   /** Each role's mip spacing, and its mip index and crossfade weight at the last tick. */
   private readonly roleMpo = new Int32Array([1, 1, 1, 1]);
   private readonly roleMip = new Int32Array(4);
@@ -1021,6 +1202,21 @@ export class Voice {
     return this.st[S_DET_SIGN] * Math.max(m, DETUNE_FLOOR);
   }
 
+  /** Weight of timbre slot `slot` in the mix at the last tick (tests; 0 when silent). */
+  timbreWeight(slot: number): number {
+    if (this.fresh) return 0;
+    let w = 0;
+    for (let q = 0; q < this.mixN; q++)
+      if (this.mixSlot[q] === slot) w += this.mixNew[q] + this.mixPrev[q];
+    return w;
+  }
+
+  /** Sum of the role weights at the last tick, after the crossfade gain law (tests). */
+  get roleGain(): number {
+    const G = this.roleG1;
+    return G[0] + G[1] + G[2] + G[3];
+  }
+
   /** Unison lock amount λ (0..1) in effect for the last block (tests). */
   get lockAmount(): number {
     return this.st[S_LAM];
@@ -1068,6 +1264,7 @@ export class Voice {
     this.timbreCur = Math.max(0, lastAtOrBefore(d.timbres, d.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
     this.pulseCur = lastAtOrBefore(d.pulses, d.nPulse, PULSE_STRIDE, PULSE_T, t);
     this.strikeCur = lastAtOrBefore(d.strikeT, d.nStrike, 1, 0, t);
+    this.tpSlot = -1;
     if (fresh) {
       this.fresh = true;
       this.st[S_PREV_AMP] = 0;
@@ -1116,13 +1313,35 @@ export class Voice {
     this.slewLen = Math.max(1, frames);
   }
 
-  /** Whether swapping to `nd` at piece frame `frame` needs a crossfade rather than a slew. */
-  swapNeedsCrossfade(nd: VoiceData, frame: number, sampleRate: number): boolean {
+  /**
+   * Whether swapping to `nd` at piece frame `frame` needs a crossfade rather than a slew: a
+   * different voice, life, pitch (by more than SWAP_CROSSFADE_SEMITONES) or timbre mix.
+   */
+  swapNeedsCrossfade(
+    nd: VoiceData,
+    frame: number,
+    sampleRate: number,
+    slots: readonly TimbreSlot[],
+  ): boolean {
     if (nd.hash !== this.data.hash) return true;
     nd.probe(frame, sampleRate);
+    nd.probeMix(slots);
     if (!(nd.probeLife > 0)) return true;
     if (!(Math.abs(nd.probePitch - this.st[S_PITCH]) <= SWAP_CROSSFADE_SEMITONES)) return true;
-    return nd.probeSlot !== this.curSlot;
+    // Same slots at (nearly) the same weights, in either direction.
+    for (let e = 0; e < 2; e++) {
+      const n = e === 0 ? nd.probeMixN : this.mixN;
+      for (let q = 0; q < n; q++) {
+        const s = e === 0 ? nd.probeMixSlot[q] : this.mixSlot[q];
+        let a = 0;
+        let b = 0;
+        for (let i = 0; i < nd.probeMixN; i++) if (nd.probeMixSlot[i] === s) a += nd.probeMixW[i];
+        for (let i = 0; i < this.mixN; i++)
+          if (this.mixSlot[i] === s) b += this.mixNew[i] + this.mixPrev[i];
+        if (!(Math.abs(a - b) <= SWAP_MIX_TOLERANCE)) return true;
+      }
+    }
+    return false;
   }
 
   /** Current crossfade gain (0..1). */
@@ -1207,7 +1426,13 @@ export class Voice {
     this.timbreCur = v.timbreCur;
     this.pulseCur = v.pulseCur;
     this.strikeCur = v.strikeCur;
-    this.curSlot = v.curSlot;
+    this.mixN = v.mixN;
+    this.mixSlot.set(v.mixSlot);
+    this.mixNew.set(v.mixNew);
+    this.mixPrev.set(v.mixPrev);
+    this.tp.set(v.tp);
+    this.tpSlot = v.tpSlot;
+    this.tpVersion = v.tpVersion;
     this.roleMpo.set(v.roleMpo);
     this.roleMip.set(v.roleMip);
     this.roleW.set(v.roleW);
@@ -1216,6 +1441,7 @@ export class Voice {
     for (let r = 0; r < 4; r++) {
       this.roleTab[r] = v.roleTab[r];
       this.roleSame[r] = v.roleSame[r];
+      this.roleCoh[r] = v.roleCoh[r];
     }
     this.roleG0.set(v.roleG0);
     this.roleG1.set(v.roleG1);
@@ -1244,7 +1470,6 @@ export class Voice {
     const st = this.st;
     const d = this.data;
     const inv = this.invRate;
-    const slots = ctx.slots;
     if (!this.isGhost) {
       // This block's unison-lock controls (see Graph.computeGroups). Ghosts keep the copies they
       // were spawned with, frozen.
@@ -1266,6 +1491,7 @@ export class Voice {
     }
     const lam = st[S_LAM];
     const free = 1 - lam;
+    const tp = this.tp;
     for (let k = 0; k < TICKS_PER_BLOCK; k++) {
       const frame = frame0 + (k + 1) * K;
       const t = frame * inv;
@@ -1304,450 +1530,384 @@ export class Voice {
       const lw = this.lifeTick[k + 1];
       st[S_WARP] = 0;
 
-      // Timbre timeline: crossfade from the previous entry's preset (slot A) to this one's (B).
-      // A muted voice keeps running silently, so it stays locked in its group and unmuting it
-      // changes nothing but its own level.
+      // Timbre: the mix of the timeline's entries at t (timbreMix), blended parameters in tp and
+      // the tables on roles (timbreStage). A muted voice keeps running silently, so it stays
+      // locked in its group and unmuting it changes nothing but its own level.
       let ok = lw > 0 && xf > 0 && d.nSeg > 0 && d.nTimbre > 0;
-      let slotA = -1;
-      let slotB = -1;
-      let x = 1;
+      let sources = 0;
       if (ok) {
-        const T = d.timbres;
-        let ti = this.timbreCur;
-        while (ti + 1 < d.nTimbre && T[(ti + 1) * TIMBRE_STRIDE + TIMBRE_T] <= t) ti++;
-        this.timbreCur = ti;
-        slotB = d.timbreSlot[ti];
-        slotA = ti > 0 ? d.timbreSlot[ti - 1] : slotB;
-        const fade = T[ti * TIMBRE_STRIDE + TIMBRE_FADE];
-        x = fade > 0 ? (t - T[ti * TIMBRE_STRIDE + TIMBRE_T]) / fade : 1;
-        if (x > 1) x = 1;
-        else if (x < 0) x = 0;
-        if (slotB < 0 || (slotA < 0 && x < 1)) ok = false;
-        else if (slotA < 0) slotA = slotB;
+        st[S_T] = t;
+        sources = this.timbreStage(ctx, k);
+        const G1 = this.roleG1;
+        ok = G1[0] > 0 || G1[1] > 0 || G1[2] > 0 || G1[3] > 0;
       }
 
       if (ok) {
-        const A = slots[slotA];
-        const B = slots[slotB];
-        const xa = 1 - x;
-        this.curSlot = slotB;
+        // Pitch and motion from the shared segment code (P1).
+        const s = d.segs;
+        let si = this.segCur;
+        while (si + 1 < d.nSeg && s[(si + 1) * SEG_STRIDE + SEG_T0] <= t) si++;
+        this.segCur = si;
+        const so = si * SEG_STRIDE;
+        const glide = d.segGlide[si] === 1;
+        let p = s[so + SEG_P0];
+        let motion = 0;
+        if (glide) {
+          // The raw leaf functions, called directly with the record's fields: the same code
+          // evalFlatSegment / evalFlatSegmentMotion run, without their wrapper frames.
+          const t0 = s[so + SEG_T0];
+          const t1 = s[so + SEG_T1];
+          const m0 = s[so + SEG_M0];
+          const ct1 = s[so + SEG_CURVE_T1];
+          const cp1 = s[so + SEG_CURVE_P1];
+          p = segmentPitch(
+            t0,
+            t1,
+            p,
+            s[so + SEG_P1],
+            s[so + SEG_EASE] as EaseCode,
+            s[so + SEG_BX1],
+            s[so + SEG_BY1],
+            s[so + SEG_BX2],
+            s[so + SEG_BY2],
+            m0,
+            t,
+            ct1,
+            cp1,
+          );
+          motion = segmentMotion(t0, t1, s[so + SEG_P0], m0, t, ct1, cp1);
+          // Unison warp (see warpOffset; written out here, not called: render's inlining
+          // budget). Faded by both voices' lockability (VoiceContext.lockable).
+          const wia = d.warpInA[si];
+          const woa = d.warpOutA[si];
+          if (wia === wia || woa === woa) {
+            let off = 0;
+            for (let e = 0; e < 2; e++) {
+              const a = e === 0 ? wia : woa;
+              const c = e === 0 ? d.warpInC[si] : d.warpOutC[si];
+              const xw = p - a;
+              const r = xw < 0 ? -xw : xw;
+              if (r < c) {
+                const r0 = c * WARP_CORE;
+                let u = (r - r0) / (c - r0);
+                if (u < 0) u = 0;
+                const lk = ctx.gLock[e === 0 ? d.warpInP[si] : d.warpOutP[si]];
+                off += xw * (u * u * (3 - 2 * u) - 1) * lk;
+                if (st[S_WARP] !== 1) st[S_WARP] = e === 0 ? 1 : 2;
+              }
+            }
+            p += off * ctx.lockable;
+          }
+        }
 
-        // Table sources: each slot's current tables, plus its old ones during a replacement fade.
+        // Vibrato: only while holding, after its onset delay.
+        const vibDepth = tp[TP_VIB_DEPTH];
+        let vibTarget = 0;
+        if (!glide && vibDepth > 0) {
+          const vibDelay = tp[TP_VIB_DELAY];
+          const u = (t - d.holdStart[si] - vibDelay) / VIBRATO_RAMP;
+          vibTarget = u <= 0 ? 0 : u >= 1 ? 1 : u;
+        }
         if (this.fresh) {
-          for (let r = 0; r < 4; r++) {
-            this.roleTab[r] = null;
-            this.roleSame[r] = null;
-            this.roleG0[r] = 0;
+          st[S_MOTION] = motion;
+          st[S_VIB] = vibTarget;
+          // Starting from silence inside a group: take the group's phase (and vibrato phase),
+          // advanced to this tick, so the lock holds from the first sample.
+          const sp = st[S_SNAP_PH];
+          if (sp === sp) {
+            let ph = sp + st[S_SNAP_INC] * (k * K);
+            ph -= Math.floor(ph);
+            st[S_THETA] += ph - st[S_PHASE];
+            st[S_PHASE] = ph;
+            st[S_LFO] = st[S_SNAP_LFO];
           }
+        } else {
+          st[S_MOTION] += (motion - st[S_MOTION]) * ctx.motionCoeff;
+          st[S_VIB] += (vibTarget - st[S_VIB]) * ctx.vibratoCoeff;
         }
-        const G1 = this.roleG1;
-        const G0 = this.roleG0;
-        const claim = this.roleClaim;
-        const R = this.roleTab;
-        G1.fill(0);
-        claim.fill(0);
-        const renderFrame = ctx.renderFrame0 + (k + 1) * K;
-        for (let src = 0; src < 4; src++) {
-          const slot = src < 2 ? B : A;
-          if (src >= 2 && A === B) break;
-          const weight = A === B ? 1 : src < 2 ? x : xa;
-          let sw = 1;
-          if (slot.fadeLen > 0) {
-            const u = (renderFrame - slot.fadeStart) / slot.fadeLen;
-            sw = u >= 1 ? 1 : u <= 0 ? 0 : u;
+        // Drift and vibrato jitter: slow seeded noise per voice.
+        let vibRate = tp[TP_VIB_RATE];
+        let vibDepthNow = vibDepth;
+        let driftCents = 0;
+        let driftGain = 1;
+        const jitter = tp[TP_VIB_JITTER];
+        const driftDepth = tp[TP_DRIFT_CENTS];
+        const driftAmp = tp[TP_DRIFT_AMP];
+        if (jitter > 0 || driftDepth > 0 || driftAmp > 0) {
+          const dr = tp[TP_DRIFT_RATE];
+          st[S_NOISE_RATE] = dr > 0 ? dr : DEFAULT_WANDER_RATE;
+          // The noise streams, written out here rather than as a method: render's TurboFan
+          // inlining budget (920 bytecode bytes) cannot hold a noise method plus segmentPitch
+          // and segmentMotion, and whichever is left out then boxes doubles at every call (a
+          // scavenge every few seconds). Advance the noise phase to `frame` (re-derived from
+          // the piece time when fresh, so a seek lands where playing through would) and
+          // evaluate the five streams into st[S_NOISE_0 + j].
+          const nRate = st[S_NOISE_RATE];
+          if (this.fresh) st[S_NOISE_PH] = t * nRate;
+          else st[S_NOISE_PH] += nRate * K * inv;
+          const nPh = st[S_NOISE_PH];
+          const kn = this.knots;
+          for (let j = 0; j < 5; j++) {
+            const y = nPh * NOISE_SCALE[j] + NOISE_OFFSET[j];
+            const fi = Math.floor(y);
+            const f = y - fi;
+            const i = fi | 0;
+            const p0 = kn[(i - 1) & KNOT_MASK];
+            const p1 = kn[i & KNOT_MASK];
+            const p2 = kn[(i + 1) & KNOT_MASK];
+            const p3 = kn[(i + 2) & KNOT_MASK];
+            // Catmull-Rom through the knots: smooth (C¹) and passes through every knot.
+            st[S_NOISE_0 + j] =
+              p1 +
+              0.5 *
+                f *
+                (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
           }
-          const useNew = (src & 1) === 0;
-          const tab = useNew ? slot.data : sw < 1 ? slot.prevData : null;
-          const g = weight * (useNew ? sw : 1 - sw);
-          if (tab === null || !(g > 0)) continue;
-          let role = -1;
-          for (let r = 0; r < 4 && role < 0; r++) if (R[r] === tab) role = r;
-          if (role >= 0) G1[role] += g;
-          else {
-            let bestG = Infinity;
-            for (let r = 0; r < 4; r++) {
-              if (claim[r] === 0 && G0[r] < bestG) {
-                role = r;
-                bestG = G0[r];
-              }
-            }
-            if (role < 0) continue;
-            R[role] = tab;
-            this.roleSame[role] = useNew ? slot.same : slot.prevSame;
-            this.roleMpo[role] = useNew ? slot.mipsPerOctave : slot.prevMipsPerOctave;
-            G0[role] = 0;
-            G1[role] = g;
-          }
-          claim[role] = 1;
+          // Within a unison group (λ) level drift and vibrato jitter fade out, so the group stays
+          // one steady tone (pitch drift and detune are averaged across the group instead).
+          driftCents = driftDepth * (0.75 * st[S_NOISE_0] + 0.35 * st[S_NOISE_0 + 1]);
+          driftGain = 1 + free * driftAmp * st[S_NOISE_0 + 4];
+          const jf = jitter * free;
+          vibRate *=
+            1 + jf * (VJ_RATE_SPREAD * st[S_VJ_RATE_U] + VJ_RATE_WOBBLE * st[S_NOISE_0 + 2]);
+          const df =
+            1 + jf * (VJ_DEPTH_SPREAD * st[S_VJ_DEPTH_U] + VJ_DEPTH_WOBBLE * st[S_NOISE_0 + 3]);
+          vibDepthNow *= df > 0 ? df : 0;
         }
-        ok = G1[0] > 0 || G1[1] > 0 || G1[2] > 0 || G1[3] > 0;
+        // The group pulls vibrato phases together, so a locked group keeps its full vibrato.
+        vibRate = Math.max(0, vibRate + st[S_DLFO]);
 
-        if (ok) {
-          // Pitch and motion from the shared segment code (P1).
-          const s = d.segs;
-          let si = this.segCur;
-          while (si + 1 < d.nSeg && s[(si + 1) * SEG_STRIDE + SEG_T0] <= t) si++;
-          this.segCur = si;
-          const so = si * SEG_STRIDE;
-          const glide = d.segGlide[si] === 1;
-          let p = s[so + SEG_P0];
-          let motion = 0;
-          if (glide) {
-            // The raw leaf functions, called directly with the record's fields: the same code
-            // evalFlatSegment / evalFlatSegmentMotion run, without their wrapper frames.
-            const t0 = s[so + SEG_T0];
-            const t1 = s[so + SEG_T1];
-            const m0 = s[so + SEG_M0];
-            const ct1 = s[so + SEG_CURVE_T1];
-            const cp1 = s[so + SEG_CURVE_P1];
-            p = segmentPitch(
-              t0,
-              t1,
-              p,
-              s[so + SEG_P1],
-              s[so + SEG_EASE] as EaseCode,
-              s[so + SEG_BX1],
-              s[so + SEG_BY1],
-              s[so + SEG_BX2],
-              s[so + SEG_BY2],
-              m0,
-              t,
-              ct1,
-              cp1,
-            );
-            motion = segmentMotion(t0, t1, s[so + SEG_P0], m0, t, ct1, cp1);
-            // Unison warp (see warpOffset; written out here, not called: render's inlining
-            // budget). Faded by both voices' lockability (VoiceContext.lockable).
-            const wia = d.warpInA[si];
-            const woa = d.warpOutA[si];
-            if (wia === wia || woa === woa) {
-              let off = 0;
-              for (let e = 0; e < 2; e++) {
-                const a = e === 0 ? wia : woa;
-                const c = e === 0 ? d.warpInC[si] : d.warpOutC[si];
-                const xw = p - a;
-                const r = xw < 0 ? -xw : xw;
-                if (r < c) {
-                  const r0 = c * WARP_CORE;
-                  let u = (r - r0) / (c - r0);
-                  if (u < 0) u = 0;
-                  const lk = ctx.gLock[e === 0 ? d.warpInP[si] : d.warpOutP[si]];
-                  off += xw * (u * u * (3 - 2 * u) - 1) * lk;
-                  if (st[S_WARP] !== 1) st[S_WARP] = e === 0 ? 1 : 2;
-                }
+        let vibCents = 0;
+        if (st[S_VIB] > 1e-6) {
+          let lfo = st[S_LFO] + vibRate * ctx.tickSeconds;
+          lfo -= Math.floor(lfo);
+          st[S_LFO] = lfo;
+          const pos = lfo * SINE_TABLE_SIZE;
+          const i0 = pos | 0;
+          const a = SINE[i0];
+          vibCents = vibDepthNow * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
+        }
+
+        // Articulation (build log, "Arrival bloom"): a smootherstep attack from the still-decaying
+        // envelope up to the strike's height h, then exponential decay to 1 %. The attack is at
+        // least MIN_ARTICULATION_ATTACK, and BLOOM_ATTACK·√amount unless crisp (timbreParams). A
+        // soft strike rises to its share of coincident arrivals, a crisp one always to 1. The
+        // held level 1 − amount does not depend on h. Strikes are the arrivals plus pulse hits
+        // (VoiceData.strikeT).
+        let artic = 1;
+        const amount = tp[TP_ART_AMOUNT];
+        const crisp = tp[TP_ART_CRISP];
+        if (amount > 0) {
+          const attack = tp[TP_ART_ATTACK];
+          const decay = tp[TP_ART_DECAY];
+          let sj = this.strikeCur;
+          while (sj + 1 < d.nStrike && d.strikeT[sj + 1] <= t) sj++;
+          this.strikeCur = sj;
+          let env = 0;
+          if (sj >= 0) {
+            const ta = t - d.strikeT[sj];
+            const sh = d.strikeShare[sj];
+            const h = sh + (1 - sh) * crisp;
+            const pa = d.strikePrevT[sj];
+            const tp = d.strikeT[sj] - pa;
+            const v = tp / attack;
+            const rising = ta < attack;
+            // The decay tail e^(−DECAY·(τ − attack)/decay) is read at most once per tick: at
+            // τ = ta after the attack, or during it at the previous strike's age τ = tp.
+            let tail = 0;
+            if (!rising || (pa === pa && v >= 1)) {
+              const y = ((-((rising ? tp : ta) - attack) * ARTICULATION_DECAY) / decay) * LOG2E;
+              if (y >= -1022) {
+                // e = 2^y: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+                const eN = Math.floor(y);
+                const eZ = (y - eN) * EXP_LN2;
+                let eA = EXP_C[13];
+                for (let q = 12; q >= 0; q--) eA = eA * eZ + EXP_C[q];
+                BITS.setUint32(0, (eN + 1023) << 20);
+                BITS.setUint32(4, 0);
+                tail = eA * BITS.getFloat64(0);
               }
-              p += off * ctx.lockable;
             }
-          }
-
-          // Vibrato: only while holding, after its onset delay.
-          const vibDepth = A.vibDepthCents * xa + B.vibDepthCents * x;
-          let vibTarget = 0;
-          if (!glide && vibDepth > 0) {
-            const vibDelay = A.vibDelay * xa + B.vibDelay * x;
-            const u = (t - d.holdStart[si] - vibDelay) / VIBRATO_RAMP;
-            vibTarget = u <= 0 ? 0 : u >= 1 ? 1 : u;
-          }
-          if (this.fresh) {
-            st[S_MOTION] = motion;
-            st[S_VIB] = vibTarget;
-            // Starting from silence inside a group: take the group's phase (and vibrato phase),
-            // advanced to this tick, so the lock holds from the first sample.
-            const sp = st[S_SNAP_PH];
-            if (sp === sp) {
-              let ph = sp + st[S_SNAP_INC] * (k * K);
-              ph -= Math.floor(ph);
-              st[S_THETA] += ph - st[S_PHASE];
-              st[S_PHASE] = ph;
-              st[S_LFO] = st[S_SNAP_LFO];
-            }
-          } else {
-            st[S_MOTION] += (motion - st[S_MOTION]) * ctx.motionCoeff;
-            st[S_VIB] += (vibTarget - st[S_VIB]) * ctx.vibratoCoeff;
-          }
-          // Drift and vibrato jitter: slow seeded noise per voice.
-          let vibRate = A.vibRate * xa + B.vibRate * x;
-          let vibDepthNow = vibDepth;
-          let driftCents = 0;
-          let driftGain = 1;
-          const jitter = A.vibJitter * xa + B.vibJitter * x;
-          const driftDepth = A.driftCents * xa + B.driftCents * x;
-          const driftAmp = A.driftAmp * xa + B.driftAmp * x;
-          if (jitter > 0 || driftDepth > 0 || driftAmp > 0) {
-            const dr = A.driftRate * xa + B.driftRate * x;
-            st[S_NOISE_RATE] = dr > 0 ? dr : DEFAULT_WANDER_RATE;
-            // The noise streams, written out here rather than as a method: render's TurboFan
-            // inlining budget (920 bytecode bytes) cannot hold a noise method plus segmentPitch
-            // and segmentMotion, and whichever is left out then boxes doubles at every call (a
-            // scavenge every few seconds). Advance the noise phase to `frame` (re-derived from
-            // the piece time when fresh, so a seek lands where playing through would) and
-            // evaluate the five streams into st[S_NOISE_0 + j].
-            const nRate = st[S_NOISE_RATE];
-            if (this.fresh) st[S_NOISE_PH] = t * nRate;
-            else st[S_NOISE_PH] += nRate * K * inv;
-            const nPh = st[S_NOISE_PH];
-            const kn = this.knots;
-            for (let j = 0; j < 5; j++) {
-              const y = nPh * NOISE_SCALE[j] + NOISE_OFFSET[j];
-              const fi = Math.floor(y);
-              const f = y - fi;
-              const i = fi | 0;
-              const p0 = kn[(i - 1) & KNOT_MASK];
-              const p1 = kn[i & KNOT_MASK];
-              const p2 = kn[(i + 1) & KNOT_MASK];
-              const p3 = kn[(i + 2) & KNOT_MASK];
-              // Catmull-Rom through the knots: smooth (C¹) and passes through every knot.
-              st[S_NOISE_0 + j] =
-                p1 +
-                0.5 *
-                  f *
-                  (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0)));
-            }
-            // Within a unison group (λ) level drift and vibrato jitter fade out, so the group stays
-            // one steady tone (pitch drift and detune are averaged across the group instead).
-            driftCents = driftDepth * (0.75 * st[S_NOISE_0] + 0.35 * st[S_NOISE_0 + 1]);
-            driftGain = 1 + free * driftAmp * st[S_NOISE_0 + 4];
-            const jf = jitter * free;
-            vibRate *=
-              1 + jf * (VJ_RATE_SPREAD * st[S_VJ_RATE_U] + VJ_RATE_WOBBLE * st[S_NOISE_0 + 2]);
-            const df =
-              1 + jf * (VJ_DEPTH_SPREAD * st[S_VJ_DEPTH_U] + VJ_DEPTH_WOBBLE * st[S_NOISE_0 + 3]);
-            vibDepthNow *= df > 0 ? df : 0;
-          }
-          // The group pulls vibrato phases together, so a locked group keeps its full vibrato.
-          vibRate = Math.max(0, vibRate + st[S_DLFO]);
-
-          let vibCents = 0;
-          if (st[S_VIB] > 1e-6) {
-            let lfo = st[S_LFO] + vibRate * ctx.tickSeconds;
-            lfo -= Math.floor(lfo);
-            st[S_LFO] = lfo;
-            const pos = lfo * SINE_TABLE_SIZE;
-            const i0 = pos | 0;
-            const a = SINE[i0];
-            vibCents = vibDepthNow * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
-          }
-
-          // Articulation (build log, "Arrival bloom"): a smootherstep attack from the still-decaying
-          // envelope up to the strike's height h, then exponential decay to 1 %. The attack is at
-          // least MIN_ARTICULATION_ATTACK, and BLOOM_ATTACK·√amount unless crisp (timbreParams). A
-          // soft strike rises to its share of coincident arrivals, a crisp one always to 1. The
-          // held level 1 − amount does not depend on h. Strikes are the arrivals plus pulse hits
-          // (VoiceData.strikeT).
-          let artic = 1;
-          const amount = A.artAmount * xa + B.artAmount * x;
-          const crisp = A.artCrisp * xa + B.artCrisp * x;
-          if (amount > 0) {
-            const attack = A.artAttack * xa + B.artAttack * x;
-            const decay = A.artDecay * xa + B.artDecay * x;
-            let sj = this.strikeCur;
-            while (sj + 1 < d.nStrike && d.strikeT[sj + 1] <= t) sj++;
-            this.strikeCur = sj;
-            let env = 0;
-            if (sj >= 0) {
-              const ta = t - d.strikeT[sj];
-              const sh = d.strikeShare[sj];
-              const h = sh + (1 - sh) * crisp;
-              const pa = d.strikePrevT[sj];
-              const tp = d.strikeT[sj] - pa;
-              const v = tp / attack;
-              const rising = ta < attack;
-              // The decay tail e^(−DECAY·(τ − attack)/decay) is read at most once per tick: at
-              // τ = ta after the attack, or during it at the previous strike's age τ = tp.
-              let tail = 0;
-              if (!rising || (pa === pa && v >= 1)) {
-                const y = ((-((rising ? tp : ta) - attack) * ARTICULATION_DECAY) / decay) * LOG2E;
-                if (y >= -1022) {
-                  // e = 2^y: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
-                  const eN = Math.floor(y);
-                  const eZ = (y - eN) * EXP_LN2;
-                  let eA = EXP_C[13];
-                  for (let q = 12; q >= 0; q--) eA = eA * eZ + EXP_C[q];
-                  BITS.setUint32(0, (eN + 1023) << 20);
-                  BITS.setUint32(4, 0);
-                  tail = eA * BITS.getFloat64(0);
-                }
+            if (rising) {
+              let e0 = 0;
+              if (pa === pa) {
+                const ps = d.strikePrevShare[sj];
+                e0 = (ps + (1 - ps) * crisp) * (v < 1 ? v * v * v * (v * (v * 6 - 15) + 10) : tail);
               }
-              if (rising) {
-                let e0 = 0;
-                if (pa === pa) {
-                  const ps = d.strikePrevShare[sj];
-                  e0 =
-                    (ps + (1 - ps) * crisp) * (v < 1 ? v * v * v * (v * (v * 6 - 15) + 10) : tail);
-                }
-                const u = ta / attack;
-                env = e0 + (h - e0) * u * u * u * (u * (u * 6 - 15) + 10);
-              } else env = h * tail;
-            }
-            artic = 1 - amount + amount * env;
+              const u = ta / attack;
+              env = e0 + (h - e0) * u * u * u * (u * (u * 6 - 15) + 10);
+            } else env = h * tail;
           }
+          artic = 1 - amount + amount * env;
+        }
 
-          // Level timeline.
-          const Lv = d.levels;
-          let li = this.levelCur;
-          while (li + 1 < d.nLevel && Lv[(li + 1) * LEVEL_STRIDE + LEVEL_T] <= t) li++;
-          this.levelCur = li;
-          let level = 1;
-          if (li >= 0) {
-            const lo = li * LEVEL_STRIDE;
-            const start = d.levelStart[li];
-            const over = Lv[lo + LEVEL_OVER];
-            const u = over > 0 ? (t - Lv[lo + LEVEL_T]) / over : 1;
-            level = u >= 1 ? Lv[lo + LEVEL_GAIN] : start + (Lv[lo + LEVEL_GAIN] - start) * u;
-          }
+        // Level timeline.
+        const Lv = d.levels;
+        let li = this.levelCur;
+        while (li + 1 < d.nLevel && Lv[(li + 1) * LEVEL_STRIDE + LEVEL_T] <= t) li++;
+        this.levelCur = li;
+        let level = 1;
+        if (li >= 0) {
+          const lo = li * LEVEL_STRIDE;
+          const start = d.levelStart[li];
+          const over = Lv[lo + LEVEL_OVER];
+          const u = over > 0 ? (t - Lv[lo + LEVEL_T]) / over : 1;
+          level = u >= 1 ? Lv[lo + LEVEL_GAIN] : start + (Lv[lo + LEVEL_GAIN] - start) * u;
+        }
 
-          // Pulse (revision 9; preparePulses): the record in force and the one its onset rises
-          // from, each by its compressed envelope, blended by a smootherstep over the onset
-          // attack. Written out, not called (render's inlining budget).
-          if (d.nPulse > 0) {
-            const P = d.pulses;
-            let pi = this.pulseCur;
-            while (pi + 1 < d.nPulse && P[(pi + 1) * PULSE_STRIDE + PULSE_T] <= t) pi++;
-            this.pulseCur = pi;
-            if (pi >= 0) {
-              let gNow = 1;
-              let gFrom = 1;
-              let u = 1;
-              for (let e = 0; e < 2; e++) {
-                const r = e === 0 ? pi : d.pulseFrom[pi];
-                if (r < 0 || (e === 1 && !(u < 1))) break;
-                const o = r * PULSE_STRIDE;
-                const soft = d.pulseSoft[r];
-                const att = soft + (d.pulseCrisp[r] - soft) * crisp;
-                const acc = P[o + PULSE_ACCENT];
-                const fl = P[o + PULSE_FLOOR];
-                const dec = P[o + PULSE_DECAY];
-                const dt = t - P[o + PULSE_T];
-                let g = acc * fl;
-                if (dec > 0) {
-                  if (dt < att) g = acc;
-                  else {
-                    const v = (dt - att) / (dec - att);
-                    if (v < 1) {
-                      const w = 1 - v;
-                      g = acc * (fl + (1 - fl) * w * w * w);
-                    }
+        // Pulse (revision 9; preparePulses): the record in force and the one its onset rises
+        // from, each by its compressed envelope, blended by a smootherstep over the onset
+        // attack. Written out, not called (render's inlining budget).
+        if (d.nPulse > 0) {
+          const P = d.pulses;
+          let pi = this.pulseCur;
+          while (pi + 1 < d.nPulse && P[(pi + 1) * PULSE_STRIDE + PULSE_T] <= t) pi++;
+          this.pulseCur = pi;
+          if (pi >= 0) {
+            let gNow = 1;
+            let gFrom = 1;
+            let u = 1;
+            for (let e = 0; e < 2; e++) {
+              const r = e === 0 ? pi : d.pulseFrom[pi];
+              if (r < 0 || (e === 1 && !(u < 1))) break;
+              const o = r * PULSE_STRIDE;
+              const soft = d.pulseSoft[r];
+              const att = soft + (d.pulseCrisp[r] - soft) * crisp;
+              const acc = P[o + PULSE_ACCENT];
+              const fl = P[o + PULSE_FLOOR];
+              const dec = P[o + PULSE_DECAY];
+              const dt = t - P[o + PULSE_T];
+              let g = acc * fl;
+              if (dec > 0) {
+                if (dt < att) g = acc;
+                else {
+                  const v = (dt - att) / (dec - att);
+                  if (v < 1) {
+                    const w = 1 - v;
+                    g = acc * (fl + (1 - fl) * w * w * w);
                   }
                 }
-                if (e === 0) {
-                  gNow = g;
-                  if (dt < att) u = dt / att;
-                } else gFrom = g;
               }
-              level *= u < 1 ? gFrom + (gNow - gFrom) * u * u * u * (u * (u * 6 - 15) + 10) : gNow;
+              if (e === 0) {
+                gNow = g;
+                if (dt < att) u = dt / att;
+              } else gFrom = g;
             }
+            level *= u < 1 ? gFrom + (gNow - gFrom) * u * u * u * (u * (u * 6 - 15) + 10) : gNow;
           }
-
-          // Swap slew: blend from the frozen pre-swap pitch.
-          const sp = st[S_SLEW_PITCH];
-          if (slewR > 0 && sp === sp) p += (sp - p) * slewR;
-          st[S_PITCH] = p;
-
-          // Detune (§8.4).
-          st[S_LOCKABLE] = ctx.lockable;
-          const spread = A.detuneSpread * xa + B.detuneSpread * x;
-          const mag = st[S_DET_MAG] + spread * st[S_DET_U];
-          const detune = st[S_DET_SIGN] * Math.max(mag, DETUNE_FLOOR);
-
-          // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
-          // Within a group, the correction moves the voice to the group's (stillness-weighted)
-          // mean modulated pitch, so its detune and drift merge into the group's.
-          const own = detune + driftCents + vibCents;
-          st[S_MOD] = p * 100 + own;
-          const oct = ctx.refOct + (p - 69) / 12 + (own + st[S_CORR]) / 1200;
-          if (oct === oct && oct < 40 && oct > -40) {
-            // o = 2^oct: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
-            const oN = Math.floor(oct);
-            const oZ = (oct - oN) * EXP_LN2;
-            let oA = EXP_C[13];
-            for (let q = 12; q >= 0; q--) oA = oA * oZ + EXP_C[q];
-            BITS.setUint32(0, (oN + 1023) << 20);
-            BITS.setUint32(4, 0);
-            let inc = MIP_BASE_HZ * (oA * BITS.getFloat64(0)) * ctx.invSampleRate;
-            if (inc > 0.5) inc = 0.5;
-            st[S_OWN_INC] = inc;
-            // The group's phase pull, accumulated into θ.
-            inc += st[S_DINC];
-            st[S_THETA] += st[S_DINC] * K;
-            st[S_CUR_INC] = inc > 0.5 ? 0.5 : inc < 0 ? 0 : inc;
-            // Mip index and crossfade weight per role (formant timbres use finer mips).
-            for (let r = 0; r < 4; r++) {
-              const mpo = this.roleMpo[r];
-              const mpos = oct * mpo;
-              let m = Math.floor(mpos);
-              let w = mpos - m;
-              const last = (MIP_COUNT - 1) * mpo; // index of the top mip
-              if (m < 0) {
-                m = 0;
-                w = 0;
-              } else if (m >= last) {
-                m = last - 1;
-                w = 1;
-              }
-              this.roleMip[r] = m;
-              this.roleW[r] = w;
-            }
-
-            // Amplitude (§8.4).
-            const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
-            const accent = A.accent * xa + B.accent * x;
-            const ly = -(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE * LOG2E;
-            // l = 2^ly: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
-            const lN = Math.floor(ly);
-            const lZ = (ly - lN) * EXP_LN2;
-            let lA = EXP_C[13];
-            for (let q = 12; q >= 0; q--) lA = lA * lZ + EXP_C[q];
-            BITS.setUint32(0, (lN + 1023) << 20);
-            BITS.setUint32(4, 0);
-            const loud = lA * BITS.getFloat64(0);
-            const raw =
-              VOICE_BASE_GAIN *
-              d.gain *
-              lw *
-              level *
-              driftGain *
-              (1 + accent * st[S_MOTION]) *
-              artic *
-              loud;
-            st[S_RAW_AMP] = raw;
-            // Group gain h, interpolated across the block.
-            const h = st[S_H0] + ((st[S_H1] - st[S_H0]) * (k + 1)) / TICKS_PER_BLOCK;
-            let amp = raw * h * gn * st[S_MUTE] * xf;
-            if (slewR > 0) amp += (st[S_SLEW_AMP] - amp) * slewR;
-            st[S_CUR_AMP] = amp > 0 ? amp : 0;
-
-            // Equal-power pan: fixed, by pool index, or by pitch.
-            let pan = d.pan;
-            if (pan !== pan) {
-              if (ctx.panByPitch) {
-                pan = (p - 60) * PAN_PITCH_SLOPE;
-                if (pan > PAN_PITCH_MAX) pan = PAN_PITCH_MAX;
-                else if (pan < -PAN_PITCH_MAX) pan = -PAN_PITCH_MAX;
-              } else pan = st[S_PAN_INDEX];
-            }
-            if (pan > 1) pan = 1;
-            else if (pan < -1) pan = -1;
-            const ppos = (pan + 1) * 0.125 * SINE_TABLE_SIZE; // θ/2π with θ = (pan + 1)·π/4
-            const pi0 = ppos | 0;
-            const pfr = ppos - pi0;
-            const sa = SINE[pi0];
-            st[S_CUR_GR] = sa + (SINE[pi0 + 1] - sa) * pfr;
-            const cpos = ppos + SINE_TABLE_SIZE / 4;
-            const ci0 = cpos | 0;
-            const ca = SINE[ci0];
-            st[S_CUR_GL] = ca + (SINE[ci0 + 1] - ca) * (cpos - ci0);
-            st[S_SEND_REV] = d.sendReverb === d.sendReverb ? d.sendReverb : ctx.sendReverb;
-            st[S_SEND_DLY] = d.sendDelay === d.sendDelay ? d.sendDelay : ctx.sendDelay;
-
-            if (this.fresh || st[S_PREV_AMP] === 0) {
-              st[S_PREV_INC] = st[S_CUR_INC];
-              st[S_PREV_GL] = st[S_CUR_GL];
-              st[S_PREV_GR] = st[S_CUR_GR];
-              if (this.fresh) G0.set(G1);
-              this.fresh = false;
-            }
-          } else ok = false;
         }
+
+        // Swap slew: blend from the frozen pre-swap pitch.
+        const sp = st[S_SLEW_PITCH];
+        if (slewR > 0 && sp === sp) p += (sp - p) * slewR;
+        st[S_PITCH] = p;
+
+        // Detune (§8.4).
+        st[S_LOCKABLE] = ctx.lockable;
+        const spread = tp[TP_DETUNE];
+        const mag = st[S_DET_MAG] + spread * st[S_DET_U];
+        const detune = st[S_DET_SIGN] * Math.max(mag, DETUNE_FLOOR);
+
+        // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
+        // Within a group, the correction moves the voice to the group's (stillness-weighted)
+        // mean modulated pitch, so its detune and drift merge into the group's.
+        const own = detune + driftCents + vibCents;
+        st[S_MOD] = p * 100 + own;
+        const oct = ctx.refOct + (p - 69) / 12 + (own + st[S_CORR]) / 1200;
+        if (oct === oct && oct < 40 && oct > -40) {
+          // o = 2^oct: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+          const oN = Math.floor(oct);
+          const oZ = (oct - oN) * EXP_LN2;
+          let oA = EXP_C[13];
+          for (let q = 12; q >= 0; q--) oA = oA * oZ + EXP_C[q];
+          BITS.setUint32(0, (oN + 1023) << 20);
+          BITS.setUint32(4, 0);
+          let inc = MIP_BASE_HZ * (oA * BITS.getFloat64(0)) * ctx.invSampleRate;
+          if (inc > 0.5) inc = 0.5;
+          st[S_OWN_INC] = inc;
+          // The group's phase pull, accumulated into θ.
+          inc += st[S_DINC];
+          st[S_THETA] += st[S_DINC] * K;
+          st[S_CUR_INC] = inc > 0.5 ? 0.5 : inc < 0 ? 0 : inc;
+          // Mip index and crossfade weight per role (formant timbres use finer mips).
+          for (let r = 0; r < 4; r++) {
+            const mpo = this.roleMpo[r];
+            const mpos = oct * mpo;
+            let m = Math.floor(mpos);
+            let w = mpos - m;
+            const last = (MIP_COUNT - 1) * mpo; // index of the top mip
+            if (m < 0) {
+              m = 0;
+              w = 0;
+            } else if (m >= last) {
+              m = last - 1;
+              w = 1;
+            }
+            this.roleMip[r] = m;
+            this.roleW[r] = w;
+          }
+          // Crossfade gain law across timbres (balanceRoles), now that the mips are known.
+          if (sources > 1) this.balanceRoles(ctx);
+
+          // Amplitude (§8.4).
+          const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
+          const accent = tp[TP_ACCENT];
+          const ly = -(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE * LOG2E;
+          // l = 2^ly: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+          const lN = Math.floor(ly);
+          const lZ = (ly - lN) * EXP_LN2;
+          let lA = EXP_C[13];
+          for (let q = 12; q >= 0; q--) lA = lA * lZ + EXP_C[q];
+          BITS.setUint32(0, (lN + 1023) << 20);
+          BITS.setUint32(4, 0);
+          const loud = lA * BITS.getFloat64(0);
+          const raw =
+            VOICE_BASE_GAIN *
+            d.gain *
+            lw *
+            level *
+            driftGain *
+            (1 + accent * st[S_MOTION]) *
+            artic *
+            loud;
+          st[S_RAW_AMP] = raw;
+          // Group gain h, interpolated across the block.
+          const h = st[S_H0] + ((st[S_H1] - st[S_H0]) * (k + 1)) / TICKS_PER_BLOCK;
+          let amp = raw * h * gn * st[S_MUTE] * xf;
+          if (slewR > 0) amp += (st[S_SLEW_AMP] - amp) * slewR;
+          st[S_CUR_AMP] = amp > 0 ? amp : 0;
+
+          // Equal-power pan: fixed, by pool index, or by pitch.
+          let pan = d.pan;
+          if (pan !== pan) {
+            if (ctx.panByPitch) {
+              pan = (p - 60) * PAN_PITCH_SLOPE;
+              if (pan > PAN_PITCH_MAX) pan = PAN_PITCH_MAX;
+              else if (pan < -PAN_PITCH_MAX) pan = -PAN_PITCH_MAX;
+            } else pan = st[S_PAN_INDEX];
+          }
+          if (pan > 1) pan = 1;
+          else if (pan < -1) pan = -1;
+          const ppos = (pan + 1) * 0.125 * SINE_TABLE_SIZE; // θ/2π with θ = (pan + 1)·π/4
+          const pi0 = ppos | 0;
+          const pfr = ppos - pi0;
+          const sa = SINE[pi0];
+          st[S_CUR_GR] = sa + (SINE[pi0 + 1] - sa) * pfr;
+          const cpos = ppos + SINE_TABLE_SIZE / 4;
+          const ci0 = cpos | 0;
+          const ca = SINE[ci0];
+          st[S_CUR_GL] = ca + (SINE[ci0 + 1] - ca) * (cpos - ci0);
+          st[S_SEND_REV] = d.sendReverb === d.sendReverb ? d.sendReverb : ctx.sendReverb;
+          st[S_SEND_DLY] = d.sendDelay === d.sendDelay ? d.sendDelay : ctx.sendDelay;
+
+          if (this.fresh || st[S_PREV_AMP] === 0) {
+            st[S_PREV_INC] = st[S_CUR_INC];
+            st[S_PREV_GL] = st[S_CUR_GL];
+            st[S_PREV_GR] = st[S_CUR_GR];
+            if (this.fresh) this.roleG0.set(this.roleG1);
+            this.fresh = false;
+          }
+        } else ok = false;
       }
 
       if (!ok) {
@@ -1782,6 +1942,262 @@ export class Voice {
       st[S_THETA] = th;
       ctx.gTheta[gi] = th;
     }
+  }
+
+  /** The one table the voice sounded at its last tick, or null (several, or none). */
+  soleTable(): Float32Array | null {
+    const G1 = this.roleG1;
+    let only: Float32Array | null = null;
+    for (let r = 0; r < 4; r++) {
+      if (!(G1[r] > 0)) continue;
+      if (only !== null) return null;
+      only = this.roleTab[r];
+    }
+    return only;
+  }
+
+  /** Whether the voice's timbre timeline has changes (timbre moments). */
+  get changesTimbre(): boolean {
+    return this.data.nTimbre > 1;
+  }
+
+  /**
+   * Publishes what the voice sounded at its last tick (VoiceContext.gTab, gCohOk, gCoh, gRole*),
+   * from its roles' coherence rows at their mip positions and their (balanced) weights. Called by
+   * the group pass, only for groups whose members sound different timbres.
+   */
+  publishTimbre(ctx: VoiceContext): void {
+    const gi = this.index;
+    const G1 = this.roleG1;
+    const C = COH_STRIDE;
+    const o = gi * C;
+    const out = ctx.gCoh;
+    let n = 0;
+    let only: Float32Array | null = null;
+    let ok = this.fresh ? 0 : 1;
+    for (let i = 0; i < C; i++) out[o + i] = 0;
+    let rest = 0;
+    for (let r = 0; r < 4; r++) {
+      const g = G1[r];
+      const ro = gi * 4 + r;
+      ctx.gRoleTab[ro] = null;
+      ctx.gRoleG[ro] = 0;
+      ctx.gRoleRest[ro] = 0;
+      if (!(g > 0)) continue;
+      n++;
+      only = this.roleTab[r];
+      const coh = this.roleCoh[r];
+      if (coh === null) {
+        ok = 0;
+        continue;
+      }
+      // The role's row position: its mip position in octaves above MIP_BASE_HZ.
+      const pos = ((this.roleMip[r] + this.roleW[r]) / this.roleMpo[r]) * COH_PER_OCTAVE;
+      let row = Math.floor(pos);
+      if (row > COH_ROWS - 2) row = COH_ROWS - 2;
+      const w = pos - row;
+      const lo = row * C;
+      const hi = lo + C;
+      for (let i = 0; i <= COH_NOISE; i++) {
+        const a = coh[lo + i];
+        out[o + i] += g * (a + (coh[hi + i] - a) * w);
+      }
+      const a = coh[lo + COH_REST];
+      const rr = a + (coh[hi + COH_REST] - a) * w;
+      rest += g * g * rr;
+      ctx.gRoleTab[ro] = this.roleTab[r];
+      ctx.gRoleG[ro] = g;
+      ctx.gRoleRest[ro] = rr;
+    }
+    let p = rest;
+    for (let i = 0; i <= COH_NOISE; i++) p += out[o + i] * out[o + i];
+    out[o + COH_REST] = p;
+    ctx.gTab[gi] = n === 1 ? only : null;
+    ctx.gCohOk[gi] = ok === 1 && n > 0 && p > 0 ? 1 : 0;
+  }
+
+  /**
+   * The timbre stage of tick k at piece time st[S_T]: advances the timeline cursor, evaluates the
+   * timbre mix (`timbreMix`), blends the slots' parameters into `tp` by their weights and puts
+   * every table with a weight on a role (matched by identity, so a table keeps its role and its
+   * synthesis state across ticks). Returns the number of tables sounding (0: none). Integer and
+   * object arguments only (render's inlining budget; no boxing).
+   */
+  private timbreStage(ctx: VoiceContext, k: number): number {
+    const d = this.data;
+    const st = this.st;
+    const t = st[S_T];
+    const T = d.timbres;
+    let ti = this.timbreCur;
+    while (ti + 1 < d.nTimbre && T[(ti + 1) * TIMBRE_STRIDE + TIMBRE_T] <= t) ti++;
+    this.timbreCur = ti;
+    const slots = ctx.slots;
+    const mixSlot = this.mixSlot;
+    const wNew = this.mixNew;
+    const wPrev = this.mixPrev;
+    MIX_IN[0] = t;
+    MIX_IN[1] = ctx.renderFrame0 + (k + 1) * CONTROL_PERIOD;
+    const n = timbreMix(d, slots, ti, mixSlot, wNew, wPrev);
+    this.mixN = n;
+    const G1 = this.roleG1;
+    for (let r = 0; r < 4; r++) G1[r] = 0;
+    if (n === 0) return 0;
+
+    // Parameters: one slot's own values (bit for bit; copied again only when the slot or its
+    // tables change), or the weighted mean.
+    const tp = this.tp;
+    if (n === 1) {
+      const S = slots[mixSlot[0]];
+      if (this.tpSlot !== mixSlot[0] || this.tpVersion !== S.version) {
+        this.tpSlot = mixSlot[0];
+        this.tpVersion = S.version;
+        tp[TP_DETUNE] = S.detuneSpread;
+        tp[TP_ACCENT] = S.accent;
+        tp[TP_ART_AMOUNT] = S.artAmount;
+        tp[TP_ART_ATTACK] = S.artAttack;
+        tp[TP_ART_CRISP] = S.artCrisp;
+        tp[TP_ART_DECAY] = S.artDecay;
+        tp[TP_VIB_RATE] = S.vibRate;
+        tp[TP_VIB_DEPTH] = S.vibDepthCents;
+        tp[TP_VIB_DELAY] = S.vibDelay;
+        tp[TP_VIB_JITTER] = S.vibJitter;
+        tp[TP_DRIFT_CENTS] = S.driftCents;
+        tp[TP_DRIFT_RATE] = S.driftRate;
+        tp[TP_DRIFT_AMP] = S.driftAmp;
+      }
+    } else {
+      this.tpSlot = -1;
+      for (let i = 0; i < TP_SIZE; i++) tp[i] = 0;
+      let total = 0;
+      for (let q = 0; q < n; q++) total += wNew[q] + wPrev[q];
+      for (let q = 0; q < n; q++) {
+        const S = slots[mixSlot[q]];
+        const w = (wNew[q] + wPrev[q]) / total;
+        tp[TP_DETUNE] += w * S.detuneSpread;
+        tp[TP_ACCENT] += w * S.accent;
+        tp[TP_ART_AMOUNT] += w * S.artAmount;
+        tp[TP_ART_ATTACK] += w * S.artAttack;
+        tp[TP_ART_CRISP] += w * S.artCrisp;
+        tp[TP_ART_DECAY] += w * S.artDecay;
+        tp[TP_VIB_RATE] += w * S.vibRate;
+        tp[TP_VIB_DEPTH] += w * S.vibDepthCents;
+        tp[TP_VIB_DELAY] += w * S.vibDelay;
+        tp[TP_VIB_JITTER] += w * S.vibJitter;
+        tp[TP_DRIFT_CENTS] += w * S.driftCents;
+        tp[TP_DRIFT_RATE] += w * S.driftRate;
+        tp[TP_DRIFT_AMP] += w * S.driftAmp;
+      }
+    }
+
+    // Tables: each slot's current tables, plus its old ones during a replacement fade.
+    const R = this.roleTab;
+    const G0 = this.roleG0;
+    if (this.fresh) {
+      for (let r = 0; r < 4; r++) {
+        R[r] = null;
+        this.roleSame[r] = null;
+        this.roleCoh[r] = null;
+        G0[r] = 0;
+      }
+    }
+    const claim = this.roleClaim;
+    for (let r = 0; r < 4; r++) claim[r] = 0;
+    let sources = 0;
+    for (let src = 0; src < 2 * n; src++) {
+      const slot = slots[mixSlot[src >> 1]];
+      const useNew = (src & 1) === 0;
+      const tab = useNew ? slot.data : slot.prevData;
+      const g = useNew ? wNew[src >> 1] : wPrev[src >> 1];
+      if (tab === null || !(g > 0)) continue;
+      sources++;
+      let role = -1;
+      for (let r = 0; r < 4 && role < 0; r++) if (R[r] === tab) role = r;
+      if (role >= 0) G1[role] += g;
+      else {
+        // A free role: the unclaimed one that was quietest (silent unless more than 4 tables).
+        let bestG = Infinity;
+        for (let r = 0; r < 4; r++) {
+          if (claim[r] === 0 && G0[r] < bestG) {
+            role = r;
+            bestG = G0[r];
+          }
+        }
+        if (role < 0) continue;
+        R[role] = tab;
+        this.roleSame[role] = useNew ? slot.same : slot.prevSame;
+        this.roleMpo[role] = useNew ? slot.mipsPerOctave : slot.prevMipsPerOctave;
+        this.roleCoh[role] = useNew ? slot.coh : slot.prevCoh;
+        G0[role] = 0;
+        G1[role] = g;
+      }
+      claim[role] = 1;
+    }
+    return sources;
+  }
+
+  /**
+   * The crossfade's gain law (PLAN.md §6.2 `timbre`: no dip or bump), applied to the role weights
+   * G1 of the current tick. Two timbres at one pitch share the carrier phase, so they are partly
+   * correlated: their phase-locked harmonics add as amplitudes, their free-running parts
+   * (inharmonic partials, FM sidebands off the harmonics) as powers, and the breath noise (one
+   * source per voice) as amplitudes again. Constant amplitude suits identical spectra and dips
+   * 3 dB for uncorrelated ones; constant power suits uncorrelated ones and bumps 3 dB for
+   * identical ones. So the weights g_r (the nominal mix) are scaled by one factor c such that the
+   * mix's power, Σ_rs g_r·g_s·C_rs from the coherence rows at each role's mip position, equals
+   * (Σ g)·Σ g_r·P_r: the power moves linearly from one timbre's to the other's. c = 1 for
+   * identical spectra; a role without coherence rows keeps c = 1 (constant amplitude).
+   */
+  private balanceRoles(ctx: VoiceContext): void {
+    const G1 = this.roleG1;
+    const D = ctx.cohBuf;
+    const C = COH_STRIDE;
+    const H2 = COH_NOISE; // re/im pairs before the noise level
+    let gSum = 0;
+    let target = 0;
+    for (let r = 0; r < 4; r++) {
+      if (!(G1[r] > 0)) continue;
+      const coh = this.roleCoh[r];
+      if (coh === null) return;
+      // The role's row position: its mip position in octaves above MIP_BASE_HZ.
+      const pos = ((this.roleMip[r] + this.roleW[r]) / this.roleMpo[r]) * COH_PER_OCTAVE;
+      let row = Math.floor(pos);
+      if (row > COH_ROWS - 2) row = COH_ROWS - 2;
+      const w = pos - row;
+      const lo = row * C;
+      const hi = lo + C;
+      const o = r * C;
+      let p = 0;
+      for (let i = 0; i < C; i++) {
+        const a = coh[lo + i];
+        const v = a + (coh[hi + i] - a) * w;
+        D[o + i] = v;
+        if (i < COH_REST) p += v * v;
+        else p += v;
+      }
+      gSum += G1[r];
+      target += G1[r] * p;
+    }
+    let power = 0;
+    for (let r = 0; r < 4; r++) {
+      const gr = G1[r];
+      if (!(gr > 0)) continue;
+      const o = r * C;
+      for (let s = r; s < 4; s++) {
+        const gs = G1[s];
+        if (!(gs > 0)) continue;
+        const q = s * C;
+        let c = 0;
+        for (let i = 0; i <= H2; i++) c += D[o + i] * D[q + i];
+        if (s === r) power += gr * gr * (c + D[o + COH_REST]);
+        else power += 2 * gr * gs * c;
+      }
+    }
+    target *= gSum;
+    if (!(power > 0) || !(target > 0)) return;
+    let c = Math.sqrt(target / power);
+    if (c > BALANCE_MAX) c = BALANCE_MAX;
+    else if (c < BALANCE_MIN) c = BALANCE_MIN;
+    for (let r = 0; r < 4; r++) G1[r] *= c;
   }
 
   /** Advances the phase over one control period without producing sound (same arithmetic). */

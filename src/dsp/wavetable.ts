@@ -56,6 +56,31 @@ export const MAX_PARTIALS = 16;
 export const STRETCH_MIN = -0.5;
 export const STRETCH_MAX = 1;
 
+/**
+ * FM (`Voice.synthExt`). Sidebands of the top partial H·f must stay below FM_ALIAS_LIMIT ·
+ * Nyquist: the index is capped so that H·f + (H·β + FM_SIDEBAND_MARGIN)·r·f fits (Carson's rule
+ * with a margin of three sidebands; tests/dsp/m6.test.ts measures what folds over). β tracking
+ * reads the octave above middle C clamped to FM_TRACK_MIN_OCT..FM_TRACK_MAX_OCT.
+ */
+export const FM_ALIAS_LIMIT = 0.9;
+export const FM_SIDEBAND_MARGIN = 3;
+export const FM_TRACK_MIN_OCT = -2;
+export const FM_TRACK_MAX_OCT = 4;
+
+/**
+ * Coherence rows (`WavetableSet.coherence`), COH_STRIDE doubles per row, COH_PER_OCTAVE rows per
+ * octave of fundamental from MIP_BASE_HZ (finer than the mips: FM spectra change fast with the
+ * tracked index), COH_ROWS in all: the complex amplitude of
+ * harmonics 1..MAX_HARMONICS locked to the carrier phase (re, im pairs), the breath noise level
+ * (one noise source per voice, so it is coherent between timbres), and the power of everything
+ * else (inharmonic partials and sidebands, DC). Units: a sine of amplitude a has power a².
+ */
+export const COH_NOISE = 2 * MAX_HARMONICS;
+export const COH_REST = COH_NOISE + 1;
+export const COH_STRIDE = COH_REST + 1;
+export const COH_PER_OCTAVE = 8;
+export const COH_ROWS = (MIP_COUNT - 1) * COH_PER_OCTAVE + 1;
+
 /** Pitch at which `brightness.track` has no effect and loudness is normalised (C4). */
 export const REFERENCE_HZ = 261.6255653005986;
 /** Tilt change per octave of pitch at track = 1, in dB/octave. */
@@ -136,6 +161,12 @@ export interface WavetableSet {
    * fundamental. Partials near Nyquist are faded per voice, not here.
    */
   partialAmp: Float64Array<ArrayBuffer>;
+  /**
+   * What a voice's output holds by pitch, for the timbre crossfade's gain law (`Voice`'s
+   * `balanceRoles`) and the unison lock: COH_ROWS rows of COH_STRIDE doubles (see COH_NOISE).
+   * Optional: sets without it crossfade at constant amplitude.
+   */
+  coherence?: Float64Array<ArrayBuffer>;
 }
 
 function finiteOr(x: number, fallback: number): number {
@@ -279,6 +310,7 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
   const amps = new Float64Array(MAX_HARMONICS);
   const prevAmps = new Float64Array(MAX_HARMONICS);
   const cycle = new Float64Array(WAVETABLE_SIZE);
+  const tableAmps = new Float64Array(mipCount * MAX_HARMONICS);
   for (let m = 0; m < mipCount; m++) {
     // For one mip per octave these are exactly 20·2^m and 2·fBottom, as before formants existed.
     const fBottom = MIP_BASE_HZ * pmath.exp2(m / mipsPerOctave);
@@ -287,6 +319,7 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
     const octaves = Math.min(3, Math.max(-2, pmath.log2(fBottom / REFERENCE_HZ)));
     const tilt = baseTilt - track * TRACK_DB_PER_OCTAVE * octaves;
     mipAmplitudes(timbre, tilt, maxPartial, formants, fBottom, amps);
+    for (let k = 0; k < MAX_HARMONICS; k++) tableAmps[m * MAX_HARMONICS + k] = amps[k] * scale;
 
     const offset = m * WAVETABLE_STRIDE;
     let same = m > 0;
@@ -316,7 +349,143 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
     formants,
     mipsPerOctave,
   );
-  return { sampleRate, mipsPerOctave, data, sameAsNext, params, partialRatio, partialAmp };
+  const coherence = buildCoherence(
+    params,
+    sampleRate,
+    mipsPerOctave,
+    tableAmps,
+    partialRatio,
+    partialAmp,
+  );
+  return {
+    sampleRate,
+    mipsPerOctave,
+    data,
+    sameAsNext,
+    params,
+    partialRatio,
+    partialAmp,
+    coherence,
+  };
+}
+
+/**
+ * J_0..J_kmax at z ≥ 0 into `out` (Bessel functions of the first kind): Miller's backward
+ * recurrence J_{k−1} = (2k/z)·J_k − J_{k+1}, normalised by J_0 + 2·Σ J_2k = 1.
+ */
+export function besselJ(z: number, kmax: number, out: Float64Array): void {
+  out.fill(0, 0, kmax + 1);
+  if (!(z > 1e-12)) {
+    out[0] = 1;
+    return;
+  }
+  const start = 2 * Math.ceil((kmax + z + 30) / 2);
+  let jNext = 0;
+  let j = 1e-300;
+  let norm = 0;
+  for (let k = start; k > 0; k--) {
+    const jPrev = ((2 * k) / z) * j - jNext;
+    jNext = j;
+    j = jPrev; // J_{k−1}
+    const i = k - 1;
+    if (i <= kmax) out[i] = j;
+    if (i === 0) norm += j;
+    else if ((i & 1) === 0) norm += 2 * j;
+    if (Math.abs(j) > 1e200) {
+      j *= 1e-200;
+      jNext *= 1e-200;
+      norm *= 1e-200;
+      for (let q = i; q <= kmax; q++) out[q] *= 1e-200;
+    }
+  }
+  for (let q = 0; q <= kmax; q++) out[q] /= norm;
+}
+
+/**
+ * The coherence rows of a set (see COH_STRIDE), each at its fundamental, as the voice
+ * synthesises it (the blend of the two mips there): partial n of the table (or additive partial i at R_i) is a·sin(2π·R·φ + θ)
+ * with θ = partialPhase. FM at ratio r and index β (tracked and capped as in `Voice.synthExt`)
+ * splits it into J_k(R·β)·a at R + k·r for every k; a component on a whole multiple of f is
+ * locked to the carrier phase (negative multiples fold over with their sign), anything else is
+ * free-running and counts as power only. Pure.
+ */
+function buildCoherence(
+  params: TimbreParams,
+  sampleRate: number,
+  mipsPerOctave: number,
+  tableAmps: Float64Array,
+  partialRatio: Float64Array,
+  partialAmp: Float64Array,
+): Float64Array<ArrayBuffer> {
+  const mipCount = mipCountFor(mipsPerOctave);
+  const out = new Float64Array(COH_ROWS * COH_STRIDE);
+  const P = partialRatio.length;
+  const additive = P > 0;
+  const count = additive ? P : MAX_HARMONICS;
+  const nyq = sampleRate / 2;
+  const fm = params.fmIndex > 0 && params.fmRatio > 0;
+  const r = params.fmRatio;
+  const J = new Float64Array(256);
+  for (let row = 0; row < COH_ROWS; row++) {
+    const o = row * COH_STRIDE;
+    const u = row / COH_PER_OCTAVE;
+    const f = MIP_BASE_HZ * pmath.exp2(u);
+    // The tables (or partial rows) the oscillator blends there.
+    let m = Math.floor(u * mipsPerOctave);
+    if (m > mipCount - 2) m = mipCount - 2;
+    const w = u * mipsPerOctave - m;
+    let beta = 0;
+    if (fm) {
+      const oct = Math.min(
+        FM_TRACK_MAX_OCT,
+        Math.max(FM_TRACK_MIN_OCT, pmath.log2(f / REFERENCE_HZ)),
+      );
+      beta = params.fmIndex * pmath.exp2(-params.fmIndexTrack * oct);
+      const room = (FM_ALIAS_LIMIT * nyq) / f;
+      const top = Math.min(params.fmTop, room);
+      const cap = ((room - top) / r - FM_SIDEBAND_MARGIN) / top;
+      if (!(beta <= cap)) beta = cap > 0 ? cap : 0;
+    }
+    let rest = 0;
+    let dc = 0;
+    for (let q = 0; q < count; q++) {
+      const R = additive ? partialRatio[q] : q + 1;
+      const a0 = additive ? partialAmp[m * P + q] : tableAmps[m * MAX_HARMONICS + q];
+      const a1 = additive ? partialAmp[(m + 1) * P + q] : tableAmps[(m + 1) * MAX_HARMONICS + q];
+      const a = a0 + (a1 - a0) * w;
+      if (a === 0) continue;
+      // Additive partial q (among the nonzero ones) starts at q(q+1)/(4·MAX_PARTIALS) cycles
+      // (Voice.synthExt): partialPhase(q + 1) too.
+      const theta = partialPhase(q + 1);
+      const cs = pmath.cos(theta);
+      const sn = pmath.sin(theta);
+      const z = R * beta;
+      const kmax = fm ? Math.min(255, Math.ceil(z + 3 * Math.sqrt(z) + 10)) : 0;
+      if (fm) besselJ(z, kmax, J);
+      else J[0] = 1;
+      for (let k = -kmax; k <= kmax; k++) {
+        const jk = k < 0 ? ((-k & 1) === 1 ? -J[-k] : J[-k]) : J[k];
+        const A = a * jk;
+        if (A === 0) continue;
+        const h = R + k * r;
+        const n = Math.round(h);
+        if (Math.abs(h - n) > 1e-9) rest += A * A;
+        else if (n === 0) dc += A * sn;
+        else if (Math.abs(n) > MAX_HARMONICS) rest += A * A;
+        else if (n > 0) {
+          out[o + 2 * (n - 1)] += A * cs;
+          out[o + 2 * (n - 1) + 1] += A * sn;
+        } else {
+          // sin(−2π|n|φ + θ) = −sin(2π|n|φ − θ).
+          out[o + 2 * (-n - 1)] -= A * cs;
+          out[o + 2 * (-n - 1) + 1] += A * sn;
+        }
+      }
+    }
+    out[o + COH_NOISE] = params.noiseLevel;
+    out[o + COH_REST] = rest + 2 * dc * dc;
+  }
+  return out;
 }
 
 /**
@@ -370,5 +539,6 @@ function buildPartials(
 export function wavetableTransferList(set: WavetableSet): ArrayBuffer[] {
   const list: ArrayBuffer[] = [set.data.buffer, set.sameAsNext.buffer];
   if (set.partialRatio.byteLength > 0) list.push(set.partialRatio.buffer, set.partialAmp.buffer);
+  if (set.coherence) list.push(set.coherence.buffer);
   return list;
 }

@@ -7,8 +7,10 @@
  *
  * argv[2]: 'plain' (default: the allocation-free eases), 'all' (adds expo and bézier), 'lock'
  * (unisons, pair merges, births into held unisons and a seek every 5 s: the unison lock's paths)
- * or 'm6' (plain eases on the M6 timbres: bell, FM on a wavetable, breath noise).
- * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6]
+ * 'm6' (plain eases on the M6 timbres: bell, FM on a wavetable, breath noise) or 'timbre' (the
+ * 'lock' workload with seeks, every voice changing timbre every ~1.5 s across every synthesis
+ * path, with overlapping fades: timbre moments, M6-b2).
+ * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre]
  */
 
 import { PerformanceObserver } from 'node:perf_hooks';
@@ -22,28 +24,40 @@ import {
   M6_WORKLOAD_TIMBRES,
   PLAIN_EASES,
   withPulses,
+  withTimbreChanges,
 } from '../../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../../src/dsp/constants';
 
 const RATE = 48000;
 const arg = process.argv[2];
-const mode = arg === 'all' || arg === 'lock' || arg === 'm6' ? arg : 'plain';
+const mode = arg === 'all' || arg === 'lock' || arg === 'm6' || arg === 'timbre' ? arg : 'plain';
+const seeking = mode === 'lock' || mode === 'timbre';
 // Every other voice pulses (R9-3b): onsets, strikes and decays on the audio thread.
 const score = withPulses(
   mode === 'lock'
     ? lockStressScore(12, 80, 17)
-    : denseScore(
-        24,
-        80,
-        5,
-        mode === 'all' ? ALL_EASES : PLAIN_EASES,
-        mode === 'm6' ? ['bell', 'fmreed', 'breath'] : undefined,
-      ),
+    : mode === 'timbre'
+      ? withTimbreChanges(lockStressScore(12, 80, 17), [
+          'bell',
+          'epiano',
+          'flute',
+          'choir',
+          'sine',
+          'glass',
+          'fmreed',
+        ])
+      : denseScore(
+          24,
+          80,
+          5,
+          mode === 'all' ? ALL_EASES : PLAIN_EASES,
+          mode === 'm6' ? ['bell', 'fmreed', 'breath'] : undefined,
+        ),
 );
 const graph = createLoadedGraph({
   score,
   mix: FIXTURE_MIX,
-  timbres: mode === 'm6' ? M6_WORKLOAD_TIMBRES : undefined,
+  timbres: mode === 'm6' || mode === 'timbre' ? M6_WORKLOAD_TIMBRES : undefined,
   sampleRate: RATE,
 });
 const left = new Float32Array(BLOCK_FRAMES);
@@ -61,7 +75,7 @@ graph.play(0);
 // the 5 ms fade; ~200 are needed) and ends with one full seek cycle like the measured run's
 // (docs/build-log.md, "No-GC lock flake").
 const SEEK_TO = new Int32Array([12, 19, 31, 44]);
-const seekEvery = mode === 'lock' ? Math.round((5 * RATE) / BLOCK_FRAMES) : 0;
+const seekEvery = seeking ? Math.round((5 * RATE) / BLOCK_FRAMES) : 0;
 const WARM_SEEKS = 1000;
 /** One block of the run; block i of a seek cycle seeks first when it starts a 5 s span. */
 function step(i: number): void {
@@ -69,7 +83,7 @@ function step(i: number): void {
   graph.process(left, right);
 }
 const runBlocks = Math.round((60 * RATE) / BLOCK_FRAMES);
-const playThrough = Math.round(((mode === 'lock' ? 76 : 5) * RATE) / BLOCK_FRAMES);
+const playThrough = Math.round(((seeking ? 76 : 5) * RATE) / BLOCK_FRAMES);
 for (let i = 0; i < playThrough; i++) graph.process(left, right);
 if (seekEvery > 0) {
   for (let i = 0; i < WARM_SEEKS * 4; i++) {
