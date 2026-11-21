@@ -119,4 +119,11 @@ export interface ScoreStyle {
   bars?: { bpm?: number; meter?: number };
   /** Draw the playhead line. The editor layout draws its own DOM playhead (§10). @default true */
   playhead?: boolean;
+  /**
+   * Editor (revision 9, "Silent lines vanish"): draw a faint dotted trace where a selected
+   * (`highlight`) or hovered (`traceVoice`) line is silent, so it can still be found.
+   */
+  traces?: boolean;
+  /** Pool index of the line under the pointer, for its dotted trace (with `traces`). */
+  traceVoice?: number;
 }

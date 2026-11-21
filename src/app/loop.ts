@@ -53,6 +53,8 @@ export const frameStats = {
   head: 0,
   /** Opacity of the future lines as of the last frame. */
   ghost: 1,
+  /** The view of the last drawn frame (pitch ↔ y for e2e pixel checks). */
+  view: null as View | null,
   reset(): void {
     this.work = [];
     this.interval = [];
@@ -136,6 +138,8 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastTip = '';
   let domHead = false;
   let lastPitch: [number, number] | null = null;
+  /** The editor's hovered line, for its dotted trace when silent (revision 9). */
+  let traceVoice = -1;
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -280,10 +284,13 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           markerTimes,
           highlight,
           playhead: !domHead,
+          traces: domHead,
+          traceVoice: domHead && traceVoice >= 0 ? traceVoice : undefined,
           // The bar grid in the editor layout (the one with the DOM playhead).
           bars: domHead ? { bpm: piece.view.gridBpm, meter: piece.view.meter } : undefined,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
+        frameStats.view = lastView;
         frameStats.drawn++;
         drew = true;
       }
@@ -301,8 +308,15 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
               hoverPointer.y,
               undefined,
               ghost.value > 0.05,
+              !domHead,
             )
           : null;
+      // The hovered line's dotted trace (editor): redraw when it changes.
+      const hv = domHead && hit ? hit.voice : -1;
+      if (hv !== traceVoice) {
+        traceVoice = hv;
+        dirty = true;
+      }
       const text = hit ? hoverLabel(compiled, hit, piece.voices[hit.voice]?.name) : '';
       if (text !== lastTip) {
         lastTip = text;

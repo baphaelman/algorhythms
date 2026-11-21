@@ -13,6 +13,7 @@
 import {
   activeAt,
   chordAt,
+  lifeAt,
   keyAt,
   motionAt,
   pitchAt,
@@ -31,6 +32,7 @@ import type {
 } from '../core/types';
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
+import { OPACITY_EPS, opacityAt, opacityBreaks } from './level';
 import { lineColor, pitchStops } from './palettes';
 import type { CameraState, MomentTimes, ScoreStyle, View } from './types';
 
@@ -267,9 +269,14 @@ export function weightWidth(w: number, base: number): number {
   return base * Math.sqrt(c);
 }
 
+/** Opacity steps narrower than this count as a constant run. */
+const OPACITY_FLAT = 1e-3;
+
 /**
- * Strokes voice `v` over [a, b] at `base` width scaled by its weight: one path per run of constant
- * weight; a weight ramp in a few steps.
+ * Strokes voice `v` over [a, b] at `base` width scaled by its weight and at `alpha` times its
+ * audible level (revision 9, "Silent lines vanish"): one path per run of constant weight and
+ * opacity; a weight or opacity ramp in a few steps (butt-capped in an opacity ramp, so the seams
+ * don't bead). Silent runs are skipped.
  */
 function traceWeighted(
   g: CanvasRenderingContext2D,
@@ -278,41 +285,155 @@ function traceWeighted(
   a: Seconds,
   b: Seconds,
   base: number,
+  alpha: number,
   maxStep: number,
   tolerance: number,
 ): void {
-  const W = v.weight;
-  if (!W || W.length === 0) {
+  const W = v.weight && v.weight.length > 0 ? v.weight : null;
+  const O = opacityBreaks(v);
+  if (!W && !O) {
+    g.globalAlpha = alpha;
     g.lineWidth = base;
     trace(g, view, sample(v, a, b, maxStep, tolerance));
     return;
   }
-  // Breakpoints inside (a, b): every change's start and ramp end.
+  // Breakpoints inside (a, b): weight changes and ramp ends, opacity breaks.
   const cuts = [a];
-  for (const c of W) {
-    if (c.t > a && c.t < b) cuts.push(c.t);
-    const e = c.t + c.over;
-    if (c.over > 0 && e > a && e < b) cuts.push(e);
+  if (W) {
+    for (const c of W) {
+      if (c.t > a && c.t < b) cuts.push(c.t);
+      const e = c.t + c.over;
+      if (c.over > 0 && e > a && e < b) cuts.push(e);
+    }
+  }
+  if (O) {
+    for (let i = lowerBound(O, a); i < O.length && O[i] < b; i++) if (O[i] > a) cuts.push(O[i]);
   }
   cuts.push(b);
   cuts.sort((x, y) => x - y);
+  const minA = OPACITY_EPS * alpha;
   for (let i = 0; i + 1 < cuts.length; i++) {
     const t0 = cuts[i];
     const t1 = cuts[i + 1];
     if (!(t1 > t0)) continue;
-    const w0 = weightAt(v, t0);
-    const w1 = weightAt(v, t1);
+    const wRamp = W !== null && Math.abs(weightAt(v, t1) - weightAt(v, t0)) > 1e-9;
+    let oRamp = false;
+    if (O) {
+      // Sampled just inside the run: the curve may jump at the cuts themselves (a birth).
+      const e = (t1 - t0) * 1e-3;
+      const o0 = opacityAt(v, t0 + e);
+      oRamp =
+        Math.abs(opacityAt(v, t1 - e) - o0) > OPACITY_FLAT ||
+        Math.abs(opacityAt(v, (t0 + t1) / 2) - o0) > OPACITY_FLAT;
+    }
     const n =
-      Math.abs(w1 - w0) < 1e-9
-        ? 1
-        : Math.min(RAMP_STEPS_MAX, Math.max(1, Math.ceil(((t1 - t0) * view.pps) / RAMP_STEP_PX)));
+      wRamp || oRamp
+        ? Math.min(RAMP_STEPS_MAX, Math.max(1, Math.ceil(((t1 - t0) * view.pps) / RAMP_STEP_PX)))
+        : 1;
+    g.lineCap = oRamp ? 'butt' : 'round';
     for (let k = 0; k < n; k++) {
       const u0 = t0 + ((t1 - t0) * k) / n;
       const u1 = t0 + ((t1 - t0) * (k + 1)) / n;
-      g.lineWidth = weightWidth(weightAt(v, (u0 + u1) / 2), base);
+      const mid = (u0 + u1) / 2;
+      const al = O ? alpha * opacityAt(v, mid) : alpha;
+      if (al < minA) continue;
+      g.globalAlpha = al;
+      g.lineWidth = W ? weightWidth(weightAt(v, mid), base) : base;
       trace(g, view, sample(v, u0, u1, maxStep, tolerance));
     }
   }
+  g.lineCap = 'round';
+}
+
+/** First index i with xs[i] >= t. */
+function lowerBound(xs: Float64Array, t: number): number {
+  let lo = 0;
+  let hi = xs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Opacity factor under which a selected or hovered line gets its dotted trace (editor). */
+export const TRACE_BELOW = 0.25;
+/** Opacity, width and dash of the dotted trace. */
+export const TRACE_ALPHA = 0.55;
+const TRACE_WIDTH = 1.25;
+const TRACE_DASH = [1, 4];
+
+/**
+ * The editor's dotted trace (revision 9): where voice `v` is (nearly) silent over [a, b], a faint
+ * dotted line, so a vanished line can still be found and selected.
+ */
+function traceSilent(
+  g: CanvasRenderingContext2D,
+  view: View,
+  v: CompiledVoice,
+  a: Seconds,
+  b: Seconds,
+  alpha: number,
+  maxStep: number,
+  tolerance: number,
+): void {
+  const O = opacityBreaks(v);
+  if (!O || !(b > a)) return;
+  const cuts = [a];
+  for (let i = lowerBound(O, a); i < O.length && O[i] < b; i++) if (O[i] > a) cuts.push(O[i]);
+  cuts.push(b);
+  g.globalAlpha = alpha;
+  g.lineWidth = TRACE_WIDTH;
+  g.setLineDash(TRACE_DASH);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const t0 = cuts[i];
+    const t1 = cuts[i + 1];
+    if (!(t1 > t0)) continue;
+    // A ramp is split where it crosses TRACE_BELOW, in steps.
+    const n = Math.min(
+      RAMP_STEPS_MAX,
+      Math.max(1, Math.ceil(((t1 - t0) * view.pps) / (RAMP_STEP_PX * 4))),
+    );
+    let runA = NaN;
+    for (let k = 0; k <= n; k++) {
+      const u0 = t0 + ((t1 - t0) * k) / n;
+      const u1 = t0 + ((t1 - t0) * (k + 1)) / n;
+      const silent = k < n && lifeSilent(v, (u0 + u1) / 2);
+      if (silent && runA !== runA) runA = u0;
+      if (!silent && runA === runA) {
+        trace(g, view, sample(v, runA, u0, maxStep, tolerance));
+        runA = NaN;
+      }
+    }
+  }
+  g.setLineDash(NO_DASH);
+}
+const NO_DASH: number[] = [];
+
+/** True when v is alive at t but drawn below TRACE_BELOW. */
+function lifeSilent(v: CompiledVoice, t: Seconds): boolean {
+  if (!lifeAt(v, t)) return false;
+  return opacityAt(v, t) < TRACE_BELOW;
+}
+
+/**
+ * Level changes of a selected level moment (it adds no segments): `v`'s first change that matches
+ * a selected moment's span (start t, end t + over), or NaN. Level changes carry no moment id.
+ */
+function selectedLevelFrom(
+  v: CompiledVoice,
+  spans: readonly MomentSpan[],
+  ids: ReadonlySet<MomentId>,
+): Seconds {
+  if (v.level.length === 0) return NaN;
+  for (const s of spans) {
+    if (!ids.has(s.id)) continue;
+    for (const c of v.level) {
+      if (Math.abs(c.t - s.start) < 1e-9 && Math.abs(c.t + c.over - s.end) < 1e-9) return c.t;
+    }
+  }
+  return NaN;
 }
 
 function drawLines(
@@ -343,13 +464,10 @@ function drawLines(
   for (const v of compiled.voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-    if (past) {
-      g.globalAlpha = dim;
-      traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, maxStep, tolerance);
-    }
+    if (past) traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, dim, maxStep, tolerance);
     if (future) {
-      g.globalAlpha = style.futureOpacity * dim;
-      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, maxStep, tolerance);
+      const a = style.futureOpacity * dim;
+      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, a, maxStep, tolerance);
     }
   }
   if (hl) {
@@ -360,13 +478,40 @@ function drawLines(
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) {
-          g.globalAlpha = 1;
-          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, maxStep, tolerance);
+          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, 1, maxStep, tolerance);
         }
         if (b > t) {
-          g.globalAlpha = futureA;
-          traceWeighted(g, view, v, Math.max(t, a), b, HIGHLIGHT_WIDTH, maxStep, tolerance);
+          traceWeighted(
+            g,
+            view,
+            v,
+            Math.max(t, a),
+            b,
+            HIGHLIGHT_WIDTH,
+            futureA,
+            maxStep,
+            tolerance,
+          );
         }
+      });
+    }
+  }
+  // Dotted traces of silent lines (editor): the selection's and the hovered voice's.
+  const hv = style.traceVoice;
+  if (style.traces && (hl || hv !== undefined)) {
+    for (const v of compiled.voices) {
+      if (v.segments.length === 0 || !opacityBreaks(v)) continue;
+      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      if (v.index === hv) {
+        traceSilent(g, view, v, tL, tR, TRACE_ALPHA, maxStep, tolerance);
+        continue;
+      }
+      if (!hl) continue;
+      const from = selectedLevelFrom(v, compiled.momentSpans, hl);
+      if (from === from)
+        traceSilent(g, view, v, Math.max(from, tL), tR, TRACE_ALPHA, maxStep, tolerance);
+      forHighlighted(v, hl, tL, tR, (a, b) => {
+        if (!(from <= a)) traceSilent(g, view, v, a, b, TRACE_ALPHA, maxStep, tolerance);
       });
     }
   }
@@ -434,6 +579,8 @@ function drawHeads(
     const v = compiled.voices[i];
     const p = pitchAt(v, t);
     if (p === null) continue;
+    const op = opacityBreaks(v) ? opacityAt(v, t) : 1;
+    if (op < OPACITY_EPS) continue;
     const y = pitchToY(view, p);
     const mv = motionAt(v, t);
     let color = lineColor(style, i);
@@ -443,14 +590,14 @@ function drawHeads(
     }
     color ??= style.tokens.ink;
     if (mv > 0.03) {
-      g.globalAlpha = headA * mv;
+      g.globalAlpha = headA * mv * op;
       g.strokeStyle = style.colors === 'ink' ? style.tokens.accent : color;
       g.lineWidth = 1.2;
       g.beginPath();
       g.arc(x, y, RING_R, 0, Math.PI * 2);
       g.stroke();
     }
-    g.globalAlpha = headA;
+    g.globalAlpha = headA * op;
     g.fillStyle = color;
     g.beginPath();
     g.arc(x, y, DOT_R, 0, Math.PI * 2);

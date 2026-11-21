@@ -35,12 +35,15 @@ export {
   GLIDE_STEP_PX,
   HIGHLIGHT_WIDTH,
   LINE_WIDTH,
+  TRACE_ALPHA,
+  TRACE_BELOW,
   drawScore,
   formatTime,
   keyName,
   weightWidth,
   type Ctx2D,
 } from './draw';
+export { OPACITY_EPS, levelAt, lifeLevel, opacityAt, opacityBreaks, pulseLevel } from './level';
 export { HOVER_RADIUS_PX, hoverLabel, nearestLine, noteLabel, type LineHit } from './hover';
 export {
   DARK_TOKENS,
