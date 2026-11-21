@@ -4,7 +4,7 @@
  *
  *   1. background          2. octave grid (A lines labelled in Hz), bar grid (editor)
  *   3. moment/section markers
- *   4. lines (past solid, future ghost)   5. heads (dots, motion rings, Hz labels ×N)
+ *   4. lines (past solid, future ghost)   5. heads (dots, motion rings, Hz labels)
  *   6. playhead            7. HUD (chord, key, voices, time)
  *
  * The editor overlay (§11) is drawn by the app on top of this.
@@ -845,7 +845,7 @@ function drawHeads(
 ): void {
   const { t, xHead: x } = view;
   const stops = style.colors === 'pitch' ? pitchStops(style.dark, style.oklch) : null;
-  const groups = new Map<number, { p: number; y: number; count: number }>();
+  const groups = new Map<number, { p: number; y: number }>();
   for (const i of activeAt(compiled, t)) {
     const v = compiled.voices[i];
     const p = pitchAt(v, t);
@@ -876,9 +876,7 @@ function drawHeads(
     g.arc(x, y, DOT_R, 0, Math.PI * 2);
     g.fill();
     const key = Math.round(p * 20);
-    const gr = groups.get(key);
-    if (gr) gr.count++;
-    else groups.set(key, { p, y, count: 1 });
+    if (!groups.has(key)) groups.set(key, { p, y });
   }
   g.font = `10px ${MONO}`;
   g.fillStyle = style.tokens.ink2;
@@ -888,7 +886,7 @@ function drawHeads(
   for (const gr of [...groups.values()].sort((a, b) => a.y - b.y)) {
     if (gr.y - lastY < 11) continue;
     const hz = hzOf(gr.p, compiled.referenceHz).toFixed(2);
-    g.fillText(`${hz} Hz${gr.count > 1 ? ' ×' + gr.count : ''}`, x + 11, gr.y + 3.5);
+    g.fillText(`${hz} Hz`, x + 11, gr.y + 3.5);
     lastY = gr.y;
   }
   g.globalAlpha = 1;
