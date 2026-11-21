@@ -250,8 +250,9 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
       return;
     }
     const end = life.died ?? Infinity;
-    // Fading out (a merge, or a line that arrived on another's pitch, revision 8).
-    if (end < score.duration && t >= end - (life.fadeOut ?? 0)) return;
+    // Fading out (a merge, or a line that arrived on another's pitch, revision 8). A merge's
+    // crossfade ends where the line meets the merged one: it is active until then.
+    if (end < score.duration && !life.crossOut && t >= end - (life.fadeOut ?? 0)) return;
     const segs = v.segments;
     // Dying: the life ends before the piece does, and its last move belongs to a moment at ≤ t
     // that kills (a merge, or a chord with `count`).

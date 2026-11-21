@@ -168,8 +168,8 @@ describe('a line that joins another passes on what depended on it (chord-count 4
         ],
       }),
     );
-    const v6 = s.voices[5];
-    expect(v6.lives.length).toBe(2); // joined at 90, reborn by m2
+    // v6 joins at 90 (with the crossfade, 2026-11-21, it closes at the meeting and m2 may reuse
+    // another voice): either way v7 and v8 must not follow a reborn v6 down.
     for (const id of ['v7', 'v8']) {
       const v = s.voices.find((x) => x.id === id)!;
       for (const g of v.segments) expect(g.p1, `${id} at ${g.t0}`).toBeGreaterThanOrEqual(89.99);
@@ -497,6 +497,11 @@ describe('a line dying into its own unborn newborn (chord-count -41577023/608, s
     );
     const v4 = s.voices[3];
     expect(v4.lives.length).toBeGreaterThan(0);
+    // v1 meets its survivor v2 as v2 is born: no room for a crossfade before the meeting, so it
+    // keeps its own fade after it (crossfades, 2026-11-21).
+    const v1 = s.voices[0].lives[0];
+    expect(v1.crossOut).toBeUndefined();
+    expect(v1.fadeOut).toBeCloseTo(0.7, 9);
     expect(lineArtifacts(s, { noCross: true }).filter((a) => a.kind === 'birth')).toEqual([]);
   });
 });
@@ -638,8 +643,10 @@ describe('a merge and its survivor’s walk tick at one time (overlap −4157702
     expect(next.momentId).toBe('m1');
     expect(next.p1).toBe(step.p1);
     expect(v2.segments.some((g) => g.momentId === 'm2')).toBe(false);
-    // It still dies after the merge's glide and fade, riding v1's steps until then.
-    expect(v2.lives[0].died).toBeCloseTo(5.2, 6);
-    for (const t of [3.5, 4.5, 5]) expect(pitchAt(v2, t)).toBe(pitchAt(v1, t));
+    // It still rides v1's steps until it meets v1 after the merge's glide, crossfading into it
+    // (2026-11-21: the merge's `fade` no longer runs after the meeting).
+    expect(v2.lives[0].died).toBeCloseTo(5, 6);
+    expect(v2.lives[0].crossOut).toBe(true);
+    for (const t of [3.5, 4.5, 4.99]) expect(pitchAt(v2, t)).toBe(pitchAt(v1, t));
   });
 });

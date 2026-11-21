@@ -22,15 +22,17 @@
  */
 
 import {
-  WEIGHT_OVER,
+  RAMP_STRIDE,
+  RAMP_T,
   WEIGHT_STRIDE,
-  WEIGHT_T,
-  WEIGHT_W,
   LEVEL_GAIN,
   LEVEL_OVER,
   LEVEL_STRIDE,
   LEVEL_T,
   LIFE_BORN,
+  LIFE_CROSS,
+  LIFE_CROSS_IN,
+  LIFE_CROSS_OUT,
   LIFE_DIED,
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
@@ -63,8 +65,10 @@ import {
   evalFlatSegment,
   segmentMotion,
   segmentPitch,
+  weightRampValue,
+  weightRamps,
 } from '../core/segment';
-import type { EaseCode } from '../core/ease';
+import { crossfade, type EaseCode } from '../core/ease';
 import type { FlatVoice } from '../core/flat';
 import {
   BLOCK_FRAMES,
@@ -171,10 +175,9 @@ export class VoiceData {
   nLevel = 0;
   /** Level in effect at the start of each level ramp. */
   levelStart: Float64Array = EMPTY_F64;
-  /** Weight records (revision 8) and the weight in effect at the start of each ramp. */
+  /** Weight records (revision 8) as ramps sorted by start (core/segment `weightRamps`). */
   weights: Float64Array = EMPTY_F64;
   nWeight = 0;
-  weightStart: Float64Array = EMPTY_F64;
   timbres: Float64Array = EMPTY_F64;
   nTimbre = 0;
   /** Graph slot of each timbre record's preset. */
@@ -236,20 +239,8 @@ export class VoiceData {
     d.timbres = fv.timbres;
     d.nTimbre = (fv.timbres.length / TIMBRE_STRIDE) | 0;
     const ws = fv.weights ?? EMPTY_F64;
-    d.weights = ws;
     d.nWeight = (ws.length / WEIGHT_STRIDE) | 0;
-    d.weightStart = new Float64Array(d.nWeight);
-    for (let i = 0; i < d.nWeight; i++) {
-      if (i === 0) {
-        d.weightStart[0] = 1;
-        continue;
-      }
-      const o = (i - 1) * WEIGHT_STRIDE;
-      const over = ws[o + WEIGHT_OVER];
-      const u = over > 0 ? (ws[i * WEIGHT_STRIDE + WEIGHT_T] - ws[o + WEIGHT_T]) / over : 1;
-      const start = d.weightStart[i - 1];
-      d.weightStart[i] = start + (ws[o + WEIGHT_W] - start) * (u >= 1 ? 1 : u);
-    }
+    d.weights = d.nWeight > 0 ? weightRamps(ws, d.nWeight) : EMPTY_F64;
     const p = index * VOICE_STRIDE;
     d.gain = params[p + VOICE_GAIN];
     d.pan = params[p + VOICE_PAN];
@@ -865,7 +856,7 @@ export class Voice {
     this.segCur = Math.max(0, lastAtOrBefore(d.segs, d.nSeg, SEG_STRIDE, SEG_T0, t));
     this.lifeCur = lastAtOrBefore(d.lives, d.nLife, LIFE_STRIDE, LIFE_BORN, t);
     this.levelCur = lastAtOrBefore(d.levels, d.nLevel, LEVEL_STRIDE, LEVEL_T, t);
-    this.weightCur = lastAtOrBefore(d.weights, d.nWeight, WEIGHT_STRIDE, WEIGHT_T, t);
+    this.weightCur = lastAtOrBefore(d.weights, d.nWeight, RAMP_STRIDE, RAMP_T, t);
     this.timbreCur = Math.max(0, lastAtOrBefore(d.timbres, d.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
     if (fresh) {
       this.fresh = true;
@@ -939,37 +930,57 @@ export class Voice {
     let li = this.lifeCur;
     while (li + 1 < d.nLife && L[(li + 1) * LIFE_STRIDE + LIFE_BORN] <= t) li++;
     this.lifeCur = li;
+    // w: amplitude; pw: its share in the normalisation (w itself, except for a crossfade).
     let w = 0;
+    let pw = 0;
     if (li >= 0) {
       const o = li * LIFE_STRIDE;
       const born = L[o + LIFE_BORN];
       const died = L[o + LIFE_DIED];
       if (t < died && t >= born) {
         w = 1;
+        pw = 1;
+        const cross = L[o + LIFE_CROSS];
         // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
         const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
         const u = (t - born) / fin;
-        if (u < 1) w = u * u * u * (u * (u * 6 - 15) + 10);
+        if (u < 1) {
+          if ((cross & LIFE_CROSS_IN) !== 0) {
+            // A split's newborn: power X(u), so the parent's falling weight keeps the sum.
+            pw = crossfade(u);
+            w = Math.sqrt(pw);
+          } else {
+            w = u * u * u * (u * (u * 6 - 15) + 10);
+            pw = w;
+          }
+        }
         const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
         const v = (died - t) / fout;
-        if (v < 1) w *= v * v * v * (v * (v * 6 - 15) + 10);
+        if (v < 1) {
+          if ((cross & LIFE_CROSS_OUT) !== 0) {
+            // A merging line: power X(v) = 1 − X(u), as the merged line's weight rises by X(u).
+            const x = crossfade(v);
+            pw *= x;
+            w *= Math.sqrt(x);
+          } else {
+            const x = v * v * v * (v * (v * 6 - 15) + 10);
+            pw *= x;
+            w *= x;
+          }
+        }
       }
     }
     // Line weight (revision 8): power of `lw` lines, so √lw in amplitude.
     let lw = 1;
     const W = d.weights;
     let wi = this.weightCur;
-    while (wi + 1 < d.nWeight && W[(wi + 1) * WEIGHT_STRIDE + WEIGHT_T] <= t) wi++;
+    while (wi + 1 < d.nWeight && W[(wi + 1) * RAMP_STRIDE + RAMP_T] <= t) wi++;
     this.weightCur = wi;
     if (wi >= 0) {
-      const wo = wi * WEIGHT_STRIDE;
-      const over = W[wo + WEIGHT_OVER];
-      const u = over > 0 ? (t - W[wo + WEIGHT_T]) / over : 1;
-      const start = d.weightStart[wi];
-      lw = u >= 1 ? W[wo + WEIGHT_W] : start + (W[wo + WEIGHT_W] - start) * u;
+      lw = weightRampValue(W, wi, t);
       if (!(lw > 0)) lw = 0;
     }
-    this.powTick[slot] = w * lw;
+    this.powTick[slot] = pw * lw;
     this.lifeTick[slot] = lw === 1 ? w : w * Math.sqrt(lw);
   }
 

@@ -21,6 +21,7 @@
  */
 
 import { defaultGlide } from '../defaults';
+import { crossfadeLength } from '../ease';
 import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
@@ -54,6 +55,7 @@ import {
   type PulseMoment,
   type PulseRecord,
   type Seconds,
+  type Segment,
   type VoiceOverride,
   type VoiceSelector,
   type WalkMoment,
@@ -69,12 +71,18 @@ import { collapse, countsLines, expand, type Collapsed, type Expansion } from '.
 import { Status, VoiceRun, type Birth, type Move } from './voice';
 
 /**
- * Distinct notes (revision 8): a line that arrives on another's resting pitch merges into it,
- * fading out over HANDOVER while the survivor's weight rises; a fork (a weighted line splitting)
- * fades in over FORK_FADE while its parent's weight falls.
+ * Distinct notes (revision 8) and merges and splits crossfade (owner 2026-11-21): a line that
+ * merges into another fades out across the end of its approach while the merged line's weight
+ * rises (`crossInto`); a fork (a weighted line splitting) fades in across the start of its
+ * departure while its parent's weight falls (`onBirth`). Both follow core/ease `crossfade`.
+ * Without room for a crossfade before the meeting (a line born just then), a joining line still
+ * fades over HANDOVER after it (MIDI writes every merge that way, midi/export.ts); FORK_FADE is a
+ * fork's fade-in when its parent is not sounding yet (no crossfade then).
  */
 export const HANDOVER: Seconds = 0.1;
 export const FORK_FADE: Seconds = 0.1;
+/** Least room before a meeting, inside both lines' lives, for a merge to crossfade (s). */
+const CROSS_ROOM: Seconds = 0.01;
 
 /** Silence after the last activity when `end.at` is absent (§5). */
 export const END_TAIL: Seconds = 4;
@@ -219,12 +227,37 @@ interface CloseRec {
   voice: number;
   died: Seconds;
   fade: Seconds;
+  /** The fade is a merge's crossfade (`Life.crossOut`). */
+  cross?: true;
 }
 
 /** A dying line's fade start (revision 8 weight hand-over). Immutable once queued. */
 interface HandoverRec {
   voice: number;
   died: Seconds;
+}
+
+function moving(s: Segment): boolean {
+  return s.p0 !== s.p1 || (s.m0 ?? 0) !== 0 || s.curve !== undefined;
+}
+
+/**
+ * Length of the run of moving segments of `run` that ends at t (0 if it holds there): its
+ * finished segments, then the frontier's tail (not among them until it is finished).
+ */
+function approachInto(run: VoiceRun, t: Seconds): Seconds {
+  let start = t;
+  const step = (g: Segment): boolean => {
+    if (g.t0 >= start) return true;
+    if (g.t1 < start - 1e-9 || !moving(g)) return false;
+    start = g.t0;
+    return true;
+  };
+  const tail = run.frontier.tail;
+  if (tail && !run.frontier.open && !step(tail)) return 0;
+  const segs = run.segs;
+  for (let i = segs.length - 1; i >= 0; i--) if (!step(segs[i])) break;
+  return t - start;
 }
 
 /** When a voice reaches its committed destination: the end of its last scheduled or running move. */
@@ -1341,16 +1374,26 @@ export class Compiler {
     const parent = src >= 0 ? this.voices[src].frontier.stateAt(b.t) : null;
     run.frontier.openAt(b.t, parent ?? { p: b.pitch, v: 0, mid: false });
     run.life = { born: b.t, fadeIn: b.fadeIn };
+    // A fork crossfades out of its parent (owner 2026-11-21) over the start of its departure:
+    // the newborn fades in along `crossfade` while the parent's weight falls by its share (a
+    // parent not sounding yet starts without it, and the newborn fades in as before).
+    if (b.fork !== undefined && b.parent >= 0) {
+      const p = this.voices[b.parent];
+      if (p.life && p.life.born < (b.forkAt ?? b.t)) {
+        let glide = 0;
+        for (const mv of run.pending) {
+          if (mv.cancelled) continue;
+          if (mv.t0 <= b.t + 1e-9) glide = mv.dur;
+          break;
+        }
+        const L = crossfadeLength(glide);
+        run.life = { born: b.t, fadeIn: L, crossIn: true };
+        p.rampWeight(b.t, p.lastWeight - b.fork, L, 0, true);
+      }
+    }
     run.lives.push(run.life);
     // Its committed weight now: forks taken from it before it sounded are already out of it.
     run.rampWeight(b.t, run.weight, 0);
-    // A fork hands its share over while the newborn fades in on the parent's pitch (a parent not
-    // sounding yet starts without it).
-    if (b.fork !== undefined && b.parent >= 0) {
-      const p = this.voices[b.parent];
-      if (p.life && p.life.born < (b.forkAt ?? b.t))
-        p.rampWeight(b.t, p.lastWeight - b.fork, b.fadeIn);
-    }
     // A newborn whose own move a later moment replaced may now go where its parent goes.
     this.queueJoin(b.voice, b.t);
     this.activity(b.t);
@@ -1560,38 +1603,84 @@ export class Compiler {
       if (dr < ds || (dr === ds && r.index < s.index)) s = r;
     }
     this.touch();
+    // One crossfade window for the group: the end of the longest approach into the meeting.
+    let glide = 0;
+    for (const r of group) {
+      const g = approachInto(r, t);
+      if (g > glide) glide = g;
+    }
+    const L = crossfadeLength(glide);
     for (const d of group) {
       if (d === s) continue;
-      // Power is kept: the dying line's power, in the survivor's level (the static voice gains
-      // are a mix setting, outside the simulation: incremental compiles resume across them).
-      const gs = this.levelOf(s.index);
-      const gd = this.levelOf(d.index);
-      const f = gs > 0 ? (gd * gd) / (gs * gs) : 1;
       s.setCount(t, s.count + d.count);
-      s.weight += d.weight * f;
       s.members = [...s.members, d.index, ...d.members];
-      s.rampWeight(t, s.lastWeight + d.lastWeight * f, HANDOVER);
       d.setCount(t, 1);
-      d.weight = 1;
       d.members = [];
       for (const mv of d.pending) mv.cancelled = true;
       d.pending.length = 0;
       d.status = Status.Dying;
       d.into = s.index;
-      d.deathFade = HANDOVER;
-      d.handed = true;
-      this.scheduleClose(d, t + HANDOVER);
+      d.handed = false;
+      const lead = this.crossInto(d, s, t, L);
+      if (lead < 0) {
+        // No room before the meeting (a line born just now): the old hand-over, after it.
+        this.passWeight(d, s, t, HANDOVER);
+        d.weight = 1;
+        d.deathFade = HANDOVER;
+        this.scheduleClose(d, t + HANDOVER);
+        continue;
+      }
+      d.weight = 1;
+      d.deathFade = lead;
+      this.scheduleClose(d, t, true);
     }
+  }
+
+  /**
+   * Merges and splits crossfade (owner 2026-11-21): dying line d meets line s at t (now). Across
+   * the window of length L ending at t (shorter if either line was born inside it), d fades out
+   * and s's weight rises by d's, along one `crossfade`, so the power of the two stays constant.
+   * The weight passes in s's level (the static voice gains are a mix setting, outside the
+   * simulation: incremental compiles resume across them). Returns the window's length: the
+   * caller closes d at t with that fade (`Life.crossOut`). With less than CROSS_ROOM before t in
+   * both lives (one was born just now) it changes nothing and returns −1: the caller hands over
+   * after the meeting instead (`passWeight`), as before the crossfade.
+   */
+  private crossInto(d: VoiceRun, s: VoiceRun, t: Seconds, L: Seconds): Seconds {
+    const lo = Math.max(d.life ? d.life.born : t, s.life ? s.life.born : t);
+    const lead = t - L < lo ? t - lo : L;
+    if (lead < CROSS_ROOM) return -1;
+    d.handed = true;
+    const f = this.levelRatio(d, s);
+    s.weight += d.weight * f;
+    s.rampWeight(t, s.lastWeight + d.lastWeight * f, lead, lead, true);
+    return lead;
+  }
+
+  /** (Power) ratio of d's level to s's: a weight passed from d to s is scaled by it. */
+  private levelRatio(d: VoiceRun, s: VoiceRun): number {
+    const gs = this.levelOf(s.index);
+    const gd = this.levelOf(d.index);
+    return gs > 0 ? (gd * gd) / (gs * gs) : 1;
+  }
+
+  /** Passes d's weight to s with a linear ramp from t over `over` (no crossfade room). */
+  private passWeight(d: VoiceRun, s: VoiceRun, t: Seconds, over: Seconds): void {
+    d.handed = true;
+    const f = this.levelRatio(d, s);
+    s.weight += d.weight * f;
+    s.rampWeight(t, s.lastWeight + d.lastWeight * f, over);
   }
 
   /**
    * (Re)schedules a dying voice's close, and the hand-over of its weight when its fade starts; an
    * earlier close or hand-over event becomes stale (onClose, onHandover).
    */
-  private scheduleClose(run: VoiceRun, died: Seconds): void {
+  private scheduleClose(run: VoiceRun, died: Seconds, cross = false): void {
     run.diedAt = died;
     this.activity(died);
     const rec: CloseRec = { voice: run.index, died, fade: run.deathFade };
+    if (cross) rec.cross = true;
     this.queue.push({
       t: died,
       cls: EventClass.MoveStart,
@@ -1613,19 +1702,27 @@ export class Compiler {
     });
   }
 
-  /** A merge or `count` death's fade starts: its weight passes to its survivor (owner, 2026-11-21). */
+  /**
+   * A merge or `count` death meets its survivor (its old fade start): its weight passes to the
+   * survivor (owner, 2026-11-21) across a crossfade ending now, and it closes now.
+   */
   private onHandover(rec: HandoverRec): void {
     const d = this.voices[rec.voice];
     if (rec.died !== d.diedAt || d.status !== Status.Dying) return;
-    this.handOver(d, this.clock, d.deathFade);
+    const lead = this.handOver(d, this.clock, d.deathFade);
+    if (lead < 0) return;
+    d.deathFade = lead;
+    this.scheduleClose(d, this.clock, true);
   }
 
   /**
    * Passes dying `d`'s weight to the line it merges into (following survivors that already
-   * handed theirs on), ramped over `over`, in the survivor's level (as `onJoin`).
+   * handed theirs on) at t, where they meet: `crossInto`, over the end of the longer of their
+   * approaches. Returns the crossfade's length, or −1 if nothing was passed on (no survivor
+   * sounding: d keeps its own fade).
    */
-  private handOver(d: VoiceRun, t: Seconds, over: Seconds): void {
-    if (d.handed) return;
+  private handOver(d: VoiceRun, t: Seconds, over: Seconds): Seconds {
+    if (d.handed) return -1;
     d.handed = true;
     let s = d.into;
     for (let k = 0; s >= 0 && k <= this.voices.length; k++) {
@@ -1633,7 +1730,7 @@ export class Compiler {
       if (r.status !== Status.Dying || !r.handed) break;
       s = r.into;
     }
-    if (s < 0 || s === d.index) return;
+    if (s < 0 || s === d.index) return -1;
     const sr = this.voices[s];
     // A survivor not born yet (a newborn of the dying line, say) is born now, on the dying line's
     // note, rather than later in mid-air once nothing sounds there.
@@ -1643,12 +1740,13 @@ export class Compiler {
       sr.pendingBirth = nb;
       this.onBirth(nb);
     }
-    if (sr.status === Status.Dormant || !sr.frontier.alive) return;
-    const gs = this.levelOf(s);
-    const gd = this.levelOf(d.index);
-    const f = gs > 0 ? (gd * gd) / (gs * gs) : 1;
-    sr.weight += d.weight * f;
-    sr.rampWeight(t, sr.lastWeight + d.lastWeight * f, over);
+    if (sr.status === Status.Dormant || !sr.frontier.alive) return -1;
+    const ga = approachInto(d, t);
+    const gb = approachInto(sr, t);
+    const lead = this.crossInto(d, sr, t, crossfadeLength(ga > gb ? ga : gb));
+    // No room (the survivor was born just now): d keeps its own fade, as before.
+    if (lead < 0) this.passWeight(d, sr, t, over);
+    return lead;
   }
 
   /**
@@ -1763,12 +1861,22 @@ export class Compiler {
   private onClose(rec: CloseRec): void {
     const run = this.voices[rec.voice];
     if (rec.died !== run.diedAt) return; // rescheduled by `follow`
-    if (run.status === Status.Dying && run.into >= 0) this.handOver(run, rec.died, 0); // no fade
+    let fade = rec.fade;
+    let cross = rec.cross === true;
+    if (run.status === Status.Dying && run.into >= 0) {
+      // A death with no fade meets its survivor here: crossfade into it.
+      const lead = this.handOver(run, rec.died, 0);
+      if (lead >= 0) {
+        fade = lead;
+        cross = true;
+      }
+    }
     run.handed = false;
     run.frontier.close(rec.died);
     if (run.life) {
       run.life.died = rec.died;
-      if (rec.fade > 0) run.life.fadeOut = rec.fade;
+      if (fade > 0) run.life.fadeOut = fade;
+      if (cross) run.life.crossOut = true;
       run.life = null;
     }
     if (run.status === Status.Dying) run.status = Status.Dormant;

@@ -763,6 +763,13 @@ export interface Life {
   fadeIn: Seconds;
   /** Fade-out length, ending at `died`; 0 if absent. */
   fadeOut?: Seconds;
+  /**
+   * Merges and splits crossfade (owner 2026-11-21): the fade-in (a split's newborn) or fade-out
+   * (a line merging, ending where it meets the merged line) follows core/ease `crossfade` in
+   * power, √X in amplitude, matched by a `cross` weight change on the parent or merged line.
+   */
+  crossIn?: true;
+  crossOut?: true;
 }
 
 /** A timbre change: crossfade to `preset` over `fade` seconds starting at `t`. */
@@ -807,16 +814,22 @@ export interface PulseRecord {
 }
 
 /**
- * A weight change (revision 8, "Distinct notes"): ramp linearly from the weight in effect at `t`
- * to `w` over `over` seconds. A line of weight w sounds at the power of w lines (√w amplitude).
+ * A weight change (revision 8, "Distinct notes"): a line of weight w sounds at the power of w
+ * lines (√w amplitude). Changes add up (crossfades 2026-11-21): change k adds w_k − w_(k−1)
+ * (w_(−1) = 1) over [t − lead, t − lead + over], linearly or along `crossfade`, so ramps that
+ * overlap (staggered forks of one line) each keep their own shape. core/query `weightAt`.
  */
 export interface WeightChange {
-  /** Start of the ramp. */
+  /** When the change is made (the timeline is sorted by it): the ramp starts `lead` earlier. */
   t: Seconds;
   /** Target weight (> 0). */
   w: number;
   /** Ramp length; 0 = step. */
   over: Seconds;
+  /** How long before `t` the ramp starts (a merge's crossfade ends at its meeting `t`); 0 if absent. */
+  lead?: Seconds;
+  /** The ramp follows core/ease `crossfade`, not a line (a merge or split crossfade). */
+  cross?: true;
 }
 
 /**
