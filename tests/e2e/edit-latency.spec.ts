@@ -4,6 +4,9 @@
  * event's timestamp) or the `setPiece` call to the engine's `swap` post to the worklet. The
  * worklet applies a swap at its next 128-frame quantum (≤ 3 ms); device output latency is not
  * counted. Chromium only.
+ *
+ * The 50 ms gate applies to the production build (what ships). The dev build (React dev mode)
+ * only asserts a loose 150 ms ceiling. `E2E_CPU_THROTTLE=4` emulates a slow (CI-class) machine.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -14,6 +17,8 @@ import { serializePiece } from '../../src/core/schema';
 test.skip(({ browserName }) => browserName !== 'chromium', 'timing is asserted on Chromium only');
 
 const BUDGET_MS = 50;
+const DEV_CEILING_MS = 150;
+const THROTTLE = Number(process.env.E2E_CPU_THROTTLE ?? 1);
 
 const median = (xs: number[]): number => {
   const s = [...xs].sort((a, b) => a - b);
@@ -44,6 +49,10 @@ async function openPlaying(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await seek(page, 60);
   await page.waitForFunction(() => window.__algorhythms!.engine()?.isPlaying === true);
+  if (THROTTLE > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
+  }
   await page.waitForTimeout(1500); // warm up the JIT and the audio
   // Record each swap post to the worklet, and each click's event time (same clock).
   await page.evaluate(() => {
@@ -81,7 +90,7 @@ async function timeClicks(page: Page, n: number, click: (i: number) => Promise<v
   return out;
 }
 
-test('chord picks and walk controls reach the worklet within 50 ms while playing (24 notes)', async ({
+test('chord picks and walk controls reach the worklet within 50 ms (prod) while playing (24 notes)', async ({
   page,
 }, info) => {
   test.setTimeout(90_000);
@@ -156,12 +165,13 @@ test('chord picks and walk controls reach the worklet within 50 ms while playing
   console.log(`[${info.project.name}] edit → swap latency, 24 notes: ${JSON.stringify(result)}`);
   info.annotations.push({ type: 'edit-latency', description: JSON.stringify(result) });
 
+  const budget = info.project.name.endsWith('-dev') ? DEV_CEILING_MS : BUDGET_MS;
   for (const [name, xs] of Object.entries({
     setPieceChord: direct.chord,
     setPieceWalk: direct.walk,
     clickChord: uiChord,
     clickWalk: uiWalk,
   })) {
-    expect(median(xs), `${name}: median edit → swap (ms)`).toBeLessThanOrEqual(BUDGET_MS);
+    expect(median(xs), `${name}: median edit → swap (ms)`).toBeLessThanOrEqual(budget);
   }
 });

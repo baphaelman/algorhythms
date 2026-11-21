@@ -242,16 +242,17 @@ describe('step edits audition the moved notes', () => {
     vi.useRealTimers();
   });
 
-  /** The edits compile synchronously here, so the audition fires on the fallback wait. */
-  const settle = (): void => {
+  /** One-off edits audition at the end of their task (a microtask); drags on the next compile. */
+  const settle = async (): Promise<void> => {
+    await Promise.resolve();
     vi.advanceTimersByTime(600);
   };
 
-  it('▲/▼ on a walk step plays its voice at the new pitch', () => {
+  it('▲/▼ on a walk step plays its voice at the new pitch', async () => {
     const s0 = usePlayer.getState().compiled.walkSteps.find((s) => s.momentId === 'w')!;
     const ref = { momentId: 'w', tick: s0.tick, voice: s0.voice };
     expect(moveWalkStep(ref, 1)).toBe(true);
-    settle();
+    await settle();
     const s1 = stepOf(ref.tick, ref.voice);
     expect(s1.to).not.toBe(s0.to);
     expect(audio.jobs).toHaveLength(1);
@@ -260,11 +261,11 @@ describe('step edits audition the moved notes', () => {
     expect(audio.jobs[0].score.voices[voice].lives).toHaveLength(1);
   });
 
-  it('▲/▼ on a chord note plays that note; a newer step replaces the pending one', () => {
+  it('▲/▼ on a chord note plays that note; a newer step replaces the pending one', async () => {
     const before = liveNotes(usePlayer.getState().compiled, 'c');
     expect(moveChordNote('c', 0, 1)).toBe(true);
     expect(moveChordNote('c', 0, 1)).toBe(true);
-    settle();
+    await settle();
     const after = (byId('c') as ChordMoment).notes;
     expect(after.kind).toBe('pitches');
     expect(audio.jobs).toHaveLength(1);
@@ -273,7 +274,7 @@ describe('step edits audition the moved notes', () => {
     expect(after.kind === 'pitches' && after.pitches).toContain(p);
   });
 
-  it('Shift+▲/▼ on selected dots plays them an octave on', () => {
+  it('Shift+▲/▼ on selected dots plays them an octave on', async () => {
     const { piece: p, compiled } = usePlayer.getState();
     const dots = momentArrivals(
       compiled,
@@ -281,17 +282,17 @@ describe('step edits audition the moved notes', () => {
     ).slice(0, 2);
     expect(dots).toHaveLength(2);
     expect(octaveDots(dots, 1)).not.toBeNull();
-    settle();
+    await settle();
     expect(audio.jobs).toHaveLength(1);
     expect(heard(audio.jobs[0])).toEqual(dots.map((d) => d.pitch + 12).sort((x, y) => x - y));
   });
 
-  it('plays nothing while the transport plays', () => {
+  it('plays nothing while the transport plays', async () => {
     setStatus('playing');
     const s0 = usePlayer.getState().compiled.walkSteps.find((s) => s.momentId === 'w')!;
     moveWalkStep({ momentId: 'w', tick: s0.tick, voice: s0.voice }, -1);
     moveChordNote('c', 1, -1);
-    settle();
+    await settle();
     expect(audio.jobs).toHaveLength(0);
   });
 });

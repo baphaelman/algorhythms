@@ -177,15 +177,23 @@ export class AudioEngine {
    * Hot-swaps the score (after an edit) without stopping; new timbres are built first. During an
    * audition the score is kept and sent when the audition ends.
    */
-  async swap(score: CompiledScore, timbres?: Record<string, Timbre>): Promise<void> {
+  swap(score: CompiledScore, timbres?: Record<string, Timbre>): Promise<void> {
     const flat = flatten(score);
     if (timbres) this.timbresValue = timbres;
     this.real = score;
-    const sets = await this.prepareTables(flat, this.timbresValue, false);
-    this.postTables(sets);
-    this.durationValue = score.duration;
-    if (this.real !== score) return;
-    if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+    const pending = this.tablesToBuild(flat, this.timbresValue, false);
+    if (pending.length === 0) {
+      // Nothing to build (the usual edit): post now.
+      this.durationValue = score.duration;
+      if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+      return Promise.resolve();
+    }
+    return this.buildTables(pending).then((sets) => {
+      this.postTables(sets);
+      this.durationValue = score.duration;
+      if (this.real !== score) return;
+      if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+    });
   }
 
   /**
@@ -379,27 +387,47 @@ export class AudioEngine {
   }
 
   /** Builds tables for every timbre of `flat` whose definition the worklet doesn't have yet. */
-  private async prepareTables(
+  private prepareTables(
     flat: FlatScore,
     timbres: Record<string, Timbre> | undefined,
     all: boolean,
   ): Promise<{ name: string; set: WavetableSet }[]> {
+    return this.buildTables(this.tablesToBuild(flat, timbres, all));
+  }
+
+  /** The timbres whose tables must be built and sent (all, or those changed); marks them sent. */
+  private tablesToBuild(
+    flat: FlatScore,
+    timbres: Record<string, Timbre> | undefined,
+    all: boolean,
+  ): { name: string; timbre: Timbre }[] {
     const rate = this.context.sampleRate;
-    const jobs = flat.timbreNames.map(async (name) => {
+    const out: { name: string; timbre: Timbre }[] = [];
+    for (const name of flat.timbreNames) {
       const timbre = resolveTimbre(name, timbres);
       const key = timbreKey(timbre, rate);
-      if (!all && this.sent.get(name) === key) return null;
+      if (!all && this.sent.get(name) === key) continue;
       this.sent.set(name, key);
-      let set: WavetableSet;
-      try {
-        set = await this.tables.build(timbre, rate);
-      } catch {
-        set = buildWavetables(timbre, rate);
-      }
-      return { name, set };
-    });
-    const done = await Promise.all(jobs);
-    return done.filter((d): d is { name: string; set: WavetableSet } => d !== null);
+      out.push({ name, timbre });
+    }
+    return out;
+  }
+
+  private async buildTables(
+    todo: readonly { name: string; timbre: Timbre }[],
+  ): Promise<{ name: string; set: WavetableSet }[]> {
+    const rate = this.context.sampleRate;
+    return Promise.all(
+      todo.map(async ({ name, timbre }) => {
+        let set: WavetableSet;
+        try {
+          set = await this.tables.build(timbre, rate);
+        } catch {
+          set = buildWavetables(timbre, rate);
+        }
+        return { name, set };
+      }),
+    );
   }
 
   private postTables(sets: { name: string; set: WavetableSet }[]): void {
