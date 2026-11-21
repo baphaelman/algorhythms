@@ -49,11 +49,12 @@ const STRIDE = 2;
 /**
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
- * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade. References, REFS per
- * voice: pending moves (a copy), pending birth, open life, tail, tail curve.
+ * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
+ * length. References, REFS per voice: pending moves (a copy), pending birth, open life, tail,
+ * tail curve, members (a copy).
  */
-const NUMS = 13;
-const REFS = 5;
+const NUMS = 16;
+const REFS = 6;
 const NO_MOVES: readonly Move[] = [];
 
 interface Checkpoint {
@@ -92,6 +93,7 @@ interface State {
   segs: Segment[][];
   lives: Life[][];
   level: VoiceRun['level'][];
+  weights: VoiceRun['weights'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
   walkSteps: WalkStepRecord[];
@@ -211,6 +213,9 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       tail ? tail.p1 : 0,
       run.into,
       run.deathFade,
+      run.count,
+      run.weight,
+      run.weights.length,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -218,6 +223,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.life,
       tail,
       tail ? tail.curve : undefined,
+      run.members.slice(),
     );
   }
   return {
@@ -276,6 +282,11 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     run.diedAt = nums[n + 1];
     run.into = nums[n + 11];
     run.deathFade = nums[n + 12];
+    run.count = nums[n + 13];
+    run.weight = nums[n + 14];
+    run.weights.length = 0;
+    pushPrefix(run.weights, prev.weights[v], nums[n + 15]);
+    run.members = (refs[r + 5] as number[]).slice();
     run.segs.length = 0;
     pushPrefix(run.segs, prev.segs[v], nums[n + 2]);
     run.lives.length = 0;
@@ -403,6 +414,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       segs: c.voices.map((r) => r.segs),
       lives: c.voices.map((r) => r.lives),
       level: c.voices.map((r) => r.level),
+      weights: c.voices.map((r) => r.weights),
       keys: c.keys,
       harmony: c.harmony,
       walkSteps: c.walkSteps,

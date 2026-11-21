@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
+import { stackedCountAt } from '../../../src/core/query';
 import {
   SECTION_NAMES,
   generate,
@@ -315,9 +316,8 @@ describe('generate: compiles', () => {
       const expected = pieceSections(piece).map((s) => s.end);
       for (let i = 1; i < sections.length; i++) {
         const t = sections[i].at;
-        const alive = score.voices.filter((v) =>
-          v.lives.some((l) => l.born <= t && (l.died === undefined || l.died > t)),
-        ).length;
+        // Voices, not lines: merged notes count by weight (revision 8).
+        const alive = stackedCountAt(score, t);
         expect(alive, `seed ${seed}, end of ${sections[i - 1].name}`).toBe(expected[i - 1]);
       }
     }

@@ -192,6 +192,12 @@ export interface StateAt {
   dormant: number[];
   /** Per pool index: the voice's level target at t. */
   level: Float64Array;
+  /**
+   * Revision 8: the line each logical voice belongs to. A line of weight w stands for round(w)
+   * stacked voices, as the compiler's moments see it (compiler/lines.ts): its phantoms take
+   * dormant pool indices, then indices ≥ the pool size.
+   */
+  base: number[];
 }
 
 /** True for moment types that can end a voice's life (§7.4). */
@@ -218,6 +224,8 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
       return;
     }
     const end = life.died ?? Infinity;
+    // Fading out (a merge, or a line that arrived on another's pitch, revision 8).
+    if (end < score.duration && t >= end - (life.fadeOut ?? 0)) return;
     const segs = v.segments;
     // Dying: the life ends before the piece does, and its last move belongs to a moment at ≤ t
     // that kills (a merge, or a chord with `count`).
@@ -246,10 +254,37 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
     }
     dest[i] = d;
   });
+  const lines: number[] = [];
+  for (let i = 0; i < n; i++) if (dest[i] === dest[i]) lines.push(i);
+  // Stacked voices of weighted lines (revision 8).
+  const base: number[] = [];
+  for (let i = 0; i < n; i++) base.push(i);
+  const extra: { b: number; u: number }[] = [];
+  let synth = n;
+  for (const b of lines) {
+    let w = 1;
+    for (const c of score.voices[b].weight ?? []) if (c.t <= t) w = c.w;
+    for (let j = Math.max(1, Math.round(w)); j > 1; j--) {
+      const u = dormant.length > 0 ? dormant.shift()! : synth++;
+      extra.push({ b, u });
+    }
+  }
+  let all = dest;
+  if (synth > n) {
+    all = new Float64Array(synth).fill(NaN);
+    all.set(dest);
+  }
+  const lvl = synth > n ? new Float64Array(synth).fill(1) : level;
+  if (lvl !== level) lvl.set(level);
+  for (const { b, u } of extra) {
+    all[u] = all[b];
+    lvl[u] = level[b];
+    base[u] = b;
+  }
   const active: number[] = [];
-  for (let i = 0; i < n; i++) if (dest[i] === dest[i]) active.push(i);
-  active.sort((a, b) => dest[a] - dest[b] || a - b);
-  return { t, key: keyAt(score, t), dest, active, dormant, level };
+  for (let i = 0; i < all.length; i++) if (all[i] === all[i]) active.push(i);
+  active.sort((a, b) => all[a] - all[b] || a - b);
+  return { t, key: keyAt(score, t), dest: all, active, dormant, level: lvl, base };
 }
 
 function resolveTarget(
@@ -277,6 +312,7 @@ function resolveTarget(
 function effectOn(piece: Piece, score: CompiledScore, st: StateAt, m: Moment): MomentEffect {
   const no = (reason: string): MomentEffect => ({ effect: false, reason });
   const ids = score.voices.map((v) => v.id);
+  for (let u = ids.length; u < st.dest.length; u++) ids.push(`${ids[st.base[u]]}~${u}`);
   const indexOf = (id: string): number => ids.indexOf(id);
   const targeted =
     m.type === 'pin'
@@ -303,7 +339,11 @@ function effectOn(piece: Piece, score: CompiledScore, st: StateAt, m: Moment): M
   const seed = momentSeed(piece.seed, m.id, m.seed);
   const emptyHash = hash32('');
   const hashes = ids.map((id) => hash32(id));
-  const ranges = piece.voices.map((v) => sanitizeRange(v.range));
+  const ranges = ids.map((_, u) => {
+    const def = piece.voices[st.base[u] === u ? u : st.base[u]];
+    const own = piece.voices[u];
+    return sanitizeRange((u < piece.voices.length ? own : def)?.range ?? [0, 127]);
+  });
   let error: string | null = null;
   const env: MomentEnv = {
     t: st.t,
@@ -314,7 +354,8 @@ function effectOn(piece: Piece, score: CompiledScore, st: StateAt, m: Moment): M
     targeted,
     active: st.active,
     dest: (v) => st.dest[v],
-    now: (v) => (st.dest[v] === st.dest[v] ? (pitchAt(score.voices[v], st.t) ?? NaN) : NaN),
+    now: (v) =>
+      st.dest[v] === st.dest[v] ? (pitchAt(score.voices[st.base[v]], st.t) ?? NaN) : NaN,
     range: (v) => ranges[v] ?? [0, 127],
     id: (v) => ids[v],
     sounding: (v) => st.dest[v] === st.dest[v],

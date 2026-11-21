@@ -18,7 +18,7 @@ import {
   type OvershootLimits,
   type StartState,
 } from '../interrupt';
-import type { EaseRef, Life, Pitch, Seconds, Segment, VoiceDef } from '../types';
+import type { EaseRef, Life, Pitch, Seconds, Segment, VoiceDef, WeightChange } from '../types';
 
 /** Local aliases for the hot paths: under Vitest's module runner an imported binding is a getter. */
 const segAt = evalSegment;
@@ -82,6 +82,13 @@ export interface Birth {
   pitch: Pitch;
   fadeIn: Seconds;
   momentId: string;
+  /** Weight of the newborn (revision 8); 1 if absent. */
+  weight?: number;
+  /**
+   * A fork of a weighted line (revision 8): the parent hands `share` of its weight to the newborn,
+   * ramping down over the newborn's fade-in.
+   */
+  fork?: number;
 }
 
 /**
@@ -290,6 +297,16 @@ export class VoiceRun {
   life: Life | null = null;
   /** Level timeline. */
   readonly level: { t: Seconds; gain: number; over: Seconds }[] = [];
+  /**
+   * Distinct notes (revision 8): logical voices this line stands for (merged lines add up), and
+   * its committed weight (loudness: power of `weight` lines). Moments see `count` stacked voices.
+   */
+  count = 1;
+  weight = 1;
+  /** Pool voices merged into this line, preferred when it splits again. */
+  members: number[] = [];
+  /** Weight timeline (absolute targets, pushed at the simulation time). */
+  readonly weights: WeightChange[] = [];
 
   constructor(
     readonly index: number,
@@ -303,6 +320,22 @@ export class VoiceRun {
 
   get id(): string {
     return this.def.id;
+  }
+
+  /** The weight the timeline is heading to (1 before its first entry). */
+  get lastWeight(): number {
+    const w = this.weights;
+    return w.length > 0 ? w[w.length - 1].w : 1;
+  }
+
+  /** Appends a weight ramp at t (the current simulation time) to `w`, unless already there. */
+  rampWeight(t: Seconds, w: number, over: Seconds): void {
+    if (w === this.lastWeight) return;
+    const last = this.weights[this.weights.length - 1];
+    // Replace, never mutate: incremental compiles share entries with earlier scores.
+    if (last && last.t === t && last.over === over)
+      this.weights[this.weights.length - 1] = { t, w, over };
+    else this.weights.push({ t, w, over });
   }
 
   /** Sounding (life open) at the current simulation time. */

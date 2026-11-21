@@ -192,6 +192,7 @@ function checkRanges(p: Piece): void {
     // it is exempt until its path first starts a segment inside the range.
     let outsideSinceBirth = false;
     let prevOwn = 0;
+    let outsideSinceOwn = false;
     v.segments.forEach((g) => {
       const end = plannedEnd(g);
       const isBirth = v.lives.some((l) => l.born === g.t0);
@@ -207,7 +208,11 @@ function checkRanges(p: Piece): void {
       // user's ornament, like the allowance in the L test), and a move interrupting it
       // there starts outside but never goes further out.
       const own = ownOvershoot(g);
-      if (!inside) expect(outsideSinceBirth || prevOwn > 0).toBe(true);
+      // Still outside after a chain of quick interruptions that began in a bézier's overshoot.
+      if (!inside) {
+        expect(outsideSinceBirth || prevOwn > 0 || outsideSinceOwn).toBe(true);
+        outsideSinceOwn = true;
+      } else outsideSinceOwn = false;
       prevOwn = own.up + own.down;
       const bandLo = Math.min(lo, g.p0) - own.down - 1e-9;
       const bandHi = Math.max(hi, g.p0) + own.up + 1e-9;
@@ -548,7 +553,10 @@ describe('compiler properties (§14)', () => {
           if (seen.has(m.id)) returns++;
           else applied++;
           seen.add(m.id);
-          expect(m.intents.length).toBe(m.targeted.length);
+          // Revision 8: with stacked lines the note acts on logical voices (one per voice a line
+          // stands for), so the line-level intents may differ in number.
+          const its = m.logical ?? m.intents;
+          if (its === m.intents) expect(m.intents.length).toBe(m.targeted.length);
           const nm = p.moments.find((x) => x.id === m.id);
           // Overrides are hand edits: they may add moves and make the plan unordered.
           if (nm?.overrides?.length) continue;
@@ -563,8 +571,8 @@ describe('compiler properties (§14)', () => {
               d.momentId === m.id && (d.code === 'range-fold' || d.code === 'range-too-narrow'),
           );
           if (folded) continue;
-          for (let k = 1; k < m.intents.length; k++) {
-            expect(m.intents[k].to).toBeGreaterThanOrEqual(m.intents[k - 1].to);
+          for (let k = 1; k < its!.length; k++) {
+            expect(its![k].to).toBeGreaterThanOrEqual(its![k - 1].to);
           }
         }
       }),

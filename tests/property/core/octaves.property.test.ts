@@ -7,7 +7,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { voiceNotes } from '../../../src/core/voicing';
-import { chordAt, piece } from '../../unit/core/compiler-fixtures';
+import { chordAt, piece, stackedChordAt } from '../../unit/core/compiler-fixtures';
 import { lineArtifacts } from '../../unit/core/line-artifacts';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 200);
@@ -90,9 +90,11 @@ describe('octaves before unisons', () => {
           ],
         });
         const s = compile(p);
+        // Revision 8: doubled voices are one line of weight 2; distinct lines = distinct pitches.
         const c = chordAt(s, 9);
         const voices = Math.max(k, start.length);
-        expect(c).toHaveLength(voices);
+        expect(stackedChordAt(s, 9)).toHaveLength(voices);
+        expect(c).toHaveLength(new Set(c).size);
         const want =
           notes.length >= voices ? voices : Math.min(voices, octaveClosure(notes, lo, hi).size);
         expect(new Set(c).size).toBe(want);

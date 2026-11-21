@@ -53,6 +53,10 @@ import {
   VOICE_SEND_REVERB,
   VOICE_SOLO,
   VOICE_STRIDE,
+  WEIGHT_OVER,
+  WEIGHT_STRIDE,
+  WEIGHT_T,
+  WEIGHT_W,
 } from './segment';
 import type { CompiledScore, CompiledVoice, EaseRef, Life, Segment } from './types';
 
@@ -92,14 +96,19 @@ export {
   VOICE_SEND_REVERB,
   VOICE_SOLO,
   VOICE_STRIDE,
+  WEIGHT_OVER,
+  WEIGHT_STRIDE,
+  WEIGHT_T,
+  WEIGHT_W,
 };
 export { EaseCode };
 
 /**
  * Version of this layout; bump it whenever a stride or offset changes.
  * v2 (M1): segment records gain SEG_CURVE_T1 and SEG_CURVE_P1 (cut segments, §7.5); stride 13.
+ * v3 (M4.5-29): per-voice weight records (`FlatVoice.weights`, revision 8).
  */
-export const FLAT_LAYOUT_VERSION = 2;
+export const FLAT_LAYOUT_VERSION = 3;
 
 /** One voice's time-varying data. Every array is sorted by time. */
 export interface FlatVoice {
@@ -111,6 +120,8 @@ export interface FlatVoice {
   levels: Float64Array<ArrayBuffer>;
   /** Timbre-change records, TIMBRE_STRIDE doubles each; TIMBRE_PRESET indexes timbreNames. */
   timbres: Float64Array<ArrayBuffer>;
+  /** Weight-change records, WEIGHT_STRIDE doubles each. The weight is 1 before the first. */
+  weights: Float64Array<ArrayBuffer>;
 }
 
 /** A compiled score as typed arrays plus a little plain metadata (copied once per load). */
@@ -203,7 +214,16 @@ function flattenVoice(v: CompiledVoice, timbreIndex: Map<string, number>): FlatV
     timbres[o + TIMBRE_FADE] = c.fade;
   });
 
-  return { segments, lives, levels, timbres };
+  const wl = v.weight ?? [];
+  const weights = new Float64Array(wl.length * WEIGHT_STRIDE);
+  wl.forEach((c, i) => {
+    const o = i * WEIGHT_STRIDE;
+    weights[o + WEIGHT_T] = c.t;
+    weights[o + WEIGHT_W] = c.w;
+    weights[o + WEIGHT_OVER] = c.over;
+  });
+
+  return { segments, lives, levels, timbres, weights };
 }
 
 /** Flattens a compiled score into typed arrays. Voices must be in pool order. */
@@ -244,6 +264,7 @@ export function transferList(flat: FlatScore): ArrayBuffer[] {
     out.add(v.lives.buffer);
     out.add(v.levels.buffer);
     out.add(v.timbres.buffer);
+    out.add(v.weights.buffer);
   }
   return [...out];
 }
@@ -293,7 +314,7 @@ export function unflatten(flat: FlatScore): CompiledScore {
     const sends: CompiledVoice['sends'] = {};
     if (!Number.isNaN(sendReverb)) sends.reverb = sendReverb;
     if (!Number.isNaN(sendDelay)) sends.delay = sendDelay;
-    return {
+    const cv: CompiledVoice = {
       id: flat.voiceIds[i] ?? '',
       index: i,
       lives: records(fv.lives, LIFE_STRIDE, (o): Life => {
@@ -336,6 +357,15 @@ export function unflatten(flat: FlatScore): CompiledScore {
       solo: flat.voiceParams[p + VOICE_SOLO] === 1,
       sends,
     };
+    const ws = fv.weights ?? new Float64Array(0);
+    if (ws.length > 0) {
+      cv.weight = records(ws, WEIGHT_STRIDE, (o) => ({
+        t: ws[o + WEIGHT_T],
+        w: ws[o + WEIGHT_W],
+        over: ws[o + WEIGHT_OVER],
+      }));
+    }
+    return cv;
   });
   return {
     duration: flat.duration,

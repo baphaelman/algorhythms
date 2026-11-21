@@ -689,13 +689,13 @@ export class Graph {
     }
   }
 
-  /** Re-initialises g_n to 1/√(Σ life weights) at the current position (after a jump). */
+  /** Re-initialises g_n to 1/√(Σ life × line weights) at the current position (after a jump). */
   private resetNorm(): void {
     let sum = 0;
     for (let i = 0; i < this.voiceCount; i++) {
       const v = this.voices[i];
       v.computeLife(this.pieceFrame, 0);
-      sum += v.lifeTick[0];
+      sum += v.powTick[0];
     }
     this.gnValue = 1 / Math.sqrt(sum > 1 ? sum : 1);
   }
@@ -710,7 +710,7 @@ export class Graph {
         for (let i = 0; i < this.voiceCount; i++) {
           const v = this.voices[i];
           v.computeLife(frame, k);
-          sum += v.lifeTick[k];
+          sum += v.powTick[k];
         }
         const target = 1 / Math.sqrt(sum > 1 ? sum : 1);
         this.gnValue += (target - this.gnValue) * this.normCoeff;

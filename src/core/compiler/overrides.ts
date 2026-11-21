@@ -21,12 +21,17 @@ export function overridesOf(m: Moment, voiceCount: number): Map<number, VoiceOve
     const pitch = typeof o.pitch === 'number' && Number.isFinite(o.pitch) ? o.pitch : undefined;
     const end =
       typeof o.end === 'number' && Number.isFinite(o.end) && o.end >= 0 ? o.end : undefined;
-    if (pitch === undefined && end === undefined) continue;
+    const weight =
+      typeof o.weight === 'number' && Number.isFinite(o.weight) && o.weight > 0
+        ? o.weight
+        : undefined;
+    if (pitch === undefined && end === undefined && weight === undefined) continue;
     const prev = out?.get(v);
     (out ??= new Map()).set(v, {
       voice: v,
       pitch: pitch ?? prev?.pitch,
       end: end ?? prev?.end,
+      weight: weight ?? prev?.weight,
     });
   }
   return out;

@@ -31,9 +31,10 @@ export function freezeChord(
   const before = piece.moments.filter((x, j) => x.at < m.at || (x.at === m.at && j <= index));
   const { trace } = compileWithTrace({ ...piece, moments: before });
   const tr = trace.moments.find((x) => x.id === momentId);
-  if (!tr || !tr.intents) return null;
+  const intents = tr?.logical ?? tr?.intents;
+  if (!intents) return null;
   const pitches: Pitch[] = [];
-  for (const it of tr.intents) if (it.kind !== 'death') pitches.push(it.to);
+  for (const it of intents) if (it.kind !== 'death') pitches.push(it.to);
   if (pitches.length === 0) return null;
   pitches.sort((a, b) => a - b);
   return { ...m, notes: { kind: 'pitches', pitches }, assign: 'ordered' };

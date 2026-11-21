@@ -22,6 +22,10 @@
  */
 
 import {
+  WEIGHT_OVER,
+  WEIGHT_STRIDE,
+  WEIGHT_T,
+  WEIGHT_W,
   LEVEL_GAIN,
   LEVEL_OVER,
   LEVEL_STRIDE,
@@ -172,6 +176,10 @@ export class VoiceData {
   nLevel = 0;
   /** Level in effect at the start of each level ramp. */
   levelStart: Float64Array = EMPTY_F64;
+  /** Weight records (revision 8) and the weight in effect at the start of each ramp. */
+  weights: Float64Array = EMPTY_F64;
+  nWeight = 0;
+  weightStart: Float64Array = EMPTY_F64;
   timbres: Float64Array = EMPTY_F64;
   nTimbre = 0;
   /** Graph slot of each timbre record's preset. */
@@ -226,6 +234,21 @@ export class VoiceData {
     d.nLevel = (fv.levels.length / LEVEL_STRIDE) | 0;
     d.timbres = fv.timbres;
     d.nTimbre = (fv.timbres.length / TIMBRE_STRIDE) | 0;
+    const ws = fv.weights ?? EMPTY_F64;
+    d.weights = ws;
+    d.nWeight = (ws.length / WEIGHT_STRIDE) | 0;
+    d.weightStart = new Float64Array(d.nWeight);
+    for (let i = 0; i < d.nWeight; i++) {
+      if (i === 0) {
+        d.weightStart[0] = 1;
+        continue;
+      }
+      const o = (i - 1) * WEIGHT_STRIDE;
+      const over = ws[o + WEIGHT_OVER];
+      const u = over > 0 ? (ws[i * WEIGHT_STRIDE + WEIGHT_T] - ws[o + WEIGHT_T]) / over : 1;
+      const start = d.weightStart[i - 1];
+      d.weightStart[i] = start + (ws[o + WEIGHT_W] - start) * (u >= 1 ? 1 : u);
+    }
     const p = index * VOICE_STRIDE;
     d.gain = params[p + VOICE_GAIN];
     d.pan = params[p + VOICE_PAN];
@@ -616,6 +639,11 @@ export class Voice {
    * for the segment functions.
    */
   readonly lifeTick = new Float64Array(TICKS_PER_BLOCK + 1);
+  /**
+   * Power per tick for the sum normalisation: life weight × line weight (revision 8). lifeTick
+   * already carries √weight, the line's amplitude factor.
+   */
+  readonly powTick = new Float64Array(TICKS_PER_BLOCK + 1);
   /** Persistent double state (see the S_* indices). */
   private readonly st = new Float64Array(STATE_SIZE);
   private readonly invRate: number = 0;
@@ -624,6 +652,7 @@ export class Voice {
   private segCur = 0;
   private lifeCur = -1;
   private levelCur = -1;
+  private weightCur = -1;
   private timbreCur = 0;
   /** Timbre slot at the last tick. */
   private curSlot = -1;
@@ -741,6 +770,7 @@ export class Voice {
     this.segCur = Math.max(0, lastAtOrBefore(d.segs, d.nSeg, SEG_STRIDE, SEG_T0, t));
     this.lifeCur = lastAtOrBefore(d.lives, d.nLife, LIFE_STRIDE, LIFE_BORN, t);
     this.levelCur = lastAtOrBefore(d.levels, d.nLevel, LEVEL_STRIDE, LEVEL_T, t);
+    this.weightCur = lastAtOrBefore(d.weights, d.nWeight, WEIGHT_STRIDE, WEIGHT_T, t);
     this.timbreCur = Math.max(0, lastAtOrBefore(d.timbres, d.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
     if (fresh) {
       this.fresh = true;
@@ -830,7 +860,22 @@ export class Voice {
         if (v < 1) w *= v * v * v * (v * (v * 6 - 15) + 10);
       }
     }
-    this.lifeTick[slot] = w;
+    // Line weight (revision 8): power of `lw` lines, so √lw in amplitude.
+    let lw = 1;
+    const W = d.weights;
+    let wi = this.weightCur;
+    while (wi + 1 < d.nWeight && W[(wi + 1) * WEIGHT_STRIDE + WEIGHT_T] <= t) wi++;
+    this.weightCur = wi;
+    if (wi >= 0) {
+      const wo = wi * WEIGHT_STRIDE;
+      const over = W[wo + WEIGHT_OVER];
+      const u = over > 0 ? (t - W[wo + WEIGHT_T]) / over : 1;
+      const start = d.weightStart[wi];
+      lw = u >= 1 ? W[wo + WEIGHT_W] : start + (W[wo + WEIGHT_W] - start) * u;
+      if (!(lw > 0)) lw = 0;
+    }
+    this.powTick[slot] = w * lw;
+    this.lifeTick[slot] = lw === 1 ? w : w * Math.sqrt(lw);
   }
 
   /** Copies the complete state of `v` (used to spawn a ghost). Allocation-free. */
@@ -842,6 +887,7 @@ export class Voice {
     this.segCur = v.segCur;
     this.lifeCur = v.lifeCur;
     this.levelCur = v.levelCur;
+    this.weightCur = v.weightCur;
     this.timbreCur = v.timbreCur;
     this.curSlot = v.curSlot;
     this.roleMpo.set(v.roleMpo);

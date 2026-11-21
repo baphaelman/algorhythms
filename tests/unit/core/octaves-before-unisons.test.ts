@@ -11,7 +11,7 @@ import { createIncrementalCompiler } from '../../../src/core/compiler/incrementa
 import { parsePiece } from '../../../src/core/schema';
 import type { CompiledScore, Piece } from '../../../src/core/types';
 import { fillOctaves, voiceNotes } from '../../../src/core/voicing';
-import { chordAt, piece, type MomentInput } from './compiler-fixtures';
+import { chordAt, piece, stackedChordAt, type MomentInput } from './compiler-fixtures';
 import { lineArtifacts } from './line-artifacts';
 
 const GLIDE = { length: 3, jitter: 0.3, stagger: 1.5, ease: 'smootherstep' as const };
@@ -99,8 +99,10 @@ describe('split', () => {
   it('a narrow range fills what octaves it can, then doubles', () => {
     // [58, 72]: only 72 (60 + 12) and 58 (70 − 12) are free octaves.
     const s = run(C7, split(10), [58, 72]);
+    // Revision 8: the 10 voices are 6 lines; the doubled ones carry weight 2.
+    expect(stackedChordAt(s, 10)).toHaveLength(10);
     const c = chordAt(s, 10);
-    expect(c).toHaveLength(10);
+    expect(c).toHaveLength(6);
     expect(distinct(c)).toBe(6);
     // Narrower than an octave: no octave at all, unisons as before.
     const s2 = run(C7, split(10), [59, 70]);

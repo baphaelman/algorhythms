@@ -84,6 +84,16 @@ export const LEVEL_OVER = 2;
 /** Doubles per level record. */
 export const LEVEL_STRIDE = 3;
 
+// Weight-change record (revision 8): ramp linearly from the weight in effect to W over OVER.
+/** Start of the ramp. */
+export const WEIGHT_T = 0;
+/** Target weight. */
+export const WEIGHT_W = 1;
+/** Ramp length (s). */
+export const WEIGHT_OVER = 2;
+/** Doubles per weight record. */
+export const WEIGHT_STRIDE = 3;
+
 /** Timbre record: crossfade start time. */
 export const TIMBRE_T = 0;
 /** Timbre record: index into FlatScore.timbreNames. */

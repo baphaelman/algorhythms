@@ -19,14 +19,15 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
 /**
  * Golden hashes before revision 6 (every move ended at its own start + jittered length). Three
  * changed with M4.5-17: newborns that forked out of order with a sibling or parent (a small
- * crossing) now take its timing.
+ * crossing) now take its timing. All five changed with M4.5-29 (revision 8 "Distinct notes":
+ * stacked voices merge into weighted lines).
  */
 const PRE_REV6: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': '3c2665b69df22274',
-  'lanterns-over-salt-flats.algorhythms.json': 'c4db88c56394475b',
-  'seven-doors-in-fog.algorhythms.json': '50a8e70bf243bbad',
-  'the-cartographers-rain.algorhythms.json': '06989b08c5eeffbf',
-  'tidewater-hymn.algorhythms.json': '8eb0e9e43d43919f',
+  'clockwork-heron.algorhythms.json': 'd18812ec8526e759',
+  'lanterns-over-salt-flats.algorhythms.json': 'a9e169d0b0475c1f',
+  'seven-doors-in-fog.algorhythms.json': 'b797fe4f030cc9f7',
+  'the-cartographers-rain.algorhythms.json': '7abb859546f4dabb',
+  'tidewater-hymn.algorhythms.json': '0da2f40494d62ac0',
 };
 
 function loadExample(file: string): Piece {

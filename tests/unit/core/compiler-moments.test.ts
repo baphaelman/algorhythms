@@ -7,7 +7,7 @@ import { motionAt, pitchAt, sample } from '../../../src/core/query';
 import { scalePcs } from '../../../src/core/scales';
 import { evalSegmentVelocity } from '../../../src/core/segment';
 import type { CompiledScore, CompiledVoice, Moment, Piece } from '../../../src/core/types';
-import { chordAt, piece, type MomentInput } from './compiler-fixtures';
+import { piece, stackedChordAt, type MomentInput } from './compiler-fixtures';
 
 /** A piece with no stagger or jitter, so timings are exact. */
 const tight = (opts: Parameters<typeof piece>[0]): Piece =>
@@ -21,7 +21,8 @@ const codes = (s: CompiledScore): string[] => s.diagnostics.map((d) => d.code);
 /** Just before the end, when every voice holds its final pitch. */
 const last = (s: CompiledScore): number => s.duration - 1e-6;
 /** Sorted pitches of the voices sounding at the end. */
-const finalChord = (s: CompiledScore): number[] => chordAt(s, last(s));
+/** Revision 8: merged lines count once per voice they stand for (their weight). */
+const finalChord = (s: CompiledScore): number[] => stackedChordAt(s, last(s));
 const errors = (s: CompiledScore) => s.diagnostics.filter((d) => d.level === 'error');
 
 describe('chord', () => {

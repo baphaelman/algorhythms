@@ -183,6 +183,12 @@ const momentBase = {
         voice: z.number().int().min(0).describe('Pool index.'),
         pitch: pitch.optional(),
         end: nonNegative.optional().describe("The voice's arrival, seconds after `at`."),
+        weight: z
+          .number()
+          .positive()
+          .max(64)
+          .optional()
+          .describe('Revision 8: the weight (loudness) of the note this voice ends on.'),
       }),
     )
     .optional()

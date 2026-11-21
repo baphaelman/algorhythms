@@ -257,6 +257,11 @@ export interface VoiceOverride {
   pitch?: Pitch;
   /** The voice's arrival, as an offset from the moment's `at` (s). */
   end?: Seconds;
+  /**
+   * Revision 8: the weight of the note this voice ends on (1 = one line; a line of weight w
+   * sounds at the power of w lines). Ramps over the glide length from `at`.
+   */
+  weight?: number;
 }
 
 /** Moves the targeted voices to a voicing of `notes`; the voice count is unchanged. */
@@ -713,6 +718,19 @@ export interface LevelChange {
   over: Seconds;
 }
 
+/**
+ * A weight change (revision 8, "Distinct notes"): ramp linearly from the weight in effect at `t`
+ * to `w` over `over` seconds. A line of weight w sounds at the power of w lines (√w amplitude).
+ */
+export interface WeightChange {
+  /** Start of the ramp. */
+  t: Seconds;
+  /** Target weight (> 0). */
+  w: number;
+  /** Ramp length; 0 = step. */
+  over: Seconds;
+}
+
 /** One pool voice's compiled output. */
 export interface CompiledVoice {
   /** Voice id, as in Piece.voices. */
@@ -730,6 +748,11 @@ export interface CompiledVoice {
   timbre: TimbreChange[];
   /** Level timeline, sorted; the level is 1 before the first entry. */
   level: LevelChange[];
+  /**
+   * Weight timeline, sorted (revision 8): the weight is 1 before the first entry. Absent or empty:
+   * 1 throughout. Merged lines sum their weights; splits share them out.
+   */
+  weight?: WeightChange[];
   /** Static linear gain from VoiceDef.gain. Extension of §7.9, so the DSP needs only this score. */
   gain: number;
   /** Static pan from VoiceDef.pan. Extension of §7.9. */

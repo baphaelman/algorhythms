@@ -44,6 +44,7 @@ import {
   type Piece,
   type Pitch,
   type Seconds,
+  type VoiceOverride,
   type VoiceSelector,
   type WalkMoment,
   type WalkStepRecord,
@@ -54,7 +55,16 @@ import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from 
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldIntoRange, sanitizeRange } from './range';
+import { collapse, expand, type Collapsed, type Expansion } from './lines';
 import { Status, VoiceRun, type Birth, type Move } from './voice';
+
+/**
+ * Distinct notes (revision 8): a line that arrives on another's resting pitch merges into it,
+ * fading out over HANDOVER while the survivor's weight rises; a fork (a weighted line splitting)
+ * fades in over FORK_FADE while its parent's weight falls.
+ */
+export const HANDOVER: Seconds = 0.1;
+export const FORK_FADE: Seconds = 0.1;
 
 /** Silence after the last activity when `end.at` is absent (§5). */
 export const END_TAIL: Seconds = 4;
@@ -77,6 +87,8 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
 export const SUB_CLOSE = 0;
 export const SUB_BIRTH = 1;
 export const SUB_MOVE = 2;
+/** A line's arrival: merge it into a line resting on the same pitch (revision 8). */
+export const SUB_JOIN = 3;
 export const SUB_STRIDE = 64;
 
 /** `sub` of a moment-class event that returns a note moment's note (`back`, §6.2). */
@@ -135,6 +147,12 @@ export interface MomentTrace {
         into?: number;
       }[]
     | null;
+  /**
+   * Revision 8: the intents on the logical voices the moment function saw (a line of count k as k
+   * stacked voices; phantoms have dormant or synthetic indices), targets folded. Equals `intents`
+   * when no line is stacked.
+   */
+  logical: MomentTrace['intents'];
 }
 
 /** Options of `compile` (not part of the Piece or the file format). */
@@ -157,6 +175,15 @@ interface FrozenWalk {
   /** Notes per tick, in file order. */
   notes: Map<number, { voice: number; pitch: Pitch }[]>;
 }
+
+/** A line arriving at `t` (revision 8 join check). Immutable once queued. */
+interface JoinRec {
+  voice: number;
+  t: Seconds;
+}
+
+/** Resting pitches closer than this are one note. */
+const SAME_PITCH = 1e-6;
 
 interface CloseRec {
   voice: number;
@@ -230,6 +257,23 @@ export class Compiler {
     this.destVal = new Float64Array(this.voices.length);
     this.initStart();
     this.initMoments();
+    this.initWobble();
+  }
+
+  /** Revision 8: `wobble` beat between stacked lines, which no longer exist; it is ignored. */
+  private initWobble(): void {
+    const ts = this.piece.timbres;
+    if (!ts || typeof ts !== 'object') return;
+    const names = Object.keys(ts).filter((k) => {
+      const w = (ts[k] as { wobble?: unknown } | undefined)?.wobble;
+      return typeof w === 'number' && w > 0;
+    });
+    if (names.length === 0) return;
+    this.diag(
+      'info',
+      'wobble-ignored',
+      `Wobble is ignored (${names.join(', ')}): lines never share a pitch, so there is nothing to beat.`,
+    );
   }
 
   // -------------------------------------------------------------------------------------------
@@ -282,6 +326,17 @@ export class Compiler {
       }
       const f = foldIntoRange(s.pitch, run.range[0], run.range[1]);
       if (f.folded) folded++;
+      // Start voices on one pitch are one line from the start (revision 8).
+      const same = this.voices.find(
+        (r) => r.status === Status.Active && Math.abs(r.frontier.heading - f.p) <= SAME_PITCH,
+      );
+      if (same) {
+        same.count++;
+        same.weight++;
+        same.members.push(v);
+        same.rampWeight(0, same.weight, 0);
+        continue;
+      }
       run.status = Status.Active;
       run.frontier.openAt(0, { p: f.p, v: 0, mid: false });
       run.life = { born: 0, fadeIn: 0 };
@@ -472,8 +527,12 @@ export class Compiler {
   }
 
   /** The voices a selector picks at the current time (§6.1), sorted by committed destination. */
-  resolveTarget(sel: VoiceSelector | undefined, momentId: string | null): number[] {
-    const active = this.sortedActive();
+  resolveTarget(
+    sel: VoiceSelector | undefined,
+    momentId: string | null,
+    x: Expansion | null = null,
+  ): number[] {
+    const active = x ? x.active : this.sortedActive();
     if (sel === undefined || sel === 'all') return active.slice();
     if (typeof sel === 'object' && 'voices' in sel && Array.isArray(sel.voices)) {
       const want = new Set<number>();
@@ -487,7 +546,8 @@ export class Compiler {
           want.add(v);
         }
       }
-      return active.filter((v) => want.has(v));
+      // A line's phantoms go with it (a merged note is targeted whole), and with their own id.
+      return active.filter((v) => want.has(v) || (x !== null && want.has(x.base.get(v) ?? v)));
     }
     if (typeof sel === 'object' && 'rank' in sel && Array.isArray(sel.rank)) {
       const a = Number(sel.rank[0]);
@@ -548,6 +608,7 @@ export class Compiler {
           const sub = Math.floor(ev.key / SUB_STRIDE);
           if (sub === SUB_CLOSE) this.onClose(ev.obj as CloseRec);
           else if (sub === SUB_BIRTH) this.onBirth(ev.obj as Birth);
+          else if (sub === SUB_JOIN) this.onJoin(ev.obj as JoinRec);
           else this.onMove(ev.obj as Move);
           break;
         }
@@ -624,8 +685,10 @@ export class Compiler {
     const before = this.destsInto(this.effBefore);
     const activeBefore = this.sortedActive();
     const dormant = this.dormantAt(this.moments[i].at).length;
+    // The reason reads voices, not lines: a line stands for `count` stacked voices (revision 8).
+    const counts = this.voices.map((r) => r.count);
     const d0 = this.diags.length;
-    const { targeted, res } = this.applyPointMoment(i, back);
+    const { targeted, res, lost } = this.applyPointMoment(i, back);
     if (back) return;
     for (let k = d0; k < this.diags.length; k++) {
       const d = this.diags[k];
@@ -643,10 +706,10 @@ export class Compiler {
       'info',
       'no-effect',
       `No effect: ${noEffectReason(this.moments[i], {
-        targeted: targeted.map((v) => before[v]),
-        active: activeBefore.map((v) => before[v]),
+        targeted: targeted.flatMap((v) => Array<number>(counts[v]).fill(before[v])),
+        active: activeBefore.flatMap((v) => Array<number>(counts[v]).fill(before[v])),
         births: births.length,
-        deaths: deaths.length,
+        deaths: deaths.length + lost,
         dormant,
       })}.`,
       this.moments[i].id,
@@ -674,47 +737,76 @@ export class Compiler {
   private applyPointMoment(
     i: number,
     back: NoteBack | null,
-  ): { targeted: number[]; res: PlanResult | null } {
+  ): { targeted: number[]; res: PlanResult | null; lost: number } {
     const m0 = this.moments[i];
     // A return runs the note moment again at its own time, `from` and `to` swapped.
     const m: Moment = back
       ? { ...(m0 as NoteMoment), at: back.t, from: back.from, to: back.to, back: undefined }
       : m0;
     const T = m.at;
+    // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices.
+    const dormant = this.dormantAt(T);
+    const x = expand(this.voices, this.sortedActive(), dormant, (v) => this.destOf(v));
     let pre: number[];
     let subset: boolean;
     if (m.type === 'pin') {
       const v = this.byId.get(m.voice);
-      pre = v !== undefined && this.voices[v].status === Status.Active ? [v] : [];
+      // A voice merged into a line is one of its stacked copies: the pin moves that copy.
+      pre =
+        v === undefined
+          ? []
+          : this.voices[v].status === Status.Active
+            ? x.copies.get(v)!.slice()
+            : x.base.has(v)
+              ? [v]
+              : [];
       subset = true;
     } else {
-      pre = this.resolveTarget(m.target, back ? null : m.id); // a return does not re-warn
+      pre = this.resolveTarget(m.target, back ? null : m.id, x); // a return does not re-warn
       subset = m.target !== undefined && m.target !== 'all';
     }
+    const lines = (us: readonly number[]): number[] => {
+      const out = new Set<number>();
+      for (const u of us) out.add(x.base.get(u) ?? u);
+      return [...out];
+    };
+    // Untargeted copies of a partly targeted line keep where it was heading.
+    const preDest = new Map<number, Pitch>();
+    for (const b of lines(pre)) preDest.set(b, this.destOf(b));
+    const inPre = new Set(pre);
+    const destU = (u: number): Pitch => {
+      const b = x.base.get(u) ?? u;
+      return inPre.has(u) || !preDest.has(b) ? this.destOf(b) : preDest.get(b)!;
+    };
+    const sortU = (us: number[]): number[] => us.sort((a, b) => destU(a) - destU(b) || a - b);
     const seed = back ? hash32(this.seeds[i], 'back') : this.seeds[i];
+    const free = dormant.filter((u) => !x.reserved.has(u));
     let targeted: number[];
     let plan: MomentPlan | null;
     if (m.type === 'note') {
       // A note reads where the voices are heading before cancelling anything, and cancels only
       // when it applies: a voice whose pending move it cancels but does not change then gets a
       // move to that same destination (planMoment sees it differ from the new committed one).
-      targeted = this.sortByDest(pre.slice());
-      plan = noteMoment(m, this.env(i, targeted, T, seed), back !== null);
+      targeted = sortU(pre.slice());
+      plan = noteMoment(m, this.env(i, targeted, T, seed, x, destU, free), back !== null);
       if (plan) {
-        for (const v of pre) this.voices[v].cancelPending();
+        for (const v of lines(pre)) this.voices[v].cancelPending();
         this.touch();
-        targeted = this.sortByDest(pre.slice());
+        x.active = sortU(x.active.slice());
+        targeted = sortU(pre.slice());
       }
     } else {
-      for (const v of pre) this.voices[v].cancelPending();
+      for (const v of lines(pre)) this.voices[v].cancelPending();
       this.touch();
-      targeted = this.sortByDest(pre.slice());
-      plan = pointMomentPlan(m, this.env(i, targeted, T, seed));
+      x.active = sortU(x.active.slice());
+      targeted = sortU(pre.slice());
+      plan = pointMomentPlan(m, this.env(i, targeted, T, seed, x, destU, free));
     }
+    const targetedLines = this.sortByDest(lines(targeted));
     if (!plan) {
       if (!back) this.span(i, T, T); // a skipped return leaves the span as it is
-      this.traceMoment(i, targeted, subset, null, null, T);
-      return { targeted, res: null };
+      this.traceMoment(i, targetedLines, subset, null, null, T);
+      return { targeted: targetedLines, res: null, lost: 0 };
     }
     const host = {
       voices: this.voices,
@@ -731,8 +823,22 @@ export class Compiler {
     // Per-voice overrides (§11.3, revision 6): not on a note's return.
     const ov = back ? null : overridesOf(m, this.voices.length);
     if (ov) applyOverridePitches(plan, ov, targeted);
-    const res = planMoment(host, plan, targeted, subset);
+    const logical = plan;
+    const rangeU = (u: number): readonly [Pitch, Pitch] =>
+      this.voices[u < x.pool ? u : x.base.get(u)!].range;
+    const col = collapse(x, logical, targeted, this.voices, destU, free);
+    if (col.exhausted > 0) {
+      this.diag(
+        'info',
+        'pool-exhausted',
+        `${col.exhausted} note(s) could not split off: no free voice in the pool.`,
+        m.id,
+      );
+    }
+    plan = col.plan;
+    const res = planMoment(host, plan, targetedLines, subset);
     if (ov) applyOverrideEnds(res, ov, T, this.voices);
+    this.commitLines(col, res, T, i, ov);
     for (const b of res.births) {
       const run = this.voices[b.voice];
       run.status = Status.Active;
@@ -767,8 +873,77 @@ export class Compiler {
     else if (!back && m.type === 'note' && plan.note) this.scheduleBack(i, m, plan.note, plan, res);
     this.touch();
     this.recordHarmony(i, T);
-    this.traceMoment(i, targeted, subset, res.trace, plan.intents, T);
-    return { targeted, res };
+    this.traceMoment(
+      i,
+      targetedLines,
+      subset,
+      res.trace,
+      x.stacked ? logical.intents : plan.intents,
+      T,
+      x.stacked ? rangeU : null,
+      plan.intents,
+    );
+    let lost = 0;
+    for (const l of col.lose.values()) lost += l.count;
+    return { targeted: targetedLines, res, lost };
+  }
+
+  /**
+   * Distinct notes (revision 8): the counts, weights and members of the lines a moment changed.
+   * Forks and fresh births get theirs now (they are active from the moment); the weight ramps
+   * that happen at a birth are written when it happens (`onBirth`).
+   */
+  private commitLines(
+    col: Collapsed,
+    res: PlanResult,
+    T: Seconds,
+    i: number,
+    ov: ReadonlyMap<number, VoiceOverride> | null,
+  ): void {
+    for (const [b, k] of col.keep) {
+      const run = this.voices[b];
+      run.count = k.count;
+      run.members = k.members;
+    }
+    for (const b of res.births) {
+      const run = this.voices[b.voice];
+      const f = col.forks.get(b.voice);
+      if (f) {
+        b.fork = f.weight;
+        b.weight = f.weight;
+        b.fadeIn = FORK_FADE;
+        run.count = f.count;
+        run.weight = f.weight;
+        run.members = f.members;
+        this.voices[f.parent].weight -= f.weight;
+      } else {
+        run.count = 1;
+        run.weight = 1;
+        run.members = [];
+      }
+    }
+    const g = this.glides[i];
+    for (const [b, l] of col.lose) {
+      const run = this.voices[b];
+      run.count = Math.max(1, run.count - l.count);
+      run.weight -= l.weight;
+      run.rampWeight(T, run.lastWeight - l.weight, g.length);
+    }
+    if (!ov) return;
+    for (const [v, o] of ov) {
+      if (o.weight === undefined) continue;
+      const run = this.voices[v];
+      const b = res.births.find((x) => x.voice === v);
+      if (b) {
+        // The newborn starts at the hand-set weight; its parent still gives only its share.
+        b.weight = o.weight;
+        run.weight = o.weight;
+      } else if (run.status === Status.Active) {
+        const delta = o.weight - run.weight;
+        run.weight = o.weight;
+        run.rampWeight(T, run.lastWeight + delta, g.length);
+      }
+    }
   }
 
   /** Queues a note moment's return (§6.2 `back`): `back` seconds after its glide ends. */
@@ -828,8 +1003,18 @@ export class Compiler {
     });
   }
 
-  private env(i: number, targeted: number[], t: Seconds, seed: number): MomentEnv {
+  private env(
+    i: number,
+    targeted: number[],
+    t: Seconds,
+    seed: number,
+    x: Expansion,
+    dest: (u: number) => Pitch,
+    free: readonly number[],
+  ): MomentEnv {
     const m = this.moments[i];
+    const P = x.pool;
+    const line = (u: number): VoiceRun => this.voices[x.base.get(u) ?? u];
     return {
       t,
       momentId: m.id,
@@ -837,17 +1022,22 @@ export class Compiler {
       seed,
       glide: this.glides[i],
       targeted,
-      active: this.sortedActive(),
-      dest: (v) => this.destOf(v),
-      now: (v) => this.voices[v].frontier.stateAt(t)?.p ?? NaN,
-      range: (v) => this.voices[v].range,
-      id: (v) => this.voices[v].id,
-      sounding: (v) => this.voices[v].sounding,
-      dormant: () => this.dormantAt(t),
+      active: x.active,
+      dest,
+      now: (u) => line(u).frontier.stateAt(t)?.p ?? NaN,
+      range: (u) => (u < P ? this.voices[u] : line(u)).range,
+      id: (u) => (u < P ? this.voices[u].id : x.synthId[u - P]),
+      sounding: (u) => line(u).sounding,
+      dormant: () => free.slice(),
       indexOf: (id) => this.byId.get(id) ?? -1,
       diag: (level, code, message) => this.diag(level, code, message, m.id),
-      rand: (v, step, purpose) =>
-        randHashed(seed, v >= 0 ? this.voices[v].hash : this.emptyHash, step, purpose),
+      rand: (u, step, purpose) =>
+        randHashed(
+          seed,
+          u < 0 ? this.emptyHash : u < P ? this.voices[u].hash : x.synthHash[u - P],
+          step,
+          purpose,
+        ),
     };
   }
 
@@ -859,6 +1049,12 @@ export class Compiler {
     run.frontier.openAt(b.t, parent ?? { p: b.pitch, v: 0, mid: false });
     run.life = { born: b.t, fadeIn: b.fadeIn };
     run.lives.push(run.life);
+    run.rampWeight(b.t, b.weight ?? 1, 0);
+    // A fork hands its share over while the newborn fades in on the parent's pitch.
+    if (b.fork !== undefined && b.parent >= 0) {
+      const p = this.voices[b.parent];
+      p.rampWeight(b.t, p.lastWeight - b.fork, b.fadeIn);
+    }
     this.activity(b.t);
   }
 
@@ -898,7 +1094,76 @@ export class Compiler {
       this.scheduleClose(run, (arrive > seg.t1 ? arrive : seg.t1) + mv.death.fade);
     }
     this.follow(run, mv, to, mv.death ? mv.death.into : null, 0);
+    if (!mv.death) {
+      const rec: JoinRec = { voice: mv.voice, t: seg.t1 };
+      this.queue.push({
+        t: seg.t1,
+        cls: EventClass.MoveStart,
+        key: SUB_JOIN * SUB_STRIDE + mv.voice,
+        sub: 0,
+        ref: 0,
+        obj: rec,
+      });
+    }
     return true;
+  }
+
+  /** Active and holding at t: no glide running, nothing pending (revision 8 joins). */
+  private resting(run: VoiceRun, t: Seconds): boolean {
+    return (
+      run.status === Status.Active &&
+      run.frontier.alive &&
+      !run.pendingBirth &&
+      run.pending.length === 0 &&
+      !run.frontier.busyAt(t)
+    );
+  }
+
+  /**
+   * Distinct notes (revision 8): a line that comes to rest on another line's resting pitch merges
+   * into it. The line that was there first survives (the same time: the lower pool index); the
+   * other fades out over HANDOVER, following it, while the survivor takes its count, weight and
+   * members.
+   */
+  private onJoin(j: JoinRec): void {
+    const a = this.voices[j.voice];
+    const t = j.t;
+    if (!this.resting(a, t)) return;
+    const p = a.frontier.heading;
+    const group: VoiceRun[] = [a];
+    for (const run of this.voices) {
+      if (run === a || !this.resting(run, t)) continue;
+      if (Math.abs(run.frontier.heading - p) <= SAME_PITCH) group.push(run);
+    }
+    if (group.length < 2) return;
+    const since = (r: VoiceRun): Seconds =>
+      r.frontier.open ? r.frontier.tail!.t0 : r.frontier.tail!.t1;
+    let s = group[0];
+    for (const r of group) {
+      const dr = since(r);
+      const ds = since(s);
+      if (dr < ds || (dr === ds && r.index < s.index)) s = r;
+    }
+    this.touch();
+    for (const d of group) {
+      if (d === s) continue;
+      // Power is kept: the dying line's power, in the survivor's level (the static voice gains
+      // are a mix setting, outside the simulation: incremental compiles resume across them).
+      const gs = this.levelOf(s.index);
+      const gd = this.levelOf(d.index);
+      const f = gs > 0 ? (gd * gd) / (gs * gs) : 1;
+      s.count += d.count;
+      s.weight += d.weight * f;
+      s.members = [...s.members, d.index, ...d.members];
+      s.rampWeight(t, s.lastWeight + d.lastWeight * f, HANDOVER);
+      d.count = 1;
+      d.weight = 1;
+      d.members = [];
+      d.status = Status.Dying;
+      d.into = s.index;
+      d.deathFade = HANDOVER;
+      this.scheduleClose(d, t + HANDOVER);
+    }
   }
 
   /** (Re)schedules a dying voice's close; an earlier close event becomes stale (onClose). */
@@ -1215,12 +1480,33 @@ export class Compiler {
     targeted: number[],
     subset: boolean,
     plan: PlanTrace | null,
-    intents: readonly Intent[] | null,
+    logical: readonly Intent[] | null,
     t: Seconds = this.moments[i].at,
+    rangeU: ((u: number) => readonly [Pitch, Pitch]) | null = null,
+    lines: readonly Intent[] | null = logical,
   ): void {
     if (!this.trace) return;
     const m = this.moments[i];
     const kinds = ['move', 'birth', 'death'] as const;
+    const map = (list: readonly Intent[] | null, fold: typeof rangeU) =>
+      list
+        ? list.map((it) => {
+            let to = it.to;
+            if (fold && Number.isFinite(to)) {
+              const r = fold(it.voice);
+              to = foldIntoRange(to, r[0], r[1]).p;
+            }
+            const r: NonNullable<MomentTrace['intents']>[number] = {
+              voice: it.voice,
+              to,
+              kind: kinds[it.kind],
+            };
+            if (it.kind === IntentKind.Birth) r.parent = it.parent ?? -1;
+            if (it.kind === IntentKind.Death) r.into = it.into ?? -1;
+            return r;
+          })
+        : null;
+    const pool = map(lines, null);
     this.trace.moments.push({
       id: m.id,
       index: i,
@@ -1229,18 +1515,8 @@ export class Compiler {
       targeted,
       subset,
       plan,
-      intents: intents
-        ? intents.map((it) => {
-            const r: NonNullable<MomentTrace['intents']>[number] = {
-              voice: it.voice,
-              to: it.to,
-              kind: kinds[it.kind],
-            };
-            if (it.kind === IntentKind.Birth) r.parent = it.parent ?? -1;
-            if (it.kind === IntentKind.Death) r.into = it.into ?? -1;
-            return r;
-          })
-        : null,
+      intents: pool,
+      logical: lines === logical ? pool : map(logical, rangeU),
     });
   }
 
@@ -1279,7 +1555,7 @@ export class Compiler {
       const sends: CompiledVoice['sends'] = {};
       if (def.sends && typeof def.sends.reverb === 'number') sends.reverb = def.sends.reverb;
       if (def.sends && typeof def.sends.delay === 'number') sends.delay = def.sends.delay;
-      return {
+      const cv: CompiledVoice = {
         id: def.id,
         index: run.index,
         lives,
@@ -1292,6 +1568,8 @@ export class Compiler {
         solo: !!def.solo,
         sends,
       };
+      if (run.weights.length > 0) cv.weight = run.weights;
+      return cv;
     });
     let duration = 0;
     for (const v of voices)

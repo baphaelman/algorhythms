@@ -67,3 +67,29 @@ export function chordAt(score: CompiledScore, t: number): Pitch[] {
     .filter((p): p is number => p !== null)
     .sort((a, b) => a - b);
 }
+
+/** Weight of a voice at t (revision 8; 1 without a weight timeline). */
+export function weightAt(v: CompiledScore['voices'][number], t: number): number {
+  let w = 1;
+  for (const c of v.weight ?? []) {
+    if (c.t > t) break;
+    const u = c.over > 0 ? (t - c.t) / c.over : 1;
+    w = u >= 1 ? c.w : w + (c.w - w) * u;
+  }
+  return w;
+}
+
+/**
+ * Sorted pitches at t with each line repeated by its (rounded) weight: the stacked voices the
+ * lines stand for (revision 8 "Distinct notes").
+ */
+export function stackedChordAt(score: CompiledScore, t: number): Pitch[] {
+  const out: Pitch[] = [];
+  score.voices.forEach((v, i) => {
+    const p = pitchesAt(score, t)[i];
+    if (p === null) return;
+    const n = Math.max(1, Math.round(weightAt(v, t)));
+    for (let j = 0; j < n; j++) out.push(p);
+  });
+  return out.sort((a, b) => a - b);
+}

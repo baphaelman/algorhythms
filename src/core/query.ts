@@ -215,3 +215,47 @@ export function noteAt(
   }
   return hit;
 }
+
+/**
+ * A line's weight at t (revision 8 "Distinct notes"): 1 before its first weight change or with no
+ * weight timeline; ramps linearly. A line of weight w stands for about w merged voices.
+ */
+export function weightAt(voice: CompiledVoice, t: Seconds): number {
+  let w = 1;
+  for (const c of voice.weight ?? []) {
+    if (c.t > t) break;
+    const u = c.over > 0 ? (t - c.t) / c.over : 1;
+    w = u >= 1 ? c.w : w + (c.w - w) * u;
+  }
+  return w;
+}
+
+/** The weight a line is heading to at t (the target of the last change at or before t). */
+export function weightTargetAt(voice: CompiledVoice, t: Seconds): number {
+  let w = 1;
+  for (const c of voice.weight ?? []) {
+    if (c.t > t) break;
+    w = c.w;
+  }
+  return w;
+}
+
+/**
+ * Voices the sounding lines stand for at t: Σ max(1, round(weight target)) over the active
+ * lines, a line fading out after merging into another excluded (revision 8).
+ */
+export function stackedCountAt(score: CompiledScore, t: Seconds): number {
+  let n = 0;
+  for (const i of activeAt(score, t)) {
+    const v = score.voices[i];
+    const life = lifeAt(v, t);
+    if (
+      life?.died !== undefined &&
+      life.died < score.duration &&
+      t >= life.died - (life.fadeOut ?? 0)
+    )
+      continue;
+    n += Math.max(1, Math.round(weightTargetAt(v, t)));
+  }
+  return n;
+}

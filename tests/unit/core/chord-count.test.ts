@@ -271,6 +271,9 @@ describe('freezeChord', () => {
       if (!parsed.ok) throw new Error(f);
       for (const m of parsed.piece.moments) {
         if (m.type !== 'chord' || m.muted) continue;
+        // Revision 8: a `free` chord splitting a merged line gets ordered fork timings when
+        // frozen (same notes and weights, different staggers).
+        if (m.assign === 'free') continue;
         const { s, t, frozen } = refreeze(parsed.piece, m.id);
         expect(frozen.notes.kind).toBe('pitches');
         expect(frozen.assign).toBe('ordered');

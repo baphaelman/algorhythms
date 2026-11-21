@@ -6,7 +6,7 @@
 
 import { mod } from '../../core/math';
 import { defaultNoteFields } from '../../core/moments/note';
-import { activeAt, keyAt, pitchAt } from '../../core/query';
+import { activeAt, keyAt, pitchAt, stackedCountAt } from '../../core/query';
 import {
   FLAT_NAMES,
   SHARP_NAMES,
@@ -48,7 +48,8 @@ export function defaultMoment<T extends MomentType>(
   score: CompiledScore,
 ): MomentOf<T> {
   const { active, key } = stateAt(score, at);
-  const n = active.length;
+  // Voices, not lines: a merged note stands for its weight's worth (revision 8).
+  const n = stackedCountAt(score, at);
   const pool = piece.voices.length;
   const base = { id, at };
   let m: Moment;

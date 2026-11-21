@@ -742,6 +742,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -1155,6 +1161,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -1373,6 +1385,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -1663,6 +1681,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -1883,6 +1907,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -2093,6 +2123,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -2320,6 +2356,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -2608,6 +2650,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -2825,6 +2873,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -3033,6 +3087,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
@@ -3316,6 +3376,12 @@ This is the *input* form: fields with defaults are optional here.
                       "description": "The voice's arrival, seconds after `at`.",
                       "type": "number",
                       "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
                     }
                   },
                   "required": [
