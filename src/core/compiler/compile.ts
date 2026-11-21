@@ -1370,7 +1370,16 @@ export class Compiler {
       if (d.status !== Status.Dying || d.into < 0 || d.pending.length > 0) continue;
       if (!d.frontier.alive || !(d.diedAt > t)) continue;
       const a = this.voices[d.into];
-      if (a.pending.length > 0 || !a.frontier.alive) continue;
+      if (!a.frontier.alive) continue;
+      if (a.pending.length > 0) {
+        // The move the dying voice glided towards was replaced by later ones (seed
+        // 599296392/298): it waits off the survivor's pitch, so it fades only once the survivor
+        // has arrived, following it from when its moves start (`follow`).
+        if (d.frontier.heading === a.frontier.heading) continue;
+        const arrive = arrivalOf(a);
+        if (d.diedAt - d.deathFade < arrive) this.scheduleClose(d, arrive + d.deathFade);
+        continue;
+      }
       const h = a.frontier.heading;
       if (h === d.frontier.heading || h < d.range[0] || h > d.range[1]) continue;
       const tail = d.frontier.tail!;

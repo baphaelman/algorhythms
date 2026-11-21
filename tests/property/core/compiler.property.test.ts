@@ -59,6 +59,7 @@ function check<T>(name: string, prop: fc.IProperty<[T]>, numRuns: number): void 
   fc.assert(prop, {
     numRuns,
     seed: SEED,
+    path: process.env.PROP_PATH, // replay a reported failure (with PROP_SEED)
     endOnFailure: true, // report at once; shrinking these pieces is slow
     reporter: (out) => {
       if (!out.failed) return;
@@ -102,7 +103,8 @@ const plannedEnd = (s: Segment): { t1: number; p1: number } =>
 
 /**
  * Whether segment g of voice v follows a survivor (M4.5-17): a dying voice's segments after its
- * death glide copy the moves of the voice it merges into.
+ * death glide copy the moves of the voice it merges into. A survivor move starting with the death
+ * glide (a walk tick at the merge's time) replaces that glide, so none is left.
  */
 function isFollow(trace: CompileTrace, score: CompiledScore, v: number, g: Segment): boolean {
   const voice = score.voices[v];
@@ -111,7 +113,7 @@ function isFollow(trace: CompileTrace, score: CompiledScore, v: number, g: Segme
     if (!(m.intents ?? []).some((it) => it.kind === 'death' && it.voice === v)) continue;
     const died = lifeAt(voice, m.t)?.died ?? Infinity;
     const glide = voice.segments.find((x) => x.momentId === m.id && x.t0 >= m.t);
-    if (glide && g.t0 > glide.t0 && g.t0 < died) return true;
+    if (g.t0 < died && (glide ? g.t0 > glide.t0 : g.t0 >= m.t)) return true;
   }
   return false;
 }

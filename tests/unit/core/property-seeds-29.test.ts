@@ -1,9 +1,11 @@
 /**
  * Regressions for the core property seeds that failed after M4.5-29a (build log "M4.5 property
- * seeds after 29").
+ * seeds after 29" and "M4.5 property seeds 2").
  */
 import { describe, expect, it } from 'vitest';
 import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
+import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
+import { spreadInRange } from '../../../src/core/moments/spread';
 import { linesAt, pitchAt, stackAt } from '../../../src/core/query';
 import { chordAt, piece } from './compiler-fixtures';
 import { lineArtifacts } from './line-artifacts';
@@ -492,5 +494,148 @@ describe('a line dying into its own unborn newborn (chord-count -41577023/608, s
     const v4 = s.voices[3];
     expect(v4.lives.length).toBeGreaterThan(0);
     expect(lineArtifacts(s, { noCross: true }).filter((a) => a.kind === 'birth')).toEqual([]);
+  });
+});
+
+describe('a crowded spread with per-voice ranges (spread −625473937/387)', () => {
+  it('keeps the notes in order as well as in range', () => {
+    // A squeeze to 45.5 on F# minor pentatonic: 8 voices, 8 scale notes in [37, 54], but v4's
+    // range starts at 43 and v8's ends at 51, so some must coincide. Clamping each to its own
+    // range put v4 on 45 above v5 on 42.
+    const dests = [37, 39, 40, 45, 46, 47, 48, 49];
+    const ranges = dests.map((): [number, number] => [37, 54]);
+    ranges[3] = [43, 54];
+    ranges[7] = [37, 51];
+    const r = spreadInRange(dests, ranges, 45.5, 1e-9, 'scale', {
+      tonic: 'F#',
+      scale: 'pentatonic-minor',
+    });
+    expect(r.ok).toBe(false);
+    r.pitches.forEach((p, i) => {
+      expect(p).toBeGreaterThanOrEqual(ranges[i][0]);
+      expect(p).toBeLessThanOrEqual(ranges[i][1]);
+      if (i > 0) expect(p).toBeGreaterThanOrEqual(r.pitches[i - 1]);
+    });
+  });
+});
+
+describe('a walk’s span across a checkpoint (incremental −1808251847/498, 128577514/91)', () => {
+  it('a resume between a walk’s moment event and its first tick keeps its span growing', () => {
+    // The checkpoint before m2 (third moment event at 1) has handled m0's moment event but not
+    // its first tick, which the setup queues and the checkpoint does not save; so m0 counted as
+    // final and kept the old run's span end (3.9) where adding the pin skips the last step (3.5).
+    const walk = {
+      type: 'walk' as const,
+      at: 1,
+      target: { voices: ['v1'] },
+      grid: 1,
+      density: 1,
+      steps: [1],
+      stepGlide: 0.9,
+      until: 3.5,
+    };
+    const lvl = { type: 'level' as const, gain: 0.9, over: 0, at: 1 };
+    const p2 = piece({
+      start: [60, 48],
+      glide: { length: 3, jitter: 0, stagger: 0, ease: 'linear' },
+      moments: [walk, lvl, lvl, { type: 'pin', at: 2.5, voice: 'v1', pitch: 70 }],
+    });
+    const p1 = { ...p2, moments: p2.moments.slice(0, 3) };
+    const inc = createIncrementalCompiler();
+    inc.compile(p1);
+    const got = inc.compile(p2);
+    expect(inc.stats.mode).toBe('resume');
+    expect(inc.stats.from).toBe(1);
+    const want = compile(p2);
+    expect(want.momentSpans[0].end).toBe(3.5);
+    expect(structuredClone(got)).toStrictEqual(structuredClone(want));
+  });
+});
+
+describe('a dying line whose survivor’s move is replaced (chord-count 599296392/298)', () => {
+  it('waits for the survivor’s new move instead of fading where it no longer goes', () => {
+    // m1 kills v9 into a neighbour; m2's staggered move of that neighbour is where v9's death
+    // glide heads, but m3 replaces it with a later move before it starts. v9 faded on its stale
+    // target at its old time, the survivor elsewhere.
+    const s = compile(
+      piece({
+        seed: 59130,
+        pool: 9,
+        start: [70],
+        key: { tonic: 'A', scale: 'dorian' },
+        glide: { length: 1.1, jitter: 0, stagger: 1.4, order: 'low-first', ease: 'linear' },
+        end: { fade: 6 },
+        moments: [
+          {
+            id: 'm00002',
+            type: 'split',
+            at: 13,
+            count: 10,
+            notes: { kind: 'chord', symbol: 'Esus4' },
+            voicing: 'even',
+          },
+          { id: 'm00005', type: 'merge', at: 23, count: 7, which: 'top', fade: 1.3 },
+          {
+            id: 'm00006',
+            type: 'chord',
+            at: 23.5,
+            glide: { length: 4.3, jitter: 1, stagger: 3, order: 'low-first', ease: 'expo' },
+            notes: { kind: 'current' },
+            voicing: 'close',
+            assign: 'free',
+          },
+          {
+            id: 'm00008',
+            type: 'split',
+            at: 26,
+            count: 6,
+            notes: { kind: 'pitches', pitches: [27, 72, 66] },
+            voicing: 'close',
+          },
+        ],
+      }),
+    );
+    expect(s.voices[8].lives[0].died).toBeGreaterThan(23);
+    expect(lineArtifacts(s, { noCross: true }).filter((a) => a.kind === 'death')).toEqual([]);
+  });
+});
+
+describe('a merge and its survivor’s walk tick at one time (overlap −41577023/907)', () => {
+  it('the dying line follows the walk step from the start: no death glide of its own is left', () => {
+    // v2 dies into v1 at 3 while the walk steps v1 at 3. The follow (M4.5-17) replaces v2's
+    // death glide as it starts, so v2's next segment is the walk's; the property took that for
+    // a walk step cutting v2's pin glide. Compiler unchanged (predates the 29 seeds fixes).
+    const s = compile(
+      piece({
+        start: [48, 60],
+        glide: { length: 2, jitter: 0, stagger: 0, ease: 'linear' },
+        moments: [
+          { type: 'pin', at: 1.5, voice: 'v2', pitch: 64 },
+          {
+            type: 'walk',
+            at: 0,
+            target: { voices: ['v1'] },
+            grid: 1,
+            density: 1,
+            steps: [1],
+            stepGlide: 0.2,
+            until: 8,
+          },
+          { type: 'merge', at: 3, count: 1, which: 'top', fade: 0.2 },
+        ],
+      }),
+    );
+    const [v1, v2] = s.voices;
+    const step = v1.segments.find((g) => g.t0 === 3)!;
+    expect(step.momentId).toBe('m1');
+    const cut = v2.segments.find((g) => g.momentId === 'm0')!;
+    expect(cut.t1).toBe(3); // the pin's glide was still running
+    const next = v2.segments.find((g) => g.t0 === 3)!;
+    expect(next.momentId).toBe('m1');
+    expect(next.p1).toBe(step.p1);
+    expect(v2.segments.some((g) => g.momentId === 'm2')).toBe(false);
+    // It still dies after the merge's glide and fade, riding v1's steps until then.
+    expect(v2.lives[0].died).toBeCloseTo(5.2, 6);
+    for (const t of [3.5, 4.5, 5]) expect(pitchAt(v2, t)).toBe(pitchAt(v1, t));
   });
 });

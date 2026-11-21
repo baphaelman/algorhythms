@@ -228,8 +228,8 @@
     "spans": 24
   },
   "the-cartographers-rain.algorhythms.json": {
-    "hash": "1934576bfedf793e",
-    "duration": 176.34934337858135,
+    "hash": "5e7fb8c74cb32668",
+    "duration": 176.47596976884665,
     "voices": [
       {
         "id": "v1",
@@ -258,8 +258,8 @@
       {
         "id": "v5",
         "lives": 1,
-        "segments": 25,
-        "lastPitch": 59
+        "segments": 41,
+        "lastPitch": 57
       },
       {
         "id": "v6",
@@ -270,8 +270,8 @@
       {
         "id": "v7",
         "lives": 2,
-        "segments": 28,
-        "lastPitch": 57
+        "segments": 14,
+        "lastPitch": 59
       },
       {
         "id": "v8",
@@ -282,7 +282,7 @@
       {
         "id": "v9",
         "lives": 2,
-        "segments": 16,
+        "segments": 14,
         "lastPitch": 59
       },
       {
@@ -294,7 +294,7 @@
       {
         "id": "v11",
         "lives": 1,
-        "segments": 19,
+        "segments": 21,
         "lastPitch": 59
       },
       {
@@ -312,14 +312,14 @@
       {
         "id": "v14",
         "lives": 2,
-        "segments": 14,
-        "lastPitch": 59
+        "segments": 12,
+        "lastPitch": 79
       },
       {
         "id": "v15",
-        "lives": 2,
-        "segments": 14,
-        "lastPitch": 59
+        "lives": 1,
+        "segments": 8,
+        "lastPitch": 77
       },
       {
         "id": "v16",
@@ -328,7 +328,7 @@
         "lastPitch": 59
       }
     ],
-    "diagnostics": ["info:crossing-untargeted"],
+    "diagnostics": [],
     "spans": 20
   },
   "tidewater-hymn.algorhythms.json": {
