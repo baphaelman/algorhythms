@@ -79,7 +79,7 @@ The integrator continues the work with a fresh agent.
 | M3 Player, Generate, exports (first public release) | feature-complete and live 2026-11-20 (player, Generate, Export WAV/stems/MIDI, HUD chord, unison lock + wobble preset). unison glide fix approved and pushed. No release announcement (owner, 2026-11-21); phones are not a priority |
 | M4 Editor core | **done** 2026-11-20: all §15 acceptance checks pass (build log "M4 acceptance checks"); incremental compile and editor polish merged and pushed. Awaiting the owner's look. Next: M5 |
 | M4.5 Editor view redesign | **done** 2026-11-21: all §15 acceptance lines pass (`docs/m4.5-acceptance.md`); owner approved the preview. Follow-up: name-before-moving-on prompt (PLAN §11.4) |
-| R9 Parts, pulse, tune, land (PLAN rev 9) | in progress 2026-11-21: R9-5 silent lines done; R9-1 parts building; then 2, 3a/3b, 4, UI 6–9, composition rewrite |
-| M5 Editor completion | not started |
-| M6 Timbre depth | not started |
+| R9 Parts, pulse, tune, land (PLAN rev 9) | **done** 2026-11-21 (R9-1…9, crossfade, arrival bloom), pushed in v30–v32. The composition rewrite is on local branch `compositions-rev9`, waiting for the owner to listen |
+| M5 Editor completion | **feature-complete** 2026-11-21 (share links, multi-select/copy/paste/Freeze/piano ruler, touch), pushed in v33–v34. Acceptance: `docs/m5-acceptance.md`. Open: owner's check on a real iPad; the old compositions' links stay over 2,000 characters until the rewrite ships |
+| M6 Timbre depth | in progress 2026-11-21: M6-a FM, noise, additive and bell (dsp) |
 | M7 Live instrument | not started |
