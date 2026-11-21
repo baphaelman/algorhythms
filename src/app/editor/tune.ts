@@ -1,13 +1,15 @@
 /**
  * Tune editing (PLAN.md §6.2 `tune`, §11.3; R9-7): the inspector's note list. Pure: note starts,
  * lengths in beats (with a tempo) or seconds, ▲/▼ by a scale step in the key at the note, add and
- * remove. R9-8: the score's tune dots (`tuneDots`, moving note starts) and typed notes.
+ * remove. R9-8: the score's tune dots (`tuneDots`, moving note starts) and typed notes. Random
+ * melodies and notes inserted by a double-click (owner, 2026-11-21).
  */
 
 import { readState } from '../../core/effect';
 import { partOf, selectorPart } from '../../core/parts';
-import { keyAt } from '../../core/query';
+import { chordAt, keyAt } from '../../core/query';
 import { noteName, stepByScale } from '../../core/scales';
+import { randomTune } from '../../core/tune-gen';
 import type {
   CompiledScore,
   Key,
@@ -401,4 +403,125 @@ export function melodyPatch(
 ): { target: VoiceSelector | undefined; line: TuneLine | undefined } {
   if (c.kind === 'voice') return { target: { voices: [c.id] }, line: undefined };
   return { target: lineTarget(piece, m), line: c.line === 'high' ? 'high' : undefined };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Random melody and inserted notes (owner, 2026-11-21)
+// ---------------------------------------------------------------------------------------------
+
+/** A new tune's length: two bars with a tempo (`view.meter` beats a bar, else 4), else 4 s. */
+export function newTuneLength(view: Pick<ViewSettings, 'gridBpm' | 'meter'> | undefined): Seconds {
+  const beat = tuneBeat(view);
+  const meter = view?.meter;
+  const bar = typeof meter === 'number' && meter > 0 ? meter : 4;
+  return beat ? roundUs(2 * bar * beat) : 4;
+}
+
+/** Fallback range for a line the piece doesn't define. */
+const ANY_RANGE: [Pitch, Pitch] = [36, 96];
+
+/**
+ * The line a tune plays on and where it is as the tune starts: the line the compile moved for
+ * its first note (its pitch before that move), else the sounding line `line` picks ('high': the
+ * top, else the lowest; a single-voice target: that voice), else C4. With the voice's range.
+ */
+export function tuneLineAt(
+  piece: Piece,
+  score: CompiledScore,
+  m: Pick<TuneMoment, 'id' | 'at' | 'target' | 'line'>,
+): { voice?: number; pitch: Pitch; range: [Pitch, Pitch] } {
+  const rangeOf = (v: number): [Pitch, Pitch] => piece.voices[v]?.range ?? ANY_RANGE;
+  for (const v of score.voices) {
+    const s = v.segments.find((x) => x.momentId === m.id);
+    if (s) return { voice: v.index, pitch: s.p0, range: rangeOf(v.index) };
+  }
+  const read = Math.min(m.at, Math.max(0, score.duration - 0.01));
+  const st = readState(piece, score, read);
+  const one = oneVoice(m);
+  let best: { v: number; p: Pitch } | null = null;
+  for (const v of st.active) {
+    const p = st.dest[v];
+    if (!Number.isFinite(p)) continue;
+    if (one !== null) {
+      if (piece.voices[v]?.id === one) best = { v, p };
+      continue;
+    }
+    if (best === null || (m.line === 'high' ? p > best.p : p < best.p)) best = { v, p };
+  }
+  return best
+    ? { voice: best.v, pitch: best.p, range: rangeOf(best.v) }
+    : { pitch: 60, range: ANY_RANGE };
+}
+
+/**
+ * A random melody for tune `m` (seeded, core `randomTune`): in the key at its time, from its
+ * line's pitch, inside the line's range, as long as the tune is now (a new or empty tune: two bars
+ * or 4 s), ending on a tone of the harmony at its end.
+ */
+export function randomMelody(
+  piece: Piece,
+  score: CompiledScore,
+  m: Pick<TuneMoment, 'id' | 'at' | 'notes' | 'target' | 'line'>,
+  seed: number,
+): TuneNote[] {
+  const len = tuneEnd(m) - m.at;
+  const total = len > 1e-9 ? len : newTuneLength(piece.view);
+  const line = tuneLineAt(piece, score, m);
+  return randomTune({
+    seed,
+    key: keyAt(score, m.at),
+    start: line.pitch,
+    range: line.range,
+    total,
+    beat: tuneBeat(piece.view),
+    endPcs: chordAt(score, m.at + total)?.pcs,
+  });
+}
+
+/**
+ * A note at `pitch` inserted into the tune at time `t` (double-click on the score):
+ * - inside note k: k keeps the part before t, the new note gets the rest;
+ * - on a note's start (within MIN_TUNE_LEN): the new note takes that note's first half;
+ * - at or after the end: appended at t, the last note stretched to t (no hole), `len` long;
+ * - before `at`: prepended from t to `at`, and `at` moves to t.
+ * An empty tune becomes the one note at t. Returns the new notes, `at` and the new note's index;
+ * null when nothing fits (a note too short to halve).
+ */
+export function insertTuneNote(
+  m: Pick<TuneMoment, 'at' | 'notes'>,
+  t: Seconds,
+  pitch: Pitch,
+  len: Seconds,
+): { at: Seconds; notes: TuneNote[]; index: number } | null {
+  if (!Number.isFinite(t) || !Number.isFinite(pitch)) return null;
+  t = roundUs(Math.max(0, t));
+  const p = clampPitch(pitch);
+  const fresh = (l: Seconds): TuneNote => ({ pitch: p, len: Math.max(MIN_TUNE_LEN, roundUs(l)) });
+  const n = m.notes.length;
+  if (n === 0) return { at: t, notes: [fresh(len)], index: 0 };
+  const S = tuneNoteStarts(m);
+  const end = S[n];
+  if (t > end - MIN_TUNE_LEN) {
+    const notes = m.notes.slice();
+    const last = notes[n - 1];
+    if (t > end) notes[n - 1] = { ...last, len: roundUs(t - S[n - 1]) };
+    return { at: m.at, notes: [...notes, fresh(len)], index: n };
+  }
+  if (t <= m.at - MIN_TUNE_LEN) {
+    return { at: t, notes: [fresh(m.at - t), ...m.notes], index: 0 };
+  }
+  // The note holding t; a start within MIN_TUNE_LEN counts as that note's start.
+  let k = 0;
+  while (k < n - 1 && S[k + 1] <= t + MIN_TUNE_LEN - 1e-9) k++;
+  const old = m.notes[k];
+  const notes = m.notes.slice();
+  if (t - S[k] < MIN_TUNE_LEN) {
+    if (old.len < 2 * MIN_TUNE_LEN) return null;
+    const half = roundUs(old.len / 2);
+    notes.splice(k, 1, { pitch: p, len: half }, { ...old, len: roundUs(old.len - half) });
+    return { at: m.at, notes, index: k };
+  }
+  const before = roundUs(t - S[k]);
+  notes.splice(k, 1, { ...old, len: before }, { pitch: p, len: roundUs(old.len - before) });
+  return { at: m.at, notes, index: k + 1 };
 }

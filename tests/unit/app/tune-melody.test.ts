@@ -113,7 +113,8 @@ describe('tune: palette default', () => {
     const p: Piece = { ...withTune, moments: withTune.moments.filter((x) => x.id !== 'tun') };
     const m = defaultMoment('tune', 8, 'zzzzzz', p, compile(p));
     expect(m.line).toBe('high');
-    expect(m.notes[0].pitch).toBe(64);
+    // A random melody from the top line's note (within a 3rd of E4).
+    expect(Math.abs(m.notes[0].pitch - 64)).toBeLessThanOrEqual(4);
     const q: Piece = { ...p, moments: [...p.moments, m as Moment] };
     expect(tuneDots(compile(q), m)[0].voice).toBe(2);
 
@@ -121,6 +122,6 @@ describe('tune: palette default', () => {
     one.moments = withStart(one, [60], []);
     const m1 = defaultMoment('tune', 2, 'zzzzzz', one, compile(one));
     expect(m1).not.toHaveProperty('line');
-    expect(m1.notes[0].pitch).toBe(60);
+    expect(Math.abs(m1.notes[0].pitch - 60)).toBeLessThanOrEqual(4);
   });
 });

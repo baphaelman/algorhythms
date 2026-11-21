@@ -16,6 +16,8 @@ import {
   stepByScale,
 } from '../../core/scales';
 import { pitchClasses } from '../../core/voicing';
+import { momentSeed } from '../../core/rng';
+import { randomMelody } from './tune';
 import { timbreOptions } from './voices';
 import type {
   ChordMoment,
@@ -27,6 +29,7 @@ import type {
   MomentType,
   Piece,
   Seconds,
+  TuneMoment,
 } from '../../core/types';
 
 /** Length of a new walk region, seconds. */
@@ -162,21 +165,17 @@ export function defaultMoment<T extends MomentType>(
     }
     case 'tune': {
       // With more than one line sounding the melody goes on top (`line: 'high'`; a product call,
-      // build log "Tune: Melody on"). Up and back down the scale from that line's note, a beat a
-      // note (0.5 s without a tempo).
+      // build log "Tune: Melody on"). A random melody from that line's note, two bars (4 s
+      // without a tempo), seeded by the piece seed and the id (build log "Tune: random melody").
       const high = n > 1;
-      const edge = active.reduce<number | null>(
-        (best, v) => (best === null || (high ? v.pitch > best : v.pitch < best) ? v.pitch : best),
-        null,
-      );
-      const from = edge ?? 60;
-      const len = beatOf(piece) ?? 0.5;
-      m = {
+      const tune: TuneMoment = {
         ...base,
         type: 'tune',
-        notes: [0, 1, 2, 1].map((k) => ({ pitch: stepByScale(from, k, key), len })),
+        notes: [],
         ...(high ? { line: 'high' as const } : {}),
       };
+      tune.notes = randomMelody(piece, score, tune, momentSeed(piece.seed, id));
+      m = tune;
       break;
     }
     case 'timbre':

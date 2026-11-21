@@ -31,7 +31,8 @@ import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
 import { momentSeed } from '../../../src/core/rng';
 import { parsePiece } from '../../../src/core/schema';
-import { activeAt, pitchAt } from '../../../src/core/query';
+import { activeAt, keyAt, pitchAt } from '../../../src/core/query';
+import { isScaleTone } from '../../../src/core/scales';
 import type { ChordMoment, MomentType, Piece } from '../../../src/core/types';
 import {
   addMoment,
@@ -314,18 +315,19 @@ describe('default moments', () => {
     }
   }
 
-  it('a new tune walks up and back down the scale from the lowest note, a beat a note', () => {
+  it('a new tune is a random melody of two bars, in key, seeded by the id', () => {
     const p = examplePiece();
     const s = compile(p);
     const m = defaultMoment('tune', 30, 'zzzzzz', p, s);
-    expect(m.notes).toHaveLength(4);
+    expect(m.notes.length).toBeGreaterThan(2);
     const bpm = p.view?.gridBpm;
-    const len = typeof bpm === 'number' && bpm > 0 ? 60 / bpm : 0.5;
-    for (const n of m.notes) expect(n.len).toBeCloseTo(len, 12);
-    const ps = m.notes.map((n) => n.pitch);
-    expect(ps[1]).toBeGreaterThan(ps[0]);
-    expect(ps[2]).toBeGreaterThan(ps[1]);
-    expect(ps[3]).toBe(ps[1]);
+    const meter = typeof p.view?.meter === 'number' ? p.view.meter : 4;
+    const total = typeof bpm === 'number' && bpm > 0 ? (2 * meter * 60) / bpm : 4;
+    expect(m.notes.reduce((a, n) => a + n.len, 0)).toBeCloseTo(total, 5);
+    const key = keyAt(s, 30);
+    for (const n of m.notes) expect(isScaleTone(n.pitch, key)).toBe(true);
+    expect(defaultMoment('tune', 30, 'zzzzzz', p, s).notes).toEqual(m.notes);
+    expect(defaultMoment('tune', 30, 'yyyyyy', p, s).notes).not.toEqual(m.notes);
   });
 
   it('a chord on the empty piece moves the voice', () => {

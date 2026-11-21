@@ -301,3 +301,70 @@ test('typed notes in seconds without a tempo; the merge Fade says when it applie
   await H(page).select(['merge1']);
   await expect(page.getByTestId('inspector')).toContainText('Fade (when no line survives)');
 });
+
+/** Screen point for piece time `t` and pitch `p` (pitch from the tune dots' C4 and E4). */
+async function at(page: Page, t: number, p: number): Promise<{ x: number; y: number }> {
+  await frames(page);
+  const f = await page.evaluate(() => window.__algorhythms!.frameStats);
+  const box = (await page.locator('#score').boundingBox())!;
+  const c4 = await centre(page, 0);
+  const e4 = await centre(page, 2);
+  return {
+    x: box.x + ((t - f.start) / f.window) * box.width,
+    y: c4.y + ((p - 60) * (e4.y - c4.y)) / 4,
+  };
+}
+
+test('tune selected: a double-click adds a note (split inside a note, append after the end)', async ({
+  page,
+}) => {
+  await open(page, 60);
+  const sel = () =>
+    page.evaluate(
+      () => (window.__algorhythms as unknown as Hook).editor.state.getState().selection,
+    );
+  // Inside E4 (6–8 s) at 7.2 s, on the G4 line: snaps to the beat at 7; E4 keeps 6–7.
+  let q = await at(page, 7.2, 67);
+  await page.mouse.dblclick(q.x, q.y);
+  expect(await pitches(page)).toEqual([60, 62, 64, 67]);
+  expect(await lens(page)).toEqual([1, 1, 1, 1]);
+  expect(await H(page).undoLabel()).toBe('Add tune note');
+  expect(await sel()).toEqual(['tune1']);
+  await expect(dots(page)).toHaveCount(4);
+  // After the end (8 s), at 10.3 s on F4: appended at 10, the last note stretched to it, a beat.
+  q = await at(page, 10.3, 65);
+  await page.mouse.dblclick(q.x, q.y);
+  expect(await pitches(page)).toEqual([60, 62, 64, 67, 65]);
+  expect(await lens(page)).toEqual([1, 1, 1, 3, 1]);
+  // Before the start (4 s), at 2 s on B3: prepended, the tune starts at 2.
+  q = await at(page, 2, 59);
+  await page.mouse.dblclick(q.x, q.y);
+  expect(await pitches(page)).toEqual([59, 60, 62, 64, 67, 65]);
+  expect((await tuneOf(page)).at).toBe(2);
+  expect((await lens(page))[0]).toBe(2);
+  // No note point was added.
+  expect((await H(page).moments()).some((m) => m.type === 'note')).toBe(false);
+  await shot(page, 'tune-double-click.png');
+  await H(page).undo();
+  await H(page).undo();
+  await H(page).undo();
+  expect(await pitches(page)).toEqual([60, 62, 64]);
+  expect((await tuneOf(page)).at).toBe(4);
+});
+
+test('no tune selected: a double-click on a line still adds a note point', async ({ page }) => {
+  await open(page, 60);
+  const q = await at(page, 10.2, 67);
+  await H(page).select([]);
+  await frames(page);
+  await page.mouse.move(q.x, q.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.move(q.x, q.y - 10, { steps: 4 });
+  await page.mouse.move(q.x, q.y - 25, { steps: 4 });
+  await page.mouse.up({ clickCount: 2 });
+  expect((await H(page).moments()).filter((m) => m.type === 'note')).toHaveLength(1);
+  expect(await H(page).undoLabel()).toBe('Add note');
+  expect(await pitches(page)).toEqual([60, 62, 64]);
+});
