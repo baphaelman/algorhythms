@@ -66,3 +66,25 @@
 .walk-dots .drag-dot {
   pointer-events: none;
 }
+
+/* Selected dots (§11.3 revision 7 "Score selection"): a ring around the dot. */
+.walk-dot.picked {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 4px var(--accent);
+}
+
+/* The selection rectangle a background drag draws. */
+.walk-dots .marquee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  pointer-events: none;
+}
+
+.walk-dots .marquee[hidden] {
+  display: none;
+}

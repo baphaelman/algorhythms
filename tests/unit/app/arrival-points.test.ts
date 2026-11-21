@@ -141,6 +141,7 @@ describe('dot actions', () => {
     expect(dotAction(p, { momentId: 'n', type: 'note', t: 22, pitch: 62 }, notes)).toEqual({
       kind: 'note',
       id: 'n',
+      change: 0,
     });
   });
 

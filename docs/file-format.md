@@ -2617,15 +2617,38 @@ This is the *input* form: fields with defaults are optional here.
                 }
               },
               "from": {
-                "type": "number",
-                "description": "The sounding note to change (nearest within ½ semitone)."
+                "description": "One change: the sounding note to change (nearest within ½ semitone).",
+                "type": "number"
               },
               "to": {
-                "type": "number",
-                "description": "Fractional MIDI note number; 69 = A4."
+                "description": "One change: its new pitch.",
+                "type": "number"
+              },
+              "changes": {
+                "description": "Several changes at once, each on a different voice (instead of from/to).",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "number",
+                      "description": "The sounding note to change (nearest within ½ semitone)."
+                    },
+                    "to": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": {}
+                }
               },
               "back": {
-                "description": "When present, the note returns this many seconds after its glide ends.",
+                "description": "When present, the notes return this many seconds after their glides end.",
                 "type": "number",
                 "minimum": 0
               },
@@ -2637,9 +2660,7 @@ This is the *input* form: fields with defaults are optional here.
             "required": [
               "type",
               "id",
-              "at",
-              "from",
-              "to"
+              "at"
             ],
             "additionalProperties": {}
           },

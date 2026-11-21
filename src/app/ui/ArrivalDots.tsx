@@ -1,34 +1,51 @@
 /**
- * Editor overlay (§11.3 "Every dot is draggable", revision 6): arrival dots on the score.
- * - The selected moment's dots: a chord's notes at its span end, a walk's steps, a note's `to`,
- *   any other moment's landings (./editor/arrival-points).
+ * Editor overlay (§11.3 "Every dot is draggable", revision 6; "Score selection", revision 7):
+ * arrival dots on the score.
+ * - The selected moments' dots: a chord's notes at its span end, a walk's steps, a note's changes,
+ *   any other moment's landings (./editor/arrival-points). Selected dots (click, Shift-click, the
+ *   marquee; ./editor/dot-selection) are marked `picked`.
  * - Hover: with the mouse near another moment's arrival, that moment's dots (a walk: the near
  *   steps), from a fixed pool of buttons written per frame, so no React render on pointer moves.
- * Dragging a dot moves it (`dragArrival`, revision 6): vertically its pitch (snapped to the key,
- * Shift = chromatic; clamped at the view's edge, which holds still during the drag), horizontally
- * its arrival (snapped to note changes within 8 px, a walk step first to its walk's other steps,
- * Alt = free; only once the pointer has moved sideways past the slop), one undo entry; the dot
- * follows the pointer. A click
- * without a drag selects the walk step, or the hovered moment.
+ * - The selection rectangle canvas-input draws (../marquee), placed per frame.
+ * Dragging a dot moves it (`dragDots`), with every other selected dot when it is selected (Shift
+ * on an unselected one adds it): vertically its pitch (snapped to the key, Shift = chromatic, the
+ * others by the same scale steps; clamped at the view's edge, which holds still during the drag),
+ * horizontally its arrival (snapped to note changes within 8 px, a walk step first to its walk's
+ * other steps, Alt = free; only once the pointer has moved sideways past the slop), one undo
+ * entry; the grabbed dot follows the pointer and the moved dots stay selected. A click without a
+ * drag selects the dot (and its moment; a walk dot also its step); Shift-click adds or removes it.
  * DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { keyAt } from '../../core/query';
-import type { CompiledScore, Piece } from '../../core/types';
+import type { Moment, MomentId } from '../../core/types';
 import { pitchToY, timeToX, xToTime, type View } from '../../render';
-import { dragArrival } from '../editor/actions';
-import { allArrivals, hoverPick, momentArrivals, type ArrivalDot } from '../editor/arrival-points';
-import { dragPitch } from '../editor/chord-notes';
-import { select, useEditor } from '../editor/history';
+import { dragDots } from '../editor/actions';
+import {
+  cachedArrivals,
+  hoverPick,
+  momentArrivals,
+  type ArrivalDot,
+} from '../editor/arrival-points';
+import { chordNotes, dragPitch } from '../editor/chord-notes';
+import {
+  currentDots,
+  isDot,
+  pickedIn,
+  selectDots,
+  toggleDot,
+  useDotSelection,
+} from '../editor/dot-selection';
+import { useEditor } from '../editor/history';
 import { edgePitch } from '../editor/drag-edge';
-import { dotSnaps, snapTime, type SnapSet } from '../editor/snap';
+import { dotSnaps, ofVoice, snapTime, type SnapSet } from '../editor/snap';
 import { selectStep, useStepSelection } from '../editor/step-selection';
 import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
 import { onScoreFrame } from '../loop';
+import { marquee } from '../marquee';
 import { camera, usePlayer } from '../store';
-import { useChordNotes } from './inspector/ChordNotes';
 import './walk-dots.css';
 
 const MARGIN = 8;
@@ -45,7 +62,7 @@ const TEST_IDS: Record<string, [box: string, dot: string]> = {
   note: ['note-dots', 'note-dot'],
 };
 
-function place(el: HTMLElement, v: View, d: ArrivalDot): void {
+function place(el: HTMLElement, v: View, d: { t: number; pitch: number }): void {
   const x = (d.t - v.start) * v.pps;
   const show = x >= -MARGIN && x <= v.width + MARGIN;
   const tf = show ? `translate(${x.toFixed(1)}px, ${pitchToY(v, d.pitch).toFixed(1)}px)` : '';
@@ -53,14 +70,17 @@ function place(el: HTMLElement, v: View, d: ArrivalDot): void {
   if (el.hidden === show) el.hidden = !show;
 }
 
-/** Hover index, rebuilt when the compiled score changes. */
-let index: { score: CompiledScore; piece: Piece; dots: ArrivalDot[] } | null = null;
-function arrivalsOf(score: CompiledScore): ArrivalDot[] {
-  const piece = usePlayer.getState().piece;
-  if (index?.score !== score || index.piece !== piece) {
-    index = { score, piece, dots: allArrivals(piece, score) };
+function placeMarquee(el: HTMLElement): void {
+  if (!marquee.on) {
+    if (!el.hidden) el.hidden = true;
+    return;
   }
-  return index.dots;
+  const x = Math.min(marquee.x0, marquee.x1);
+  const y = Math.min(marquee.y0, marquee.y1);
+  el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  el.style.width = `${Math.abs(marquee.x1 - marquee.x0).toFixed(1)}px`;
+  el.style.height = `${Math.abs(marquee.y1 - marquee.y0).toFixed(1)}px`;
+  if (el.hidden) el.hidden = false;
 }
 
 export function ArrivalDots() {
@@ -68,35 +88,51 @@ export function ArrivalDots() {
   const piece = usePlayer((s) => s.piece);
   const compiled = usePlayer((s) => s.compiled);
   const selectedStep = useStepSelection((s) => s.step);
-  const moment = useMemo(() => {
-    if (selection.length !== 1) return null;
-    return piece.moments.find((x) => x.id === selection[0]) ?? null;
-  }, [selection, piece]);
-  const chordNotes = useChordNotes(moment?.type === 'chord' ? moment : null);
-  const dots = useMemo(
-    () => (moment ? momentArrivals(compiled, moment, chordNotes) : []),
-    [moment, compiled, chordNotes],
-  );
+  const sel = useDotSelection((s) => s.dots);
+  /** The selected moments and their dots. */
+  const groups = useMemo(() => {
+    const out: { m: Moment; dots: ArrivalDot[] }[] = [];
+    for (const id of selection) {
+      const m = piece.moments.find((x) => x.id === id);
+      if (!m) continue;
+      const notes = m.type === 'chord' ? chordNotes(piece, compiled, m) : null;
+      out.push({ m, dots: momentArrivals(compiled, m, notes) });
+    }
+    return out;
+  }, [selection, piece, compiled]);
+  // Dots of moments that left the selection are dropped (a lane click, delete, undo).
+  useEffect(() => {
+    const cur = currentDots();
+    if (cur.length !== useDotSelection.getState().dots.length) {
+      useDotSelection.setState({ dots: cur });
+    }
+  }, [selection]);
+  const dots = useMemo(() => groups.flatMap((g) => g.dots), [groups]);
+  const picked = useMemo(() => pickedIn(sel, dots), [sel, dots]);
 
   const box = useRef<HTMLDivElement>(null);
   const els = useRef<(HTMLButtonElement | null)[]>([]);
   const hoverEls = useRef<(HTMLButtonElement | null)[]>([]);
   /** The dragged dot, drawn at the pointer (the pressed one hides while the score catches up). */
   const ghost = useRef<HTMLDivElement>(null);
+  const rect = useRef<HTMLDivElement>(null);
   const follow = useRef<ArrivalDot | null>(null);
   const view = useRef<View | null>(null);
   const geo = useRef<ArrivalDot[]>([]);
-  const selectedId = useRef<string | null>(null);
-  const hover = useRef<{ dots: ArrivalDot[]; key: string; held: boolean; dragging: boolean }>({
-    dots: [],
-    key: '',
-    held: false,
-    dragging: false,
-  });
+  const pickedRef = useRef<boolean[]>([]);
+  const selectedIds = useRef<ReadonlySet<MomentId>>(new Set());
+  const hover = useRef<{
+    dots: ArrivalDot[];
+    key: string;
+    score: unknown;
+    held: boolean;
+    dragging: boolean;
+  }>({ dots: [], key: '', score: null, held: false, dragging: false });
   useLayoutEffect(() => {
     geo.current = dots;
-    selectedId.current = moment?.id ?? null;
-  }, [dots, moment]);
+    pickedRef.current = picked;
+    selectedIds.current = new Set(groups.map((g) => g.m.id));
+  }, [dots, picked, groups]);
 
   useEffect(
     () =>
@@ -107,22 +143,24 @@ export function ArrivalDots() {
           const el = els.current[i];
           if (el) place(el, v, g[i]);
         }
+        if (rect.current) placeMarquee(rect.current);
         // Hover: re-picked when the pointer, the camera or the score changed; held while the
         // pointer is on a hover dot (the canvas then reports a leave) or a drag runs.
         const h = hover.current;
         if (!h.held && !h.dragging) {
           const key = `${hoverPointer.version}|${v.start}|${v.pps}|${v.pLo}|${v.pHi}|${v.height}`;
-          if (key !== h.key || index?.score !== score) {
+          if (key !== h.key || h.score !== score) {
             h.key = key;
+            h.score = score;
             const on = hoverPointer.on && box.current?.closest('[data-layout="full"]') !== null;
             h.dots = on
               ? hoverPick(
-                  arrivalsOf(score),
+                  cachedArrivals(usePlayer.getState().piece, score),
                   { x: (t) => timeToX(v, t), y: (p) => pitchToY(v, p), t: (x) => xToTime(v, x) },
                   hoverPointer.x,
                   hoverPointer.y,
                   HOVER_PX,
-                  selectedId.current,
+                  selectedIds.current,
                   HOVER_MAX,
                 )
               : [];
@@ -144,19 +182,23 @@ export function ArrivalDots() {
           el.dataset.moment = d.momentId;
           el.dataset.type = d.type;
           el.dataset.pitch = String(d.pitch);
+          el.dataset.t = d.t.toFixed(3);
           place(el, v, d);
         }
       }),
     [],
   );
 
-  /** A press on a dot: past the slop, a pitch drag; otherwise a click (`onClick`). */
-  const press = (
-    e: React.PointerEvent<HTMLButtonElement>,
-    dot: ArrivalDot,
-    onClick?: () => void,
-    onDragEnd?: () => void,
-  ) => {
+  /** The dots a drag of `dot` moves: the dot selection when it holds `dot`, else `dot` alone. */
+  const groupFor = (dot: ArrivalDot, add: boolean): ArrivalDot[] => {
+    const cur = geo.current.filter((_, i) => pickedRef.current[i]);
+    const i = cur.findIndex((d) => d === dot || isDot(d, dot));
+    if (i >= 0) return cur.map((d, j) => (j === i ? dot : d));
+    return add ? [...cur, dot] : [dot];
+  };
+
+  /** A press on a dot: past the slop, a drag of it (and the selection); otherwise a click. */
+  const press = (e: React.PointerEvent<HTMLButtonElement>, dot: ArrivalDot) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -165,9 +207,10 @@ export function ArrivalDots() {
     const id = e.pointerId;
     const x0 = e.clientX;
     const y0 = e.clientY;
+    const add = e.shiftKey;
     const key = keyAt(usePlayer.getState().compiled, dot.t);
     const h = hover.current;
-    let drag: ReturnType<typeof dragArrival> | undefined;
+    let drag: ReturnType<typeof dragDots> | undefined;
     let last = dot.pitch;
     let lastT = dot.t;
     let sideways = false;
@@ -177,27 +220,34 @@ export function ArrivalDots() {
       if (drag === undefined) {
         if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= SLOP) return;
         h.dragging = true;
-        drag = dragArrival(dot);
+        const group = groupFor(dot, add);
+        drag = dragDots(group, dot);
         const v0 = view.current;
         if (v0 && drag) camera.pitch = [v0.pLo, v0.pHi];
         const st = usePlayer.getState();
-        snaps = dotSnaps(st.compiled, st.piece, dot);
+        const own = dotSnaps(st.compiled, st.piece, dot);
+        // Not to the dragged dots' own note changes.
+        const others = group.filter((d) => d !== dot).map((d) => ofVoice(d.momentId, d.voice));
+        const ex = own.exclude;
+        snaps =
+          others.length === 0
+            ? own
+            : { ...own, exclude: (p) => !!ex?.(p) || others.some((f) => f(p)) };
       }
       const v = view.current;
-      const rect = box.current?.getBoundingClientRect();
-      if (!drag || !v || !rect) return;
-      const p = dragPitch(edgePitch(v, ev.clientY - rect.top), key, ev.shiftKey);
+      const r = box.current?.getBoundingClientRect();
+      if (!drag || !v || !r) return;
+      const p = dragPitch(edgePitch(v, ev.clientY - r.top), key, ev.shiftKey);
       if (Math.abs(ev.clientX - x0) > SLOP) sideways = true;
       let t = dot.t;
-      if (sideways && snaps)
-        t = snapTime(xToTime(v, ev.clientX - rect.left), snaps, v.pps, ev.altKey);
+      if (sideways && snaps) t = snapTime(xToTime(v, ev.clientX - r.left), snaps, v.pps, ev.altKey);
       follow.current = { ...dot, t, pitch: p };
       if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
       if (ghost.current) place(ghost.current, v, follow.current);
       if (p === last && t === lastT) return;
       last = p;
       lastT = t;
-      drag.to(p, t);
+      drag.to(p, t, ev.shiftKey);
     };
     const done = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
@@ -212,48 +262,74 @@ export function ArrivalDots() {
       el.style.visibility = '';
       if (ghost.current) ghost.current.hidden = true;
       if (drag) {
-        const cancel = ev.type === 'pointercancel';
-        drag.end(cancel);
-        if (!cancel) onDragEnd?.();
-      } else if (drag === undefined && ev.type === 'pointerup') onClick?.();
+        const r = drag.end(ev.type === 'pointercancel');
+        if (!r) return;
+        // The moved dots stay selected, where they ended up.
+        selectDots(
+          r.targets.map(({ dot: d, pitch, t }, i) => {
+            const out: ArrivalDot = { ...d, momentId: r.hosts[i], pitch, t };
+            const step = r.steps[i];
+            if (step) out.step = step;
+            return out;
+          }),
+        );
+        const step = r.targets.length === 1 ? r.steps[0] : undefined;
+        if (step) selectStep(step);
+      } else if (drag === undefined && ev.type === 'pointerup') {
+        if (add) toggleDot(dot);
+        else {
+          selectDots([dot]);
+          if (dot.step) selectStep(dot.step);
+        }
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', done);
     window.addEventListener('pointercancel', done);
   };
 
-  const ids = moment ? (TEST_IDS[moment.type] ?? ['arrival-dots', 'arrival-dot']) : null;
+  let flat = 0;
   return (
     <>
-      {moment && ids && dots.length > 0 && (
-        <div className="walk-dots" data-testid={ids[0]} aria-hidden="true">
-          {dots.map((d, i) => {
-            const on = d.type === 'note' || (!!d.step && sameStep(d.step, selectedStep));
-            const cls = d.type === 'walk' ? 'walk-dot' : 'walk-dot chord-dot';
-            return (
-              <button
-                key={d.step ? `${d.step.tick}:${d.step.voice}` : i}
-                ref={(el) => {
-                  els.current[i] = el;
-                }}
-                type="button"
-                tabIndex={-1}
-                hidden
-                className={on ? `${cls} on` : cls}
-                data-testid={ids[1]}
-                data-index={d.type === 'chord' ? i : undefined}
-                data-tick={d.step?.tick}
-                data-voice={d.step?.voice}
-                data-selected={d.step && on ? 'true' : undefined}
-                data-t={d.t.toFixed(3)}
-                data-pitch={d.pitch}
-                onPointerDown={(e) => press(e, d, d.step ? () => selectStep(d.step!) : undefined)}
-              />
-            );
-          })}
-        </div>
-      )}
+      {groups.map(({ m, dots: ds }) => {
+        const ids = TEST_IDS[m.type] ?? ['arrival-dots', 'arrival-dot'];
+        if (ds.length === 0) return null;
+        return (
+          <div key={m.id} className="walk-dots" data-testid={ids[0]} aria-hidden="true">
+            {ds.map((d, j) => {
+              const i = flat++;
+              const on = d.type === 'note' || (!!d.step && sameStep(d.step, selectedStep));
+              const base = d.type === 'walk' ? 'walk-dot' : 'walk-dot chord-dot';
+              const cls = `${base}${on ? ' on' : ''}${picked[i] ? ' picked' : ''}`;
+              return (
+                <button
+                  key={d.step ? `${d.step.tick}:${d.step.voice}` : j}
+                  ref={(el) => {
+                    els.current[i] = el;
+                  }}
+                  type="button"
+                  tabIndex={-1}
+                  hidden
+                  className={cls}
+                  data-testid={ids[1]}
+                  data-dot-moment={m.id}
+                  data-index={d.type === 'chord' ? j : undefined}
+                  data-change={d.change}
+                  data-tick={d.step?.tick}
+                  data-voice={d.step?.voice}
+                  data-selected={d.step && on ? 'true' : undefined}
+                  data-picked={picked[i] ? 'true' : undefined}
+                  data-t={d.t.toFixed(3)}
+                  data-pitch={d.pitch}
+                  onPointerDown={(e) => press(e, d)}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
       <div ref={box} className="walk-dots" data-testid="hover-dots" aria-hidden="true">
+        <div ref={rect} className="marquee" data-testid="marquee" hidden />
         <div ref={ghost} className="walk-dot on drag-dot" data-testid="drag-dot" hidden />
         {Array.from({ length: HOVER_MAX }, (_, i) => (
           <button
@@ -276,21 +352,7 @@ export function ArrivalDots() {
             }}
             onPointerDown={(e) => {
               const d = hover.current.dots[i];
-              if (!d) return;
-              press(
-                e,
-                d,
-                () => {
-                  select([d.momentId]);
-                  if (d.step) selectStep(d.step);
-                },
-                () => {
-                  // Keep the step a walk drag selected (select() clears another walk's step).
-                  const step = useStepSelection.getState().step;
-                  select([d.momentId]);
-                  if (step) selectStep(step);
-                },
-              );
+              if (d) press(e, d);
             }}
           />
         ))}

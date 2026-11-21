@@ -222,7 +222,7 @@ test('the window slider is logarithmic from 2 s to the open canvas; = and − zo
   await expect.poll(async () => (await getState(page)).view.window).toBeLessThan(before);
 });
 
-test('dragging pans the paused view', async ({ page }) => {
+test('a middle-button drag pans the paused view', async ({ page }) => {
   await openApp(page);
   await seek(page, 60);
   await expect(page.getByTestId('time')).toHaveText('01:00.0');
@@ -233,9 +233,9 @@ test('dragging pans the paused view', async ({ page }) => {
   const start = () => page.evaluate(() => window.__algorhythms!.frameStats.start);
   const before = await start();
   await page.mouse.move(box.x + 300, y);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'middle' });
   await page.mouse.move(box.x + 500, y, { steps: 8 });
-  await page.mouse.up();
+  await page.mouse.up({ button: 'middle' });
   await frames(page);
   const { view, status } = await getState(page);
   expect(status).toBe('paused'); // a drag is not a click
