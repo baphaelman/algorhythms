@@ -257,3 +257,50 @@ export function liveNotes(
   }
   return out.sort((a, b) => a - b);
 }
+
+/** Octaves either side of 0 on the shift slider (§11.3 "Shift amount slider"). */
+export const SHIFT_OCTAVES = 2;
+/** Raw slider distance (in steps) from an octave mark within which a drag snaps to it. */
+export const SHIFT_SNAP = 0.75;
+
+/** Steps in one octave for a shift: 12 semitones, or the key's scale length in scale steps. */
+export function shiftOctave(unit: 'semitones' | 'scaleSteps', key: Key): number {
+  return unit === 'semitones' ? 12 : scaleIntervals(key.scale).length;
+}
+
+/** Slider position in [0, 1] of shift amount `v` (0 at ½), clamped to ±SHIFT_OCTAVES octaves. */
+export function shiftPosition(v: number, octave: number): number {
+  const r = SHIFT_OCTAVES * octave;
+  return (Math.min(r, Math.max(-r, v)) + r) / (2 * r);
+}
+
+/**
+ * The integer shift for a raw (continuous) slider value: the nearest octave mark when within
+ * SHIFT_SNAP of it, else the nearest step; clamped to ±SHIFT_OCTAVES octaves.
+ */
+export function snapShift(raw: number, octave: number): number {
+  const r = SHIFT_OCTAVES * octave;
+  const x = Math.min(r, Math.max(-r, raw));
+  const mark = Math.round(x / octave) * octave;
+  const v = Math.abs(x - mark) <= SHIFT_SNAP ? mark : Math.round(x);
+  return v === 0 ? 0 : v; // no −0
+}
+
+/** The shift for slider position `pos` in [0, 1] (inverse of `shiftPosition`, snapped). */
+export function shiftAtPosition(pos: number, octave: number): number {
+  const r = SHIFT_OCTAVES * octave;
+  return snapShift(pos * 2 * r - r, octave);
+}
+
+/** A signed integer: "+7", "−3", "0". */
+export function formatSigned(v: number): string {
+  return v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
+}
+
+/** Signed shift text with whole octaves named: "+7 (+1 oct)", "−3", "0". */
+export function formatShift(v: number, octave: number): string {
+  const s = formatSigned(v);
+  if (v === 0 || v % octave !== 0) return s;
+  const k = v / octave;
+  return `${s} (${k > 0 ? '+' : '−'}${Math.abs(k)} oct)`;
+}

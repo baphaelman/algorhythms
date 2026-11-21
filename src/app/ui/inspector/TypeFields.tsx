@@ -26,6 +26,7 @@ import {
   Chips,
   NumberField,
   SelectField,
+  ShiftSlider,
   Slider,
   TextField,
   fieldSetter,
@@ -37,6 +38,7 @@ import {
   formatPitch,
   parseIntList,
   parsePitch,
+  shiftOctave,
   stepChips,
   toggleStep,
 } from './fields';
@@ -69,7 +71,7 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
     case 'merge':
       return <MergeFields m={m} ctx={ctx} />;
     case 'shift':
-      return <ShiftFields m={m} />;
+      return <ShiftFields m={m} ctx={ctx} />;
     case 'spread':
       return <SpreadFields m={m} />;
     case 'walk':
@@ -245,11 +247,17 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
   );
 }
 
-function ShiftFields({ m }: { m: ShiftMoment }) {
+function ShiftFields({ m, ctx }: { m: ShiftMoment; ctx: Ctx }) {
   const by = field<number>(m.id, 'by', 'Edit shift');
   return (
     <>
-      <NumberField label="By" value={m.by} set={by} step={1} min={-48} max={48} />
+      <ShiftSlider
+        label="By"
+        value={m.by}
+        set={by}
+        octave={shiftOctave(m.unit, ctx.keyAt)}
+        testId="insp-shift-by"
+      />
       <SelectField
         label="Unit"
         value={m.unit}

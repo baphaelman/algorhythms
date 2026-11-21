@@ -517,3 +517,50 @@ test('Arrive together toggle writes glide.arrive', async ({ page }) => {
   await hook(page, 'undo');
   await expect(arrive).not.toBeChecked();
 });
+
+test('shift: the By slider snaps to +1 octave (7 scale steps); one undo restores', async ({
+  page,
+}) => {
+  await seek(page, 10);
+  await page.keyboard.press('t');
+  const insp = page.getByTestId('inspector');
+  const slider = insp.getByTestId('insp-shift-by');
+  await slider.scrollIntoViewIfNeeded();
+  const id = await page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      editor: { state: { getState(): { selection: string[] } } };
+    };
+    return h.editor.state.getState().selection[0]!;
+  });
+  const by = async (): Promise<number | undefined> =>
+    ((await moment(page, id)) as (M & { by?: number }) | undefined)?.by;
+  expect((await moment(page, id))?.type).toBe('shift');
+  expect(await by()).toBe(2);
+  const value = insp.getByTestId('insp-shift-by-value');
+  await expect(value).toHaveText('+2');
+
+  // Drag from the thumb (+2 of ±14) to the drawn +1 octave mark (−14, −7, 0, 7, 14): it snaps
+  // to 7 (native thumb insets differ a little between engines).
+  const box = (await slider.boundingBox())!;
+  const mark = (await insp.locator('.shift-mark').nth(3).boundingBox())!;
+  const y = box.y + box.height / 2;
+  const from = box.x + box.width * (16 / 28);
+  const to = mark.x + mark.width / 2;
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(from + (i / 6) * (to - from), y);
+  await page.mouse.up();
+  expect(await by()).toBe(7);
+  await expect(value).toHaveText('+7');
+  await expect(value).toHaveAttribute('title', '+7 (+1 oct)');
+  expect(await undoLabel(page)).toBe('Edit shift');
+  await hook(page, 'undo');
+  expect(await by()).toBe(2);
+
+  // Keys: arrows step by 1, Page Up/Down by an octave.
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await by()).toBe(3);
+  await page.keyboard.press('PageDown');
+  expect(await by()).toBe(-4);
+});

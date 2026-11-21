@@ -113,10 +113,44 @@
   min-width: 0;
 }
 
+.insp-ctl .shift-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  padding-bottom: 6px;
+}
+
+.insp-ctl .shift-track input[type='range'] {
+  width: 100%;
+}
+
+/* Octave marks under the shift slider (§11.3); the 8px inset is half a native thumb. */
+.shift-mark {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 5px;
+  background: var(--ink-2);
+  pointer-events: none;
+}
+
+.shift-mark.zero {
+  height: 7px;
+  background: var(--ink);
+}
+
 .insp-ctl .unit {
   color: var(--ink-2);
   font-family: var(--f-mono);
   min-width: 2.5em;
+}
+
+/* Fits "−24", so the shift track keeps its width while dragging. */
+.insp-ctl .unit.shift-value {
+  min-width: 3.5ch;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .insp-row .field-error,
