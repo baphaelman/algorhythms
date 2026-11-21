@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { barGrid } from '../../../src/render';
 import {
   LOOP_MIN,
-  beatPx,
   clampLoop,
   dragLoopEdge,
   loopEdgeAt,
@@ -32,10 +32,13 @@ describe('ruler', () => {
     expect(rulerLabel(125.3, 0.1)).toBe('2:05.3');
   });
 
-  it('beat spacing only with a grid and when wide enough', () => {
-    expect(beatPx(undefined, 100)).toBeNull();
-    expect(beatPx(120, 100)).toBe(50);
-    expect(beatPx(120, 4)).toBeNull();
+  it('bar grid: defaults 60 bpm 4/4, beats hidden when dense, bars thinned by powers of 2', () => {
+    expect(barGrid(undefined, undefined, 100)).toEqual({ beat: 1, bar: 4 });
+    expect(barGrid(120, 3, 100)).toEqual({ beat: 0.5, bar: 1.5 });
+    expect(barGrid(120, 4, 10).beat).toBe(0); // 5 px beats
+    expect(barGrid(120, 4, 10).bar).toBe(4); // 20 px bars → every 2nd
+    expect(barGrid(60, 4, 1).bar).toBe(32);
+    expect(barGrid(-5, 0.5, 100)).toEqual({ beat: 1, bar: 4 });
   });
 });
 

@@ -2,7 +2,8 @@
  * `drawScore`: the pure score painter shared by the player, the editor and export (PLAN.md §10).
  * No globals, no React: everything arrives as arguments. Layers, back to front:
  *
- *   1. background          2. octave grid (A lines labelled in Hz)   3. moment/section markers
+ *   1. background          2. octave grid (A lines labelled in Hz), bar grid (editor)
+ *   3. moment/section markers
  *   4. lines (past solid, future ghost)   5. heads (dots, motion rings, Hz labels ×N)
  *   6. playhead            7. HUD (chord, key, voices, time)
  *
@@ -19,6 +20,7 @@ import type {
   MomentSpan,
   Seconds,
 } from '../core/types';
+import { barGrid } from './bars';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { lineColor, pitchStops } from './palettes';
 import type { CameraState, MomentTimes, ScoreStyle, View } from './types';
@@ -129,6 +131,8 @@ export function drawScore(
     g.globalAlpha = 1;
   }
 
+  if (style.bars) drawBars(g, style.bars, view, C.rule);
+
   // 3. moment and section markers
   drawMarkers(g, compiled, style, view, MONO);
 
@@ -155,6 +159,37 @@ export function drawScore(
   // 7. HUD
   if (style.hud) drawHud(g, compiled, style, view, MONO, padL, padR);
   return view;
+}
+
+/** Beat lines (faint) and bar lines (stronger) across the plot area; no allocation. */
+function drawBars(
+  g: CanvasRenderingContext2D,
+  bars: { bpm?: number; meter?: number },
+  view: View,
+  rule: string,
+): void {
+  const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps);
+  const { tL, tR, padT, padB, height: H } = view;
+  const y0 = padT - 6;
+  const y1 = H - padB + 6;
+  g.strokeStyle = rule;
+  g.lineWidth = 1;
+  for (let pass = 0; pass < 2; pass++) {
+    const step = pass === 0 ? beat : bar;
+    if (!(step > 0)) continue;
+    g.globalAlpha = pass === 0 ? 0.35 : 1;
+    g.beginPath();
+    for (let k = Math.ceil(tL / step - 1e-9); k * step <= tR + 1e-9; k++) {
+      const t = k * step;
+      // Beats under a bar line are left to the bar pass.
+      if (pass === 0 && Math.abs(t / bar - Math.round(t / bar)) < 1e-6) continue;
+      const x = Math.round(timeToX(view, t)) + 0.5;
+      g.moveTo(x, y0);
+      g.lineTo(x, y1);
+    }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
 }
 
 function drawMarkers(

@@ -11,12 +11,15 @@ import type { View } from '../../../src/render';
 const view = { start: 10, pps: 50 } as View;
 
 describe('palette drop', () => {
-  it('maps x to time like the canvas, snapped to the grid', () => {
-    expect(dropTime(view, 500)).toBe(20);
-    expect(dropTime(view, 525)).toBeCloseTo(20.5);
-    expect(dropTime(view, 527, 120)).toBe(20.5); // 20.54 -> nearest half-second beat
-    expect(dropTime(view, 0)).toBe(10);
-    expect(dropTime(view, -1000)).toBe(0); // never before 0
+  it('maps x to time like the canvas, snapped to a note change within 8 px', () => {
+    const none = { points: [] };
+    expect(dropTime(view, 500, none)).toBe(20);
+    expect(dropTime(view, 525, none)).toBeCloseTo(20.5);
+    const near = { points: [{ t: 20.6 }] };
+    expect(dropTime(view, 527, near)).toBe(20.6); // 20.54: 3 px from the change
+    expect(dropTime(view, 515, near)).toBe(20.3); // 15 px away: free
+    expect(dropTime(view, 0, none)).toBe(10);
+    expect(dropTime(view, -1000, none)).toBe(0); // never before 0
   });
 
   it('accepts only palette moment types', () => {

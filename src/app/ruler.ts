@@ -36,13 +36,6 @@ export function rulerLabel(t: Seconds, step: Seconds): string {
   return step < 1 ? `${base}.${rest % 10}` : base;
 }
 
-/** Beat spacing for a BPM grid, or null when there is no grid or beats would be under `minPx`. */
-export function beatPx(bpm: number | undefined, pps: number, minPx = 4): number | null {
-  if (!bpm || !(bpm > 0)) return null;
-  const px = (60 / bpm) * pps;
-  return px >= minPx ? px : null;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Loop region (§11.3 revision 6)
 // ---------------------------------------------------------------------------------------------

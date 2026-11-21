@@ -13,7 +13,7 @@ import { momentEffectAt, momentEffectsAt, type MomentEffect } from '../../core/e
 import type { CompiledScore, MomentType, Piece, Seconds } from '../../core/types';
 import { currentTime, usePlayer } from '../store';
 import { defaultMoment } from './new-moment';
-import { snapToGrid } from './shortcuts';
+import { freeTime } from './snap';
 
 /** Id of the throwaway moments built for effect checks and previews. */
 export const PROBE_ID = '__probe';
@@ -27,9 +27,9 @@ export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): 
   );
 }
 
-/** Where a palette click or shortcut adds a moment now: the playhead, snapped to the grid. */
+/** Where a palette click or shortcut adds a moment now: the playhead (to the ms, revision 7). */
 export function addTime(): Seconds {
-  return snapToGrid(currentTime(), usePlayer.getState().piece.view.gridBpm);
+  return freeTime(currentTime());
 }
 
 /** The effect of adding `type` at the playhead now (computed fresh, for clicks and keys). */

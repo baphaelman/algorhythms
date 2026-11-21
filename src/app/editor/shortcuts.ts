@@ -5,9 +5,10 @@
  */
 
 import type { MomentId, MomentType, Seconds } from '../../core/types';
-import { currentTime, usePlayer } from '../store';
+import { currentTime } from '../store';
 import { addMoment, deleteMoments } from './actions';
 import { select, useEditor } from './history';
+import { freeTime } from './snap';
 
 export interface PaletteEntry {
   type: MomentType;
@@ -57,9 +58,9 @@ export function snapToGrid(t: Seconds, bpm?: number): Seconds {
   return Math.round(s / beat) * beat;
 }
 
-/** Adds a default `type` moment at the playhead (snapped to the piece's grid) and selects it. */
+/** Adds a default `type` moment at the playhead (to the ms; the bar grid is not a snap target, revision 7) and selects it. */
 export function addAtPlayhead(type: MomentType): MomentId {
-  return addMoment(type, snapToGrid(currentTime(), usePlayer.getState().piece.view.gridBpm));
+  return addMoment(type, freeTime(currentTime()));
 }
 
 /** Deletes the selected moments; false if nothing was selected. */

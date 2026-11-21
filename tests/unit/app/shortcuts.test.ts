@@ -139,7 +139,7 @@ describe('actions at the playhead', () => {
     loadPiece(newPiece({ seed: 7 }));
   });
 
-  it('adds at the playhead, snapped when the piece has a grid', () => {
+  it('adds at the playhead, not snapped to the bar grid (revision 7)', () => {
     seekTo(3.3);
     const a = addAtPlayhead('chord');
     const p = usePlayer.getState().piece;
@@ -150,7 +150,7 @@ describe('actions at the playhead', () => {
     seekTo(3.3);
     const b = addAtPlayhead('level');
     const m = usePlayer.getState().piece.moments.find((x) => x.id === b);
-    expect(m).toMatchObject({ type: 'level', at: 3 });
+    expect(m).toMatchObject({ type: 'level', at: 3.3 });
   });
 
   it('deletes and clears the selection', () => {

@@ -33,6 +33,7 @@ import {
   type StepRef,
 } from './walk-steps';
 import { dotAction, type ArrivalDot } from './arrival-points';
+import { inRange } from './drag-edge';
 import { keepOrder, noteOrder } from './line-order';
 import {
   copyMoments,
@@ -324,6 +325,23 @@ export function dragWalkStep(ref: StepRef, t0: Seconds): DotDrag | null {
  * when `t` differs from `dot.t`. One undo entry. Null if the moment is gone.
  */
 export function dragArrival(dot: ArrivalDot): DotDrag | null {
+  const d = dotDrag(dot);
+  if (!d) return null;
+  // Revision 7: kept inside the voice's range (unknown voice: all voices'), so the compiler
+  // never folds it by an octave.
+  const voices = usePlayer.getState().piece.voices;
+  const own = dot.voice === undefined ? undefined : voices[dot.voice]?.range;
+  const range = own ?? poolRange(voices.map((v) => v.range));
+  return { to: (pitch, t) => d.to(inRange(pitch, range), t), end: d.end };
+}
+
+/** The union of `ranges`, or undefined when there are none. */
+function poolRange(ranges: readonly [Pitch, Pitch][]): [Pitch, Pitch] | undefined {
+  if (ranges.length === 0) return undefined;
+  return [Math.min(...ranges.map((r) => r[0])), Math.max(...ranges.map((r) => r[1]))];
+}
+
+function dotDrag(dot: ArrivalDot): DotDrag | null {
   const piece = usePlayer.getState().piece;
   const score = scoreOf(piece);
   const a = dotAction(piece, dot, (m) => chordNotes(piece, score, m));

@@ -112,6 +112,11 @@ export interface ScoreStyle {
    * emphasised and the other lines dimmed. Empty or absent: no highlight, no extra cost.
    */
   highlight?: ReadonlySet<MomentId>;
+  /**
+   * Bar grid to draw behind the lines (§11.3 revision 7; the editor passes the piece's tempo and
+   * meter, defaults in ./bars). Absent: none.
+   */
+  bars?: { bpm?: number; meter?: number };
   /** Draw the playhead line. The editor layout draws its own DOM playhead (§10). @default true */
   playhead?: boolean;
 }

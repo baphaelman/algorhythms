@@ -45,6 +45,7 @@ import {
   type LevelPoint,
 } from '../editor/lane';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
+import { changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { panBy, usePlayer } from '../store';
@@ -119,6 +120,8 @@ interface Drag {
   /** Times of the dragged moments, and the span end of an end drag, at drag start. */
   origAt: Map<MomentId, Seconds>;
   origEnd: Seconds;
+  /** Snap targets, taken at the first preview. */
+  snaps?: SnapSet;
 }
 
 /** The imperative half of the lane: element registry, layout and pointer drags. */
@@ -389,8 +392,11 @@ class LaneController {
     }
     const primary = d.origAt.get(d.id);
     if (primary === undefined) return;
-    const step = gridStep(pieceNow().view.gridBpm);
-    let dt = dragDt(primary, d.raw, step, !d.alt);
+    // Revision 7: snaps to note changes (not the bar grid), outside the dragged moments.
+    const st = usePlayer.getState();
+    d.snaps ??= { points: changePoints(st.compiled, st.piece), exclude: ofMoments(d.ids) };
+    const to = snapTime(primary + d.raw, d.snaps, this.view?.pps ?? 0, d.alt);
+    let dt = dragDt(primary, to - primary, null, false);
     // The group stops when its earliest moment reaches 0.
     dt = Math.max(dt, -Math.min(...d.origAt.values()));
     d.dt = dt;

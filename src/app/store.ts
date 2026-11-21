@@ -161,6 +161,11 @@ export const camera = {
    */
   hold: false,
   release: false,
+  /**
+   * The pitch range held during a dot or note drag (§11.3 revision 7): the view stops re-fitting
+   * to the score, so a drag past the edge never rescales under the pointer. Null: auto-fit.
+   */
+  pitch: null as [number, number] | null,
 };
 
 /** The camera now: `{ start, window }`, both clamped to the piece. */
