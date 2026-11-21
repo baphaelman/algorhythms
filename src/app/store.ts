@@ -18,6 +18,7 @@
  */
 
 import { create } from 'zustand';
+import { canonicalPiece } from '../core/canonical';
 import { createIncrementalCompiler } from '../core/compiler/incremental';
 import { parsePiece } from '../core/schema';
 import type {
@@ -338,8 +339,9 @@ export function onLoadPiece(fn: () => void): void {
  * at 0 are folded into `piece.key` (editor/piece-key.ts).
  */
 export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
-  // The piece key is the key moment at 0:00 (M4.5-39): opening key moments fold into it.
-  const piece = foldOpeningKeys(loaded);
+  // The piece key is the key moment at 0:00 (M4.5-39): opening key moments fold into it. Numbers
+  // are canonical (core/canonical.ts), so share links round-trip exactly.
+  const piece = canonicalPiece(foldOpeningKeys(loaded));
   if (piece !== loaded) opts = { ...opts, compiled: undefined };
   clock.token++;
   clock.pos = 0;
@@ -389,9 +391,10 @@ let compiledInTask = false;
  */
 export function setPiece(next: Piece, opts: { now?: boolean } = {}): void {
   const prev = get().piece;
+  // Canonical numbers (core/canonical.ts): copy-on-write, so unchanged moments keep identity.
   // The loop region and "Snap to beats" are view state, not edits: undo and edits keep the
   // current ones.
-  let piece = next;
+  let piece = canonicalPiece(next);
   if (next.view.loop !== prev.view.loop) {
     piece = { ...piece, view: withLoop(piece.view, prev.view.loop) };
   }

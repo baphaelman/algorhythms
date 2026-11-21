@@ -392,7 +392,7 @@ test('share links round-trip: encode in the page, open in a fresh page', async (
     return h.encodeShareLink(piece);
   });
   expect(link).toContain('#p=');
-  expect(link.split('#p=')[1]).toMatch(/^[A-Za-z0-9_-]+$/);
+  expect(link.split('#p=')[1]).toMatch(/^2\.[A-Za-z0-9_-]+$/); // v2: stripped, packed (M5)
   const fresh = await context.newPage();
   await fresh.goto(link);
   await expect(fresh.getByTestId('title')).toHaveText('Round Trip Piece');

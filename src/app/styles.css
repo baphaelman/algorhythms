@@ -797,6 +797,26 @@ dialog.dialog::backdrop {
   margin-top: 4px;
 }
 
+/* ---- Share link (§11.4) -------------------------------------------------------------------- */
+
+.dialog.share textarea {
+  min-width: 0;
+  padding: 6px 10px;
+  font: 400 12px/1.4 var(--f-mono);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  resize: vertical;
+  word-break: break-all;
+}
+
+.share-long {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
 /* ---- My pieces ---------------------------------------------------------------------------- */
 
 dialog.my-pieces {

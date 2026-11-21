@@ -27,8 +27,8 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  */
 const PRE_REV6: Record<string, string> = {
   'clockwork-heron.algorhythms.json': 'f06d6ef849c718fb',
-  // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
-  'lanterns-over-salt-flats.algorhythms.json': '0b9aa063d2fb4ed8',
+  // M4.5-30: LnSpr1 hits both range edges; it no longer folds. M5: canonical times (≤ 1e-13 s).
+  'lanterns-over-salt-flats.algorhythms.json': '274c5d7735c2fc2c',
   'seven-doors-in-fog.algorhythms.json': '59ee4a1ef9e4b868',
   'the-cartographers-rain.algorhythms.json': '0b264e117885c818',
   'tidewater-hymn.algorhythms.json': '0c5d3a62a9e535c8',
