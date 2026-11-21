@@ -8,13 +8,15 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **Free octaves stay inside the chord's register (follow-up to 29a).** When a chord targets only some lines and the register runs out of free notes, the extra notes no longer drop below the register or cross the lines it doesn't touch. They take free octaves inside the register first, then between the untouched neighbours within the lines' range, and merge only when neither has room. The Cartographers' Rain chord `CrChd2` had put two notes at 59 and 43, below a register of 60–84 and under eight untouched lines.
 - **Space (M4.5-37).** Space plays and pauses everywhere except while typing in a text field. Space held during a drag still pans. The degree picker's chips use Enter instead of Space.
 - **Drag preview and auditioning (M4.5-35).**
   - Auditions play only while the transport is stopped; during playback the edit is heard live anyway.
   - Selecting a moment plays its target notes once.
   - Picks in the inspector play the result once, for about 1.5 s.
   - A dragged note sounds at each snapped pitch.
-  - Hover previews are visual only.
+  - Hover previews are visual only: dashed ghost lines, shown during playback too.
+  - Not sounding yet: ▲/▼ on walk steps and on chord notes in the inspector, and Shift+▲/▼ on dots. These will be added once the inspector work settles.
 - **Key carry-forward (M4.5-36).**
   - "Carry it forward" is read as: a key change offers to move the fixed notes up to the next key change, and later key moments are not shifted.
   - Fixed notes are remapped by scale degree. The tonic moves the shorter way, with ties going down.
