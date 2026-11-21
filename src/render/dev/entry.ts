@@ -111,4 +111,37 @@ function shot(canvas: HTMLCanvasElement, json: unknown, t: number, win: number, 
   return score.duration;
 }
 
-(globalThis as unknown as { __render: unknown }).__render = { bench, shot };
+/**
+ * Draws one frame of `json` with the ghost at `ghost` (no HUD, heads or playhead) and returns the
+ * view's mapping, for pixel checks.
+ */
+function frame(
+  canvas: HTMLCanvasElement,
+  json: unknown,
+  o: { t: number; start: number; window: number; ghost: number; colors: ScoreStyle['colors'] },
+) {
+  const { score } = compileExample(json);
+  const g = canvas.getContext('2d');
+  if (!g) throw new Error('no 2d context');
+  const v = drawScore(
+    g,
+    score,
+    { start: o.start, window: o.window },
+    {
+      tokens: LIGHT_TOKENS,
+      dark: false,
+      colors: o.colors,
+      oklch: supportsOklch(),
+      futureOpacity: o.ghost,
+      hud: false,
+      heads: false,
+      playhead: false,
+    },
+    o.t,
+    { width: canvas.width, height: canvas.height },
+    1,
+  );
+  return { start: v.start, pps: v.pps, pLo: v.pLo, pHi: v.pHi, padT: v.padT, padB: v.padB };
+}
+
+(globalThis as unknown as { __render: unknown }).__render = { bench, shot, frame };

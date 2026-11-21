@@ -16,8 +16,8 @@
  */
 
 import { crossfade } from '../core/ease';
-import { pitchAt, weightTargetAt } from '../core/query';
-import type { CompiledScore, CompiledVoice, Life, Seconds } from '../core/types';
+import { pitchAt, segmentIndexAt, weightTargetAt } from '../core/query';
+import type { CompiledScore, CompiledVoice, Life, Seconds, Segment } from '../core/types';
 import { smootherstep } from './level';
 
 /** Shortest taper of a weight change that is not a merge or split (an edit), px. */
@@ -59,6 +59,39 @@ export interface Bundle {
   anchor: number;
   /** All strands, anchor included, top (highest pitch) first. */
   members: Member[];
+  /**
+   * Where its strands may overlap: the crossfade window, widened to the strands' arriving (merge)
+   * or departing (split) glides, at most SPAN_MAX from `t`.
+   */
+  lo: Seconds;
+  hi: Seconds;
+}
+
+/** How far a bundle's overlap span reaches from its time, at most, s. */
+const SPAN_MAX = 8;
+
+const moving = (s: Segment): boolean => s.p0 !== s.p1 || s.curve !== undefined;
+
+/** End of v's first glide under way after t, or t; at most t + SPAN_MAX. */
+function departEnd(v: CompiledVoice, t: Seconds): Seconds {
+  const S = v.segments;
+  for (let i = Math.max(0, segmentIndexAt(v, t)); i < S.length; i++) {
+    const s = S[i];
+    if (s.t0 >= t + SPAN_MAX) break;
+    if (s.t1 > t && moving(s)) return Math.min(s.t1, t + SPAN_MAX);
+  }
+  return t;
+}
+
+/** Start of v's last glide under way before t, or t; at least t − SPAN_MAX. */
+function arriveStart(v: CompiledVoice, t: Seconds): Seconds {
+  const S = v.segments;
+  for (let i = Math.min(S.length - 1, segmentIndexAt(v, t - T_EPS)); i >= 0; i--) {
+    const s = S[i];
+    if (s.t1 <= t - SPAN_MAX) break;
+    if (s.t0 < t && moving(s)) return Math.max(s.t0, t - SPAN_MAX);
+  }
+  return t;
 }
 
 interface VoiceStrands {
@@ -137,7 +170,7 @@ function detect(score: CompiledScore): Strands {
     const key = `${split ? 's' : 'm'}${a.index}:${t}`;
     let b = byKey.get(key);
     if (!b) {
-      b = { split, t, anchor: a.index, members: [] };
+      b = { split, t, anchor: a.index, members: [], lo: t, hi: t };
       byKey.set(key, b);
     }
     return b;
@@ -183,6 +216,12 @@ function detect(score: CompiledScore): Strands {
     const a = V[b.anchor];
     let len = 0;
     for (const m of b.members) if (m.len > len) len = m.len;
+    b.lo = b.split ? b.t : b.t - len;
+    b.hi = b.split ? b.t + len : b.t;
+    for (const m of b.members) {
+      if (b.split) b.hi = Math.max(b.hi, departEnd(V[m.v], b.t));
+      else b.lo = Math.min(b.lo, arriveStart(V[m.v], b.t));
+    }
     b.members.push({
       v: a.index,
       w: b.split ? weightTargetAt(a, b.t + T_EPS) : weightTargetAt(a, b.t - T_EPS),
@@ -266,6 +305,11 @@ export interface StrandFrame {
 }
 
 let lastFrame: StrandFrame | null = null;
+
+/** The merges and splits of the frame's score, by time. */
+export function bundlesOf(f: StrandFrame): readonly Bundle[] {
+  return f.strands.bundles;
+}
 
 /** The strand windows for drawing `score` at `pps` px/s (the last one is reused). */
 export function strandFrame(score: CompiledScore, pps: number): StrandFrame {

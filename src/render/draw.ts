@@ -32,6 +32,7 @@ import type {
 } from '../core/types';
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
+import { drawGhost, ghostOf } from './ghost';
 import { OPACITY_EPS, breaksIn, opacityIn } from './level';
 import { outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
@@ -172,7 +173,7 @@ export function drawScore(
     g.clip();
   }
   const sf = strandFrame(compiled, view.pps);
-  drawLines(g, compiled, style, view, sf);
+  drawLines(g, compiled, style, view, sf, dpr);
   if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
 
@@ -617,12 +618,21 @@ function selectedLevelFrom(
   return NaN;
 }
 
+/** The pitch colouring's vertical gradient on `g`, or null for the other colourings. */
+function pitchGradient(g: Ctx2D, style: ScoreStyle, view: View): CanvasGradient | null {
+  if (style.colors !== 'pitch') return null;
+  const gradient = g.createLinearGradient(0, pitchToY(view, view.pLo), 0, pitchToY(view, view.pHi));
+  for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
+  return gradient;
+}
+
 function drawLines(
   g: CanvasRenderingContext2D,
   compiled: CompiledScore,
   style: ScoreStyle,
   view: View,
   sf: StrandFrame,
+  dpr: number,
 ): void {
   const { t, tL, tR, pps } = view;
   const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
@@ -633,37 +643,61 @@ function drawLines(
   g.lineJoin = 'round';
   g.lineCap = 'round';
 
-  let gradient: CanvasGradient | null = null;
-  if (style.colors === 'pitch') {
-    gradient = g.createLinearGradient(0, pitchToY(view, view.pLo), 0, pitchToY(view, view.pHi));
-    for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
-  }
+  const gradient = pitchGradient(g, style, view);
 
   const past = t > tL;
   const future = ghost && t < tR;
   const hl = style.highlight && style.highlight.size > 0 ? style.highlight : null;
   const dim = hl ? DIM_ALPHA : 1;
-  for (const v of compiled.voices) {
+  const voices = compiled.voices;
+  // A translucent future where strands overlap goes through the ghost layer.
+  const gh =
+    t < tR && style.futureOpacity < 1
+      ? ghostOf(g, voices, view, sf, hl ? HIGHLIGHT_WIDTH : LINE_WIDTH, dpr)
+      : null;
+  const ghGradient = gh ? pitchGradient(gh.layer.g, style, view) : null;
+  const futureA = style.futureOpacity * dim;
+  for (const v of voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
     if (past)
       traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, dim, maxStep, tolerance, sf);
-    if (future) {
-      const a = style.futureOpacity * dim;
-      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, a, maxStep, tolerance, sf);
+    if (future && !gh) {
+      const a = Math.max(t, tL);
+      traceWeighted(g, view, v, a, tR, LINE_WIDTH, futureA, maxStep, tolerance, sf);
     }
+  }
+  if (future && gh) {
+    const a0 = Math.max(t, tL);
+    drawGhost(
+      g,
+      gh,
+      voices,
+      style,
+      view,
+      dpr,
+      gradient,
+      ghGradient,
+      futureA,
+      (ctx, v, al, lo, hi) => {
+        const a = Math.max(a0, lo);
+        const b = Math.min(tR, hi);
+        if (b > a) traceWeighted(ctx, view, v, a, b, LINE_WIDTH, al, maxStep, tolerance, sf);
+      },
+    );
   }
   if (hl) {
     // Selected segments on top, thicker; the future part stays visible even with no ghost.
-    const futureA = Math.max(style.futureOpacity, 0.6);
-    for (const v of compiled.voices) {
+    const hlA = Math.max(style.futureOpacity, 0.6);
+    const hg = hlA < 1 ? gh : null;
+    for (const v of voices) {
       if (v.segments.length === 0) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) {
           traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, 1, maxStep, tolerance, sf);
         }
-        if (b > t) {
+        if (b > t && !hg) {
           traceWeighted(
             g,
             view,
@@ -671,13 +705,23 @@ function drawLines(
             Math.max(t, a),
             b,
             HIGHLIGHT_WIDTH,
-            futureA,
+            hlA,
             maxStep,
             tolerance,
             sf,
           );
         }
       });
+    }
+    if (hg) {
+      drawGhost(g, hg, voices, style, view, dpr, gradient, ghGradient, hlA, (ctx, v, al, lo, hi) =>
+        forHighlighted(v, hl, tL, tR, (a, b) => {
+          const a1 = Math.max(t, a, lo);
+          const b1 = Math.min(b, hi);
+          if (b1 > a1)
+            traceWeighted(ctx, view, v, a1, b1, HIGHLIGHT_WIDTH, al, maxStep, tolerance, sf);
+        }),
+      );
     }
   }
   // Dotted traces of silent lines (editor): the selection's and the hovered voice's.
@@ -720,11 +764,7 @@ function drawPreview(
   const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
   const maxStep = GLIDE_STEP_PX / view.pps;
   const tolerance = 0.35 / pxPerSemitone;
-  let gradient: CanvasGradient | null = null;
-  if (style.colors === 'pitch') {
-    gradient = g.createLinearGradient(0, pitchToY(view, view.pLo), 0, pitchToY(view, view.pHi));
-    for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
-  }
+  const gradient = pitchGradient(g, style, view);
   g.save();
   g.setLineDash(PREVIEW_DASH);
   g.lineWidth = 2;

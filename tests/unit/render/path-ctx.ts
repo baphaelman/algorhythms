@@ -13,9 +13,24 @@ export interface Shape {
   arcs: { x: number; y: number; r: number; a0: number; a1: number }[];
 }
 
-export function pathCtx(): { ctx: Ctx2D; strokes: Shape[]; fills: Shape[] } {
+/** A `drawImage` call: the context's alpha and the call's arguments. */
+export interface Image {
+  alpha: number;
+  args: unknown[];
+}
+
+export function pathCtx(): {
+  ctx: Ctx2D;
+  strokes: Shape[];
+  fills: Shape[];
+  images: Image[];
+  /** Arguments of each `clip` call. */
+  clips: unknown[][];
+} {
   const strokes: Shape[] = [];
   const fills: Shape[] = [];
+  const images: Image[] = [];
+  const clips: unknown[][] = [];
   const state: Record<string, unknown> = {
     globalAlpha: 1,
     strokeStyle: '',
@@ -49,6 +64,8 @@ export function pathCtx(): { ctx: Ctx2D; strokes: Shape[]; fills: Shape[] } {
           arcs.push({ x: args[0], y: args[1], r: args[2], a0: args[3], a1: args[4] });
         if (prop === 'stroke') strokes.push(shape(target.strokeStyle));
         if (prop === 'fill') fills.push(shape(target.fillStyle));
+        if (prop === 'drawImage') images.push({ alpha: target.globalAlpha as number, args });
+        if (prop === 'clip') clips.push(args);
       };
     },
     set(target, prop: string, value: unknown) {
@@ -56,5 +73,5 @@ export function pathCtx(): { ctx: Ctx2D; strokes: Shape[]; fills: Shape[] } {
       return true;
     },
   }) as unknown as Ctx2D;
-  return { ctx, strokes, fills };
+  return { ctx, strokes, fills, images, clips };
 }
