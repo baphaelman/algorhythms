@@ -17,6 +17,8 @@ import type {
 import { keyAt } from '../../core/query';
 import { auditionAfterEdit } from '../audition';
 import { usePlayer } from '../store';
+import { keyBefore } from '../../core/transpose';
+import { offerKeyCarry } from './key-carry';
 import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
@@ -95,6 +97,7 @@ export function addMoment(type: MomentType, at: Seconds): MomentId {
   const m = defaultMoment(type, t, id, piece, scoreOf(piece));
   edit((p) => insertMoments(p, [m]), `Add ${LABELS[type]}`);
   select([id]);
+  if (type === 'key') offerKeyCarry(id, keyBefore(usePlayer.getState().piece, id));
   return id;
 }
 

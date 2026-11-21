@@ -46,6 +46,8 @@ import { ChordNotes } from './ChordNotes';
 import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
+import { KeyCarryBanner } from './KeyCarryBanner';
+import { offerKeyCarry } from '../../editor/key-carry';
 
 interface Ctx {
   piece: Piece;
@@ -471,7 +473,11 @@ const TONICS: readonly PitchClass[] = SHARP_NAMES.flatMap((s, i) =>
 
 function KeyFields({ m }: { m: KeyMoment }) {
   const custom = typeof m.key.scale === 'object' ? m.key.scale : null;
-  const setKey = (key: Key, label: string): boolean => updateMoment(m.id, { key }, label);
+  const setKey = (key: Key, label: string): boolean => {
+    const ok = updateMoment(m.id, { key }, label);
+    if (ok) offerKeyCarry(m.id, m.key);
+    return ok;
+  };
   return (
     <>
       <SelectField
@@ -514,6 +520,7 @@ function KeyFields({ m }: { m: KeyMoment }) {
           }}
         />
       )}
+      <KeyCarryBanner keyId={m.id} />
     </>
   );
 }

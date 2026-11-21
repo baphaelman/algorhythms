@@ -10,7 +10,9 @@
  *   any           → a level swell (or a dip when already full)
  *
  * Chords are the composer's stacks of thirds on a scale degree, voiced `even` in a register around
- * the voices' centre. Every suggestion is checked with `momentEffectAt`, so none is a no-op.
+ * the voices' centre. Chords and targets are key-relative (degrees, 'tonic') so they follow later
+ * key changes. Thin and Collapse (to a note other than the tonic) still write fixed pitches: no
+ * key-relative form says them yet (schema v2, M4.5-27). Every suggestion is checked with `momentEffectAt`, so none is a no-op.
  *
  * Pure and deterministic: draws are keyed by hash32(piece.seed, round(t·1000)) (§7.7, §7.11).
  * Each moment carries an explicit `seed`, so the added moment sounds like its preview.
@@ -23,6 +25,7 @@ import { mod } from './math';
 import { Purpose, hash32, rand } from './rng';
 import { pitchClassOf, scaleIntervals } from './scales';
 import { sanitizeRange } from './compiler/range';
+import { roundTiesDown } from './voicing';
 import type { CompiledScore, Glide, Moment, Piece, Pitch, Seconds } from './types';
 
 /** A moment without id, at and seed (distributes over the union). */
@@ -255,23 +258,33 @@ export function suggestNext(
       glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
     });
   };
+  /**
+   * Every voice to `pitch`: the unison's 'tonic' when that resolves to `pitch`, so it follows a
+   * later key change (PLAN rev 8, "Key changes carry forward"); else a numeric unison. A degree
+   * chord can't stand in for other notes: it spreads into free octaves instead of a unison.
+   */
+  const gather = (pitch: Pitch, glide: Partial<Glide>): Draft => {
+    const tonicHere = tonic + 12 * roundTiesDown(((lowest + highest) / 2 - tonic) / 12);
+    return { type: 'unison', pitch: pitch === tonicHere ? 'tonic' : pitch, octaves: false, glide };
+  };
   const collapse = (): void => {
     if (unison) return;
     const home = at >= HOME_AFTER * score.duration;
     const pitch = home ? nearestPc(tonic, centre, rLo, rHi) : chordTonesNear(cur, centre);
     const name = spellPc(mod(pitch, 12), key);
-    add('collapse', home ? `Home to ${name}` : `Collapse to ${name}`, {
-      type: 'unison',
-      pitch,
-      octaves: false,
-      glide: home ? GLIDE_HOME : GLIDE_GATHER,
-    });
+    add(
+      'collapse',
+      home ? `Home to ${name}` : `Collapse to ${name}`,
+      gather(pitch, home ? GLIDE_HOME : GLIDE_GATHER),
+    );
   };
   const thin = (): void => {
     if (n < 5 || related.length === 0) return;
     const c = related.filter((x) => !isDim(x)).pop() ?? related[related.length - 1];
     const tri = [centre - 11, centre, centre + 10].map((x) => chordTonesNear(c, x));
     if (new Set(tri).size < 3) return;
+    // Fixed pitches: no key-relative NoteSet can say "these three notes in these octaves" for
+    // five or more voices (needs schema v2, M4.5-27); a key change offers to move them.
     add('thin', `Thin to ${nameOf(c, 3)}`, {
       type: 'chord',
       notes: { kind: 'pitches', pitches: tri },
