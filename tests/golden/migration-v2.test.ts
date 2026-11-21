@@ -4,7 +4,7 @@
  * `V1_AUDIBLE` pins `audibleJson` hashes computed with the version 1 compiler (main 6783fd9, before
  * this change) on the version 1 files. The examples on disk are now version 2 (their `start` is
  * the opening chord at t = 0); compiled, they must hash the same. R9-2 (revision 9: splits and
- * merges honour stagger and order) re-pinned the five originals; the compositions are unchanged. The full golden hashes changed
+ * merges honour stagger and order) re-pinned the five originals; the compositions are unchanged. Seeds-4 re-pinned seven-doors (a newborn forks 35 ms earlier). The full golden hashes changed
  * only by what is not heard: the opening's moment span, its harmony entry (the HUD now names the
  * opening chord) and the opening holds' `momentId`.
  *
@@ -24,7 +24,7 @@ const V1 = join(import.meta.dirname, 'v1');
 const V1_AUDIBLE: Record<string, string> = {
   'clockwork-heron.algorhythms.json': 'cdbd03aafc4cb9da',
   'lanterns-over-salt-flats.algorhythms.json': '02bacdc7c4b1ee45',
-  'seven-doors-in-fog.algorhythms.json': '023c9a9b54221223',
+  'seven-doors-in-fog.algorhythms.json': 'ab5b1b312ff8a477',
   'the-cartographers-rain.algorhythms.json': 'f7880deb9770c50c',
   'tidewater-hymn.algorhythms.json': '2dcf9f4ab6ca22a6',
   'harbour-song.algorhythms.json': 'c4917ced2843d5af',

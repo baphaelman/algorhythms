@@ -41,7 +41,7 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 test('palette click adds a moment at the playhead', async ({ page }) => {
   await openNoGrid(page);
   const palette = page.getByTestId('palette');
-  await expect(palette.getByRole('button')).toHaveCount(11);
+  await expect(palette.getByRole('button')).toHaveCount(13);
   const before = await moments(page);
   await palette.locator('[data-moment="chord"]').click();
   const ms = (await moments(page)).filter((m) => !before.some((b) => b.id === m.id));

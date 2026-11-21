@@ -1003,6 +1003,8 @@ export class Compiler {
     const free = dormant.filter((u) => !x.reserved.has(u));
     let targeted: number[];
     let plan: MomentPlan | null;
+    /** Pending moves before the cancel, restored if the moment plans nothing. */
+    const undo: [VoiceRun, Move[]][] = [];
     if (m.type === 'note') {
       // A note reads where the voices are heading before cancelling anything, and cancels only
       // when it applies: a voice whose pending move it cancels but does not change then gets a
@@ -1021,7 +1023,11 @@ export class Compiler {
         targeted = sortU(pre.slice());
       }
     } else {
-      for (const v of lines(pre)) this.voices[v].cancelPending();
+      for (const v of lines(pre)) {
+        const run = this.voices[v];
+        if (run.pending.length > 0) undo.push([run, run.pending.slice()]);
+        run.cancelPending();
+      }
       this.touch();
       x.active = sortU(x.active.slice());
       targeted = sortU(pre.slice());
@@ -1032,6 +1038,15 @@ export class Compiler {
     }
     const targetedLines = this.sortByDest(lines(targeted));
     if (!plan) {
+      // A moment that plans nothing (merge-nothing, an invalid moment…) leaves the lines' pending
+      // moves alone, as a note does (seeds-4: a no-op merge cancelled a chord's staggered moves).
+      if (undo.length > 0) {
+        for (const [run, ms] of undo) {
+          for (const mv of ms) mv.cancelled = false;
+          run.pending = ms;
+        }
+        this.touch();
+      }
       if (!back) this.span(i, rest, rest); // a skipped return leaves the span as it is
       this.traceMoment(i, targetedLines, subset, null, null, T);
       return { targeted: targetedLines, res: null, lost: 0, absorbed: 0 };

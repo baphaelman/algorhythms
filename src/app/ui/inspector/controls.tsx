@@ -634,14 +634,7 @@ export function TextField({
  * Enter (or leave) to commit; ↑/↓ step by 0.25 (Shift: 1), one entry per press. Drag the "×"
  * sideways to scrub: one undo entry per drag.
  */
-export function WeightBox({
-  value,
-  set,
-  min,
-  max,
-  label,
-  testId,
-}: {
+export function WeightBox(props: {
   value: number;
   set: Setter<number>;
   min: number;
@@ -649,8 +642,51 @@ export function WeightBox({
   label: string;
   testId?: string;
 }) {
+  return (
+    <CompactNumber
+      {...props}
+      glyph="×"
+      title="Weight: loudness, as this many lines. Drag sideways to change"
+      className="weight-box"
+    />
+  );
+}
+
+/**
+ * A compact number box for a list row (`WeightBox`, a tune note's length): `glyph` (a scrub
+ * handle) then the value. Type and press Enter (or leave) to commit; ↑/↓ step by `step` (Shift:
+ * `bigStep`), one entry per press. Drag the glyph sideways to scrub: one undo entry per drag.
+ */
+export function CompactNumber({
+  value,
+  set,
+  min,
+  max,
+  label,
+  testId,
+  glyph,
+  title,
+  className,
+  step = 0.25,
+  bigStep = 1,
+  digits = 2,
+}: {
+  value: number;
+  set: Setter<number>;
+  min: number;
+  max: number;
+  label: string;
+  testId?: string;
+  glyph: string;
+  title: string;
+  className: string;
+  step?: number;
+  bigStep?: number;
+  digits?: number;
+}) {
   const id = useId();
-  const shown = formatNum(value, 2);
+  const unit = 10 ** digits;
+  const shown = formatNum(value, digits);
   const [draft, dispatch] = useReducer(draftReduce, { text: shown, dirty: false });
   const text = draft.text;
   const setText = (t: string): void => dispatch({ type: 'set', text: t });
@@ -658,7 +694,7 @@ export function WeightBox({
   useEffect(() => {
     dispatch({ type: 'external', shown });
   }, [shown]);
-  const clamp = (v: number): number => Math.min(max, Math.max(min, Math.round(v * 100) / 100));
+  const clamp = (v: number): number => Math.min(max, Math.max(min, Math.round(v * unit) / unit));
   const submit = (): void => {
     if (!draft.dirty) return;
     const v = parseNum(text, min, max);
@@ -667,15 +703,15 @@ export function WeightBox({
       return;
     }
     if (Math.abs(v - value) > 1e-9) set.commit(v);
-    setText(formatNum(v, 2));
+    setText(formatNum(v, digits));
   };
   const drag = useRef<{ x: number; v0: number; moved: boolean } | null>(null);
   return (
-    <span className="weight-box">
+    <span className={className}>
       <label
         htmlFor={id}
         className="scrub-label"
-        title="Weight: loudness, as this many lines. Drag sideways to change"
+        title={title}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
@@ -688,7 +724,7 @@ export function WeightBox({
           const dx = e.clientX - d.x;
           if (!d.moved && Math.abs(dx) < 3) return;
           d.moved = true;
-          set.drag(clamp(d.v0 + Math.round(dx / 6) * (e.shiftKey ? 1 : 0.25)));
+          set.drag(clamp(d.v0 + Math.round(dx / 6) * (e.shiftKey ? bigStep : step)));
         }}
         onPointerUp={(e) => {
           const d = drag.current;
@@ -703,7 +739,7 @@ export function WeightBox({
           drag.current = null;
         }}
       >
-        ×
+        {glyph}
       </label>
       <input
         id={id}
@@ -727,8 +763,8 @@ export function WeightBox({
           } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const base = parseNum(text, min, max) ?? value;
-            const v = clamp(base + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 0.25));
-            setText(formatNum(v, 2));
+            const v = clamp(base + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? bigStep : step));
+            setText(formatNum(v, digits));
             if (Math.abs(v - value) > 1e-9) set.commit(v);
           }
         }}

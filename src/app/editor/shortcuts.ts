@@ -1,6 +1,6 @@
 /**
- * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the ten letters add a
- * moment at the playhead (the palette's `note` has no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles
+ * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the twelve letters add
+ * a moment at the playhead (R pulse and E tune, R9-7; the palette's `note` has no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles
  * the loop region (revision 6).
  */
 
@@ -30,7 +30,9 @@ export const PALETTE: readonly PaletteEntry[] = [
   { type: 'shift', key: 'T', name: 'shift', icon: '⇅', hint: 'Transpose by scale steps' },
   { type: 'spread', key: 'P', name: 'spread', icon: '⇔', hint: 'Widen or narrow the spacing' },
   { type: 'walk', key: 'W', name: 'walk', icon: '▭', hint: 'Random steps over a region' },
+  { type: 'pulse', key: 'R', name: 'pulse', icon: '┇', hint: 'A repeating volume rhythm' },
   { type: 'note', name: 'note', icon: '•', hint: 'Change one note (or double-click a line)' },
+  { type: 'tune', key: 'E', name: 'tune', icon: '♪', hint: 'A melody on one line' },
   { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one note' },
   { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
   { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade notes' },

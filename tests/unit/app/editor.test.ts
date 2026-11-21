@@ -69,6 +69,7 @@ const TYPES: MomentType[] = [
   'pin',
   'key',
   'level',
+  'pulse',
   'tune',
 ];
 

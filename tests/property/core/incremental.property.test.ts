@@ -2,7 +2,7 @@
  * Incremental compile (PLAN.md §7.10): after every edit of a random edit sequence, the
  * incremental compiler's result deep-equals a fresh `compile`.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
@@ -180,4 +180,23 @@ describe('incremental compile', () => {
   it('with parts (revision 9)', () => {
     equalsFull(pieceArb({ maxMoments: 20, parts: true }));
   }, 120_000);
+});
+
+describe('incremental regressions', () => {
+  // Seed 2119968460 (path 513): the spread (index 4, land) decides at 10.8, its lead-in start,
+  // before the key at 10.8 (index 6) in event order, but reads that key (the key at its own
+  // `at`). Replacing the key resumed from the checkpoint between them: the spread kept C♯.
+  it('a land moment deciding at a changed key’s time, earlier in the array, recompiles', () => {
+    const [a, b] = JSON.parse(
+      readFileSync(
+        new URL('./regressions/incremental/key-tie-seed2119968460.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Piece[];
+    const inc = createIncrementalCompiler();
+    inc.compile(a);
+    const got = inc.compile(b);
+    expect(got.harmony?.find((h) => h.t === 10.8)?.label).toBe('C (unison)');
+    expect(structuredClone(got)).toStrictEqual(structuredClone(compile(b)));
+  });
 });

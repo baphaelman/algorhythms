@@ -388,8 +388,9 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
 /**
  * First moment index where the pieces differ, and the earliest event time of a moment from there
  * on (a land moment's lead-in start, revision 9; the glide defaults are equal, `sameSetup`).
+ * Resume before event (t, i) in event order (moment events at one time run in index order).
  */
-function firstChange(a: Piece, b: Piece): { k: number; t: Seconds } {
+function firstChange(a: Piece, b: Piece): { k: number; t: Seconds; i: number } {
   const defaults = sanitizeGlide(b.defaults?.glide, defaultGlide());
   const ma = a.moments;
   const mb = b.moments;
@@ -397,6 +398,7 @@ function firstChange(a: Piece, b: Piece): { k: number; t: Seconds } {
   let k = 0;
   while (k < n && (ma[k] === mb[k] || same(ma[k], mb[k]))) k++;
   let t = Infinity;
+  let i = k;
   for (const ms of [ma, mb]) {
     for (let j = k; j < ms.length; j++) {
       const m = ms[j];
@@ -404,19 +406,29 @@ function firstChange(a: Piece, b: Piece): { k: number; t: Seconds } {
       // A moment without a finite time never makes an event; any other value is conservative.
       if (!(typeof raw === 'number' && raw === raw)) continue;
       const at = Number.isFinite(raw) && raw >= 0 ? decisionTime(m, defaults) : raw;
-      if (at < t) t = at;
+      if (at < t) {
+        t = at;
+        i = k;
+      }
       // A land moment deciding before a changed key moment may read it (it reads the key at its
-      // own `at`): resume before its lead-in too.
+      // own `at`): resume before its lead-in too. One deciding at the key's time but with a lower
+      // index runs first and reads it too (seeds-4: incremental 2119968460).
       if (m.type === 'key') {
-        for (const x of mb) {
+        for (let jx = 0; jx < mb.length; jx++) {
+          const x = mb[jx];
           if (!x || typeof x !== 'object' || !(typeof x.at === 'number' && x.at >= raw)) continue;
           const d = decisionTime(x, defaults);
-          if (d < raw && d < t) t = d;
+          if (!(d <= raw)) continue;
+          const ix = jx < k ? jx : k;
+          if (d < t || (d === t && ix < i)) {
+            t = d;
+            i = ix;
+          }
         }
       }
     }
   }
-  return { k, t };
+  return { k, t, i };
 }
 
 /**
@@ -441,10 +453,10 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       Array.isArray(prev.piece.moments) &&
       sameSetup(prev.piece, piece)
     ) {
-      const { k, t } = firstChange(prev.piece, piece);
+      const { k, t, i } = firstChange(prev.piece, piece);
       const cps = prev.checkpoints;
       let ci = cps.length - 1;
-      while (ci >= 0 && !(cps[ci].t < t || (cps[ci].t === t && cps[ci].i <= k))) ci--;
+      while (ci >= 0 && !(cps[ci].t < t || (cps[ci].t === t && cps[ci].i <= i))) ci--;
       if (ci >= 0) {
         restore(c, cps[ci], prev, k);
         // Checkpoint ci is a state of this run too: everything before it is unchanged.

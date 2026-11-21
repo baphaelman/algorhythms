@@ -16,7 +16,7 @@ import {
   useEditor,
 } from '../editor/history';
 import { DEFAULT_BPM, DEFAULT_METER } from '../../render';
-import { patchMoment } from '../editor/ops';
+import { atPatch, patchMoment } from '../editor/ops';
 import { usePlayer } from '../store';
 import { NumberField, TextField, fieldSetter, type Setter } from './inspector/controls';
 import { GlideFields, PartField, SeedField, TargetField } from './inspector/CommonFields';
@@ -137,8 +137,8 @@ function Empty() {
       <p>
         Select a moment on the lane to edit it here, or add one at the playhead with a key:{' '}
         <kbd>C</kbd> chord, <kbd>U</kbd> unison, <kbd>S</kbd> split, <kbd>M</kbd> merge,{' '}
-        <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>I</kbd> pin, <kbd>K</kbd>{' '}
-        key, <kbd>L</kbd> level.
+        <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>R</kbd> pulse, <kbd>E</kbd>{' '}
+        tune, <kbd>I</kbd> pin, <kbd>K</kbd> key, <kbd>L</kbd> level.
       </p>
       <BarFields />
     </div>
@@ -195,10 +195,14 @@ function Many({ moments }: { moments: Moment[] }) {
 
 function One({ m, piece }: { m: Moment; piece: Piece }) {
   const compiled = usePlayer((s) => s.compiled);
-  const at = fieldSetter<number>(m.id, 'Move moment', (_x, v) => ({ at: v }));
+  // A region (walk, pulse) moves whole: its `until` follows.
+  const at = fieldSetter<number>(m.id, 'Move moment', (x, v) => atPatch(x, v));
   const diags = compiled.diagnostics.filter((d) => d.momentId === m.id);
   const key = keyAt(compiled, m.at, piece.key);
-  const pitched = m.type !== 'key' && m.type !== 'level';
+  // A pulse moves no pitch: no transition; its seed matters only for random order.
+  const pitched = m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse';
+  // A tune draws nothing at random (one line, no jitter): no seed either.
+  const seeded = (pitched && m.type !== 'tune') || (m.type === 'pulse' && m.mode === 'random');
   const part = selectorPart(m.target);
 
   return (
@@ -267,7 +271,7 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
 
       {m.type !== 'key' && <TargetField m={m} piece={piece} />}
       {pitched && <GlideFields m={m} piece={piece} />}
-      {pitched && <SeedField m={m} piece={piece} />}
+      {seeded && <SeedField m={m} piece={piece} />}
 
       <div className="insp-actions">
         <button
