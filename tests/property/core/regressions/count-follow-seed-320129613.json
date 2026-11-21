@@ -33,110 +33,77 @@
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v2",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v3",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v4",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v5",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v6",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v7",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v8",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v9",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v10",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     },
     {
       "id": "v11",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        24,
-        108
-      ]
+      "range": [24, 108]
     }
   ],
   "moments": [
@@ -146,9 +113,7 @@
       "at": 0,
       "notes": {
         "kind": "pitches",
-        "pitches": [
-          48
-        ]
+        "pitches": [48]
       },
       "voicing": "even",
       "assign": "ordered"
@@ -168,10 +133,7 @@
       "type": "walk",
       "grid": 0.3,
       "density": 0.3,
-      "steps": [
-        -1,
-        1
-      ],
+      "steps": [-1, 1],
       "stepGlide": 0.4,
       "id": "m1",
       "at": 2.32,
@@ -181,10 +143,7 @@
       "type": "chord",
       "notes": {
         "kind": "degrees",
-        "degrees": [
-          2,
-          0
-        ]
+        "degrees": [2, 0]
       },
       "voicing": "even",
       "assign": "ordered",
@@ -239,17 +198,7 @@
   ],
   "timbres": {
     "glass": {
-      "harmonics": [
-        1,
-        0.06,
-        0.22,
-        0.03,
-        0.1,
-        0.02,
-        0.05,
-        0,
-        0.025
-      ],
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
       "stretch": 0,
       "brightness": {
         "tilt": -1.5,

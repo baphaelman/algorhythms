@@ -39,110 +39,77 @@
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v2",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v3",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v4",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v5",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v6",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v7",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v8",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v9",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v10",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     },
     {
       "id": "v11",
       "timbre": "glass",
       "pan": "auto",
       "gain": 1,
-      "range": [
-        36,
-        96
-      ]
+      "range": [36, 96]
     }
   ],
   "moments": [
@@ -152,12 +119,7 @@
       "at": 0,
       "notes": {
         "kind": "pitches",
-        "pitches": [
-          80,
-          40,
-          55,
-          59
-        ]
+        "pitches": [80, 40, 55, 59]
       },
       "voicing": "even",
       "assign": "ordered",
@@ -174,10 +136,7 @@
     {
       "at": 7.4,
       "target": {
-        "voices": [
-          "v3",
-          "v10"
-        ]
+        "voices": ["v3", "v10"]
       },
       "type": "split",
       "count": 6,
@@ -201,17 +160,7 @@
   ],
   "timbres": {
     "glass": {
-      "harmonics": [
-        1,
-        0.06,
-        0.22,
-        0.03,
-        0.1,
-        0.02,
-        0.05,
-        0,
-        0.025
-      ],
+      "harmonics": [1, 0.06, 0.22, 0.03, 0.1, 0.02, 0.05, 0, 0.025],
       "stretch": 0,
       "brightness": {
         "tilt": -1.5,
