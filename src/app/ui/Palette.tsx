@@ -48,8 +48,8 @@ export function Palette() {
       aria-label="Add moment at playhead"
       data-testid="palette"
     >
-      <span className="palette-label" aria-hidden="true">
-        Add <span className="palette-where">at playhead</span>
+      <span className="palette-label" aria-hidden="true" title="Add at the playhead">
+        Add <span className="visually-hidden">at playhead</span>
       </span>
       {PALETTE.map((e) => {
         const ef = effects?.[e.type];

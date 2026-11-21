@@ -386,7 +386,9 @@ test("dots: a long press on a dot offers Octave up and down (Shift+▲/▼'s sta
   );
   // Back down by the menu on the selected dot (a long press on empty score keeps the dots).
   const box = (await page.locator('#score').boundingBox())!;
-  await longPress(page, { x: box.x + box.width * 0.9, y: box.y + box.height * 0.1 });
+  // 75 % down: between the lines (at 10 % the taller score since the compact view bar puts the
+  // raised top line there).
+  await longPress(page, { x: box.x + box.width * 0.9, y: box.y + box.height * 0.75 });
   await expect(menu).toBeVisible();
   await menu.getByTestId('touch-octave-down').tap();
   await expect(page.locator('[data-testid=chord-dot][data-picked=true]')).toHaveAttribute(

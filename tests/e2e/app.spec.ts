@@ -249,6 +249,7 @@ test('line colours change the picture', async ({ page }) => {
   await openApp(page);
   await seek(page, 50);
   await page.getByTestId('window-slider').fill('300');
+  await page.getByTestId('view-options').click();
   await page.getByRole('button', { name: 'Ink', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Ink', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -270,12 +271,14 @@ test('themes: system default, light and dark toggle, and the choice is remembere
   await openApp(page);
   const bright = (rgb: number[]) => rgb[0] + rgb[1] + rgb[2];
   expect(bright((await canvasInfo(page)).rgb), 'system dark').toBeLessThan(150);
+  await page.getByTestId('view-options').click();
   await page.getByRole('button', { name: 'Light', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(bright((await canvasInfo(page)).rgb), 'forced light').toBeGreaterThan(600);
   await page.reload();
   await expect(page.getByTestId('play')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByTestId('view-options').click();
   await page.getByRole('button', { name: 'Auto', exact: true }).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   expect(bright((await canvasInfo(page)).rgb), 'auto follows the system again').toBeLessThan(150);
@@ -465,13 +468,18 @@ test('screenshots: desktop light, desktop dark, phone', async ({ page }, info) =
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
-  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  const theme = async (name: string): Promise<void> => {
+    await page.getByTestId('view-options').click();
+    await page.getByRole('button', { name, exact: true }).click();
+    await page.keyboard.press('Escape');
+  };
+  await theme('Light');
   await settle();
   await page.screenshot({ path: join(dir, 'desktop-light.png') });
-  await page.getByRole('button', { name: 'Dark', exact: true }).click();
+  await theme('Dark');
   await frames(page);
   await page.screenshot({ path: join(dir, 'desktop-dark.png') });
-  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  await theme('Light');
   await page.setViewportSize({ width: 390, height: 844 });
   await settle();
   await page.screenshot({ path: join(dir, 'phone.png') });

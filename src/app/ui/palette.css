@@ -2,6 +2,7 @@
  * Two groups at the start of the view bar (revision 7 "Add vs Next"), styled apart:
  * "Add at playhead" (Palette.tsx): solid buttons on the bar;
  * "Next at end" (Suggestions.tsx): pill buttons in a tinted, dashed box.
+ * They share a row when Next gets ≥ 340 px (build-log "Compact view bar").
  */
 
 .palette {
@@ -9,9 +10,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  flex-basis: 100%;
+  flex: 0 1 auto;
   box-sizing: border-box;
-  padding: 3px 6px;
+  height: 36px;
+  padding: 0 6px;
   border-radius: 4px;
 }
 
@@ -20,10 +22,15 @@
   gap: 3px;
 }
 
-/* Fourteen moment types (R9-7, M6 timbre) still fit one row at 1280 px. */
+/* Fourteen moment types (R9-7, M6 timbre) and four suggestions fit one row at 1280 px. */
+.palette.palette-add {
+  height: auto;
+  min-height: 36px;
+}
+
 .palette.palette-add button {
-  gap: 3px;
-  padding: 6px 3px;
+  gap: 2px;
+  padding: 0 3px;
 }
 
 .app[data-layout='player'] .palette {
@@ -32,8 +39,7 @@
 
 .palette-label {
   flex: none;
-  min-width: 10.5em;
-  margin-right: 6px;
+  margin-right: 4px;
   font: 600 12px/1 var(--f-mono);
   color: var(--ink);
   text-transform: uppercase;
@@ -41,24 +47,18 @@
   white-space: nowrap;
 }
 
-.palette-where {
-  font-weight: 400;
-  font-size: 10.5px;
-  color: var(--ink-2);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
 .palette button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 9px;
+  min-height: 0;
+  height: 28px;
+  padding: 0 9px;
   border: 1px solid var(--rule);
   border-radius: 3px;
   background: var(--panel);
   color: var(--ink);
-  font: 500 12px/1 var(--f-mono);
+  font: 500 11px/1 var(--f-mono);
   text-transform: none;
   letter-spacing: 0;
   cursor: pointer;
@@ -112,7 +112,8 @@
   border-radius: 999px;
   border-color: color-mix(in srgb, var(--accent) 35%, var(--rule));
   background: var(--paper);
-  padding: 5px 11px;
+  height: 26px;
+  padding: 0 7px;
 }
 
 .suggestions button:hover {
@@ -124,11 +125,16 @@
   color: var(--ink-2);
 }
 
-/* One line, fixed height: a change of suggestions never reflows the score. */
+/* One line, fixed height: a change of suggestions never reflows the score. Next joins Add's row
+   when ≥ 340 px are left (flex-basis), growing to its content; a pill that doesn't fit wraps onto
+   a clipped second line, so it is hidden whole rather than cut. */
 .palette.suggestions {
-  flex-wrap: nowrap;
+  flex: 1 1 340px;
+  max-width: max-content;
+  align-content: flex-start;
   overflow: hidden;
-  height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 /* "Keep lines in order" and "Snap to beats" (§11.3) are editor controls. */

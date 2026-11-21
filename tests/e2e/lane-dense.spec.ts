@@ -165,7 +165,12 @@ for (const [width, height] of [
     });
 
     test('selecting a moment elsewhere scrolls its lane item into view', async ({ page }) => {
+      // 160 px shorter, so the lanes overflow (since the compact view bar they fit at 1280×720).
+      await page.setViewportSize({ width, height: height - 160 });
       const sc = page.getByTestId('lane-scroll');
+      await expect
+        .poll(() => sc.evaluate((e) => e.scrollHeight - e.clientHeight))
+        .toBeGreaterThan(40);
       await sc.evaluate((e) => (e.scrollTop = e.scrollHeight));
       const scBox = await box(sc);
       const hidden = await page.evaluate(() => {
@@ -201,7 +206,7 @@ test('the divider drags the split, persists across reload, and resets on double-
       // storage unavailable
     }
   });
-  await open(page, 'dense', 1280, 800);
+  await open(page, 'dense', 1024, 700);
   const div = page.getByTestId('lane-divider');
   const sc = page.getByTestId('lane-scroll');
   const h0 = (await box(sc)).height;
@@ -236,7 +241,7 @@ test('the divider drags the split, persists across reload, and resets on double-
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
   // Reload (the link's hash is cleared once it opens, so open it again).
-  await open(page, 'dense', 1280, 800);
+  await open(page, 'dense', 1024, 700);
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
   // Keyboard: a focusable separator; ↓ shrinks the lanes.
@@ -251,7 +256,7 @@ test('the divider drags the split, persists across reload, and resets on double-
   await div.dblclick();
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
   // Reload (the link's hash is cleared once it opens, so open it again).
-  await open(page, 'dense', 1280, 800);
+  await open(page, 'dense', 1024, 700);
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
 });
 

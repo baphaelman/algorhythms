@@ -86,9 +86,10 @@ test('Add and Next are separate, labelled groups with their own styles', async (
   expect(a.border).toBe('solid');
   expect(n.border).toBe('dashed');
   expect(n.bg).not.toBe(a.bg);
+  // Side by side when they fit (build-log "Compact view bar"), else Next below; never overlapping.
   const ab = (await add.boundingBox())!;
   const nb = (await next.boundingBox())!;
-  expect(nb.y).toBeGreaterThanOrEqual(ab.y + ab.height - 1);
+  expect(nb.x >= ab.x + ab.width - 1 || nb.y >= ab.y + ab.height - 1).toBe(true);
 });
 
 test('letters add each type; modified letters do not', async ({ page }) => {
