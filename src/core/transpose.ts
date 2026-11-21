@@ -16,6 +16,7 @@
  */
 
 import { compile } from './compiler/compile';
+import { pieceDecisionTime } from './compiler/glide';
 import { createIncrementalCompiler } from './compiler/incremental';
 import { sanitizeRange, foldIntoRange } from './compiler/range';
 import { sameKey } from './effect';
@@ -379,8 +380,13 @@ const distance = (st: { dest: Pitch; now: Pitch }, p: Pitch): number =>
  * (nearest within NOTE_MATCH, ties: the lower voice, one voice per change), but over every
  * sounding voice: targeting is not checked.
  */
-function matchedVoices(score: CompiledScore, m: NoteMoment, froms: readonly Pitch[]): number[] {
-  const states = score.voices.map((_, i) => stateBefore(score, i, m.at, m.id));
+function matchedVoices(
+  score: CompiledScore,
+  m: NoteMoment,
+  t: Seconds,
+  froms: readonly Pitch[],
+): number[] {
+  const states = score.voices.map((_, i) => stateBefore(score, i, t, m.id));
   const taken = new Set<number>();
   return froms.map((p) => {
     let best = -1;
@@ -411,14 +417,15 @@ function keepHeldFroms(
   to: Key,
   before: CompiledScore,
   after: CompiledScore,
+  t: Seconds,
 ): NoteMoment {
   const many = (m.changes?.length ?? 0) > 0;
   const froms = many ? m.changes!.map((c) => c.from) : m.from !== undefined ? [m.from] : [];
-  const voices = matchedVoices(before, m, froms);
+  const voices = matchedVoices(before, m, t, froms);
   const keep = froms.map((p, j) => {
     const rp = remapPitch(p, from, to);
     if (voices[j] < 0 || rp === p) return false;
-    const st = stateBefore(after, voices[j], m.at, m.id);
+    const st = stateBefore(after, voices[j], t, m.id);
     return st !== null && distance(st, p) < distance(st, rp);
   });
   if (!keep.some(Boolean)) return remapped;
@@ -466,14 +473,16 @@ export function carryKey(
     const written = piece.moments.map((m) => (m.id === keyId ? { ...m, key: from } : m));
     const before = compile({ ...piece, moments: written });
     const inc = createIncrementalCompiler();
-    notes.sort((a, b) => piece.moments[a].at - piece.moments[b].at || a - b);
+    // A note decides at its time, or a land note at its lead-in start (revision 9).
+    const when = new Map(notes.map((i) => [i, pieceDecisionTime(piece, piece.moments[i])]));
+    notes.sort((a, b) => when.get(a)! - when.get(b)! || a - b);
     // Undecided notes keep their old `from`s; only moments before each note matter to it.
     const decided = new Map(notes.map((i) => [i, moments[i] as NoteMoment]));
     for (const i of notes) moments[i] = piece.moments[i];
     for (const i of notes) {
       const after = inc.compile({ ...piece, moments: moments.slice() });
       const m = piece.moments[i] as NoteMoment;
-      moments[i] = keepHeldFroms(m, decided.get(i)!, from, k.key, before, after);
+      moments[i] = keepHeldFroms(m, decided.get(i)!, from, k.key, before, after, when.get(i)!);
     }
   }
   const moved = piece.moments.filter((m, i) => moments[i] !== m).map((m) => m.id);

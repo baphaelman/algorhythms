@@ -39,7 +39,16 @@ import type {
   WalkStepRecord,
   WeightChange,
 } from '../types';
-import { Compiler, SUB_MOVE, SUB_NOTE_BACK, SUB_STRIDE, type CompileOptions } from './compile';
+import {
+  Compiler,
+  SUB_LANDED,
+  SUB_MOVE,
+  SUB_NOTE_BACK,
+  SUB_STRIDE,
+  type CompileOptions,
+} from './compile';
+import { decisionTime, sanitizeGlide } from './glide';
+import { defaultGlide } from '../defaults';
 import { EventClass, type QueuedEvent } from './queue';
 import type { Birth, Move, Status, VoiceRun } from './voice';
 
@@ -182,7 +191,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
     if (
       ev.cls === EventClass.MoveStart ||
       (ev.cls === EventClass.Tick && ev.ref > 0) ||
-      (ev.cls === EventClass.Moment && ev.sub === SUB_NOTE_BACK)
+      (ev.cls === EventClass.Moment && (ev.sub === SUB_NOTE_BACK || ev.sub === SUB_LANDED))
     ) {
       events.push(ev);
     } else if (ev.cls === EventClass.Tick && c.spanEnd[ev.key] === c.spanEnd[ev.key]) {
@@ -195,7 +204,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
   for (const ev of events) {
     let off = false;
     if (ev.cls !== EventClass.MoveStart) {
-      live(ev.key); // a walk tick or a note return
+      live(ev.key); // a walk tick, a note return or a land moment waiting for its marker
     } else if (Math.floor(ev.key / SUB_STRIDE) === SUB_MOVE) {
       const mv = ev.obj as Move;
       off = mv.cancelled;
@@ -351,7 +360,7 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   const n = Math.min(k, prev.spanStart.length, c.spanStart.length);
   for (let j = 0; j < n; j++) {
     if (!c.valid[j]) continue;
-    const at = c.moments[j].at;
+    const at = c.eventT[j];
     if (at < cp.t || (at === cp.t && j < cp.i)) {
       c.spanStart[j] = prev.spanStart[j];
       c.spanEnd[j] = prev.spanEnd[j];
@@ -363,8 +372,12 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   }
 }
 
-/** First moment index where the pieces differ, and the earliest time of a moment from there on. */
+/**
+ * First moment index where the pieces differ, and the earliest event time of a moment from there
+ * on (a land moment's lead-in start, revision 9; the glide defaults are equal, `sameSetup`).
+ */
 function firstChange(a: Piece, b: Piece): { k: number; t: Seconds } {
+  const defaults = sanitizeGlide(b.defaults?.glide, defaultGlide());
   const ma = a.moments;
   const mb = b.moments;
   const n = Math.min(ma.length, mb.length);
@@ -374,9 +387,20 @@ function firstChange(a: Piece, b: Piece): { k: number; t: Seconds } {
   for (const ms of [ma, mb]) {
     for (let j = k; j < ms.length; j++) {
       const m = ms[j];
-      const at = m && typeof m === 'object' ? (m as { at?: unknown }).at : undefined;
+      const raw = m && typeof m === 'object' ? (m as { at?: unknown }).at : undefined;
       // A moment without a finite time never makes an event; any other value is conservative.
-      if (typeof at === 'number' && at === at && at < t) t = at;
+      if (!(typeof raw === 'number' && raw === raw)) continue;
+      const at = Number.isFinite(raw) && raw >= 0 ? decisionTime(m, defaults) : raw;
+      if (at < t) t = at;
+      // A land moment deciding before a changed key moment may read it (it reads the key at its
+      // own `at`): resume before its lead-in too.
+      if (m.type === 'key') {
+        for (const x of mb) {
+          if (!x || typeof x !== 'object' || !(typeof x.at === 'number' && x.at >= raw)) continue;
+          const d = decisionTime(x, defaults);
+          if (d < raw && d < t) t = d;
+        }
+      }
     }
   }
   return { k, t };

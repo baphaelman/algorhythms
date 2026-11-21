@@ -22,15 +22,16 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  * crossing) now take its timing. All five changed with M4.5-29 (revision 8 "Distinct notes":
  * stacked voices merge into weighted lines), and again with M4.5-29a (counts count lines, merges
  * pass weight, chords take free octaves before merging), and with M4.5-27 by what is not heard
- * (the opening chord's span, its harmony entry and the opening holds' moment id).
+ * (the opening chord's span, its harmony entry and the opening holds' moment id), and with R9-2
+ * (revision 9: births and deaths take ranked stagger offsets).
  */
 const PRE_REV6: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': '608730245a43d643',
+  'clockwork-heron.algorhythms.json': '9d98073e330c1969',
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
-  'lanterns-over-salt-flats.algorhythms.json': 'cc74d2f001217f38',
-  'seven-doors-in-fog.algorhythms.json': 'aa5e783a1a6079fa',
-  'the-cartographers-rain.algorhythms.json': '5ec74bbcaa89b4b5',
-  'tidewater-hymn.algorhythms.json': 'acc6785548f591b4',
+  'lanterns-over-salt-flats.algorhythms.json': 'a7dadff1eeb2170a',
+  'seven-doors-in-fog.algorhythms.json': 'c22b91a75f0df000',
+  'the-cartographers-rain.algorhythms.json': '3a1cfbeca12c356c',
+  'tidewater-hymn.algorhythms.json': '04b09bca4988d167',
 };
 
 function loadExample(file: string): Piece {

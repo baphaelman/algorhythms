@@ -3,7 +3,8 @@
  *
  * `V1_AUDIBLE` pins `audibleJson` hashes computed with the version 1 compiler (main 6783fd9, before
  * this change) on the version 1 files. The examples on disk are now version 2 (their `start` is
- * the opening chord at t = 0); compiled, they must hash the same. The full golden hashes changed
+ * the opening chord at t = 0); compiled, they must hash the same. R9-2 (revision 9: splits and
+ * merges honour stagger and order) re-pinned the five originals; the compositions are unchanged. The full golden hashes changed
  * only by what is not heard: the opening's moment span, its harmony entry (the HUD now names the
  * opening chord) and the opening holds' `momentId`.
  *
@@ -21,11 +22,11 @@ const ROOT = join(import.meta.dirname, '../..');
 const V1 = join(import.meta.dirname, 'v1');
 
 const V1_AUDIBLE: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': 'ca3ac9adec5cb457',
-  'lanterns-over-salt-flats.algorhythms.json': '7ffe6ce4c5d118b4',
-  'seven-doors-in-fog.algorhythms.json': '8d1dfccf116ed813',
-  'the-cartographers-rain.algorhythms.json': '7fb55b5694f66e0a',
-  'tidewater-hymn.algorhythms.json': '9ff2829fe3c2300d',
+  'clockwork-heron.algorhythms.json': 'cadcf349839c3f1a',
+  'lanterns-over-salt-flats.algorhythms.json': 'e8ffbe5a220cec28',
+  'seven-doors-in-fog.algorhythms.json': '8b69e6132327fc04',
+  'the-cartographers-rain.algorhythms.json': 'df80a2830754afde',
+  'tidewater-hymn.algorhythms.json': 'bc263dc90a4167a8',
   'harbour-song.algorhythms.json': 'c4917ced2843d5af',
   'kite-day.algorhythms.json': 'c89cab9187e3dffb',
   'night-ferry.algorhythms.json': '577d2608cc392564',
