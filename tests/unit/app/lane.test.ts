@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { piece as pieceOf } from '../core/compiler-fixtures';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import type { CompiledVoice, Glide, Moment, Piece } from '../../../src/core/types';
 import {
   dragDt,
@@ -130,7 +131,7 @@ describe('spans and end drags', () => {
   });
 
   it('an opening from silence is a point: its label alone, no sub-row taken from later moments', () => {
-    const base = newPiece({ seed: 1, poolSize: 4 });
+    const base = withOpening(newPiece({ seed: 1, poolSize: 4 }));
     const piece: Piece = {
       ...base,
       defaults: { glide: { ...G, length: 4, stagger: 0.5 } },

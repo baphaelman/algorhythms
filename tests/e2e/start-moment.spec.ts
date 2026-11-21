@@ -1,13 +1,14 @@
 /**
- * The start is a moment (PLAN.md §11.3 revision 7; schema v2, M4.5-27): New → Empty opens with one
- * chord at 0:00 (one dot at the start of its line); deleting it leaves silence, where the palette
- * greys out the transitional moments; adding a chord brings the sound back.
+ * New → Empty (owner 2026-11-21; the start is a moment, M4.5-27): the piece opens silent, with no
+ * moments, the piece key at 0:00 selected and its Tonic focused. From silence the palette greys out
+ * the transitional moments. The first moment always goes at 0:00, whatever the playhead (palette
+ * click, Next); later ones go where asked.
  */
 import { expect, test, type Page } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 
 interface Score {
-  voices: { lives: { born: number }[]; segments: { p0: number; momentId?: string }[] }[];
+  voices: { lives: { born: number }[]; segments: { p0: number; p1: number }[] }[];
 }
 const piece = (page: Page) =>
   page.evaluate(
@@ -22,35 +23,39 @@ const sounding = (page: Page) =>
     const s = window.__algorhythms!.store.getState().compiled as unknown as Score;
     return s.voices.filter((v) => v.lives.length > 0).map((v) => v.segments[0].p0);
   });
-const select = (page: Page, ids: string[]) =>
-  page.evaluate((i) => window.__algorhythms!.actions.select(i), ids);
 
-test('New: one dot at 0:00; delete it for silence; a chord brings the sound back', async ({
-  page,
-}) => {
+async function openEmpty(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.goto('./');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.getByTestId('menu-button').click();
   await page.getByTestId('new-piece').click();
-
-  // One chord at 0 with a single note: v1 on A3, held from the start.
-  await expect
-    .poll(async () => (await piece(page)).moments.map((m) => [m.type, m.at]))
-    .toEqual([['chord', 0]]);
-  expect((await piece(page)).version).toBe(2);
-  expect(await sounding(page)).toEqual([57]);
-  const [{ id }] = (await piece(page)).moments;
-  await select(page, [id]);
-  const dots = page.getByTestId('chord-dot');
-  await expect(dots).toHaveCount(1);
-  await expect(dots).toHaveAttribute('data-t', '0.000');
-  await expect(dots).toHaveAttribute('data-pitch', '57');
-
-  // Delete it: silence, and the transitional moments are greyed out at the playhead.
-  await page.keyboard.press('Delete');
   await expect.poll(async () => (await piece(page)).moments).toEqual([]);
-  await expect.poll(() => sounding(page)).toEqual([]);
+}
+
+test('New → Empty: silent, the key selected with its Tonic focused; first chord at 0:00', async ({
+  page,
+}) => {
+  await openEmpty(page);
+  await expect(page.getByTestId('new-piece')).toBeHidden();
+  expect((await piece(page)).version).toBe(2);
+  expect(await sounding(page)).toEqual([]);
+
+  // The piece key is selected, the inspector shows it and the Tonic control has focus.
+  const inspector = page.getByTestId('inspector');
+  await expect(inspector.locator('[data-piece-key]')).toBeVisible();
+  await expect(page.getByTestId('insp-tonic')).toBeFocused();
+  await expect(page.getByTestId('insp-tonic')).toHaveValue('A');
+  await page.getByTestId('insp-tonic').selectOption('D');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window.__algorhythms!.store.getState().piece as unknown as { key: object }).key,
+      ),
+    )
+    .toEqual({ tonic: 'D', scale: 'dorian' });
+
+  // Silence: the transitional moments are greyed out at the playhead.
   const palette = page.getByTestId('palette');
   for (const type of ['shift', 'split', 'merge', 'walk', 'note']) {
     const b = palette.locator(`[data-moment="${type}"]`);
@@ -65,13 +70,37 @@ test('New: one dot at 0:00; delete it for silence; a chord brings the sound back
       'aria-disabled',
     );
 
-  // Add a chord at the playhead (0:00): its notes come in, with no glide.
+  // With the playhead at 0:05, a palette chord still lands at 0:00: its notes come in, no glide.
+  await seek(page, 5);
   await palette.locator('[data-moment="chord"]').click();
+  await expect
+    .poll(async () => (await piece(page)).moments.map((m) => [m.type, m.at]))
+    .toEqual([['chord', 0]]);
   await expect.poll(async () => (await sounding(page)).length).toBe(3);
   const moved = await page.evaluate(() => {
     const s = window.__algorhythms!.store.getState().compiled as unknown as Score;
-    return s.voices.some((v) => v.segments.some((g) => g.p0 !== (g as { p1?: number }).p1));
+    return s.voices.some((v) => v.segments.some((g) => g.p0 !== g.p1));
   });
   expect(moved).toBe(false);
+
+  // The second goes at the playhead.
+  await seek(page, 5);
   await expect(palette.locator('[data-moment="split"]')).not.toHaveAttribute('aria-disabled');
+  await palette.locator('[data-moment="split"]').click();
+  await expect
+    .poll(async () => (await piece(page)).moments.map((m) => [m.type, m.at]))
+    .toEqual([
+      ['chord', 0],
+      ['split', 5],
+    ]);
+});
+
+test('New → Empty: Next starts at 0:00', async ({ page }) => {
+  await openEmpty(page);
+  await seek(page, 5);
+  const strip = page.getByTestId('suggestions');
+  await expect(strip).toHaveAttribute('data-t', '0');
+  await strip.locator('[data-suggestion="0"]').click();
+  await expect.poll(async () => (await piece(page)).moments.map((m) => m.at)).toEqual([0]);
+  await expect.poll(async () => (await sounding(page)).length).toBeGreaterThan(0);
 });

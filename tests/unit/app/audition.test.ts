@@ -48,6 +48,7 @@ vi.mock('../../../src/app/audio', () => {
 
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import type { ChordMoment, CompiledScore, Moment, Piece } from '../../../src/core/types';
 import { moveChordNote, moveWalkStep, octaveDots } from '../../../src/app/editor/actions';
 import { momentArrivals } from '../../../src/app/editor/arrival-points';
@@ -68,7 +69,7 @@ import { loadPiece, setPiece, usePlayer } from '../../../src/app/store';
 
 /** Three voices: a split at 0, a level ramp at 1 s, and a C major chord at 2 s. */
 function piece(): Piece {
-  const p = newPiece({ seed: 3 });
+  const p = withOpening(newPiece({ seed: 3 }));
   const moments = [
     { id: 'spl001', type: 'split', at: 0, count: 3, voicing: 'even' },
     { id: 'lvl001', type: 'level', at: 1, gain: 0.5, over: 0 },

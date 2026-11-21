@@ -9,6 +9,8 @@ import { newPiece } from '../../core/defaults';
 import { parsePiece, serializePiece } from '../../core/schema';
 import type { Piece } from '../../core/types';
 import { downloadBlob } from '../download';
+import { select } from '../editor/history';
+import { PIECE_KEY_ID, requestPieceKeyFocus } from '../editor/piece-key';
 import { loadInfo, loadPiece, pushNotice, runOpen, usePlayer } from '../store';
 import { Autosaver } from './autosave';
 import { idbLibrary } from './idb';
@@ -215,9 +217,16 @@ export async function deleteEntry(id: string): Promise<void> {
   await refreshPieces();
 }
 
-/** Opens the empty template (`newPiece`: 12 voices, one chord at 0 on A3, A dorian, glass) as a new entry. */
+/**
+ * Opens the empty template (`newPiece`: 12 voices, no moments, A dorian, glass) as a new entry,
+ * with the piece key selected and its Tonic focused, so the first choice is the key.
+ */
 export function newPieceNow(): void {
-  runOpen(loadNewPiece);
+  runOpen(() => {
+    loadNewPiece();
+    select([PIECE_KEY_ID]);
+    requestPieceKeyFocus();
+  });
 }
 
 /** Loads the empty template at once (Compose for me asks the naming question itself). */

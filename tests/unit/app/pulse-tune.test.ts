@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { parsePiece, serializePiece } from '../../../src/core/schema';
 import { decodeSharePayload, encodeSharePayload } from '../../../src/app/share';
 import type { Glide, Key, Piece, PulseMoment, TuneMoment } from '../../../src/core/types';
@@ -78,7 +79,7 @@ const tune = (extra: Partial<TuneMoment> = {}): TuneMoment => ({
 
 /** One voice on C4 from 0 and four in the pool (so tunes and pulses have something to act on). */
 function sounding(extra: Piece['moments'] = []): Piece {
-  const p = newPiece({ seed: 3 });
+  const p = withOpening(newPiece({ seed: 3 }));
   return { ...p, end: { at: 20, fade: 1 }, moments: [...p.moments, ...extra] };
 }
 

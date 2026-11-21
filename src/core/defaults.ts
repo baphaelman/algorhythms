@@ -207,10 +207,10 @@ export function builtinTimbresFor(voices: readonly VoiceDef[]): Record<string, T
   return out;
 }
 
-/** Id of the opening chord of a new piece (and of a migrated version 1 `start`). */
+/** Id of a migrated version 1 `start` chord (M4.5-27). */
 export const OPENING_ID = 'start0';
 
-/** The opening of a new piece: a chord at t = 0 with the single note `pitch`. */
+/** A one-note opening: a chord at t = 0 with the single note `pitch`. */
 export function openingNote(pitch: Pitch): ChordMoment {
   return {
     id: OPENING_ID,
@@ -236,15 +236,13 @@ export interface NewPieceOptions {
   key?: Key;
   /** Timbre preset of every voice. @default 'glass' */
   timbre?: string;
-  /** Pitch of the opening note: the chord at t = 0 (M4.5-27). @default 57 (A3) */
-  startPitch?: Pitch;
 }
 
 /**
  * The empty template (§11.3 M4 acceptance: "build a piece from the empty template"): a pool of
- * 12 voices v1–v12, A dorian, default glide, mix and view, and one moment: a chord at t = 0 with a
- * single note (A3), which brings v1 in (M4.5-27, "the start is a moment"). The voices' built-in
- * timbre is copied into `timbres`, so the file is self-contained.
+ * 12 voices v1–v12, A dorian, default glide, mix and view, and no moments: it is silent until the
+ * first one, which the editor adds at 0:00 (owner 2026-11-21; the key shows as the piece key at
+ * 0:00). The voices' built-in timbre is copied into `timbres`, so the file is self-contained.
  */
 export function newPiece(opts: NewPieceOptions): Piece {
   const size = Math.max(1, Math.min(MAX_VOICES, Math.floor(opts.poolSize ?? DEFAULT_POOL_SIZE)));
@@ -259,7 +257,7 @@ export function newPiece(opts: NewPieceOptions): Piece {
     key: cloneJson((opts.key ?? DEFAULT_KEY) as Key),
     defaults: { glide: defaultGlide() },
     voices,
-    moments: [openingNote(opts.startPitch ?? DEFAULT_START_PITCH)],
+    moments: [],
     timbres: builtinTimbresFor(voices),
     mix: defaultMix(),
     end: { fade: DEFAULT_END_FADE },

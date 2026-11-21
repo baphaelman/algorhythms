@@ -13,6 +13,7 @@ import {
   defaultVoices,
   newPiece,
 } from '../../../src/core/defaults';
+import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import { BUILTIN_TIMBRES } from '../../../src/core/timbres';
 import { PIECE_FORMAT, PIECE_VERSION } from '../../../src/core/types';
@@ -77,7 +78,7 @@ describe('factories', () => {
 });
 
 describe('newPiece', () => {
-  it('is the empty template: 12-voice pool, one opening note at 0, A dorian', () => {
+  it('is the empty template: 12-voice pool, no moments, A dorian', () => {
     const p = newPiece({ seed: 42, now: '2026-11-19T12:00:00.000Z', title: 'New' });
     expect(p.format).toBe('algorhythms');
     expect(p.version).toBe(2);
@@ -90,16 +91,7 @@ describe('newPiece', () => {
     expect(p.voices.map((v) => v.id)).toEqual(Array.from({ length: 12 }, (_, i) => `v${i + 1}`));
     expect(p).not.toHaveProperty('start');
     expect(p.key).toEqual({ tonic: 'A', scale: 'dorian' });
-    expect(p.moments).toEqual([
-      {
-        id: 'start0',
-        type: 'chord',
-        at: 0,
-        notes: { kind: 'pitches', pitches: [57] },
-        voicing: 'even',
-        assign: 'ordered',
-      },
-    ]);
+    expect(p.moments).toEqual([]);
     expect(p.timbres).toEqual({ glass: BUILTIN_TIMBRES.glass });
     expect(p.timbres.glass).not.toBe(BUILTIN_TIMBRES.glass);
     expect(p.mix).toEqual(DEFAULT_MIX);
@@ -112,13 +104,11 @@ describe('newPiece', () => {
       poolSize: 40,
       timbre: 'organ',
       key: { tonic: 'C', scale: 'major' },
-      startPitch: 60,
     });
     expect(p.voices).toHaveLength(32);
     expect(p.voices.every((v) => v.timbre === 'organ')).toBe(true);
     expect(Object.keys(p.timbres)).toEqual(['organ']);
     expect(p.key).toEqual({ tonic: 'C', scale: 'major' });
-    expect(p.moments[0]).toMatchObject({ notes: { kind: 'pitches', pitches: [60] } });
     expect(newPiece({ seed: 1, poolSize: 0 }).voices).toHaveLength(1);
   });
 
@@ -130,6 +120,12 @@ describe('newPiece', () => {
     a.defaults.glide.length = 99;
     expect(b.voices[0].range[0]).toBe(38);
     expect(DEFAULT_GLIDE.length).toBe(3);
+  });
+
+  it('compiles to silence with no error diagnostics', () => {
+    const score = compile(newPiece({ seed: 3 }));
+    expect(score.diagnostics.filter((d) => d.level === 'error')).toEqual([]);
+    expect(score.voices.every((v) => v.lives.length === 0)).toBe(true);
   });
 
   it('is a valid piece that parses back unchanged', () => {

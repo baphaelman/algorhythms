@@ -525,6 +525,7 @@ export function KeyFields({
         value={m.key.tonic}
         options={TONICS.map((t) => [t, t] as const)}
         onChange={(tonic) => setKey({ ...m.key, tonic }, 'Change tonic')}
+        testId="insp-tonic"
       />
       <SelectField<ScaleName | 'custom'>
         label="Scale"

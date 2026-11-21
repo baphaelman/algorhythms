@@ -58,11 +58,8 @@ describe('stripDefaults', () => {
   it('strips and restores each piece-level default', () => {
     const p = newPiece({ seed: 0 });
     const s = roundTrip(parsed(p));
-    // newPiece's opening chord and its glass timbre are content, the rest are defaults.
-    expect(Object.keys(s).sort()).toEqual(['format', 'moments', 'timbres', 'version']);
-    expect(s.moments).toEqual([
-      { type: 'chord', id: 'start0', at: 0, notes: { kind: 'pitches', pitches: [57] } },
-    ]);
+    // newPiece's glass timbre is content, the rest are defaults (it has no moments).
+    expect(Object.keys(s).sort()).toEqual(['format', 'timbres', 'version']);
   });
 
   it('keeps a non-default value and only that one, at every level', () => {

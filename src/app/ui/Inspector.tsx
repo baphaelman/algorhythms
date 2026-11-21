@@ -4,10 +4,11 @@
  * actions. None: a hint. Every change goes through the M4b editor actions (undoable).
  */
 
+import { useEffect, useRef } from 'react';
 import type { Moment, MomentId, Piece } from '../../core/types';
 import { deleteMoments, freezeMoments, setPieceKey, updateMoment } from '../editor/actions';
 import { canFreeze, isFrozen } from '../editor/freeze';
-import { isPieceKey, pieceKeyMoment } from '../editor/piece-key';
+import { isPieceKey, pieceKeyMoment, takePieceKeyFocus } from '../editor/piece-key';
 import {
   beginGesture,
   cancelGesture,
@@ -157,8 +158,20 @@ const PIECE_KEY_LOCKED = "The piece's key can't be deleted or moved; edit it her
 /** The piece's key as the key moment at 0:00: editable, never moved, copied or deleted. */
 function PieceKey({ piece }: { piece: Piece }) {
   const m = pieceKeyMoment(piece);
+  const root = useRef<HTMLDivElement>(null);
+  // New > Empty: prompt for the key (no deps: checked after every render, consumed once).
+  useEffect(() => {
+    if (takePieceKeyFocus())
+      root.current?.querySelector<HTMLElement>('[data-testid="insp-tonic"]')?.focus();
+  });
   return (
-    <div className="insp-one" data-moment-id={m.id} data-moment-type="key" data-piece-key="">
+    <div
+      ref={root}
+      className="insp-one"
+      data-moment-id={m.id}
+      data-moment-type="key"
+      data-piece-key=""
+    >
       <header className="insp-head">
         <h2>
           Key <span className="insp-at">@ {formatTime(0)}</span>

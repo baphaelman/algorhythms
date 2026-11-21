@@ -18,6 +18,7 @@ import {
 } from '../../../src/app/editor/tune';
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import type { Key, Piece, TuneMoment, TuneNote } from '../../../src/core/types';
 
 const C: Key = { tonic: 'C', scale: 'major' };
@@ -38,7 +39,7 @@ const tune = (extra: Partial<TuneMoment> = {}): TuneMoment => ({
 
 /** One line on C4 from 0, and the tune. */
 function withTune(m: TuneMoment = tune()): Piece {
-  const p = newPiece({ seed: 3 });
+  const p = withOpening(newPiece({ seed: 3 }));
   return { ...p, key: C, end: { at: 20, fade: 1 }, moments: [...p.moments, m] };
 }
 

@@ -7,6 +7,7 @@ import { defaultMoment } from '../../../src/app/editor/new-moment';
 import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { momentEffectAt, momentEffectsAt } from '../../../src/core/effect';
 import type { CompiledScore, Moment, MomentType, Piece } from '../../../src/core/types';
 import { piece, type MomentInput } from './compiler-fixtures';
@@ -19,8 +20,14 @@ const chord = (at: number, notes: Moment extends never ? never : object, more = 
   ({ type: 'chord', at, notes, voicing: 'even', assign: 'ordered', ...more }) as MomentInput;
 
 describe('establishing from silence', () => {
-  it('the empty template: one chord at 0 with one note, a dot at the start of its line', () => {
-    const p = newPiece({ seed: 1 });
+  it('the empty template is silent', () => {
+    const s = compile(newPiece({ seed: 1 }));
+    expect(sounding(s)).toEqual([]);
+    expect(s.diagnostics.filter((d) => d.level === 'error')).toEqual([]);
+  });
+
+  it('a one-note chord at 0: one line, a dot at the start of it', () => {
+    const p = withOpening(newPiece({ seed: 1 }));
     const s = compile(p);
     expect(sounding(s).map((v) => v.id)).toEqual(['v1']);
     const v1 = s.voices[0];

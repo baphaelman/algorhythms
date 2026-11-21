@@ -195,7 +195,7 @@ describe('Compose for me', () => {
 
     expect(useEditor.getState().undoLabel).toBe('Compose');
     undo();
-    expect(piece().moments).toHaveLength(1); // the empty piece's opening note
+    expect(piece().moments).toHaveLength(0); // the empty piece
     expect(useEditor.getState().canUndo).toBe(false);
     redo();
     expect(piece()).toBe(partial);
@@ -215,7 +215,7 @@ describe('Compose for me', () => {
     finish();
     expect(piece().moments).toEqual(generate(101, { mode: 'dorian', length: 150 }).moments);
     undo();
-    expect(piece().moments).toHaveLength(1);
+    expect(piece().moments).toHaveLength(0);
     expect(useEditor.getState().canUndo).toBe(false);
   });
 
@@ -261,7 +261,7 @@ describe('Compose for me', () => {
     );
     expect(ui().open).toBe(true);
     undo();
-    expect(piece().moments).toHaveLength(1);
+    expect(piece().moments).toHaveLength(0);
     expect(useEditor.getState().canUndo).toBe(false);
   });
 
@@ -277,7 +277,7 @@ describe('Compose for me', () => {
     finish();
     expect(piece().moments).toEqual(generate(7, { mode: 'dorian', length: 150 }).moments);
     undo();
-    expect(piece().moments).toHaveLength(1);
+    expect(piece().moments).toHaveLength(0);
   });
 
   it('the user editing the piece after the build closes the panel', () => {
@@ -289,7 +289,7 @@ describe('Compose for me', () => {
     // Undo of the edit, then of the whole compose (one entry).
     undo();
     undo();
-    expect(piece().moments).toHaveLength(1);
+    expect(piece().moments).toHaveLength(0);
     expect(useEditor.getState().canUndo).toBe(false);
   });
 

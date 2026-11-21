@@ -28,6 +28,7 @@ vi.mock('../../../src/app/audio', () => {
 });
 
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { useEditor } from '../../../src/app/editor/history';
 import {
   PALETTE,
@@ -143,13 +144,14 @@ describe('actions at the playhead', () => {
   });
 
   it('adds exactly at the playhead, also when the piece has a grid (revision 7)', () => {
+    loadPiece(withOpening(newPiece({ seed: 7 })));
     seekTo(3.3);
     const a = addAtPlayhead('chord');
     const p = usePlayer.getState().piece;
     expect(p.moments.find((m) => m.id === a)?.at).toBeCloseTo(3.3);
     expect(useEditor.getState().selection).toEqual([a]);
 
-    loadPiece({ ...p, moments: [], view: { ...p.view, gridBpm: 60 } });
+    loadPiece({ ...withOpening(newPiece({ seed: 7 })), view: { ...p.view, gridBpm: 60 } });
     seekTo(3.3);
     const b = addAtPlayhead('level');
     const m = usePlayer.getState().piece.moments.find((x) => x.id === b);

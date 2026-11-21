@@ -5,7 +5,7 @@
  * running glides (velocity carry, clamps) and every ordered moment runs its 64-point crossing
  * check over up to 24 voices.
  */
-import { newPiece } from '../../../src/core/defaults';
+import { DEFAULT_START_PITCH, newPiece, openingNote } from '../../../src/core/defaults';
 import type { Moment, Piece } from '../../../src/core/types';
 
 const SYMBOLS = ['Am9', 'Dm7', 'G7', 'Cmaj7', 'Fmaj7', 'Bm7b5', 'E7', 'Am7', 'ii7', 'V9'];
@@ -104,7 +104,7 @@ export function benchmarkPiece(): Piece {
     t += 1.45;
     i++;
   }
-  p.moments = [...p.moments, ...moments]; // the opening (v1 at 57), then the rest
+  p.moments = [openingNote(DEFAULT_START_PITCH), ...moments]; // the opening (v1 at 57), then the rest
   p.defaults.glide = {
     length: 3.5,
     jitter: 0.3,

@@ -12,7 +12,7 @@ import { create } from 'zustand';
 import { momentEffectAt, momentEffectsAt, type MomentEffect } from '../../core/effect';
 import type { CompiledScore, MomentType, Piece, Seconds } from '../../core/types';
 import { usePlayer } from '../store';
-import { defaultMoment } from './new-moment';
+import { addTimeIn, defaultMoment } from './new-moment';
 import { playheadTime } from './shortcuts';
 
 /** Id of the throwaway moments built for effect checks and previews. */
@@ -48,9 +48,12 @@ export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): 
   return out;
 }
 
-/** Where a palette click or shortcut adds a moment now: exactly the playhead (revision 7). */
+/**
+ * Where a palette click or shortcut adds a moment now: exactly the playhead (revision 7), or 0:00
+ * for the first moment (`addTimeIn`).
+ */
 export function addTime(): Seconds {
-  return playheadTime();
+  return addTimeIn(usePlayer.getState().piece, playheadTime());
 }
 
 /** The effect of adding `type` at the playhead now (computed fresh, for clicks and keys). */

@@ -1,6 +1,7 @@
 /**
  * M4 manual checks on the M4.5 editor (PLAN.md §15 M4 and M4.5 "M4 checks still pass"; audit gap
- * 6): a piece built with the mouse alone from New → Empty. A chord dragged from the palette, its
+ * 6): a piece built with the mouse alone from New → Empty. A chord dragged from the palette (the
+ * first moment, so at 0:00), its
  * chord changed in the inspector, a split (palette click at the playhead) and a walk (palette
  * drag), a dot dragged, a loop region, Play, Export WAV. The score changes at each step; undo
  * walks back through them and redo forward again. Then, playing, edit → swap latency of inspector
@@ -144,29 +145,26 @@ test(
     const states: string[] = [];
     const step = async () => states.push(await scoreJson(page));
 
-    // 1. New → Empty: one opening chord at 0.
+    // 1. New → Empty: no moments, silent.
     await page.getByTestId('menu-button').click();
     await page.getByTestId('new-piece').click();
-    await expect
-      .poll(async () => (await moments(page)).map((m) => [m.type, m.at]))
-      .toEqual([['chord', 0]]);
+    await expect.poll(async () => (await moments(page)).length).toBe(0);
     expect(await canUndo(page)).toBe(false);
     await step();
 
-    // 2. Drag a chord from the palette onto the score at ~5 s.
+    // 2. Drag a chord from the palette onto the score at ~5 s: the first moment lands at 0:00.
     let before = await moments(page);
     await dropFromPalette(page, 'chord', 5);
     await expect.poll(async () => (await added(page, before)).length).toBe(1);
     const [chord] = await added(page, before);
     expect(chord.type).toBe('chord');
-    expect(Math.abs(chord.at - 5)).toBeLessThan(0.5);
+    expect(chord.at).toBe(0);
     // The drop selects it.
     await expect
       .poll(() => page.evaluate(() => window.__algorhythms!.editor.state.getState().selection))
       .toEqual([chord.id]);
-    // On the one-note opening it brings in its extra notes: a triad, three lines, a chord name.
-    expect(chord.count).toBe(3);
-    await expect.poll(() => linesAt(page, chord.at + 4)).toBe(3);
+    // From silence it brings in a triad: three lines, a chord name.
+    await expect.poll(() => linesAt(page, chord.at + 2)).toBe(3);
     const label = page.getByTestId('lane').locator(`[data-moment="${chord.id}"] .lane-label`);
     await expect(label).toHaveText(/^[A-G]/);
     await expect(label).not.toContainText('unison');
