@@ -235,7 +235,8 @@ export type MomentType =
   | 'pin'
   | 'key'
   | 'level'
-  | 'pulse';
+  | 'pulse'
+  | 'tune';
 
 /** Fields common to every moment (§6.1). */
 export interface MomentBase {
@@ -497,6 +498,26 @@ export interface PulseMoment extends MomentBase {
   strike?: boolean;
 }
 
+/** One note of a tune (revision 9): its pitch, held for `len` seconds. */
+export interface TuneNote {
+  pitch: Pitch;
+  /** How long the note lasts (> 0); the next note starts `len` after this one. */
+  len: Seconds;
+}
+
+/**
+ * Revision 9: a melody on one line. From `at`, the targeted voice (the first in pitch order of
+ * the target, normally a part with one line) moves to each note in turn, note k starting at
+ * at + the lengths before it. Each move uses the moment's glide as portamento (default length
+ * 0.1 s, stagger and jitter 0; capped at the note's length). With `glide.land` each note
+ * arrives on its start instead. Like `pin` it may cross other lines; under distinct notes it
+ * merges only with lines of its own part.
+ */
+export interface TuneMoment extends MomentBase {
+  type: 'tune';
+  notes: TuneNote[];
+}
+
 /** Any v1 moment, discriminated by `type`. */
 export type Moment =
   | ChordMoment
@@ -510,7 +531,8 @@ export type Moment =
   | PinMoment
   | KeyMoment
   | LevelMoment
-  | PulseMoment;
+  | PulseMoment
+  | TuneMoment;
 
 /** Look up a moment interface by its type, e.g. `MomentOf<'walk'>`. */
 export type MomentOf<T extends MomentType> = Extract<Moment, { type: T }>;

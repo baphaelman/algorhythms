@@ -144,6 +144,23 @@ export function defaultMoment<T extends MomentType>(
         mode: 'together',
       };
       break;
+    case 'tune': {
+      // Up and back down the scale from the lowest sounding note (the line a tune targets
+      // first), a beat a note (0.5 s without a tempo).
+      const low = active.reduce<number | null>(
+        (best, v) => (best === null || v.pitch < best ? v.pitch : best),
+        null,
+      );
+      const from = low ?? 60;
+      const bpm = piece.view?.gridBpm;
+      const len = typeof bpm === 'number' && bpm > 0 ? 60 / bpm : 0.5;
+      m = {
+        ...base,
+        type: 'tune',
+        notes: [0, 1, 2, 1].map((k) => ({ pitch: stepByScale(from, k, key), len })),
+      };
+      break;
+    }
   }
   return withChordFill(m, piece, score, at) as MomentOf<T>;
 }

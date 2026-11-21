@@ -66,6 +66,7 @@ const LABELS: Record<MomentType, string> = {
   key: 'key change',
   level: 'level',
   pulse: 'pulse',
+  tune: 'tune',
 };
 
 let cached: { piece: Piece; score: CompiledScore } | null = null;

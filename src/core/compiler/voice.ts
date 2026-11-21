@@ -332,6 +332,8 @@ export class VoiceRun {
   readonly pulse: PulseRecord[] = [];
   /** Moment index of the pulse driving this voice, or −1 (compile.ts `onPulseTick`). */
   pulseOwner = -1;
+  /** Revision 9: the end of the latest tune playing on this line; walks leave it alone until then. */
+  tuneUntil = -Infinity;
 
   constructor(
     readonly index: number,

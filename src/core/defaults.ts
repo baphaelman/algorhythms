@@ -149,7 +149,14 @@ export const MOMENT_DEFAULTS = deepFreeze({
   key: {},
   level: { over: 1 },
   pulse: { step: 0.5, pattern: [1], decay: 0.3, floor: 0, mode: 'together' },
+  tune: { notes: [] },
 } as const) satisfies Record<MomentType, object>;
+
+/**
+ * A tune's own glide defaults (revision 9: per-note portamento), merged over the piece's default
+ * glide before the moment's own `glide`: one line, so no stagger or jitter.
+ */
+export const TUNE_GLIDE = deepFreeze({ length: 0.1, stagger: 0, jitter: 0 } as const);
 
 // ---------------------------------------------------------------------------------------------
 // Factories

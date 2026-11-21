@@ -31,6 +31,7 @@ import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
 import { establishPlan, isEstablishing } from '../moments/establish';
 import { noteMoment } from '../moments/note';
+import { tuneNotePlan, tuneProblem, tuneStarts } from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
@@ -54,12 +55,13 @@ import {
   type PulseMoment,
   type PulseRecord,
   type Seconds,
+  type TuneMoment,
   type VoiceOverride,
   type VoiceSelector,
   type WalkMoment,
   type WalkStepRecord,
 } from '../types';
-import { glides, landing, MIN_GLIDE, mergeGlide, sanitizeGlide, type Landing } from './glide';
+import { glides, landing, MIN_GLIDE, momentGlide, sanitizeGlide, type Landing } from './glide';
 import { applyOverrideEnds, applyOverridePitches, overridesOf } from './overrides';
 import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from './plan';
 import { Projector } from './project';
@@ -92,6 +94,7 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
   'key',
   'level',
   'pulse',
+  'tune',
 ]);
 
 /** Move-start sub-order at equal times (queue `key` = sub·64 + pool index). */
@@ -111,6 +114,33 @@ export const SUB_NOTE_BACK = 1;
  * nothing sounding, so it acts at its marker, without a lead-in.
  */
 export const SUB_LANDED = 2;
+/** `sub` of a moment-class event that plays a tune's next note (revision 9; obj: `TuneStep`). */
+export const SUB_TUNE = 3;
+
+/**
+ * A tune's next note (revision 9), carried by its event; immutable once queued. `voice`: the line
+ * playing the tune (−1 before the first note); `moved`: some earlier note moved it.
+ */
+export interface TuneStep {
+  k: number;
+  voice: number;
+  moved: boolean;
+}
+
+const TUNE_START: TuneStep = Object.freeze({ k: 0, voice: -1, moved: false });
+
+/** One tune note's timing, handed to `applyPointMoment`. */
+interface TuneNoteRun {
+  k: number;
+  voice: number;
+  /** Decision and start time. */
+  T: Seconds;
+  /** The note's start (its arrival under `land`). */
+  rest: Seconds;
+  glide: Glide;
+  /** Under `land`: the arrival. */
+  land: Seconds | undefined;
+}
 
 /**
  * A note moment's scheduled return (§6.2 `back`): at `t`, each change's note `from` (where its
@@ -267,6 +297,8 @@ export class Compiler {
   readonly walks: number[] = [];
   /** Valid pulse moments (indices), in array order. */
   readonly pulses: number[] = [];
+  /** Per moment: a tune's note starts and end (`tuneStarts`), or null (not a tune). */
+  readonly tunes: (Seconds[] | null)[] = [];
   /** Per moment: the frozen walk's notes, or null (not a frozen walk). */
   readonly frozen: (FrozenWalk | null)[] = [];
   /** Steps taken by walks, in event (= time) order (§7.9 walkSteps). */
@@ -361,6 +393,7 @@ export class Compiler {
     this.moments.forEach((m, i) => {
       this.valid.push(false);
       this.frozen.push(null);
+      this.tunes.push(null);
       this.seeds.push(0);
       this.glides.push(defaults);
       this.eventT.push(NaN);
@@ -404,9 +437,17 @@ export class Compiler {
           return;
         }
       }
+      if (m.type === 'tune') {
+        const why = tuneProblem(m);
+        if (why !== null) {
+          this.diag('error', 'tune-invalid', why, m.id);
+          return;
+        }
+        this.tunes[i] = tuneStarts(m);
+      }
       this.valid[i] = true;
       this.seeds[i] = momentSeed(this.piece.seed, m.id, m.seed);
-      this.glides[i] = mergeGlide(defaults, m.glide);
+      this.glides[i] = momentGlide(defaults, m);
       const land = this.glides[i].land === true && glides(m) ? landing(m.at, this.glides[i]) : null;
       this.landings[i] = land;
       this.eventT[i] = land ? land.start : m.at;
@@ -658,6 +699,12 @@ export class Compiler {
             this.reaim(ev.t, ev.ref);
             break;
           }
+          if (ev.sub === SUB_TUNE) {
+            this.touch();
+            this.onTune(ev.ref, ev.obj as TuneStep, false);
+            this.reaim(ev.t, ev.ref);
+            break;
+          }
           if (this.onMomentEvent) this.onMomentEvent(ev.t, ev.ref);
           this.touch();
           this.onMoment(ev.ref);
@@ -777,6 +824,10 @@ export class Compiler {
    * for returns, and when the moment raised an error or a `note-not-sounding` warning.
    */
   private onPointMoment(i: number, back: NoteBack | null = null, late = false): void {
+    if (this.moments[i].type === 'tune') {
+      this.onTune(i, TUNE_START, late);
+      return;
+    }
     const n = this.voices.length;
     if (this.effBefore.length !== n) {
       this.effBefore = new Float64Array(n);
@@ -844,6 +895,7 @@ export class Compiler {
     i: number,
     back: NoteBack | null,
     late: boolean,
+    tune: TuneNoteRun | null = null,
   ): { targeted: number[]; res: PlanResult | null; lost: number; absorbed: number } {
     const m0 = this.moments[i];
     // A return runs the note moment again at its own time, `from` and `to` swapped.
@@ -858,12 +910,12 @@ export class Compiler {
         }
       : m0;
     // A land moment decides at its lead-in start (revision 9); its rests are drawn at `at`.
-    const land = back || late ? null : this.landings[i];
-    const T = land ? land.start : m.at;
-    const rest = back ? T : m0.at;
-    const glide = land ? land.glide : this.glides[i];
+    const land = back || late || tune ? null : this.landings[i];
+    const T = tune ? tune.T : land ? land.start : m.at;
+    const rest = back ? T : tune ? tune.rest : m0.at;
+    const glide = tune ? tune.glide : land ? land.glide : this.glides[i];
     const key = back ? this.key : this.keyFor(i);
-    if (!back && this.sortedActive().length === 0) return this.establish(i);
+    if (!back && !tune && this.sortedActive().length === 0) return this.establish(i);
     // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices,
     // or once when the moment's count is a number of lines (`countsLines`).
     const dormant = this.dormantAt(T);
@@ -876,7 +928,11 @@ export class Compiler {
     );
     let pre: number[];
     let subset: boolean;
-    if (m.type === 'pin') {
+    if (tune) {
+      // The tune's line (countsLines: seen once, so it moves whole).
+      pre = [tune.voice];
+      subset = true;
+    } else if (m.type === 'pin') {
       const v = this.byId.get(m.voice);
       // A voice merged into a line is one of its stacked copies: the pin moves that copy.
       pre =
@@ -906,7 +962,11 @@ export class Compiler {
       return inPre.has(u) || !preDest.has(b) ? this.destOf(b) : preDest.get(b)!;
     };
     const sortU = (us: number[]): number[] => us.sort((a, b) => destU(a) - destU(b) || a - b);
-    const seed = back ? hash32(this.seeds[i], 'back') : this.seeds[i];
+    const seed = back
+      ? hash32(this.seeds[i], 'back')
+      : tune && tune.k > 0
+        ? hash32(this.seeds[i], `note${tune.k}`)
+        : this.seeds[i];
     const free = dormant.filter((u) => !x.reserved.has(u));
     let targeted: number[];
     let plan: MomentPlan | null;
@@ -932,7 +992,10 @@ export class Compiler {
       this.touch();
       x.active = sortU(x.active.slice());
       targeted = sortU(pre.slice());
-      plan = pointMomentPlan(m, this.env(i, targeted, T, seed, x, destU, free, glide, key));
+      plan =
+        tune && m.type === 'tune'
+          ? tuneNotePlan(m, tune.k, tune.voice)
+          : pointMomentPlan(m, this.env(i, targeted, T, seed, x, destU, free, glide, key));
     }
     const targetedLines = this.sortByDest(lines(targeted));
     if (!plan) {
@@ -948,14 +1011,14 @@ export class Compiler {
       glide,
       seed,
       crossings: this.options.crossings,
-      land: land ? land.end : undefined,
+      land: tune ? tune.land : land ? land.end : undefined,
       dest: (v: number) => this.destOf(v),
       diag: (level: DiagnosticLevel, code: string, message: string) =>
         this.diag(level, code, message, m.id),
     };
     this.partBirths(plan, x, free, m.id);
-    // Per-voice overrides (§11.3, revision 6): not on a note's return.
-    const ov = back ? null : overridesOf(m, this.voices.length);
+    // Per-voice overrides (§11.3, revision 6): not on a note's return or a tune's notes.
+    const ov = back || tune ? null : overridesOf(m, this.voices.length);
     if (ov) applyOverridePitches(plan, ov, targeted);
     const logical = plan;
     const rangeU = (u: number): readonly [Pitch, Pitch] =>
@@ -1029,7 +1092,8 @@ export class Compiler {
     else if (!back && m.type === 'note' && plan.notes)
       this.scheduleBack(i, m, plan.notes, plan, res);
     this.touch();
-    this.recordHarmony(i, T, key);
+    // A tune's notes are melody, not harmony: the HUD chord does not follow them.
+    if (!tune) this.recordHarmony(i, T, key);
     this.traceMoment(
       i,
       targetedLines,
@@ -1240,6 +1304,93 @@ export class Compiler {
       changes: notes.map((n) => ({ from: plan.intents[n.intent].to, to: n.from })),
     };
     this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_NOTE_BACK, ref: i, obj: rec });
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Tune (revision 9)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * Note `st.k` of tune i, then queues the next one. The first note picks the line: the first of
+   * the target in pitch order (committed destinations). Later notes follow that line through
+   * merges (`tuneLine`); if it is gone, the first of the target again. Each note is a pin-like
+   * move of the whole line (it may cross other lines; joins stay within its part, `onJoin`).
+   * `no-effect` when the tune has no notes, targets nothing, or no note moved its line (raised
+   * at the last note).
+   */
+  private onTune(i: number, st: TuneStep, late: boolean): void {
+    const m = this.moments[i] as TuneMoment;
+    const starts = this.tunes[i]!;
+    const n = m.notes.length;
+    const k = st.k;
+    const scope = selectorPart(m.target);
+    const activeInScope = (): number[] =>
+      this.sortedActive().filter((v) => scope === null || this.voices[v].part === scope);
+    if (k === 0) {
+      this.span(i, late ? m.at : this.eventT[i], starts[n]);
+      this.activity(starts[n]);
+    }
+    let v = k > 0 ? this.tuneLine(st.voice) : -1;
+    if (v < 0 && n > 0) {
+      const ts = this.resolveTarget(m.target, k === 0 ? m.id : null);
+      v = ts.length > 0 ? ts[0] : -1;
+    }
+    if (v < 0) {
+      if (k === 0) {
+        this.noEffect(m, [], activeInScope());
+        this.traceMoment(i, [], m.target !== undefined && m.target !== 'all', null, null);
+      } else {
+        this.diag(
+          'info',
+          'tune-lost',
+          `The tune's line stopped sounding at ${starts[k]} s; ${n - k} note(s) are skipped.`,
+          m.id,
+        );
+      }
+      return;
+    }
+    const g = this.glides[i];
+    let run: TuneNoteRun;
+    if (g.land === true && !(late && k === 0)) {
+      // Each note arrives on its start; its glide starts no earlier than the previous note.
+      const l = landing(starts[k], g, k === 0 ? 0 : starts[k - 1]);
+      run = { k, voice: v, T: l.start, rest: starts[k], glide: l.glide, land: l.end };
+    } else {
+      // The portamento never outlasts the note.
+      const len = m.notes[k].len;
+      const glide = g.length > len ? { ...g, length: len } : g;
+      run = { k, voice: v, T: starts[k], rest: starts[k], glide, land: undefined };
+    }
+    // Walks leave the line alone until the tune ends (it holds its notes).
+    const line = this.voices[v];
+    if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
+    const { res } = this.applyPointMoment(i, null, late && k === 0, run);
+    const moved = st.moved || (res !== null && res.moves.length > 0);
+    if (k + 1 < n) {
+      const next: TuneStep = { k: k + 1, voice: v, moved };
+      const t = g.land === true ? landing(starts[k + 1], g, starts[k]).start : starts[k + 1];
+      this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_TUNE, ref: i, obj: next });
+    } else if (!moved) {
+      this.noEffect(m, [v], activeInScope());
+    }
+  }
+
+  /**
+   * The line tune note's line `v` now is: itself while active; a line it is dying into; or, once
+   * it has closed after merging, the active line that took it as a member. −1 if none.
+   */
+  private tuneLine(v: number): number {
+    for (let hop = 0; v >= 0 && hop <= this.voices.length; hop++) {
+      const run = this.voices[v];
+      if (run.status === Status.Active) return v;
+      if (run.status === Status.Dying && run.into >= 0) {
+        v = run.into;
+        continue;
+      }
+      const s = this.voices.find((r) => r.status === Status.Active && r.members.includes(v));
+      v = s ? s.index : -1;
+    }
+    return -1;
   }
 
   /**
@@ -1571,6 +1722,8 @@ export class Compiler {
       s.weight += d.weight * f;
       s.members = [...s.members, d.index, ...d.members];
       s.rampWeight(t, s.lastWeight + d.lastWeight * f, HANDOVER);
+      // A tune's line goes on as the survivor (revision 9): walks leave it alone too.
+      if (d.tuneUntil > s.tuneUntil) s.tuneUntil = d.tuneUntil;
       d.setCount(t, 1);
       d.weight = 1;
       d.members = [];
@@ -1861,9 +2014,13 @@ export class Compiler {
     if (steps.length > 0) this.touch();
   }
 
-  /** Voices driven at t by a walk that started after walk wi (§7.1: the later walk drives). */
+  /**
+   * Voices driven at t by a walk that started after walk wi (§7.1: the later walk drives), or
+   * playing a tune (revision 9: a tune holds its notes; walks never step its line).
+   */
   private claimedAt(wi: number, w: WalkMoment, t: Seconds): Set<number> {
     const claimed = new Set<number>();
+    for (const run of this.voices) if (run.tuneUntil > t) claimed.add(run.index);
     for (const wj of this.walks) {
       if (wj === wi) continue;
       const o = this.moments[wj] as WalkMoment;

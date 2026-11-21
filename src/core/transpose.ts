@@ -171,6 +171,8 @@ export function hasFixedNotes(m: Moment): boolean {
       return true;
     case 'walk':
       return (m.fixed?.length ?? 0) > 0;
+    case 'tune':
+      return m.notes.length > 0;
     default:
       return false;
   }
@@ -256,7 +258,7 @@ export interface RemapResult {
 /**
  * Moment `m` (written in key `from`) with every fixed note moved to key `to`: pitch lists, named
  * chords (root transposed when only the tonic changes, else a pitch list of what it voices),
- * frozen chords and walks, note points, pins and unisons on a number, and per-voice pitch
+ * frozen chords and walks, note points, pins and unisons on a number, tune notes, and per-voice pitch
  * overrides. Pitches tied to one voice (pins, frozen walk notes, overrides) fold by octave into
  * that voice's range, reported in `folds`. Returns `m` itself when nothing changes.
  */
@@ -334,6 +336,11 @@ export function remapMoment(
             fixed: m.fixed.map((w) => ({ ...w, pitch: fold(voiceIndex.get(w.voice), w.pitch) })),
           }
         : m;
+      break;
+    case 'tune':
+      // Not tied to one voice: the line is chosen at compile time, so no fold here.
+      out =
+        m.notes.length > 0 ? { ...m, notes: m.notes.map((x) => ({ ...x, pitch: r(x.pitch) })) } : m;
       break;
     default:
       break;

@@ -690,3 +690,25 @@ test('a pulse moment is labelled "Pulse" in the inspector', async ({ page }) => 
   await hook(page, 'select', ['pulse1']);
   await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Pulse');
 });
+
+test('a tune moment is labelled "Tune" in the inspector', async ({ page }) => {
+  await page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      store: { getState(): { piece: { moments: unknown[] } } };
+      actions: { setPiece(p: unknown, o?: { now: boolean }): void };
+    };
+    const p = h.store.getState().piece;
+    const tune = {
+      id: 'tune1',
+      type: 'tune',
+      at: 4,
+      notes: [
+        { pitch: 62, len: 0.5 },
+        { pitch: 64, len: 0.5 },
+      ],
+    };
+    h.actions.setPiece({ ...p, moments: [...p.moments, tune] }, { now: true });
+  });
+  await hook(page, 'select', ['tune1']);
+  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Tune');
+});

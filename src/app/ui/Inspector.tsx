@@ -39,6 +39,7 @@ const TYPE_NAMES: Record<Moment['type'], string> = {
   key: 'Key change',
   level: 'Level',
   pulse: 'Pulse',
+  tune: 'Tune',
 };
 
 /** Sets `muted` on every moment in `ids` as one undo entry. */

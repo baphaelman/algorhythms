@@ -24,9 +24,17 @@ import type { Moment, Pitch } from '../types';
 import { foldIntoRange } from './range';
 import type { VoiceRun } from './voice';
 
-/** True for moments whose count is a number of lines heard after them (owner, 2026-11-21). */
+/**
+ * True for moments whose count is a number of lines heard after them (owner, 2026-11-21), and for
+ * tunes, which see each line once.
+ */
 export function countsLines(m: Moment): boolean {
-  return m.type === 'split' || m.type === 'merge' || (m.type === 'chord' && m.count !== undefined);
+  return (
+    m.type === 'split' ||
+    m.type === 'merge' ||
+    m.type === 'tune' || // a tune moves its whole line (revision 9)
+    (m.type === 'chord' && m.count !== undefined)
+  );
 }
 
 /** Logical voices of the active lines at one moment. */
