@@ -73,6 +73,8 @@ function fadePiece(): unknown {
 interface Row {
   /** Luminance per device column from x0. */
   lum: number[];
+  /** Inked device rows per column around the centre line. */
+  width: number[];
   /** Device columns (from x0) of the playhead rule and of `mark`. */
   head: number;
   mark: number;
@@ -91,6 +93,8 @@ interface Frame {
   a: number;
   b: number;
   mark: number;
+  /** Half height of the band whose ink is counted, CSS px. */
+  band: number;
 }
 
 async function row(page: Page, f: Frame): Promise<Row> {
@@ -119,7 +123,26 @@ async function row(page: Page, f: Frame): Promise<Row> {
     const lum: number[] = [];
     for (let i = 0; i < x1 - x0; i++)
       lum.push(0.2126 * d[4 * i] + 0.7152 * d[4 * i + 1] + 0.0722 * d[4 * i + 2]);
-    return { lum, head: Math.round(v.xHead) * f.dpr - x0, mark: Math.round(X(f.mark)) - x0 };
+    // Inked rows per column within ±BAND CSS px of the centre line (the line's drawn width).
+    const band = Math.round(f.band * f.dpr);
+    const yb = Math.round(y * f.dpr) - band;
+    const box = c.getContext('2d')!.getImageData(x0, yb, x1 - x0, 2 * band + 1).data;
+    const paper = c.getContext('2d')!.getImageData(x0, 2, 1, 1).data;
+    const width: number[] = [];
+    for (let i = 0; i < x1 - x0; i++) {
+      let n = 0;
+      for (let r = 0; r <= 2 * band; r++) {
+        const o = 4 * (r * (x1 - x0) + i);
+        if (Math.max(...[0, 1, 2].map((k) => Math.abs(box[o + k] - paper[k]))) > 12) n++;
+      }
+      width.push(n);
+    }
+    return {
+      lum,
+      width,
+      head: Math.round(v.xHead) * f.dpr - x0,
+      mark: Math.round(X(f.mark)) - x0,
+    };
   }, f);
 }
 
@@ -164,7 +187,7 @@ for (const dpr of [1, 2]) {
         for (const dark of [false, true]) {
           for (const future of [0.35, 1]) {
             const t = seam - 1.5;
-            const f = { json, t, start: t - 2, window: 6, dark, future, dpr, pitch: 59 };
+            const f = { json, t, start: t - 2, window: 6, dark, future, dpr, pitch: 59, band: 10 };
             // From just past the playhead to 30 px past the seam (800 px / 6 s).
             const r = await row(page, { ...f, a: t + 0.02, b: seam + 0.25, mark: seam });
             const label = `${kind} ${dark ? 'dark' : 'light'} ghost ${future} dpr ${dpr}`;
@@ -177,6 +200,19 @@ for (const dpr of [1, 2]) {
             const before = r.lum[r.mark - 8 * dpr];
             const after = r.lum[r.mark + 2 * dpr];
             expect(Math.abs(after - before), `${label}: step at the seam`).toBeLessThan(BUMP);
+            // Thickness: up to 20 px past the seam the drawn width changes by at most a device px
+            // or so per column (no step, neck or bead). A split is checked from before the
+            // playhead (its rule's columns skipped); a merge from the meeting, since before it the
+            // arriving glides cross the band.
+            const a = kind === 'split' ? t - 0.1 : seam - 0.05;
+            const w = await row(page, { ...f, a, b: seam + 0.15, mark: seam });
+            for (let i = 1; i < w.width.length; i++) {
+              if (i >= w.head - 1 && i <= w.head + dpr) continue;
+              expect(
+                Math.abs(w.width[i] - w.width[i - 1]),
+                `${label}: width step at column ${i - w.mark} from the seam`,
+              ).toBeLessThanOrEqual(dpr + 1);
+            }
             if (kind === 'split') {
               // The playhead cut: the past (bright) stops at the rule; the column right of the
               // rule is the dimmed rope's, as further on.
@@ -201,7 +237,7 @@ for (const dpr of [1, 2]) {
       const json = fadePiece();
       for (const dark of [false, true]) {
         for (const future of [0.35, 1]) {
-          const f = { json, t: 3, start: 2, window: 12, dark, future, dpr, pitch: 60 };
+          const f = { json, t: 3, start: 2, window: 12, dark, future, dpr, pitch: 60, band: 4 };
           // Fade out over 4–7 s, back in over 9–12 s.
           const r = await row(page, { ...f, a: 3.2, b: 13, mark: 4 });
           const k = roughness(r.lum, 0, r.lum.length);
