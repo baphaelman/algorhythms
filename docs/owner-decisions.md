@@ -8,6 +8,13 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **Compose for me (M4.5-28).**
+  - New now offers Empty and Compose for me side by side.
+  - The Compose panel takes the inspector's place while it's open, and its inputs are the same as the Generate dialog's.
+  - The pen draws 7.5 s of music per second, so a 2:30 piece builds in about 23 s. Long pieces speed up and take at most about 45 s.
+  - The build is silent unless you press Play, which plays the piece as it grows.
+  - The composer's adjustment passes show as edits: chord registers, and time-fitting for short pieces. With 12 notes the register pass changes little on screen.
+  - The whole compose is one undo. Editing during a build stops it.
 - **The start is a moment (M4.5-27).**
   - A new piece opens on one chord at 0:00 with a single note (A3). Deleting it leaves silence.
   - From silence, only chord, unison and key are enabled in the palette. Shift, split, merge, spread, walk, note and pin say "no note is sounding; start with a chord or a unison".
