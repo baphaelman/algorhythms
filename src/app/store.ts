@@ -27,7 +27,14 @@ import type {
   Piece,
   Seconds,
 } from '../core/types';
-import { DEFAULT_FOLLOW, clampStart, clampWindow, zoomAnchor, zoomAround } from '../render';
+import {
+  DEFAULT_FOLLOW,
+  canvasEnd,
+  clampStart,
+  clampWindow,
+  zoomAnchor,
+  zoomAround,
+} from '../render';
 import {
   configureAudio,
   getEngine,
@@ -168,7 +175,7 @@ export const camera = {
   pitch: null as [number, number] | null,
 };
 
-/** The camera now: `{ start, window }`, both clamped to the piece. */
+/** The camera now: `{ start, window }`, both clamped to the open canvas (`canvasEnd`). */
 export function cameraOf(): { start: Seconds; window: Seconds } {
   const { view, compiled } = get();
   const window = clampWindow(view.window, compiled.duration);
@@ -492,10 +499,21 @@ export function togglePlay(): void {
   else play();
 }
 
+/**
+ * Where the playhead may be put (open-ended canvas, §11.3 revision 7): anywhere on the canvas
+ * while paused, so an Add can land past the end; within the piece while playing. Play from at or
+ * past the end starts from 0.
+ */
+function seekable(t: Seconds, playing: boolean): Seconds {
+  const D = get().compiled.duration;
+  const hi = playing ? D : canvasEnd(D);
+  return Math.min(hi, Math.max(0, Number.isFinite(t) ? t : 0));
+}
+
 /** Moves the playhead to `t` seconds (playing continues from there). */
 export function seekTo(t: Seconds): void {
-  const { transport, compiled } = get();
-  const to = Math.min(compiled.duration, Math.max(0, t));
+  const { transport } = get();
+  const to = seekable(t, transport.status === 'playing');
   clock.pos = to;
   if (transport.status === 'playing') {
     if (clock.started) getEngine()?.seek(to);
@@ -514,7 +532,7 @@ export function seekBy(dt: Seconds): void {
  * release it resumes from there if it was playing, else waits paused at the new position.
  */
 export function scrubTo(t: Seconds): void {
-  const { transport, compiled } = get();
+  const { transport } = get();
   if (!transport.scrubbing) {
     clock.resume = transport.status === 'playing';
     if (clock.resume) {
@@ -525,7 +543,7 @@ export function scrubTo(t: Seconds): void {
     }
     setTransport({ status: 'paused', scrubbing: true });
   }
-  clock.scrub = Math.min(compiled.duration, Math.max(0, t));
+  clock.scrub = seekable(t, false);
 }
 
 /** Ends a scrub at `t`. */
@@ -606,7 +624,7 @@ export function toggleLoop(on?: boolean): boolean {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Sets the visible window (clamped to 2 s … the whole piece), keeping the playhead's x when it is
+ * Sets the visible window (clamped to 2 s … the open canvas), keeping the playhead's x when it is
  * in view, else the view's centre.
  */
 export function setWindow(seconds: Seconds): void {
@@ -627,9 +645,10 @@ export function zoomBy(factor: number): void {
   setWindow(cameraOf().window * factor);
 }
 
-/** Shows the whole piece. */
+/** Shows the whole piece, from 0. */
 export function fitWindow(): void {
-  setWindow(get().compiled.duration);
+  camera.start = 0;
+  setView({ window: clampWindow(get().compiled.duration, get().compiled.duration) });
 }
 
 /** Sets the follow mode. */
@@ -648,7 +667,7 @@ export function setHud(hud: boolean): void {
 }
 
 /**
- * Pans the view by `dt` seconds (positive looks later), within the piece. A pan during playback
+ * Pans the view by `dt` seconds (positive looks later), within the open canvas. A pan during playback
  * turns Follow off.
  */
 export function panBy(dt: Seconds): void {

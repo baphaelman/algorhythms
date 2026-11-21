@@ -10,11 +10,8 @@ import { suggestNext, type Suggestion } from '../../core/suggest';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
 import { usePlayer } from '../store';
 import { edit, select } from './history';
-import { estimateSpan } from './lane';
+import { extendEnd } from './end';
 import { insertMoments, newMomentIds } from './ops';
-
-/** Silence kept after an appended moment (as the compiler's END_TAIL). */
-const MIN_TAIL: Seconds = 4;
 
 const round3 = (t: Seconds): Seconds => Math.round(t * 1000) / 1000;
 
@@ -55,11 +52,7 @@ export function suggestionsAt(piece: Piece, score: CompiledScore, t: Seconds): S
  * moment's span moves out to that. Used for adding and for the hover preview.
  */
 export function appendMoment(piece: Piece, moment: Moment): Piece {
-  const next = insertMoments(piece, [moment]);
-  const endAt = piece.end.at;
-  if (endAt === undefined) return next;
-  const need = round3(estimateSpan(moment, piece.defaults.glide)[1] + MIN_TAIL);
-  return need > endAt ? { ...next, end: { ...next.end, at: need } } : next;
+  return extendEnd(insertMoments(piece, [moment]), [moment]);
 }
 
 interface SuggestionsState {

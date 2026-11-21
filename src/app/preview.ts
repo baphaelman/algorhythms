@@ -12,6 +12,7 @@
 import { compile } from '../core/compiler/compile';
 import type { Moment, MomentType, Piece, Seconds } from '../core/types';
 import { getEngine, primeAudio, resumeAudio, swapAudio } from './audio';
+import { extendEnd } from './editor/end';
 import { insertMoments } from './editor/ops';
 import { defaultMoment } from './editor/new-moment';
 import { PROBE_ID, addTime } from './editor/palette-effects';
@@ -59,7 +60,7 @@ export function startPreview(type: MomentType): boolean {
 export function startMomentPreview(
   moment: Moment,
   label: string | null,
-  build: (piece: Piece, m: Moment) => Piece = (p, m) => insertMoments(p, [m]),
+  build: (piece: Piece, m: Moment) => Piece = (p, m) => extendEnd(insertMoments(p, [m]), [m]),
 ): boolean {
   stopPreview();
   const { piece, transport } = usePlayer.getState();

@@ -7,8 +7,9 @@
  *     timeToX(axis, t) = (t − start) · width / window      xToTime is its inverse
  *
  * `axis` is any `Axis` (a `View` is one; `axisOf(cam, width)` builds one without a score).
- * Follow (`followStart`), zoom (`zoomAround`) and pan only ever change `start` and `window`;
- * `start` is always clamped to [0, duration − window].
+ * Follow (`followStart`), zoom (`zoomAround`) and pan only ever change `start` and `window`.
+ * The canvas is open-ended (§11.3 revision 7): `start` is clamped to [0, canvasEnd − window], where
+ * `canvasEnd(duration)` lies well past the piece's end; Fit and following still frame the piece.
  */
 
 import type { CompiledScore, FollowMode, Seconds } from '../core/types';
@@ -54,24 +55,41 @@ export function xToTime(axis: Pick<Axis, 'start' | 'pps'>, x: number): Seconds {
   return axis.start + x / axis.pps;
 }
 
-/** The allowed window range for a piece of this duration. */
-export function windowRange(duration: Seconds): [Seconds, Seconds] {
-  return [MIN_WINDOW, Math.max(MIN_WINDOW, duration)];
+/** Shortest stretch of open canvas past the piece's end, seconds. */
+export const CANVAS_EXTRA: Seconds = 600;
+
+/**
+ * How far the view may go (open-ended canvas, §11.3 revision 7): max(4 × the piece, its end +
+ * 10 min). Pan and zoom stop there, never before 0.
+ */
+export function canvasEnd(duration: Seconds): Seconds {
+  const d = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  return Math.max(d * 4, d + CANVAS_EXTRA);
 }
 
-/** Clamps a window to [2 s, whole piece]. */
+/** The allowed window range for a piece of this duration: [2 s, the whole open canvas]. */
+export function windowRange(duration: Seconds): [Seconds, Seconds] {
+  return [MIN_WINDOW, Math.max(MIN_WINDOW, canvasEnd(duration))];
+}
+
+/** Clamps a window to [2 s, the open canvas]; a missing one fits the piece. */
 export function clampWindow(window: Seconds, duration: Seconds): Seconds {
   const [lo, hi] = windowRange(duration);
-  return Math.min(hi, Math.max(lo, Number.isFinite(window) ? window : hi));
+  return Math.min(hi, Math.max(lo, Number.isFinite(window) ? window : duration));
 }
 
-/** Clamps `start` to [0, duration − window] (0 when the window covers the piece). */
+/** Clamps `start` to [0, canvasEnd(duration) − window] (0 when the window covers the canvas). */
 export function clampStart(start: Seconds, window: Seconds, duration: Seconds): Seconds {
-  const hi = Math.max(0, duration - window);
+  return clampTo(start, window, canvasEnd(duration));
+}
+
+/** Clamps `start` to [0, end − window]. */
+function clampTo(start: Seconds, window: Seconds, end: Seconds): Seconds {
+  const hi = Math.max(0, end - window);
   return Math.min(hi, Math.max(0, Number.isFinite(start) ? start : 0));
 }
 
-/** Slider position 0..1 (log scale) for a window. 0 = 2 s, 1 = the whole piece. */
+/** Slider position 0..1 (log scale) for a window. 0 = 2 s, 1 = the whole open canvas. */
 export function windowToSlider(window: Seconds, duration: Seconds): number {
   const [lo, hi] = windowRange(duration);
   if (hi <= lo) return 1;
@@ -96,7 +114,9 @@ export function zoomWindow(window: Seconds, factor: number, duration: Seconds): 
  * - `smooth`: the playhead at 35 % of the width;
  * - `page`: unchanged until the playhead passes 92 % (or leaves the view), then the playhead at 8 %;
  * - `off`: unchanged.
- * Always clamped, so near either end (and at Fit) the playhead moves across a still view.
+ * A moved view is clamped to the piece, so near either end (and at Fit) the playhead moves across a
+ * still view; a playhead resting past the end is followed out there. An unmoved view is only
+ * clamped to the open canvas.
  */
 export function followStart(
   mode: FollowMode,
@@ -105,12 +125,13 @@ export function followStart(
   window: Seconds,
   duration: Seconds,
 ): Seconds {
-  let s = start;
+  let s: Seconds;
   if (mode === 'smooth') s = t - SMOOTH_X * window;
   else if (mode === 'page' && (t >= start + PAGE_TURN_X * window || t < start)) {
     s = t - PAGE_LAND_X * window;
-  }
-  return clampStart(s, window, duration);
+  } else return clampStart(start, window, duration);
+  const end = t > duration ? Math.max(duration, s + window) : duration;
+  return clampTo(s, window, end);
 }
 
 /**
