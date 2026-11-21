@@ -10,6 +10,8 @@ const h = vi.hoisted(() => {
   const state = {
     handler: null as ((e: KeyboardEvent) => void) | null,
     upHandler: null as ((e: KeyboardEvent) => void) | null,
+    /** The window capture handler for Space (keydown and keyup). */
+    spaceHandler: null as ((e: KeyboardEvent) => void) | null,
     dialogOpen: false,
     wide: true,
     selection: [] as string[],
@@ -18,7 +20,12 @@ const h = vi.hoisted(() => {
   };
   const g = globalThis as Record<string, unknown>;
   g.HTMLElement = FakeElement;
-  g.window = { addEventListener: () => undefined, removeEventListener: () => undefined };
+  g.window = {
+    addEventListener: (type: string, fn: (e: KeyboardEvent) => void, capture?: boolean) => {
+      if (type === 'keydown' && capture === true) state.spaceHandler = fn;
+    },
+    removeEventListener: () => undefined,
+  };
   g.document = {
     addEventListener: (type: string, fn: (e: KeyboardEvent) => void) => {
       if (type === 'keydown') state.handler = fn;
@@ -114,17 +121,33 @@ function press(key: string, over: Partial<Ev> = {}): Ev {
     },
     ...over,
   };
-  h.state.handler?.(e as unknown as KeyboardEvent);
+  // As in the browser: the window capture handler first, then the document unless stopped.
+  let stopped = false;
+  const ev = Object.assign(e, {
+    type: 'keydown',
+    stopPropagation: () => {
+      stopped = true;
+    },
+  });
+  h.state.spaceHandler?.(ev as unknown as KeyboardEvent);
+  if (!stopped) h.state.handler?.(ev as unknown as KeyboardEvent);
   return e;
 }
 
-/** Releases `key` (keyup). */
-function release(key: string): void {
-  h.state.upHandler?.({
+/** Releases `key` (keyup); true if it was cancelled. */
+function release(key: string, target: unknown = BODY): boolean {
+  let prevented = false;
+  h.state.spaceHandler?.({
+    type: 'keyup',
     key,
     code: key === ' ' ? 'Space' : '',
-    target: BODY,
+    target,
+    preventDefault: () => {
+      prevented = true;
+    },
+    stopPropagation: () => undefined,
   } as unknown as KeyboardEvent);
+  return prevented;
 }
 
 beforeEach(() => {
@@ -256,17 +279,34 @@ describe('undo and redo', () => {
 });
 
 describe('player keys', () => {
-  it('Space plays on release in the editor (Space-drag pans), except on buttons', () => {
+  it('Space plays on release in the editor (Space-drag pans), on any control', () => {
     press(' ');
     expect(fns.togglePlay).not.toHaveBeenCalled();
     release(' ');
     expect(fns.togglePlay).toHaveBeenCalledTimes(1);
-    press(' ', { target: el('button') });
-    release(' ');
-    press(' ', { target: el('input', 'range') });
-    press(' ', { target: el('input', 'range'), repeat: true });
-    release(' ');
-    expect(fns.togglePlay).toHaveBeenCalledTimes(2);
+    for (const t of [el('button'), el('input', 'checkbox'), el('select'), el('input', 'range')]) {
+      expect(press(' ', { target: t }).defaultPrevented).toBe(true);
+      press(' ', { target: t, repeat: true });
+      expect(release(' ', t)).toBe(true);
+    }
+    expect(fns.togglePlay).toHaveBeenCalledTimes(5);
+  });
+
+  it('Space types in text fields and does not play', () => {
+    for (const t of [el('input', 'text'), el('input', 'search'), el('textarea')]) {
+      expect(press(' ', { target: t }).defaultPrevented).toBe(false);
+      expect(release(' ', t)).toBe(false);
+    }
+    expect(fns.togglePlay).not.toHaveBeenCalled();
+  });
+
+  it('Enter toggles a focused checkbox', () => {
+    const click = vi.fn();
+    const box = Object.assign(el('input', 'checkbox') as object, { click });
+    expect(press('Enter', { target: box }).defaultPrevented).toBe(true);
+    press('Enter', { target: box, repeat: true });
+    press('Enter', { target: el('button') });
+    expect(click).toHaveBeenCalledTimes(1);
   });
 
   it('arrows seek, except on sliders and text fields; − and = zoom', () => {
@@ -284,6 +324,9 @@ describe('player keys', () => {
   it('work outside the wide layout, and not with a dialog open', () => {
     h.state.wide = false;
     press(' ');
+    expect(fns.togglePlay).toHaveBeenCalledTimes(1);
+    press(' ', { repeat: true });
+    release(' ');
     expect(fns.togglePlay).toHaveBeenCalledTimes(1);
     h.state.dialogOpen = true;
     press(' ');

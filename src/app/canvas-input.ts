@@ -13,7 +13,8 @@
  * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
  *   pauses on release only when it did not pan);
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
- * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
+ * - `−` / `=` change the window, ←/→ seek; Space plays and pauses whatever has focus, except in
+ *   a text field (space-key.ts; a window capture handler, so focused controls never take it);
  * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
  * - wide layout only: C U S M T P W I K L add a moment at the playhead, Delete/Backspace delete
  *   the selection, Escape clears it and the dot selection (editor/shortcuts.ts), unless another
@@ -50,13 +51,14 @@ import { clearHover, setHover } from './hover';
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
+import { isSpace, spaceKey, type SpaceHeld } from './space-key';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_SLOP = 4;
 
 /** Space held (editor layout): a drag pans, and the release plays/pauses only if none did. */
-const space = { down: false, panned: false };
+const space: SpaceHeld = { down: false, panned: false };
 
 interface PointerInfo {
   x: number;
@@ -405,18 +407,18 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   };
 }
 
-/** True for targets that handle Space or arrow keys themselves. */
-function ownsKeys(target: EventTarget | null, key: string): boolean {
+/** True for targets that handle the arrow keys themselves. */
+function ownsArrows(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
-  if (tag === 'textarea' || tag === 'select' || target.isContentEditable) return true;
-  if (tag === 'button' || tag === 'a' || tag === 'summary') return key === ' ';
-  if (tag === 'input') {
-    const type = (target as HTMLInputElement).type;
-    // Range inputs use the arrows; Space does nothing there, so the player may take it.
-    return type === 'range' ? key !== ' ' : true;
-  }
-  return false;
+  return tag === 'textarea' || tag === 'select' || tag === 'input' || target.isContentEditable;
+}
+
+/** True for a focused checkbox or radio: Enter toggles it, since Space no longer does. */
+function isToggleInput(target: EventTarget | null): target is HTMLInputElement {
+  if (!(target instanceof HTMLElement) || target.tagName.toLowerCase() !== 'input') return false;
+  const type = (target as HTMLInputElement).type;
+  return type === 'checkbox' || type === 'radio';
 }
 
 /** True when a native text-editing control has focus (it owns its own undo). */
@@ -468,20 +470,10 @@ export function attachKeys(): () => void {
     } else if (e.key === '=' || e.key === '+') {
       zoomBy(0.8);
       e.preventDefault();
-    } else if (e.code === 'Space' || e.key === ' ') {
-      if (ownsKeys(e.target, ' ')) return;
-      e.preventDefault();
-      if (!editorLayout()) {
-        togglePlay();
-      } else if (!e.repeat && !space.down) {
-        // Editor: Space-drag pans, so play/pause waits for the release (`onKeyUp`).
-        space.down = true;
-        space.panned = false;
-      }
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       // ▲/▼ on a selected note point (§11.3); Shift+▲/▼ an octave, also on selected dots. The
       // lane's own arrows came first.
-      if (e.defaultPrevented || ownsKeys(e.target, e.key) || !editorLayout()) return;
+      if (e.defaultPrevented || ownsArrows(e.target) || !editorLayout()) return;
       const dir = e.key === 'ArrowUp' ? 1 : -1;
       if (e.shiftKey) {
         const dots = currentDots();
@@ -495,25 +487,41 @@ export function attachKeys(): () => void {
       const sel = useEditor.getState().selection;
       if (sel.length === 1 && stepNote(sel[0], dir, undefined, e.shiftKey)) e.preventDefault();
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      if (ownsKeys(e.target, e.key)) return;
+      if (ownsArrows(e.target)) return;
       e.preventDefault();
       seekBy((e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 15 : 5));
     }
   };
-  const onKeyUp = (e: KeyboardEvent): void => {
-    if (!(e.code === 'Space' || e.key === ' ') || !space.down) return;
-    space.down = false;
-    if (!space.panned && !document.querySelector('dialog[open]')) togglePlay();
+  // Window, capture phase: runs before any control, React handler or document listener sees the
+  // key. Browsers activate buttons and checkboxes on Space keyup, so keyup is cancelled too.
+  const onSpace = (e: KeyboardEvent): void => {
+    if (e.type === 'keydown' && e.key === 'Enter' && isToggleInput(e.target)) {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      e.target.click();
+      return;
+    }
+    if (!isSpace(e)) return;
+    // ⌘/Ctrl/Alt+Space belong to the system; a release always ends the hold.
+    if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    const dialog = document.querySelector('dialog[open]') !== null;
+    const out = spaceKey(e, space, { editor: editorLayout(), dialog });
+    if (!out.consume) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (out.toggle) togglePlay();
   };
   const onBlur = (): void => {
     space.down = false;
   };
   document.addEventListener('keydown', onKey);
-  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('keydown', onSpace, true);
+  window.addEventListener('keyup', onSpace, true);
   window.addEventListener('blur', onBlur);
   return () => {
     document.removeEventListener('keydown', onKey);
-    document.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('keydown', onSpace, true);
+    window.removeEventListener('keyup', onSpace, true);
     window.removeEventListener('blur', onBlur);
   };
 }

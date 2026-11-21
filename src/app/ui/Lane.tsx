@@ -15,7 +15,7 @@
  * (Follow turns off during playback); drag an item to move it (snapping
  * to the BPM grid unless Alt is held); Alt at press duplicates; dragging a span end changes the
  * glide length (Shift: stagger; a walk's end, a level ramp's length). Keys on a focused item:
- * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter/Space select. Focusing an
+ * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter selects (Space plays and pauses). Focusing an
  * off-screen item pans the paused view to it.
  */
 
@@ -669,7 +669,6 @@ export function Lane() {
         break;
       }
       case 'Enter':
-      case ' ':
         if (e.shiftKey) {
           select(selected.has(id) ? selection.filter((x) => x !== id) : [...selection, id]);
         } else {
