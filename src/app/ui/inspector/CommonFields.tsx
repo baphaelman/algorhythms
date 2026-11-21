@@ -3,14 +3,61 @@
  * the transition (sliders, Order and Curve chips, curve preview, Arrive together) and seed.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { selectorPart } from '../../../core/parts';
 import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
 import type { EaseRef, Glide, GlideOrder, Moment, Piece, VoiceSelector } from '../../../core/types';
 import { reroll, updateMoment } from '../../editor/actions';
+import { partNames } from '../../editor/parts';
 import { usePlayer } from '../../store';
 import { CheckField, Chips, NumberField, Row, Slider, fieldSetter } from './controls';
-import { arriveGlide, easePath, targetMode, type TargetMode } from './fields';
+import { arriveGlide, easePath, partTarget, targetMode, type TargetMode } from './fields';
+
+const ALL = '\u0000all';
+const OTHER = '\u0000other';
+
+/**
+ * The Part chooser (§11.3 revision 9): in the main section whenever the piece has parts. "All"
+ * writes the default target, a part writes `{ part }`; a rank or pick target shows as "Advanced".
+ */
+export function PartField({ m, piece }: { m: Moment; piece: Piece }) {
+  const id = useId();
+  const parts = partNames(piece);
+  const cur = selectorPart(m.target);
+  if (parts.length === 0 && cur === null) return null;
+  const mode = targetMode(m.target);
+  const value = mode === 'all' ? ALL : cur !== null ? cur : OTHER;
+  return (
+    <Row label="Part" htmlFor={id}>
+      <select
+        id={id}
+        value={value}
+        data-testid="insp-part"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === OTHER || v === value) return;
+          updateMoment(m.id, { target: partTarget(v === ALL ? '' : v) }, 'Change part');
+        }}
+      >
+        <option value={ALL}>All</option>
+        {parts.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+        {cur !== null && !parts.includes(cur) && (
+          <option value={cur}>{cur === '' ? 'Unassigned' : `${cur} (no notes)`}</option>
+        )}
+        {value === OTHER && (
+          <option value={OTHER} disabled>
+            Advanced
+          </option>
+        )}
+      </select>
+    </Row>
+  );
+}
 
 const TARGET_MODES: readonly (readonly [TargetMode, string])[] = [
   ['all', 'All'],
@@ -30,7 +77,7 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
   // Voices sounding just before the moment acts: what `rank` counts from.
   const active = Math.max(1, activeAt(compiled, m.at).length);
   const rank = target && target !== 'all' && 'rank' in target ? target.rank : null;
-  const [open, setOpen] = useState(mode !== 'all');
+  const [open, setOpen] = useState(mode !== 'all' && mode !== 'part');
 
   const choose = (v: TargetMode): void => {
     if (v === mode) return;

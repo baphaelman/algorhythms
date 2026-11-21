@@ -1412,3 +1412,18 @@ PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schem
 
 **R9-1 app fix:** `walk-steps.ts` `targets()` handles `{ part }` (voices whose `partOf` equals it); test `walkAt with a { part } target` in `tests/unit/app/walk-steps.test.ts`.
 Inspector `targetMode` has no part mode yet (R9-6): a `{ part }` target falls through to the `rank` mode with no range shown. Typecheck is clean.
+
+## R9-6: parts UI (2026-11-21)
+`src/app/editor/parts.ts` (pure recipes: `partNames`, `assignPart`, `renamePart`, `deletePart`, `patchPart`, `setPartRangeBound`, `common`); each drawer action is one `edit` (one undo entry, the usual incremental/hot-swap path; a part change forces a full compile per R9-1).
+- **Drawer:** without parts it is as before plus a **New part** header button. With parts, one `<tbody>` per part (pool order of first appearance), then **Unassigned** (a plain header, no controls). A part header row holds a name field (Enter/blur commits; empty or taken names refused, error in the tooltip), × delete, and timbre, pan (A + slider), gain and range for all its notes, plus "n notes". A Part column gives each note a select: Unassigned, the parts, **New part…**.
+- **Inspector:** `PartField` (Part select: All, the parts) after Time whenever the piece has parts (or the moment targets a part). `targetMode` gains `'part'`; a part target keeps Advanced closed with no chip pressed. Header shows "· Part"; the lane tooltip reads "Part: X" above any no-effect reason.
+
+**Decisions (PLAN is silent):**
+- New part (header): no parts → every note goes into "Part 1"; with parts → the unassigned notes form "Part n" (disabled when none). Row "New part…" makes "Part n" holding that note.
+- "Mixed": timbre select shows a disabled "Mixed" option (as All notes); pan/gain readouts say "Mixed" while the slider sits at the first note's value and a drag sets all; range fields are blank with a "Mixed" placeholder, and committing one bound sets that bound on every note, keeping each note's other bound. Pan "A" sets all auto, or all to centre when all are auto.
+- Rename to an existing name is refused (no merging parts).
+- Delete part: notes become unassigned; moments targeting it are retargeted to `{ voices: [its notes] }` (default target if it had none); asks inline in the drawer when any moment targets it.
+- Part chooser: a rank/pick target shows a disabled "Advanced" option; an unknown part shows as "X (no notes)".
+- Pool growth doesn't copy a part; new notes are unassigned.
+
+**Tests:** `tests/unit/app/parts.test.ts` (rename + undo, refused names, whole-part set, range bound, move, delete, target-mode round trip); `tests/e2e/parts.spec.ts` (build parts, Part chooser, header/tooltip, diagnostics reach the UI, rename as one undo, whole-part timbre + Mixed, All, delete confirm).
