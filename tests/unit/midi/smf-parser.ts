@@ -109,6 +109,8 @@ export interface ParsedNote {
   off: number;
   /** Bend range (semitones) in force when the note struck. */
   range: number;
+  /** Note-on velocity. */
+  velocity: number;
   /** Bend values (14-bit): the value in force at note-on, then each bend event up to the note-off. */
   bends: { tick: number; value: number }[];
 }
@@ -181,6 +183,7 @@ export function reconstruct(events: RawEvent[]): TrackTrace {
         on: e.tick,
         off: -1,
         range: range[e.ch],
+        velocity: e.b,
         bends: [{ tick: e.tick, value: bend[e.ch] }],
       };
       open.set(`${e.ch}:${e.a}`, n);

@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
+import { pieceDecisionTime } from '../../../src/core/compiler/glide';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { momentEffectAt } from '../../../src/core/effect';
 import { flatten, unflatten, PULSE_STRIDE } from '../../../src/core/flat';
@@ -349,5 +350,29 @@ describe('pulse: incremental compile and flat layout', () => {
     const s = compile(make([pulse()]));
     for (const cv of s.voices)
       for (const r of cv.pulse ?? []) if (r.hit) expect(lifeAt(cv, r.t)).not.toBeNull();
+  });
+});
+
+describe('pulse under defaults.glide.land (R9-7 bug)', () => {
+  it('starts at its `at`, not at a lead-in: land does not apply to pulse', () => {
+    const p = piece({
+      pool: 8,
+      start: START,
+      glide: { ...GLIDE, length: 1.5, stagger: 0.25, land: true },
+      end: { at: 12, fade: 1 },
+      moments: [pulse()],
+    });
+    const s = compile(p);
+    for (let v = 0; v < 4; v++) {
+      expect(s.voices[v].pulse![0].t).toBe(2);
+      expect(hits(s, v)[0].t).toBe(2);
+    }
+    expect(pulseGainAt(s.voices[0], 1.9)).toBe(1);
+    expect(
+      pieceDecisionTime(
+        p,
+        p.moments.find((m) => m.type === 'pulse')!,
+      ),
+    ).toBe(2);
   });
 });

@@ -6,6 +6,7 @@
  */
 
 import type {
+  PulseRecord,
   CompiledScore,
   CompiledVoice,
   EaseRef,
@@ -111,6 +112,34 @@ export function makeVoice(index: number, spec: VoiceSpec, end: number): Compiled
     solo: spec.solo ?? false,
     sends: spec.sends ?? {},
   };
+}
+
+/**
+ * Adds pulse records (revision 9) to every `every`-th voice, in place: from 1 s to 1 s before the
+ * end, a hit every `step` (accents 1, 0.5, 0.75, 0.25; decay 0.6·step; floor 0.2; re-striking),
+ * then back to 1. For the RTF and no-GC workloads (R9-3b).
+ */
+export function withPulses(score: CompiledScore, every = 2, step = 0.25): CompiledScore {
+  const accents = [1, 0.5, 0.75, 0.25];
+  const end = score.duration - 1;
+  score.voices.forEach((v, i) => {
+    if (i % every !== 0 || end <= 1) return;
+    const recs: PulseRecord[] = [{ t: 1, accent: 1, decay: 0, floor: 0.2, strike: false }];
+    for (let k = 0; 1 + k * step < end; k++) {
+      const t = Math.round((1 + k * step) * 1e9) / 1e9;
+      recs.push({
+        t,
+        accent: accents[k % 4],
+        decay: 0.6 * step,
+        floor: 0.2,
+        strike: true,
+        hit: true,
+      });
+    }
+    recs.push({ t: end, accent: 1, decay: 0, floor: 1, strike: false });
+    v.pulse = recs;
+  });
+  return score;
 }
 
 /** Builds a score from voice specs; duration = the last death. */

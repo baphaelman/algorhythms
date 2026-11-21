@@ -19,16 +19,19 @@ import {
   FIXTURE_MIX,
   lockStressScore,
   PLAIN_EASES,
+  withPulses,
 } from '../../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../../src/dsp/constants';
 
 const RATE = 48000;
 const arg = process.argv[2];
 const mode = arg === 'all' || arg === 'lock' ? arg : 'plain';
-const score =
+// Every other voice pulses (R9-3b): onsets, strikes and decays on the audio thread.
+const score = withPulses(
   mode === 'lock'
     ? lockStressScore(12, 80, 17)
-    : denseScore(24, 80, 5, mode === 'all' ? ALL_EASES : PLAIN_EASES);
+    : denseScore(24, 80, 5, mode === 'all' ? ALL_EASES : PLAIN_EASES),
+);
 const graph = createLoadedGraph({ score, mix: FIXTURE_MIX, sampleRate: RATE });
 const left = new Float32Array(BLOCK_FRAMES);
 const right = new Float32Array(BLOCK_FRAMES);

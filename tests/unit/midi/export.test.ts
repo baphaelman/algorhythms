@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
-import { pitchAt } from '../../../src/core/query';
+import { pulseGainAt } from '../../../src/core/pulse';
+import { pitchAt, weightAt, weightTargetAt } from '../../../src/core/query';
 import { parsePiece } from '../../../src/core/schema';
 import type { CompiledScore, CompiledVoice, Life } from '../../../src/core/types';
 import {
@@ -19,6 +20,8 @@ import {
   type MidiExportOptions,
   type MidiFile,
 } from '../../../src/midi/export';
+import { crossfadePiece } from '../core/crossfade-fixtures';
+import { pulseChordPiece, pulseGatePiece } from '../core/pulse-fixtures';
 import { easeScore, lifeScore, manyVoices, wideScore } from './fixtures';
 import {
   cc11At,
@@ -53,21 +56,26 @@ function truth(v: CompiledVoice, t: number, tps: number): number | null {
   return null;
 }
 
-/** Independent copy of the sound engine's gain: smootherstep life fades (≥ 5 ms) times the level ramps. */
+/**
+ * Independent copy of the sound engine's gain as CC11 carries it (R9-3b): smootherstep life fades
+ * (≥ 5 ms), √X over a merge's or split's crossfade window, the level ramps, the pulse envelope
+ * (core's reference) and √(weight / the life's peak weight) (the note strikes at that peak).
+ */
 function expectedGain(v: CompiledVoice, t: number, peak: number): number {
   const sstep = (x: number): number => x * x * x * (x * (x * 6 - 15) + 10);
   let w = 0;
+  let wPeak = 1;
   for (const l of v.lives) {
     const end = l.died ?? Infinity;
     if (t < l.born || t >= end) continue;
     w = 1;
-    // Merges and splits crossfade in sound; MIDI keeps a 0.1 s hand-over at the meeting.
-    const fin = l.crossIn ? Math.min(l.fadeIn, 0.1) : l.fadeIn;
-    const fout = l.crossOut ? Math.min(l.fadeOut ?? 0, 0.1) : (l.fadeOut ?? 0);
-    const u = (t - l.born) / Math.max(fin, 0.005);
-    if (u < 1) w = sstep(u);
-    const d = (end - t) / Math.max(fout, 0.005);
-    if (d < 1) w *= sstep(d);
+    const u = (t - l.born) / Math.max(l.fadeIn, 0.005);
+    if (u < 1) w = l.crossIn ? Math.sqrt(sstep(u)) : sstep(u);
+    const d = (end - t) / Math.max(l.fadeOut ?? 0, 0.005);
+    if (d < 1) w *= l.crossOut ? Math.sqrt(sstep(d)) : sstep(d);
+    const stop = l.died ?? Infinity;
+    wPeak = weightTargetAt(v, l.born);
+    for (const c of v.weight ?? []) if (c.t >= l.born && c.t <= stop) wPeak = Math.max(wPeak, c.w);
   }
   let level = 1;
   let start = 1;
@@ -81,7 +89,39 @@ function expectedGain(v: CompiledVoice, t: number, peak: number): number {
     const u = e.over > 0 ? (t - e.t) / e.over : 1;
     level = u >= 1 ? e.gain : start + (e.gain - start) * u;
   });
-  return (w * level) / peak;
+  const lw = v.weight?.length ? Math.min(1, weightAt(v, t) / wPeak) : 1;
+  return (w * level * pulseGainAt(v, t) * Math.sqrt(lw)) / peak;
+}
+
+/** CC11 is thinned (src/midi/export.ts CC_STEP, CC_MIN_GAP): what it may lag by at a tick. */
+const CC_STEP = 2;
+const CC_GAP = 0.005;
+
+/**
+ * Worst CC11 error over a track against `expectedGain`, beyond what the thinning allows: 1.5
+ * steps, plus how far the gain moved in the CC_GAP (+ a tick) before.
+ */
+function cc11Excess(
+  v: CompiledVoice,
+  cc: { tick: number; value: number }[],
+  peak: number,
+  tps: number,
+  total: number,
+  every = 3,
+): number {
+  let worst = 0;
+  for (let tick = 0; tick <= total; tick += every) {
+    const t = tick / tps;
+    const want = expectedGain(v, t, peak);
+    let lag = 0;
+    for (let k = 1; k <= 6; k++) {
+      const tp = t - (k / 6) * (CC_GAP + 1 / tps);
+      lag = Math.max(lag, Math.abs(want - expectedGain(v, tp, peak)));
+    }
+    const err = Math.abs(cc11At(cc, tick) / 127 - want);
+    worst = Math.max(worst, err - ((CC_STEP - 0.5) / 127 + lag));
+  }
+  return worst;
 }
 
 /** Index of the first element with key(x) >= v in a sorted array. */
@@ -255,14 +295,16 @@ function verifyFile(
 
     // CC11 follows the life and level gain at every tick it can change.
     if (o.cc11) {
-      let maxErr = 0;
       const peak = Math.max(1, ...score.voices.flatMap((x) => x.level.map((l) => l.gain)));
-      for (let tick = 0; tick <= total; tick += 3) {
-        const t = tick / tps;
-        const got = cc11At(tr.cc11, tick) / 127;
-        maxErr = Math.max(maxErr, Math.abs(got - expectedGain(v, t, peak)));
+      expect(cc11Excess(v, tr.cc11, peak, tps, total)).toBeLessThanOrEqual(1e-9);
+      // At most one event per CC_GAP, except jumps (pulse records).
+      const jumps = new Set((v.pulse ?? []).map((r) => Math.round(r.t * tps)));
+      for (let i = 1; i < tr.cc11.length; i++) {
+        if (jumps.has(tr.cc11[i].tick)) continue;
+        expect(tr.cc11[i].tick - tr.cc11[i - 1].tick).toBeGreaterThanOrEqual(
+          Math.round(CC_GAP * tps),
+        );
       }
-      expect(maxErr).toBeLessThanOrEqual(0.5 / 127 + 1e-9);
       expect(tr.cc11[0]).toMatchObject({ tick: 0 });
     } else expect(tr.cc11).toHaveLength(0);
   });
@@ -379,11 +421,106 @@ describe('CC11', () => {
     const s = easeScore();
     const tr = reconstruct(parseSmf(exportMidi(s, { cc11: true }).files[0].data).tracks[1]);
     // fadeIn 0.5 s from t = 0.5 s: at 0.75 s gain 0.5, at 0.6 s smootherstep(0.2) = 0.05792
-    expect(cc11At(tr.cc11, 0.75 * PPQ)).toBe(Math.round(127 * 0.5));
-    expect(cc11At(tr.cc11, 0.6 * PPQ)).toBe(Math.round(127 * 0.05792));
+    // (within the thinning's 1.5 steps; the 5 ms lag is under 1 step on this fade).
+    expect(Math.abs(cc11At(tr.cc11, 0.75 * PPQ) - 127 * 0.5)).toBeLessThanOrEqual(2.5);
+    expect(Math.abs(cc11At(tr.cc11, 0.6 * PPQ) - 127 * 0.05792)).toBeLessThanOrEqual(2);
     expect(cc11At(tr.cc11, 0.3 * PPQ)).toBe(0);
     expect(cc11At(tr.cc11, 1.2 * PPQ)).toBe(127);
     expect(cc11At(tr.cc11, 11.5 * PPQ)).toBe(0);
+  });
+});
+
+/** A line's life amplitude as dsp/voice.ts `computeLife` plays it (√X over crossfades). */
+function lifeAmp(v: CompiledVoice, t: number): number {
+  const sstep = (x: number): number => x * x * x * (x * (x * 6 - 15) + 10);
+  for (const l of v.lives) {
+    const end = l.died ?? Infinity;
+    if (t < l.born || t >= end) continue;
+    let w = 1;
+    const u = (t - l.born) / Math.max(l.fadeIn, 0.005);
+    if (u < 1) w = l.crossIn ? Math.sqrt(sstep(u)) : sstep(u);
+    const d = (end - t) / Math.max(l.fadeOut ?? 0, 0.005);
+    if (d < 1) w *= l.crossOut ? Math.sqrt(sstep(d)) : sstep(d);
+    return w;
+  }
+  return 0;
+}
+
+describe('CC11: pulse envelopes and crossfades (R9-3b)', () => {
+  it('pulse: each hit jumps on its tick, decays to accent × floor and settles exactly', () => {
+    const s = compile(pulseGatePiece('sine', { floor: 0.2 }));
+    run(s, { cc11: true }, 'cc11 pulse');
+    const tr = reconstruct(parseSmf(exportMidi(s, { cc11: true }).files[0].data).tracks[1]);
+    const hits = (s.voices[0].pulse ?? []).filter((r) => r.hit);
+    expect(hits).toHaveLength(8);
+    hits.forEach((h, i) => {
+      const tick = Math.round(h.t * PPQ);
+      expect(cc11At(tr.cc11, tick)).toBe(Math.round(127 * h.accent));
+      // Before it: full level before the pulse, else the previous hit's settled floor.
+      const before = i === 0 ? 127 : Math.round(127 * hits[i - 1].accent * hits[i - 1].floor);
+      expect(cc11At(tr.cc11, tick - 1)).toBe(before);
+      expect(cc11At(tr.cc11, Math.round((h.t + h.decay + 0.01) * PPQ))).toBe(
+        Math.round(127 * h.accent * h.floor),
+      );
+    });
+    expect(cc11At(tr.cc11, 5.2 * PPQ)).toBe(127);
+  });
+
+  it('pulse: sparse (step and rate cap) against writing every 7-bit change', () => {
+    for (const [label, p] of [
+      ['gate', pulseGatePiece('sine', { floor: 0.2 })],
+      ['chord', pulseChordPiece('sine')],
+    ] as const) {
+      const s = compile(p);
+      const smf = parseSmf(exportMidi(s, { cc11: true }).files[0].data);
+      let events = 0;
+      let naive = 0;
+      let hits = 0;
+      sounding(s).forEach((v, k) => {
+        const cc = reconstruct(smf.tracks[k + 1]).cc11;
+        events += cc.length;
+        hits += (v.pulse ?? []).filter((r) => r.hit).length;
+        let last = -1;
+        for (let tick = 0; tick <= s.duration * PPQ; tick++) {
+          const q = Math.round(127 * expectedGain(v, tick / PPQ, 1));
+          if (q !== last) naive++;
+          last = q;
+        }
+      });
+      console.info(
+        `CC11 ${label}: ${events} events (${(events / hits).toFixed(1)} per hit), ` +
+          `every 7-bit change: ${naive} (${((100 * events) / naive).toFixed(0)} %)`,
+      );
+      expect(events / hits).toBeLessThan(40);
+      expect(events).toBeLessThan(0.5 * naive);
+    }
+  });
+
+  it('crossfades: fades over the whole window, and the lines keep their summed power', () => {
+    const s = compile(crossfadePiece('sine'));
+    expect(s.voices.some((v) => v.lives.some((l) => l.crossIn || l.crossOut))).toBe(true);
+    run(s, { cc11: true }, 'cc11 crossfade');
+    const smf = parseSmf(exportMidi(s, { cc11: true }).files[0].data);
+    const voices = sounding(s);
+    const traces = voices.map((_, k) => reconstruct(smf.tracks[k + 1]));
+    const peakW = Math.max(1, ...s.voices.flatMap((v) => (v.weight ?? []).map((c) => c.w)));
+    const scale = Math.min(1, 127 / (100 * Math.sqrt(peakW)));
+    let worst = 0;
+    for (let t = 0.5; t < 15; t += 0.005) {
+      const tick = Math.round(t * PPQ);
+      let midi = 0;
+      let sound = 0;
+      voices.forEach((v, k) => {
+        const n = traces[k].notes.find((x) => x.on <= tick && tick < x.off);
+        const vel = n ? n.velocity / (100 * scale) : 0;
+        midi += (vel * cc11At(traces[k].cc11, tick)) ** 2 / 127 ** 2;
+        // The engine's power (dsp computeLife): life² × weight.
+        sound += lifeAmp(v, t) ** 2 * weightAt(v, t);
+      });
+      if (sound > 0.5) worst = Math.max(worst, Math.abs(10 * Math.log10(midi / sound)));
+    }
+    console.info(`CC11 crossfade: MIDI power within ${worst.toFixed(3)} dB of the engine's`);
+    expect(worst).toBeLessThan(0.3);
   });
 });
 

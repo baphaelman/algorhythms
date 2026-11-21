@@ -172,9 +172,13 @@ export function birthFadeIn(glide: Glide): Seconds {
   return glide.length / 2 > 0.5 ? glide.length / 2 : 0.5;
 }
 
-/** Moment types whose glide `land` applies to: the point moments that move pitch (revision 9). */
+/**
+ * Moment types whose glide `land` applies to: the point moments that move pitch (revision 9).
+ * Not key, level, walk (steps at their own times) or pulse (moves no pitch; R9-7 found a pulse
+ * under `defaults.glide.land` starting at its lead-in).
+ */
 export function glides(m: Pick<Moment, 'type'>): boolean {
-  return m.type !== 'key' && m.type !== 'level' && m.type !== 'walk';
+  return m.type !== 'key' && m.type !== 'level' && m.type !== 'walk' && m.type !== 'pulse';
 }
 
 /** A land moment's lead-in (revision 9): where it starts and decides, and the glide it uses. */

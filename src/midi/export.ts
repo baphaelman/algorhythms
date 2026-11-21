@@ -14,7 +14,9 @@
  */
 
 import { zipSync } from 'fflate';
-import { segmentIndexAt, weightTargetAt } from '../core/query';
+import { crossfade } from '../core/ease';
+import { pulseGainAt } from '../core/pulse';
+import { segmentIndexAt, weightAt, weightTargetAt } from '../core/query';
 import { evalSegment } from '../core/segment';
 import type { CompiledScore, CompiledVoice, Life, Segment } from '../core/types';
 import { SmfTrack, writeSmf } from './smf';
@@ -35,7 +37,10 @@ export interface MidiExportOptions {
   bpm?: number;
   /** End the note and strike it again on every arrival at a held pitch (plucked sounds). Default false. */
   restrikeOnArrival?: boolean;
-  /** Write life and level gain as CC11 (smootherstep life fades, as the sound engine plays them). Default false. */
+  /**
+   * Write life, level, pulse and weight gain as CC11, as the sound engine plays them (life fades,
+   * crossfades, pulse envelopes); notes then strike at their life's peak weight. Default false.
+   */
   cc11?: boolean;
   /**
    * Note-on velocity of a weight-1 line, 1..127; default 100. A line of weight w strikes at
@@ -348,33 +353,67 @@ export function weightVelocity(
   };
 }
 
+/**
+ * With CC11 (R9-3b): every note of a life strikes at the velocity of the heaviest weight the life
+ * reaches (`lifeWeightPeak`), scaled as `weightVelocity`; CC11 carries the rest.
+ */
+export function peakVelocity(
+  score: CompiledScore,
+  base: number,
+): (voice: CompiledVoice, t: number) => number {
+  const scale = Math.min(1, 127 / (base * Math.sqrt(weightPeak(score))));
+  return (voice, t) => {
+    let w = 1;
+    if (voice.weight && voice.weight.length > 0) {
+      const life =
+        voice.lives.find((l) => t >= l.born && t < (l.died ?? Infinity)) ??
+        voice.lives.find((l) => t < l.born);
+      if (life) w = lifeWeightPeak(voice, life, lifeEnd(voice, life));
+    }
+    return Math.max(1, Math.min(127, Math.round(base * scale * Math.sqrt(w))));
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
-// CC11: life and level gain
+// CC11: life, level, pulse and weight gain
 // ---------------------------------------------------------------------------------------------
 
 /**
- * MIDI keeps the hand-over at the meeting (PLAN.md §11.3, until per-voice CC11 for crossfades,
- * R9-3b): a merge's or split's crossfade is written as a fade of at most HANDOVER at the meeting.
+ * CC11 sparsity (R9-3b). A new value is written when it differs from the one in force by at
+ * least CC_STEP (2 of 127: under 1.6 % of full scale, about 0.14 dB at full level), at most once
+ * per CC_MIN_GAP (5 ms: 200 events per second, the rate PLAN §12 already asks of glide bends).
+ * Jumps (pulse records) are written on their tick whatever the gap, and once a change has
+ * settled (after its span) the exact value is written. So the value in force is within 1.5 steps
+ * of the engine's gain plus at most 5 ms of lag on the steepest decays, at about a third of the
+ * events of writing every 7-bit change.
  */
-const HANDOVER = 0.1;
+const CC_STEP = 2;
+const CC_MIN_GAP = 0.005;
 
-function fadeInOf(life: Life): number {
-  return life.crossIn ? Math.min(life.fadeIn, HANDOVER) : life.fadeIn;
-}
-
-function fadeOutOf(life: Life): number {
-  const fo = life.fadeOut ?? 0;
-  return life.crossOut ? Math.min(fo, HANDOVER) : fo;
-}
-
+/**
+ * Life weight as the sound engine plays it (dsp/voice.ts `computeLife`): smootherstep fades, and
+ * for a merge's or split's crossfade (`crossIn`/`crossOut`) √X over the whole window, so the
+ * fading line's power follows core/ease `crossfade` while the merged line's weight rises.
+ */
 function lifeWeight(life: Life, t: number): number {
   const end = life.died ?? Infinity;
   if (t < life.born || t >= end) return 0;
   let w = 1;
-  const u = (t - life.born) / Math.max(fadeInOf(life), MIN_LIFE_FADE);
-  if (u < 1) w = smootherstep(u);
-  const v = (end - t) / Math.max(fadeOutOf(life), MIN_LIFE_FADE);
-  if (v < 1) w *= smootherstep(v);
+  const u = (t - life.born) / Math.max(life.fadeIn, MIN_LIFE_FADE);
+  if (u < 1) w = life.crossIn ? Math.sqrt(crossfade(u)) : smootherstep(u);
+  const v = (end - t) / Math.max(life.fadeOut ?? 0, MIN_LIFE_FADE);
+  if (v < 1) w *= life.crossOut ? Math.sqrt(crossfade(v)) : smootherstep(v);
+  return w;
+}
+
+/**
+ * The heaviest weight a life reaches (≥ its weight at birth). With CC11 a note strikes at this
+ * weight's velocity and CC11 carries √(w(t) / this), so a merged line swells and a split's parent
+ * thins with the crossfade (velocity cannot change while a note sounds).
+ */
+function lifeWeightPeak(voice: CompiledVoice, life: Life, end: number): number {
+  let w = weightTargetAt(voice, life.born);
+  for (const c of voice.weight ?? []) if (c.t >= life.born && c.t <= end && c.w > w) w = c.w;
   return w;
 }
 
@@ -416,54 +455,79 @@ function gainPeak(score: CompiledScore): number {
 }
 
 /**
- * CC11 events written wherever life or level gain changes: value = 127·gain/peak, linear in gain,
- * where `peak` is the score-wide maximum level (≥ 1), so a level boost above 1 does not clip.
+ * CC11 events where the gain changes (value = 127·gain/peak, linear in gain, `peak` the
+ * score-wide maximum level ≥ 1 so a boost above 1 does not clip), thinned as CC_STEP and
+ * CC_MIN_GAP describe.
  */
 function gainEvents(voice: CompiledVoice, tps: number, peak: number): Ev[] {
   const level = levelFn(voice);
+  const peaks = voice.lives.map((l) => lifeWeightPeak(voice, l, lifeEnd(voice, l)));
+  const weighted = (voice.weight?.length ?? 0) > 0;
   const gainAt = (tick: number): number => {
     const t = tick / tps;
-    let g = 0;
-    for (const life of voice.lives) {
-      if (t >= life.born && t < (life.died ?? Infinity)) {
-        g = lifeWeight(life, t) * level(t);
-        break;
-      }
+    for (let i = 0; i < voice.lives.length; i++) {
+      const life = voice.lives[i];
+      if (t < life.born || t >= (life.died ?? Infinity)) continue;
+      let w = weighted ? weightAt(voice, t) / peaks[i] : 1;
+      w = w > 1 ? 1 : w > 0 ? w : 0;
+      return lifeWeight(life, t) * level(t) * pulseGainAt(voice, t) * Math.sqrt(w);
     }
-    return g;
+    return 0;
   };
   const q = (g: number): number => Math.max(0, Math.min(127, Math.round((g / peak) * 127)));
   const tk = (t: number): number => Math.round(t * tps);
+  const gap = Math.max(1, Math.round(CC_MIN_GAP * tps));
 
-  // Tick spans where gain can change: fades, and level ramps inside a life.
+  // Tick spans where gain can change: fades, level and weight ramps inside a life, and pulse
+  // decays; and the ticks where it jumps (pulse records).
   const spans: [number, number][] = [];
+  const jumps = new Set<number>();
   for (const life of voice.lives) {
     const end = lifeEnd(voice, life);
     const a = life.born;
-    spans.push([tk(a), tk(a + Math.max(fadeInOf(life), MIN_LIFE_FADE))]);
+    spans.push([tk(a), tk(a + Math.max(life.fadeIn, MIN_LIFE_FADE))]);
     if (life.died !== undefined) {
-      spans.push([tk(end - Math.max(fadeOutOf(life), MIN_LIFE_FADE)), tk(end)]);
+      spans.push([tk(end - Math.max(life.fadeOut ?? 0, MIN_LIFE_FADE)), tk(end)]);
     }
     for (const l of voice.level) {
       if (l.t + l.over < a || l.t > end) continue;
       spans.push([tk(Math.max(l.t, a)), tk(Math.min(l.t + l.over, end))]);
     }
+    for (const c of voice.weight ?? []) {
+      const t0 = c.t - (c.lead ?? 0);
+      if (t0 + c.over < a || t0 > end) continue;
+      spans.push([tk(Math.max(t0, a)), tk(Math.min(t0 + c.over, end))]);
+    }
+  }
+  for (const r of voice.pulse ?? []) {
+    jumps.add(tk(r.t));
+    spans.push([tk(r.t), tk(r.t + r.decay)]);
   }
   spans.sort((x, y) => x[0] - y[0]);
+  // Disjoint runs, each followed by a settling stretch where any change is written exactly.
+  const runs: [number, number][] = [];
+  for (const s of spans) {
+    const last = runs[runs.length - 1];
+    if (last && s[0] <= last[1] + 1) last[1] = Math.max(last[1], s[1]);
+    else runs.push([s[0], s[1]]);
+  }
 
   const ev: Ev[] = [];
   let cur = q(gainAt(0));
   ev.push({ tick: 0, kind: CC, a: 11, b: cur });
-  let done = -1;
-  for (const [from, to] of spans) {
-    for (let tick = Math.max(from, done + 1); tick <= to; tick++) {
+  let lastTick = 0;
+  for (let r = 0; r < runs.length; r++) {
+    const [from, to] = runs[r];
+    const stop = Math.min(to + gap, r + 1 < runs.length ? runs[r + 1][0] - 1 : Infinity);
+    for (let tick = from; tick <= stop; tick++) {
       const v = q(gainAt(tick));
-      if (v !== cur) {
-        ev.push({ tick, kind: CC, a: 11, b: v });
-        cur = v;
-      }
+      if (v === cur) continue;
+      const free = tick - lastTick >= gap;
+      if (!jumps.has(tick) && !(free && (Math.abs(v - cur) >= CC_STEP || tick > to))) continue;
+      ev.push({ tick, kind: CC, a: 11, b: v });
+      cur = v;
+      lastTick = tick;
     }
-    if (to > done) done = to;
   }
   return ev;
 }
@@ -535,7 +599,9 @@ function buildFile(
     tps,
     range: o.range,
     shift: o.notesOnly ? 0 : shift,
-    velocity: weightVelocity(score, o.velocity, 0.5 / tps),
+    velocity: o.cc11
+      ? peakVelocity(score, o.velocity)
+      : weightVelocity(score, o.velocity, 0.5 / tps),
     bendRate: o.bendRate,
     restrike: o.restrikeOnArrival,
   };
