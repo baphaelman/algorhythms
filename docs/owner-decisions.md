@@ -3,7 +3,11 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- Nothing open.
+### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
+Try these in the newest preview; the integrator adds to this list as work lands:
+- **The pop at moment ends.** Nothing had regressed. It was the arrival "bloom": glass's articulation re-strikes when a glide lands, +3.7 dB in 12 ms on every note at once. It is being softened for all sustained timbres; pluck keeps its approved 12 ms attack. Listen to Kite Day: is the pop gone, and do arrivals still sound alive?
+- **Moments bar (dense lanes v2).** Full-height rows that scroll inside the lane area, levels on the Level row, a Pins row, and a draggable divider between score and lanes. Open Kite Day and drag the divider.
+- **Pulse moments (R9-3a)** work in the engine and files but have nothing to try yet. The palette button and inspector come with R9-7, the sound of hits with R9-3b, and the compositions use them after the rewrite.
 
 ## Answered
 - 2026-11-21 (night): the compact lane rows are rejected ("I would prefer scrolling through the old one"); try something else (PLAN "Dense lanes"). A light pop at the end of every moment in version 29 is being bisected.
