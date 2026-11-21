@@ -175,7 +175,13 @@ test('marker, transition bar start and glide start align within 1 px at several 
 test('the Level row reflects a level moment', async ({ page }) => {
   await load(page, [{ id: 'lvl001', type: 'level', at: 6, gain: 0.5, over: 2 }], false);
   await expect(page.locator('[data-moment="lvl001"] .lane-label')).toHaveText('level 50%');
-  await expect(page.locator('[data-moment="lvl001"] .lane-bar-text')).toHaveText('2.0 s');
+  // On the Level row; no Transitions bar (its ramp is the envelope).
+  await expect(page.locator('[data-moment="lvl001"]')).toHaveAttribute('data-lane', 'level');
+  await expect(page.locator('[data-moment="lvl001"] .lane-bar')).toBeHidden();
+  const levelRow = (await page.locator('[data-row="level"]').boundingBox())!;
+  const marker = (await page.locator('[data-moment="lvl001"] .lane-marker').boundingBox())!;
+  expect(marker.y).toBeGreaterThanOrEqual(levelRow.y);
+  expect(marker.y + marker.height).toBeLessThanOrEqual(levelRow.y + levelRow.height);
 
   /** The curve's y (px, larger = quieter) at time t. */
   const yAt = (t: number) =>
@@ -267,7 +273,14 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
     page,
     [
       chord('stk001', 4, 6),
-      { id: 'stk002', type: 'level', at: 4, gain: 0.5, over: 4 },
+      {
+        id: 'stk002',
+        type: 'shift',
+        at: 4,
+        by: -1,
+        unit: 'scaleSteps',
+        glide: { length: 4, stagger: 0 },
+      },
       {
         id: 'stk003',
         type: 'shift',

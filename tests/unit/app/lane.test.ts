@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
 import type { CompiledVoice, Glide, Moment, Piece } from '../../../src/core/types';
@@ -15,17 +15,20 @@ import {
   stackRows,
   revealPan,
   snapTime,
-  COMPACT_AFTER,
-  COMPACT_EXTENT_PX,
-  COMPACT_ROWS,
-  NORMAL_ROWS,
-  compactBoxPx,
+  SPLIT_MIN_LANE,
+  SPLIT_MIN_SCORE,
+  clampLanePx,
+  curveAt,
+  laneLayout,
   laneMaxPx,
-  laneStack,
+  laneRowOf,
+  levelBoxPx,
+  pinBoxPx,
   revealScroll,
-  rowGeometry,
+  splitLanePx,
   type LaneItem,
 } from '../../../src/app/editor/lane';
+import { loadLaneSplit, saveLaneSplit } from '../../../src/app/lane-split';
 import { wheelIntent, type WheelLike } from '../../../src/app/wheel';
 
 const G: Glide = { length: 2, jitter: 0, stagger: 0.5, order: 'random', ease: 'smoothstep' };
@@ -228,34 +231,137 @@ describe('stackRows (revision 7)', () => {
       }
     }
   });
+});
 
-  it('laneStack: up to 3 labelled sub-rows stay normal; more go compact and repack without labels', () => {
-    const three = [item('a', 0), item('b', 1), item('c', 2)];
-    const normal = laneStack(three, 10);
-    expect(normal).toEqual({ ...stackRows(three, 10), geom: NORMAL_ROWS });
-    // Four labels overlap (4 sub-rows labelled), but the markers alone (10 px = 1 s) don't.
-    const four = [item('a', 0), item('b', 1), item('c', 2), item('d', 3)];
-    expect(stackRows(four, 10).count).toBe(4);
-    const dense = laneStack(four, 10);
-    expect(dense.geom).toBe(COMPACT_ROWS);
-    expect(dense.count).toBe(1);
-    // Overlapping spans still need their own compact sub-rows.
-    const spans = [item('a', 0, 5), item('b', 1, 6), item('c', 2, 7), item('d', 3, 8)];
-    expect(laneStack(spans, 10).count).toBe(4);
-    expect(compactBoxPx(item('x', 2), 10)).toEqual([20, 20 + COMPACT_EXTENT_PX]);
+describe('dense lanes: rows by kind', () => {
+  const it_ = (
+    id: string,
+    type: LaneItem['type'],
+    at: number,
+    end = at,
+    text: string = type,
+  ): LaneItem => ({
+    id,
+    type,
+    text,
+    at,
+    start: at,
+    end,
+    muted: false,
+    endEdit: 'glide',
+  });
+
+  it('laneRowOf: level → Level, pin → Pins, the rest → Moments/Transitions', () => {
+    expect(laneRowOf('level')).toBe('level');
+    expect(laneRowOf('pin')).toBe('pins');
+    for (const t of ['chord', 'unison', 'split', 'merge', 'walk', 'note', 'key', 'shift'] as const)
+      expect(laneRowOf(t)).toBe('main');
+  });
+
+  it('laneLayout stacks each row on its own: labels on Moments, spans on Pins, markers on Level', () => {
+    const items = [
+      it_('c1', 'chord', 0),
+      it_('p1', 'pin', 0.5, 1.0),
+      it_('l1', 'level', 0.5, 3),
+      it_('c2', 'chord', 1),
+      it_('p2', 'pin', 0.9, 1.2),
+      it_('l2', 'level', 2, 4),
+      it_('l3', 'level', 2),
+      it_('p3', 'pin', 1.2, 1.5),
+    ];
+    const L = laneLayout(items, 10);
+    expect(L.lane).toEqual(['main', 'pins', 'level', 'main', 'pins', 'level', 'level', 'pins']);
+    // Chords: labels overlap (1 s = 10 px) → two sub-rows.
+    expect([L.rows[0], L.rows[3]]).toEqual([0, 1]);
+    // Pins: p2 overlaps p1's span; p3 starts where p1 ends → back on sub-row 0.
+    expect([L.rows[1], L.rows[4], L.rows[7]]).toEqual([0, 1, 0]);
+    // Level: l1's ramp (to 3 s) doesn't stack l2; l2 and l3 share a time → two sub-rows.
+    expect([L.rows[2], L.rows[5], L.rows[6]]).toEqual([0, 0, 1]);
+    expect(L.count).toEqual({ main: 2, pins: 2, level: 2 });
+    expect(laneLayout([it_('c', 'chord', 0)], 10).count).toEqual({ main: 1, pins: 0, level: 0 });
+  });
+
+  it('pinBoxPx is the span; levelBoxPx is the marker alone', () => {
+    expect(pinBoxPx(it_('p', 'pin', 2, 3), 10)).toEqual([20, 30]);
+    expect(pinBoxPx(it_('p', 'pin', 2), 10)).toEqual([20, 21]);
+    const [a, b] = levelBoxPx(it_('l', 'level', 2, 9), 10);
+    expect(a).toBeLessThan(20);
+    expect(b).toBeGreaterThan(20);
+    expect(b - a).toBeLessThan(16);
+  });
+
+  it('curveAt interpolates, takes the value after a step, and holds past the ends', () => {
+    const c = [
+      { t: 0, v: 1 },
+      { t: 2, v: 0.5 },
+      { t: 4, v: 0.5 },
+      { t: 4, v: 0 },
+      { t: 6, v: 0 },
+    ];
+    expect(curveAt(c, 1)).toBeCloseTo(0.75);
+    expect(curveAt(c, 4)).toBe(0);
+    expect(curveAt(c, 3)).toBe(0.5);
+    expect(curveAt(c, 9)).toBe(0);
+    expect(curveAt(c, -1)).toBe(1);
+    expect(curveAt([], 1)).toBe(1);
   });
 });
 
-describe('dense lanes: row geometry, the cap and scrolling into view', () => {
-  it('rowGeometry: normal rows up to COMPACT_AFTER sub-rows, compact (8–10 px) beyond', () => {
-    expect(rowGeometry(1)).toBe(NORMAL_ROWS);
-    expect(rowGeometry(COMPACT_AFTER)).toBe(NORMAL_ROWS);
-    expect(rowGeometry(COMPACT_AFTER + 1)).toBe(COMPACT_ROWS);
-    expect(NORMAL_ROWS).toMatchObject({ rowH: 20, barH: 14 });
-    expect(COMPACT_ROWS.rowH).toBeGreaterThanOrEqual(8);
-    expect(COMPACT_ROWS.rowH).toBeLessThanOrEqual(10);
+describe('dense lanes: the divider', () => {
+  it('splitLanePx: null is the default cap; a share is clamped to the limits', () => {
+    expect(splitLanePx(null, 341, 30, 10)).toBe(laneMaxPx(341, 30, 10));
+    expect(splitLanePx(0.3, 600, 30, 10)).toBe(180);
+    // The score keeps 25 %: at most 600·0.75 − 30 − 10 = 410.
+    expect(splitLanePx(0.95, 600, 30, 10)).toBe(410);
+    expect(clampLanePx(1e6, 600, 30, 10)).toBe(410);
+    expect(600 - 30 - 10 - clampLanePx(1e6, 600, 30, 10)).toBeGreaterThanOrEqual(
+      SPLIT_MIN_SCORE * 600,
+    );
+    // The lanes keep at least one row.
+    expect(splitLanePx(0.01, 600, 30, 10)).toBe(SPLIT_MIN_LANE);
+    expect(clampLanePx(-50, 600, 30, 10)).toBe(SPLIT_MIN_LANE);
+    // Never taller than the content; a tiny content is its own minimum.
+    expect(clampLanePx(300, 600, 30, 10, 200)).toBe(200);
+    expect(clampLanePx(10, 600, 30, 10, 30)).toBe(30);
+    expect(splitLanePx(Number.NaN, 341, 30, 10)).toBe(laneMaxPx(341, 30, 10));
   });
 
+  it('the split is remembered in localStorage; a failing or bad store reads as default', () => {
+    const store = new Map<string, string>();
+    const ls = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    vi.stubGlobal('localStorage', ls);
+    try {
+      expect(loadLaneSplit()).toBeNull();
+      saveLaneSplit(0.333333);
+      expect(loadLaneSplit()).toBeCloseTo(0.3333, 4);
+      saveLaneSplit(null);
+      expect(loadLaneSplit()).toBeNull();
+      store.set('algorhythms.laneSplit', 'junk');
+      expect(loadLaneSplit()).toBeNull();
+      vi.stubGlobal('localStorage', {
+        getItem: () => {
+          throw new Error('blocked');
+        },
+        setItem: () => {
+          throw new Error('blocked');
+        },
+        removeItem: () => {
+          throw new Error('blocked');
+        },
+      });
+      expect(loadLaneSplit()).toBeNull();
+      expect(() => saveLaneSplit(0.4)).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('dense lanes: the cap and scrolling into view', () => {
   it('laneMaxPx leaves the score 55 % of the timeline after the ruler and gap', () => {
     // 341 px timeline (Kite Day at 1024×768): 45 % = 153.45, minus ruler 30 and gap 10.
     expect(laneMaxPx(341, 30, 10)).toBe(113);

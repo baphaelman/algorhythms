@@ -3,11 +3,12 @@
  * 1 px border; Lane.tsx also measures it). Items are absolutely placed by Lane.tsx (transforms).
  * Rows, top to bottom (keep in step with the constants there): Key (18 px: the piece key at
  * 0:00, M4.5-39), Moments (n sub-rows of 20 px,
- * + 4), Transitions (n sub-rows of 14 px bars, + 4), Level 32 px. Lane.tsx sets `--mom-h` and
- * `--trans-h` for n ≥ 2 (revision 7 stacking); the defaults are n = 2. Row names sit in a left
- * gutter over the axis. Dense rows (more than 3 labelled sub-rows) get `[data-compact]`: 8 px
- * Moments sub-rows and 7 px Transitions sub-rows, labels only on hover, focus or selection.
- * The track sits in `.lane-scroll`, which scrolls vertically when the capped lane area is full.
+ * + 4), Transitions (n sub-rows of 14 px bars, + 4), Pins (p sub-rows of 12 px, + 4; 0 without
+ * pins), Level (32 px, + 14 px per extra sub-row). Lane.tsx sets `--mom-h`, `--trans-h`,
+ * `--pins-h` and `--level-h`; the defaults are n = 2, p = 0, one Level sub-row. Row names sit in
+ * a left gutter over the axis. Pins and Level items (`[data-lane]`) show their label only on
+ * hover, focus or selection. The track sits in `.lane-scroll`, which scrolls vertically past the
+ * divider's split; `.lane-divider` sits above it.
  */
 
 .lane-scroll {
@@ -23,8 +24,10 @@
   --key-h: 18px;
   --mom-h: 44px;
   --trans-h: 32px;
+  --pins-h: 0px;
+  --level-h: 32px;
   position: relative;
-  height: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + 34px);
+  height: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h) + var(--level-h) + 2px);
   border: 1px solid var(--rule);
   background: var(--paper);
   overflow: clip;
@@ -61,9 +64,20 @@
   border-top: 1px dashed var(--rule);
 }
 
-.lane-row[data-row='level'] {
+.lane-row[data-row='pins'] {
   top: calc(var(--key-h) + var(--mom-h) + var(--trans-h));
-  height: 32px;
+  height: var(--pins-h);
+  border-top: 1px dashed var(--rule);
+}
+
+.lane-track:not([data-pin-rows]) .lane-row[data-row='pins'],
+.lane-track[data-pin-rows='0'] .lane-row[data-row='pins'] {
+  display: none;
+}
+
+.lane-row[data-row='level'] {
+  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h));
+  height: var(--level-h);
   border-top: 1px dashed var(--rule);
 }
 
@@ -93,7 +107,7 @@
 .lane-level {
   position: absolute;
   left: 0;
-  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + 2px);
+  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h) + 2px);
   overflow: visible;
   pointer-events: none;
 }
@@ -274,25 +288,29 @@
   outline-offset: -1px;
 }
 
-/* ---- dense rows (compact sub-rows) --------------------------------------------------------- */
+/* ---- Pins and Level rows (`[data-lane]`): thin items, labels on hover, focus or selection ---- */
 
-.lane-track[data-compact] .lane-item:not(.lane-piece-key) {
-  height: 8px;
+.lane-item[data-lane='pins'],
+.lane-item[data-lane='level'] {
+  height: 12px;
   font-size: 10px;
 }
 
-.lane-track[data-compact] .lane-item:not(.lane-piece-key) .lane-marker {
-  width: 7px;
-  height: 7px;
-  margin-left: 1.5px;
+.lane-item[data-lane='pins'] .lane-marker,
+.lane-item[data-lane='level'] .lane-marker {
+  transform: rotate(45deg) scale(0.65);
 }
 
-/* Labels: hidden, shown floating (no layout change) on hover, focus or selection. */
-.lane-track[data-compact] .lane-item:not(.lane-piece-key) .lane-label {
+.lane-item[data-lane='level'] .lane-marker {
+  box-shadow: 0 0 0 1.5px var(--paper);
+}
+
+.lane-item[data-lane='pins'] .lane-label,
+.lane-item[data-lane='level'] .lane-label {
   display: none;
   position: absolute;
   left: 14px;
-  top: -4px;
+  top: -3px;
   padding: 0 3px;
   font: 10px/16px var(--f-mono);
   background: var(--paper);
@@ -301,41 +319,78 @@
   pointer-events: none;
 }
 
-.lane-track[data-compact] .lane-item:not(.lane-piece-key):hover,
-.lane-track[data-compact] .lane-item:not(.lane-piece-key):focus-visible {
+.lane-item[data-lane='pins']:hover,
+.lane-item[data-lane='pins']:focus-visible,
+.lane-item[data-lane='level']:hover,
+.lane-item[data-lane='level']:focus-visible {
   z-index: 3;
 }
 
-.lane-track[data-compact] .lane-item:not(.lane-piece-key):hover .lane-label,
-.lane-track[data-compact] .lane-item:not(.lane-piece-key):focus-visible .lane-label,
-.lane-track[data-compact] .lane-item[data-selected] .lane-label,
-.lane-track[data-compact] .lane-ghost .lane-label {
+.lane-item[data-lane='pins']:hover .lane-label,
+.lane-item[data-lane='pins']:focus-visible .lane-label,
+.lane-item[data-lane='pins'][data-selected] .lane-label,
+.lane-item[data-lane='level']:hover .lane-label,
+.lane-item[data-lane='level']:focus-visible .lane-label,
+.lane-item[data-lane='level'][data-selected] .lane-label,
+.lane-ghost[data-lane='pins'] .lane-label,
+.lane-ghost[data-lane='level'] .lane-label {
   display: block;
 }
 
-.lane-track[data-compact] .lane-bar {
-  height: 5px;
+/* A pin's glide bar runs through its marker on the same thin sub-row. */
+.lane-item[data-lane='pins'] .lane-bar {
+  height: 6px;
 }
 
-/* The bar's hit target reaches a little past what is drawn. */
-.lane-track[data-compact] .lane-bar::before {
-  content: '';
-  position: absolute;
-  inset: -1px 0;
-}
-
-.lane-track[data-compact] .lane-bar-text {
+.lane-item[data-lane='pins'] .lane-bar-text {
   display: none;
 }
 
-.lane-track[data-compact] .lane-end {
-  top: -2px;
-  height: 9px;
+.lane-item[data-lane='pins'] .lane-end {
+  top: -3px;
+  height: 12px;
 }
 
-.lane-track[data-compact] .lane-end::after {
+.lane-item[data-lane='pins'] .lane-end::after {
   top: 1px;
-  height: 7px;
+  height: 10px;
+}
+
+/* A level moment's ramp is the envelope itself: no bar. */
+.lane-item[data-lane='level'] .lane-bar {
+  display: none;
+}
+
+/* ---- the score/lanes divider --------------------------------------------------------------- */
+
+.lane-divider {
+  position: relative;
+  flex: none;
+  height: 10px;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.lane-divider::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 36px;
+  height: 2px;
+  margin-left: -18px;
+  border-radius: 1px;
+  background: var(--rule);
+  transition: background 0.15s;
+}
+
+.lane-divider:hover::after,
+.lane-divider:focus-visible::after {
+  left: 0;
+  width: 100%;
+  margin-left: 0;
+  background: var(--accent);
 }
 
 /* ---- capped lane area: a fade where rows are scrolled out of view -------------------------- */
@@ -358,7 +413,7 @@
 }
 
 .slot.lane::before {
-  top: 1px;
+  top: 11px;
   background: linear-gradient(
     to bottom,
     color-mix(in srgb, var(--ink) 18%, transparent),

@@ -59,6 +59,33 @@ test('hovering a palette item shows a ghost lane item at the playhead; Escape cl
   expect(Number.isNaN(await ghostAt(page))).toBe(true);
 });
 
+test('level and pin ghosts land on the Level and Pins rows (dense lanes)', async ({ page }) => {
+  await open(page);
+  await seek(page, 50);
+  const ghost = page.getByTestId('lane-ghost');
+  const inRow = async (row: string): Promise<boolean> => {
+    const r = await page.locator(`[data-row="${row}"]`).boundingBox();
+    const m = await page.locator('[data-testid="lane-ghost"] .lane-marker').boundingBox();
+    if (!r || !m) return false;
+    const y = m.y + m.height / 2;
+    return y >= r.y && y <= r.y + r.height;
+  };
+  // Tidewater Hymn has no pins: the Pins row appears only for the pin's ghost.
+  await expect(page.locator('[data-row="pins"]')).toBeHidden();
+  for (const [type, row] of [
+    ['level', 'level'],
+    ['pin', 'pins'],
+  ] as const) {
+    await page.getByTestId('palette').locator(`[data-moment="${type}"]`).hover();
+    await expect(ghost).toHaveAttribute('data-type', type);
+    await expect(ghost).toHaveAttribute('data-lane', row);
+    await expect.poll(() => inRow(row)).toBe(true);
+    await escape(page);
+    await expect(ghost).toBeHidden();
+  }
+  await expect(page.locator('[data-row="pins"]')).toBeHidden();
+});
+
 test('dragging over the score and the lane moves the ghost to the drop time; Escape clears it', async ({
   page,
 }) => {
@@ -76,8 +103,11 @@ test('dragging over the score and the lane moves the ghost to the drop time; Esc
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-type', 'chord');
   await expect.poll(() => ghostAt(page)).toBeGreaterThan(0);
+  // The lane redraws on the next frame: poll until the ghost and the preview agree.
+  await expect
+    .poll(async () => Number(await ghost.getAttribute('data-at')) - (await ghostAt(page)))
+    .toBeCloseTo(0, 6);
   const t1 = await ghostAt(page);
-  expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(t1, 6);
   // The marker sits under the pointer's drop time (snap may pull it a few px).
   expect(
     Math.abs((await markerX(page, '[data-testid="lane-ghost"] .lane-marker')) - (x + 3)),

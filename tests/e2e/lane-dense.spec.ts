@@ -1,7 +1,8 @@
 /**
- * Dense pieces on the lane (owner bug 2026-11-21, Kite Day): the lane area is capped so the score
- * keeps ≥ 55 % of the timeline, and scrolls vertically inside itself; rows needing more than 3
- * sub-rows go compact (labels on hover or selection). A sparse piece is unchanged.
+ * Dense pieces on the lane (owner 2026-11-21, PLAN §11.3 "Dense lanes"; Kite Day): rows keep their
+ * full height; `level` moments sit on the Level row, `pin` moments on their own Pins row; the lane
+ * area is capped (default: the score keeps ≥ 55 % of the timeline) and scrolls inside itself; a
+ * draggable divider sets the split and is remembered. A sparse piece is unchanged.
  */
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -14,39 +15,50 @@ const box = async (l: Locator): Promise<Box> => (await l.boundingBox())!;
 const selection = (page: Page): Promise<string[]> =>
   page.evaluate(() => window.__algorhythms!.editor.state.getState().selection);
 
-/**
- * Lane items whose marker (or transition bar, at least 12 px wide) lies fully inside the lane
- * area's visible rectangle, uncovered; with the point to click.
- */
-async function visibleItems(
+/** Per lane row: the item types whose marker centre lies inside it (track coordinates). */
+async function typesByRow(page: Page): Promise<Record<string, string[]>> {
+  return page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>('.lane-row[data-row]')].map((r) => ({
+      name: r.dataset.row!,
+      r: r.getBoundingClientRect(),
+    }));
+    const out: Record<string, string[]> = {};
+    for (const el of document.querySelectorAll<HTMLElement>('.lane-item[data-moment]')) {
+      const m = el.querySelector('.lane-marker')!.getBoundingClientRect();
+      const y = m.top + m.height / 2;
+      const row = rows.find((x) => x.r.height > 0 && y >= x.r.top && y <= x.r.bottom);
+      const k = row?.name ?? 'none';
+      (out[k] ??= []).push(el.dataset.type!);
+    }
+    return out;
+  });
+}
+
+/** Lane items of `type` whose marker lies inside the lane area's visible rectangle, uncovered. */
+async function visibleMarkers(
   page: Page,
-  part: '.lane-marker' | '.lane-bar',
   type?: string,
 ): Promise<{ id: string; x: number; y: number }[]> {
-  return page.evaluate(
-    ({ part, type }) => {
-      const sc = document.querySelector('.lane-scroll')!.getBoundingClientRect();
-      const out: { id: string; x: number; y: number }[] = [];
-      for (const el of document.querySelectorAll<HTMLElement>('.lane-item[data-moment]')) {
-        if (type && el.dataset.type !== type) continue;
-        const m = el.querySelector(part)!.getBoundingClientRect();
-        if (part === '.lane-bar' && m.width < 12) continue;
-        const x = m.left + m.width / 2;
-        const y = m.top + m.height / 2;
-        if (
-          m.top < sc.top ||
-          m.bottom > sc.bottom ||
-          m.left < sc.left + 60 ||
-          m.right > sc.right - 60
-        )
-          continue;
-        if (document.elementFromPoint(x, y)?.closest('[data-moment]') !== el) continue;
-        out.push({ id: el.dataset.moment!, x, y });
-      }
-      return out;
-    },
-    { part, type },
-  );
+  return page.evaluate((type) => {
+    const sc = document.querySelector('.lane-scroll')!.getBoundingClientRect();
+    const out: { id: string; x: number; y: number }[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('.lane-item[data-moment]')) {
+      if (type && el.dataset.type !== type) continue;
+      const m = el.querySelector('.lane-marker')!.getBoundingClientRect();
+      const x = m.left + m.width / 2;
+      const y = m.top + m.height / 2;
+      if (
+        m.top < sc.top ||
+        m.bottom > sc.bottom ||
+        m.left < sc.left + 60 ||
+        m.right > sc.right - 60
+      )
+        continue;
+      if (document.elementFromPoint(x, y)?.closest('[data-moment]') !== el) continue;
+      out.push({ id: el.dataset.moment!, x, y });
+    }
+    return out;
+  }, type);
 }
 
 async function open(page: Page, example: string, width: number, height: number): Promise<void> {
@@ -62,21 +74,47 @@ for (const [width, height] of [
 ] as const) {
   test.describe(`Kite Day at ${width}×${height}`, () => {
     test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        try {
+          if (!sessionStorage.getItem('lane-dense-kept')) localStorage.clear();
+        } catch {
+          // storage unavailable: the default split applies anyway
+        }
+      });
       await open(page, 'kite-day', width, height);
     });
 
-    test('the score keeps its share; dense rows go compact', async ({ page }) => {
+    test('the score keeps its share; rows keep full height; items go to their kind’s row', async ({
+      page,
+    }) => {
       const timeline = await box(page.getByTestId('timeline'));
       const stage = await box(page.getByTestId('stage'));
       expect(stage.height / timeline.height).toBeGreaterThanOrEqual(0.5);
-      // The lane area ends inside the timeline and the viewport.
       const lane = await box(page.getByTestId('lane'));
       expect(lane.y + lane.height).toBeLessThanOrEqual(timeline.y + timeline.height + 1);
       expect(lane.y + lane.height).toBeLessThanOrEqual(height);
-      await expect(page.locator('.lane-track')).toHaveAttribute('data-compact', '');
+      // No compaction: Moments items are full height, with their labels shown.
+      await expect(page.locator('.lane-track')).not.toHaveAttribute('data-compact');
+      const chord = page.locator('.lane-item[data-type="chord"]').nth(1);
+      expect((await box(chord)).height).toBeGreaterThanOrEqual(19);
+      await expect(chord.locator('.lane-label')).toBeVisible();
+
+      const rows = await typesByRow(page);
+      expect(rows.none ?? []).toEqual([]);
+      expect(new Set(rows.level)).toEqual(new Set(['level']));
+      expect(new Set(rows.pins)).toEqual(new Set(['pin']));
+      expect(rows.level.length).toBe(141);
+      expect(rows.pins.length).toBe(165);
+      expect(rows.moments).toContain('chord');
+      expect(rows.moments.filter((t) => t === 'chord').length).toBe(42);
+      expect(rows.moments).not.toContain('level');
+      expect(rows.moments).not.toContain('pin');
+      // Level moments have no Transitions bar.
+      const levelBar = page.locator('.lane-item[data-type="level"] .lane-bar').first();
+      await expect(levelBar).toBeHidden();
     });
 
-    test('the wheel scrolls the lane area to the Level row; a level item there selects', async ({
+    test('the Level row is reachable by wheel; a level marker selects on click', async ({
       page,
     }) => {
       const sc = page.getByTestId('lane-scroll');
@@ -90,16 +128,18 @@ for (const [width, height] of [
           return level.y + level.height <= scBox.y + scBox.height + 1;
         })
         .toBe(true);
-      const level = await box(page.locator('[data-row="level"]'));
-      expect(level.y + level.height).toBeLessThanOrEqual(height);
       // A plain vertical wheel does not pan the time axis.
       expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(start);
-      // A level ramp's transition bar, visible with the Level row.
-      const items = await visibleItems(page, '.lane-bar', 'level');
+      const items = await visibleMarkers(page, 'level');
       expect(items.length).toBeGreaterThan(0);
       const it = items.at(-1)!;
+      const level = await box(page.locator('[data-row="level"]'));
+      expect(it.y).toBeGreaterThanOrEqual(level.y);
+      expect(it.y).toBeLessThanOrEqual(level.y + level.height);
       await page.mouse.click(it.x, it.y);
       await expect.poll(() => selection(page)).toEqual([it.id]);
+      // Its label shows while selected.
+      await expect(page.locator(`.lane-item[data-moment="${it.id}"] .lane-label`)).toBeVisible();
     });
 
     test('Shift-wheel over the lane area pans the time axis', async ({ page }) => {
@@ -114,20 +154,8 @@ for (const [width, height] of [
         .toBeGreaterThan(start);
     });
 
-    test('a compact item selects on click and shows its label', async ({ page }) => {
-      const items = await visibleItems(page, '.lane-marker');
-      expect(items.length).toBeGreaterThan(0);
-      const it = items[Math.floor(items.length / 2)];
-      await page.mouse.click(it.x, it.y);
-      await expect.poll(() => selection(page)).toEqual([it.id]);
-      const el = page.locator(`.lane-item[data-moment="${it.id}"]`);
-      await expect(el.locator('.lane-label')).toBeVisible();
-      await expect(el).toHaveAttribute('title', /.+/);
-    });
-
     test('selecting a moment elsewhere scrolls its lane item into view', async ({ page }) => {
       const sc = page.getByTestId('lane-scroll');
-      // Scrolled to the bottom (the Level row), the top sub-rows are out of view.
       await sc.evaluate((e) => (e.scrollTop = e.scrollHeight));
       const scBox = await box(sc);
       const hidden = await page.evaluate(() => {
@@ -150,12 +178,80 @@ for (const [width, height] of [
   });
 }
 
-test('a sparse piece keeps full rows and no lane scrolling', async ({ page }) => {
+test('the divider drags the split, persists across reload, and resets on double-click', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    try {
+      if (!sessionStorage.getItem('lane-dense-kept')) {
+        localStorage.clear();
+        sessionStorage.setItem('lane-dense-kept', '1');
+      }
+    } catch {
+      // storage unavailable
+    }
+  });
+  await open(page, 'kite-day', 1024, 768);
+  const div = page.getByTestId('lane-divider');
+  const sc = page.getByTestId('lane-scroll');
+  const h0 = (await box(sc)).height;
+  const stage0 = (await box(page.getByTestId('stage'))).height;
+  const d = await box(div);
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 40, { steps: 4 });
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 60, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await box(sc)).height).toBeGreaterThan(h0 + 50);
+  const h1 = (await box(sc)).height;
+  expect((await box(page.getByTestId('stage'))).height).toBeLessThan(stage0 - 50);
+
+  // Way up: the score keeps at least a quarter of the timeline.
+  const d1 = await box(div);
+  await page.mouse.move(d1.x + 100, d1.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(d1.x + 100, 0, { steps: 6 });
+  await page.mouse.up();
+  const timeline = await box(page.getByTestId('timeline'));
+  expect((await box(page.getByTestId('stage'))).height).toBeGreaterThanOrEqual(
+    timeline.height * 0.25 - 1,
+  );
+  // Drag back to h1; it survives a reload.
+  const d2 = await box(div);
+  const hNow = (await box(sc)).height;
+  await page.mouse.move(d2.x + 100, d2.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(d2.x + 100, d2.y + 5 + (hNow - h1), { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
+
+  await page.reload();
+  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', /\d+/);
+  await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
+
+  // Keyboard: a focusable separator; ↓ shrinks the lanes.
+  await expect(div).toHaveAttribute('role', 'separator');
+  await div.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(async () => (await box(sc)).height).toBeLessThan(h1 - 10);
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
+
+  // Double-click: back to the default split, which also survives a reload.
+  await div.dblclick();
+  await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
+  await page.reload();
+  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', /\d+/);
+  await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
+});
+
+test('a sparse piece keeps full rows, no Pins row and no lane scrolling', async ({ page }) => {
   await open(page, 'tidewater-hymn', 1024, 768);
   await expect(page.locator('.lane-track')).not.toHaveAttribute('data-compact');
   const sc = page.getByTestId('lane-scroll');
   expect(await sc.evaluate((e) => e.scrollHeight - e.clientHeight)).toBeLessThanOrEqual(0);
   await expect(page.getByTestId('lane')).not.toHaveAttribute('data-more-below');
+  await expect(page.locator('[data-row="pins"]')).toBeHidden();
   // Labels show as before.
   await expect(page.locator('.lane-item[data-moment] .lane-label').first()).toBeVisible();
 });
