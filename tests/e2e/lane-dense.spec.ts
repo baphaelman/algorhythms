@@ -1,12 +1,22 @@
 /**
- * Dense pieces on the lane (owner 2026-11-21, PLAN §11.3 "Dense lanes"; Kite Day): rows keep their
+ * Dense pieces on the lane (owner 2026-11-21, PLAN §11.3 "Dense lanes"; the pre-rev-9 Kite Day,
+ * 349 moments, kept as tests/golden/v1/kite-day.algorhythms.json and opened as a share link,
+ * since the bundled Kite Day is now written with tunes and pulses): rows keep their
  * full height; `level` moments sit on the Level row, `pin` moments on their own Pins row; the lane
  * area is capped (default: the score keeps ≥ 55 % of the timeline) and scrolls inside itself; a
  * draggable divider sets the split and is remembered. A sparse piece is unchanged.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import './app-hook';
+
+/** The dense Kite Day as a share link payload. */
+const DENSE = deflateRawSync(
+  readFileSync(join(import.meta.dirname, '../golden/v1/kite-day.algorhythms.json')),
+).toString('base64url');
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -63,7 +73,7 @@ async function visibleMarkers(
 
 async function open(page: Page, example: string, width: number, height: number): Promise<void> {
   await page.setViewportSize({ width, height });
-  await page.goto(`./?example=${example}`);
+  await page.goto(example === 'dense' ? `./#p=${DENSE}` : `./?example=${example}`);
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', /\d+/);
 }
@@ -72,7 +82,7 @@ for (const [width, height] of [
   [1024, 768],
   [1280, 720],
 ] as const) {
-  test.describe(`Kite Day at ${width}×${height}`, () => {
+  test.describe(`Dense Kite Day at ${width}×${height}`, () => {
     test.beforeEach(async ({ page }) => {
       await page.addInitScript(() => {
         try {
@@ -81,7 +91,7 @@ for (const [width, height] of [
           // storage unavailable: the default split applies anyway
         }
       });
-      await open(page, 'kite-day', width, height);
+      await open(page, 'dense', width, height);
     });
 
     test('the score keeps its share; rows keep full height; items go to their kind’s row', async ({
@@ -191,7 +201,7 @@ test('the divider drags the split, persists across reload, and resets on double-
       // storage unavailable
     }
   });
-  await open(page, 'kite-day', 1024, 768);
+  await open(page, 'dense', 1024, 768);
   const div = page.getByTestId('lane-divider');
   const sc = page.getByTestId('lane-scroll');
   const h0 = (await box(sc)).height;
@@ -225,8 +235,8 @@ test('the divider drags the split, persists across reload, and resets on double-
   await page.mouse.up();
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
-  await page.reload();
-  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', /\d+/);
+  // Reload (the link's hash is cleared once it opens, so open it again).
+  await open(page, 'dense', 1024, 768);
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
   // Keyboard: a focusable separator; ↓ shrinks the lanes.
@@ -240,8 +250,8 @@ test('the divider drags the split, persists across reload, and resets on double-
   // Double-click: back to the default split, which also survives a reload.
   await div.dblclick();
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
-  await page.reload();
-  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', /\d+/);
+  // Reload (the link's hash is cleared once it opens, so open it again).
+  await open(page, 'dense', 1024, 768);
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
 });
 

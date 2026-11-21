@@ -1,1 +1,1054 @@
-{"format":"algorhythms","version":2,"meta":{"title":"Kite Day","author":"AlgoRhythms examples","created":"2026-11-20T00:00:00.000Z","modified":"2026-11-20T00:00:00.000Z","license":"CC0-1.0"},"seed":1001,"tuning":{"referenceHz":440,"system":{"kind":"12tet"}},"key":{"tonic":"C","scale":"pentatonic-major"},"defaults":{"glide":{"length":3,"jitter":0.2,"stagger":0.8,"arrive":"together","order":"random","ease":"smootherstep"}},"voices":[{"id":"v1","timbre":"reed","pan":-0.05,"gain":2.32,"range":[60,80],"sends":{"reverb":0.4,"delay":0.15}},{"id":"v2","timbre":"glass","pan":-0.5,"gain":1.1199999999999999,"range":[46,68]},{"id":"v3","timbre":"glass","pan":-0.15,"gain":1.1199999999999999,"range":[46,68]},{"id":"v4","timbre":"glass","pan":0.15,"gain":1.1199999999999999,"range":[46,68]},{"id":"v5","timbre":"glass","pan":0.5,"gain":1.1199999999999999,"range":[46,68]},{"id":"v6","timbre":"organ","pan":0,"gain":1.2800000000000002,"range":[26,52],"sends":{"reverb":0.2,"delay":0}},{"id":"v7","timbre":"glass","pan":-0.65,"gain":0.96,"range":[81,94],"sends":{"reverb":0.55,"delay":0.35}},{"id":"v8","timbre":"glass","pan":0,"gain":0.96,"range":[81,94],"sends":{"reverb":0.55,"delay":0.35}},{"id":"v9","timbre":"glass","pan":0.65,"gain":0.96,"range":[81,94],"sends":{"reverb":0.55,"delay":0.35}}],"moments":[{"id":"start0","type":"chord","at":0,"notes":{"kind":"pitches","pitches":[72,52,55,60,64,36,81,84,88]},"voicing":"even","assign":"ordered","byVoice":true},{"id":"hnojpu","type":"level","at":0,"target":{"voices":["v1","v7","v8","v9","v6"]},"gain":0,"over":0},{"id":"Hmlkqx","type":"level","at":0,"target":{"voices":["v2","v3","v4","v5"]},"gain":0,"over":0},{"id":"05JiPN","type":"level","at":0.05,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.7,"over":3,"label":"Intro"},{"id":"3r2kQQ","type":"chord","at":0,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"4DVjc9","type":"pin","at":0.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"kEW2i4","type":"pin","at":1.45,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"LjUTxs","type":"pin","at":2.05,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"LmhdYA","type":"chord","at":2.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"IJHUiY","type":"pin","at":2.65,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"Aqy0TR","type":"pin","at":3.85,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"WK9jtI","type":"pin","at":4.45,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"3GOra2","type":"chord","at":4.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"D5KImG","type":"pin","at":5.05,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ztT0yQ","type":"pin","at":6.25,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"fot8Ky","type":"pin","at":6.85,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"j8BvK6","type":"chord","at":7.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"NrE7EW","type":"pin","at":7.45,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"iMhrzd","type":"pin","at":8.65,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"MOS2DZ","type":"pin","at":9.25,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"smtT0w","type":"level","at":5.1,"target":{"voices":["v6"]},"gain":0.7,"over":2},{"id":"ua3Hao","type":"level","at":9.9,"target":{"voices":["v7","v8","v9"]},"gain":0.75,"over":4,"label":"Sparkle"},{"id":"yofgAy","type":"walk","at":9.9,"until":96.3,"target":{"voices":["v7","v8","v9"]},"grid":0.3,"density":0.5,"steps":[-1,1,-2,2],"stepGlide":0.06,"glide":{"stagger":0,"jitter":0,"ease":"smoothstep"},"label":"Walk"},{"id":"TW1m5N","type":"chord","at":9.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"NJo2TH","type":"pin","at":9.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"DqgO9C","type":"pin","at":11.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"S37aIq","type":"pin","at":11.65,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"i1wxtr","type":"chord","at":11.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"A7xSRb","type":"pin","at":12.25,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"BX61qk","type":"pin","at":13.45,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"6SHCdZ","type":"pin","at":14.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"5GVIQf","type":"chord","at":14.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"PxTTRn","type":"pin","at":14.65,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"TQmFZ0","type":"pin","at":15.85,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"TMotRk","type":"pin","at":16.45,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"7fsEX8","type":"chord","at":16.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"VFxZy4","type":"pin","at":17.05,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"wfNhD7","type":"pin","at":18.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"AK9lNQ","type":"pin","at":18.85,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"2WKlFE","type":"chord","at":19.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"Q5YsvN","type":"pin","at":19.45,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ehkfnd","type":"pin","at":20.65,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"cUCxQ8","type":"pin","at":21.25,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"2SDc1y","type":"chord","at":21.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"OPoRoc","type":"pin","at":21.85,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"JltkuT","type":"pin","at":23.05,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"D1eL4o","type":"pin","at":23.65,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"4wZwbn","type":"chord","at":23.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"2cNBhZ","type":"pin","at":24.25,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ra2CnU","type":"pin","at":25.45,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"o68xCI","type":"pin","at":26.05,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"nooDM6","type":"chord","at":26.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"ymXsvl","type":"pin","at":26.65,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"mIXcOK","type":"pin","at":27.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"LVxu2A","type":"pin","at":28.45,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"gSefIh","type":"level","at":29.05,"target":{"voices":["v1"]},"gain":0.9,"over":0.1},{"id":"bi0V74","type":"chord","at":28.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"jF41C6","type":"pin","at":29.05,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"GGyer0","type":"pin","at":30.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"kfhRnO","type":"pin","at":30.85,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"3b8Kfz","type":"chord","at":31.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"09eS3y","type":"pin","at":31.45,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"i7wwyX","type":"pin","at":32.65,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"JdeoJu","type":"pin","at":33.25,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"0LSzMh","type":"chord","at":33.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"Ut7hGd","type":"pin","at":33.85,"voice":"v6","pitch":28,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ZtlAUD","type":"pin","at":35.05,"voice":"v6","pitch":35,"glide":{"ease":"smoothstep","length":0.192}},{"id":"LKAECI","type":"pin","at":35.65,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"jWo6uA","type":"chord","at":35.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"Jhgv4L","type":"pin","at":36.25,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"OUtR3D","type":"pin","at":37.45,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"m7wwu1","type":"pin","at":38.05,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"ZBUkuc","type":"chord","at":38.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"rq4yJB","type":"pin","at":38.65,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"IdOef0","type":"pin","at":39.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"a9AlG6","type":"pin","at":40.45,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"ORuBxw","type":"chord","at":40.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"BsI4Un","type":"pin","at":41.05,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"CHAP6b","type":"pin","at":42.25,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"px3GvH","type":"pin","at":42.85,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"BiUuBT","type":"chord","at":43.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"RwIqdJ","type":"pin","at":43.45,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"i80Vs9","type":"pin","at":44.65,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"8nQQjm","type":"pin","at":45.25,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"ht29Z2","type":"chord","at":45.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"CNqgXa","type":"pin","at":45.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"zU7FnW","type":"pin","at":47.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"OI08dY","type":"pin","at":47.65,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"0QhkVF","type":"pin","at":29.06,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11},"label":"Tune"},{"id":"uXPxgr","type":"pin","at":30.86,"voice":"v1","pitch":69,"glide":{"ease":"smoothstep","length":0.11}},{"id":"DPqfEE","type":"pin","at":31.46,"voice":"v1","pitch":71,"glide":{"ease":"smoothstep","length":0.11}},{"id":"odCDuM","type":"pin","at":32.66,"voice":"v1","pitch":67,"glide":{"ease":"smoothstep","length":0.11}},{"id":"1NYbHq","type":"pin","at":35.66,"voice":"v1","pitch":64,"glide":{"ease":"smoothstep","length":0.11}},{"id":"ylzYUX","type":"pin","at":36.26,"voice":"v1","pitch":69,"glide":{"ease":"smoothstep","length":0.176}},{"id":"rvTGpc","type":"pin","at":38.66,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"3I4Pqt","type":"pin","at":39.86,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"GKDp6X","type":"pin","at":41.06,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"yCgg2v","type":"pin","at":42.26,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"HHKDTV","type":"pin","at":42.86,"voice":"v1","pitch":71,"glide":{"ease":"smoothstep","length":0.11}},{"id":"tgHjdX","type":"pin","at":43.46,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"AO9mVz","type":"level","at":29.1,"target":{"voices":["v6"]},"gain":0.85,"over":2},{"id":"kDoP2p","type":"chord","at":47.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"2MQhCc","type":"pin","at":48.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"JXXHmX","type":"pin","at":49.45,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"WqMJAs","type":"pin","at":50.05,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"6TC1Vx","type":"chord","at":50.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"LD1sRN","type":"pin","at":50.65,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"okWkMd","type":"pin","at":51.85,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"AJwbgq","type":"pin","at":52.45,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"aUJrpZ","type":"chord","at":52.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"h5OLNL","type":"pin","at":53.05,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"JNz5ac","type":"pin","at":54.25,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"UkGLde","type":"pin","at":54.85,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"3GndbC","type":"chord","at":55.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"ojfyGk","type":"pin","at":55.45,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"KIzIpP","type":"pin","at":56.65,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"Ijoty9","type":"pin","at":57.25,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"Q5wTMS","type":"chord","at":57.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"7pjEG4","type":"pin","at":57.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"TFPGo8","type":"pin","at":59.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"Z53aX0","type":"pin","at":59.65,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"fPJ4rn","type":"chord","at":59.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"vNOQOi","type":"pin","at":60.25,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"DjIc8z","type":"pin","at":61.45,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"fFYL3F","type":"pin","at":62.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"fyNbFZ","type":"chord","at":62.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"ULA1R0","type":"pin","at":62.65,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"UbrjFX","type":"pin","at":63.85,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"x3CxzI","type":"pin","at":64.45,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"QrzFJ3","type":"chord","at":64.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"ZGMN50","type":"pin","at":65.05,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"tHA0Wb","type":"pin","at":66.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"XeucLl","type":"pin","at":66.85,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"VWDZFM","type":"level","at":48.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"l994T3","type":"level","at":48.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"m8lltf","type":"level","at":48.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"H3U3eN","type":"level","at":48.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"8OLEyi","type":"level","at":49.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"pNXkpa","type":"level","at":49.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"evOGiM","type":"level","at":50.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"WAkQI4","type":"level","at":50.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"q6QwO8","type":"level","at":50.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"nwTKD1","type":"level","at":50.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"Mll68E","type":"level","at":51.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"EU82Rf","type":"level","at":51.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"94XsqD","type":"level","at":51.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"qbAgGw","type":"level","at":51.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"8p3f9f","type":"level","at":52.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"r5Anlx","type":"level","at":52.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"7zNm3F","type":"level","at":53.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"ZNBEo2","type":"level","at":53.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"I8V0jU","type":"level","at":53.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"7t79Fm","type":"level","at":53.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"I9WtYl","type":"level","at":54.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"TiC8rz","type":"level","at":54.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"BJGdAm","type":"level","at":54.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"VtgDSX","type":"level","at":54.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"gehA82","type":"level","at":55.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"TyRidl","type":"level","at":55.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"FhQIVZ","type":"level","at":56.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"A987vS","type":"level","at":56.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"5QzQ5o","type":"level","at":56.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"MFOYSo","type":"level","at":56.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"cNAKpd","type":"level","at":57.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"asAcfo","type":"level","at":57.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"AgkiXy","type":"level","at":57.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"g7zxyL","type":"level","at":57.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"skAnKC","type":"level","at":58.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"TT6ZlA","type":"level","at":58.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"EKn65q","type":"level","at":59.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"UJ2dEv","type":"level","at":59.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"WqJkUK","type":"level","at":59.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"or4AgE","type":"level","at":59.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"41x8RR","type":"level","at":60.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"o88B6Z","type":"level","at":60.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"tOeiHj","type":"level","at":60.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"7QrmuX","type":"level","at":60.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"VynGbC","type":"level","at":61.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"Bnb1Ds","type":"level","at":61.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"qfKUgi","type":"level","at":62.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"gSNRuD","type":"level","at":62.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"srC04c","type":"level","at":62.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"61NJFI","type":"level","at":62.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"nVG4wq","type":"level","at":63.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"SjsZ2u","type":"level","at":63.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"u19POU","type":"level","at":63.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"O0OcZM","type":"level","at":63.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"SsiDx1","type":"level","at":64.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"kdrKm6","type":"level","at":64.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"BSeWVc","type":"level","at":65.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.1,"over":0.015},{"id":"SE51xo","type":"level","at":65.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.55,"over":0.51},{"id":"FfBXJx","type":"level","at":65.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"tMLuFM","type":"level","at":65.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"WMAODZ","type":"level","at":66.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.88,"over":0.015},{"id":"b7UTvC","type":"level","at":66.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.44,"over":0.51},{"id":"irKAAT","type":"level","at":66.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.605,"over":0.015},{"id":"Fq6gdB","type":"level","at":66.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.302,"over":0.51},{"id":"mXlgzk","type":"pin","at":48.26,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"5JN6P0","type":"pin","at":49.46,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"hqQTrb","type":"pin","at":50.06,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"Oks5br","type":"pin","at":50.66,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"jRLplW","type":"pin","at":52.46,"voice":"v1","pitch":71,"glide":{"ease":"smoothstep","length":0.11}},{"id":"Q9kxPG","type":"pin","at":53.06,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"ne0uiT","type":"pin","at":54.26,"voice":"v1","pitch":69,"glide":{"ease":"smoothstep","length":0.11}},{"id":"j7dzSf","type":"pin","at":56.66,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"mONvWZ","type":"pin","at":57.86,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"VCKKIz","type":"pin","at":59.06,"voice":"v1","pitch":79,"glide":{"ease":"smoothstep","length":0.11}},{"id":"Rdo97V","type":"pin","at":60.86,"voice":"v1","pitch":77,"glide":{"ease":"smoothstep","length":0.11}},{"id":"bDu92a","type":"pin","at":61.46,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"TszD2V","type":"pin","at":62.06,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"AaZMBx","type":"pin","at":62.66,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"vS8bOh","type":"pin","at":64.46,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"yuXMos","type":"pin","at":65.06,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"WxTNEx","type":"level","at":48.3,"target":{"voices":["v7","v8","v9"]},"gain":0.9,"over":2},{"id":"4o38W0","type":"level","at":67.5,"target":{"voices":["v1"]},"gain":1.1,"over":2},{"id":"huxig2","type":"level","at":67.5,"target":{"voices":["v6"]},"gain":1,"over":2},{"id":"KnbERH","type":"chord","at":67.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"BMQrxp","type":"pin","at":67.45,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"9uxKSV","type":"pin","at":68.65,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"0Ctd48","type":"pin","at":69.25,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"69GDqS","type":"chord","at":69.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"qmTNhC","type":"pin","at":69.85,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"SjPmsh","type":"pin","at":71.05,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"DslrCk","type":"pin","at":71.65,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"DiEa25","type":"chord","at":71.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"TlovGH","type":"pin","at":72.25,"voice":"v6","pitch":28,"glide":{"ease":"smoothstep","length":0.12}},{"id":"IJc4jI","type":"pin","at":73.45,"voice":"v6","pitch":35,"glide":{"ease":"smoothstep","length":0.192}},{"id":"XjLts8","type":"pin","at":74.05,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"0GH8ZJ","type":"chord","at":74.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,57,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"gYoEV7","type":"pin","at":74.65,"voice":"v6","pitch":33,"glide":{"ease":"smoothstep","length":0.12}},{"id":"hNb0IJ","type":"pin","at":75.85,"voice":"v6","pitch":40,"glide":{"ease":"smoothstep","length":0.192}},{"id":"VcxkMm","type":"pin","at":76.45,"voice":"v6","pitch":45,"glide":{"ease":"smoothstep","length":0.192}},{"id":"Zdbsua","type":"chord","at":76.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"13sGn2","type":"pin","at":77.05,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"nekXIh","type":"pin","at":78.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"WoRLt4","type":"pin","at":78.85,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"YrlZMD","type":"chord","at":79.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[50,55,59,62]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"zUwtkN","type":"pin","at":79.45,"voice":"v6","pitch":31,"glide":{"ease":"smoothstep","length":0.12}},{"id":"7uedCK","type":"pin","at":80.65,"voice":"v6","pitch":38,"glide":{"ease":"smoothstep","length":0.192}},{"id":"wDLrgj","type":"pin","at":81.25,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"2rIcu9","type":"chord","at":81.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"OLMaCW","type":"pin","at":81.85,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"lsyTDl","type":"pin","at":83.05,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"ioqwGk","type":"pin","at":83.65,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"12c8bi","type":"chord","at":83.95,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"U94NCI","type":"pin","at":84.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"kHdlJZ","type":"pin","at":85.45,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"70Fu4w","type":"pin","at":86.05,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"bwillO","type":"level","at":67.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"NDtA6G","type":"level","at":67.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"4Jrlh2","type":"level","at":68.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"iQqwtR","type":"level","at":68.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"azEghs","type":"level","at":68.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"LUhFq6","type":"level","at":68.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"aod2PA","type":"level","at":69.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"Un4JCt","type":"level","at":69.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"aHWNlX","type":"level","at":69.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"qbNMd2","type":"level","at":69.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"DUOsDT","type":"level","at":70.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"rbDJd2","type":"level","at":70.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"Exjy5x","type":"level","at":71.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"9mz40B","type":"level","at":71.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"nn9DpP","type":"level","at":71.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"9YHz52","type":"level","at":71.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"XFbhmb","type":"level","at":72.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"WEOfzm","type":"level","at":72.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"VkFjl1","type":"level","at":72.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"3WHEbU","type":"level","at":72.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"skyqfz","type":"level","at":73.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"aHbHxF","type":"level","at":73.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"foplaT","type":"level","at":74.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"5XY9w0","type":"level","at":74.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"57biAe","type":"level","at":74.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"nQ1OUP","type":"level","at":74.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"wp4SwM","type":"level","at":75.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"TvZsso","type":"level","at":75.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"xqqJND","type":"level","at":75.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"mWQ9Le","type":"level","at":75.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"2SnXAK","type":"level","at":76.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"M6lokH","type":"level","at":76.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"wV8bxy","type":"level","at":77.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"HO8yAj","type":"level","at":77.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"PeKuEB","type":"level","at":77.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"pIC5Aj","type":"level","at":77.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"y1lanv","type":"level","at":78.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"pMJxrh","type":"level","at":78.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"BGSD6z","type":"level","at":78.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"bHfuuY","type":"level","at":78.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"DCnMbz","type":"level","at":79.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"AsYt4a","type":"level","at":79.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"Bzmgik","type":"level","at":80.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"RyiO80","type":"level","at":80.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"KPrysn","type":"level","at":80.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"kxzUN2","type":"level","at":80.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"i1DRI5","type":"level","at":81.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"llDbXp","type":"level","at":81.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"tF70sd","type":"level","at":81.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"6eY6nt","type":"level","at":81.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"89yYGK","type":"level","at":82.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"pZgScc","type":"level","at":82.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"1pPI0V","type":"level","at":83.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"7j42lD","type":"level","at":83.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"ivQK9N","type":"level","at":83.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"R5Uel1","type":"level","at":83.73,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"ylJlfS","type":"level","at":84.3,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.3,"over":0.015},{"id":"Yustca","type":"level","at":84.33,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.65,"over":0.51},{"id":"Bp0ADa","type":"level","at":84.9,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"zxzAMV","type":"level","at":84.93,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"wC16YF","type":"level","at":85.5,"target":{"voices":["v2","v3","v4","v5"]},"gain":1.04,"over":0.015},{"id":"0NfeAW","type":"level","at":85.53,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.52,"over":0.51},{"id":"6h95OW","type":"level","at":86.1,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.715,"over":0.015},{"id":"jWO0Ec","type":"level","at":86.13,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.357,"over":0.51},{"id":"qQqXdX","type":"pin","at":67.46,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"nRFrFx","type":"pin","at":69.26,"voice":"v1","pitch":69,"glide":{"ease":"smoothstep","length":0.11}},{"id":"3v93i5","type":"pin","at":69.86,"voice":"v1","pitch":71,"glide":{"ease":"smoothstep","length":0.11}},{"id":"KSNyNG","type":"pin","at":71.06,"voice":"v1","pitch":67,"glide":{"ease":"smoothstep","length":0.11}},{"id":"EQA51G","type":"pin","at":74.06,"voice":"v1","pitch":64,"glide":{"ease":"smoothstep","length":0.11}},{"id":"nxcf3i","type":"pin","at":74.66,"voice":"v1","pitch":69,"glide":{"ease":"smoothstep","length":0.176}},{"id":"MgZpbW","type":"pin","at":77.06,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"b9xBjN","type":"pin","at":78.26,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"6MgMb3","type":"pin","at":79.46,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"5FbFxr","type":"pin","at":80.66,"voice":"v1","pitch":74,"glide":{"ease":"smoothstep","length":0.11}},{"id":"imxNh1","type":"pin","at":81.26,"voice":"v1","pitch":71,"glide":{"ease":"smoothstep","length":0.11}},{"id":"Sst4hs","type":"pin","at":81.86,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"MQbqmE","type":"chord","at":86.35,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"eZgbTV","type":"pin","at":86.65,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ni6Wyr","type":"pin","at":87.85,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"YgSWQ0","type":"pin","at":88.45,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"ppszPM","type":"chord","at":88.75,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"3LpFLX","type":"pin","at":89.05,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"JwmGVL","type":"pin","at":90.25,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"pHk0yu","type":"pin","at":90.85,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"MBiouP","type":"chord","at":91.15,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[52,55,60,64]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"Eau0lP","type":"pin","at":91.45,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.12}},{"id":"IRrztK","type":"pin","at":92.65,"voice":"v6","pitch":43,"glide":{"ease":"smoothstep","length":0.192}},{"id":"nY1mT0","type":"pin","at":93.25,"voice":"v6","pitch":48,"glide":{"ease":"smoothstep","length":0.192}},{"id":"9EEL9C","type":"chord","at":93.55,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[53,57,60,65]},"assign":"ordered","glide":{"stagger":0.2,"jitter":0.15,"ease":"smootherstep","length":0.7}},{"id":"uP0IFV","type":"pin","at":93.85,"voice":"v6","pitch":29,"glide":{"ease":"smoothstep","length":0.12}},{"id":"ZOLKFP","type":"pin","at":95.05,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.192}},{"id":"vU1TNg","type":"pin","at":95.65,"voice":"v6","pitch":41,"glide":{"ease":"smoothstep","length":0.192}},{"id":"qDlRCL","type":"pin","at":86.66,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"Tngy8O","type":"pin","at":89.06,"voice":"v1","pitch":77,"glide":{"ease":"smoothstep","length":0.11}},{"id":"csIeTb","type":"pin","at":91.46,"voice":"v1","pitch":76,"glide":{"ease":"smoothstep","length":0.11}},{"id":"by0zkl","type":"pin","at":93.86,"voice":"v1","pitch":72,"glide":{"ease":"smoothstep","length":0.11}},{"id":"F8CFCB","type":"level","at":86.7,"target":{"voices":["v2","v3","v4","v5"]},"gain":0.7,"over":2},{"id":"IgzFKj","type":"chord","at":96,"target":{"voices":["v2","v3","v4","v5"]},"notes":{"kind":"pitches","pitches":[48,55,64,67]},"assign":"ordered","glide":{"stagger":0.5,"length":1.5},"label":"End"},{"id":"vD2jH7","type":"pin","at":96.26,"voice":"v6","pitch":36,"glide":{"ease":"smoothstep","length":0.3}},{"id":"xwyXy8","type":"level","at":91.5,"target":{"voices":["v7","v8","v9"]},"gain":0,"over":5},{"id":"tIelms","type":"level","at":98.7,"gain":0,"over":6}],"mix":{"reverb":{"size":0.7,"decay":3.2,"damping":0.45,"preDelay":0.02,"returnLevel":0.32},"delay":{"time":0.45,"feedback":0.3,"returnLevel":0.18},"sends":{"reverb":0.5,"delay":0.25},"tone":{"tilt":0,"lowpassHz":20000},"limiter":{"ceilingDb":-1},"panAuto":"index"},"end":{"at":108.3,"fade":2},"view":{"window":20,"colors":"pitch","hud":true}}
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Kite Day",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 1001,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "C", "scale": "pentatonic-major" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Melody",
+      "timbre": "reed",
+      "pan": -0.05,
+      "gain": 2.32,
+      "range": [60, 80],
+      "sends": { "reverb": 0.4, "delay": 0.15 }
+    },
+    {
+      "id": "v2",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": -0.5,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v3",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": -0.15,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v4",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": 0.15,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v5",
+      "part": "Chords",
+      "timbre": "glass",
+      "pan": 0.5,
+      "gain": 1.12,
+      "range": [46, 68]
+    },
+    {
+      "id": "v6",
+      "part": "Bass",
+      "timbre": "organ",
+      "pan": 0,
+      "gain": 1.28,
+      "range": [26, 52],
+      "sends": { "reverb": 0.2, "delay": 0 }
+    },
+    {
+      "id": "v7",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": -0.65,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    },
+    {
+      "id": "v8",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": 0,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    },
+    {
+      "id": "v9",
+      "part": "Sparkle",
+      "timbre": "glass",
+      "pan": 0.65,
+      "gain": 0.96,
+      "range": [81, 94],
+      "sends": { "reverb": 0.55, "delay": 0.35 }
+    }
+  ],
+  "moments": [
+    {
+      "id": "start0",
+      "type": "chord",
+      "at": 0,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [72, 52, 55, 60, 64, 36, 81, 84, 88]
+      },
+      "voicing": "even",
+      "assign": "ordered",
+      "byVoice": true
+    },
+    { "id": "kd0001", "type": "level", "at": 0, "gain": 0, "over": 0 },
+    {
+      "id": "kd0002",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Chords" },
+      "gain": 0.7,
+      "over": 2.75,
+      "label": "Intro"
+    },
+    {
+      "id": "kd0003",
+      "type": "tune",
+      "at": 0,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.15 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0004",
+      "type": "chord",
+      "at": 2.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0005",
+      "type": "chord",
+      "at": 4.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0006",
+      "type": "level",
+      "at": 4.8,
+      "target": { "part": "Bass" },
+      "gain": 0.7,
+      "over": 2
+    },
+    {
+      "id": "kd0007",
+      "type": "chord",
+      "at": 7.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0008",
+      "type": "tune",
+      "at": 9.55,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0009",
+      "type": "level",
+      "at": 9.6,
+      "target": { "part": "Sparkle" },
+      "gain": 0.75,
+      "over": 4,
+      "label": "Sparkle"
+    },
+    {
+      "id": "yofgAy",
+      "type": "walk",
+      "at": 9.6,
+      "until": 96,
+      "target": { "part": "Sparkle" },
+      "grid": 0.3,
+      "density": 0.5,
+      "steps": [-1, 1, -2, 2],
+      "stepGlide": 0.06,
+      "glide": { "stagger": 0, "jitter": 0, "ease": "smoothstep" },
+      "label": "Walk"
+    },
+    {
+      "id": "kd0010",
+      "type": "chord",
+      "at": 9.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0011",
+      "type": "chord",
+      "at": 12,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0012",
+      "type": "chord",
+      "at": 14.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0013",
+      "type": "chord",
+      "at": 16.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0014",
+      "type": "chord",
+      "at": 19.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0015",
+      "type": "chord",
+      "at": 21.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0016",
+      "type": "chord",
+      "at": 24,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0017",
+      "type": "chord",
+      "at": 26.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0018",
+      "type": "level",
+      "at": 28.75,
+      "target": { "part": "Melody" },
+      "gain": 0.9,
+      "over": 0.1
+    },
+    {
+      "id": "kd0019",
+      "type": "tune",
+      "at": 28.75,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 28, "len": 1.2 },
+        { "pitch": 35, "len": 0.6 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0020",
+      "type": "tune",
+      "at": 28.76,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 69, "len": 0.6 },
+        { "pitch": 71, "len": 1.2 },
+        { "pitch": 67, "len": 3 },
+        { "pitch": 64, "len": 0.6 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 74, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" },
+      "label": "Tune"
+    },
+    {
+      "id": "kd0021",
+      "type": "level",
+      "at": 28.8,
+      "target": { "part": "Bass" },
+      "gain": 0.85,
+      "over": 2
+    },
+    {
+      "id": "kd0022",
+      "type": "chord",
+      "at": 31.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0023",
+      "type": "chord",
+      "at": 33.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0024",
+      "type": "chord",
+      "at": 36,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0025",
+      "type": "chord",
+      "at": 38.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0026",
+      "type": "chord",
+      "at": 40.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0027",
+      "type": "chord",
+      "at": 43.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0028",
+      "type": "tune",
+      "at": 47.95,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0029",
+      "type": "tune",
+      "at": 47.96,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 72, "len": 0.6 },
+        { "pitch": 74, "len": 1.8 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 79, "len": 1.8 },
+        { "pitch": 77, "len": 0.6 },
+        { "pitch": 76, "len": 0.6 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 76, "len": 0.6 },
+        { "pitch": 72, "len": 2.4 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0030",
+      "type": "level",
+      "at": 48,
+      "target": { "part": "Chords" },
+      "gain": 1.1,
+      "over": 0.015
+    },
+    {
+      "id": "kd0031",
+      "type": "pulse",
+      "at": 48,
+      "target": { "part": "Chords" },
+      "until": 67.2,
+      "step": 0.6,
+      "pattern": [1, 0.55, 0.8, 0.55],
+      "decay": 1.2,
+      "floor": 0.5,
+      "mode": "together",
+      "strike": false
+    },
+    {
+      "id": "kd0032",
+      "type": "level",
+      "at": 48,
+      "target": { "part": "Sparkle" },
+      "gain": 0.9,
+      "over": 2
+    },
+    {
+      "id": "kd0033",
+      "type": "chord",
+      "at": 50.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0034",
+      "type": "chord",
+      "at": 52.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0035",
+      "type": "chord",
+      "at": 55.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0036",
+      "type": "chord",
+      "at": 57.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0037",
+      "type": "chord",
+      "at": 60,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0038",
+      "type": "chord",
+      "at": 62.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0039",
+      "type": "chord",
+      "at": 64.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0040",
+      "type": "tune",
+      "at": 67.15,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 28, "len": 1.2 },
+        { "pitch": 35, "len": 0.6 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 33, "len": 1.2 },
+        { "pitch": 40, "len": 0.6 },
+        { "pitch": 45, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 31, "len": 1.2 },
+        { "pitch": 38, "len": 0.6 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0041",
+      "type": "tune",
+      "at": 67.16,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 72, "len": 1.8 },
+        { "pitch": 69, "len": 0.6 },
+        { "pitch": 71, "len": 1.2 },
+        { "pitch": 67, "len": 3 },
+        { "pitch": 64, "len": 0.6 },
+        { "pitch": 69, "len": 2.4 },
+        { "pitch": 72, "len": 1.2 },
+        { "pitch": 74, "len": 1.2 },
+        { "pitch": 76, "len": 1.2 },
+        { "pitch": 74, "len": 0.6 },
+        { "pitch": 71, "len": 0.6 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0042",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Melody" },
+      "gain": 1.1,
+      "over": 2
+    },
+    {
+      "id": "kd0043",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Bass" },
+      "gain": 1,
+      "over": 2
+    },
+    {
+      "id": "kd0044",
+      "type": "level",
+      "at": 67.2,
+      "target": { "part": "Chords" },
+      "gain": 1.3,
+      "over": 0.015
+    },
+    {
+      "id": "kd0045",
+      "type": "pulse",
+      "at": 67.2,
+      "target": { "part": "Chords" },
+      "until": 86.4,
+      "step": 0.6,
+      "pattern": [1, 0.55, 0.8, 0.55],
+      "decay": 1.2,
+      "floor": 0.5,
+      "mode": "together",
+      "strike": false
+    },
+    {
+      "id": "kd0046",
+      "type": "chord",
+      "at": 69.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0047",
+      "type": "chord",
+      "at": 72,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0048",
+      "type": "chord",
+      "at": 74.4,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0049",
+      "type": "chord",
+      "at": 76.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0050",
+      "type": "chord",
+      "at": 79.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [50, 55, 59, 62] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0051",
+      "type": "chord",
+      "at": 81.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0052",
+      "type": "tune",
+      "at": 86.35,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 },
+        { "pitch": 36, "len": 1.2 },
+        { "pitch": 43, "len": 0.6 },
+        { "pitch": 48, "len": 0.6 },
+        { "pitch": 29, "len": 1.2 },
+        { "pitch": 36, "len": 0.6 },
+        { "pitch": 41, "len": 0.6 }
+      ],
+      "glide": { "length": 0.16, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0053",
+      "type": "tune",
+      "at": 86.36,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 76, "len": 2.4 },
+        { "pitch": 77, "len": 2.4 },
+        { "pitch": 76, "len": 2.4 },
+        { "pitch": 72, "len": 4.8 }
+      ],
+      "glide": { "length": 0.11, "ease": "smoothstep" }
+    },
+    {
+      "id": "kd0054",
+      "type": "level",
+      "at": 86.4,
+      "target": { "part": "Chords" },
+      "gain": 0.357,
+      "over": 0
+    },
+    {
+      "id": "kd0055",
+      "type": "level",
+      "at": 86.41,
+      "target": { "part": "Chords" },
+      "gain": 0.7,
+      "over": 2
+    },
+    {
+      "id": "kd0056",
+      "type": "chord",
+      "at": 88.8,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0057",
+      "type": "chord",
+      "at": 91.2,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [52, 55, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "kd0058",
+      "type": "level",
+      "at": 91.2,
+      "target": { "part": "Sparkle" },
+      "gain": 0,
+      "over": 5
+    },
+    {
+      "id": "kd0059",
+      "type": "chord",
+      "at": 93.6,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [53, 57, 60, 65] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.7,
+        "stagger": 0.2,
+        "jitter": 0.15,
+        "ease": "smootherstep",
+        "land": true
+      }
+    },
+    {
+      "id": "IgzFKj",
+      "type": "chord",
+      "at": 95.7,
+      "target": { "part": "Chords" },
+      "notes": { "kind": "pitches", "pitches": [48, 55, 64, 67] },
+      "assign": "ordered",
+      "glide": { "stagger": 0.5, "length": 1.5 },
+      "label": "End"
+    },
+    {
+      "id": "kd0060",
+      "type": "tune",
+      "at": 95.96,
+      "target": { "part": "Bass" },
+      "notes": [{ "pitch": 36, "len": 2.4 }],
+      "glide": { "length": 0.3, "ease": "smoothstep" }
+    },
+    { "id": "kd0061", "type": "level", "at": 98.4, "gain": 0, "over": 6 }
+  ],
+  "mix": {
+    "reverb": {
+      "size": 0.7,
+      "decay": 3.2,
+      "damping": 0.45,
+      "preDelay": 0.02,
+      "returnLevel": 0.32
+    },
+    "delay": { "time": 0.45, "feedback": 0.3, "returnLevel": 0.18 },
+    "sends": { "reverb": 0.5, "delay": 0.25 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 108, "fade": 2 },
+  "view": {
+    "window": 20,
+    "colors": "pitch",
+    "hud": true,
+    "gridBpm": 100,
+    "meter": 4
+  }
+}

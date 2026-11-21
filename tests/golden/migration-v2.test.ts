@@ -7,8 +7,11 @@
  * merges honour stagger and order) re-pinned the five originals; the compositions are unchanged.
  * Seeds-4 re-pinned seven-doors (a newborn forks 35 ms earlier). M5 share links re-pinned lanterns
  * and the compositions: canonical numbers (core/canonical.ts) move times by ≤ 0.5 ms and gains by
- * ≤ 0.04 dB. The full golden hashes changed only by what is not heard: the opening's moment span,
- * its harmony entry (the HUD now names the opening chord) and the opening holds' `momentId`.
+ * ≤ 0.04 dB. The rev 9 composition rewrite replaced the three compositions on disk (parts, tune,
+ * pulse, land), so they are no longer checked against their version 1 sound; the v1 Kite Day
+ * fixture still is (canonical hash, as M5 pinned it). The full golden hashes changed
+ * only by what is not heard: the opening's moment span, its harmony entry (the HUD now names the
+ * opening chord) and the opening holds' `momentId`.
  *
  * tests/golden/v1/ keeps two files as they were in version 1: one original (a plain start) and
  * one composition (a start out of pitch order: `byVoice`).
@@ -29,15 +32,14 @@ const V1_AUDIBLE: Record<string, string> = {
   'seven-doors-in-fog.algorhythms.json': 'ab5b1b312ff8a477',
   'the-cartographers-rain.algorhythms.json': 'f7880deb9770c50c',
   'tidewater-hymn.algorhythms.json': '2dcf9f4ab6ca22a6',
-  'harbour-song.algorhythms.json': '47d23adad3c97ce8',
-  'kite-day.algorhythms.json': 'ce8b518bfc86d3d1',
-  'night-ferry.algorhythms.json': '9e7ccc360e7da3c5',
 };
 
-const examplePath = (f: string): string =>
-  ['harbour-song', 'kite-day', 'night-ferry'].some((n) => f.startsWith(n))
-    ? join(ROOT, 'examples/compositions', f)
-    : join(ROOT, 'examples', f);
+/** Compositions as written in version 1, before the rev 9 rewrite (kept in tests/golden/v1). */
+const V1_COMPOSITIONS: Record<string, string> = {
+  'kite-day.algorhythms.json': 'ce8b518bfc86d3d1',
+};
+
+const examplePath = (f: string): string => join(ROOT, 'examples', f);
 
 function load(path: string) {
   const r = parsePiece(readFileSync(path, 'utf8'));
@@ -46,12 +48,9 @@ function load(path: string) {
 }
 
 describe('schema v1 → v2', () => {
-  it('covers the five originals and the three compositions', () => {
+  it('covers the five originals', () => {
     const originals = readdirSync(join(ROOT, 'examples')).filter((f) => f.endsWith('.json'));
-    const comps = readdirSync(join(ROOT, 'examples/compositions')).filter((f) =>
-      f.endsWith('.json'),
-    );
-    expect([...originals, ...comps].sort()).toEqual(Object.keys(V1_AUDIBLE).sort());
+    expect(originals.sort()).toEqual(Object.keys(V1_AUDIBLE).sort());
   });
 
   for (const [f, hash] of Object.entries(V1_AUDIBLE)) {
@@ -68,6 +67,16 @@ describe('schema v1 → v2', () => {
   }
 
   for (const f of readdirSync(V1).sort()) {
+    if (f in V1_COMPOSITIONS) {
+      it(`v1 fixture ${f}: migrates and sounds as in version 1`, () => {
+        const v1 = load(join(V1, f));
+        expect(v1.migratedFrom).toBe(1);
+        expect(v1.warnings).toEqual([]);
+        expect(v1.piece.moments[0]).toMatchObject({ id: 'start0', type: 'chord', at: 0 });
+        expect(hashString(audibleJson(compile(v1.piece)))).toBe(V1_COMPOSITIONS[f]);
+      });
+      continue;
+    }
     it(`v1 fixture ${f}: migrates to the file on disk, same compiled score`, () => {
       const v1 = load(join(V1, f));
       expect(v1.migratedFrom).toBe(1);
