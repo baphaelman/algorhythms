@@ -131,7 +131,7 @@ export function drawScore(
     g.globalAlpha = 1;
   }
 
-  if (style.bars) drawBars(g, style.bars, view, C.rule);
+  if (style.bars) drawBars(g, style.bars, view, C);
 
   // 3. moment and section markers
   drawMarkers(g, compiled, style, view, MONO);
@@ -166,18 +166,19 @@ function drawBars(
   g: CanvasRenderingContext2D,
   bars: { bpm?: number; meter?: number },
   view: View,
-  rule: string,
+  C: ScoreStyle['tokens'],
 ): void {
   const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps);
   const { tL, tR, padT, padB, height: H } = view;
   const y0 = padT - 6;
   const y1 = H - padB + 6;
-  g.strokeStyle = rule;
   g.lineWidth = 1;
   for (let pass = 0; pass < 2; pass++) {
     const step = pass === 0 ? beat : bar;
     if (!(step > 0)) continue;
-    g.globalAlpha = pass === 0 ? 0.35 : 1;
+    // Beats: the faint rule; bars: the secondary ink, light.
+    g.strokeStyle = pass === 0 ? C.rule : C.ink2;
+    g.globalAlpha = pass === 0 ? 0.6 : 0.3;
     g.beginPath();
     for (let k = Math.ceil(tL / step - 1e-9); k * step <= tR + 1e-9; k++) {
       const t = k * step;

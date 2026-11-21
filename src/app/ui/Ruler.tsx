@@ -78,14 +78,15 @@ export function Ruler() {
           s.dataset.t = String(t);
           s.style.transform = `translateX(${(t - v.start) * v.pps}px)`;
         }
-        const pv = usePlayer.getState().piece.view;
-        const { beat: bt, bar } = barGrid(pv.gridBpm, pv.meter, v.pps);
-        const beat = `${bt}|${bar}|${v.start}|${v.pps}`;
-        if (beat !== lastBeat) {
-          lastBeat = beat;
-          stripe(beats, bt, v);
-          stripe(bars, bar, v);
-        }
+      }
+      // The bar grid also follows the piece's tempo and meter.
+      const pv = usePlayer.getState().piece.view;
+      const { beat: bt, bar } = barGrid(pv.gridBpm, pv.meter, v.pps);
+      const beat = `${bt}|${bar}|${v.start}|${v.pps}`;
+      if (beat !== lastBeat) {
+        lastBeat = beat;
+        stripe(beats, bt, v);
+        stripe(bars, bar, v);
       }
       const now = Math.round(v.t);
       if (now !== lastNow) {
