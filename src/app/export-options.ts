@@ -69,7 +69,7 @@ export interface ExportForm {
   midiMode: ExportMidiMode;
   /** Per-voice mode only (MPE is always ±48; notes-only writes no bends). */
   bendRange: ExportBendRange;
-  /** Write life and level gain as CC11. */
+  /** Write pulse envelopes, fades and level gain as CC11. */
   cc11: boolean;
   /** End and re-strike the note on every arrival (plucked sounds). */
   restrike: boolean;

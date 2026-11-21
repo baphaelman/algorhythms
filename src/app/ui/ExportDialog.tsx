@@ -364,7 +364,9 @@ export function ExportDialog() {
                     data-testid="export-cc11"
                     onChange={(e) => patch({ cc11: e.target.checked })}
                   />
-                  <span>Write life and level as expression (CC11)</span>
+                  <span title="Writes MIDI CC11 expression: pulse envelopes, crossfade fades and level gain">
+                    CC11 expression (pulse, fades, level)
+                  </span>
                 </label>
                 <label className="check">
                   <input
