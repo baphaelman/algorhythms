@@ -1,6 +1,6 @@
 /**
- * The Voices drawer (PLAN.md §11.3): pool size, and per voice colour, timbre, pan, gain, range,
- * mute and solo. With parts (revision 9) notes are grouped under part headers that rename the
+ * The Voices drawer (PLAN.md §11.3): pool size, and per voice colour, timbre, pan, gain, FX
+ * sends (over the master's), range, mute and solo. With parts (revision 9) notes are grouped under part headers that rename the
  * part and set timbre, pan, gain and range for all its notes; each row has a Part select. What sounds at the start is the moment at t = 0 (M4.5-27), not a drawer setting. Wide layout only. Every change is one undo entry
  * (`edit`), and a slider or colour drag is one gesture. Edits reach the engine through the store's
  * recompile and hot-swap, so playback keeps going.
@@ -42,7 +42,9 @@ import {
   PITCH_MIN,
   poolShrinkEffects,
   resizePool,
+  sendOf,
   setAllTimbres,
+  setVoiceSend,
   timbreOptions,
   toggleMute,
   toggleSolo,
@@ -146,9 +148,10 @@ function GestureSlider(props: {
   gestureLabel: string;
   valueText: string;
   disabled?: boolean;
+  testId?: string;
   recipe: (x: number) => Recipe;
 }) {
-  const { value, min, max, step, label, gestureLabel, valueText, disabled, recipe } = props;
+  const { value, min, max, step, label, gestureLabel, valueText, disabled, testId, recipe } = props;
   const dragging = useRef(false);
   return (
     <input
@@ -160,6 +163,7 @@ function GestureSlider(props: {
       disabled={disabled}
       aria-label={label}
       aria-valuetext={valueText}
+      data-testid={testId}
       onPointerDown={() => {
         dragging.current = true;
         beginGesture(gestureLabel);
@@ -232,6 +236,64 @@ function ColorField({ voice }: { voice: VoiceDef }) {
 const fmtPan = (pan: number): string =>
   Math.abs(pan) < 0.005 ? 'C' : `${pan < 0 ? 'L' : 'R'}${Math.round(Math.abs(pan) * 100)}`;
 const fmtGain = (g: number): string => (g <= 0 ? '−∞ dB' : `${(20 * Math.log10(g)).toFixed(1)} dB`);
+
+const fmtSend = (x: number): string => String(Number(x.toFixed(2)));
+
+/**
+ * A note's reverb (R) and delay (D) sends. Without its own value a slider shows the master
+ * default, dimmed; moving it gives the note its own. ↺ goes back to the master default.
+ */
+function Sends({ voice }: { voice: VoiceDef }) {
+  const id = voice.id;
+  const piece = usePlayer((s) => s.piece);
+  const own = voice.sends !== undefined && Object.keys(voice.sends).length > 0;
+  return (
+    <span className="vd-sends">
+      {(['reverb', 'delay'] as const).map((key) => {
+        const value = sendOf(piece, voice, key);
+        const inherited = voice.sends?.[key] === undefined;
+        const text = `${fmtSend(value)}${inherited ? ' (master)' : ''}`;
+        return (
+          <span key={key} className={inherited ? 'vd-send vd-inherited' : 'vd-send'}>
+            <span className="vd-send-k" aria-hidden="true">
+              {key === 'reverb' ? 'R' : 'D'}
+            </span>
+            <GestureSlider
+              value={value}
+              min={0}
+              max={1}
+              step={0.01}
+              label={`${key === 'reverb' ? 'Reverb' : 'Delay'} send of ${id}`}
+              gestureLabel="Note send"
+              valueText={text}
+              testId={`send-${key}-${id}`}
+              recipe={(x) => (p) => setVoiceSend(p, id, key, x)}
+            />
+            <output className="vd-out" data-testid={`send-${key}-${id}-out`}>
+              {fmtSend(value)}
+            </output>
+          </span>
+        );
+      })}
+      <button
+        type="button"
+        className="vd-mini"
+        aria-label={`Master sends for ${id}`}
+        title="Use the master sends (Sound drawer)"
+        data-testid={`send-reset-${id}`}
+        disabled={!own}
+        onClick={() =>
+          edit(
+            (p) => setVoiceSend(setVoiceSend(p, id, 'reverb', undefined), id, 'delay', undefined),
+            'Note sends',
+          )
+        }
+      >
+        ↺
+      </button>
+    </span>
+  );
+}
 
 const NEW_PART = '\u0000new';
 
@@ -343,6 +405,9 @@ function VoiceRow({
           />
           <output className="vd-out">{fmtGain(voice.gain)}</output>
         </span>
+      </td>
+      <td>
+        <Sends voice={voice} />
       </td>
       <td>
         <span className="vd-range">
@@ -564,6 +629,7 @@ function PartHeader({ part, cols }: { part: string; cols: number }) {
             </output>
           </span>
         </td>
+        <td />
         <td>
           <span className="vd-range">
             <NumberField
@@ -648,7 +714,7 @@ export function VoicesDrawer() {
   const parts = partNames(piece);
   const grouped = parts.length > 0;
   const unassigned = voices.filter((v) => !v.part);
-  const cols = grouped ? 8 : 7;
+  const cols = grouped ? 9 : 8;
   const row = (v: VoiceDef) => {
     const i = voices.indexOf(v);
     return (
@@ -745,6 +811,9 @@ export function VoicesDrawer() {
               <th scope="col">Timbre</th>
               <th scope="col">Pan</th>
               <th scope="col">Gain</th>
+              <th scope="col" title="Reverb and delay sends (dim: the master default)">
+                Sends
+              </th>
               <th scope="col">Range</th>
               <th scope="col">Mute · Solo</th>
               {grouped && <th scope="col">Part</th>}
