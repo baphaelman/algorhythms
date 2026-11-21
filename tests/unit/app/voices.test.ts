@@ -11,10 +11,6 @@ import {
   patchVoice,
   poolShrinkEffects,
   resizePool,
-  setStartCount,
-  setStartPitch,
-  setStarts,
-  startCount,
   timbreOptions,
   toggleMute,
   toggleSolo,
@@ -64,8 +60,17 @@ describe('resizePool', () => {
 
   it('shrinks keeping the piece valid', () => {
     let p = base();
-    p = setStarts(p, 'v5', true, 60);
     p = withMoments(p, [
+      {
+        id: 'start0',
+        type: 'chord',
+        at: 0,
+        notes: { kind: 'pitches', pitches: [57, 60] },
+        voicing: 'even',
+        assign: 'ordered',
+        target: { voices: ['v1', 'v5'] },
+        byVoice: true,
+      },
       { id: 'pin5', type: 'pin', at: 1, voice: 'v5', pitch: 62 },
       { id: 'pin1', type: 'pin', at: 1, voice: 'v1', pitch: 62 },
       {
@@ -88,15 +93,19 @@ describe('resizePool', () => {
       { id: 'mrge', type: 'merge', at: 5, count: 5, which: 'top', fade: 2 },
       { id: 'allv', type: 'shift', at: 6, by: 1, unit: 'semitones', target: 'all' },
     ]);
-    expect(poolShrinkEffects(p, 4)).toEqual({ voices: ['v5', 'v6'], start: 1, moments: 2 });
+    expect(poolShrinkEffects(p, 4)).toEqual({ voices: ['v5', 'v6'], moments: 2 });
     const q = resizePool(p, 4);
     expect(q.voices.map((v) => v.id)).toEqual(['v1', 'v2', 'v3', 'v4']);
-    expect(q.start.map((s) => s.voice)).toEqual(['v1']);
-    expect(q.moments.map((m) => m.id)).toEqual(['pin1', 'tgtA', 'splt', 'mrge', 'allv']);
-    expect(q.moments[1].target).toEqual({ voices: ['v1'] });
-    expect((q.moments[2] as { count: number }).count).toBe(4);
+    expect(q.moments.map((m) => m.id)).toEqual(['start0', 'pin1', 'tgtA', 'splt', 'mrge', 'allv']);
+    // The opening keeps v1's own note (a by-voice chord drops the removed voices' pitches).
+    expect(q.moments[0]).toMatchObject({
+      target: { voices: ['v1'] },
+      notes: { kind: 'pitches', pitches: [57] },
+    });
+    expect(q.moments[2].target).toEqual({ voices: ['v1'] });
     expect((q.moments[3] as { count: number }).count).toBe(4);
-    expect(q.moments[4]).toBe(p.moments[6]);
+    expect((q.moments[4] as { count: number }).count).toBe(4);
+    expect(q.moments[5]).toBe(p.moments[7]);
     valid(q);
   });
 
@@ -124,7 +133,7 @@ describe('resizePool', () => {
   });
 
   it('reports nothing when growing', () => {
-    expect(poolShrinkEffects(base(), 10)).toEqual({ voices: [], start: 0, moments: 0 });
+    expect(poolShrinkEffects(base(), 10)).toEqual({ voices: [], moments: 0 });
   });
 });
 
@@ -184,33 +193,7 @@ describe('mute and solo', () => {
   });
 });
 
-describe('voices at start', () => {
-  it('starts and stops voices, with a default pitch a fifth above', () => {
-    let p = base();
-    expect(startCount(p)).toBe(1);
-    p = setStarts(p, 'v3', true);
-    expect(p.start).toEqual([
-      { voice: 'v1', pitch: 57 },
-      { voice: 'v3', pitch: 64 },
-    ]);
-    expect(setStarts(p, 'v3', true)).toBe(p);
-    p = setStartPitch(p, 'v3', 60);
-    expect(p.start[1].pitch).toBe(60);
-    p = setStarts(p, 'v1', false);
-    expect(p.start).toEqual([{ voice: 'v3', pitch: 60 }]);
-  });
-
-  it('sets the count by pool order', () => {
-    let p = setStartCount(base(), 3);
-    expect(p.start.map((s) => s.voice)).toEqual(['v1', 'v2', 'v3']);
-    p = setStarts(p, 'v6', true);
-    p = setStartCount(p, 2);
-    expect(p.start.map((s) => s.voice)).toEqual(['v1', 'v2']);
-    expect(setStartCount(p, 99).start).toHaveLength(6);
-    expect(setStartCount(p, 0).start).toEqual([]);
-    valid(setStartCount(p, 6));
-  });
-
+describe('voice ids', () => {
   it('finds free ids', () => {
     const p = base();
     expect(freeVoiceId(p.voices, 3)).toBe('v7');

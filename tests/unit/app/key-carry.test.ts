@@ -37,13 +37,14 @@ import {
   useKeyCarry,
 } from '../../../src/app/editor/key-carry';
 import { loadPiece, usePlayer } from '../../../src/app/store';
+import { withStart } from '../core/compiler-fixtures';
 
 function base(): Piece {
   const p = newPiece({ seed: 5, poolSize: 4 });
   for (const v of p.voices) v.range = [36, 96];
   p.key = { tonic: 'C', scale: 'major' };
-  p.start = [48, 55, 60, 64].map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
   p.moments = [
+    ...withStart(p, [48, 55, 60, 64], []),
     {
       id: 'deg001',
       type: 'chord',

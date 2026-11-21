@@ -6,7 +6,7 @@
  * piece is fully editable and is realised by the compiler (stagger, jitter, births, walk steps
  * and crossing rules all live there now).
  *
- *   Seed    one voice holds the root (A3)                    start: v1 at 57
+ *   Seed    one voice holds the root (A3)                    chord at 0 (one note: 57)
  *   Split   1 → 3 → 5 → 8 → 12 voices on changing chords      4 × split (explicit pitches)
  *   Drift   six chord changes, the register wandering         6 × chord (scale degrees + register)
  *   Gather  everyone to one chord tone                        unison
@@ -44,6 +44,9 @@ import {
   type ScaleName,
   type Seconds,
 } from './types';
+
+/** `nextId` key of the opening chord: outside the moment indices the others use. */
+const OPENING_KEY = 0xffffffff;
 
 /** The prototype's four modes. */
 export type GenerateMode = 'dorian' | 'aeolian' | 'lydian' | 'pentatonic';
@@ -348,10 +351,12 @@ export function generateWithSections(
 
   // Moments, with deterministic, unique 6-character ids.
   const moments: Moment[] = [];
+  let opening = 0;
   const usedIds = new Set<string>();
-  const nextId = (): string => {
+  // The opening chord (M4.5-27) is keyed apart, so the later moments keep their ids and seeds.
+  const nextId = (key: number = moments.length - opening): string => {
     for (let attempt = 0; ; attempt++) {
-      const id = base62Id(mix32(pieceSeed, moments.length, attempt, Purpose.GenId));
+      const id = base62Id(mix32(pieceSeed, key, attempt, Purpose.GenId));
       if (!usedIds.has(id)) {
         usedIds.add(id);
         return id;
@@ -365,8 +370,8 @@ export function generateWithSections(
     pendingLabel = name;
   };
   /** Adds a moment; the first one of a section is labelled with the section's name. */
-  const add = (m: NewMoment): void => {
-    const moment = { id: nextId(), ...m } as Moment;
+  const add = (m: NewMoment, key?: number): void => {
+    const moment = { id: nextId(key), ...m } as Moment;
     moment.at = round3(moment.at);
     if (pendingLabel !== null) {
       moment.label = pendingLabel;
@@ -377,7 +382,19 @@ export function generateWithSections(
 
   let c = 0;
 
+  // Seed: the piece opens on one note, an establishing chord at 0 (schema v2).
   mark('Seed', 0);
+  add(
+    {
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [ROOT] },
+      voicing: 'even',
+      assign: 'ordered',
+    },
+    OPENING_KEY,
+  );
+  opening = 1;
   let t = (8 + draw('seed', 0, Purpose.GenTiming) * 2) * s;
 
   mark('Split', t);
@@ -494,7 +511,6 @@ export function generateWithSections(
     key: { tonic: 'A', scale: MODE_SCALE[mode] },
     defaults: { glide: defaultGlide() },
     voices,
-    start: [{ voice: voices[0].id, pitch: ROOT }],
     moments,
     timbres: builtinTimbresFor(voices),
     mix: defaultMix(),

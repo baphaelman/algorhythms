@@ -33,12 +33,15 @@ const SEEDS = [
  * Per section of a generated piece, derived from the piece itself (not from generate()'s own
  * bookkeeping): the active-voice count after each moment that retargets voices (split, chord,
  * unison, merge) and at the section's end. Sections start at the moment labelled with their name;
- * Seed is the opening, before any moment.
+ * Seed is the opening chord at 0 (schema v2), which sets the count but is not a retarget.
  */
 function pieceSections(piece: Piece): { name: string; retargets: number[]; end: number }[] {
-  const out = [{ name: 'Seed', retargets: [] as number[], end: piece.start.length }];
-  let active = piece.start.length;
-  const ordered = piece.moments
+  const [opening, ...rest] = piece.moments;
+  expect(opening).toMatchObject({ type: 'chord', at: 0, label: 'Seed' });
+  const n = opening.type === 'chord' && opening.notes.kind === 'pitches' ? opening.notes.pitches : [];
+  const out = [{ name: 'Seed', retargets: [] as number[], end: n.length }];
+  let active = n.length;
+  const ordered = rest
     .map((m, i) => ({ m, i }))
     .sort((a, b) => a.m.at - b.m.at || a.i - b.i)
     .map(({ m }) => m);
@@ -103,8 +106,8 @@ describe('generate: matches the prototype compose()', () => {
     const { piece, sections } = generateWithSections(2611, { mode: 'dorian' });
     expect(sections.map((s) => s.name)).toEqual([...SECTION_NAMES]);
     const labelled = piece.moments.filter((m) => m.label !== undefined);
-    expect(labelled.map((m) => m.label)).toEqual(SECTION_NAMES.slice(1));
-    expect(labelled.map((m) => m.at)).toEqual(sections.slice(1).map((s) => s.at));
+    expect(labelled.map((m) => m.label)).toEqual([...SECTION_NAMES]);
+    expect(labelled.map((m) => m.at)).toEqual(sections.map((s) => s.at));
     expect(sections[0].at).toBe(0);
     for (let i = 1; i < sections.length; i++)
       expect(sections[i].at).toBeGreaterThan(sections[i - 1].at);
@@ -191,7 +194,16 @@ describe('generate: output', () => {
       const p = generate(9, { mode });
       expect(p.key).toEqual({ tonic: 'A', scale: scale[mode] });
       expect(p.seed).toBe(9);
-      expect(p.start).toEqual([{ voice: 'v1', pitch: 57 }]);
+      expect(p.version).toBe(2);
+      // The opening: one note (A3), an establishing chord at 0, first in composition order.
+      expect(p.moments[0]).toMatchObject({
+        type: 'chord',
+        at: 0,
+        notes: { kind: 'pitches', pitches: [57] },
+        label: 'Seed',
+      });
+      expect(p.moments[0].target).toBeUndefined();
+      expect(p.moments.slice(1).every((m) => m.at > 0)).toBe(true);
       expect(p.voices).toHaveLength(12);
       for (const v of p.voices) expect(v.range).toEqual([38, 84]);
       expect(Object.keys(p.timbres)).toEqual(['glass']);

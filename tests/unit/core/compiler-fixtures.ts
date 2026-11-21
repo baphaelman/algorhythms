@@ -2,6 +2,7 @@
  * Shared helpers for the compiler tests: piece builders and score checks.
  */
 import { newPiece } from '../../../src/core/defaults';
+import { startChord } from '../../../src/core/migrations';
 import { evalSegment } from '../../../src/core/segment';
 import { pitchAt, stackAt } from '../../../src/core/query';
 import type {
@@ -17,6 +18,29 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** A moment without its id (filled in by `piece`). */
 export type MomentInput = DistributiveOmit<Moment, 'id'> & { id?: string };
 
+/**
+ * The moments of `p` behind an opening that sounds `start` from t = 0 (schema v2: the chord a v1
+ * `start` migrates to, `startChord`); any earlier opening (`start…` id) is replaced. Pitches go
+ * to the first pool voices in order.
+ */
+export function withStart(
+  p: Piece,
+  start: readonly Pitch[] | readonly { voice: string; pitch: Pitch }[],
+  moments: readonly Moment[] = p.moments,
+): Moment[] {
+  const list = start.map((s, i) =>
+    typeof s === 'number' ? { voice: p.voices[i].id, pitch: s } : s,
+  );
+  const rest = moments.filter((m) => !(m.at === 0 && /^start\d+$/.test(m.id)));
+  const ids = new Set(rest.map((m) => m.id));
+  const c = startChord(
+    p.voices.map((v) => v.id),
+    list,
+    ids,
+  );
+  return c ? [c, ...rest] : rest;
+}
+
 /** A piece with `pool` voices (range 36..96), the given start pitches and moments. */
 export function piece(opts: {
   seed?: number;
@@ -30,8 +54,11 @@ export function piece(opts: {
 }): Piece {
   const p = newPiece({ seed: opts.seed ?? 2611, poolSize: opts.pool ?? 12 });
   for (const v of p.voices) v.range = opts.range ?? [36, 96];
-  p.start = (opts.start ?? [57]).map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
-  p.moments = (opts.moments ?? []).map((m, i) => ({ ...m, id: m.id ?? `m${i}` }) as Moment);
+  p.moments = withStart(
+    p,
+    opts.start ?? [57],
+    (opts.moments ?? []).map((m, i) => ({ ...m, id: m.id ?? `m${i}` }) as Moment),
+  );
   if (opts.glide) p.defaults.glide = { ...p.defaults.glide, ...opts.glide };
   if (opts.end) p.end = opts.end;
   if (opts.key) p.key = opts.key;

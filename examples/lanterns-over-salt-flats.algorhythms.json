@@ -1,6 +1,6 @@
 {
   "format": "algorhythms",
-  "version": 1,
+  "version": 2,
   "meta": {
     "title": "Lanterns Over Salt Flats",
     "author": "AlgoRhythms examples",
@@ -114,13 +114,18 @@
       "range": [38, 84]
     }
   ],
-  "start": [
-    {
-      "voice": "v1",
-      "pitch": 57
-    }
-  ],
   "moments": [
+    {
+      "id": "start0",
+      "type": "chord",
+      "at": 0,
+      "notes": {
+        "kind": "pitches",
+        "pitches": [57]
+      },
+      "voicing": "even",
+      "assign": "ordered"
+    },
     {
       "id": "MB6iuC",
       "type": "split",

@@ -1,20 +1,16 @@
 /**
- * Pure piece recipes for the Voices drawer (PLAN.md §11.3): pool size, voices active at start and
- * per-voice settings. Each returns the same piece object when nothing changes (so `edit` records
- * no entry), else a new piece sharing the untouched parts.
+ * Pure piece recipes for the Voices drawer (PLAN.md §11.3): pool size and per-voice settings.
+ * Each returns the same piece object when nothing changes (so `edit` records no entry), else a new
+ * piece sharing the untouched parts. What sounds at the start is the moment at t = 0 (M4.5-27),
+ * edited like any other moment.
  *
  * Shrinking the pool removes voices from the end (highest pool index) and keeps the piece valid:
- * their `start` entries go; `{ voices }` targets drop them, and a moment left with no target
+ * `{ voices }` targets drop them, and a moment left with no target
  * voices is deleted; pins on removed voices are deleted; split, merge and chord counts are
  * clamped to the new pool size. `poolShrinkEffects` reports this beforehand.
  */
 
-import {
-  builtinTimbresFor,
-  DEFAULT_RANGE,
-  DEFAULT_START_PITCH,
-  DEFAULT_TIMBRE,
-} from '../../core/defaults';
+import { builtinTimbresFor, DEFAULT_RANGE, DEFAULT_TIMBRE } from '../../core/defaults';
 import { BUILTIN_TIMBRES } from '../../core/timbres';
 import {
   MAX_VOICES,
@@ -49,8 +45,6 @@ export function freeVoiceId(voices: readonly VoiceDef[], from: number): VoiceId 
 export interface ShrinkEffects {
   /** Removed voice ids. */
   voices: VoiceId[];
-  /** Start entries dropped. */
-  start: number;
   /** Moments deleted (pins on removed voices, targets left empty). */
   moments: number;
 }
@@ -68,6 +62,14 @@ function pruneMoment(m: Moment, gone: Set<VoiceId>, size: number): Moment | null
     const voices = t.voices.filter((id) => !gone.has(id));
     if (voices.length === 0) return null;
     out = { ...out, target: { voices } };
+    // A by-voice chord (a migrated opening) gives pitch i to voice i: drop the removed ones'.
+    if (out.type === 'chord' && out.byVoice && out.notes.kind === 'pitches') {
+      const ps = out.notes.pitches;
+      if (ps.length === t.voices.length) {
+        const pitches = ps.filter((_, i) => !gone.has(t.voices[i]));
+        out = { ...out, notes: { kind: 'pitches', pitches } };
+      }
+    }
   }
   if (
     (out.type === 'split' || out.type === 'merge' || out.type === 'chord') &&
@@ -85,7 +87,6 @@ export function poolShrinkEffects(piece: Piece, size: number): ShrinkEffects {
   const gone = removedIds(piece, n);
   return {
     voices: [...gone],
-    start: piece.start.filter((s) => gone.has(s.voice)).length,
     moments:
       gone.size === 0 ? 0 : piece.moments.filter((m) => pruneMoment(m, gone, n) === null).length,
   };
@@ -124,7 +125,6 @@ export function resizePool(piece: Piece, size: number): Piece {
   return {
     ...piece,
     voices: piece.voices.slice(0, n),
-    start: piece.start.filter((s) => !gone.has(s.voice)),
     moments: changed ? moments : piece.moments,
   };
 }
@@ -232,88 +232,5 @@ export function toggleSolo(piece: Piece, id: VoiceId, exclusive = false): Piece 
 export function clearSolo(piece: Piece): Piece {
   let out = piece;
   for (const v of piece.voices) if (v.solo) out = patchVoice(out, v.id, { solo: undefined });
-  return out;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Voices active at start
-// ---------------------------------------------------------------------------------------------
-
-/** The start pitch of `id`, or undefined when it doesn't start. */
-export function startPitchOf(piece: Piece, id: VoiceId): Pitch | undefined {
-  return piece.start.find((s) => s.voice === id)?.pitch;
-}
-
-/** Folds `p` into `[lo, hi]` by octaves (the compiler folds too; this keeps the field honest). */
-function foldInto(p: Pitch, lo: Pitch, hi: Pitch): Pitch {
-  if (hi - lo < 12) return Math.max(lo, Math.min(hi, p));
-  let x = p;
-  while (x < lo) x += 12;
-  while (x > hi) x -= 12;
-  return x;
-}
-
-/** A start pitch for a newly started voice: a fifth above the highest start pitch, else A3. */
-function newStartPitch(piece: Piece, v: VoiceDef): Pitch {
-  const top = piece.start.reduce((m, s) => Math.max(m, s.pitch), -Infinity);
-  const p = Number.isFinite(top) ? top + 7 : DEFAULT_START_PITCH;
-  return foldInto(p, v.range[0], v.range[1]);
-}
-
-/** Starts or stops voice `id` at t = 0. A started voice gets `pitch`, or a default. */
-export function setStarts(piece: Piece, id: VoiceId, on: boolean, pitch?: Pitch): Piece {
-  const v = piece.voices.find((x) => x.id === id);
-  if (!v) return piece;
-  const i = piece.start.findIndex((s) => s.voice === id);
-  if (!on) {
-    return i < 0 ? piece : { ...piece, start: piece.start.filter((_, j) => j !== i) };
-  }
-  if (i >= 0) return pitch === undefined ? piece : setStartPitch(piece, id, pitch);
-  return {
-    ...piece,
-    start: [...piece.start, { voice: id, pitch: pitch ?? newStartPitch(piece, v) }],
-  };
-}
-
-/** Changes a started voice's pitch (no change if it doesn't start). */
-export function setStartPitch(piece: Piece, id: VoiceId, pitch: Pitch): Piece {
-  const i = piece.start.findIndex((s) => s.voice === id);
-  if (i < 0 || !Number.isFinite(pitch) || piece.start[i].pitch === pitch) return piece;
-  const start = [...piece.start];
-  start[i] = { ...start[i], pitch };
-  return { ...piece, start };
-}
-
-/** Number of pool voices active at start (entries naming unknown voices aren't counted). */
-export function startCount(piece: Piece): number {
-  const ids = new Set(piece.voices.map((v) => v.id));
-  return new Set(piece.start.filter((s) => ids.has(s.voice)).map((s) => s.voice)).size;
-}
-
-/**
- * Sets how many voices are active at start (0..pool size): stops the started voices with the
- * highest pool index, or starts the lowest-index silent ones.
- */
-export function setStartCount(piece: Piece, count: number): Piece {
-  const n = clampInt(count, 0, piece.voices.length);
-  let out = piece;
-  let cur = startCount(piece);
-  if (n < cur) {
-    for (let i = piece.voices.length - 1; i >= 0 && cur > n; i--) {
-      const id = piece.voices[i].id;
-      if (startPitchOf(out, id) !== undefined) {
-        out = setStarts(out, id, false);
-        cur--;
-      }
-    }
-  } else {
-    for (let i = 0; i < piece.voices.length && cur < n; i++) {
-      const id = piece.voices[i].id;
-      if (startPitchOf(out, id) === undefined) {
-        out = setStarts(out, id, true);
-        cur++;
-      }
-    }
-  }
   return out;
 }

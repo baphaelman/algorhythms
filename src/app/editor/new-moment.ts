@@ -115,7 +115,7 @@ export function defaultMoment<T extends MomentType>(
         null,
       );
       const voice = top?.id ?? piece.voices[0]?.id ?? 'v1';
-      const from = top?.pitch ?? piece.start[0]?.pitch ?? 60;
+      const from = top?.pitch ?? 60;
       m = { ...base, type: 'pin', voice, pitch: stepByScale(from, 2, key) };
       break;
     }

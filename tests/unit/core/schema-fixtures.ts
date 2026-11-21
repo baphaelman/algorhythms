@@ -15,11 +15,15 @@ export function fullPiece(): Piece {
   p.voices[0] = { ...p.voices[0], name: 'Lead', color: '#c33', mute: false, solo: true };
   p.voices[1] = { ...p.voices[1], pan: -0.5, gain: 0.8, sends: { reverb: 0.1, delay: 0.3 } };
   p.voices[2] = { ...p.voices[2], timbre: 'mine', range: [40, 70] };
-  p.start = [
-    { voice: 'v1', pitch: 57 },
-    { voice: 'v2', pitch: 64.5 },
-  ];
   p.moments = [
+    {
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [57, 64.5] },
+      voicing: 'even',
+      assign: 'ordered',
+    },
     {
       id: 'aaaaa1',
       type: 'split',

@@ -483,11 +483,10 @@ const TuningSchema = z.looseObject({
     .default(() => ({ kind: '12tet' as const })),
 });
 
-/** Cross-field rules: unique ids, the pool limit, and `start` referring to pool voices. */
+/** Cross-field rules: unique ids and the pool limit. */
 function checkPiece(
   p: {
     voices: { id: string }[];
-    start: { voice: string }[];
     moments: {
       id: string;
       type?: string;
@@ -514,23 +513,6 @@ function checkPiece(
       });
     }
     voiceIds.add(v.id);
-  });
-  const started = new Set<string>();
-  p.start.forEach((s, i) => {
-    if (!voiceIds.has(s.voice)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['start', i, 'voice'],
-        message: `'${s.voice}' is not a voice in the pool.`,
-      });
-    } else if (started.has(s.voice)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['start', i, 'voice'],
-        message: `Voice '${s.voice}' is started twice.`,
-      });
-    }
-    started.add(s.voice);
   });
   const momentIds = new Set<string>();
   p.moments.forEach((m, i) => {
@@ -593,10 +575,6 @@ export const PieceSchema = z
       .array(VoiceSchema)
       .default(() => defaultVoices() as z.output<typeof VoiceSchema>[])
       .describe('The voice pool (at most 32); array index = pool index.'),
-    start: z
-      .array(z.looseObject({ voice: id, pitch }))
-      .default(() => [])
-      .describe('Voices active and holding at t = 0.'),
     moments: z.array(MomentSchema).default(() => []),
     timbres: z.record(z.string(), TimbreSchema).default(() => ({})),
     mix: MixSchema.prefault({}),

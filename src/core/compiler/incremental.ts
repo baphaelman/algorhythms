@@ -19,7 +19,7 @@
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
  * returned scores stay intact). Restored tails and lives are fresh copies.
  *
- * Full compile: no previous state, or a different setup (seed, key, end, start, glide defaults,
+ * Full compile: no previous state, or a different setup (seed, key, end, glide defaults,
  * voice ids or ranges). Voice fields that only reach the output (gain, pan, timbre, …) are read
  * fresh by `finish`, so they resume like any other edit.
  */
@@ -153,7 +153,6 @@ function sameSetup(a: Piece, b: Piece): boolean {
     a.seed === b.seed &&
     same(a.key, b.key) &&
     same(a.end, b.end) &&
-    same(a.start, b.start) &&
     same(a.defaults?.glide, b.defaults?.glide)
   )) {
     return false;

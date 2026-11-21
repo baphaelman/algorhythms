@@ -77,10 +77,10 @@ describe('factories', () => {
 });
 
 describe('newPiece', () => {
-  it('is the empty template: 12-voice pool, one voice active, A dorian', () => {
+  it('is the empty template: 12-voice pool, one opening note at 0, A dorian', () => {
     const p = newPiece({ seed: 42, now: '2026-11-19T12:00:00.000Z', title: 'New' });
     expect(p.format).toBe('algorhythms');
-    expect(p.version).toBe(1);
+    expect(p.version).toBe(2);
     expect(p.seed).toBe(42);
     expect(p.meta).toEqual({
       title: 'New',
@@ -88,9 +88,18 @@ describe('newPiece', () => {
       modified: '2026-11-19T12:00:00.000Z',
     });
     expect(p.voices.map((v) => v.id)).toEqual(Array.from({ length: 12 }, (_, i) => `v${i + 1}`));
-    expect(p.start).toEqual([{ voice: 'v1', pitch: 57 }]);
+    expect(p).not.toHaveProperty('start');
     expect(p.key).toEqual({ tonic: 'A', scale: 'dorian' });
-    expect(p.moments).toEqual([]);
+    expect(p.moments).toEqual([
+      {
+        id: 'start0',
+        type: 'chord',
+        at: 0,
+        notes: { kind: 'pitches', pitches: [57] },
+        voicing: 'even',
+        assign: 'ordered',
+      },
+    ]);
     expect(p.timbres).toEqual({ glass: BUILTIN_TIMBRES.glass });
     expect(p.timbres.glass).not.toBe(BUILTIN_TIMBRES.glass);
     expect(p.mix).toEqual(DEFAULT_MIX);
@@ -109,7 +118,7 @@ describe('newPiece', () => {
     expect(p.voices.every((v) => v.timbre === 'organ')).toBe(true);
     expect(Object.keys(p.timbres)).toEqual(['organ']);
     expect(p.key).toEqual({ tonic: 'C', scale: 'major' });
-    expect(p.start).toEqual([{ voice: 'v1', pitch: 60 }]);
+    expect(p.moments[0]).toMatchObject({ notes: { kind: 'pitches', pitches: [60] } });
     expect(newPiece({ seed: 1, poolSize: 0 }).voices).toHaveLength(1);
   });
 
