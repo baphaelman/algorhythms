@@ -56,6 +56,11 @@ import {
   VoiceData,
 } from './voice';
 import { MIP_BASE_HZ, type WavetableSet } from './wavetable';
+import * as pmath from './pmath';
+
+/** pmath's registers (allocation-free calls on the audio thread). */
+const PR = pmath.R;
+const ATAN_C = pmath.ATAN_C;
 
 /** What `process()` sends to the master (stems, §12). */
 export const RenderMode = {
@@ -285,17 +290,17 @@ export class Graph {
     this.delay = new PingPongDelay(sampleRate);
     this.tone = new Tone(sampleRate);
     this.limiter = new Limiter(sampleRate);
-    this.normCoeff = 1 - Math.exp(-CONTROL_PERIOD / (NORM_SMOOTHING * sampleRate));
+    this.normCoeff = 1 - pmath.exp(-CONTROL_PERIOD / (NORM_SMOOTHING * sampleRate));
     this.seekFadeFrames = Math.round(SEEK_FADE * sampleRate);
     this.swapFadeFrames = Math.round(SWAP_FADE * sampleRate);
     const blockSeconds = BLOCK_FRAMES / sampleRate;
-    this.lockUp = 1 - Math.exp(-blockSeconds / LOCK_ATTACK);
-    this.lockDown = 1 - Math.exp(-blockSeconds / LOCK_RELEASE);
-    this.lockGain = 1 - Math.exp(-blockSeconds / LOCK_GAIN_SMOOTHING);
+    this.lockUp = 1 - pmath.exp(-blockSeconds / LOCK_ATTACK);
+    this.lockDown = 1 - pmath.exp(-blockSeconds / LOCK_RELEASE);
+    this.lockGain = 1 - pmath.exp(-blockSeconds / LOCK_GAIN_SMOOTHING);
     this.pullMaxInc = LOCK_PULL_MAX_HZ / sampleRate;
     this.centsToHz = (sampleRate * Math.LN2) / 1200;
     this.invBlockSeconds = sampleRate / BLOCK_FRAMES;
-    this.stillCoeff = 1 - Math.exp(-blockSeconds / STILL_SETTLE);
+    this.stillCoeff = 1 - pmath.exp(-blockSeconds / STILL_SETTLE);
     this.capStep = blockSeconds / CAPTURE_RAMP;
   }
 
@@ -639,7 +644,7 @@ export class Graph {
     this.voiceIds = p.voiceIds;
     this.duration = p.duration;
     this.durationFrames = Math.round(p.duration * this.sampleRate);
-    this.ctx.refOct = Math.log2(p.referenceHz / MIP_BASE_HZ);
+    this.ctx.refOct = pmath.log2(p.referenceHz / MIP_BASE_HZ);
     this.updateSolo(p.data);
   }
 
@@ -847,11 +852,9 @@ export class Graph {
         part[i] = 2;
         P[i] = pp * 100;
         M[i] = P[i];
-        Am[i] =
-          VOICE_BASE_GAIN *
-          d.gain *
-          d.probeLife *
-          Math.exp(-(pp - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
+        PR[0] = -(pp - LOUDNESS_PITCH) * LOUDNESS_SLOPE;
+        pmath.expR();
+        Am[i] = VOICE_BASE_GAIN * d.gain * d.probeLife * PR[0];
         Lk[i] = ctx.lockable;
         INC[i] = 0;
         this.gTh[i] = 0;
@@ -913,8 +916,38 @@ export class Graph {
       let lfo: number;
       let inc = 0;
       if (swa > 0 && sx * sx + sy * sy > 1e-24) {
-        ph = Math.atan2(sy, sx) * INV_TWO_PI;
-        lfo = lx * lx + ly * ly > 1e-24 ? Math.atan2(ly, lx) * INV_TWO_PI : ctx.gLfo[j];
+        // Angles of (sx, sy) and, if long enough, (lx, ly) in turns: pmath.atan2R's body inline
+        // (see pmath.ts, "Audio thread").
+        ph = 0;
+        lfo = ctx.gLfo[j];
+        const angles = lx * lx + ly * ly > 1e-24 ? 2 : 1;
+        for (let a = 0; a < angles; a++) {
+          const y = a === 0 ? sy : ly;
+          const x = a === 0 ? sx : lx;
+          const ax = Math.abs(x);
+          const ay = Math.abs(y);
+          let r = 0;
+          if (ax === ay) r = pmath.QUARTER_PI;
+          else if (ay !== 0) {
+            const swap = ay > ax;
+            const t = swap ? ax / ay : ay / ax;
+            let base = 0;
+            let z = t;
+            if (t > pmath.TAN_PI_12) {
+              base = pmath.SIXTH_PI;
+              z = (t * pmath.SQRT3 - 1) / (pmath.SQRT3 + t);
+            }
+            const z2 = z * z;
+            let acc = ATAN_C[15];
+            for (let k = 14; k >= 0; k--) acc = acc * z2 + ATAN_C[k];
+            r = base + z * acc;
+            if (swap) r = pmath.HALF_PI - r;
+          }
+          if (x < 0) r = pmath.PI - r;
+          if (y < 0) r = -r;
+          if (a === 0) ph = r * INV_TWO_PI;
+          else lfo = r * INV_TWO_PI;
+        }
         inc = sinc / swa;
       } else if (first >= 0) {
         const fp = ctx.gSnapPh[first];

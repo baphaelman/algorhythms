@@ -127,12 +127,33 @@ export default defineConfig(
   {
     files: ['src/dsp/**/*.{ts,tsx}'],
     rules: {
+      // Renders must be bit-identical across platforms (V8's Math.exp differs between arm64 and
+      // x64): the same ban as core/, with dsp/pmath.ts as the replacement.
       'no-restricted-properties': [
         'error',
+        ...NON_PORTABLE_MATH.map((r) =>
+          r.property === 'random'
+            ? {
+                ...r,
+                message:
+                  'No Math.random in dsp/ (§8.10): use a seeded PRNG keyed by voice and seed.',
+              }
+            : {
+                ...r,
+                message: `Math.${r.property} is not portable across platforms: use dsp/pmath.ts.`,
+              },
+        ),
+      ],
+      'no-restricted-syntax': [
+        'error',
         {
-          object: 'Math',
-          property: 'random',
-          message: 'No Math.random in dsp/ (§8.10): use a seeded PRNG keyed by voice and seed.',
+          selector:
+            "BinaryExpression[operator='**']:not([right.type='Literal'][right.raw=/^[0-9]+$/])",
+          message: '`**` with a non-integer-literal exponent is not portable: use dsp/pmath.ts.',
+        },
+        {
+          selector: "AssignmentExpression[operator='**=']",
+          message: '`**=` is not portable: use dsp/pmath.ts.',
         },
       ],
       'no-restricted-globals': ['error', ...NO_CLOCK],

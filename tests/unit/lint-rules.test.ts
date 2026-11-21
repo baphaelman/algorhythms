@@ -162,9 +162,15 @@ describe('no randomness or clock in dsp (§8.10)', () => {
     expect(await fired('src/dsp/x.ts', code)).not.toEqual([]);
   });
 
-  it('dsp may use native transcendental Math (audio is exempt from §7.11)', async () => {
-    expect(await fired('src/dsp/x.ts', 'export const y = Math.sin(1) * Math.pow(2, 0.5);')).toEqual(
-      [],
-    );
+  it('dsp rejects native transcendental Math (renders are bit-identical across platforms)', async () => {
+    for (const code of [
+      'export const y = Math.sin(1);',
+      'export const y = Math.pow(2, 0.5);',
+      'export const y = Math.exp(1);',
+      'export const y = Math.atan2(1, 2);',
+      'export const y = 2 ** 0.5;',
+    ])
+      expect(await fired('src/dsp/x.ts', code)).not.toEqual([]);
+    expect(await fired('src/dsp/x.ts', 'export const y = Math.sqrt(2) * 2 ** 3;')).toEqual([]);
   });
 });

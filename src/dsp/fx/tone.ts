@@ -9,6 +9,10 @@
  */
 
 import { BLOCK_FRAMES } from '../constants';
+import * as pmath from '../pmath';
+
+/** pmath's registers (allocation-free calls on the audio thread). */
+const PR = pmath.R;
 
 const SHELVES = 5;
 const SHELF_HZ = [40, 160, 640, 2560, 10240];
@@ -42,7 +46,7 @@ export class Tone {
     this.sampleRate = sampleRate;
     for (let k = 0; k < SHELVES; k++) {
       const fc = Math.min(SHELF_HZ[k], 0.45 * sampleRate);
-      const K = Math.tan((Math.PI * fc) / sampleRate);
+      const K = pmath.tan((Math.PI * fc) / sampleRate);
       this.hpB0[k] = 1 / (1 + K);
       this.hpA1[k] = (K - 1) / (1 + K);
     }
@@ -72,10 +76,13 @@ export class Tone {
 
   private updateTilt(): void {
     // Each shelf adds 2·tilt dB above its corner (two octaves per shelf).
-    const g = Math.pow(10, (2 * this.tiltCur) / 20);
-    const w = (2 * Math.PI * PIVOT_HZ) / this.sampleRate;
-    const c = Math.cos(w);
-    const s = Math.sin(w);
+    PR[0] = 2 * this.tiltCur;
+    pmath.dbToGainR();
+    const g = PR[0];
+    PR[0] = (2 * Math.PI * PIVOT_HZ) / this.sampleRate;
+    pmath.sinCosR();
+    const s = PR[0];
+    const c = PR[1];
     let mag = 1;
     for (let k = 0; k < SHELVES; k++) {
       this.shelfG[k] = g - 1;
@@ -101,9 +108,10 @@ export class Tone {
       return;
     }
     this.lpOn = true;
-    const w0 = (2 * Math.PI * this.cutCur) / this.sampleRate;
-    const cw = Math.cos(w0);
-    const alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
+    PR[0] = (2 * Math.PI * this.cutCur) / this.sampleRate;
+    pmath.sinCosR();
+    const cw = PR[1];
+    const alpha = PR[0] / (2 * Math.SQRT1_2);
     const a0 = 1 + alpha;
     this.b0 = (1 - cw) / 2 / a0;
     this.b1 = (1 - cw) / a0;
@@ -120,7 +128,13 @@ export class Tone {
     }
     if (this.cutCur !== this.cutTarget) {
       const r = this.cutTarget / this.cutCur;
-      this.cutCur = Math.abs(r - 1) < 1e-4 ? this.cutTarget : this.cutCur * Math.pow(r, SMOOTH);
+      if (Math.abs(r - 1) < 1e-4) this.cutCur = this.cutTarget;
+      else {
+        PR[0] = r;
+        PR[1] = SMOOTH;
+        pmath.powR();
+        this.cutCur *= PR[0];
+      }
       const wasOn = this.lpOn;
       this.updateLowpass();
       if (wasOn && !this.lpOn) {

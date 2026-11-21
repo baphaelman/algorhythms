@@ -13,6 +13,8 @@
  * mode, so a recorded Float32Array reproduces it bit for bit.
  */
 
+import * as pmath from '../pmath';
+
 const LOOKAHEAD = 0.005;
 const RELEASE = 0.08;
 /** Headroom below the ceiling that absorbs float rounding of the gain and the output. */
@@ -58,14 +60,16 @@ export class Limiter {
     this.dqIdx = new Float64Array(this.dqCap);
     this.box = new Float64Array(D).fill(1);
     this.boxSum = D;
-    this.relCoef = 1 - Math.exp(-1 / (RELEASE * sampleRate));
+    this.relCoef = 1 - pmath.exp(-1 / (RELEASE * sampleRate));
     this.setCeilingDb(-1);
   }
 
   /** Output ceiling in dBFS. */
   setCeilingDb(db: number): void {
     const c = Number.isFinite(db) ? Math.min(0, db) : -1;
-    this.ceiling = Math.pow(10, c / 20) * SAFETY;
+    pmath.R[0] = c;
+    pmath.dbToGainR();
+    this.ceiling = pmath.R[0] * SAFETY;
   }
 
   /** Clears state: unity gain, silent delay line. */
