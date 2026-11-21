@@ -28,7 +28,7 @@ test('1080p, 24 voices, playing: median frame interval is 60 fps', async ({
   expect(piece.voices).toHaveLength(24);
 
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await page.getByTestId('file-input').setInputFiles({
     name: 'dense.algorhythms.json',

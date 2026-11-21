@@ -1,10 +1,16 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { PALETTE } from '../editor/shortcuts';
-import { EXAMPLES } from '../examples';
+import { COMPOSITIONS, ORIGINALS } from '../examples';
 import { canLinkFiles, linkToFile, newPieceNow, openMyPieces, saveAsFile } from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
+
+/** The examples menu, in two groups (owner, 2026-11-20). */
+const EXAMPLE_GROUPS = [
+  { heading: 'Originals', items: ORIGINALS },
+  { heading: 'Compositions', items: COMPOSITIONS },
+] as const;
 
 /** The undo modifier as shown in Help: ⌘ on Apple platforms, Ctrl elsewhere. */
 const MOD =
@@ -84,25 +90,29 @@ export function Menu() {
           <p className="brand">
             <strong>AlgoRhythms</strong> <small>pitch-line music</small>
           </p>
-          <h2>Examples</h2>
-          <ul className="examples" aria-label="Examples">
-            {EXAMPLES.map((ex) => (
-              <li key={ex.id}>
-                <button
-                  type="button"
-                  data-testid={`example-${ex.id}`}
-                  aria-current={ex.title === title ? 'true' : undefined}
-                  onClick={() => {
-                    openExample(ex.json);
-                    close();
-                  }}
-                >
-                  <span>{ex.title}</span>
-                  <small>{ex.voices} notes</small>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {EXAMPLE_GROUPS.map(({ heading, items }) => (
+            <Fragment key={heading}>
+              <h2>{heading}</h2>
+              <ul className="examples" aria-label={heading}>
+                {items.map((ex) => (
+                  <li key={ex.id}>
+                    <button
+                      type="button"
+                      data-testid={`example-${ex.id}`}
+                      aria-current={ex.title === title ? 'true' : undefined}
+                      onClick={() => {
+                        openExample(ex.json);
+                        close();
+                      }}
+                    >
+                      <span>{ex.title}</span>
+                      <small>{ex.voices} notes</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Fragment>
+          ))}
           <h2>Pieces</h2>
           <ul>
             <li>

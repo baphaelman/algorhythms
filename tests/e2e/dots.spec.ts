@@ -81,7 +81,7 @@ const added = async (page: Page): Promise<M[]> =>
 /** Four voices (C3 G3 C4 E4) in C major; a shift +2 at 2, a split at 12, a chord at 22. */
 async function open(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(() => {
     const h = window.__algorhythms!;

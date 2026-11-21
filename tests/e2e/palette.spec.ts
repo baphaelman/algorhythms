@@ -20,7 +20,7 @@ const moments = (page: Page): Promise<M[]> =>
 
 /** Opens the app on the default piece without a grid, playhead at 10 s. */
 async function openNoGrid(page: Page): Promise<void> {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(() => {

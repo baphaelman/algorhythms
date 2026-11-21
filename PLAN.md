@@ -178,6 +178,7 @@ interface VoiceDef {
   range: [Pitch, Pitch];        // out-of-range targets fold by octave (§7.8)
   mute?: boolean;
   solo?: boolean;
+  part?: string;                // revision 9: a named group ("Melody", "Chords", "Bass"); lines in different parts never merge
 }
 
 interface Glide {
@@ -185,6 +186,7 @@ interface Glide {
   jitter: number;               // 0..1, length varies by ±jitter·length (seeded)
   stagger: Seconds;             // spread of start times across affected voices
   arrive?: 'together' | 'spread'; // revision 6 (owner): default 'together' = every moving voice of the moment lands at the same time
+  land?: boolean;               // revision 9 (owner): true = `at` is when the voices arrive ("land on the beat"); the glide starts length + stagger earlier, clamped at 0
   order: 'random' | 'low-first' | 'high-first' | 'center-out' | 'outside-in';
   ease: EaseRef;
 }
@@ -194,7 +196,8 @@ type EaseRef = 'smootherstep' | 'smoothstep' | 'cosine' | 'linear' | 'expo'
 type VoiceSelector =
   | 'all'                                   // all active voices at the moment's time
   | { voices: VoiceId[] }
-  | { rank: [number, number] };             // by pitch order at that time; 0 = lowest
+  | { rank: [number, number] }              // by pitch order at that time; 0 = lowest
+  | { part: string };                       // revision 9: the active voices of that part
 
 type NoteSet =
   | { kind: 'pitches'; pitches: Pitch[] }   // explicit notes
@@ -270,6 +273,8 @@ interface MomentBase {
 | **pin** | `voice: VoiceId`, `pitch: Pitch` | Moves one voice to an exact pitch. It is the hand-editing escape hatch and may cross other voices. |
 | **key** | `key: Key` | Changes the key from `at` onwards; no pitch effect. Everything that depends on the key (shift by scale steps, walk, `snap: 'scale'`, `degrees`, Roman numerals) reads the key in effect at its own time. The compiler emits a key timeline. Without it, "move to D minor 9" followed by a walk would walk in the initial key. |
 | **level** | `gain: number`, `over: Seconds` | Ramps the targeted voices' gain to `gain` over `over` seconds: swells, fades, "breath". Moved up from M6 because dynamics are central to G1. |
+| **pulse** (region; revision 9, owner 2026-11-20) | `until: Seconds`, `step: Seconds`, `pattern: number[]` (accent per step, 0..1; 0 = rest), `decay: Seconds`, `floor: 0..1`, `mode: 'together' \| 'up' \| 'down' \| 'updown' \| 'random'`, `strike?: boolean` (default true) | A repeating volume pattern. Every `step` seconds from `at` to `until` the next accent of `pattern` (cycling) hits: the hit voices jump to that accent and fall to `floor` × accent over `decay` (an exponential-like curve). `together`: every targeted voice hits each step (a gated or pulsing chord). `up`/`down`/`updown`/`random`: one voice per step, walking the targeted voices in pitch order (an arpeggio on held or gliding chords). With `strike`, each hit re-strikes the timbre's articulation, so plucked and struck timbres sound on every hit. The pulse multiplies the voice's level (level moments still shape it) and does not move pitch. Between `at` and `until` the targeted voices sit at `floor` except when hit. The inspector offers `step` as beat values (1/4, 1/8, 1/8 triplet, 1/16, dotted) when the piece has a tempo. Replaces the hundreds of level moments the compositions used. |
+| **tune** (revision 9, owner 2026-11-20) | `notes: { pitch: Pitch; len: Seconds }[]`, `glide` (per-note portamento; default length 0.1 s) | A melody on one line: from `at`, the targeted voice (the first in pitch order of the target, normally a part with one line) moves to each note in turn, holding it for `len`. Like `pin` it may cross other lines; under distinct notes it merges only with lines of its own part. Notes are dots on the score, draggable (vertically the pitch, snapping to the key; horizontally the note's start, which changes its neighbours' lengths); the inspector lists them (note name, length in beats when the piece has a tempo, ▲/▼) and accepts typed input such as `F#5 2, E5 1, D5 1` (lengths in beats, or seconds without a tempo). |
 
 **Frozen walks (revision 5; owner 2026-11-20: moving a step freezes the walk).** Walk steps are drawn from the seed. Moving one step freezes the whole walk into fixed notes:
 ```ts
@@ -654,6 +659,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   5. Playhead. In the editor layout the playhead is one DOM line over the ruler, score and lanes (§11.2), and `drawScore` skips it.
   6. HUD, including the chord being played (`chordAt`; e.g. `ii7 · Dm7`, `Am7/E`), owner request 2026-11-20. In the editor layout the top bar shows it instead.
   7. Editor overlay (§11): with a walk selected, its steps (`walkSteps`) as dots; the selected step highlighted.
+- **Silent lines vanish (revision 9, owner 2026-11-20):** each line is drawn with its opacity multiplied by its audible level (level, pulse and life fades, clamped 0..1, before the voice gain), so a voice at level 0 is not drawn and one fading in looks like it is spawning; heads and dots follow. In the editor, a silent line that belongs to the selected moment, or is under the pointer, shows as a faint dotted trace so it can still be selected. A pulsing line flickers with its hits.
 - **Colors:** by pitch (the default: a vertical gradient, low cool to high warm); ink; or custom per voice (`VoiceDef.color`, falling back to ink). An HSL fallback covers browsers without OKLCH. The per-voice hue mode was removed (owner, 2026-11-20); old files with `"voice"` load as `"pitch"`.
 
 ### Camera (revision 5)
@@ -675,9 +681,9 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
 ## 11. Website and editor
 
 ### 11.1 Structure
-- `/` opens the instrument straight away, with a featured example piece loaded but not playing (browser autoplay rules).
+- `/` opens the instrument straight away, with a featured example piece loaded but not playing (browser autoplay rules). The featured piece is **Kite Day** (owner, 2026-11-20). `/?example=<id>` opens another example (a link to a song; the e2e specs use `?example=tidewater-hymn`).
 - `/#p=…` opens a shared piece.
-- Menus give access to **Examples** (4–6 handmade pieces, CC0), **My pieces** (stored in IndexedDB), **New** (empty, or from a template), **Generate**, **Import/Export**, and **Help** (shortcuts).
+- Menus give access to **Examples** (CC0, in two groups, owner 2026-11-20: **Originals**, the five first examples in `examples/`, and **Compositions**, songs written with the instrument in `examples/compositions/`), **My pieces** (stored in IndexedDB), **New** (empty, or from a template), **Generate**, **Import/Export**, and **Help** (shortcuts).
 
 ### 11.2 Layout (desktop; revision 5)
 Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29KnYtonhJGSZKEj12Jogm
@@ -715,6 +721,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Note points (revision 6, owner 2026-11-20):** in the editor, double-click a line on the score (or click it with `N` held) to add a `note` moment at that time with `from` = that line's pitch, then drag vertically to set `to` (snaps to the key; Shift = chromatic; ▲/▼ keys). Its dot is drawn on the line like walk steps; the inspector shows `from → to`, the chord before → after, and a "Return after" toggle with a slider (`back`). This is how a single note is changed, including a deliberate break from a chord.
 - **Every dot is draggable (revision 6, owner 2026-11-20):** each moment's arrival points (where a voice lands on its new pitch) show a dot on the selected moment, and on hover over a line near one. **Dragging a dot moves that dot** — vertically its pitch, horizontally its time — by editing the moment that owns it; it never spawns a new moment. Walk: moves that step (tick and pitch; freezes the walk). Chord: edits that chord note (freezes the chord); horizontal sets that voice's arrival. Note moment: `to`, and horizontal moves the arrival. Any other moment (split, merge, collapse, …): writes a per-voice override on the moment, `overrides?: { voice: number; pitch?: Pitch; end?: Seconds }[]` (`end` = that voice's arrival offset from `at`), which the compiler applies to that voice's move; the inspector lists overrides with a Clear button. One undo entry per drag; pitch snaps to the key (Shift = chromatic), time to the grid (Alt = free). Adding a new note is a separate gesture: double-click or N-click a line adds a `note` moment there, or inserts a step when the line belongs to a walk at that time (freezing it).
 - **Keep lines in order (revision 6, owner 2026-11-20):** hand edits (dot drags, note points, chord note edits) may cross lines. A visible "Keep lines in order" toggle in the editor's view bar, **off by default**, decides how new hand edits are written; each such moment stores it (`note.order?: boolean`, default false; a frozen chord edit with it off keeps each voice on its own note instead of re-sorting), and the inspector shows it per moment. Auto-composed moves (Generate, suggestions, chord `count`, split, merge, walks) always keep lines in order.
+- **Snap to beats (revision 9, owner 2026-11-20; amends "Snapping and bars" below):** when the piece has a tempo (`view.gridBpm`), a **Snap to beats** toggle shows in the view bar, on by default for such pieces: adding and dragging moments, dots and tune notes snap to beats (and to note-change points within 8 px, as below). Alt disables snapping. Pieces without a tempo behave as below.
 - **Snapping and bars (revision 7, owner 2026-11-21; supersedes the grid snapping in the bullets above):** the score and ruler show bar lines (from `bpm` and the meter, beats faint, bars stronger). Times snap by default to **note-change points**: any time where some line starts or ends a move (moment arrivals, walk step ticks, note points), when within 8 px of the pointer. The threshold is in pixels, so zooming in far enough lets a time sit freely between them. The bar grid is drawn but is **not** a default snap target, including when adding a moment. Moving a walk step snaps to the walk's other step times so its lines stay in sync. Alt disables snapping. Dragging a dot past the top or bottom of the view keeps tracking the pointer (clamped at the edge, never jumping), and the pitch is never re-folded by an octave.
 - **Grouped note changes (revision 7, owner 2026-11-21):** note changes made by hand at the same time are one moment, not several: a `note` moment holds a list `changes: { from, to }[]` (the single `from`/`to` form stays readable), shown as one marker labelled "Shift". A hand edit that lands (after snapping) on the time of an existing hand-made `note` moment joins it; dragging one of its dots sideways away from that time splits that change out into its own moment. Each note stays individually editable (its own dot, its own row in the inspector).
 - **Lane stacking (revision 7):** moments whose spans overlap are laid out in stacked sub-rows of the Moments lane, never drawn on top of each other; the lane grows to fit.
@@ -727,6 +734,8 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Open-ended canvas (revision 7, owner 2026-11-21):** the view is not limited to the piece's length. Pan and zoom go freely past the end (the empty canvas after it is drawn with the bar grid), and Fit still frames the piece. Adding or dragging anything past the end extends the piece. The piece's end is a handle on the ruler that can be dragged to set `end.at`.
 - **The start is a moment (revision 7, owner 2026-11-21):** there is no separate starting state. `Piece.start` is replaced by moments: an *establishing* moment (one that sets notes rather than moving between them: `chord` with its notes, and `unison`) that begins when nothing is sounding brings its voices in directly at their target pitches, with no glide. A fresh piece is one `chord` moment at t = 0 with a single note, shown as a dot at the start of its line. Deleting it leaves silence, and it can be replaced by any establishing moment. Transitional moments (note changes and "Shift", split, merge, walk, collapse) have no effect from silence (`no-effect`, and the palette greys them out). Schema version 2: a version 1 file's `start` migrates to a frozen `chord` at t = 0 that keeps each voice on its own pitch, so existing pieces and goldens sound the same.
 - **Compose in New piece (revision 7, owner 2026-11-21):** **New** offers "Compose for me" next to Empty. It runs the Generate composer with its inputs (seed, length, mode, note count, density) in a side panel and *shows the piece being built*: moments are placed one by one in composition order, at a watchable pace, with the camera following and each one's lines drawing in. Its adjustment passes are shown as edits to moments already placed. Changing an input while it builds or after it finishes restarts the build from that input, live. Skip shows the finished result, Stop keeps what has been built so far, and the result is an ordinary editable piece. This depends on the composer emitting its steps in order, not only the final list.
+- **Parts (revision 9, owner 2026-11-20):** a voice may belong to a named part (`VoiceDef.part`: "Melody", "Chords", "Bass", "Sparkle"…). Distinct notes (below) applies within a part only: a line landing on a pitch held by a line of another part does not merge with it (a tune touching a chord tone must not die, as it did in two compositions under revision 8). The Voices drawer groups voices by part (create, rename, set timbre, gain, pan and range for a whole part). In the inspector a **Part** chooser (All, or one part) sits in the main section, not under Advanced, whenever the piece has parts; it writes `target: { part }`. New pieces have no parts; Generate is unchanged.
+- **Land on the beat (revision 9, owner 2026-11-20):** a Transition toggle **Land at the marker** (`glide.land`): the moment's time is when its voices arrive, and the glide bar on the Transitions row ends at the marker instead of starting there. Default off; the compositions use it for every chord change.
 - **Distinct notes (revision 8, owner 2026-11-21; supersedes "Stacked voices move as one", "Doubled voices" and the unison lock's role for resting unisons):** sounding lines never share a resting pitch. A moment's result is a set of distinct notes; when lines would land on the same pitch they **merge** into one (the dying line joins the survivor as in §7.4), and when more notes are needed they **split** from a neighbour. "Notes: n" (count) on chord and the other note-setting moments sets how many sound; asking for more notes than the set has fills with octaves (rev 7 "Octaves before unisons"). Lines may still cross mid-glide (hand edits, `order` off); only resting pitches are distinct. Walk steps skip pitches held by another line. A note point or dot dragged onto another line's resting pitch merges the two. **"Notes: n" counts lines (owner, 2026-11-21):** `count` and "Notes: n" set how many lines are heard after the moment; a line's weight carries only its loudness. Every join (a coincidence, an explicit merge, a `count` death gliding into a neighbour) gives the survivor the dying line's weight. Integrator calls (M4.5-29): hand-over and fork fades are 0.1 s; a join scales the weight it passes on by the two lines' levels (voice gains stay outside the compile, for incremental compile); MIDI velocity follows √weight.
 - **Octaves before merges (owner 2026-11-21):** a chord or degrees moment (with or without `count`, Nearest voicing included) that would rest two lines on one pitch moves the extra line to the nearest free octave of a chord tone within its range; it merges only when the range has no free pitch left. Explicit pitch lists and hand edits stay literal: their unisons merge as written.
 - **Shift-drag moves by octaves (owner 2026-11-21; replaces "Shift = chromatic" in Note points and Every dot is draggable):** dragging a dot or a note point vertically with Shift held moves it in whole octaves from where it started (all selected dots by the same octaves). While Shift is held the score shows faint guide lines at each octave of the start pitch within the line's range and a label at the dot ("+1 oct", "−2 oct"), and pressing or releasing Shift mid-drag switches live. Shift+▲/▼ steps a selected dot or note point by an octave. Integrator call: chromatic moves to Alt, which now means "free" on both axes (pitch chromatic, time off the grid). Shift-click on a dot still adds or removes it from the selection when the pointer does not move.
@@ -1112,6 +1121,17 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 9 (2026-11-20): owner notes after the compositions
+- **Examples (§11.1):** two groups, Originals and Compositions (three songs: Harbour Song, Night Ferry, Kite Day); Kite Day is the featured piece; `?example=<id>`.
+- **Parts (§5, §11.3):** `VoiceDef.part`, `{ part }` selector; distinct notes applies within a part only.
+- **New moments (§6.2):** `pulse` (repeating volume pattern, gate or arpeggio, re-strikes articulation) and `tune` (a melody as one moment). The planned arpeggio moment can become a pulse mode.
+- **Land on the beat (§5, §11.3):** `glide.land`.
+- **Snap to beats (§11.3)** when the piece has a tempo.
+- **Silent lines vanish (§10):** lines drawn at their audible level.
+- **Split and merge honour stagger and order** like the other moments (they ignored them).
+- After these land, the compositions are rewritten with parts, pulse, tune and land (far fewer moments, share links ≤ 2,000 characters, §11.4).
+- All in M4.5 (owner: go-ahead 2026-11-20).
 
 ### Revision 6 (2026-11-20): owner notes on the M4.5 demo
 - **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.

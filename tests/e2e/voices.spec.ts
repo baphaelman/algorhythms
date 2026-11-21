@@ -26,7 +26,7 @@ const blurAndUndo = async (page: Page): Promise<void> => {
 
 test('voices drawer edits the pool, mute and timbre, and undo restores them', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
 
   const before = await voices(page);

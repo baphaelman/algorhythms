@@ -83,7 +83,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
   });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 
@@ -229,7 +229,7 @@ test('streams stems straight to a file picked in the save dialog (Chromium)', as
       return root.getFileHandle(o.suggestedName, { create: true });
     };
   });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await loadShortPiece(page);
   await openExport(page);

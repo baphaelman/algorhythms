@@ -37,7 +37,7 @@ const frames = (page: Page) =>
 /** Four voices in C major: a split at 2 (lands at 4), a shift at 5, a walk 9..13. */
 async function open(page: Page, view?: number): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate((win) => {
     const h = window.__algorhythms!;

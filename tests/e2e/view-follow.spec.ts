@@ -9,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { seek } from './app-hook';
 
 async function openApp(page: Page): Promise<void> {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 }

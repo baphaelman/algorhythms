@@ -54,7 +54,7 @@ const frames = (page: Page) =>
 /** Four held voices (C3 G3 C4 E4) in C major for 40 s, a 60 BPM grid, the playhead at 0. */
 async function openHeld(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(() => {
     const h = window.__algorhythms!;

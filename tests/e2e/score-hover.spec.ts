@@ -9,7 +9,7 @@ import './app-hook';
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough');
 
 test('selection highlights and hover reads out a line', async ({ page }) => {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   const canvas = page.locator('#score');

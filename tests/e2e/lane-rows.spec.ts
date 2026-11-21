@@ -12,7 +12,7 @@ const DURATION_END = 40;
 
 /** A 40 s piece with a moment every 1.5 s (glides and staggers vary) and a 60 BPM grid. */
 async function load(page: Page, extra: unknown[] = [], many = true): Promise<void> {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(
     ({ extra, many, end }) => {

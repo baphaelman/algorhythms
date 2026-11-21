@@ -30,7 +30,7 @@ const editorState = (page: Page) =>
 
 /** Opens a piece: four voices at 0 s, a unison at 2 s and a merge at 10 s (on the unison, so no effect); no grid. */
 async function openUnison(page: Page): Promise<void> {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await page.evaluate(() => {
     const h = window.__algorhythms!;

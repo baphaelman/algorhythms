@@ -11,7 +11,7 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 
 /** Four voices split apart at 0 s, a unison at 2 s (0.5 s glide); no grid. */
 async function open(page: Page): Promise<void> {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await page.evaluate(() => {
     const h = window.__algorhythms!;

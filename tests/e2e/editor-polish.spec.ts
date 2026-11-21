@@ -32,7 +32,7 @@ async function markerX(page: Page, id: string): Promise<number> {
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough here');
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(() => {
     const h = window.__algorhythms!;

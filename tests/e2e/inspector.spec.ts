@@ -53,7 +53,7 @@ const CHORD = 'Zd0uQh';
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 

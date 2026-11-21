@@ -15,7 +15,7 @@ const EXAMPLES = join(ROOT, 'examples');
 const readExample = (name: string): string =>
   readFileSync(join(EXAMPLES, `${name}.algorhythms.json`), 'utf8');
 
-async function openApp(page: Page, path = './'): Promise<void> {
+async function openApp(page: Page, path = './?example=tidewater-hymn'): Promise<void> {
   await page.goto(path);
   await expect(page.getByTestId('play')).toBeVisible();
   // The first frame has written the time readout.
@@ -90,20 +90,20 @@ async function canvasInfo(page: Page) {
 }
 
 test('page title is AlgoRhythms', async ({ page }) => {
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page).toHaveTitle(/AlgoRhythms/);
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
 });
 
 test('opens with the featured example loaded, not playing, at the start', async ({ page }) => {
-  await openApp(page);
+  await openApp(page, './');
   const s = await getState(page);
-  expect(s.title).toBe('Tidewater Hymn');
+  expect(s.title).toBe('Kite Day');
   expect(s.status).toBe('idle');
-  await expect(page.getByTestId('title')).toHaveText('Tidewater Hymn');
+  await expect(page.getByTestId('title')).toHaveText('Kite Day');
   await expect(page.getByTestId('time')).toHaveText('00:00.0');
   await expect(page.getByTestId('duration')).not.toHaveText('00:00.0');
-  await expect(page.getByTestId('keyvoices')).toContainText(/A dorian · \d+ \/ 12 notes/);
+  await expect(page.getByTestId('keyvoices')).toContainText(/C pentatonic major · \d+ \/ 9 notes/);
   // No audio before a gesture beyond preloading: nothing is playing.
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
   expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);
@@ -297,8 +297,9 @@ test('prefers-reduced-motion skips the future-dimming tween', async ({ page }) =
 test('the examples gallery loads each example, stopped', async ({ page }) => {
   await openApp(page);
   await page.getByTestId('menu-button').click();
-  const list = page.getByRole('list', { name: 'Examples' });
+  const list = page.getByRole('list', { name: 'Originals' });
   await expect(list.getByRole('button')).toHaveCount(5);
+  await expect(page.getByRole('list', { name: 'Compositions' }).getByRole('button')).toHaveCount(3);
   await list.getByRole('button', { name: /Clockwork Heron/ }).click();
   await expect(page.getByTestId('menu-panel')).toBeHidden();
   await expect(page.getByTestId('title')).toHaveText('Clockwork Heron');
@@ -410,7 +411,7 @@ test('a link made by another encoder (zlib deflate-raw) opens; a damaged one rep
   await page.goto('about:blank');
   await openApp(page, './#p=AAAA-not-deflate');
   await expect(page.getByRole('alert')).toContainText('Could not open the shared link');
-  await expect(page.getByTestId('title')).toHaveText('Tidewater Hymn'); // falls back to the featured piece
+  await expect(page.getByTestId('title')).toHaveText('Kite Day'); // falls back to the featured piece
 
   // Pasting a different link into the same page (hashchange) loads that piece.
   await page.evaluate((p) => (location.hash = `p=${p}`), payload);
@@ -475,7 +476,7 @@ test('screenshots: desktop light, desktop dark, phone', async ({ page }, info) =
 test('time to first sound: press play as soon as the page is up and hear it within 3 s', async ({
   page,
 }, info) => {
-  await page.goto('./', { waitUntil: 'commit' });
+  await page.goto('./?example=tidewater-hymn', { waitUntil: 'commit' });
   const play = page.getByRole('button', { name: 'Play', exact: true });
   await play.click();
   const heard = await page.evaluate(async () => {
