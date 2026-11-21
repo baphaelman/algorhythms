@@ -212,7 +212,7 @@ export async function deleteEntry(id: string): Promise<void> {
   await refreshPieces();
 }
 
-/** Opens the empty template (`newPiece`: 12 voices, v1 at A3, A dorian, glass) as a new entry. */
+/** Opens the empty template (`newPiece`: 12 voices, one chord at 0 on A3, A dorian, glass) as a new entry. */
 export function newPieceNow(): void {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
   loadPiece(newPiece({ seed, now: new Date().toISOString() }), { source: 'new' });

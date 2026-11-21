@@ -33,15 +33,23 @@ async function open(page: Page, moments: Record<string, unknown>[]): Promise<voi
     const h = window.__algorhythms!;
     const p = structuredClone(h.store.getState().piece) as unknown as {
       voices: { id: string }[];
-      start: { voice: string; pitch: number }[];
       moments: unknown[];
       key: unknown;
       end: unknown;
     };
-    p.start = [48, 55, 60, 64].map((pitch, i) => ({ voice: p.voices[i].id, pitch }));
+    // The start is a moment (schema v2): an opening chord at 0.
+    const opening = {
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [48, 55, 60, 64] },
+      voicing: 'even',
+      assign: 'ordered',
+    };
     p.moments = ms.map((m) => ({ ...m, target: { voices: [p.voices[3].id] } }));
     p.key = { tonic: 'C', scale: 'major' };
     p.end = { at: 20, fade: 1 };
+    p.moments.unshift(opening);
     h.actions.loadPiece(p);
   }, moments);
   await seek(page, 0);

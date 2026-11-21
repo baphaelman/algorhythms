@@ -22,6 +22,7 @@ async function open(page: Page): Promise<void> {
     delete view.gridBpm;
     p.view = view;
     p.moments = [
+      ...(p.moments as { id: string }[]).filter((m) => m.id === 'start0'), // the opening (v2)
       { id: 'spl001', type: 'split', at: 0, count: 4, voicing: 'even' },
       {
         id: 'uni001',

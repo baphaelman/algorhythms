@@ -118,7 +118,7 @@ test('New opens the empty template and saves it', async ({ page }) => {
     };
     return { voices: p.voices.length, moments: p.moments.length };
   });
-  expect(state).toEqual({ voices: 12, moments: 0 });
+  expect(state).toEqual({ voices: 12, moments: 1 }); // the opening chord at 0 (schema v2)
   await expect.poll(() => storedTitles(page)).toEqual(['Untitled']);
 });
 
