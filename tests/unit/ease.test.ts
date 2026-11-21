@@ -83,6 +83,23 @@ describe('standard eases', () => {
     }
   });
 
+  it('smootherstep is monotone next to 1 (property seed 353562081)', () => {
+    // The direct polynomial gave 0.9999999999999999 here and 0.9999999999999987 at the larger x.
+    const lo = ease(EaseCode.Smootherstep, 0.9999970971090307);
+    const hi = ease(EaseCode.Smootherstep, 0.9999999999995448);
+    expect(lo).toBeLessThanOrEqual(hi);
+    expect(hi).toBe(1);
+    // A dense sweep over the last 2^-12 before 1, where the old form dipped by up to 4e-15.
+    let prev = 0;
+    let dips = 0;
+    for (let k = 1 << 18; k >= 0; k--) {
+      const y = ease(EaseCode.Smootherstep, 1 - k * 2 ** -30);
+      if (y < prev) dips++;
+      prev = y;
+    }
+    expect(dips).toBe(0);
+  });
+
   it.each(REFERENCES)('%s: e(1/2) = 1/2 (all are symmetric)', (_n, code) => {
     expect(ease(code, 0.5)).toBeCloseTo(0.5, 14);
   });
