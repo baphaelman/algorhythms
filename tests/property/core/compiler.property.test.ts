@@ -170,9 +170,21 @@ function checkCrossings(p: Piece, stats: CrossingStats): void {
     for (const it of m.intents ?? []) if (it.kind !== 'death') target.set(it.voice, it.to);
     // A dying voice goes where its survivor goes: a later moment that moves the survivor takes
     // the dying voice over too (its death glide, started later, aims at the new destination).
+    // A newborn forks from its parent's state at its birth (§7.4): a later moment that takes the
+    // parent over before then (a tune's next note, say) changes where and how fast it starts.
+    const parentOf = new Map<number, number>();
+    for (const it of m.intents ?? [])
+      if (it.kind === 'birth' && (it.parent ?? -1) >= 0) parentOf.set(it.voice, it.parent!);
     const takeoverOf = (v: number): number => {
       const s = into.get(v);
-      return s !== undefined && s >= 0 ? Math.min(takeover(v), takeover(s)) : takeover(v);
+      let end = s !== undefined && s >= 0 ? Math.min(takeover(v), takeover(s)) : takeover(v);
+      const par = parentOf.get(v);
+      if (par !== undefined) {
+        const born = score.voices[v].lives.find((l) => l.born >= m.t - 1e-9)?.born ?? Infinity;
+        const tp = takeover(par);
+        if (tp <= born && tp < end) end = tp;
+      }
+      return end;
     };
     for (let k = 0; k + 1 < plan.order.length; k++) {
       const lo = score.voices[plan.order[k]];
@@ -296,6 +308,24 @@ function checkTuneNotes(p: Piece): number {
 const REGRESSIONS = new URL('./regressions/', import.meta.url);
 
 describe('compiler regressions (pieces that once failed)', () => {
+  // Seed 1791964326 (path 772): the note's return at 27.2 forks v12 from v4, the tune's line.
+  // The tune's next note (decided at 27.8) turns v4 down before v12's birth (28.25), so v12 starts
+  // with v4's downward speed and dips under v8. The plan was overruled before the birth: exempt.
+  it('a newborn whose parent a later moment takes over before its birth', () => {
+    const p = JSON.parse(
+      readFileSync(new URL('crossing-parent-takeover-seed1791964326.json', REGRESSIONS), 'utf8'),
+    ) as Piece;
+    const { score, trace } = compileWithTrace(p);
+    const [v4, v8, v12] = [3, 7, 11].map((i) => score.voices[i]);
+    expect(lifeAt(v12, 28.2)).toBeNull();
+    expect(pitchAt(v12, 28.6)!).toBeLessThan(pitchAt(v8, 28.6)!);
+    expect(trace.moments.some((o) => o.t > 27.3 && o.t < 28.2 && o.targeted.includes(3))).toBe(
+      true,
+    );
+    expect(pitchAt(v4, 28.6)!).toBeLessThan(62);
+    checkCrossings(p, { pairsChecked: 0, unresolved: 0 });
+  });
+
   const files = readdirSync(REGRESSIONS)
     .filter((f) => f.endsWith('.json'))
     .sort();

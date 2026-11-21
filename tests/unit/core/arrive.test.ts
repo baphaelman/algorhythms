@@ -23,13 +23,13 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  * stacked voices merge into weighted lines), and again with M4.5-29a (counts count lines, merges
  * pass weight, chords take free octaves before merging), and with M4.5-27 by what is not heard
  * (the opening chord's span, its harmony entry and the opening holds' moment id), and with R9-2
- * (revision 9: births and deaths take ranked stagger offsets).
+ * (revision 9: births and deaths take ranked stagger offsets). Seeds-4: a seven-doors newborn forks 35 ms earlier (out of order with a line across unborn siblings).
  */
 const PRE_REV6: Record<string, string> = {
   'clockwork-heron.algorhythms.json': '9d98073e330c1969',
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
   'lanterns-over-salt-flats.algorhythms.json': 'a7dadff1eeb2170a',
-  'seven-doors-in-fog.algorhythms.json': 'c22b91a75f0df000',
+  'seven-doors-in-fog.algorhythms.json': 'a165bee54335f1e0',
   'the-cartographers-rain.algorhythms.json': '2d3e402461f31d48',
   'tidewater-hymn.algorhythms.json': '04b09bca4988d167',
 };

@@ -396,8 +396,26 @@ export function planMoment(
   const touched = filled(n, 0);
   /** Per-part version, bumped whenever its curve may change. */
   const ver = filled(n, 0);
-  /** Per adjacent pair k: 1 + versions at which it was last found clear (0 = unknown). */
-  const clearAt = filled(n, 0);
+  // Pairs checked, as indices into `order`: adjacent pairs, then pairs across lines not born at
+  // T (this moment's newborns, earlier newborns still waiting): a line forking later leaves its
+  // neighbours unchecked against each other until its birth (seeds-4: a newborn dipped under
+  // its parent while the sibling between them was unborn). Once the adjacent pairs are clear,
+  // such a pair can only cross while a line between them is silent.
+  const pairLo: number[] = [];
+  const pairHi: number[] = [];
+  for (let k = 0; k + 1 < n; k++) {
+    pairLo.push(k);
+    pairHi.push(k + 1);
+  }
+  const unbornAtT = (i: number): boolean => parts[i].kind === PartKind.Birth || parts[i].deferT > T;
+  for (let k = 0; k + 2 < n; k++) {
+    for (let m = k + 1; m + 1 < n && unbornAtT(order[m]); m++) {
+      pairLo.push(k);
+      pairHi.push(m + 1);
+    }
+  }
+  /** Per pair: 1 + versions at which it was last found clear (0 = unknown). */
+  const clearAt = filled(pairLo.length, 0);
   const invalidate = (v: number, depth = 0): void => {
     projector.invalidate(v);
     const pi = partOf.get(v);
@@ -617,9 +635,9 @@ export function planMoment(
     for (let pass = 0; pass < maxPasses; pass++) {
       let acted = false;
       touched.fill(0);
-      for (let k = 0; k + 1 < n; k++) {
-        const li = order[k];
-        const hi = order[k + 1];
+      for (let k = 0; k < pairLo.length; k++) {
+        const li = order[pairLo[k]];
+        const hi = order[pairHi[k]];
         if (touched[li] || touched[hi]) continue;
         const lo = parts[li];
         const up = parts[hi];
@@ -704,11 +722,13 @@ export function planMoment(
     }
     // Report pairs still crossing (not those that started out of order).
     let left = 0;
-    for (let k = 0; k + 1 < n; k++) {
-      const lo = parts[order[k]];
-      const up = parts[order[k + 1]];
+    for (let k = 0; k < pairLo.length; k++) {
+      const li = order[pairLo[k]];
+      const hi = order[pairHi[k]];
+      const lo = parts[li];
+      const up = parts[hi];
       if (!isMover(lo) && !isMover(up)) continue;
-      if (clearAt[k] === ver[order[k]] + ver[order[k + 1]] * 65536 + 1) continue; // known clear
+      if (clearAt[k] === ver[li] + ver[hi] * 65536 + 1) continue; // known clear
       const c = crossing(lo, up);
       if (c >= 0 || c === -3) left++;
     }
