@@ -177,7 +177,8 @@ export function ViewBar() {
 
       <p className="keys">
         <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
-        <kbd>−</kbd> <kbd>=</kbd> zooms. Drag to pan; during playback that turns Follow off.
+        <kbd>−</kbd> <kbd>=</kbd> zooms. Scroll sideways or drag to pan (editor: middle-drag or{' '}
+        <kbd>Space</kbd>-drag; a plain drag selects dots); panning while playing turns Follow off.
       </p>
     </div>
   );

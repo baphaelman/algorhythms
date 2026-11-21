@@ -279,21 +279,41 @@ const MOMENT_SCHEMAS = {
       .optional()
       .describe('Frozen walk: absolute notes per tick; when present the walk draws nothing.'),
   }),
-  note: z.looseObject({
-    type: z.literal('note'),
-    ...momentBase,
-    from: pitch.describe('The sounding note to change (nearest within ½ semitone).'),
-    to: pitch,
-    back: nonNegative
-      .optional()
-      .describe('When present, the note returns this many seconds after its glide ends.'),
-    order: z
-      .boolean()
-      .optional()
-      .describe(
-        'Keep lines in order: true = ordered voice leading; false or absent = only that voice moves (may cross).',
-      ),
-  }),
+  note: z
+    .looseObject({
+      type: z.literal('note'),
+      ...momentBase,
+      from: pitch
+        .optional()
+        .describe('One change: the sounding note to change (nearest within ½ semitone).'),
+      to: pitch.optional().describe('One change: its new pitch.'),
+      changes: z
+        .array(
+          z.looseObject({
+            from: pitch.describe('The sounding note to change (nearest within ½ semitone).'),
+            to: pitch,
+          }),
+        )
+        .min(1)
+        .optional()
+        .describe('Several changes at once, each on a different voice (instead of from/to).'),
+      back: nonNegative
+        .optional()
+        .describe('When present, the notes return this many seconds after their glides end.'),
+      order: z
+        .boolean()
+        .optional()
+        .describe(
+          'Keep lines in order: true = ordered voice leading; false or absent = only that voice moves (may cross).',
+        ),
+    })
+    .refine(
+      (m) =>
+        m.changes === undefined
+          ? m.from !== undefined && m.to !== undefined
+          : m.from === undefined && m.to === undefined,
+      { message: 'A note moment has either from and to, or changes.' },
+    ),
   pin: z.looseObject({ type: z.literal('pin'), ...momentBase, voice: id, pitch }),
   key: z.looseObject({ type: z.literal('key'), ...momentBase, key: KeySchema }),
   level: z.looseObject({

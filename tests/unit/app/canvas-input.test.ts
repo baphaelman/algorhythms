@@ -9,6 +9,7 @@ const h = vi.hoisted(() => {
   }
   const state = {
     handler: null as ((e: KeyboardEvent) => void) | null,
+    upHandler: null as ((e: KeyboardEvent) => void) | null,
     dialogOpen: false,
     wide: true,
     selection: [] as string[],
@@ -17,9 +18,11 @@ const h = vi.hoisted(() => {
   };
   const g = globalThis as Record<string, unknown>;
   g.HTMLElement = FakeElement;
+  g.window = { addEventListener: () => undefined, removeEventListener: () => undefined };
   g.document = {
     addEventListener: (type: string, fn: (e: KeyboardEvent) => void) => {
       if (type === 'keydown') state.handler = fn;
+      if (type === 'keyup') state.upHandler = fn;
     },
     removeEventListener: () => undefined,
     querySelector: (sel: string) => {
@@ -111,6 +114,15 @@ function press(key: string, over: Partial<Ev> = {}): Ev {
   };
   h.state.handler?.(e as unknown as KeyboardEvent);
   return e;
+}
+
+/** Releases `key` (keyup). */
+function release(key: string): void {
+  h.state.upHandler?.({
+    key,
+    code: key === ' ' ? 'Space' : '',
+    target: BODY,
+  } as unknown as KeyboardEvent);
 }
 
 beforeEach(() => {
@@ -242,10 +254,16 @@ describe('undo and redo', () => {
 });
 
 describe('player keys', () => {
-  it('Space plays, except on buttons; a slider lets it through', () => {
+  it('Space plays on release in the editor (Space-drag pans), except on buttons', () => {
     press(' ');
+    expect(fns.togglePlay).not.toHaveBeenCalled();
+    release(' ');
+    expect(fns.togglePlay).toHaveBeenCalledTimes(1);
     press(' ', { target: el('button') });
+    release(' ');
     press(' ', { target: el('input', 'range') });
+    press(' ', { target: el('input', 'range'), repeat: true });
+    release(' ');
     expect(fns.togglePlay).toHaveBeenCalledTimes(2);
   });
 

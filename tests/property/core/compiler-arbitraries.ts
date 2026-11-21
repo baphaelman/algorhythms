@@ -3,7 +3,8 @@
  *
  * Pieces overlap moments on purpose: dense moment times, long glides with stagger and jitter, walk
  * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
- * note points (with and without returns; `from` often a start pitch, so it sounds), out-of-range
+ * note points (with and without returns, some with grouped `changes`; `from` often a start pitch,
+ * so it sounds), out-of-range
  * pitches (folding), key changes and every ease (béziers with finite start slopes).
  */
 import fc from 'fast-check';
@@ -273,6 +274,14 @@ export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
             to: fc.oneof(fc.integer({ min: 30, max: 100 }), tenths(40, 80)),
             back: tenths(0, 4),
             order: fc.boolean(),
+            // Grouped note changes (revision 7): extra changes make it a `changes` list.
+            more: fc.array(
+              fc.record({
+                from: fc.integer({ min: 40, max: 80 }),
+                to: fc.integer({ min: 30, max: 100 }),
+              }),
+              { minLength: 1, maxLength: 2 },
+            ),
           },
           { requiredKeys: ['at', 'type', 'from', 'to'] },
         ),
@@ -357,7 +366,18 @@ export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
               m.type === 'note' && i % 2 === 0 && r.starts.length > 0
                 ? { from: r.starts[i % Math.min(r.starts.length, r.pool)] }
                 : {};
-            return { ...m, ...from, id: `m${i.toString(36).padStart(5, '0')}` } as Moment;
+            const out = { ...m, ...from, id: `m${i.toString(36).padStart(5, '0')}` } as Record<
+              string,
+              unknown
+            >;
+            const more = out.more as { from: number; to: number }[] | undefined;
+            delete out.more;
+            if (more) {
+              out.changes = [{ from: out.from, to: out.to }, ...more];
+              delete out.from;
+              delete out.to;
+            }
+            return out as unknown as Moment;
           });
           return p;
         });

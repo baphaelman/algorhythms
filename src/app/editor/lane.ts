@@ -3,6 +3,7 @@
  * snapping, keyboard nudges, span-end drags, sub-row stacking and the level curve. No DOM, no store.
  */
 
+import { noteChanges } from '../../core/moments/note';
 import type {
   CompiledScore,
   Glide,
@@ -106,13 +107,18 @@ export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
   return [m.at, m.at + Math.max(0, g.stagger) + Math.max(0, g.length)];
 }
 
-/** A moment's name on the Moments row: its label, else chord name, `level 55%`, key, or type. */
+/**
+ * A moment's name on the Moments row: its label, else chord name, `level 55%`, key, "Shift" (a
+ * note moment with several changes), or type.
+ */
 export function momentText(m: Moment, chordName?: string): string {
   const label = m.label?.trim();
   if (label) return label;
   if (m.type === 'chord' && chordName) return chordName;
   if (m.type === 'level') return `level ${Math.round(m.gain * 100)}%`;
   if (m.type === 'key') return keyName(m.key);
+  // Grouped note changes (§11.3 revision 7): several at once read as one "Shift".
+  if (m.type === 'note' && noteChanges(m).length > 1) return 'Shift';
   return m.type;
 }
 

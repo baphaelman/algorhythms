@@ -129,10 +129,9 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 ## Owner feedback via preview comments
 - The owner comments on the preview artifact. Each comment wakes this session (a webhook notification). Read it with ArtifactComments `read` + `thread_id`, reply on the thread, then put the change in PLAN and give it to a builder. Comments carry text and the `#score` anchor only, with no image or position.
 
-## In-flight builders at handoff (2026-11-21)
-The next integrator runs **locally** (owner's Mac: use CLAUDE.md's Homebrew environment; the cloud notes above don't apply). The cloud session keeps running these builders, merges and pushes each one to `main` when it finishes:
-- M4.5-23, score selection + grouped note changes
-- M4.5-26, open-ended canvas (203ae40, waiting on its full e2e run)
-- M4.5-29, distinct notes + weights
-
-On start, `git pull` and check `docs/build-log.md` for their entries. A task with no build-log entry on `main` hasn't landed: re-run it from its PLAN rev 7/8 bullet. Builder commits live only in the cloud container until merged.
+## Cloud done (2026-11-21)
+The cloud integrator has stopped. The local session owns everything from here.
+- **Merged and pushed:** M4.5-23 (score selection + grouped note changes), M4.5-26 (open-ended canvas), and everything before them.
+- **M4.5-29 (distinct notes + weights) is partial.** It is on branch `wip/m4.5-29` (dada013), not on main. Read the handoff note under "M4.5-29" in that branch's build log first. To continue: a fresh builder checks out `wip/m4.5-29`, merges origin/main (expect conflicts in `note.ts`, compiler, schema and the property generator), then finishes the build log's "Left" list.
+- **Design conflict to settle with the owner before finishing 29:** the builder made `count` / "Notes: n" count voices (summed weight), not lines. The owner wants n = the number of notes heard, i.e. lines (PLAN rev 8). Likely fix: n counts lines, and weight only carries loudness. Its other deviations (no weight transfer on explicit merges or count deaths; 0.1 s hand-over; transfer by level) need recording in PLAN.
+- **Queue after 29:** 25 (future dimmed + "notes" wording; can start now since 23 landed), 27 (start is a moment, after 29), 28 (Compose for me, after 27), the rare property seeds, full e2e incl. WebKit on the Mac, then the M4.5 acceptance checks.

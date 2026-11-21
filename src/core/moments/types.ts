@@ -41,10 +41,10 @@ export interface MomentPlan {
   ordered: boolean;
   intents: Intent[];
   /**
-   * Note moments (§6.2): the index in `intents` of the move that carries the new note, and the
-   * pitch it replaced (where `back` returns it).
+   * Note moments (§6.2): per applied change, the index in `intents` of the move that carries the
+   * new note, and the pitch it replaced (where `back` returns it).
    */
-  note?: { intent: number; from: Pitch };
+  notes?: { intent: number; from: Pitch }[];
 }
 
 /** What a moment function may read and do. */

@@ -83,13 +83,12 @@ export const SUB_STRIDE = 64;
 export const SUB_NOTE_BACK = 1;
 
 /**
- * A note moment's scheduled return (§6.2 `back`): at `t`, the note `from` (where the move
- * arrived) becomes `to` (the pitch it replaced). Immutable once queued.
+ * A note moment's scheduled return (§6.2 `back`): at `t`, each change's note `from` (where its
+ * move arrived) becomes `to` (the pitch it replaced). Immutable once queued.
  */
 export interface NoteBack {
   t: Seconds;
-  from: Pitch;
-  to: Pitch;
+  changes: { from: Pitch; to: Pitch }[];
 }
 
 /** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
@@ -678,7 +677,14 @@ export class Compiler {
     const m0 = this.moments[i];
     // A return runs the note moment again at its own time, `from` and `to` swapped.
     const m: Moment = back
-      ? { ...(m0 as NoteMoment), at: back.t, from: back.from, to: back.to, back: undefined }
+      ? {
+          ...(m0 as NoteMoment),
+          at: back.t,
+          from: undefined,
+          to: undefined,
+          changes: back.changes,
+          back: undefined,
+        }
       : m0;
     const T = m.at;
     let pre: number[];
@@ -764,7 +770,8 @@ export class Compiler {
       });
     }
     if (res.moves.length === 0) this.span(i, T, T);
-    else if (!back && m.type === 'note' && plan.note) this.scheduleBack(i, m, plan.note, plan, res);
+    else if (!back && m.type === 'note' && plan.notes)
+      this.scheduleBack(i, m, plan.notes, plan, res);
     this.touch();
     this.recordHarmony(i, T);
     this.traceMoment(i, targeted, subset, res.trace, plan.intents, T);
@@ -775,7 +782,7 @@ export class Compiler {
   private scheduleBack(
     i: number,
     m: NoteMoment,
-    note: { intent: number; from: Pitch },
+    notes: readonly { intent: number; from: Pitch }[],
     plan: { intents: readonly Intent[] },
     res: PlanResult,
   ): void {
@@ -785,7 +792,10 @@ export class Compiler {
     for (const mv of res.moves) if (mv.t0 + mv.dur > end) end = mv.t0 + mv.dur;
     const t = end + wait;
     // The carrier's target after range folding (planMoment folds the intents in place).
-    const rec: NoteBack = { t, from: plan.intents[note.intent].to, to: note.from };
+    const rec: NoteBack = {
+      t,
+      changes: notes.map((n) => ({ from: plan.intents[n.intent].to, to: n.from })),
+    };
     this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_NOTE_BACK, ref: i, obj: rec });
   }
 

@@ -93,16 +93,18 @@ test('Follow: Smooth holds the playhead at 35 %, Page jumps at 92 % to 8 %, Off 
   expect(off[off.length - 1].head).toBeGreaterThan(off[0].head);
 });
 
-test('a drag on the score during playback pans and turns Follow off', async ({ page }) => {
+test('a middle-button drag on the score during playback pans and turns Follow off', async ({
+  page,
+}) => {
   await openApp(page);
   await page.getByTestId('window-slider').fill('400');
   await playFrom(page, 30);
   const box = (await page.getByTestId('stage').boundingBox())!;
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 300, y);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'middle' });
   await page.mouse.move(box.x + 600, y, { steps: 8 });
-  await page.mouse.up();
+  await page.mouse.up({ button: 'middle' });
   const c = await cam(page);
   expect(c.status).toBe('playing'); // a drag is not a click
   expect(c.follow).toBe('off');
