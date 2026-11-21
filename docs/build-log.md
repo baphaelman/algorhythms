@@ -1013,3 +1013,4 @@ Fix:
 
 - Owner (comment): split "Voices after 10" showed 8 lines. Likely doubling (fewer notes than voices; lines overlap). Queued M4.5-24 after M4.5-22: confirm, then show doubled lines (thicker + ×2), no sound change. Asked owner whether split should prefer octave/new pitches over doubling.
 - Owner (comment): score selection model (click section = select moment; click/Shift-click/rectangle select dots; drag moves selection; empty click = playhead; no click-to-play). PLAN §11.3 rev 7 "Score selection". Combined with grouped note changes as M4.5-23, after M4.5-22. Doubled-voice marks = M4.5-24.
+- Owner: split prefers octaves over unisons; all UI text says "notes" instead of "voices". PLAN rev 7. Assigned with doubled-voice marks as M4.5-24.
