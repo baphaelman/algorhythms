@@ -128,3 +128,11 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 
 ## Owner feedback via preview comments
 - The owner comments on the preview artifact. Each comment wakes this session (a webhook notification). Read it with ArtifactComments `read` + `thread_id`, reply on the thread, then put the change in PLAN and give it to a builder. Comments carry text and the `#score` anchor only, with no image or position.
+
+## In-flight builders at handoff (2026-11-21)
+These report to the old session. A new session can't receive their reports, so check their branches directly. They commit locally in `.claude/worktrees/agent-<id>`, on branch `worktree-agent-<id>`, in this container only:
+- M4.5-23, score selection + grouped note changes: `worktree-agent-a9b484ea79d854f0d`
+- M4.5-26, open-ended canvas: `worktree-agent-ae99e8aa98dfbc5df`
+- M4.5-29, distinct notes + weights: `worktree-agent-ad343b588654c8488`
+
+To pick them up: `git log --oneline main-6gnzzw..<branch>` and `git -C .claude/worktrees/agent-<id> status`. Once a build-log entry for that task exists on the branch, treat it as finished. Then merge, verify and push as the routine says. If the container is gone, these are lost and must be re-run from the PLAN rev 7/8 bullets.
