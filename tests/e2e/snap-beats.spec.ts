@@ -227,15 +227,13 @@ test('a dot dragged sideways lands on a beat; Alt and the toggle leave it free',
   expect(Math.abs(off! - 5.3)).toBeLessThan(0.04);
 });
 
-test('Next appends on the next beat after the last end; off, at the end itself', async ({
-  page,
-}) => {
+test('Next appends a bar after the last end, on a beat; off, 2 s after it', async ({ page }) => {
   await open(page, 40);
   const next = page.getByTestId('suggestions');
-  // The walk ends at 13: the next 1.5 s beat is 13.5.
-  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(13.5, 2);
+  // The walk ends at 13; a 4-beat bar of 1.5 s beats → 19, the next beat is 19.5. Off: 13 + 2.
+  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(19.5, 2);
   await toggle(page).click();
-  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(13, 2);
+  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(15, 2);
   await toggle(page).click();
-  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(13.5, 2);
+  await expect.poll(async () => Number(await next.getAttribute('data-t'))).toBeCloseTo(19.5, 2);
 });

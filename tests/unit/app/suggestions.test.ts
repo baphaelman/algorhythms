@@ -67,36 +67,37 @@ describe('Next at the end (revision 7)', () => {
     select([]);
   });
 
-  it('is the latest end of any unmuted moment, whatever the playhead or selection', () => {
+  it('is a 2 s hold after the latest end of any unmuted moment, whatever the playhead or selection', () => {
     const { piece: p, compiled } = usePlayer.getState();
-    expect(suggestionTime(p, compiled)).toBe(6);
+    expect(suggestionTime(p, compiled)).toBe(8);
     seekTo(1);
     select(['spl001']);
     refreshSuggestions(true);
-    expect(useSuggestions.getState().t).toBe(6);
+    expect(useSuggestions.getState().t).toBe(8);
     const muted = {
       ...p,
       moments: p.moments.map((m) => (m.id === 'lvl001' ? { ...m, muted: true } : m)),
     };
     const unisonEnd = suggestionTime(muted, compile(muted));
-    expect(unisonEnd).toBeGreaterThan(2.4);
-    expect(unisonEnd).toBeLessThan(6);
+    expect(unisonEnd).toBeGreaterThan(4.4);
+    expect(unisonEnd).toBeLessThan(8);
     const empty = { ...p, moments: [] };
     expect(suggestionTime(empty, compile(empty))).toBe(0);
   });
 
-  it('Snap to beats: the next beat at or after the last end (revision 9)', () => {
+  it('Snap to beats: a bar after the last end, then the next beat (revision 9)', () => {
     const { piece: p, compiled } = usePlayer.getState();
-    // 6 s on a 70 bpm grid (0.857 s beats) is not on a beat: the next one is 7 × 0.857 = 6.
+    // 6 s + a 4-beat bar at 70 bpm (0.857 s beats) = 9.429 s = 11 beats.
     const grid = (bpm: number, extra: object = {}): Piece => ({
       ...p,
       view: { ...p.view, gridBpm: bpm, ...extra },
     });
-    expect(suggestionTime(grid(70), compiled)).toBe(6);
-    expect(suggestionTime(grid(100), compiled)).toBe(6); // 6 s = 10 beats at 100 bpm
-    expect(suggestionTime(grid(64), compiled)).toBe(6.563); // 0.9375 s beats: 7 × 0.9375, to the ms
-    expect(suggestionTime(grid(64, { snapBeats: false }), compiled)).toBe(6);
-    expect(suggestionTime(p, compiled)).toBe(6);
+    expect(suggestionTime(grid(70), compiled)).toBe(9.429);
+    expect(suggestionTime(grid(100), compiled)).toBe(8.4); // 6 + 2.4 = 14 beats at 100 bpm
+    expect(suggestionTime(grid(64), compiled)).toBe(10.313); // 6 + 3.75 → 11 × 0.9375, to the ms
+    expect(suggestionTime(grid(100, { meter: 3 }), compiled)).toBe(7.8); // a 3-beat bar
+    expect(suggestionTime(grid(64, { snapBeats: false }), compiled)).toBe(8);
+    expect(suggestionTime(p, compiled)).toBe(8);
   });
 
   it('appends a suggestion at the end, one undo entry, selected', () => {
@@ -107,7 +108,7 @@ describe('Next at the end (revision 7)', () => {
     for (const s of items) expect(s.moment.at).toBe(t);
     const id = addSuggestion(items[0]);
     const added = usePlayer.getState().piece.moments.find((m) => m.id === id);
-    expect(added?.at).toBe(6);
+    expect(added?.at).toBe(8);
     expect(useEditor.getState().selection).toEqual([id]);
     expect(useEditor.getState().undoLabel).toBe(items[0].label);
   });
@@ -143,6 +144,31 @@ describe('Next at the end (revision 7)', () => {
       expect(s.moment.at).toBe(t);
       if (s.moment.type === 'walk') expect(s.moment.until).toBeGreaterThan(t);
     }
+  });
+});
+
+describe('Next after a zero-length tail', () => {
+  it('a fresh piece: a hold after the opening chord, a bar with a tempo', () => {
+    const p = newPiece({ seed: 7 });
+    const s = compile(p);
+    expect(suggestionTime(p, s)).toBe(2);
+    // 120 bpm, 4/4: one bar = 2 s; 3/4 at 90 bpm: 2 s too, on a beat.
+    const grid = (bpm: number, meter?: number): Piece => ({
+      ...p,
+      view: { ...p.view, gridBpm: bpm, meter },
+    });
+    expect(suggestionTime(grid(120), s)).toBe(2);
+    expect(suggestionTime(grid(90, 3), s)).toBe(2);
+    expect(suggestionTime(grid(60), s)).toBe(4);
+    const [first] = suggestionsAt(p, s, suggestionTime(p, s));
+    expect(first.moment.at).toBe(2);
+  });
+
+  it('a key at the latest end gets the hold after it', () => {
+    const p = piece();
+    const key = { id: 'key001', type: 'key', at: 7, key: { ...p.key, tonic: 'C' } } as Moment;
+    const withKey = { ...p, moments: [...p.moments, key] };
+    expect(suggestionTime(withKey, compile(withKey))).toBe(9);
   });
 });
 

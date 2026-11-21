@@ -1,8 +1,8 @@
 /**
- * Next-move suggestions (PLAN.md §11.3, revision 7 "Add vs Next"): `core/suggest` at the end of
- * the piece's last moment (the latest end of any unmuted moment), appended there. Independent of
- * the playhead and the selection. Adding one extends `end.at` when the piece has one and the new
- * moment would reach past it. `watchSuggestions` keeps `useSuggestions` current.
+ * Next-move suggestions (PLAN.md §11.3, revision 7 "Add vs Next"): `core/suggest` a hold after the
+ * piece's last moment (see `suggestionTime`), appended there. Independent of the playhead and the
+ * selection. Adding one extends `end.at` when the piece has one and the new moment would reach
+ * past it. `watchSuggestions` keeps `useSuggestions` current.
  */
 
 import { create } from 'zustand';
@@ -24,15 +24,24 @@ function momentEnd(m: Moment, score: CompiledScore): Seconds {
   return Math.max(own, span?.end ?? -Infinity);
 }
 
+/** The hold (s) before a new moment without a tempo; with one, a bar. */
+const HOLD = 2;
+
 /**
- * The time suggestions are for: the latest end of the piece's unmuted moments (0 with none); with
- * "Snap to beats" (revision 9), the next beat at or after it.
+ * The time suggestions are for (0 with no unmuted moments): a hold after the later of the latest
+ * end and the latest marker of the piece's unmuted moments, so shifts don't chain immediately and
+ * a zero-length tail (an establishing chord, a key, a note) still comes first. The hold is one bar
+ * with "Snap to beats" on (revision 9), then the next beat at or after; else `HOLD`.
  */
 export function suggestionTime(piece: Piece, score: CompiledScore): Seconds {
-  let end = 0;
-  for (const m of piece.moments) if (!m.muted) end = Math.max(end, momentEnd(m, score));
+  let end = -Infinity;
+  for (const m of piece.moments) {
+    if (!m.muted) end = Math.max(end, m.at, momentEnd(m, score));
+  }
+  if (end === -Infinity) return 0;
   const step = beatStep(piece.view);
-  return round3(step ? nextBeat(end, step) : end);
+  const t = end + (step ? step * (piece.view.meter ?? 4) : HOLD);
+  return round3(step ? nextBeat(t, step) : t);
 }
 
 /** `m` moved by `dt` (a walk's `until` too). */
