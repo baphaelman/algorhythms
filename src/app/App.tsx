@@ -16,6 +16,7 @@ import { Playhead } from './ui/Playhead';
 import { Ruler } from './ui/Ruler';
 import { ScoreView } from './ui/ScoreView';
 import { Scrubber, Transport } from './ui/Transport';
+import { UndoRedo } from './ui/UndoRedo';
 import { ViewBar } from './ui/ViewBar';
 import { VoicesDrawer } from './ui/VoicesDrawer';
 
@@ -53,7 +54,7 @@ export function App() {
 
   return (
     <div className="app" data-layout={wide ? 'full' : 'player'}>
-      <Transport>
+      <Transport history={wide && <UndoRedo />}>
         <Menu />
       </Transport>
       <GeneratePanel />

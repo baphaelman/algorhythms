@@ -31,7 +31,8 @@ import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
 import { momentSeed } from '../../../src/core/rng';
 import { parsePiece } from '../../../src/core/schema';
-import type { MomentType, Piece } from '../../../src/core/types';
+import { activeAt, pitchAt } from '../../../src/core/query';
+import type { ChordMoment, MomentType, Piece } from '../../../src/core/types';
 import {
   addMoment,
   deleteMoments,
@@ -52,7 +53,7 @@ import {
   updateGesture,
   useEditor,
 } from '../../../src/app/editor/history';
-import { defaultMoment } from '../../../src/app/editor/new-moment';
+import { defaultMoment, withChordFill } from '../../../src/app/editor/new-moment';
 import { copyMoments, moveMomentsBy, newMomentIds } from '../../../src/app/editor/ops';
 import { loadPiece, usePlayer } from '../../../src/app/store';
 import example from '../../../examples/tidewater-hymn.algorhythms.json';
@@ -328,5 +329,49 @@ describe('default moments', () => {
       expect(v.lives[0]).toMatchObject({ born: 1, fadeIn: 0 });
       expect(v.segments.every((s) => s.p0 === s.p1)).toBe(true);
     }
+  });
+
+  it('a chord on the one-note opening brings in its extra notes: count 3, three lines', () => {
+    const p = newPiece({ seed: 3 });
+    const m = defaultMoment('chord', 5, 'zzzzzz', p, compile(p));
+    expect(m.count).toBe(3);
+    const score = compile({ ...p, moments: [...p.moments, m] });
+    expect(activeAt(score, 10)).toHaveLength(3);
+    expect(new Set(activeAt(score, 10).map((i) => pitchAt(score.voices[i], 10))).size).toBe(3);
+    expect(score.diagnostics.filter((d) => d.level !== 'info')).toEqual([]);
+  });
+
+  it('a chord where at least as many lines sound keeps the line count (no count)', () => {
+    const p = examplePiece();
+    const s = compile(p);
+    const at = 30;
+    expect(activeAt(s, at).length).toBeGreaterThanOrEqual(3);
+    expect(defaultMoment('chord', at, 'zzzzzz', p, s).count).toBeUndefined();
+  });
+
+  it('withChordFill: only chords without count or voice target; at most the pool', () => {
+    const p = newPiece({ seed: 3 });
+    const s = compile(p);
+    const seventh: ChordMoment = {
+      id: 'zzzzzz',
+      type: 'chord',
+      at: 5,
+      notes: { kind: 'degrees', degrees: [0, 2, 4, 6] },
+      voicing: 'even',
+      assign: 'ordered',
+    };
+    expect(withChordFill(seventh, p, s, 5).count).toBe(4);
+    expect(withChordFill({ ...seventh, count: 2 }, p, s, 5).count).toBe(2);
+    const listed = { ...seventh, target: { voices: ['v1'] } };
+    expect(withChordFill(listed, p, s, 5)).toBe(listed);
+    const small = { ...p, voices: p.voices.slice(0, 2) };
+    expect(withChordFill(seventh, small, compile(small), 5).count).toBe(2);
+    const current: ChordMoment = { ...seventh, notes: { kind: 'current' } };
+    expect(withChordFill(current, p, s, 5)).toBe(current);
+    const unison = defaultMoment('unison', 5, 'zzzzzz', p, s);
+    expect(withChordFill(unison, p, s, 5)).toBe(unison);
+    // From silence the chord establishes one voice per note itself.
+    const silent = { ...p, moments: [] };
+    expect(withChordFill(seventh, silent, compile(silent), 5)).toBe(seventh);
   });
 });
