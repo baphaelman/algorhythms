@@ -6,11 +6,13 @@ import {
   HIGHLIGHT_WIDTH,
   LINE_WIDTH,
   drawScore,
+  pitchToY,
   weightWidth,
   type CameraState,
   type Ctx2D,
   type ScoreStyle,
 } from '../../../src/render';
+import { pathCtx } from './path-ctx';
 
 interface Stroke {
   stroke: unknown;
@@ -128,30 +130,47 @@ describe('drawn thickness', () => {
     expect(red.every((s) => s.width === LINE_WIDTH)).toBe(true);
   });
 
-  it('a weighted line is thicker, stepping through its ramp', () => {
-    // Voice 0: weight 1 → 4 from 10 s over 4 s. Voice 1: weight 2 throughout.
+  it('a weighted line is thicker, tapering smoothly through an edit', () => {
+    // Voice 0: weight 1 → 4 from 10 s over 4 s (an edit: no merge). Voice 1: weight 2 throughout.
     const w0: WeightChange[] = [{ t: 10, w: 4, over: 4 }];
     const s = score([voice(0, 60, w0), voice(1, 67, [{ t: 0, w: 2, over: 0 }])]);
-    const { ctx, strokes } = fakeCtx();
-    drawScore(ctx, s, CAM, style(), 30, SIZE, 1);
-    const red = strokes.filter((x) => x.stroke === RED).sort((a, b) => a.x - b.x);
-    expect(red[0].width).toBe(LINE_WIDTH);
-    expect(red[red.length - 1].width).toBeCloseTo(3, 12);
-    const ramp = red.filter((x) => x.width > LINE_WIDTH && x.width < 3);
-    expect(ramp.length).toBeGreaterThanOrEqual(3);
-    for (let i = 1; i < red.length; i++)
-      expect(red[i].width).toBeGreaterThanOrEqual(red[i - 1].width);
-    const blue = strokes.filter((x) => x.stroke === BLUE);
-    expect(blue.every((x) => Math.abs(x.width - LINE_WIDTH * Math.SQRT2) < 1e-12)).toBe(true);
+    const { ctx, fills } = pathCtx();
+    const view = drawScore(ctx, s, CAM, style(), 30, SIZE, 1);
+    const yc = pitchToY(view, 60);
+    const red = fills
+      .filter((f) => f.style === RED)
+      .flatMap((f) => f.pts)
+      .filter(([, y]) => y > yc)
+      .sort((a, b) => a[0] - b[0]);
+    const half = (x: number) => red.filter((p) => Math.abs(p[0] - x) < 1).map((p) => p[1] - yc);
+    expect(half(0).length).toBeGreaterThan(0);
+    expect(half(0).every((h) => Math.abs(h - LINE_WIDTH / 2) < 1e-9)).toBe(true);
+    expect(half(1000).every((h) => Math.abs(h - 1.5) < 1e-9)).toBe(true);
+    // Through the taper: never thinner going right, no step bigger than a sliver.
+    for (let i = 1; i < red.length; i++) {
+      expect(red[i][1] - red[i - 1][1]).toBeGreaterThanOrEqual(-1e-9);
+      if (red[i][0] - red[i - 1][0] < 3) expect(red[i][1] - red[i - 1][1]).toBeLessThan(0.1);
+    }
+    const yb = pitchToY(view, 67);
+    const blue = fills.filter((f) => f.style === BLUE).flatMap((f) => f.pts);
+    expect(blue.length).toBeGreaterThan(0);
+    for (const [, y] of blue)
+      expect(Math.abs(y - yb)).toBeCloseTo((LINE_WIDTH * Math.SQRT2) / 2, 9);
   });
 
   it('highlighted segments keep their weight', () => {
     const s = score([voice(0, 60, [{ t: 0, w: 4, over: 0 }]), voice(1, 67)]);
-    const { ctx, strokes } = fakeCtx();
-    drawScore(ctx, s, CAM, style({ highlight: new Set(['m']) }), 20, SIZE, 1);
-    const widths = new Set(strokes.filter((x) => x.stroke === RED).map((x) => x.width));
+    const { ctx, fills, strokes } = pathCtx();
+    const view = drawScore(ctx, s, CAM, style({ highlight: new Set(['m']) }), 20, SIZE, 1);
+    const yc = pitchToY(view, 60);
+    const widths = new Set(
+      fills
+        .filter((f) => f.style === RED)
+        .flatMap((f) => f.pts)
+        .map(([, y]) => Math.round(Math.abs(y - yc) * 2000) / 1000),
+    );
     expect(widths).toEqual(new Set([3, HIGHLIGHT_WIDTH * 2]));
-    const blue = new Set(strokes.filter((x) => x.stroke === BLUE).map((x) => x.width));
+    const blue = new Set(strokes.filter((x) => x.style === BLUE).map((x) => x.width));
     expect(blue).toEqual(new Set([LINE_WIDTH, HIGHLIGHT_WIDTH]));
   });
 });
