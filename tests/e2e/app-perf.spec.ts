@@ -35,7 +35,7 @@ test('1080p, 24 voices, playing: median frame interval is 60 fps', async ({
     mimeType: 'application/json',
     buffer: Buffer.from(serializePiece(piece)),
   });
-  await expect(page.getByTestId('keyvoices')).toContainText('/ 24 voices');
+  await expect(page.getByTestId('keyvoices')).toContainText('/ 24 notes');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await seek(page, 60); // into the Drift/Gather sections: many voices
   await page.waitForFunction(

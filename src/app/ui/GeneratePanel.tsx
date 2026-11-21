@@ -234,7 +234,7 @@ export function GeneratePanel() {
           </div>
 
           <div className="field">
-            <label htmlFor={`${id}-voices`}>Voices</label>
+            <label htmlFor={`${id}-voices`}>Notes</label>
             <div className="field-row">
               <input
                 id={`${id}-voices`}
@@ -271,7 +271,7 @@ export function GeneratePanel() {
               />
               <output htmlFor={`${id}-density`}>{Math.round(form.density * 100)}%</output>
             </div>
-            <small>How often a voice steps in the walking section.</small>
+            <small>How often a note steps in the walking section.</small>
             {errors.density && (
               <small className="field-error" role="alert">
                 {errors.density}

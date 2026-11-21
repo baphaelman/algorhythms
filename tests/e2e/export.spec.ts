@@ -47,7 +47,7 @@ async function generateMany(page: Page, voices: number): Promise<void> {
   await page.getByTestId('generate-panel').getByLabel('Seed', { exact: true }).fill('77');
   await page
     .getByTestId('generate-panel')
-    .getByLabel('Voices', { exact: true })
+    .getByLabel('Notes', { exact: true })
     .fill(String(voices));
   await page.getByTestId('generate-run').click();
   await expect(page.getByTestId('generate-panel')).toBeHidden();

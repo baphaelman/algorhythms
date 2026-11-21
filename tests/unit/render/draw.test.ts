@@ -149,7 +149,7 @@ describe('layers', () => {
     const line = at((c) => c.op === 'stroke' && c.stroke === RED);
     const head = at((c) => c.op === 'arc');
     const headLabel = at(text(/^\d+\.\d\d Hz/));
-    const hud = at(text(/^voices/));
+    const hud = at(text(/^notes/));
     // the playhead is the last rule-coloured stroke before the HUD
     let playhead = -1;
     calls.forEach((c, i) => {
@@ -169,7 +169,7 @@ describe('layers', () => {
     const { ctx, calls } = fakeCtx();
     drawScore(ctx, score([flatHold]), cam(20, 25), style({ hud: false }), 25, SIZE, 2);
     expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 0, 0] });
-    expect(calls.some((c) => c.op === 'fillText' && /^voices/.test(c.args[0] as string))).toBe(
+    expect(calls.some((c) => c.op === 'fillText' && /^notes/.test(c.args[0] as string))).toBe(
       false,
     );
   });
@@ -299,7 +299,7 @@ describe('heads', () => {
     const labels = calls.filter((x) => x.op === 'fillText').map((x) => x.args[0] as string);
     expect(labels).toContain('261.63 Hz ×2');
     expect(labels).toContain('392.00 Hz');
-    expect(labels.some((l) => /^voices +3 \/ 4$/.test(l))).toBe(true);
+    expect(labels.some((l) => /^notes +3 \/ 4$/.test(l))).toBe(true);
   });
 
   it('draws a motion ring with opacity = motionAt while gliding, none while holding', () => {

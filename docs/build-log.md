@@ -1081,3 +1081,11 @@ Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow t
 - M4.5-29 split: **29a** (core: merge main, count = lines, weight on every join, the skipped distinct-notes property, walk steps skip held pitches); **29b** after 29a (DSP wobble removal + √w test, MIDI velocity, inspector weight field, line thickness by weight after M4.5-25).
 - CI failed since M4.5-21/22 on `lane.spec` Escape (exact 5 after grid snap removal) and a `view-follow` frame race: fixed (entry above). WebKit e2e stays on CI (it can't be muted on the Mac).
 - Owner withdrew the future-dimming fix ("it looks fine"); M4.5-25 is only the "notes" wording.
+
+
+## M4.5-25: "notes" wording (app, 2026-11-21)
+- **Dimming fix withdrawn** by the owner ("it looks fine"): `loop.ts`/`draw.ts` dimming is unchanged from main (idle ghost 1 before the first play; selection dims both sides).
+- **"Notes" wording:** user-facing text in `src/app` (drawer heading/toggle/aria/columns/undo labels, Generate field + error, inspector "Notes after"/targets/pin "Note"/register, palette hints, key·count status, score aria-label, Menu example counts, Export hints, walk-step tooltip). Also outside app, because they are UI text: the player HUD line (`notes   n / pool`, render/draw.ts), the hover readout (`note 2 · A4 …` for unnamed lines, render/hover.ts) and the no-effect reasons in `core/effect.ts` (palette tooltips, `info:no-effect` messages). The last changed three golden hashes (message text only; regenerated). Identifiers, test ids, CSS classes, file format and other compiler diagnostic messages keep "voice" (they name file-format fields; open for the integrator).
+- "×2" doubled-voice marks not built (cancelled by rev 8).
+- **Tests:** text updates in no-effect, draw, selection unit tests and app/generate/export/context-moments/app-perf e2e.
+- Integrator: diagnostics that name file-format fields (e.g. "Pin: there is no voice 'x'.") keep "voice" (PLAN: the file format keeps `voice`).

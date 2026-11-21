@@ -95,7 +95,7 @@ export function checkForm(form: GenerateForm, now?: string): FormCheck {
   const seed = parseSeed(form.seed);
   if (seed === null) errors.seed = 'Enter a seed: a number or any text.';
   if (!Number.isInteger(form.voices) || form.voices < VOICES_MIN || form.voices > VOICES_MAX) {
-    errors.voices = `Voices must be a whole number from ${VOICES_MIN} to ${VOICES_MAX}.`;
+    errors.voices = `Notes must be a whole number from ${VOICES_MIN} to ${VOICES_MAX}.`;
   }
   if (!Number.isFinite(form.density) || form.density < 0 || form.density > 1) {
     errors.density = 'Density must be from 0 to 1.';

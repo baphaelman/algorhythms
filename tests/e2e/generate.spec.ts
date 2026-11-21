@@ -53,7 +53,7 @@ test('generates a piece from a seed; the same seed and options reproduce it', as
   await openPanel(page);
   await panel(page).getByLabel('Seed', { exact: true }).fill('4242');
   await panel(page).getByLabel('Lydian', { exact: true }).check();
-  await panel(page).getByLabel('Voices', { exact: true }).fill('6');
+  await panel(page).getByLabel('Notes', { exact: true }).fill('6');
   await panel(page).getByLabel('Walk density', { exact: true }).fill('70');
   await page.getByTestId('generate-run').click();
 
@@ -66,7 +66,7 @@ test('generates a piece from a seed; the same seed and options reproduce it', as
   expect(a.duration).toBeGreaterThan(100);
   expect(a.body).not.toBe(before.body);
   await expect(page.getByTestId('title')).toHaveText('Lydian 4242');
-  await expect(page.getByTestId('keyvoices')).toContainText(/lydian · \d+ \/ 6 voices/);
+  await expect(page.getByTestId('keyvoices')).toContainText(/lydian · \d+ \/ 6 notes/);
   expect(await page.evaluate(() => window.__algorhythms!.store.getState().transport.status)).toBe(
     'idle',
   );
@@ -90,7 +90,7 @@ test('generates a piece from a seed; the same seed and options reproduce it', as
 
   await openPanel(page);
   await panel(page).getByLabel('Seed', { exact: true }).fill('4242');
-  await panel(page).getByLabel('Voices', { exact: true }).fill('8');
+  await panel(page).getByLabel('Notes', { exact: true }).fill('8');
   await page.getByTestId('generate-run').click();
   const d = await snapshot(page);
   expect(d.voices).toBe(8);
