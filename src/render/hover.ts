@@ -79,7 +79,7 @@ const SHARPS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A
 
 /** The readout of a hit: "<voice> · <note> · <Hz> Hz", spelled in the key at the hit's time. */
 export function hoverLabel(compiled: CompiledScore, hit: LineHit, voiceName?: string): string {
-  const name = voiceName ?? `voice ${hit.voice + 1}`;
+  const name = voiceName ?? `note ${hit.voice + 1}`;
   const note = noteLabel(hit.pitch, keyAt(compiled, hit.t));
   const hz = hzOf(hit.pitch, compiled.referenceHz).toFixed(2);
   return `${name} · ${note} · ${hz} Hz`;

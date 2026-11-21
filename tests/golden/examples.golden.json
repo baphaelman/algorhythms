@@ -1,6 +1,6 @@
 {
   "clockwork-heron.algorhythms.json": {
-    "hash": "2af808801cd96f55",
+    "hash": "0900995cb426b9e3",
     "duration": 149.51922053318904,
     "voices": [
       {
@@ -68,13 +68,13 @@
     "spans": 20
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "aeb4a968407aa0f3",
+    "hash": "88599626edbf3017",
     "duration": 186.07914339979678,
     "voices": [
       {
         "id": "v1",
         "lives": 1,
-        "segments": 24,
+        "segments": 23,
         "lastPitch": 57
       },
       {
@@ -86,7 +86,7 @@
       {
         "id": "v3",
         "lives": 2,
-        "segments": 29,
+        "segments": 26,
         "lastPitch": 59
       },
       {
@@ -98,20 +98,20 @@
       {
         "id": "v5",
         "lives": 1,
-        "segments": 24,
+        "segments": 22,
         "lastPitch": 57
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 31,
+        "segments": 30,
         "lastPitch": 47
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 17,
-        "lastPitch": 57
+        "segments": 18,
+        "lastPitch": 47
       },
       {
         "id": "v8",
@@ -122,33 +122,33 @@
       {
         "id": "v9",
         "lives": 2,
-        "segments": 19,
-        "lastPitch": 52
+        "segments": 24,
+        "lastPitch": 47
       },
       {
         "id": "v10",
         "lives": 2,
         "segments": 26,
-        "lastPitch": 59
+        "lastPitch": 69
       },
       {
         "id": "v11",
-        "lives": 2,
+        "lives": 3,
         "segments": 24,
-        "lastPitch": 73
+        "lastPitch": 59
       },
       {
         "id": "v12",
         "lives": 1,
-        "segments": 10,
-        "lastPitch": 78
+        "segments": 18,
+        "lastPitch": 69
       }
     ],
     "diagnostics": ["info:range-fold", "info:range-fold", "info:range-fold"],
     "spans": 24
   },
   "seven-doors-in-fog.algorhythms.json": {
-    "hash": "49cdd6d9efad80c1",
+    "hash": "0142168d9a148732",
     "duration": 152.54460038437662,
     "voices": [
       {
@@ -332,7 +332,7 @@
     "spans": 20
   },
   "tidewater-hymn.algorhythms.json": {
-    "hash": "c85129da8542606f",
+    "hash": "b6c8e2c0de5b2a62",
     "duration": 160.7894776722789,
     "voices": [
       {

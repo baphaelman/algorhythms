@@ -78,6 +78,10 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'warn',
     meaning: 'A moment produced a non-finite target pitch; the voice keeps its destination.',
   },
+  'spread-crowded': {
+    level: 'warn',
+    meaning: 'A spread (factor ≥ 0) has more notes than its ranges hold apart; some coincide.',
+  },
   'range-too-narrow': {
     level: 'warn',
     meaning: 'A range narrower than an octave; a target was clamped.',

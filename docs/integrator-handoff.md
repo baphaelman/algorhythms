@@ -129,9 +129,16 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 ## Owner feedback via preview comments
 - The owner comments on the preview artifact. Each comment wakes this session (a webhook notification). Read it with ArtifactComments `read` + `thread_id`, reply on the thread, then put the change in PLAN and give it to a builder. Comments carry text and the `#score` anchor only, with no image or position.
 
-## Cloud done (2026-11-21)
-The cloud integrator has stopped. The local session owns everything from here.
-- **Merged and pushed:** M4.5-23 (score selection + grouped note changes), M4.5-26 (open-ended canvas), and everything before them.
-- **M4.5-29 (distinct notes + weights) is partial.** It is on branch `wip/m4.5-29` (dada013), not on main. Read the handoff note under "M4.5-29" in that branch's build log first. To continue: a fresh builder checks out `wip/m4.5-29`, merges origin/main (expect conflicts in `note.ts`, compiler, schema and the property generator), then finishes the build log's "Left" list.
-- **Design conflict to settle with the owner before finishing 29:** the builder made `count` / "Notes: n" count voices (summed weight), not lines. The owner wants n = the number of notes heard, i.e. lines (PLAN rev 8). Likely fix: n counts lines, and weight only carries loudness. Its other deviations (no weight transfer on explicit merges or count deaths; 0.1 s hand-over; transfer by level) need recording in PLAN.
-- **Queue after 29:** 25 (future dimmed + "notes" wording; can start now since 23 landed), 27 (start is a moment, after 29), 28 (Compose for me, after 27), the rare property seeds, full e2e incl. WebKit on the Mac, then the M4.5 acceptance checks.
+## State (local integrator, 2026-11-21)
+The cloud integrator is done; this local session owns everything. Comment watch on the preview is armed here.
+- **Pushed:** e0604f2 = M4.5-23 (score selection, grouped notes), M4.5-26 (open canvas), e2e spec fixes (lane Escape, view-follow race). CI green on all three engines; Pages deployed; preview artifact already shows this bundle.
+- **Also pushed:** d8b0d0b = M4.5-25 ("notes" wording; owner withdrew the dimming fix) + these docs; preview republished (version 14).
+- **Pushed:** 2ad5e9b = M4.5-31 shift slider; CI green; preview version 15.
+- **Pushed:** ab94dbf = M4.5-30 spread at range edges (core; new warning `spread-crowded`; Lanterns golden changed); preview version 16. Verify under load ~30: all unit tests pass; only timing gates missed (dsp rtf 9.5× vs 10×, render 4.1–5.8 ms vs 4 ms), neither touched by 30; CI decides.
+- **29a done:** 762d049 on `m4.5-29a` (owner rulings in; distinct-notes property green 4×1000). Merging with main (conflicts with 30: build log, goldens, arrive hashes, no-effect test) by a builder on `m4.5-29a-merge`; then verify, push, republish, resolve threads 4f2fa9f1 and 05bf32cb.
+- **In flight:** M4.5-32 arrival audio artifact (owner, chat 2026-11-21: "a slight artifact … when all the notes reach their desired goal after a moment transition"; dsp/worklet; Opus high; told to report before touching core).
+- **Integrator calls accepted from 29a:** surplus newborns bound for a parent/sibling note are not born (weight joins that line); a shared rest is allowed only while one line leaves within 10 s (staggered moves already part them); balance test skips merge/count→next unison spans; free octaves come from the lines' range, so may fall outside an explicit register.
+- **Seeds after 29a:** ranges 811138243 and walk-over-point 112518007 pass; crossings 512133634/31, chord-count 439040815/857 still fail; crossings −1185324365 now fails at path 156 (shift after a pin fork); new note moments 2611/332 (`order` intents after cancel). Seeds builder after the merge.
+- **Owner answered:** plain chords take free octaves before merging (PLAN cfc2378); sent to 29a.
+- **Queue:** 29b after 29a (DSP wobble removal + √w test, MIDI velocity √w, inspector weight field, line thickness by weight); 27 start is a moment (after 29); 28 Compose for me (after 27); rare property seeds after 29 (walk-over-point 112518007/143 and chord-count 439040815/857 reproduce on main; ranges 811138243 needs a quiet rerun); full e2e (Chromium + Firefox here; WebKit only on CI, it can't be muted on the Mac); M4.5 acceptance checks.
+- **Load:** with builders running, unit tests time out at 5 s; rerun alone with `--testTimeout=60000`. A full e2e at load ~20 gave 37 spurious failures (zero-RMS audio, page timeouts); run e2e on a quiet box.

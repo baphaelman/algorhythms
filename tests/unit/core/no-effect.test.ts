@@ -30,23 +30,23 @@ describe('no-effect diagnostic', () => {
   it('merge on a unison', () => {
     // Start voices on one pitch are one line, and merge counts lines (owner, 2026-11-21).
     expect(check(UNI, { type: 'merge', at: 1, count: 1, which: 'top', fade: 1 })).toEqual([
-      'No effect: only one voice is sounding.',
+      'No effect: only one note is sounding.',
     ]);
     expect(check([57], { type: 'merge', at: 1, count: 1, which: 'top', fade: 1 })).toEqual([
-      'No effect: only one voice is sounding.',
+      'No effect: only one note is sounding.',
     ]);
   });
 
   it('unison on a unison', () => {
     for (const pitch of [57, 'center', 'tonic'] as const)
       expect(check(UNI, { type: 'unison', at: 1, pitch, octaves: false })).toEqual([
-        'No effect: all voices already on one pitch.',
+        'No effect: all notes already on one pitch.',
       ]);
   });
 
   it('split at the pool size', () => {
     expect(check(CHORD, { type: 'split', at: 1, count: 6, voicing: 'even' }, { pool: 4 })).toEqual([
-      'No effect: every pool voice is already sounding.',
+      'No effect: every pool note is already sounding.',
     ]);
   });
 
@@ -66,21 +66,21 @@ describe('no-effect diagnostic', () => {
         voicing: 'even',
         assign: 'ordered',
       }),
-    ).toEqual(['No effect: the voices already sound this chord.']);
+    ).toEqual(['No effect: the notes already sound this chord.']);
   });
 
   it('pin, spread, key and level with nothing to do', () => {
     expect(check(CHORD, { type: 'pin', at: 1, voice: 'v2', pitch: 60 })).toEqual([
-      'No effect: the voice is already on that pitch.',
+      'No effect: the note is already on that pitch.',
     ]);
     expect(check(UNI, { type: 'spread', at: 1, factor: 2, around: 'mean', snap: 'none' })).toEqual([
-      'No effect: all voices already on one pitch.',
+      'No effect: all notes already on one pitch.',
     ]);
     expect(check(CHORD, { type: 'key', at: 1, key: { tonic: 'A', scale: 'dorian' } })).toEqual([
       'No effect: the piece is already in this key.',
     ]);
     expect(check(CHORD, { type: 'level', at: 1, gain: 1, over: 1 })).toEqual([
-      'No effect: the voices are already at this level.',
+      'No effect: the notes are already at this level.',
     ]);
     expect(
       check(
@@ -122,7 +122,7 @@ describe('no-effect diagnostic', () => {
       voicing: 'even',
     };
     expect(check([57, 57], split, { range: [52, 63] })).toEqual([
-      'No effect: the new voices only double their parents.',
+      'No effect: the new notes only double their parents.',
     ]);
     expect(check([57, 57], split)).toEqual([]);
   });
@@ -185,8 +185,8 @@ describe('momentEffectsAt (palette)', () => {
   it('one voice on the tonic', () => {
     const r = effects(piece({ start: [57], pool: 4 }), 2);
     expect(off(r)).toEqual(['merge', 'spread', 'unison']);
-    expect(r.merge.reason).toBe('only one voice is sounding');
-    expect(r.unison.reason).toBe('the voice is already on that pitch');
+    expect(r.merge.reason).toBe('only one note is sounding');
+    expect(r.unison.reason).toBe('the note is already on that pitch');
   });
 
   it('after a unison: merge, unison and spread are greyed', () => {
@@ -198,7 +198,7 @@ describe('momentEffectsAt (palette)', () => {
     const r = effects(p, 10);
     // One line now: merge counts lines, and the default unison (one note: the tonic) moves it.
     expect(off(r)).toEqual(['merge', 'spread']);
-    expect(r.merge.reason).toBe('only one voice is sounding');
+    expect(r.merge.reason).toBe('only one note is sounding');
     // Mid-glide (moves still pending or running), the unison's targets already count.
     expect(off(effects(p, 1.2))).toEqual(['merge', 'spread', 'unison']);
   });
@@ -206,7 +206,7 @@ describe('momentEffectsAt (palette)', () => {
   it('a full pool greys split', () => {
     const r = effects(piece({ start: CHORD, pool: 4 }), 2);
     expect(off(r)).toEqual(['split']);
-    expect(r.split.reason).toBe('every pool voice is already sounding');
+    expect(r.split.reason).toBe('every pool note is already sounding');
   });
 
   it('nothing sounding', () => {
@@ -230,7 +230,7 @@ describe('momentEffectsAt (palette)', () => {
         'walk',
       ].sort(),
     );
-    expect(r.chord.reason).toBe('no voice is sounding');
+    expect(r.chord.reason).toBe('no note is sounding');
   });
 
   it('agrees with the compiler at settled times', () => {

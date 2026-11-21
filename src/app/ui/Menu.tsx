@@ -98,7 +98,7 @@ export function Menu() {
                   }}
                 >
                   <span>{ex.title}</span>
-                  <small>{ex.voices} voices</small>
+                  <small>{ex.voices} notes</small>
                 </button>
               </li>
             ))}

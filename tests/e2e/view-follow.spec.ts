@@ -67,8 +67,8 @@ test('Follow: Smooth holds the playhead at 35 %, Page jumps at 92 % to 8 %, Off 
   await openApp(page);
   await expect(page.locator('[data-follow="smooth"]')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('window-slider').fill('150'); // a few seconds wide
+  await expect.poll(async () => (await cam(page)).window).toBeLessThan(5);
   const { window: w } = await cam(page);
-  expect(w).toBeLessThan(5);
 
   await playFrom(page, 40);
   await expect.poll(async () => (await cam(page)).head).toBeCloseTo(0.35, 2);

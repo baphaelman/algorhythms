@@ -440,7 +440,7 @@ function drawHud(
   if (!chord || padL + formula.length * 6.4 + 16 + chordW < W - padR) {
     g.fillText(formula, padL, hy);
   }
-  g.fillText(`voices  ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
+  g.fillText(`notes   ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
   g.fillText(`t       ${formatTime(t)} / ${formatTime(view.duration)}`, padL, hy + 28);
 
   g.textAlign = 'right';

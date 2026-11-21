@@ -10,7 +10,15 @@ import { updateMoment } from '../../editor/actions';
 import { beginGesture, cancelGesture, endGesture, updateGesture } from '../../editor/history';
 import { patchMoment, type MomentPatch } from '../../editor/ops';
 import { usePlayer } from '../../store';
-import { formatNum, parseNum } from './fields';
+import {
+  SHIFT_OCTAVES,
+  formatNum,
+  formatShift,
+  formatSigned,
+  parseNum,
+  shiftAtPosition,
+  shiftPosition,
+} from './fields';
 
 /** Builds a patch from the moment as it is when the change applies. */
 export type Patcher<V> = (m: Moment, v: V) => MomentPatch;
@@ -345,6 +353,90 @@ export function Slider({ label, value, set, min, max, step, format, testId }: Sl
       <RangeInput id={id} value={value} set={set} min={min} max={max} step={step} testId={testId} />
       <output htmlFor={id} className="unit">
         {format ? format(value) : formatNum(value, 2)}
+      </output>
+    </Row>
+  );
+}
+
+/**
+ * The shift amount slider (§11.3): centred on 0, ±SHIFT_OCTAVES octaves of `octave` steps, with
+ * a mark at each octave that a drag snaps to. A pointer drag is one undo entry (heard while
+ * dragging); ←/→ (↑/↓) step by 1 and Page Up/Down by an octave, one entry per press.
+ */
+export function ShiftSlider({
+  label,
+  value,
+  set,
+  octave,
+  testId,
+}: {
+  label: string;
+  value: number;
+  set: Setter<number>;
+  octave: number;
+  testId?: string;
+}) {
+  const id = useId();
+  const r = SHIFT_OCTAVES * octave;
+  const marks: number[] = [];
+  for (let k = -SHIFT_OCTAVES; k <= SHIFT_OCTAVES; k++) marks.push(k * octave);
+  const end = (): void => set.end();
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    const d: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowDown: -1,
+      ArrowRight: 1,
+      ArrowUp: 1,
+      PageDown: -octave,
+      PageUp: octave,
+      Home: -2 * r,
+      End: 2 * r,
+    };
+    const step = d[e.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    const v = Math.min(r, Math.max(-r, Math.round(value) + step));
+    if (v !== value) set.commit(v);
+  };
+  return (
+    <Row label={label} htmlFor={id}>
+      {/* Marks are drawn, not a <datalist>: Chrome snaps `step="any"` thumbs to datalist ticks. */}
+      <span className="shift-track">
+        <input
+          id={id}
+          type="range"
+          min={-r}
+          max={r}
+          step="any"
+          value={Math.min(r, Math.max(-r, value))}
+          aria-valuetext={formatShift(value, octave)}
+          data-testid={testId}
+          onPointerDown={() => set.begin()}
+          onChange={(e) => {
+            const v = shiftAtPosition((Number(e.target.value) + r) / (2 * r), octave);
+            if (v !== value) set.drag(v);
+          }}
+          onKeyDown={onKeyDown}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onBlur={end}
+        />
+        {marks.map((v) => (
+          <i
+            key={v}
+            aria-hidden="true"
+            className={v === 0 ? 'shift-mark zero' : 'shift-mark'}
+            style={{ left: `calc(8px + (100% - 16px) * ${shiftPosition(v, octave)})` }}
+          />
+        ))}
+      </span>
+      <output
+        htmlFor={id}
+        className="unit shift-value"
+        title={formatShift(value, octave)}
+        data-testid={testId && `${testId}-value`}
+      >
+        {formatSigned(value)}
       </output>
     </Row>
   );

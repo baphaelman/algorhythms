@@ -25,15 +25,15 @@ export interface PaletteEntry {
 export const PALETTE: readonly PaletteEntry[] = [
   { type: 'chord', key: 'C', name: 'chord', icon: '◆', hint: 'Glide to a chord' },
   { type: 'unison', key: 'U', name: 'unison', icon: '◇', hint: 'Converge on one pitch' },
-  { type: 'split', key: 'S', name: 'split', icon: '⑂', hint: 'Bring in more voices' },
-  { type: 'merge', key: 'M', name: 'merge', icon: '⋎', hint: 'Fold voices together' },
+  { type: 'split', key: 'S', name: 'split', icon: '⑂', hint: 'Bring in more notes' },
+  { type: 'merge', key: 'M', name: 'merge', icon: '⋎', hint: 'Fold notes together' },
   { type: 'shift', key: 'T', name: 'shift', icon: '⇅', hint: 'Transpose by scale steps' },
   { type: 'spread', key: 'P', name: 'spread', icon: '⇔', hint: 'Widen or narrow the spacing' },
   { type: 'walk', key: 'W', name: 'walk', icon: '▭', hint: 'Random steps over a region' },
   { type: 'note', name: 'note', icon: '•', hint: 'Change one note (or double-click a line)' },
-  { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one voice' },
+  { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one note' },
   { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
-  { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade voices' },
+  { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade notes' },
 ];
 
 const BY_KEY: ReadonlyMap<string, MomentType> = new Map(

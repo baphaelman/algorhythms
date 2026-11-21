@@ -179,7 +179,7 @@ describe('palette effects at the playhead (revision 6)', () => {
     const merge = playheadEffect('merge');
     expect(merge.effect).toBe(false);
     // The unison made one line, and merge counts lines (owner, 2026-11-21).
-    expect(merge.reason).toBe('only one voice is sounding');
+    expect(merge.reason).toBe('only one note is sounding');
     expect(playheadEffect('chord').effect).toBe(true);
     refreshPaletteEffects(true);
     const s = usePaletteEffects.getState();

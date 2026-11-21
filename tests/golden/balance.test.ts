@@ -6,7 +6,8 @@
  * start to the next point moment after it are skipped. An explicit merge (or a chord `count`
  * death) passes the dying lines' weight to their survivors (owner, 2026-11-21), which the stacked
  * compile did not: times from it to the next unison (which joins every line again) are skipped
- * too. Never regenerate the fixture from the current compiler.
+ * too. M4.5-30 changed spread at range edges (it no longer folds), so times from a spread to the
+ * next chord or unison are skipped as well. Never regenerate the fixture from the current compiler.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,7 +51,16 @@ describe('example balance through merges (revision 8)', () => {
             .sort((a, b) => a - b)[0];
           return [m.at, next ?? Infinity] as const;
         });
-      const skipped = [...walky, ...merged];
+      const spread = ms
+        .filter((m) => m.type === 'spread')
+        .map((m) => {
+          const next = ms
+            .filter((u) => (u.type === 'chord' || u.type === 'unison') && u.at > m.at)
+            .map((u) => u.at)
+            .sort((a, b) => a - b)[0];
+          return [m.at, next ?? Infinity] as const;
+        });
+      const skipped = [...walky, ...merged, ...spread];
       const before = BEFORE[f];
       let compared = 0;
       let worst = 0;

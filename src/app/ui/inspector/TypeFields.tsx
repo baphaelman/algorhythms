@@ -26,6 +26,7 @@ import {
   Chips,
   NumberField,
   SelectField,
+  ShiftSlider,
   Slider,
   TextField,
   fieldSetter,
@@ -37,6 +38,7 @@ import {
   formatPitch,
   parseIntList,
   parsePitch,
+  shiftOctave,
   stepChips,
   toggleStep,
 } from './fields';
@@ -69,7 +71,7 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
     case 'merge':
       return <MergeFields m={m} ctx={ctx} />;
     case 'shift':
-      return <ShiftFields m={m} />;
+      return <ShiftFields m={m} ctx={ctx} />;
     case 'spread':
       return <SpreadFields m={m} />;
     case 'walk':
@@ -128,7 +130,7 @@ function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
         onChange={(assign) => updateMoment(m.id, { assign }, 'Change assignment')}
       />
       <CheckField
-        label="Automatic register (voice ranges)"
+        label="Automatic register (note ranges)"
         checked={!m.register}
         onChange={(auto) =>
           updateMoment(m.id, { register: auto ? undefined : [48, 84] }, 'Change register')
@@ -165,7 +167,7 @@ function UnisonFields({ m }: { m: UnisonMoment }) {
         label="Pitch"
         value={mode}
         options={[
-          ['center', 'Centre of the voices'],
+          ['center', 'Centre of the notes'],
           ['tonic', 'Tonic of the key'],
           ['pitch', 'A fixed pitch'],
         ]}
@@ -190,7 +192,7 @@ function SplitFields({ m, ctx }: { m: SplitMoment; ctx: Ctx }) {
   return (
     <>
       <NumberField
-        label="Voices after"
+        label="Notes after"
         value={m.count}
         set={count}
         integer
@@ -226,7 +228,7 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
   return (
     <>
       <NumberField
-        label="Voices after"
+        label="Notes after"
         value={m.count}
         set={count}
         integer
@@ -245,11 +247,17 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
   );
 }
 
-function ShiftFields({ m }: { m: ShiftMoment }) {
+function ShiftFields({ m, ctx }: { m: ShiftMoment; ctx: Ctx }) {
   const by = field<number>(m.id, 'by', 'Edit shift');
   return (
     <>
-      <NumberField label="By" value={m.by} set={by} step={1} min={-48} max={48} />
+      <ShiftSlider
+        label="By"
+        value={m.by}
+        set={by}
+        octave={shiftOctave(m.unit, ctx.keyAt)}
+        testId="insp-shift-by"
+      />
       <SelectField
         label="Unit"
         value={m.unit}
@@ -446,10 +454,10 @@ function PinFields({ m, ctx }: { m: PinMoment; ctx: Ctx }) {
   return (
     <>
       <SelectField
-        label="Voice"
+        label="Note"
         value={m.voice}
         options={options}
-        onChange={(voice) => updateMoment(m.id, { voice }, 'Change pinned voice')}
+        onChange={(voice) => updateMoment(m.id, { voice }, 'Change pinned note')}
       />
       <NumberField label="Pitch" value={m.pitch} set={pitch} {...pitchProps} />
     </>
