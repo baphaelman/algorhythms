@@ -44,7 +44,7 @@ vi.mock('../../../src/app/audio', () => {
 vi.mock('../../../src/app/persist', async () => {
   const { loadPiece } = await import('../../../src/app/store');
   const { newPiece } = await import('../../../src/core/defaults');
-  return { newPieceNow: () => loadPiece(newPiece({ seed: 1 }), { source: 'new' }) };
+  return { loadNewPiece: () => loadPiece(newPiece({ seed: 1 }), { source: 'new' }) };
 });
 
 import { compile } from '../../../src/core/compiler/compile';

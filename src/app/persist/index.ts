@@ -9,7 +9,7 @@ import { newPiece } from '../../core/defaults';
 import { parsePiece, serializePiece } from '../../core/schema';
 import type { Piece } from '../../core/types';
 import { downloadBlob } from '../download';
-import { loadInfo, loadPiece, pushNotice, usePlayer } from '../store';
+import { loadInfo, loadPiece, pushNotice, runOpen, usePlayer } from '../store';
 import { Autosaver } from './autosave';
 import { idbLibrary } from './idb';
 import {
@@ -189,14 +189,17 @@ export function openEntry(entry: LibraryEntry): boolean {
     pushNotice('error', `Could not open ${entry.title}`, r.errors.slice(0, 8));
     return false;
   }
-  opening = entry.id;
-  loadPiece(r.piece, {
-    source: 'library',
-    notices: r.warnings.length
-      ? [{ kind: 'warning', title: `${entry.title} opened with warnings`, lines: r.warnings }]
-      : [],
+  const { piece, warnings } = r;
+  runOpen(() => {
+    opening = entry.id;
+    loadPiece(piece, {
+      source: 'library',
+      notices: warnings.length
+        ? [{ kind: 'warning', title: `${entry.title} opened with warnings`, lines: warnings }]
+        : [],
+    });
+    opening = null;
   });
-  opening = null;
   return true;
 }
 
@@ -214,6 +217,11 @@ export async function deleteEntry(id: string): Promise<void> {
 
 /** Opens the empty template (`newPiece`: 12 voices, one chord at 0 on A3, A dorian, glass) as a new entry. */
 export function newPieceNow(): void {
+  runOpen(loadNewPiece);
+}
+
+/** Loads the empty template at once (Compose for me asks the naming question itself). */
+export function loadNewPiece(): void {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0];
   loadPiece(newPiece({ seed, now: new Date().toISOString() }), { source: 'new' });
 }
