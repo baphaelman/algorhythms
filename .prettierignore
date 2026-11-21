@@ -10,7 +10,5 @@ prototype/
 pnpm-lock.yaml
 # Prose is written by hand (PLAN.md and CLAUDE.md belong to the integrator).
 **/*.md
-# Generated songs (renders/…/generators), stored minified until rev 9 shrinks them.
-examples/compositions/
 # Version 1 files kept byte for byte for the schema v2 migration test (M4.5-27).
 tests/golden/v1/

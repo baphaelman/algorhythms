@@ -2,6 +2,8 @@
 
 Scope: PLAN §15 M5 (piano ruler, multi-select, marquee, copy and paste, Freeze, share links, touch editing), plus the §11.3, §11.3b and §11.4 points they reference.
 
+**Composition links closed (rev 9 compositions merged):** all eight examples on disk are ≤ 2,000 characters and round-trip (`share-length`): the five originals 1,008–1,097, Harbour Song 1,694, Kite Day 1,274, Night Ferry 1,622. The fixture copies are gone.
+
 **Touch gaps closed (lane pinch, dot octave move, piano ruler by touch):** `touch-edit` 13/13 and `piano-ruler`, `multi-select`, `dots` pass on chromium-dev and firefox-dev (42 passed, 16 skipped as chromium-only).
 
 **Runs, on this tree (`--maxWorkers=2`, `--workers=1`):**
@@ -16,7 +18,6 @@ Status key: **C+P** covered and passing; **Part** partly covered; **None** not c
 1. **"Works by touch alone on iPad Safari" is CI+owner.** `touch-edit.spec` passes on chromium-dev (CDP touches) and, per the build log, firefox-dev (synthetic touch events). WebKit has not run it locally and no real iPad was tried. Safari-only traps (the `gesturechange` double zoom, callouts, long-press selection) can only show on a device. Owner steps are at the bottom.
 2. **A frozen split has no Unfreeze** (undo only). Needs `frozenFrom` on `SplitMoment` in core. §11.3 says Unfreeze for chord and walk only; build log records it. Not built.
 3. **Piano ruler in live mode "clicking plays"** belongs to M7 (§9); only the stopped-transport audition exists. Not an M5 line.
-4. The share-link length gate covers the examples on disk. The three pre-rewrite compositions still on main are over 2,000 characters (7,752, 5,477, 19,844 after stripping) and are skipped by `share-length` until the rev 9 rewrite lands; the rev 9 fixtures are ≤ 1,694.
 
 No cheap new test was needed: every §15 line has a test, and the gaps above are product or platform limits.
 
@@ -25,7 +26,7 @@ No cheap new test was needed: every §15 line has a test, and the gaps above are
 | Criterion | PLAN | Status | Evidence |
 |---|---|---|---|
 | Share links round-trip exactly | §15, §11.4 | C+P | `unit/app/share.test.ts` (v1 kept, v2 round trip and same link back, old links, zlib interop, unknown fields, non-canonical input); `property/app/share.property.test.ts` (decode(encode(p)) = canonical p; encode(decode(link)) = link); `share.spec` "the Share dialog link opens exactly the same piece, and re-encodes to the same link" |
-| Every example's share link ≤ 2,000 characters | §15, §11.4 | C+P (gap 4) | `unit/app/share-length.test.ts` (each example and rev 9 fixture ≤ 2,000 and round-trips) |
+| Every example's share link ≤ 2,000 characters | §15, §11.4 | C+P | `unit/app/share-length.test.ts` (every example in `examples/` and `examples/compositions/` ≤ 2,000 and round-trips) |
 | Adding by touch | §15, §11.3b | C+P (gap 1) | `touch-edit.spec` "a palette tap adds a moment at the playhead…"; "…a double tap adds a note" |
 | Moving by touch | §15, §11.3b | C+P (gap 1) | `touch-edit.spec` "a finger drag moves a moment; a small wobble is still a tap; undo by tap"; "a chord dot drags by touch…" |
 | Editing by touch | §15, §11.3b | C+P (gap 1) | `touch-edit.spec` inspector chip by tap, span-end length and "Ends set stagger", "Snap off in the menu stands in for Alt" |
