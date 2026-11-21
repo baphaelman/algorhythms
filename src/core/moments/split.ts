@@ -57,7 +57,7 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
     current: env.active.map((v) => env.dest(v)),
     voices: p,
     octaves: true,
-    sounding: untargeted(env, vs),
+    sounding: occupying(env, vs),
   });
   if (!voiced.ok) {
     env.diag('error', voiced.code, voiced.message);
@@ -70,6 +70,18 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
 export function untargeted(env: MomentEnv, vs: readonly number[]): Pitch[] {
   const out: Pitch[] = [];
   for (const v of env.active) if (!vs.includes(v)) out.push(env.dest(v));
+  return out;
+}
+
+/**
+ * As `untargeted`, only lines of the parts in `vs` (revision 9): the notes that occupy a pitch
+ * for `vs`, since lines of another part may share it. With `vs` empty, every untargeted line.
+ */
+export function occupying(env: MomentEnv, vs: readonly number[]): Pitch[] {
+  if (vs.length === 0) return untargeted(env, vs);
+  const parts = new Set(vs.map((v) => env.part(v)));
+  const out: Pitch[] = [];
+  for (const v of env.active) if (!vs.includes(v) && parts.has(env.part(v))) out.push(env.dest(v));
   return out;
 }
 

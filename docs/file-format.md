@@ -512,6 +512,10 @@ This is the *input* form: fields with defaults are optional here.
           "solo": {
             "type": "boolean"
           },
+          "part": {
+            "description": "Revision 9: a named group; lines in different parts never merge.",
+            "type": "string"
+          },
           "sends": {
             "type": "object",
             "properties": {
@@ -601,6 +605,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }
@@ -1022,6 +1038,18 @@ This is the *input* form: fields with defaults are optional here.
                       "rank"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1244,6 +1272,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }
@@ -1542,6 +1582,18 @@ This is the *input* form: fields with defaults are optional here.
                       "rank"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1768,6 +1820,18 @@ This is the *input* form: fields with defaults are optional here.
                       "rank"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1982,6 +2046,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }
@@ -2215,6 +2291,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }
@@ -2511,6 +2599,18 @@ This is the *input* form: fields with defaults are optional here.
                       "rank"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -2755,6 +2855,18 @@ This is the *input* form: fields with defaults are optional here.
                       "rank"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -2967,6 +3079,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }
@@ -3256,6 +3380,18 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
                     ],
                     "additionalProperties": {}
                   }

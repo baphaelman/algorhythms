@@ -24,6 +24,7 @@ import { composeView } from './compose-view';
 import {
   beginGesture,
   currentGesture,
+  clearEdited,
   endGesture,
   lastEntry,
   undo,
@@ -37,8 +38,8 @@ import {
   type FieldErrors,
   type GenerateForm,
 } from './generate-options';
-import { newPieceNow } from './persist';
-import { camera, cameraOf, fitWindow, onLoadPiece, usePlayer } from './store';
+import { loadNewPiece } from './persist';
+import { camera, cameraOf, fitWindow, onLoadPiece, runOpen, usePlayer } from './store';
 
 /** `building`: steps are being placed; `done`: the whole piece; `stopped`: part of it. */
 export type ComposeStatus = 'building' | 'done' | 'stopped';
@@ -149,6 +150,7 @@ function settle(status: ComposeStatus): void {
   clearView();
   if (run.gesture !== null && currentGesture() === run.gesture) {
     ours(endGesture);
+    clearEdited();
     run.entry = lastEntry();
     run.result = usePlayer.getState().piece;
   }
@@ -253,12 +255,16 @@ export function stopCompose(): void {
 
 /** New → Compose for me: an empty piece, the panel, and a build from a fresh seed. */
 export function openCompose(): void {
+  runOpen(startCompose);
+}
+
+function startCompose(): void {
   cancelFrame();
   clearView();
   run.gesture = run.entry = run.result = null;
   run.loading = true;
   try {
-    ours(newPieceNow);
+    ours(loadNewPiece);
   } finally {
     run.loading = false;
   }

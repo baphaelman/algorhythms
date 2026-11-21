@@ -1400,3 +1400,64 @@ Goal: tests fail only for real bugs, not because the shared Mac is busy (load 10
   - compose: polls the moment count instead of fixed waits. mouse-only: polls until the time moves.
 - **`@perf` tag** for timing gates: edit-latency, app-perf (60 fps), render budget, time to first sound, mouse-only (it ends with the latency budget), stems memory. `pnpm e2e:quick` runs `--grep-invert @perf` for local runs on a loaded box. CI is unchanged and runs everything.
 - **Gates:** with 3 CPU burners (load 35–52): `pnpm test -- --maxWorkers=3` twice, 1361/1361 each; e2e app, audio, audition, view-follow and compose on chromium-prod and firefox-dev (`--workers=2`, `--grep-invert @perf`) three times, 73 passed / 7 skipped each. Without burners: lint, typecheck, `pnpm test --maxWorkers=2` 1361/1361; mouse-only on chromium-dev passes.
+## R9-1: parts (core, 2026-11-21)
+PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schema v2 with no version bump (M4.5-27: the 1 → 2 migration needs nothing for an optional field). `core/parts.ts` (`partOf`: a missing or non-string part is the default group `''`; `selectorPart`); `VoiceRun.part`; `MomentEnv.part(v)` (the part of a logical voice's line).
+
+**Merges stay within a part** (every 29a join path):
+- coincidence joins (`onJoin`) only group lines of one part; establishing voices stack only within a part;
+- explicit merge and chord `count` deaths: `absorbers` takes the nearest order neighbour of the dying line's part; with none, it fades where it is (as a merge with no survivors);
+- newborns: `Compiler.partBirths` gives each birth a free voice of its parent line's part; with none it is dropped (`pool-exhausted`, warn). Phantoms (`expand`) and fork carriers (`collapse`) are voices of the line's part; `collapse`'s held notes are keyed per part, so a newborn bound for another part's note is born and does not join it;
+- free octaves: `distinctTargets` takes a separate `occupied` list: the untargeted lines of the targeted lines' parts (`split.ts occupying`, also the `sounding` of split/count-birth voicings). The room beyond the register (`octaveRoom`) is still bounded by every untargeted line, so free octaves don't step past another part's line.
+
+**Decisions (PLAN is silent):**
+- Moments spanning parts (`all`, `rank`, `voices`) are voiced across all their lines as before (one chord over all, its targets still distinct among themselves); only the merge rules above are per part.
+- A `{ part }` moment sees only its part: `env.active` and `env.dormant` are the part's, so `count` on split, merge and chord counts the part's lines, establishing from silence uses the part's voices, and no-effect reasons and the palette (`effect.ts`) read the part.
+- An unknown part: `unknown-part` (warn, registered), targets nothing.
+- `crossing-untargeted` reports only lines of the moved lines' parts (parts cross freely, like a tune).
+- Incremental: a change of a voice's part forces a full compile (`sameSetup`).
+
+**Not in scope (needs the integrator):** `src/app/editor/walk-steps.ts` `targets()` must handle `{ part }` or typecheck fails (`sel.rank` on the new union member). The change, refused to this builder as outside `src/core`/`tests`:
+`if ('part' in sel) return partOf(piece.voices[v]) === sel.part;` after the `'voices'` line, importing `partOf` from `core/parts`. `docs/file-format.md` regenerated (`pnpm docs:schema`).
+
+**Goldens:** unchanged (no example has parts; without parts every path is the old one).
+**Tests:** `tests/unit/core/parts.test.ts` (pin onto another part's pitch, unison across parts, merge/count death into own part, merge with no own-part survivor, newborn part, free octaves ignore another part vs. without parts, `{ part }` target, part counts, unknown part, establish, palette, schema round trip, incremental). Generators: `pieceArb({ parts: true })` (voices in 'A', 'B' or none; `{ part }` targets incl. unknown 'C'). Properties: distinct notes per part, no death/birth across parts, joins within a part (red, with the unit tests, when `onJoin` ignores parts), incremental = full with parts.
+**Merged main** (0a473e7: M4.5-38/39). The only conflict was the build log; both sides are kept.
+**Sweeps:** `PROP_RUNS=1000` over `tests/property/core` with the budget lifted locally only. First set: 3 of 4 runs completed, and the fourth hung in a sync loop (seed unknown, since random seeds aren't printed; not reproduced). Second set, with logged seeds 485958476, 460949692, −320129613, −75233451: 3 green. The failing one (chord-count "spaced pieces" −320129613/300) fails identically on main's core, and so do two earlier crossings seeds (−883975252/819, −440599787/662). None comes from parts; all are left open.
+**Gates:** lint and `pnpm test --maxWorkers=2` (1377/1377) pass, and so does `pnpm test:perf` (5/5, load ~9). Typecheck fails only on `walk-steps.ts`, as above.
+
+**R9-1 app fix:** `walk-steps.ts` `targets()` handles `{ part }` (voices whose `partOf` equals it); test `walkAt with a { part } target` in `tests/unit/app/walk-steps.test.ts`.
+Inspector `targetMode` has no part mode yet (R9-6): a `{ part }` target falls through to the `rank` mode with no range shown. Typecheck is clean.
+
+## No-GC lock flake (2026-11-21)
+CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with a (b) symptom.**
+- **Real allocation:** the measured minute allocated 102,792 B of young generation in every run (plain: ~1.9 KB, the harness's own timer and flag calls). A heap sampling profile put all of it in code that runs only on a seek or a birth: `probe` ~70 KB, `applyTransport` → `jump`/`isSounding`/`resetNorm`/`ghostOf` ~24 KB, `publishPhase` 5 KB. `--trace-opt`: none of them was ever optimised (12 seeks a minute), and the interpreter boxes every double. The hot paths allocated nothing.
+- **Why "1 observed, 0 traced":** reproduced locally in 1 of 30 runs: a minor GC starting 0.1 ms after the run, outside the `--trace-gc` window, set off by the first allocation after the run in a young generation the run had filled ~100 KB further. The observer counted the 50 ms waits around the run too.
+- **Second cause, found after warming those paths (200+ seeks):** 15 KB a minute stayed, all in the optimised `probe`. TurboFan's 920-byte inlining budget went on lastAtOrBefore ×3 (219), warpOffset ×2 (194), evalFlatSegment (157) and lifeWeight (172), so segmentPitch (491 with easeRaw) was called and boxed its 13 arguments on each probe.
+- **Fixes:**
+  - `VoiceData.probe` writes out the life weight, evalFlatSegment and warpOffset (now 710 B inlined, segmentPitch included). It is bit-identical: tests/dsp/probe.test.ts compares it with the old functions. `lifeWeight` and `smootherstep` are gone; `warpOffset` stays as the reference.
+  - The harness's warm-up seeks 1000 times (every 4 blocks) before its seek cycle, so the seek and birth paths are optimised.
+  - The observer counts only GCs that start inside the measured span.
+  - The test also gates the young generation's growth over the run, `newSpaceBytes` ≤ 6000 B in plain and lock. So any allocation fails on every run, not only when it happens to tip a GC. Now 1864 B in both modes. It would have been 102,792 B before the fixes, and ~12.8 KB with the warm-up but the old probe.
+- **Left (V8 tiering, not fixable in `process()`):** after a page load, the seek and birth paths run interpreted for their first ~200 seeks. In this 12-voice stress that is ~100 KB a minute, so a short scavenge every few minutes of constant seeking.
+- **Stress:** 60 'lock' runs, two at a time beside two CPU burners (load ~12), half with `--max-semi-space-size=1`: 0 GC lines, 0 observed, 1864–1872 B in all 60.
+## R9-6: parts UI (2026-11-21)
+`src/app/editor/parts.ts` (pure recipes: `partNames`, `assignPart`, `renamePart`, `deletePart`, `patchPart`, `setPartRangeBound`, `common`); each drawer action is one `edit` (one undo entry, the usual incremental/hot-swap path; a part change forces a full compile per R9-1).
+- **Drawer:** without parts it is as before plus a **New part** header button. With parts, one `<tbody>` per part (pool order of first appearance), then **Unassigned** (a plain header, no controls). A part header row holds a name field (Enter/blur commits; empty or taken names refused, error in the tooltip), × delete, and timbre, pan (A + slider), gain and range for all its notes, plus "n notes". A Part column gives each note a select: Unassigned, the parts, **New part…**.
+- **Inspector:** `PartField` (Part select: All, the parts) after Time whenever the piece has parts (or the moment targets a part). `targetMode` gains `'part'`; a part target keeps Advanced closed with no chip pressed. Header shows "· Part"; the lane tooltip reads "Part: X" above any no-effect reason.
+
+**Decisions (PLAN is silent):**
+- New part (header): no parts → every note goes into "Part 1"; with parts → the unassigned notes form "Part n" (disabled when none). Row "New part…" makes "Part n" holding that note.
+- "Mixed": timbre select shows a disabled "Mixed" option (as All notes); pan/gain readouts say "Mixed" while the slider sits at the first note's value and a drag sets all; range fields are blank with a "Mixed" placeholder, and committing one bound sets that bound on every note, keeping each note's other bound. Pan "A" sets all auto, or all to centre when all are auto.
+- Rename to an existing name is refused (no merging parts).
+- Delete part: notes become unassigned; moments targeting it are retargeted to `{ voices: [its notes] }` (default target if it had none); asks inline in the drawer when any moment targets it.
+- Part chooser: a rank/pick target shows a disabled "Advanced" option; an unknown part shows as "X (no notes)".
+- Pool growth doesn't copy a part; new notes are unassigned.
+
+**Tests:** `tests/unit/app/parts.test.ts` (rename + undo, refused names, whole-part set, range bound, move, delete, target-mode round trip); `tests/e2e/parts.spec.ts` (build parts, Part chooser, header/tooltip, diagnostics reach the UI, rename as one undo, whole-part timbre + Mixed, All, delete confirm).
+
+## Name it before moving on (PLAN §11.4, 2026-11-21)
+- Every replace-the-piece path goes through `runOpen` (store.ts): examples, files, share links (`openPieceJson`), My pieces (`openEntry`), New, Compose for me, Generate. `naming.ts` installs the gate; `ui/NamePrompt.tsx` is a native modal `<dialog>` (Enter saves, Escape or Skip moves on). `name-check.ts` holds the pure decision.
+- "Edited" is `hasEdited()` in editor/history.ts: set by a committed edit or amend, cleared by every load and by Compose's own finished build. Undoing everything still counts as edited. Skip is remembered per My pieces entry id.
+- Save name is an ordinary `edit` (history, autosave). An automatic Generate/Compose title (`generatedTitle` in core/generate.ts, exact match via `isGeneratedTitle`) counts as unnamed like Untitled, so an edited generated piece asks; an untouched one does not (`hasEdited`). A user title that merely resembles one ("Dorian sketch") is a name. (Touches core/generate.ts: extracted the title helper so format and check can't drift.)
+- Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
+- Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.

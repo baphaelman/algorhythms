@@ -40,8 +40,8 @@ export function mergeMoment(m: MergeMoment, env: MomentEnv): MomentPlan | null {
 
 /**
  * The survivor each dying voice merges into (−1: none left): its nearest surviving neighbour in
- * the order of the active voices (by committed destination, ties: pool index), the closer of the
- * one below and the one above (ties: below). Taking an order neighbour, not just the nearest
+ * the order of the active voices (by committed destination, ties: pool index) among those of its
+ * part, the closer of the one below and the one above (ties: below). Taking an order neighbour, not just the nearest
  * pitch, keeps lines apart when survivors share a pitch but move to different targets (a chord
  * with `count`): the dying voice then ends where its neighbour ends, never past it.
  */
@@ -51,10 +51,13 @@ export function absorbers(env: MomentEnv, dying: ReadonlySet<number>): Map<numbe
   for (let i = 0; i < act.length; i++) {
     const v = act[i];
     if (!dying.has(v)) continue;
+    // Revision 9: only a survivor of its own part (lines in different parts never merge).
+    const part = env.part(v);
+    const skip = (u: number): boolean => dying.has(u) || env.part(u) !== part;
     let lo = i - 1;
-    while (lo >= 0 && dying.has(act[lo])) lo--;
+    while (lo >= 0 && skip(act[lo])) lo--;
     let hi = i + 1;
-    while (hi < act.length && dying.has(act[hi])) hi++;
+    while (hi < act.length && skip(act[hi])) hi++;
     const d = env.dest(v);
     const below = lo >= 0 ? act[lo] : -1;
     const above = hi < act.length ? act[hi] : -1;

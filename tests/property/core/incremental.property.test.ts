@@ -132,44 +132,49 @@ function apply(p: Piece, e: Edit): Piece {
   }
 }
 
+/** Incremental = full after every edit of random edit sequences on pieces from `arb`. */
+function equalsFull(arb: fc.Arbitrary<Piece>): void {
+  let steps = 0;
+  let resumed = 0;
+  fc.assert(
+    fc.property(arb, fc.array(editArb, { minLength: 1, maxLength: 10 }), (piece, edits) => {
+      const inc = createIncrementalCompiler();
+      let p = piece;
+      const history: Piece[] = [p];
+      let last = inc.compile(p);
+      expect(last).toStrictEqual(compile(p));
+      for (const e of edits) {
+        p = apply(p, e);
+        history.push(p);
+        const lastJson = JSON.stringify(last);
+        const got = inc.compile(p);
+        steps++;
+        if (inc.stats.mode === 'resume') resumed++;
+        // structuredClone: fast-check builds some objects without a prototype; a resumed score may
+        // hold the equal objects of an earlier piece (a JSON clone, say).
+        const want = structuredClone(compile(p));
+        // With DUMP_DIR set, the pieces compiled so far go to $DUMP_DIR/incremental.json.
+        const dir = process.env.DUMP_DIR;
+        if (dir && !isDeepStrictEqual(structuredClone(got), want))
+          writeFileSync(`${dir}/incremental.json`, JSON.stringify(history));
+        expect(structuredClone(got)).toStrictEqual(want);
+        // Earlier results are never mutated (the app may still be playing them).
+        expect(JSON.stringify(last)).toBe(lastJson);
+        last = got;
+      }
+    }),
+    { numRuns: RUNS, seed: SEED, path: process.env.PROP_PATH, endOnFailure: true },
+  );
+  console.log(`incremental: ${resumed}/${steps} edits resumed from a checkpoint`);
+  expect(resumed).toBeGreaterThan(steps / 3);
+}
+
 describe('incremental compile', () => {
   it('equals a full compile after every edit of a random edit sequence', () => {
-    let steps = 0;
-    let resumed = 0;
-    fc.assert(
-      fc.property(
-        pieceArb({ maxMoments: 20 }),
-        fc.array(editArb, { minLength: 1, maxLength: 10 }),
-        (piece, edits) => {
-          const inc = createIncrementalCompiler();
-          let p = piece;
-          const history: Piece[] = [p];
-          let last = inc.compile(p);
-          expect(last).toStrictEqual(compile(p));
-          for (const e of edits) {
-            p = apply(p, e);
-            history.push(p);
-            const lastJson = JSON.stringify(last);
-            const got = inc.compile(p);
-            steps++;
-            if (inc.stats.mode === 'resume') resumed++;
-            // structuredClone: fast-check builds some objects without a prototype; a resumed score may
-            // hold the equal objects of an earlier piece (a JSON clone, say).
-            const want = structuredClone(compile(p));
-            // With DUMP_DIR set, the pieces compiled so far go to $DUMP_DIR/incremental.json.
-            const dir = process.env.DUMP_DIR;
-            if (dir && !isDeepStrictEqual(structuredClone(got), want))
-              writeFileSync(`${dir}/incremental.json`, JSON.stringify(history));
-            expect(structuredClone(got)).toStrictEqual(want);
-            // Earlier results are never mutated (the app may still be playing them).
-            expect(JSON.stringify(last)).toBe(lastJson);
-            last = got;
-          }
-        },
-      ),
-      { numRuns: RUNS, seed: SEED, path: process.env.PROP_PATH, endOnFailure: true },
-    );
-    console.log(`incremental: ${resumed}/${steps} edits resumed from a checkpoint`);
-    expect(resumed).toBeGreaterThan(steps / 3);
+    equalsFull(pieceArb({ maxMoments: 20 }));
+  }, 120_000);
+
+  it('with parts (revision 9)', () => {
+    equalsFull(pieceArb({ maxMoments: 20, parts: true }));
   }, 120_000);
 });

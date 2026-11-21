@@ -136,10 +136,6 @@ const EMPTY_F64 = new Float64Array(0);
 const EMPTY_U8 = new Uint8Array(0);
 const EMPTY_I32 = new Int32Array(0);
 
-function smootherstep(x: number): number {
-  return x * x * x * (x * (x * 6 - 15) + 10);
-}
-
 /** Index of the last record whose `field` is ≤ t, or −1. Binary search; allocation-free. */
 export function lastAtOrBefore(
   a: Float64Array,
@@ -319,21 +315,73 @@ export class VoiceData {
   /**
    * Evaluates life weight, pitch and timbre slot at `frame` / `sampleRate` seconds into
    * probeLife, probePitch and probeSlot. Pure apart from those fields; integer arguments only,
-   * so calling it from the audio thread boxes nothing.
+   * so calling it from the audio thread boxes nothing once it is optimised.
+   *
+   * The life weight, evalFlatSegment and warpOffset are written out (same arithmetic; tests/dsp/
+   * probe.test.ts): with their frames, TurboFan's 920-byte inlining budget could not also hold
+   * segmentPitch, and each probe boxed segmentPitch's 13 arguments (docs/build-log.md, "No-GC
+   * lock flake").
    */
   probe(frame: number, sampleRate: number): void {
     const t = frame / sampleRate;
-    const li = lastAtOrBefore(this.lives, this.nLife, LIFE_STRIDE, LIFE_BORN, t);
-    this.probeLife = li < 0 ? 0 : lifeWeight(this.lives, li * LIFE_STRIDE, t);
+    const L = this.lives;
+    const li = lastAtOrBefore(L, this.nLife, LIFE_STRIDE, LIFE_BORN, t);
+    let w = 0;
+    if (li >= 0) {
+      const o = li * LIFE_STRIDE;
+      const born = L[o + LIFE_BORN];
+      const died = L[o + LIFE_DIED];
+      if (!(t >= died || t < born)) {
+        w = 1;
+        // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
+        const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
+        const u = (t - born) / fin;
+        if (u < 1) w = u * u * u * (u * (u * 6 - 15) + 10);
+        const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
+        const v = (died - t) / fout;
+        if (v < 1) w *= v * v * v * (v * (v * 6 - 15) + 10);
+      }
+    }
+    this.probeLife = w;
     if (this.nSeg === 0) this.probePitch = NaN;
     else {
       const si = lastAtOrBefore(this.segs, this.nSeg, SEG_STRIDE, SEG_T0, t);
       const s = si < 0 ? 0 : si;
-      const p = evalFlatSegment(this.segs, s * SEG_STRIDE, t);
-      this.probePitch =
-        p +
-        warpOffset(p, this.warpInA[s], this.warpInC[s]) +
-        warpOffset(p, this.warpOutA[s], this.warpOutC[s]);
+      const g = this.segs;
+      const o = s * SEG_STRIDE;
+      const p = segmentPitch(
+        g[o + SEG_T0],
+        g[o + SEG_T1],
+        g[o + SEG_P0],
+        g[o + SEG_P1],
+        g[o + SEG_EASE] as EaseCode,
+        g[o + SEG_BX1],
+        g[o + SEG_BY1],
+        g[o + SEG_BX2],
+        g[o + SEG_BY2],
+        g[o + SEG_M0],
+        t,
+        g[o + SEG_CURVE_T1],
+        g[o + SEG_CURVE_P1],
+      );
+      // warpOffset(p, warpInA, warpInC) and warpOffset(p, warpOutA, warpOutC).
+      let wIn = 0;
+      let wOut = 0;
+      for (let e = 0; e < 2; e++) {
+        const a = e === 0 ? this.warpInA[s] : this.warpOutA[s];
+        const c = e === 0 ? this.warpInC[s] : this.warpOutC[s];
+        if (!(a === a)) continue;
+        const x = p - a;
+        const r = x < 0 ? -x : x;
+        if (!(r < c)) continue;
+        const r0 = c * WARP_CORE;
+        let u = (r - r0) / (c - r0);
+        if (u < 0) u = 0;
+        const off = x * (u * u * (3 - 2 * u) - 1);
+        if (e === 0) wIn = off;
+        else wOut = off;
+      }
+      this.probePitch = p + wIn + wOut;
     }
     if (this.nTimbre === 0) this.probeSlot = -1;
     else {
@@ -447,22 +495,6 @@ function warpZone(p: number, referenceHz: number): number {
   const hz = referenceHz * Math.pow(2, (p - 69) / 12);
   const c = 12 * Math.log2(1 + WARP_HZ / hz);
   return Math.min(WARP_MAX, Math.max(WARP_MIN, c));
-}
-
-/** Life weight of the life record at `o` (smootherstep fades, at least MIN_LIFE_FADE long). */
-function lifeWeight(L: Float64Array, o: number, t: number): number {
-  const born = L[o + LIFE_BORN];
-  const died = L[o + LIFE_DIED];
-  if (t >= died || t < born) return 0;
-  let w = 1;
-  // Math.max, not a ternary: a phi of a float64 and an imported constant would box.
-  const fin = Math.max(L[o + LIFE_FADE_IN], MIN_LIFE_FADE);
-  const u = (t - born) / fin;
-  if (u < 1) w = smootherstep(u);
-  const fout = Math.max(L[o + LIFE_FADE_OUT], MIN_LIFE_FADE);
-  const v = (died - t) / fout;
-  if (v < 1) w *= smootherstep(v);
-  return w;
 }
 
 /**

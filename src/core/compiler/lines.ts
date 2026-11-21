@@ -75,7 +75,8 @@ export function expand(
   }
   if (!stacked)
     return { pool, base, copies, reserved, synthId, synthHash, active: lines.slice(), stacked };
-  // Former members first, then any dormant voice, then synthetic.
+  // Former members first, then any dormant voice, then synthetic; only voices of the line's part
+  // (revision 9), since a phantom may split off as that voice.
   const add = (b: number, u: number): void => {
     base.set(u, b);
     copies.get(b)!.push(u);
@@ -84,7 +85,7 @@ export function expand(
     const run = voices[b];
     for (const u of run.members) {
       if (copies.get(b)!.length >= run.count) break;
-      if (free.has(u)) {
+      if (free.has(u) && voices[u].part === run.part) {
         free.delete(u);
         reserved.add(u);
         add(b, u);
@@ -96,7 +97,8 @@ export function expand(
     const run = voices[b];
     let j = 0;
     while (copies.get(b)!.length < run.count) {
-      const u = rest.shift();
+      const j0 = rest.findIndex((v) => voices[v].part === run.part);
+      const u = j0 < 0 ? undefined : rest.splice(j0, 1)[0];
       if (u !== undefined) {
         reserved.add(u);
         add(b, u);
@@ -261,21 +263,23 @@ export function collapse(
       a.weight += weight;
     } else absorb.set(v, { count, weight });
   };
-  const fold = (v: number, p: Pitch): number => {
-    const r = voices[v < x.pool ? v : x.base.get(v)!].range;
-    return key(Number.isFinite(p) ? foldIntoRange(p, r[0], r[1]).p : p);
+  // A note is taken per part (revision 9): lines of another part may sound it too.
+  const fold = (v: number, p: Pitch): string => {
+    const run = voices[v < x.pool ? v : x.base.get(v)!];
+    const r = run.range;
+    return `${run.part}\u0000${key(Number.isFinite(p) ? foldIntoRange(p, r[0], r[1]).p : p)}`;
   };
   let absorbed = 0;
   /** Folded note → the voice that takes it; voice → the line it starts from (−1: nowhere). */
-  const held = new Map<number, number>();
+  const held = new Map<string, number>();
   const origin = new Map<number, number>();
-  const hold = (k: number, v: number, from: number): void => {
+  const hold = (k: string, v: number, from: number): void => {
     if (held.has(k)) return;
     held.set(k, v);
     origin.set(v, from);
   };
   /** The voice taking `k` if it starts where `from` does (they would move as one line). */
-  const sameLine = (k: number, from: number): number | undefined => {
+  const sameLine = (k: string, from: number): number | undefined => {
     const r = held.get(k);
     return r !== undefined && origin.get(r) === from ? r : undefined;
   };
@@ -313,7 +317,9 @@ export function collapse(
       return;
     }
     if (it.voice < 0) {
-      const u = free.length > 0 ? takeFor(free, it.to, voices) : undefined;
+      const own = free.filter((v) => voices[v].part === voices[pf.b].part);
+      const u = own.length > 0 ? takeFor(own, it.to, voices) : undefined;
+      if (u !== undefined) free.splice(free.indexOf(u), 1);
       if (u === undefined) {
         // No pool voice left: these copies stay on their line.
         exhausted++;

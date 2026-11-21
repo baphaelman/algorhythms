@@ -21,6 +21,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
+import { selectorPart } from '../../core/parts';
 import type { View } from '../../render';
 import { auditionMoment } from '../audition';
 import { keyName } from '../../render';
@@ -657,6 +658,22 @@ function noEffectReasons(compiled: CompiledScore): Map<MomentId, string> {
   return out;
 }
 
+/** Moments with a `{ part }` target and the part's name (revision 9). */
+function momentParts(piece: Piece): Map<MomentId, string> {
+  const out = new Map<MomentId, string>();
+  for (const m of piece.moments) {
+    const p = selectorPart(m.target);
+    if (p !== null) out.set(m.id, p === '' ? 'Unassigned' : p);
+  }
+  return out;
+}
+
+/** The lane item's tooltip: its part, then the no-effect reason; undefined when neither. */
+function itemTitle(part: string | undefined, reason: string | undefined): string | undefined {
+  const lines = [part !== undefined ? `Part: ${part}` : '', reason ?? ''].filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 function itemLabel(it: LaneItem): string {
   const kind = it.text === it.type ? it.type : `${it.text} (${it.type})`;
   const span = it.end - it.at > 1e-3 ? `, ${spokenTime(it.end - it.at)} long` : '';
@@ -669,6 +686,7 @@ export function Lane() {
   const compiled = usePlayer((s) => s.compiled);
   const selection = useEditor((s) => s.selection);
   const noEffect = useMemo(() => noEffectReasons(compiled), [compiled]);
+  const partOfMoment = useMemo(() => momentParts(piece), [piece]);
   const items = useMemo(
     () =>
       laneItems(
@@ -897,7 +915,7 @@ export function Lane() {
               data-selected={selected.has(it.id) || undefined}
               data-muted={it.muted || undefined}
               data-no-effect={noEffect.has(it.id) || undefined}
-              title={noEffect.get(it.id)}
+              title={itemTitle(partOfMoment.get(it.id), noEffect.get(it.id))}
               role="button"
               aria-pressed={selected.has(it.id)}
               aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}

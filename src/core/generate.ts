@@ -131,6 +131,21 @@ const MODE_TITLE: Record<GenerateMode, string> = {
   pentatonic: 'Pentatonic',
 };
 
+/** The automatic title of a generated (or composed) piece: the mode and the seed. */
+export function generatedTitle(mode: GenerateMode, seed: number): string {
+  return `${MODE_TITLE[mode]} ${seed}`;
+}
+
+/** True if `title` is exactly an automatic title (`generatedTitle` for some mode and seed). */
+export function isGeneratedTitle(title: string): boolean {
+  const t = title.trim();
+  return (Object.keys(MODE_TITLE) as GenerateMode[]).some((m) => {
+    const pre = `${MODE_TITLE[m]} `;
+    const n = t.slice(pre.length);
+    return t.startsWith(pre) && /^\d+$/.test(n) && generatedTitle(m, Number(n)) === t;
+  });
+}
+
 /**
  * Each prototype `retarget` drew durations uniformly from [a, b] and start offsets from
  * [0, stagger]; as a glide that is length (a + b)/2, jitter (b − a)/(a + b), and the stagger.
@@ -607,7 +622,7 @@ export function composeSteps(
   const base: Piece = {
     format: PIECE_FORMAT,
     version: PIECE_VERSION,
-    meta: { title: `${MODE_TITLE[mode]} ${pieceSeed}`, created: now, modified: now },
+    meta: { title: generatedTitle(mode, pieceSeed), created: now, modified: now },
     seed: pieceSeed,
     tuning: { referenceHz: 440, system: { kind: '12tet' } },
     key: { tonic: 'A', scale: MODE_SCALE[mode] },

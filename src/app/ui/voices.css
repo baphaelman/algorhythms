@@ -143,3 +143,35 @@
 .vd-head .ctl select {
   min-height: 24px;
 }
+
+/* Part groups (revision 9): a header row per part with whole-part controls. */
+.vd-table tr.vd-part th,
+.vd-table tr.vd-part td {
+  background: var(--paper);
+  border-top: 2px solid var(--rule);
+}
+
+.vd-part-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voices-drawer input.vd-part-name {
+  width: 12ch;
+  font: inherit;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.vd-count {
+  color: var(--ink-2);
+}
+
+.vd-confirm td {
+  white-space: normal;
+}

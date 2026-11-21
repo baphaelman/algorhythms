@@ -3,9 +3,24 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
+- Nothing open.
+
+## Answered
+- 2026-11-21 (later): M4.5 looks good (done); M2 sound is fine (done); no vetoes on the calls below. Generate doesn't warn before replacing a piece, but an edited, unnamed piece gets a popup offering to name it before the next piece opens (PLAN §11.4, being built). Roman numerals stay read against the major scale. No M3 release announcement.
+- 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Parts in the editor (R9-6).**
+  - The Notes drawer shows one group per part. Each header has a name field, delete, and whole-part timbre, pan, gain and range. Notes without a part sit under "Unassigned", and each note row has a Part menu.
+  - A piece without parts gains one "New part" button. With no parts it puts every note in "Part 1"; with parts it groups the unassigned notes into "Part n". A note's own "New part…" puts just that note in a new part.
+  - When a part's notes differ, its controls say "Mixed": timbre shows a disabled Mixed choice, pan and gain read Mixed and a drag sets every note, and a range field left blank leaves that bound alone.
+  - Two parts can't share a name. Deleting a part unassigns its notes; moments that targeted it ask inline, then target those same notes directly.
+  - The inspector's Part chooser sits after Time. A moment that targets a part says so in its header and lane tooltip. New notes from growing the pool start unassigned.
+- **Naming prompt.**
+  - The popup reads "Name this piece?". Skip is remembered per piece for the session, so it asks at most once per piece. Untouched pieces never ask: a fresh New, or an unchanged example or generated piece.
+  - Pieces that still have Generate's or Compose's automatic title count as unnamed, so an edited generated piece asks.
+  - An empty name or "Untitled" counts as Skip, and so does a click outside the popup. Undoing every edit still counts as edited.
+  - Generate's old "Replace the current piece?" confirm is gone, since opening never warns.
 - **Key at 0:00 and lane previews (M4.5-39).**
   - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
   - Adding a key at exactly 0:00 selects the piece's key instead of adding a moment. An old file with key moments at the very start folds them into the piece's key.

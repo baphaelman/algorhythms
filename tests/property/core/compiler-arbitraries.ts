@@ -83,8 +83,16 @@ const notesArb: fc.Arbitrary<NoteSet> = fc.oneof(
   fc.constant({ kind: 'current' as const }),
 );
 
-function selectorArb(ids: string[]): fc.Arbitrary<VoiceSelector | undefined> {
+/** Part names the generators use ('C' is never given to a voice: an unknown part). */
+export const PART_NAMES = ['A', 'B'] as const;
+
+function selectorArb(ids: string[], parts: boolean): fc.Arbitrary<VoiceSelector | undefined> {
+  const part = {
+    weight: 3,
+    arbitrary: fc.constantFrom('A', 'A', 'B', 'B', 'C').map((part) => ({ part })),
+  };
   return fc.oneof(
+    ...(parts ? [part] : []),
     { weight: 6, arbitrary: fc.constant(undefined) },
     { weight: 1, arbitrary: fc.constant('all' as const) },
     {
@@ -123,11 +131,11 @@ function overridesArb(pool: number): fc.Arbitrary<VoiceOverride[] | undefined> {
   );
 }
 
-export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
+export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitrary<Draft> {
   const at = tenths(0, maxT);
   const base = {
     at,
-    target: selectorArb(ids),
+    target: selectorArb(ids, parts),
     glide: fc.option(partialGlideArb, { nil: undefined }),
     overrides: overridesArb(ids.length),
   };
@@ -332,6 +340,8 @@ export interface PieceShape {
   maxMoments: number;
   /** Give voices individual ranges (some narrower than an octave). */
   varyRanges: boolean;
+  /** Put voices in parts 'A', 'B' or none (revision 9), and target parts. */
+  parts: boolean;
 }
 
 /** A random valid piece. */
@@ -351,15 +361,30 @@ export function pieceArb(shape: Partial<PieceShape> = {}): fc.Arbitrary<Piece> {
             { minLength: 16, maxLength: 16 },
           )
         : fc.constant(null),
+      parts: shape.parts
+        ? fc.array(fc.constantFrom<string | undefined>(...PART_NAMES, undefined), {
+            minLength: 16,
+            maxLength: 16,
+          })
+        : fc.constant(null),
     })
     .chain((r) => {
       const ids = Array.from({ length: r.pool }, (_, i) => `v${i + 1}`);
       return fc
-        .array(momentArb(ids, maxT), { minLength: 1, maxLength: shape.maxMoments ?? 14 })
+        .array(momentArb(ids, maxT, r.parts !== null), {
+          minLength: 1,
+          maxLength: shape.maxMoments ?? 14,
+        })
         .map((moments) => {
           const p = newPiece({ seed: r.seed, poolSize: r.pool });
           p.defaults.glide = r.glide;
           p.voices.forEach((v, i) => (v.range = r.ranges ? r.ranges[i] : [36, 96]));
+          if (r.parts) {
+            const parts = r.parts;
+            p.voices.forEach((v, i) => {
+              if (parts[i] !== undefined) v.part = parts[i];
+            });
+          }
           p.moments = moments.map((m, i) => {
             // Half the notes start on a start pitch, so they often find their note sounding.
             const from =

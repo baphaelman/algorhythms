@@ -57,6 +57,11 @@
   color: var(--ink-2);
   letter-spacing: 0;
 }
+/* The part a moment targets (revision 9). */
+.insp-head-part {
+  font-weight: normal;
+  color: var(--ink-2);
+}
 
 .insp-row {
   display: grid;

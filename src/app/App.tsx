@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
 import { useCompose } from './compose';
+import './naming';
 import { startPersistence } from './persist';
 import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
@@ -10,6 +11,7 @@ import { Inspector } from './ui/Inspector';
 import { Lane } from './ui/Lane';
 import { Menu } from './ui/Menu';
 import { MyPieces } from './ui/MyPieces';
+import { NamePrompt } from './ui/NamePrompt';
 import { Notices, SilentHint } from './ui/Notices';
 import { LoopRegion } from './ui/LoopRegion';
 import { Playhead } from './ui/Playhead';
@@ -60,6 +62,7 @@ export function App() {
       <GeneratePanel />
       <ExportDialog />
       <MyPieces />
+      <NamePrompt />
       <SilentHint />
       <Notices />
       <main className="workspace">
