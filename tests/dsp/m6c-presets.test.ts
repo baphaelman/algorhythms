@@ -4,13 +4,13 @@
  * - level: RMS on a reference phrase (three lines gliding and arriving) within ±3 dB of the
  *   median of the older presets of the same kind (held, or struck: articulation ≥ 0.5);
  * - clicks: the detector over the phrase (glides, crisp strikes) stays within the worst of the
- *   existing struck presets (pluck, bell);
+ *   existing struck presets (pluck, the M6-a bell);
  * - aliasing: held high notes, power away from the expected components under −50 dB.
  * The transport suite (seek, loop, pause) covers them in clicks.test.ts.
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { DRY_MIX, makeScore, type VoiceSpec } from '../../src/audio/fixtures/scores';
+import { DRY_MIX, M6A_BELL, makeScore, type VoiceSpec } from '../../src/audio/fixtures/scores';
 import { renderOffline } from '../../src/audio/offline';
 import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import type { Timbre } from '../../src/core/types';
@@ -43,7 +43,11 @@ function phrase(name: string): { left: Float32Array; right: Float32Array } {
     PHRASE_END,
   );
   const frames = Math.ceil((PHRASE_END * RATE) / BLOCK_FRAMES) * BLOCK_FRAMES;
-  return renderOffline({ score, mix: DRY_MIX, sampleRate: RATE }, frames);
+  // The presets were levelled against the M6-a bell; it stays the reference (bell redesign).
+  return renderOffline(
+    { score, mix: DRY_MIX, timbres: { bell: M6A_BELL }, sampleRate: RATE },
+    frames,
+  );
 }
 
 const renders = new Map<string, { left: Float32Array; right: Float32Array }>();
@@ -66,7 +70,8 @@ describe('M6-c presets', () => {
   it('sit within ±3 dB RMS of the older presets of their kind on a reference phrase', () => {
     // A strike never rises above the held level of a sustained tone, so struck presets
     // (articulation ≥ 0.5) are quieter by design; each kind is compared with its own.
-    const struck = (n: string) => BUILTIN_TIMBRES[n].articulation.amount >= 0.5;
+    const struck = (n: string) =>
+      (n === 'bell' ? M6A_BELL : BUILTIN_TIMBRES[n]).articulation.amount >= 0.5;
     const level = (n: string) => db(stereoRms(phraseOf(n), 0.5, PHRASE_END - 0.5));
     const median = (xs: number[]) => {
       const s = [...xs].sort((a, b) => a - b);

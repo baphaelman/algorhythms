@@ -100,6 +100,7 @@ import {
   COH_ROWS,
   COH_STRIDE,
   MAX_PARTIALS,
+  MAX_STRIKE_PARTIALS,
   MIP_BASE_HZ,
   MIP_COUNT,
   REFERENCE_HZ,
@@ -167,6 +168,12 @@ const NOISE_MAX_FRACTION = 0.45;
 const NOISE_MIN_ALPHA = 1e-4;
 /** 1 / 2π: β is in radians, table phases in cycles. */
 const INV_TWO_PI = 1 / (2 * Math.PI);
+/** Struck partials: −log2 of a strike envelope term per second of age per second of decay. */
+const STRIKE_EXP = ARTICULATION_DECAY * LOG2E;
+/** Struck partial q starts at (q + 1)(q + 2)·STRIKE_PHASE_STEP cycles after a gap (low crest). */
+const STRIKE_PHASE_STEP = 1 / 64;
+/** Struck partials stop once their envelope term is below 2^STRIKE_FLOOR (−96 dB). */
+const STRIKE_FLOOR = -16;
 /** 2^−31: an int32 to [−1, 1). */
 const INT32_TO_UNIT = 4.656612873077393e-10;
 
@@ -177,12 +184,17 @@ const X_NZ2 = 2;
 const X_NGAIN = 3;
 const X_NBW = 4;
 const X_ROLE = 5;
-/** Per role: modulator phase, β at the last tick, partial phases, partial amplitudes. */
+/**
+ * Per role: modulator phase, β at the last tick, partial phases, partial amplitudes, struck
+ * partial phases and amplitudes.
+ */
 const XR_FMPH = 0;
 const XR_BETA = 1;
 const XR_PART = 2;
 const XR_AMP = XR_PART + MAX_PARTIALS;
-const XR_STRIDE = XR_AMP + MAX_PARTIALS;
+const XR_SPH = XR_AMP + MAX_PARTIALS;
+const XR_SAMP = XR_SPH + MAX_STRIKE_PARTIALS;
+const XR_STRIDE = XR_SAMP + MAX_STRIKE_PARTIALS;
 const XS_SIZE = X_ROLE + 4 * XR_STRIDE;
 
 /**
@@ -1042,7 +1054,14 @@ const S_THETA = 46;
 const S_WARP = 47;
 /** Piece time of the current tick (passed to `timbreStage` without a double argument). */
 const S_T = 48;
-const STATE_SIZE = 49;
+/**
+ * Strike envelope terms of the current tick for synthExt (TimbreParams.strikeEnv): the
+ * articulation envelope with any decay D is A + B·2^(−STRIKE_EXP·X/D).
+ */
+const S_ENV_A = 49;
+const S_ENV_B = 50;
+const S_ENV_X = 51;
+const STATE_SIZE = 52;
 
 /** The current tick's timbre parameters, blended over the timbre mix (`Voice.tp`). */
 const TP_DETUNE = 0;
@@ -1058,7 +1077,8 @@ const TP_VIB_JITTER = 9;
 const TP_DRIFT_CENTS = 10;
 const TP_DRIFT_RATE = 11;
 const TP_DRIFT_AMP = 12;
-const TP_SIZE = 13;
+const TP_STRIKE_ENV = 13;
+const TP_SIZE = 14;
 
 /**
  * One synthesis voice (or ghost).
@@ -1740,6 +1760,46 @@ export class Voice {
           }
           artic = 1 - amount + amount * env;
         }
+        // Strike envelope terms for synthExt (struck partials, FM index envelope): the envelope
+        // above, h·e^(−ln100·τ/decay) after the attack and the smootherstep rise from the previous
+        // strike's value during it, as A + B·2^(−STRIKE_EXP·X/D) for any decay D.
+        if (tp[TP_STRIKE_ENV] > 0) {
+          let sj = this.strikeCur;
+          while (sj + 1 < d.nStrike && d.strikeT[sj + 1] <= t) sj++;
+          this.strikeCur = sj;
+          let eA = 0;
+          let eB = 0;
+          let eX = 0;
+          if (sj >= 0) {
+            const attack = tp[TP_ART_ATTACK];
+            const ta = t - d.strikeT[sj];
+            const sh = d.strikeShare[sj];
+            const h = sh + (1 - sh) * crisp;
+            if (ta >= attack) {
+              eB = h;
+              eX = ta - attack;
+            } else {
+              const u = ta / attack;
+              const su = u * u * u * (u * (u * 6 - 15) + 10);
+              eA = h * su;
+              const pa = d.strikePrevT[sj];
+              if (pa === pa) {
+                const ps = d.strikePrevShare[sj];
+                const e0 = (ps + (1 - ps) * crisp) * (1 - su);
+                const gap = d.strikeT[sj] - pa;
+                const v = gap / attack;
+                if (v < 1) eA += e0 * v * v * v * (v * (v * 6 - 15) + 10);
+                else {
+                  eB = e0;
+                  eX = gap - attack;
+                }
+              }
+            }
+          }
+          st[S_ENV_A] = eA;
+          st[S_ENV_B] = eB;
+          st[S_ENV_X] = eX;
+        }
 
         // Level timeline.
         const Lv = d.levels;
@@ -2064,6 +2124,7 @@ export class Voice {
         tp[TP_DRIFT_CENTS] = S.driftCents;
         tp[TP_DRIFT_RATE] = S.driftRate;
         tp[TP_DRIFT_AMP] = S.driftAmp;
+        tp[TP_STRIKE_ENV] = S.strikeEnv;
       }
     } else {
       this.tpSlot = -1;
@@ -2086,6 +2147,7 @@ export class Voice {
         tp[TP_DRIFT_CENTS] += w * S.driftCents;
         tp[TP_DRIFT_RATE] += w * S.driftRate;
         tp[TP_DRIFT_AMP] += w * S.driftAmp;
+        tp[TP_STRIKE_ENV] += w * S.strikeEnv;
       }
     }
 
@@ -2461,6 +2523,17 @@ export class Voice {
         PR[0] = -e.fmIndexTrack * oct;
         pmath.exp2R();
         let beta = e.fmIndex * PR[0];
+        if (e.fmHeld < 1) {
+          // Index envelope: the held share plus the rest under the articulation envelope.
+          let env = st[S_ENV_A];
+          const eb = st[S_ENV_B];
+          if (eb > 0) {
+            PR[0] = (-STRIKE_EXP * st[S_ENV_X]) / this.tp[TP_ART_DECAY];
+            pmath.exp2R();
+            env += eb * PR[0];
+          }
+          beta *= e.fmHeld + (1 - e.fmHeld) * env;
+        }
         const room = (FM_ALIAS_LIMIT * nyq) / f1; // multiples of f below the limit
         const top = e.fmTop < room ? e.fmTop : room;
         const cap = ((room - top) / ratio - FM_SIDEBAND_MARGIN) / top;
@@ -2571,6 +2644,66 @@ export class Voice {
           const s1 = a1 + (tab[j1 + 1] - a1) * fr;
           mb[i] += (s0 + (s1 - s0) * w) * g;
           g += dg;
+        }
+      }
+      if (e !== null && e.nStrike > 0) {
+        // Struck partials: each under the strike envelope with its own decay (S_ENV_*), shaped
+        // per mip like the additive partials, faded near Nyquist, no FM.
+        const P = e.nStrike;
+        const SR = e.strikeRatio;
+        const SD = e.strikeDecay;
+        const SA = e.strikeAmp;
+        const rowLo = this.roleMip[r] * P;
+        const rowHi = rowLo + P;
+        const w = this.roleW[r];
+        const eA = st[S_ENV_A];
+        const eB = st[S_ENV_B];
+        const eX = st[S_ENV_X];
+        for (let q = 0; q < P; q++) {
+          const ratio = SR[q];
+          let fade =
+            (PARTIAL_FADE_END * nyq - f1 * ratio) / ((PARTIAL_FADE_END - PARTIAL_FADE_START) * nyq);
+          if (fade > 1) fade = 1;
+          else if (!(fade > 0)) fade = 0;
+          let env = eA;
+          if (eB > 0) {
+            const y = (-STRIKE_EXP * eX) / SD[q];
+            if (y > STRIKE_FLOOR) {
+              PR[0] = y;
+              pmath.exp2R();
+              env += eB * PR[0];
+            }
+          }
+          const aLo = SA[rowLo + q];
+          const a1 = (aLo + (SA[rowHi + q] - aLo) * w) * fade * env;
+          const a0 = init ? a1 : xs[xo + XR_SAMP + q];
+          xs[xo + XR_SAMP + q] = a1;
+          let ps = xs[xo + XR_SPH + q];
+          if (init) {
+            ps = ratio * phase0 + (q + 1) * (q + 2) * STRIKE_PHASE_STEP;
+            ps -= Math.floor(ps);
+          }
+          if (a0 === 0 && a1 === 0) {
+            xs[xo + XR_SPH + q] = ps;
+            continue;
+          }
+          let pinc = inc0 * ratio;
+          const dpinc = dInc * ratio;
+          let a = a0;
+          const da = (a1 - a0) * invK;
+          let g = g0;
+          for (let i = 0; i < K; i++) {
+            ps += pinc;
+            if (ps >= 1) ps -= Math.floor(ps);
+            pinc += dpinc;
+            const pos = ps * TS;
+            const i0 = pos | 0;
+            const s0 = sine[i0];
+            mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
+            a += da;
+            g += dg;
+          }
+          xs[xo + XR_SPH + q] = ps;
         }
       }
       if (e !== null && e.noiseLevel > 0) {

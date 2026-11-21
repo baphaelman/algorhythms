@@ -571,8 +571,18 @@ export interface Timbre {
    * `ratio` × f (0 < ratio ≤ 32, any real). `index` is β at middle C in radians (0..20); it
    * scales by 2^(−indexTrack) per octave above middle C, and the engine lowers it further where
    * sidebands would pass Nyquist. Harmonic (or partial) n of the carrier sees n·β.
+   * `held` (0..1, absent = 1): the share of the index left once a strike has rung down; the
+   * rest follows the articulation envelope (its attack and decay), so the clang fades with it.
    */
-  fm?: { ratio: number; index: number; indexTrack: number };
+  fm?: { ratio: number; index: number; indexTrack: number; held?: number };
+  /**
+   * Struck partials (bells): up to 16 sines at `ratio` × f (0 < ratio ≤ 32, any real) that sound
+   * only after a strike. Each rises with the articulation attack to `amp` (0..4, relative to the
+   * tone, whose RMS is a unit sine's at middle C; scaled by `brightness.track` with pitch) and
+   * decays to 1 % over its own `decay` seconds, so the clang fades and the held tone is what
+   * `harmonics` makes it. Under the voice's envelope, articulation included. Absent = none.
+   */
+  strikePartials?: { ratio: number; amp: number; decay: Seconds }[];
   /**
    * Breath noise (M6): white noise through a band-pass centred on f, of −3 dB width
    * `bandwidth`·f (0 < bandwidth ≤ 8), at `level` (0..4) times the tone's RMS, under the voice's

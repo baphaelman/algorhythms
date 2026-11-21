@@ -61,7 +61,7 @@ describe('no GC in process()', () => {
     expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
   }, 120_000);
 
-  it('runs 60 s of 24 M6 voices (bell, FM, noise) + FX with no scavenge', () => {
+  it('runs 60 s of 24 M6 voices (bells, FM, noise) + FX with no scavenge', () => {
     const { gcLines, summary } = runHarness('m6');
     console.info(
       `no-GC run (M6 timbres): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,

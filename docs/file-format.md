@@ -4381,6 +4381,12 @@ This is the *input* form: fields with defaults are optional here.
                 "minimum": -4,
                 "maximum": 4,
                 "description": "β scales by 2^(−indexTrack) per octave above middle C."
+              },
+              "held": {
+                "description": "Share of β left after a strike rings down (absent: 1, no index envelope).",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
               }
             },
             "required": [
@@ -4389,6 +4395,40 @@ This is the *input* form: fields with defaults are optional here.
               "indexTrack"
             ],
             "additionalProperties": {}
+          },
+          "strikePartials": {
+            "description": "Inharmonic partials that sound only after a strike, each decaying on its own.",
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ratio": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 32,
+                  "description": "Frequency as a multiple of f."
+                },
+                "amp": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4,
+                  "description": "Peak amplitude relative to the tone's."
+                },
+                "decay": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 60,
+                  "description": "Seconds to fall to 1 %."
+                }
+              },
+              "required": [
+                "ratio",
+                "amp",
+                "decay"
+              ],
+              "additionalProperties": {}
+            }
           },
           "noise": {
             "description": "Breath noise through a band-pass tracking the pitch.",

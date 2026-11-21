@@ -20,11 +20,23 @@ const timbre: fc.Arbitrary<Timbre> = fc.record(
   {
     harmonics: fc.array(num(-1e3, 1e3), { maxLength: 32 }),
     stretch: num(-0.5, 1),
-    fm: fc.record({
-      ratio: num(0, 32, { minExcluded: true }),
-      index: num(0, 20),
-      indexTrack: num(-4, 4),
-    }),
+    fm: fc.record(
+      {
+        ratio: num(0, 32, { minExcluded: true }),
+        index: num(0, 20),
+        indexTrack: num(-4, 4),
+        held: num(0, 1),
+      },
+      { requiredKeys: ['ratio', 'index', 'indexTrack'] },
+    ),
+    strikePartials: fc.array(
+      fc.record({
+        ratio: num(0, 32, { minExcluded: true }),
+        amp: num(0, 4),
+        decay: num(0, 60, { minExcluded: true }),
+      }),
+      { maxLength: 16 },
+    ),
     noise: fc.record({ level: num(0, 4), bandwidth: num(0, 8, { minExcluded: true }) }),
     brightness: fc.record({ tilt: num(-1e3, 1e3), track: num(-1e3, 1e3) }),
     detuneSpread: nonNeg(),
@@ -95,6 +107,7 @@ describe('timbre preset round trip', () => {
         .map((x) => ['stretch', x] as const),
       num(32, 1e3, { minExcluded: true }).map((x) => ['fm.ratio', x] as const),
       num(20, 1e3, { minExcluded: true }).map((x) => ['fm.index', x] as const),
+      num(1, 1e3, { minExcluded: true }).map((x) => ['fm.held', x] as const),
       num(4, 1e3, { minExcluded: true }).map((x) => ['noise.level', x] as const),
       num(8, 1e3, { minExcluded: true }).map((x) => ['noise.bandwidth', x] as const),
       num(-1e3, 0)

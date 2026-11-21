@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { DRY_MIX, makeScore } from '../../src/audio/fixtures/scores';
+import { DRY_MIX, M6A_BELL, makeScore } from '../../src/audio/fixtures/scores';
 import { renderOffline } from '../../src/audio/offline';
 import { tablesFor } from '../../src/audio/timbres';
 import { parsePiece, TimbreSchema } from '../../src/core/schema';
@@ -60,11 +60,15 @@ describe('M6 params and presets', () => {
       const ext = TimbreExt.of(buildWavetables(t, RATE));
       expect(ext === null, name).toBe(!m6.includes(name));
     }
-    const p = timbreParams(BUILTIN_TIMBRES.bell);
+    const p = timbreParams(M6A_BELL);
     expect(p).toMatchObject({ fmRatio: 1.41, fmIndex: 0.35, noiseLevel: 0.04, stretch: 0.12 });
     expect(p.fmTop).toBeCloseTo(Math.pow(7, 1.12), 9);
-    const parsed = TimbreSchema.safeParse(BUILTIN_TIMBRES.bell);
-    expect(parsed.success).toBe(true);
+    // The redesigned bell: wavetable tone, struck partials (tests/dsp/bell.test.ts).
+    const b = timbreParams(BUILTIN_TIMBRES.bell);
+    expect(b).toMatchObject({ fmIndex: 0, noiseLevel: 0, stretch: 0, strikeEnv: 1 });
+    expect(buildWavetables(BUILTIN_TIMBRES.bell, RATE).strikeRatio.length).toBe(11);
+    for (const t of [M6A_BELL, BUILTIN_TIMBRES.bell])
+      expect(TimbreSchema.safeParse(t).success).toBe(true);
   });
 
   it('the schema bounds stretch, fm and noise', () => {
@@ -272,12 +276,12 @@ describe('aliasing at the top of the range', () => {
     expect(db(Math.sqrt(strayRaw))).toBeGreaterThan(-25);
   });
 
-  it('bell and a 16-partial stretch: partials past Nyquist are skipped, nothing folds', () => {
+  it('the M6-a bell and a 16-partial stretch: partials past Nyquist are skipped, nothing folds', () => {
     const rich: Timbre = { ...PLAIN, harmonics: Array(16).fill(0.5), stretch: 0.3 };
     const rows: string[] = [];
     for (const [name, t, p] of [
-      ['bell', BUILTIN_TIMBRES.bell, 100],
-      ['bell', BUILTIN_TIMBRES.bell, 108],
+      ['m6a-bell', M6A_BELL, 100],
+      ['m6a-bell', M6A_BELL, 108],
       ['stretch16', rich, 96],
     ] as const) {
       // No noise, and no strike: a decaying envelope would widen every line past the guard.
@@ -457,7 +461,7 @@ describe('M6 timbre changes and table swaps', () => {
     expect(worst).toBeLessThanOrEqual(2 * steady);
   });
 
-  it('replacing tables mid-note (plain → FM → bell → plain) crossfades without a click', () => {
+  it('replacing tables mid-note (plain → FM → M6-a bell → bell → plain) crossfades without a click', () => {
     const score = makeScore(
       [
         { start: 57, timbre: 'x' },
@@ -469,14 +473,14 @@ describe('M6 timbre changes and table swaps', () => {
     d.graph.play(0);
     const swaps: number[] = [];
     d.run(1.5);
-    for (const t of [fmx, BUILTIN_TIMBRES.bell, BUILTIN_TIMBRES.organ]) {
+    for (const t of [fmx, M6A_BELL, BUILTIN_TIMBRES.bell, BUILTIN_TIMBRES.organ]) {
       swaps.push(d.frames / RATE);
       d.graph.setTables('x', tablesFor(t, RATE));
       d.run(1.5);
     }
     const out = d.out().left;
     let steady = 0;
-    for (const a of [0.5, 2.1, 3.6, 5.1]) {
+    for (const a of [0.5, 2.1, 3.6, 5.1, 6.6]) {
       steady = Math.max(
         steady,
         clickScore(out, Math.floor(a * RATE), Math.floor((a + 0.8) * RATE)).ratio,
@@ -498,10 +502,11 @@ describe('M6 timbre changes and table swaps', () => {
       [
         { start: 57, moves: [{ at: 1, to: 62, len: 0.7 }], timbre: 'bell' },
         { start: 64, moves: [{ at: 1.5, to: 60, len: 0.5 }], timbre: 'fmx' },
+        { start: 52, moves: [{ at: 0.8, to: 55, len: 0.6 }], timbre: 'm6a' },
       ],
       4,
     );
-    const timbres = { fmx: { ...fmx, noise: { level: 0.2, bandwidth: 1 } } };
+    const timbres = { fmx: { ...fmx, noise: { level: 0.2, bandwidth: 1 } }, m6a: M6A_BELL };
     const frames = Math.ceil((3 * RATE) / BLOCK_FRAMES) * BLOCK_FRAMES;
     const off = renderOffline({ score, mix: DRY_MIX, timbres, sampleRate: RATE }, frames);
     const d = new Driver(score, DRY_MIX, RATE, timbres);

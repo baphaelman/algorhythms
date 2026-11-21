@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DRY_MIX,
   FIXTURE_MIX,
+  M6A_BELL,
   makeScore,
   timbreMomentScore,
   type VoiceSpec,
@@ -368,22 +369,22 @@ describe('the timbre mix', () => {
   });
 
   it('switches across every synthesis path, overlapping and instant, without clicks', () => {
-    // wavetable → FM (epiano) → additive + FM + noise (bell) → noise (flute) → formants (choir) →
-    // sine, the later ones arriving mid-fade (five timbres at once around 1.6 s), then a fade 0
-    // change (the engine plays MIN_TIMBRE_FADE) and marimba.
+    // wavetable → FM (epiano) → additive + FM + noise (the M6-a bell) → noise (flute) → formants
+    // (choir) → sine, the later ones arriving mid-fade (five timbres at once around 1.6 s), then
+    // a fade 0 change (the engine plays MIN_TIMBRE_FADE), marimba, and struck partials (bell).
     const tl = changes(
       [0, 'glass', 0],
       [1, 'epiano', 0.5],
-      [1.25, 'bell', 0.5],
+      [1.25, 'm6a', 0.5],
       [1.5, 'flute', 0.3],
       [1.6, 'choir', 1],
       [1.8, 'sine', 0.2],
-      [3, 'bell', 0],
+      [3, 'm6a', 0],
       [3.5, 'marimba', 0.05],
-      [4, 'glass', 0.3],
+      [4, 'bell', 0.3],
     );
     for (const pitch of [45, 64, 81]) {
-      const o = renderSpecs([{ start: pitch, timbre: tl }], {}, 5);
+      const o = renderSpecs([{ start: pitch, timbre: tl }], { m6a: M6A_BELL }, 5);
       const c = clicks(o.left, [1, 1.25, 1.5, 1.6, 1.8, 3, 3.5, 4], [0.4, 2.7, 4.5]);
       console.info(
         `path switches at p${pitch}: worst ${c.worst.toFixed(3)} (steady ${c.ref.toFixed(3)})`,

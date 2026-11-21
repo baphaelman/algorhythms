@@ -96,8 +96,8 @@ describe('stems exact sum', () => {
     expect(dbfs(b.worst)).toBeLessThanOrEqual(-90);
   }, 360_000); // 36 s, 1 worker
 
-  it('holds for M6 timbres (bell: additive + FM + noise; FM and noise on wavetables)', () => {
-    const score = stressScore(6, 8, 1, 4, ['bell', 'fmreed', 'breath']);
+  it('holds for M6 timbres (bells: additive + FM + noise, struck partials; FM and noise on wavetables)', () => {
+    const score = stressScore(6, 8, 1, 4, ['bell', 'fmreed', 'breath', 'strikebell']);
     for (const v of score.voices) v.gain = 3;
     const { worst } = stemSum(score, FIXTURE_MIX, 9, M6_WORKLOAD_TIMBRES);
     console.info(`stems residual, M6 timbres: ${dbfs(worst).toFixed(1)} dBFS`);

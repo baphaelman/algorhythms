@@ -7,9 +7,10 @@
  *
  * argv[2]: 'plain' (default: the allocation-free eases), 'all' (adds expo and bézier), 'lock'
  * (unisons, pair merges, births into held unisons and a seek every 5 s: the unison lock's paths)
- * 'm6' (plain eases on the M6 timbres: bell, FM on a wavetable, breath noise) or 'timbre' (the
- * 'lock' workload with seeks, every voice changing timbre every ~1.5 s across every synthesis
- * path, with overlapping fades: timbre moments, M6-b2).
+ * 'm6' (plain eases on the M6 timbres: the M6-a bell, FM on a wavetable, breath noise, a bell with
+ * struck partials and an FM index envelope) or 'timbre' (the 'lock' workload with seeks, every
+ * voice changing timbre every ~1.5 s across every synthesis path, with overlapping fades: timbre
+ * moments, M6-b2).
  * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre]
  */
 
@@ -39,6 +40,7 @@ const score = withPulses(
     : mode === 'timbre'
       ? withTimbreChanges(lockStressScore(12, 80, 17), [
           'bell',
+          'strikebell',
           'epiano',
           'flute',
           'choir',
@@ -51,7 +53,7 @@ const score = withPulses(
           80,
           5,
           mode === 'all' ? ALL_EASES : PLAIN_EASES,
-          mode === 'm6' ? ['bell', 'fmreed', 'breath'] : undefined,
+          mode === 'm6' ? ['bell', 'fmreed', 'breath', 'strikebell'] : undefined,
         ),
 );
 const graph = createLoadedGraph({
