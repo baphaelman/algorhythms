@@ -507,8 +507,8 @@ export interface TuneNote {
 }
 
 /**
- * Revision 9: a melody on one line. From `at`, the targeted voice (the first in pitch order of
- * the target, normally a part with one line) moves to each note in turn, note k starting at
+ * Revision 9: a melody on one line. From `at`, the targeted voice (the lowest in pitch order of
+ * the target, or the highest with `line: 'high'`; normally a part) moves to each note in turn, note k starting at
  * at + the lengths before it. Each move uses the moment's glide as portamento (default length
  * 0.1 s, stagger and jitter 0; capped at the note's length). With `glide.land` each note
  * arrives on its start instead. Like `pin` it may cross other lines; under distinct notes it
@@ -517,7 +517,12 @@ export interface TuneNote {
 export interface TuneMoment extends MomentBase {
   type: 'tune';
   notes: TuneNote[];
+  /** Which line of the target, in pitch order at `at`, carries the tune. Absent means 'low'. */
+  line?: TuneLine;
 }
+
+/** The line of a tune's target that carries it: its lowest or highest in pitch order. */
+export type TuneLine = 'low' | 'high';
 
 /**
  * M6 (§6.3): crossfades the targeted voices to another timbre from `at` over `fade`; no pitch

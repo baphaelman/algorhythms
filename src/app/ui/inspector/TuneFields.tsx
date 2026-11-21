@@ -7,11 +7,11 @@
  * round).
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import { activeAt, pitchAt } from '../../../core/query';
 import type { Piece, TuneMoment, TuneNote } from '../../../core/types';
 import { noteLabel } from '../../../render';
-import { auditionPointsAfterEdit } from '../../audition';
+import { auditionPointsAfterEdit, auditionTuneAfterEdit } from '../../audition';
 import { updateMoment } from '../../editor/actions';
 import { clearDots, selectDots, useDotSelection } from '../../editor/dot-selection';
 import {
@@ -21,6 +21,8 @@ import {
   lenFromShown,
   parseTuneText,
   lenShown,
+  melodyOptions,
+  melodyPatch,
   removeTuneNote,
   setTuneLen,
   stepTuneNote,
@@ -29,7 +31,7 @@ import {
   tuneNoteStarts,
 } from '../../editor/tune';
 import { usePlayer } from '../../store';
-import { CompactNumber, TextField, fieldSetter } from './controls';
+import { CompactNumber, Row, TextField, fieldSetter } from './controls';
 import { keyAt } from './fields';
 
 /** m:ss.ss (notes can be closer than the inspector's usual tenths). */
@@ -38,6 +40,42 @@ function noteTime(t: number): string {
   const m = Math.floor(cs / 6000);
   const s = (cs - m * 6000) / 100;
   return `${m}:${s < 10 ? '0' : ''}${s.toFixed(2)}`;
+}
+
+/**
+ * "Melody on" (owner, 2026-11-21): which sounding note carries the tune. A note sets the target to
+ * its voice; "Highest/Lowest of <part>" keeps the part and sets `line`. One undo entry per pick;
+ * the first note sounds on its new line (stopped transport only).
+ */
+export function MelodyOn({ m, piece }: { m: TuneMoment; piece: Piece }) {
+  const id = useId();
+  const compiled = usePlayer((s) => s.compiled);
+  const { options, current } = useMemo(
+    () => melodyOptions(piece, compiled, m),
+    [piece, compiled, m],
+  );
+  return (
+    <Row label="Melody on" htmlFor={id}>
+      <select
+        id={id}
+        value={current}
+        data-testid="insp-melody-on"
+        onChange={(e) => {
+          const o = options.find((x) => x.value === e.target.value);
+          if (!o || o.value === current) return;
+          if (!updateMoment(m.id, melodyPatch(piece, m, o.choice), 'Change melody line')) return;
+          const first = m.notes[0];
+          if (first) auditionTuneAfterEdit(m.id, first.pitch, m.at + first.len / 2);
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Row>
+  );
 }
 
 export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {

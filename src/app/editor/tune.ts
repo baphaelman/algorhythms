@@ -4,15 +4,22 @@
  * remove. R9-8: the score's tune dots (`tuneDots`, moving note starts) and typed notes.
  */
 
+import { readState } from '../../core/effect';
+import { partOf, selectorPart } from '../../core/parts';
+import { keyAt } from '../../core/query';
 import { noteName, stepByScale } from '../../core/scales';
 import type {
   CompiledScore,
   Key,
+  Piece,
   Pitch,
   Seconds,
+  TuneLine,
   TuneMoment,
   TuneNote,
   ViewSettings,
+  VoiceId,
+  VoiceSelector,
 } from '../../core/types';
 import { noteLabel } from '../../render';
 import { formatNum, parseNum, parsePitch } from '../ui/inspector/fields';
@@ -289,4 +296,109 @@ export function parseTuneText(
     notes.push({ pitch, len });
   }
   return { ok: true, notes };
+}
+
+/** A "Melody on" choice (owner, 2026-11-21): one sounding note's voice, or a line of the target. */
+export type MelodyChoice = { kind: 'voice'; id: VoiceId } | { kind: 'line'; line: TuneLine };
+
+/** One entry of the "Melody on" menu. `pitch`: a note's pitch before the tune moves it. */
+export interface MelodyOption {
+  value: string;
+  label: string;
+  choice: MelodyChoice;
+  pitch?: Pitch;
+}
+
+/** The menu value of a choice. */
+export const melodyValue = (c: MelodyChoice): string =>
+  c.kind === 'voice' ? `voice:${c.id}` : `line:${c.line}`;
+
+/** A single-voice target's id, or null. */
+function oneVoice(m: Pick<TuneMoment, 'target'>): VoiceId | null {
+  const t = m.target;
+  return t && t !== 'all' && 'voices' in t && Array.isArray(t.voices) && t.voices.length === 1
+    ? t.voices[0]
+    : null;
+}
+
+/**
+ * The target a "Highest/Lowest" choice keeps: the tune's own, except that a single-voice target
+ * (a note picked here) goes back to that voice's part (all notes without parts).
+ */
+function lineTarget(piece: Piece, m: Pick<TuneMoment, 'target'>): VoiceSelector | undefined {
+  const one = oneVoice(m);
+  if (one === null) return m.target;
+  const part = partOf(piece.voices.find((v) => v.id === one));
+  return part === '' ? undefined : { part };
+}
+
+/**
+ * The "Melody on" menu (owner, 2026-11-21): the notes sounding at the tune's time, high to low
+ * (spelled in the key there; with the part name when the piece has parts), between "Highest of
+ * <target>" and "Lowest of <target>". Pitches are where each line is heading as the tune starts,
+ * before the tune moves its own line. `current`: the tune's choice (a single-voice target is that
+ * note, else its `line`, absent = lowest); a picked voice not sounding gets its own entry.
+ */
+export function melodyOptions(
+  piece: Piece,
+  score: CompiledScore,
+  m: TuneMoment,
+): { options: MelodyOption[]; current: string } {
+  const st = readState(piece, score, m.at);
+  const key = keyAt(score, m.at);
+  const parted = piece.voices.some((v) => partOf(v) !== '');
+  const notes: MelodyOption[] = [];
+  for (const v of st.active) {
+    const voice = score.voices[v];
+    const def = piece.voices[v];
+    if (!voice || !def) continue;
+    // The tune's own line: where it was before the tune's first move.
+    const own = voice.segments.find((s) => s.momentId === m.id && s.t0 <= m.at + 1e-9);
+    const pitch = own ? own.p0 : st.dest[v];
+    const part = partOf(def);
+    const label = noteLabel(pitch, key) + (parted ? ` · ${part === '' ? 'Unassigned' : part}` : '');
+    notes.push({ value: `voice:${def.id}`, label, choice: { kind: 'voice', id: def.id }, pitch });
+  }
+  notes.sort((a, b) => b.pitch! - a.pitch! || a.value.localeCompare(b.value));
+  const target = lineTarget(piece, m);
+  const part = selectorPart(target);
+  const of =
+    part !== null
+      ? ` of ${part === '' ? 'Unassigned' : part}`
+      : target === undefined || target === 'all'
+        ? ' note'
+        : ' of the target';
+  const line = (l: TuneLine, word: string): MelodyOption => ({
+    value: melodyValue({ kind: 'line', line: l }),
+    label: word + of,
+    choice: { kind: 'line', line: l },
+  });
+  const options = [line('high', 'Highest'), ...notes, line('low', 'Lowest')];
+  const one = oneVoice(m);
+  const current = melodyValue(
+    one !== null ? { kind: 'voice', id: one } : { kind: 'line', line: m.line ?? 'low' },
+  );
+  if (one !== null && !options.some((o) => o.value === current)) {
+    const def = piece.voices.find((v) => v.id === one);
+    options.splice(options.length - 1, 0, {
+      value: current,
+      label: `${def?.name ?? one} (not sounding)`,
+      choice: { kind: 'voice', id: one },
+    });
+  }
+  return { options, current };
+}
+
+/**
+ * The fields a "Melody on" pick writes: a note sets the target to its voice (`line` removed); a
+ * line keeps the target (a picked note's goes back to its part) and sets `line` ('low', the
+ * default, is left out).
+ */
+export function melodyPatch(
+  piece: Piece,
+  m: TuneMoment,
+  c: MelodyChoice,
+): { target: VoiceSelector | undefined; line: TuneLine | undefined } {
+  if (c.kind === 'voice') return { target: { voices: [c.id] }, line: undefined };
+  return { target: lineTarget(piece, m), line: c.line === 'high' ? 'high' : undefined };
 }

@@ -379,6 +379,12 @@ const MOMENT_SCHEMAS = {
       .describe(
         'The melody, in order: from `at` the targeted line moves to each note in turn (glide default length 0.1 s, no stagger or jitter).',
       ),
+    line: z
+      .enum(['low', 'high'])
+      .optional()
+      .describe(
+        "Which line of the target, in pitch order at `at`, carries the tune (absent: 'low').",
+      ),
   }),
   timbre: z.looseObject({
     type: z.literal('timbre'),

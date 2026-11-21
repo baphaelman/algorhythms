@@ -48,7 +48,7 @@ import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
 import { PulseFields } from './PulseFields';
-import { TuneNotes } from './TuneFields';
+import { MelodyOn, TuneNotes } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
 import { isCustom, isModified } from '../../editor/timbre-edit';
@@ -95,7 +95,12 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
     case 'pulse':
       return <PulseFields m={m} piece={ctx.piece} />;
     case 'tune':
-      return <TuneNotes m={m} piece={ctx.piece} />;
+      return (
+        <>
+          <MelodyOn m={m} piece={ctx.piece} />
+          <TuneNotes m={m} piece={ctx.piece} />
+        </>
+      );
     case 'timbre':
       return <TimbreFields m={m} piece={ctx.piece} />;
   }

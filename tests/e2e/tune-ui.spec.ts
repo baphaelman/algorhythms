@@ -281,3 +281,58 @@ test('without a tempo, lengths are in seconds', async ({ page }) => {
   await len2.press('Enter');
   expect((await lens(page))[2]).toBe(0.75);
 });
+
+test('Melody on: pick a sounding note, the tune moves to its line; highest; undo', async ({
+  page,
+}) => {
+  await open(page, null);
+  await hook(page).select(['tune1']);
+  const menu = inspector(page).getByTestId('insp-melody-on');
+  await expect(menu).toHaveValue('line:low');
+  await expect(menu.locator('option')).toHaveText([
+    'Highest note',
+    'G4',
+    'E4',
+    'G3',
+    'C3',
+    'Lowest note',
+  ]);
+  /** The voice index playing the tune (its compiled segments). */
+  const line = () =>
+    page.evaluate(() => {
+      const s = (
+        window.__algorhythms as unknown as {
+          store: {
+            getState(): {
+              compiled: { voices: { index: number; segments: { momentId?: string }[] }[] };
+            };
+          };
+        }
+      ).store.getState().compiled;
+      return s.voices.find((v) => v.segments.some((g) => g.momentId === 'tune1'))?.index;
+    });
+  const field = async (k: string): Promise<unknown> =>
+    ((await tuneOf(page)) as unknown as Record<string, unknown>)[k];
+  const before = await line();
+  const e4 = (await menu.locator('option', { hasText: 'E4' }).getAttribute('value'))!;
+  await menu.selectOption(e4);
+  expect(await field('target')).toEqual({ voices: [e4.slice('voice:'.length)] });
+  expect(await hook(page).undoLabel()).toBe('Change melody line');
+  await expect(menu).toHaveValue(e4);
+  await expect.poll(line).not.toBe(before);
+  const onE4 = await line();
+
+  await menu.selectOption('line:high');
+  expect(await field('line')).toBe('high');
+  expect(await field('target')).toBeUndefined();
+  await expect.poll(line).not.toBe(onE4);
+
+  await hook(page).undo();
+  await expect(menu).toHaveValue(e4);
+  await expect.poll(line).toBe(onE4);
+  await hook(page).undo();
+  await expect(menu).toHaveValue('line:low');
+  expect(await field('target')).toBeUndefined();
+  expect(await field('line')).toBeUndefined();
+  await expect.poll(line).toBe(before);
+});

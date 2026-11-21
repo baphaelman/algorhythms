@@ -10,7 +10,7 @@ import { pieceDecisionTime } from '../../../src/core/compiler/glide';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { momentEffectAt } from '../../../src/core/effect';
 import { linesAt, pitchAt } from '../../../src/core/query';
-import { parsePiece } from '../../../src/core/schema';
+import { parsePiece, stripDefaults } from '../../../src/core/schema';
 import { hasFixedNotes, remapMoment } from '../../../src/core/transpose';
 import type {
   CompiledScore,
@@ -180,6 +180,30 @@ describe('tune: targeting', () => {
   it('a voices target plays on the lowest of them', () => {
     const s = compile(make([tune({ target: { voices: ['v3', 'v2'] } })]));
     expect(moves(s, 1).map((g) => g.p1)).toEqual([50, 64, 62]);
+  });
+
+  it("line: 'low' / 'high' picks the lowest / highest line of a 3-line part; absent is 'low'", () => {
+    const start = [48, 55, 60, 64, 72];
+    const three = (fields: Partial<Omit<TuneMoment, 'id' | 'type'>>): Piece => {
+      const p = make([tune({ target: { part: 'Chords' }, ...fields })], start, 6);
+      p.voices.forEach((v, i) => (v.part = i < 3 ? 'Chords' : 'Melody'));
+      return p;
+    };
+    const absent = compile(three({}));
+    expect(moves(absent, 0).map((g) => g.p1)).toEqual([50, 64, 62]);
+    expect(compile(three({ line: 'low' }))).toEqual(absent);
+    const high = compile(three({ line: 'high' }));
+    expect(moves(high, 2).map((g) => g.p1)).toEqual([50, 64, 62]);
+    for (const v of [0, 1, 3, 4]) expect(moves(high, v)).toEqual([]);
+  });
+
+  it("line: 'high' on a voices target plays on the highest of them", () => {
+    const s = compile(make([tune({ target: { voices: ['v1', 'v2'] }, line: 'high' })]));
+    expect(moves(s, 1).map((g) => g.p1)).toEqual([50, 64, 62]);
+    expect(moves(s, 0)).toEqual([]);
+    // One voice: high and low are the same line.
+    const one = make([tune({ target: { voices: ['v3'] }, line: 'high' })]);
+    expect(moves(compile(one), 2).map((g) => g.p1)).toEqual([50, 64, 62]);
   });
 
   it('a later moment can move the line; the next note brings it back', () => {
@@ -420,6 +444,10 @@ describe('tune: incremental compile', () => {
       (q) => (q.moments[3].at = 2.5),
       (q) => (q.moments[1] as TuneMoment).notes.push({ pitch: 70, len: 2 }),
       (q) => (q.moments[4].glide = { land: false }),
+      (q) => ((q.moments[1] as TuneMoment).line = 'high'),
+      (q) => ((q.moments[4] as TuneMoment).target = { voices: ['v1', 'v3'] }),
+      (q) => ((q.moments[4] as TuneMoment).line = 'high'),
+      (q) => delete (q.moments[1] as TuneMoment).line,
     ];
     let q = p;
     for (const e of edits) {
@@ -459,6 +487,14 @@ describe('tune: transposition and schema', () => {
       extra: 1,
       notes: [],
     });
+    const high = make([tune({ line: 'high' })]);
+    const rh = parsePiece(JSON.stringify(high));
+    expect(rh.ok && rh.piece.moments[1]).toEqual(high.moments[1]);
+    expect(rh.ok && stripDefaults(rh.piece).moments).toContainEqual(
+      expect.objectContaining({ type: 'tune', line: 'high' }),
+    );
+    const badLine = { id: 't', type: 'tune', at: 1, line: 'middle' };
+    expect(parsePiece(JSON.stringify({ ...p, moments: [badLine] })).ok).toBe(false);
     const bad = parsePiece(
       JSON.stringify({
         ...p,
