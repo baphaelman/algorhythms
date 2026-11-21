@@ -13,6 +13,7 @@
  */
 
 import type { MixSettings } from '../core/types';
+import * as pmath from './pmath';
 
 /** A param value as posted from the main thread. */
 export type ParamValue = number | string | boolean | null;
@@ -117,7 +118,7 @@ export function fxTailSeconds(mix: MixSettings): number {
   const reverb = mix.reverb.returnLevel > 0 ? mix.reverb.decay + mix.reverb.preDelay : 0;
   let delay = 0;
   if (mix.delay.returnLevel > 0 && mix.delay.feedback > 0 && mix.delay.feedback < 1) {
-    const repeats = Math.log(1e-3) / Math.log(mix.delay.feedback);
+    const repeats = pmath.ln(1e-3) / pmath.ln(mix.delay.feedback);
     delay = mix.delay.time * 2 * (repeats + 1);
   } else if (mix.delay.returnLevel > 0) delay = mix.delay.time * 2;
   const tail = Math.max(reverb, delay);

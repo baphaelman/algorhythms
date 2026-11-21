@@ -101,6 +101,11 @@ import {
   WAVETABLE_SIZE,
   WAVETABLE_STRIDE,
 } from './wavetable';
+import * as pmath from './pmath';
+
+/** pmath's registers (allocation-free calls on the audio thread). */
+const PR = pmath.R;
+const { EXP_C, LN2: EXP_LN2, LOG2E, VIEW: BITS } = pmath;
 
 /** Control ticks per block. */
 export const TICKS_PER_BLOCK = BLOCK_FRAMES / CONTROL_PERIOD;
@@ -650,7 +655,7 @@ export function computeStrikeShares(data: VoiceData[]): void {
       for (let u = 0; u < data.length; u++) {
         if (u === v) continue;
         const dt = nearest(times[u], d.arrive[i]);
-        if (dt < COINCIDE_WINDOW) k += 0.5 + 0.5 * Math.cos((Math.PI * dt) / COINCIDE_WINDOW);
+        if (dt < COINCIDE_WINDOW) k += 0.5 + 0.5 * pmath.cosPi(dt / COINCIDE_WINDOW);
       }
       d.share[i] = 1 / Math.sqrt(k);
     }
@@ -726,8 +731,8 @@ export function computeUnisonWarps(data: VoiceData[], referenceHz: number): void
 
 /** Zone C (semitones) at MIDI pitch p: the distance that beats at WARP_HZ against it. */
 function warpZone(p: number, referenceHz: number): number {
-  const hz = referenceHz * Math.pow(2, (p - 69) / 12);
-  const c = 12 * Math.log2(1 + WARP_HZ / hz);
+  const hz = referenceHz * pmath.exp2((p - 69) / 12);
+  const c = 12 * pmath.log2(1 + WARP_HZ / hz);
   return Math.min(WARP_MAX, Math.max(WARP_MIN, c));
 }
 
@@ -748,7 +753,7 @@ export class VoiceContext {
   /** Mute gain change per tick. */
   readonly muteStep: number = 0;
   /** log2(referenceHz / MIP_BASE_HZ). */
-  refOct = Math.log2(440 / MIP_BASE_HZ);
+  refOct = pmath.log2(440 / MIP_BASE_HZ);
   /** `mix.panAuto === 'pitch'`. */
   panByPitch = false;
   /** Some voice is soloed. */
@@ -822,8 +827,8 @@ export class VoiceContext {
     this.sampleRate = sampleRate;
     this.invSampleRate = 1 / sampleRate;
     this.tickSeconds = CONTROL_PERIOD / sampleRate;
-    this.motionCoeff = 1 - Math.exp(-this.tickSeconds / MOTION_SMOOTHING);
-    this.vibratoCoeff = 1 - Math.exp(-this.tickSeconds / VIBRATO_SMOOTHING);
+    this.motionCoeff = 1 - pmath.exp(-this.tickSeconds / MOTION_SMOOTHING);
+    this.vibratoCoeff = 1 - pmath.exp(-this.tickSeconds / VIBRATO_SMOOTHING);
     this.muteStep = this.tickSeconds / MUTE_RAMP;
   }
 }
@@ -1543,22 +1548,36 @@ export class Voice {
               const ta = t - d.strikeT[sj];
               const sh = d.strikeShare[sj];
               const h = sh + (1 - sh) * crisp;
-              if (ta < attack) {
-                const pa = d.strikePrevT[sj];
+              const pa = d.strikePrevT[sj];
+              const tp = d.strikeT[sj] - pa;
+              const v = tp / attack;
+              const rising = ta < attack;
+              // The decay tail e^(−DECAY·(τ − attack)/decay) is read at most once per tick: at
+              // τ = ta after the attack, or during it at the previous strike's age τ = tp.
+              let tail = 0;
+              if (!rising || (pa === pa && v >= 1)) {
+                const y = ((-((rising ? tp : ta) - attack) * ARTICULATION_DECAY) / decay) * LOG2E;
+                if (y >= -1022) {
+                  // e = 2^y: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+                  const eN = Math.floor(y);
+                  const eZ = (y - eN) * EXP_LN2;
+                  let eA = EXP_C[13];
+                  for (let q = 12; q >= 0; q--) eA = eA * eZ + EXP_C[q];
+                  BITS.setUint32(0, (eN + 1023) << 20);
+                  BITS.setUint32(4, 0);
+                  tail = eA * BITS.getFloat64(0);
+                }
+              }
+              if (rising) {
                 let e0 = 0;
                 if (pa === pa) {
                   const ps = d.strikePrevShare[sj];
-                  const tp = d.strikeT[sj] - pa;
-                  const v = tp / attack;
                   e0 =
-                    (ps + (1 - ps) * crisp) *
-                    (v < 1
-                      ? v * v * v * (v * (v * 6 - 15) + 10)
-                      : Math.exp((-(tp - attack) * ARTICULATION_DECAY) / decay));
+                    (ps + (1 - ps) * crisp) * (v < 1 ? v * v * v * (v * (v * 6 - 15) + 10) : tail);
                 }
                 const u = ta / attack;
                 env = e0 + (h - e0) * u * u * u * (u * (u * 6 - 15) + 10);
-              } else env = h * Math.exp((-(ta - attack) * ARTICULATION_DECAY) / decay);
+              } else env = h * tail;
             }
             artic = 1 - amount + amount * env;
           }
@@ -1637,7 +1656,14 @@ export class Voice {
           st[S_MOD] = p * 100 + own;
           const oct = ctx.refOct + (p - 69) / 12 + (own + st[S_CORR]) / 1200;
           if (oct === oct && oct < 40 && oct > -40) {
-            let inc = MIP_BASE_HZ * Math.exp(oct * LN2) * ctx.invSampleRate;
+            // o = 2^oct: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+            const oN = Math.floor(oct);
+            const oZ = (oct - oN) * EXP_LN2;
+            let oA = EXP_C[13];
+            for (let q = 12; q >= 0; q--) oA = oA * oZ + EXP_C[q];
+            BITS.setUint32(0, (oN + 1023) << 20);
+            BITS.setUint32(4, 0);
+            let inc = MIP_BASE_HZ * (oA * BITS.getFloat64(0)) * ctx.invSampleRate;
             if (inc > 0.5) inc = 0.5;
             st[S_OWN_INC] = inc;
             // The group's phase pull, accumulated into θ.
@@ -1665,7 +1691,15 @@ export class Voice {
             // Amplitude (§8.4).
             const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
             const accent = A.accent * xa + B.accent * x;
-            const loud = Math.exp(-(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
+            const ly = -(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE * LOG2E;
+            // l = 2^ly: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+            const lN = Math.floor(ly);
+            const lZ = (ly - lN) * EXP_LN2;
+            let lA = EXP_C[13];
+            for (let q = 12; q >= 0; q--) lA = lA * lZ + EXP_C[q];
+            BITS.setUint32(0, (lN + 1023) << 20);
+            BITS.setUint32(4, 0);
+            const loud = lA * BITS.getFloat64(0);
             const raw =
               VOICE_BASE_GAIN *
               d.gain *
@@ -1982,7 +2016,12 @@ export class Voice {
       ph[i] = phase;
       mb[i] = 0;
     }
-    let oct = f1 > 0 ? Math.log2(f1 / REFERENCE_HZ) : 0;
+    let oct = 0;
+    if (f1 > 0) {
+      PR[0] = f1 / REFERENCE_HZ;
+      pmath.log2R();
+      oct = PR[0];
+    }
     if (oct < FM_TRACK_MIN_OCT) oct = FM_TRACK_MIN_OCT;
     else if (oct > FM_TRACK_MAX_OCT) oct = FM_TRACK_MAX_OCT;
     let noiseLevel = 0;
@@ -2003,7 +2042,9 @@ export class Voice {
       if (e !== null && e.fmIndex > 0) {
         fm = true;
         const ratio = e.fmRatio;
-        let beta = e.fmIndex * Math.exp(-e.fmIndexTrack * oct * LN2);
+        PR[0] = -e.fmIndexTrack * oct;
+        pmath.exp2R();
+        let beta = e.fmIndex * PR[0];
         const room = (FM_ALIAS_LIMIT * nyq) / f1; // multiples of f below the limit
         const top = e.fmTop < room ? e.fmTop : room;
         const cap = ((room - top) / ratio - FM_SIDEBAND_MARGIN) / top;

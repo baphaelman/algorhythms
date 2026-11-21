@@ -3,6 +3,10 @@
  * hashes, so new timbre paths (FM, noise, additive) cannot change existing sounds. Regenerate
  * with UPDATE_RENDER_GOLDEN=1 only for an intended change to existing sounds, and say why in the
  * build log.
+ *
+ * The renders must also be identical on every platform, so they may not touch Math's
+ * transcendental functions, whose last bits differ between V8 builds (arm64 fuses multiply-adds;
+ * docs/build-log.md, "Portable DSP math"): they throw while the goldens render.
  */
 
 import { createHash } from 'node:crypto';
@@ -59,9 +63,50 @@ function renderAll(): Record<string, string> {
   return hashes;
 }
 
+/** Math members whose results are not guaranteed to be correctly rounded. */
+const NON_PORTABLE = [
+  'sin',
+  'cos',
+  'tan',
+  'asin',
+  'acos',
+  'atan',
+  'atan2',
+  'sinh',
+  'cosh',
+  'tanh',
+  'asinh',
+  'acosh',
+  'atanh',
+  'pow',
+  'exp',
+  'expm1',
+  'log',
+  'log2',
+  'log10',
+  'log1p',
+  'cbrt',
+  'hypot',
+] as const;
+
+/** Runs `fn` with the non-portable Math members replaced by throwing stubs. */
+function withoutNativeMath<T>(fn: () => T): T {
+  const M = Math as unknown as Record<string, unknown>;
+  const saved = NON_PORTABLE.map((k) => M[k]);
+  for (const k of NON_PORTABLE)
+    M[k] = () => {
+      throw new Error(`Math.${k} called while rendering: use dsp/pmath.ts`);
+    };
+  try {
+    return fn();
+  } finally {
+    NON_PORTABLE.forEach((k, i) => (M[k] = saved[i]));
+  }
+}
+
 describe('render goldens', () => {
   it('fixtures and example pieces render bit-identically', () => {
-    const hashes = renderAll();
+    const hashes = withoutNativeMath(renderAll);
     if (process.env.UPDATE_RENDER_GOLDEN || !existsSync(GOLDEN)) {
       writeFileSync(GOLDEN, JSON.stringify(hashes, null, 2) + '\n');
     }

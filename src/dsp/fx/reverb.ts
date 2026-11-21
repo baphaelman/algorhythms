@@ -8,6 +8,7 @@
  */
 
 import { BLOCK_FRAMES } from '../constants';
+import * as pmath from '../pmath';
 
 const LINES = 8;
 /** Line lengths at size = 1/1.1 (scale 1), in seconds; spread and mutually incommensurate. */
@@ -115,7 +116,9 @@ export class Reverb {
   private updateGains(): void {
     for (let k = 0; k < LINES; k++) {
       // RT60: amplitude falls by 1000 after `decay` seconds.
-      this.gain[k] = Math.exp((-LN1000 * this.lenCur[k]) / (this.sampleRate * this.decay));
+      pmath.R[0] = (-LN1000 * this.lenCur[k]) / (this.sampleRate * this.decay);
+      pmath.expR();
+      this.gain[k] = pmath.R[0];
     }
   }
 

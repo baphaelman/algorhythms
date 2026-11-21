@@ -89,7 +89,9 @@ describe('M6 params and presets', () => {
   it('additive partials sit at n^(1+stretch) and are normalised to unit-sine RMS at C4', () => {
     const t: Timbre = { ...PLAIN, harmonics: [1, 0, 0.5, 0.25], stretch: 0.2 };
     const set = buildWavetables(t, RATE);
-    expect(Array.from(set.partialRatio)).toEqual([1, Math.pow(3, 1.2), Math.pow(4, 1.2)]);
+    const want = [1, Math.pow(3, 1.2), Math.pow(4, 1.2)];
+    expect(set.partialRatio.length).toBe(3);
+    set.partialRatio.forEach((r, i) => expect(Math.abs(r / want[i]! - 1)).toBeLessThan(1e-13));
     const P = set.partialRatio.length;
     // Mip 4 starts at 320 Hz; tilt and track are 0, so every row equals the reference.
     let power = 0;

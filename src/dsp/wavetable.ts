@@ -27,6 +27,7 @@
 
 import type { Timbre } from '../core/types';
 import { BLOOM_ATTACK, CRISP_AMOUNT, MIN_ARTICULATION_ATTACK } from './constants';
+import * as pmath from './pmath';
 
 /** Points in one table cycle (a guard point follows, so reads never wrap). */
 export const WAVETABLE_SIZE = 2048;
@@ -193,7 +194,7 @@ function extParams(
     fmRatio: fmOn ? ratio : 0,
     fmIndex: fmOn ? index : 0,
     fmIndexTrack: fmOn ? Math.min(4, Math.max(-4, finiteOr(t.fm?.indexTrack ?? 0, 0))) : 0,
-    fmTop: stretch !== 0 && top > 0 ? Math.pow(top, 1 + stretch) : top,
+    fmTop: stretch !== 0 && top > 0 ? pmath.pow(top, 1 + stretch) : top,
     noiseLevel: level,
     noiseBandwidth:
       level > 0 ? Math.min(8, Math.max(0.01, finiteOr(t.noise?.bandwidth ?? 1, 1))) : 1,
@@ -252,7 +253,7 @@ function mipAmplitudes(
   for (let k = 0; k < count; k++) {
     const a = finiteOr(t.harmonics[k], 0);
     if (a === 0) continue;
-    out[k] = a * Math.pow(k + 1, exponent);
+    out[k] = a * pmath.pow(k + 1, exponent);
     if (formants.length > 0) out[k] *= formantGain(formants, (k + 1) * f0);
   }
 }
@@ -280,10 +281,10 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
   const cycle = new Float64Array(WAVETABLE_SIZE);
   for (let m = 0; m < mipCount; m++) {
     // For one mip per octave these are exactly 20·2^m and 2·fBottom, as before formants existed.
-    const fBottom = MIP_BASE_HZ * Math.pow(2, m / mipsPerOctave);
-    const fTop = fBottom * Math.pow(2, 1 / mipsPerOctave);
+    const fBottom = MIP_BASE_HZ * pmath.exp2(m / mipsPerOctave);
+    const fTop = fBottom * pmath.exp2(1 / mipsPerOctave);
     const maxPartial = Math.floor(nyquist / fTop);
-    const octaves = Math.min(3, Math.max(-2, Math.log2(fBottom / REFERENCE_HZ)));
+    const octaves = Math.min(3, Math.max(-2, pmath.log2(fBottom / REFERENCE_HZ)));
     const tilt = baseTilt - track * TRACK_DB_PER_OCTAVE * octaves;
     mipAmplitudes(timbre, tilt, maxPartial, formants, fBottom, amps);
 
@@ -301,7 +302,7 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
         const n = k + 1;
         const phase = partialPhase(n);
         const step = (2 * Math.PI * n) / WAVETABLE_SIZE;
-        for (let i = 0; i < WAVETABLE_SIZE; i++) cycle[i] += a * Math.sin(step * i + phase);
+        for (let i = 0; i < WAVETABLE_SIZE; i++) cycle[i] += a * pmath.sin(step * i + phase);
       }
       for (let i = 0; i < WAVETABLE_SIZE; i++) data[offset + i] = cycle[i];
       data[offset + WAVETABLE_SIZE] = cycle[0];
@@ -337,14 +338,14 @@ function buildPartials(
   }
   const P = idx.length;
   const partialRatio = new Float64Array(P);
-  for (let i = 0; i < P; i++) partialRatio[i] = Math.pow(idx[i] + 1, 1 + stretch);
+  for (let i = 0; i < P; i++) partialRatio[i] = pmath.pow(idx[i] + 1, 1 + stretch);
   const baseTilt = finiteOr(t.brightness.tilt, 0);
   const track = finiteOr(t.brightness.track, 0);
   const amps = (tilt: number, f0: number, out: Float64Array, offset: number): void => {
     const exponent = tilt * DB_PER_OCTAVE_TO_EXPONENT;
     for (let i = 0; i < P; i++) {
       const r = partialRatio[i];
-      let a = finiteOr(t.harmonics[idx[i]], 0) * Math.pow(r, exponent);
+      let a = finiteOr(t.harmonics[idx[i]], 0) * pmath.pow(r, exponent);
       if (formants.length > 0) a *= formantGain(formants, r * f0);
       out[offset + i] = a;
     }
@@ -357,8 +358,8 @@ function buildPartials(
   const mipCount = mipCountFor(mipsPerOctave);
   const partialAmp = new Float64Array(mipCount * P);
   for (let m = 0; m < mipCount; m++) {
-    const fBottom = MIP_BASE_HZ * Math.pow(2, m / mipsPerOctave);
-    const octaves = Math.min(3, Math.max(-2, Math.log2(fBottom / REFERENCE_HZ)));
+    const fBottom = MIP_BASE_HZ * pmath.exp2(m / mipsPerOctave);
+    const octaves = Math.min(3, Math.max(-2, pmath.log2(fBottom / REFERENCE_HZ)));
     amps(baseTilt - track * TRACK_DB_PER_OCTAVE * octaves, fBottom, partialAmp, m * P);
     for (let i = 0; i < P; i++) partialAmp[m * P + i] *= scale;
   }
