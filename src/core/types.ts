@@ -545,11 +545,23 @@ export type MomentOf<T extends MomentType> = Extract<Moment, { type: T }>;
 export interface Timbre {
   /** Amplitudes of partials 1..32 (index 0 = fundamental); used to build the wavetables. */
   harmonics: number[];
-  /** Inharmonicity: partial n sits at n^(1 + stretch). Nonzero uses the additive path (M6). */
+  /**
+   * Inharmonicity, −0.5..1: partial n sits at n^(1 + stretch). Nonzero uses the additive path
+   * (M6): the first 16 partials, each from its own sine.
+   */
   stretch: number;
-  /** Two-operator phase modulation (M6). Ratio is modulator/carrier frequency. */
+  /**
+   * Two-operator phase modulation (M6): the carrier is read at φ + β/2π·sin(2π·φm), φm running at
+   * `ratio` × f (0 < ratio ≤ 32, any real). `index` is β at middle C in radians (0..20); it
+   * scales by 2^(−indexTrack) per octave above middle C, and the engine lowers it further where
+   * sidebands would pass Nyquist. Harmonic (or partial) n of the carrier sees n·β.
+   */
   fm?: { ratio: number; index: number; indexTrack: number };
-  /** Breath noise through a band-pass tracking f (M6). */
+  /**
+   * Breath noise (M6): white noise through a band-pass centred on f, of −3 dB width
+   * `bandwidth`·f (0 < bandwidth ≤ 8), at `level` (0..4) times the tone's RMS, under the voice's
+   * envelope.
+   */
   noise?: { level: number; bandwidth: number };
   /** Spectral tilt in dB/octave, and how strongly the tilt follows pitch. */
   brightness: { tilt: number; track: number };

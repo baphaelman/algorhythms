@@ -45,5 +45,7 @@ export function cloneTables(set: WavetableSet): WavetableSet {
     data: set.data.slice(),
     sameAsNext: set.sameAsNext.slice(),
     params: { ...set.params },
+    partialRatio: set.partialRatio.slice(),
+    partialAmp: set.partialAmp.slice(),
   };
 }

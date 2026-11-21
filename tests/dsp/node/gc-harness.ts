@@ -5,9 +5,10 @@
  * on 'gc' entries double-checks the count, and the young generation's byte count catches
  * allocation too small to set off a GC. Prints a JSON summary as its last line.
  *
- * argv[2]: 'plain' (default: the allocation-free eases), 'all' (adds expo and bézier) or 'lock'
- * (unisons, pair merges, births into held unisons and a seek every 5 s: the unison lock's paths).
- * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock]
+ * argv[2]: 'plain' (default: the allocation-free eases), 'all' (adds expo and bézier), 'lock'
+ * (unisons, pair merges, births into held unisons and a seek every 5 s: the unison lock's paths)
+ * or 'm6' (plain eases on the M6 timbres: bell, FM on a wavetable, breath noise).
+ * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6]
  */
 
 import { PerformanceObserver } from 'node:perf_hooks';
@@ -18,6 +19,7 @@ import {
   denseScore,
   FIXTURE_MIX,
   lockStressScore,
+  M6_WORKLOAD_TIMBRES,
   PLAIN_EASES,
   withPulses,
 } from '../../../src/audio/fixtures/scores';
@@ -25,14 +27,25 @@ import { BLOCK_FRAMES } from '../../../src/dsp/constants';
 
 const RATE = 48000;
 const arg = process.argv[2];
-const mode = arg === 'all' || arg === 'lock' ? arg : 'plain';
+const mode = arg === 'all' || arg === 'lock' || arg === 'm6' ? arg : 'plain';
 // Every other voice pulses (R9-3b): onsets, strikes and decays on the audio thread.
 const score = withPulses(
   mode === 'lock'
     ? lockStressScore(12, 80, 17)
-    : denseScore(24, 80, 5, mode === 'all' ? ALL_EASES : PLAIN_EASES),
+    : denseScore(
+        24,
+        80,
+        5,
+        mode === 'all' ? ALL_EASES : PLAIN_EASES,
+        mode === 'm6' ? ['bell', 'fmreed', 'breath'] : undefined,
+      ),
 );
-const graph = createLoadedGraph({ score, mix: FIXTURE_MIX, sampleRate: RATE });
+const graph = createLoadedGraph({
+  score,
+  mix: FIXTURE_MIX,
+  timbres: mode === 'm6' ? M6_WORKLOAD_TIMBRES : undefined,
+  sampleRate: RATE,
+});
 const left = new Float32Array(BLOCK_FRAMES);
 const right = new Float32Array(BLOCK_FRAMES);
 graph.play(0);

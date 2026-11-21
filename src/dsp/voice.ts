@@ -92,8 +92,15 @@ import {
 } from './constants';
 import { hash2, Prng, unit } from './rng';
 import { SINE, SINE_TABLE_SIZE, cos2pi, sin2pi } from './sine';
-import type { TimbreSlot } from './timbre-slot';
-import { MIP_BASE_HZ, MIP_COUNT, WAVETABLE_SIZE, WAVETABLE_STRIDE } from './wavetable';
+import type { TimbreExt, TimbreSlot } from './timbre-slot';
+import {
+  MAX_PARTIALS,
+  MIP_BASE_HZ,
+  MIP_COUNT,
+  REFERENCE_HZ,
+  WAVETABLE_SIZE,
+  WAVETABLE_STRIDE,
+} from './wavetable';
 
 /** Control ticks per block. */
 export const TICKS_PER_BLOCK = BLOCK_FRAMES / CONTROL_PERIOD;
@@ -124,6 +131,44 @@ const SALT_LFO = 0x1f0c;
 const SALT_DRIFT = 0xd71f;
 const SALT_VJ_RATE = 0x7a7e;
 const SALT_VJ_DEPTH = 0xde97;
+const SALT_NOISE = 0x4e01;
+
+/**
+ * M6 synthesis (`synthExt`). FM sidebands of the top partial H·f must stay below FM_ALIAS_LIMIT ·
+ * Nyquist: the index is capped so that H·f + (H·β + FM_SIDEBAND_MARGIN)·r·f fits (Carson's rule
+ * with a margin of three sidebands; tests/dsp/m6.test.ts measures what folds over).
+ */
+const FM_ALIAS_LIMIT = 0.9;
+const FM_SIDEBAND_MARGIN = 3;
+/** β tracking reads the octave above middle C clamped to this range. */
+const FM_TRACK_MIN_OCT = -2;
+const FM_TRACK_MAX_OCT = 4;
+/** Additive partials fade out between these fractions of Nyquist and are skipped above. */
+const PARTIAL_FADE_START = 0.85;
+const PARTIAL_FADE_END = 0.95;
+/** Noise band-pass centre limits (Hz, and fraction of the sample rate) and smallest α. */
+const NOISE_MIN_HZ = 20;
+const NOISE_MAX_FRACTION = 0.45;
+const NOISE_MIN_ALPHA = 1e-4;
+/** 1 / 2π: β is in radians, table phases in cycles. */
+const INV_TWO_PI = 1 / (2 * Math.PI);
+/** 2^−31: an int32 to [−1, 1). */
+const INT32_TO_UNIT = 4.656612873077393e-10;
+
+/** Extension state (`Voice.xs`): the tick stamp, the noise filter, then per role. */
+const X_STAMP = 0;
+const X_NZ1 = 1;
+const X_NZ2 = 2;
+const X_NGAIN = 3;
+const X_NBW = 4;
+const X_ROLE = 5;
+/** Per role: modulator phase, β at the last tick, partial phases, partial amplitudes. */
+const XR_FMPH = 0;
+const XR_BETA = 1;
+const XR_PART = 2;
+const XR_AMP = XR_PART + MAX_PARTIALS;
+const XR_STRIDE = XR_AMP + MAX_PARTIALS;
+const XS_SIZE = X_ROLE + 4 * XR_STRIDE;
 
 /**
  * Drift and vibrato jitter read smooth value noise: Catmull-Rom interpolation through DRIFT_KNOTS
@@ -723,6 +768,8 @@ export class VoiceContext {
   /** Scratch for the multi-table path. */
   readonly phaseBuf = new Float64Array(CONTROL_PERIOD);
   readonly mixBuf = new Float64Array(CONTROL_PERIOD);
+  /** Scratch for FM: the modulator's phase offset per frame, in cycles. */
+  readonly modBuf = new Float64Array(CONTROL_PERIOD);
 
   /**
    * 1: the unison lock is on (always, in the app). 0 turns it off for every voice: only the tests'
@@ -901,6 +948,16 @@ export class Voice {
   private readonly roleMpo = new Int32Array([1, 1, 1, 1]);
   private readonly roleMip = new Int32Array(4);
   private readonly roleW = new Float64Array(4);
+  /**
+   * M6 synthesis per role: the table each role was last bound for, its TimbreExt (null = plain
+   * wavetable) and whether its phases are initialised. `xs` holds the doubles (X_*, XR_*); the
+   * noise PRNG state is an int32.
+   */
+  private readonly roleSeen: (Float32Array | null)[] = [null, null, null, null];
+  private readonly roleExt: (TimbreExt | null)[] = [null, null, null, null];
+  private readonly roleInit = new Uint8Array(4);
+  private readonly xs = new Float64Array(XS_SIZE);
+  private readonly noiseSeed = new Int32Array(1);
   /** Seeded drift knots (set in setIdentity) and the PRNG that fills them (reused, no allocation). */
   private readonly knots = new Float64Array(DRIFT_KNOTS);
   private readonly prng = new Prng(0);
@@ -945,6 +1002,7 @@ export class Voice {
     prng.state = hash2(hash, (seed ^ SALT_DRIFT) >>> 0);
     const knots = this.knots;
     for (let i = 0; i < DRIFT_KNOTS; i++) knots[i] = 2 * prng.next() - 1;
+    this.noiseSeed[0] = hash2(hash, (seed ^ SALT_NOISE) >>> 0) | 0 || 1;
     st[S_PAN_INDEX] =
       (index % 2 === 1 ? 1 : -1) * (0.12 + (0.5 * index) / Math.max(1, poolSize - 1));
   }
@@ -1156,6 +1214,13 @@ export class Voice {
     }
     this.roleG0.set(v.roleG0);
     this.roleG1.set(v.roleG1);
+    for (let r = 0; r < 4; r++) {
+      this.roleSeen[r] = v.roleSeen[r];
+      this.roleExt[r] = v.roleExt[r];
+    }
+    this.roleInit.set(v.roleInit);
+    this.xs.set(v.xs);
+    this.noiseSeed[0] = v.noiseSeed[0];
     this.xfMode = v.xfMode;
     this.xfPos = v.xfPos;
     this.xfLen = v.xfLen;
@@ -1719,6 +1784,18 @@ export class Voice {
       this.advance();
       return;
     }
+    // M6 timbres (FM, noise, additive) take their own path; plain ones stay on the paths below.
+    let ext = false;
+    for (let r = 0; r < 4; r++) {
+      if (G0[r] > 0 || G1[r] > 0) {
+        if (this.roleTab[r] !== this.roleSeen[r]) this.bindRole(ctx, r);
+        if (this.roleExt[r] !== null) ext = true;
+      }
+    }
+    if (ext) {
+      this.synthExt(ctx, off);
+      return;
+    }
 
     let inc = st[S_PREV_INC];
     const dInc = (st[S_CUR_INC] - inc) * invK;
@@ -1835,6 +1912,284 @@ export class Voice {
         revIn[o] += y * sR;
         dlyIn[o] += y * sD;
       }
+    }
+    st[S_PHASE] = phase;
+  }
+
+  /** Finds the TimbreExt of role r's table (a slot's current or fading-out tables). */
+  private bindRole(ctx: VoiceContext, r: number): void {
+    const tab = this.roleTab[r];
+    let ext: TimbreExt | null = null;
+    const slots = ctx.slots;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (slot.data === tab) {
+        ext = slot.ext;
+        break;
+      }
+      if (slot.prevData === tab) {
+        ext = slot.prevExt;
+        break;
+      }
+    }
+    this.roleSeen[r] = tab;
+    this.roleExt[r] = ext;
+    this.roleInit[r] = 0;
+  }
+
+  /**
+   * One control period with M6 synthesis (PLAN.md §8.4, §8.5), mixing every active role:
+   * - FM: the carrier (table or partials) is read at φ + β/2π · sin(2π·φm), where φm is the role's
+   *   own modulator phase advancing by r·f/fs, so non-integer ratios never jump. β follows pitch
+   *   (indexTrack) and is capped so sidebands stay below Nyquist (FM_ALIAS_LIMIT).
+   * - Additive (stretch ≠ 0): partial i at ratio R_i, each with its own phase, read from the sine
+   *   table; partials near Nyquist fade out and are skipped above it. Under FM partial i sees
+   *   R_i·β, as harmonic n of a table carrier sees n·β.
+   * - Noise: white noise through a band-pass at f (relative width `bandwidth`), scaled to `level`
+   *   times the tone's RMS, under the voice's amplitude envelope.
+   * After a gap (the voice was silent or not synthesised) the per-role state restarts from the
+   * carrier phase, so a fresh voice's partials and modulator follow its (group) phase.
+   */
+  private synthExt(ctx: VoiceContext, off: number): void {
+    // Imported bindings read per sample are held in locals (bundlers and test runners may turn a
+    // module import into a property read).
+    const sine = SINE;
+    const TS = SINE_TABLE_SIZE;
+    const K = CONTROL_PERIOD;
+    const invK = 1 / K;
+    const st = this.st;
+    const xs = this.xs;
+    const G0 = this.roleG0;
+    const G1 = this.roleG1;
+    const now = ctx.renderFrame0 + off;
+    const snap = xs[X_STAMP] !== now - K;
+    xs[X_STAMP] = now;
+    const inc0 = st[S_PREV_INC];
+    const dInc = (st[S_CUR_INC] - inc0) * invK;
+    const nyq = 0.5 * ctx.sampleRate;
+    const f1 = st[S_CUR_INC] * ctx.sampleRate;
+    const ph = ctx.phaseBuf;
+    const mb = ctx.mixBuf;
+    const mod = ctx.modBuf;
+    const N = WAVETABLE_SIZE;
+    const phase0 = st[S_PHASE];
+    let phase = phase0;
+    let inc = inc0;
+    for (let i = 0; i < K; i++) {
+      phase += inc;
+      if (phase >= 1) phase -= 1;
+      inc += dInc;
+      ph[i] = phase;
+      mb[i] = 0;
+    }
+    let oct = f1 > 0 ? Math.log2(f1 / REFERENCE_HZ) : 0;
+    if (oct < FM_TRACK_MIN_OCT) oct = FM_TRACK_MIN_OCT;
+    else if (oct > FM_TRACK_MAX_OCT) oct = FM_TRACK_MAX_OCT;
+    let noiseLevel = 0;
+    let noiseBw = 0;
+
+    for (let r = 0; r < 4; r++) {
+      const g0 = G0[r];
+      const g1 = G1[r];
+      if (g0 === 0 && g1 === 0) continue;
+      const e = this.roleExt[r];
+      const xo = X_ROLE + r * XR_STRIDE;
+      const init = snap || this.roleInit[r] === 0;
+      this.roleInit[r] = 1;
+      const dg = (g1 - g0) * invK;
+
+      // FM: the modulator's phase offset per frame (cycles) into `mod`.
+      let fm = false;
+      if (e !== null && e.fmIndex > 0) {
+        fm = true;
+        const ratio = e.fmRatio;
+        let beta = e.fmIndex * Math.exp(-e.fmIndexTrack * oct * LN2);
+        const room = (FM_ALIAS_LIMIT * nyq) / f1; // multiples of f below the limit
+        const top = e.fmTop < room ? e.fmTop : room;
+        const cap = ((room - top) / ratio - FM_SIDEBAND_MARGIN) / top;
+        if (!(beta <= cap)) beta = cap > 0 ? cap : 0;
+        let b = init ? beta : xs[xo + XR_BETA];
+        xs[xo + XR_BETA] = beta;
+        const db = (beta - b) * invK;
+        let pm = ratio * phase0;
+        if (init) pm -= Math.floor(pm);
+        else pm = xs[xo + XR_FMPH];
+        let mi = inc0 * ratio;
+        const dmi = dInc * ratio;
+        for (let i = 0; i < K; i++) {
+          pm += mi;
+          if (pm >= 1) pm -= Math.floor(pm);
+          mi += dmi;
+          b += db;
+          const pos = pm * TS;
+          const i0 = pos | 0;
+          const a = sine[i0];
+          mod[i] = b * INV_TWO_PI * (a + (sine[i0 + 1] - a) * (pos - i0));
+        }
+        xs[xo + XR_FMPH] = pm;
+      }
+
+      if (e !== null && e.nPartial > 0) {
+        // Additive partials, each from its own phase.
+        const P = e.nPartial;
+        const R = e.partialRatio;
+        const A = e.partialAmp;
+        const rowLo = this.roleMip[r] * P;
+        const rowHi = rowLo + P;
+        const w = this.roleW[r];
+        for (let q = 0; q < P; q++) {
+          const ratio = R[q];
+          let fade =
+            (PARTIAL_FADE_END * nyq - f1 * ratio) / ((PARTIAL_FADE_END - PARTIAL_FADE_START) * nyq);
+          if (fade > 1) fade = 1;
+          else if (!(fade > 0)) fade = 0;
+          const aLo = A[rowLo + q];
+          const a1 = (aLo + (A[rowHi + q] - aLo) * w) * fade;
+          const a0 = init ? a1 : xs[xo + XR_AMP + q];
+          xs[xo + XR_AMP + q] = a1;
+          let ps = xs[xo + XR_PART + q];
+          if (init) {
+            ps = ratio * phase0 + q * (q + 1) * (1 / (4 * MAX_PARTIALS));
+            ps -= Math.floor(ps);
+          }
+          if (a0 === 0 && a1 === 0) {
+            xs[xo + XR_PART + q] = ps;
+            continue;
+          }
+          let pinc = inc0 * ratio;
+          const dpinc = dInc * ratio;
+          let a = a0;
+          const da = (a1 - a0) * invK;
+          let g = g0;
+          if (fm) {
+            for (let i = 0; i < K; i++) {
+              ps += pinc;
+              if (ps >= 1) ps -= Math.floor(ps);
+              pinc += dpinc;
+              let u = ps + ratio * mod[i];
+              u -= Math.floor(u);
+              const pos = u * TS;
+              const i0 = pos | 0;
+              const s0 = sine[i0];
+              mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
+              a += da;
+              g += dg;
+            }
+          } else {
+            for (let i = 0; i < K; i++) {
+              ps += pinc;
+              if (ps >= 1) ps -= Math.floor(ps);
+              pinc += dpinc;
+              const pos = ps * TS;
+              const i0 = pos | 0;
+              const s0 = sine[i0];
+              mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
+              a += da;
+              g += dg;
+            }
+          }
+          xs[xo + XR_PART + q] = ps;
+        }
+      } else {
+        // Wavetable carrier, read at the (modulated) carrier phase.
+        const tab = this.roleTab[r] as Float32Array;
+        const lo = this.roleMip[r] * WAVETABLE_STRIDE;
+        const hi = lo + WAVETABLE_STRIDE;
+        const w = this.roleW[r];
+        let g = g0;
+        for (let i = 0; i < K; i++) {
+          let u = ph[i];
+          if (fm) {
+            u += mod[i];
+            u -= Math.floor(u);
+          }
+          const pos = u * N;
+          const ix = pos | 0;
+          const fr = pos - ix;
+          const j0 = lo + ix;
+          const a0 = tab[j0];
+          const s0 = a0 + (tab[j0 + 1] - a0) * fr;
+          const j1 = hi + ix;
+          const a1 = tab[j1];
+          const s1 = a1 + (tab[j1 + 1] - a1) * fr;
+          mb[i] += (s0 + (s1 - s0) * w) * g;
+          g += dg;
+        }
+      }
+      if (e !== null && e.noiseLevel > 0) {
+        noiseLevel += g1 * e.noiseLevel;
+        noiseBw += g1 * e.noiseLevel * e.noiseBandwidth;
+      }
+    }
+
+    // Breath noise: one band-pass per voice, at the level-weighted mix of the roles' settings.
+    if (noiseLevel > 0 || (!snap && xs[X_NGAIN] > 0)) {
+      const bw = noiseLevel > 0 ? noiseBw / noiseLevel : xs[X_NBW];
+      xs[X_NBW] = bw;
+      let fc = f1;
+      if (fc > NOISE_MAX_FRACTION * ctx.sampleRate) fc = NOISE_MAX_FRACTION * ctx.sampleRate;
+      else if (!(fc > NOISE_MIN_HZ)) fc = NOISE_MIN_HZ;
+      // RBJ band-pass with 0 dB peak, ω = 2π·fc/fs, α = sin ω · bw / 2 (Q = 1/bw). Its white-noise
+      // power gain is α/(1 + α), so the gain below gives RMS level · √½ from uniform noise.
+      const spos = fc * ctx.invSampleRate * TS;
+      const si0 = spos | 0;
+      const sa = sine[si0];
+      const sinw = sa + (sine[si0 + 1] - sa) * (spos - si0);
+      const cpos = spos + TS / 4;
+      const ci0 = cpos | 0;
+      const ca = sine[ci0];
+      const cosw = ca + (sine[ci0 + 1] - ca) * (cpos - ci0);
+      let alpha = sinw * bw * 0.5;
+      if (alpha < NOISE_MIN_ALPHA) alpha = NOISE_MIN_ALPHA;
+      const n0 = 1 / (1 + alpha);
+      const b0 = alpha * n0;
+      const a1 = -2 * cosw * n0;
+      const a2 = (1 - alpha) * n0;
+      const gain1 = noiseLevel * Math.sqrt((1.5 * (1 + alpha)) / alpha);
+      let gain = snap ? gain1 : xs[X_NGAIN];
+      xs[X_NGAIN] = gain1;
+      const dgain = (gain1 - gain) * invK;
+      let z1 = snap ? 0 : xs[X_NZ1];
+      let z2 = snap ? 0 : xs[X_NZ2];
+      let seed = this.noiseSeed[0];
+      for (let i = 0; i < K; i++) {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        const x = seed * INT32_TO_UNIT;
+        const y = b0 * x + z1;
+        z1 = z2 - a1 * y;
+        z2 = -b0 * x - a2 * y;
+        mb[i] += y * gain;
+        gain += dgain;
+      }
+      this.noiseSeed[0] = seed;
+      xs[X_NZ1] = z1;
+      xs[X_NZ2] = z2;
+    } else xs[X_NGAIN] = 0;
+
+    let gL = st[S_PREV_GL];
+    const dgL = (st[S_CUR_GL] - gL) * invK;
+    let gR = st[S_PREV_GR];
+    const dgR = (st[S_CUR_GR] - gR) * invK;
+    const sR = st[S_SEND_REV];
+    const sD = st[S_SEND_DLY];
+    const dryL = ctx.dryL;
+    const dryR = ctx.dryR;
+    const revIn = ctx.revIn;
+    const dlyIn = ctx.dlyIn;
+    let amp = st[S_PREV_AMP];
+    const dAmp = (st[S_CUR_AMP] - amp) * invK;
+    for (let i = 0; i < K; i++) {
+      const y = mb[i] * amp;
+      amp += dAmp;
+      const o = off + i;
+      dryL[o] += y * gL;
+      dryR[o] += y * gR;
+      gL += dgL;
+      gR += dgR;
+      revIn[o] += y * sR;
+      dlyIn[o] += y * sD;
     }
     st[S_PHASE] = phase;
   }

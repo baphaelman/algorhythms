@@ -3,8 +3,8 @@
  * or a key of `Piece.timbres`, which adds to or overrides them.
  *
  * Harmonic amplitudes are relative (the wavetable builder normalises each table's peak), index 0
- * is the fundamental, and missing partials are 0. `stretch`, `fm` and `noise` are M6 features and
- * are left at their neutral values here.
+ * is the fundamental, and missing partials are 0. `stretch`, `fm` and `noise` are M6 features;
+ * of the presets only `bell` uses them.
  */
 
 import type { Timbre } from './types';
@@ -40,10 +40,13 @@ const PLUCK_HARMONICS = [
   1, 0.48, 0.3, 0.2, 0.06, 0.13, 0.12, 0.09, 0.07, 0.025, 0.05, 0.045, 0.035, 0.03, 0.01, 0.02,
 ];
 
+/** Bell: seven partials falling off gently; stretched, they sit at n^1.12 (2.17, 3.42, ...). */
+const BELL_HARMONICS = [1, 0.6, 0.45, 0.3, 0.2, 0.12, 0.08];
+
 /** Wobble: a soft glass-like tone with a strong fundamental and faint odd partials. */
 const WOBBLE_HARMONICS = [1, 0.05, 0.16, 0.02, 0.06, 0, 0.025];
 
-/** The six M2 presets plus `wobble`, by name. */
+/** The six M2 presets, `wobble` (M3) and `bell` (M6), by name. */
 export const BUILTIN_TIMBRES: Record<string, Timbre> = {
   /** Pure sine. Voices meeting mid-glide lock into one steady tone. */
   sine: {
@@ -125,5 +128,20 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
     drift: { cents: 1, rate: 0.1 },
     wobble: 3,
+  },
+  /**
+   * Bell (M6): stretched partials (additive path), phase-modulated at a non-integer ratio for the
+   * clang, a crisp strike that rings for seconds, and a breath of mallet noise.
+   */
+  bell: {
+    harmonics: BELL_HARMONICS,
+    stretch: 0.12,
+    fm: { ratio: 1.41, index: 0.35, indexTrack: 0.5 },
+    noise: { level: 0.04, bandwidth: 2 },
+    brightness: { tilt: -1.5, track: 0.4 },
+    detuneSpread: 1,
+    accent: 0.1,
+    articulation: { amount: 0.75, attack: 0.002, decay: 3, crisp: true },
+    vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
   },
 };
