@@ -68,6 +68,7 @@ import type { EaseCode } from '../core/ease';
 import type { FlatVoice } from '../core/flat';
 import {
   BLOCK_FRAMES,
+  COINCIDE_WINDOW,
   CONTROL_PERIOD,
   DSP_MAX_VOICES,
   MIN_LIFE_FADE,
@@ -184,6 +185,12 @@ export class VoiceData {
   arrive: Float64Array = EMPTY_F64;
   /** The arrival before that (NaN if none), to start the attack from the decaying envelope. */
   prevArrive: Float64Array = EMPTY_F64;
+  /**
+   * Share of a soft strike at `arrive` and at `prevArrive` (1/√k for k coincident arrivals; see
+   * `computeStrikeShares`). 1 until computed.
+   */
+  share: Float64Array = EMPTY_F64;
+  prevShare: Float64Array = EMPTY_F64;
   /** Start of the hold containing segment i (NaN during glides), for vibrato onset. */
   holdStart: Float64Array = EMPTY_F64;
   /**
@@ -263,6 +270,8 @@ export class VoiceData {
     d.segGlide = new Uint8Array(n);
     d.arrive = new Float64Array(n);
     d.prevArrive = new Float64Array(n);
+    d.share = new Float64Array(n).fill(1);
+    d.prevShare = new Float64Array(n).fill(1);
     d.holdStart = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const o = i * SEG_STRIDE;
@@ -422,6 +431,52 @@ export function warpOffset(p: number, a: number, c: number): number {
   let u = (r - r0) / (c - r0);
   if (u < 0) u = 0;
   return x * (u * u * (3 - 2 * u) - 1);
+}
+
+/**
+ * Arrival bloom: strikes that land together share one bloom (COINCIDE_WINDOW). For every arrival
+ * of every voice, k = 1 + Σ over the other voices of w(Δt), w a raised cosine from 1 at Δt = 0 to
+ * 0 at the window (each voice's nearest arrival), and the arrival's share is 1/√k: k coherent
+ * strikes then add up like √k incoherent ones. Crisp timbres ignore it (Voice.render). Called
+ * from a message handler (allocates).
+ */
+export function computeStrikeShares(data: VoiceData[]): void {
+  const times: Float64Array[] = data.map((d) => {
+    const out: number[] = [];
+    for (let i = 0; i < d.nSeg; i++) {
+      if (d.prevArrive[i] === d.prevArrive[i] && (i === 0 || d.arrive[i] !== d.arrive[i - 1])) {
+        out.push(d.arrive[i]);
+      }
+    }
+    return Float64Array.from(out);
+  });
+  const nearest = (ts: Float64Array, t: number): number => {
+    let best = Infinity;
+    for (let j = 0; j < ts.length; j++) best = Math.min(best, Math.abs(ts[j] - t));
+    return best;
+  };
+  for (let v = 0; v < data.length; v++) {
+    const d = data[v];
+    for (let i = 0; i < d.nSeg; i++) {
+      if (i > 0 && d.arrive[i] === d.arrive[i - 1]) {
+        d.share[i] = d.share[i - 1];
+        d.prevShare[i] = d.prevShare[i - 1];
+        continue;
+      }
+      d.prevShare[i] = i > 0 ? d.share[i - 1] : 1;
+      if (!(d.prevArrive[i] === d.prevArrive[i])) {
+        d.share[i] = 1;
+        continue;
+      }
+      let k = 1;
+      for (let u = 0; u < data.length; u++) {
+        if (u === v) continue;
+        const dt = nearest(times[u], d.arrive[i]);
+        if (dt < COINCIDE_WINDOW) k += 0.5 + 0.5 * Math.cos((Math.PI * dt) / COINCIDE_WINDOW);
+      }
+      d.share[i] = 1 / Math.sqrt(k);
+    }
+  }
 }
 
 /** Score pitch of `d` at time t, or NaN when it is not alive then. Allocates nothing; not hot. */
@@ -1243,32 +1298,38 @@ export class Voice {
             vibCents = vibDepthNow * st[S_VIB] * (a + (SINE[i0 + 1] - a) * (pos - i0));
           }
 
-          // Articulation: attack from the decaying envelope, then exponential decay to 1 %. The
-          // attack is a smootherstep of at least MIN_ARTICULATION_ATTACK (timbreParams): a short
-          // or linear one ticks, on every moving voice at once under `arrive: 'together'`
-          // (M4.5-32).
+          // Articulation (build log, "Arrival bloom"): a smootherstep attack from the still-decaying
+          // envelope up to the strike's height h, then exponential decay to 1 %. The attack is at
+          // least MIN_ARTICULATION_ATTACK, and BLOOM_ATTACK·√amount unless crisp (timbreParams). A
+          // soft strike rises to its share of coincident arrivals, a crisp one always to 1. The
+          // held level 1 − amount does not depend on h.
           let artic = 1;
           const amount = A.artAmount * xa + B.artAmount * x;
           if (amount > 0) {
             const attack = A.artAttack * xa + B.artAttack * x;
             const decay = A.artDecay * xa + B.artDecay * x;
+            const crisp = A.artCrisp * xa + B.artCrisp * x;
             const ta = t - d.arrive[si];
             let env = 0;
             if (ta >= 0) {
+              const sh = d.share[si];
+              const h = sh + (1 - sh) * crisp;
               if (ta < attack) {
                 const pa = d.prevArrive[si];
                 let e0 = 0;
                 if (pa === pa) {
+                  const ps = d.prevShare[si];
                   const tp = d.arrive[si] - pa;
                   const v = tp / attack;
                   e0 =
-                    v < 1
+                    (ps + (1 - ps) * crisp) *
+                    (v < 1
                       ? v * v * v * (v * (v * 6 - 15) + 10)
-                      : Math.exp((-(tp - attack) * ARTICULATION_DECAY) / decay);
+                      : Math.exp((-(tp - attack) * ARTICULATION_DECAY) / decay));
                 }
                 const u = ta / attack;
-                env = e0 + (1 - e0) * u * u * u * (u * (u * 6 - 15) + 10);
-              } else env = Math.exp((-(ta - attack) * ARTICULATION_DECAY) / decay);
+                env = e0 + (h - e0) * u * u * u * (u * (u * 6 - 15) + 10);
+              } else env = h * Math.exp((-(ta - attack) * ARTICULATION_DECAY) / decay);
             }
             artic = 1 - amount + amount * env;
           }

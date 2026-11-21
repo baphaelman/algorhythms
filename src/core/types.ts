@@ -538,8 +538,12 @@ export interface Timbre {
   detuneSpread: number;
   /** Amount by which motion raises the level: gain · (1 + accent · motion). */
   accent: number;
-  /** Attack–decay envelope triggered when a glide arrives at a new pitch. */
-  articulation: { amount: number; attack: Seconds; decay: Seconds };
+  /**
+   * Attack–decay envelope triggered when a glide arrives at a new pitch. A soft strike (not
+   * `crisp`) blooms: its attack is at least 50 ms·√amount, and strikes landing together share one
+   * bloom. A crisp strike keeps its attack (≥ 12 ms). Absent `crisp`: amount ≥ 0.5 (pluck).
+   */
+  articulation: { amount: number; attack: Seconds; decay: Seconds; crisp?: boolean };
   /**
    * Vibrato after arrival only: rate in Hz, depth in cents, onset delay in seconds. `jitter`
    * (0..1, default 0) varies rate and depth per voice and slowly over time, so vibrato is not

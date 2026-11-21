@@ -32,6 +32,7 @@ export class TimbreSlot {
   accent = 0;
   artAmount = 0;
   artAttack = 0.01;
+  artCrisp = 0;
   artDecay = 0.2;
   vibRate = 5;
   vibDepthCents = 0;
@@ -56,6 +57,7 @@ export class TimbreSlot {
     this.accent = p.accent;
     this.artAmount = p.artAmount;
     this.artAttack = p.artAttack;
+    this.artCrisp = p.artCrisp;
     this.artDecay = p.artDecay;
     this.vibRate = p.vibRate;
     this.vibDepthCents = p.vibDepthCents;

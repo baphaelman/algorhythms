@@ -3958,6 +3958,10 @@ This is the *input* form: fields with defaults are optional here.
                 "default": 0.2,
                 "type": "number",
                 "minimum": 0
+              },
+              "crisp": {
+                "description": "Keep the attack crisp and unshared (absent: amount ≥ 0.5).",
+                "type": "boolean"
               }
             },
             "additionalProperties": {}

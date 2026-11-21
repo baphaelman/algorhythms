@@ -222,13 +222,16 @@ describe.each(['sine', 'glass'])('click detector, moment ends, %s', (timbre) => 
  * The same piece's per-voice amplitude, read at every block end (2.7 ms). At glide arrivals, pin
  * arrivals, weight ramp ends and split/merge births and deaths it must be continuous in value and
  * slope: the second difference stays under ENVELOPE_CORNER of the voice's peak. Measured on main:
- * at most 6e-4. A 10 % gain step at control rate scores ~0.1, and glass's articulation strike
- * (35 % in 12 ms, by design) 0.13, the positive control. Level ramps are linear by design (a
- * corner at each end, ~7e-3 for a 0.4 s ramp to half), so their ends are left to the sample test.
+ * at most 6e-4. A 10 % gain step at control rate scores ~0.1. Glass's articulation strike scored
+ * 0.13 (35 % in 12 ms, the owner's moment-end pop); its arrival bloom (build log, "Arrival
+ * bloom") must stay under ARRIVAL_STEP. Pluck's crisp strike is the positive control. Level ramps
+ * are linear by design (a corner at each end, ~7e-3 for a 0.4 s ramp to half), so their ends are
+ * left to the sample test.
  * Known, mid-glide and not at an end: when gliding lines meet in a merge, the unison group gain h
  * (2 ms smoothing) steps by up to 30 % in one block (0.22 here; build log, "Moment-end pop").
  */
 const ENVELOPE_CORNER = 0.01;
+const ARRIVAL_STEP = 0.03;
 
 function envelopeAtEnds(timbre: string): Record<string, number> {
   const score = compile(endsPiece(timbre));
@@ -270,8 +273,15 @@ describe('envelope at moment ends', () => {
     for (const [k, r] of Object.entries(worst)) expect(r, k).toBeLessThan(ENVELOPE_CORNER);
   });
 
-  it('glass: the articulation strike exceeds the bound (positive control)', () => {
-    expect(envelopeAtEnds('glass').arrival).toBeGreaterThan(5 * ENVELOPE_CORNER);
+  it('glass: the arrival bloom stays under ARRIVAL_STEP (0.13 before it)', () => {
+    const worst = envelopeAtEnds('glass');
+    for (const [k, r] of Object.entries(worst)) {
+      expect(r, k).toBeLessThan(k === 'arrival' ? ARRIVAL_STEP : ENVELOPE_CORNER);
+    }
+  });
+
+  it('pluck: the crisp strike exceeds the bound (positive control)', () => {
+    expect(envelopeAtEnds('pluck').arrival).toBeGreaterThan(5 * ENVELOPE_CORNER);
   });
 });
 
