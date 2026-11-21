@@ -183,7 +183,7 @@ test('works in the phone layout, in both themes', async ({ page }) => {
   }
 });
 
-test.describe('confirm before replacing an edited piece', () => {
+test.describe('replacing an edited piece', () => {
   const title = async (page: Page) => (await snapshot(page)).title;
 
   async function generate(page: Page): Promise<void> {
@@ -224,21 +224,15 @@ test.describe('confirm before replacing an edited piece', () => {
     await expect(panel(page)).toBeHidden();
   });
 
-  test('an edited piece asks; Cancel keeps it, Replace generates', async ({ page }) => {
+  test('an edited piece is replaced without a warning (autosaved; naming asks only if unnamed)', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 860 });
     await edit(page);
     const before = await snapshot(page);
     await generate(page);
-    await expect(page.getByTestId('generate-confirm')).toBeVisible();
-    await expect(page.getByTestId('generate-confirm')).toContainText('Replace the current piece?');
-
-    await page.getByTestId('generate-confirm-cancel').click();
-    expect((await snapshot(page)).body).toBe(before.body);
-    await expect(page.getByTestId('generate-run')).toBeVisible();
-
-    await page.getByTestId('generate-run').click();
-    await page.getByTestId('generate-confirm-replace').click();
     await expect(panel(page)).toBeHidden();
+    await expect(page.getByTestId('name-prompt')).toBeHidden();
     expect((await snapshot(page)).body).not.toBe(before.body);
     expect(await title(page)).not.toBe('Tidewater Hymn');
   });

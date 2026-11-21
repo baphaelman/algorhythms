@@ -53,6 +53,8 @@ interface Entry {
 
 let past: Entry[] = [];
 let future: Entry[] = [];
+/** True once an edit has been committed since the piece was opened (see `hasEdited`). */
+let edited = false;
 let gesture: { start: Piece; label: string; selection: MomentId[] } | null = null;
 
 const piece = (): Piece => usePlayer.getState().piece;
@@ -69,6 +71,7 @@ function publish(): void {
 
 function push(before: Piece, label: string, sel: MomentId[]): void {
   past.push({ piece: before, label, selection: sel });
+  edited = true;
   if (past.length > HISTORY_CAP) past.splice(0, past.length - HISTORY_CAP);
   future = [];
   publish();
@@ -104,6 +107,7 @@ export function amend(entry: object | null, recipe: Recipe, label = 'Edit'): boo
   const before = piece();
   const after = followContent(before, recipe(before));
   if (after === before) return false;
+  edited = true;
   future = [];
   publish();
   setPiece(after, { now: true });
@@ -183,8 +187,22 @@ export function redo(): boolean {
   return true;
 }
 
+/**
+ * True if an edit was committed since the piece was opened. Unlike `canUndo` it survives undoing
+ * every entry. Opening a piece clears it, and so does `clearEdited` (Compose's own build).
+ */
+export function hasEdited(): boolean {
+  return edited;
+}
+
+/** Marks the open piece as not edited by the user (the composer's own build is not an edit). */
+export function clearEdited(): void {
+  edited = false;
+}
+
 /** Forgets every entry and any open gesture (called on `loadPiece`). */
 export function resetHistory(): void {
+  edited = false;
   past = [];
   future = [];
   gesture = null;

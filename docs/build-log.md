@@ -1385,3 +1385,10 @@ CI (2 vCPU) missed the 50 ms gate on inspector clicks (`clickChord` medians 54โ€
 ## Fix: TextField keeps a stale draft over undo (2026-11-21)
 
 `TextField` (chord symbol, label, custom intervals) now uses `draftReduce` like NumberField/WeightBox: typing makes a draft, a changed `value` drops it (render-phase `seen` check), blur/Enter commit only a draft. VoicesDrawer's NumberField already dropped drafts on value change; no other text input had the pattern. Tests: number-draft unit case, chord-symbol case in `number-field-undo.spec.ts`.
+
+## Name it before moving on (PLAN ยง11.4, 2026-11-21)
+- Every replace-the-piece path goes through `runOpen` (store.ts): examples, files, share links (`openPieceJson`), My pieces (`openEntry`), New, Compose for me, Generate. `naming.ts` installs the gate; `ui/NamePrompt.tsx` is a native modal `<dialog>` (Enter saves, Escape or Skip moves on). `name-check.ts` holds the pure decision.
+- "Edited" is `hasEdited()` in editor/history.ts: set by a committed edit or amend, cleared by every load and by Compose's own finished build. Undoing everything still counts as edited. Skip is remembered per My pieces entry id.
+- Save name is an ordinary `edit` (history, autosave). Generated pieces get a mode title (not Untitled), so they never ask.
+- Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
+- Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.

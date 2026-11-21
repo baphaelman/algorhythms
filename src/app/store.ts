@@ -437,6 +437,24 @@ export function compiledThisTask(): boolean {
   return compiledInTask;
 }
 
+type OpenGate = (run: () => void) => void;
+let openGate: OpenGate = (run) => run();
+
+/**
+ * Every way of replacing the open piece (New, Generate, Compose, an example, My pieces, a file, a
+ * share link) goes through `runOpen`, so the "name it before moving on" question (§11.4) can hold
+ * the open until it is answered. `setOpenGate` installs the question (ui/NamePrompt via naming.ts);
+ * without one, `runOpen` runs at once.
+ */
+export function runOpen(run: () => void): void {
+  openGate(run);
+}
+
+/** Installs the gate `runOpen` calls. */
+export function setOpenGate(gate: OpenGate): void {
+  openGate = gate;
+}
+
 /** Parses piece JSON (text or value) and opens it; shows errors and warnings as notices. */
 export function openPieceJson(json: unknown, label: string, opts: LoadOptions = {}): boolean {
   const r = parsePiece(json);
@@ -448,7 +466,8 @@ export function openPieceJson(json: unknown, label: string, opts: LoadOptions = 
   if (r.warnings.length > 0) {
     notices.push({ kind: 'warning', title: `${label} opened with warnings`, lines: r.warnings });
   }
-  loadPiece(r.piece, { ...opts, notices });
+  const piece = r.piece;
+  runOpen(() => loadPiece(piece, { ...opts, notices }));
   return true;
 }
 
