@@ -45,11 +45,20 @@ test('1080p, 24 voices, playing: median frame interval is 60 fps', async ({
 
   const stats = await page.evaluate(async () => {
     const fs = window.__algorhythms!.frameStats;
+    const follow = window.__algorhythms!.store.getState().view.follow;
     fs.reset();
     fs.enabled = true;
+    const start0 = fs.start;
     await new Promise((r) => setTimeout(r, 8000));
     fs.enabled = false;
-    return { work: fs.work, interval: fs.interval, drawn: fs.drawn };
+    return {
+      work: fs.work,
+      interval: fs.interval,
+      drawn: fs.drawn,
+      follow,
+      start0,
+      start1: fs.start,
+    };
   });
   const status = await page.evaluate(
     () => document.querySelector('[data-testid=keyvoices]')?.textContent,
@@ -64,12 +73,17 @@ test('1080p, 24 voices, playing: median frame interval is 60 fps', async ({
     workMedianMs: Number(median(stats.work).toFixed(3)),
     workP95Ms: Number(percentile(stats.work, 0.95).toFixed(3)),
     voicesAtEnd: status,
+    follow: stats.follow,
+    viewStartMovedS: Number((stats.start1 - stats.start0).toFixed(3)),
   };
   console.log(
     `[${info.project.name}] frame times @1920x1080, 24 voices: ${JSON.stringify(result)}`,
   );
   info.annotations.push({ type: 'frame-times', description: JSON.stringify(result) });
 
+  // Measured while following: Smooth is on and the view scrolls with the playhead (~8 s).
+  expect(stats.follow, 'follow mode').toBe('smooth');
+  expect(stats.start1 - stats.start0, 'view start advanced (s)').toBeGreaterThan(5);
   expect(stats.interval.length, 'a frame per vsync for 8 s').toBeGreaterThan(300);
   expect(stats.drawn, 'the canvas is redrawn every frame while playing').toBeGreaterThan(300);
   // Chromium reports frame timestamps in 0.1 ms steps; 16.7 is one vsync at 60 Hz.
