@@ -1662,3 +1662,5 @@ PLAN §6.2 `pulse`, §12 CC11. Hits were silent after R9-3a.
 - **Needs the integrator (app):** the export dialog's CC11 label still says "life and level"; now also pulse and crossfade weight.
 - **Demo** (`tests/unit/core/pulse-fixtures.ts pulseDemoPiece`, 96 bpm, glass pad gated in eighths, pluck up-down sixteenths over gliding chords, organ bass on 1 and 3): `/private/tmp/claude-501/r9-3b/pulse-demo.wav` (27.8 s, peak −1.8 dBFS, no limiting), `pulse-chord-glass.wav` (the click test's piece).
 - **Gates:** lint, typecheck, `pnpm test --maxWorkers=2` 1631/1631, `test:perf` 5/5 at load ~2 (RTF 19.4× with pulses, no-GC 0 scavenges both runs, compile median 26 ms), e2e:quick `export.spec` 9/9 (chromium-dev).
+
+- **Note-moments hunt (CC11 label builder):** about 70 random-seed sweeps x 2000 runs (~140k runs; PROP_SEED=random, -t "note moments") all green; failure not reproduced.
