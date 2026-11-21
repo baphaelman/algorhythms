@@ -196,6 +196,41 @@
   );
 }
 
+/* Pulse (R9-7): a light region with its accent cycle repeated across it (a mask, pulse.ts). */
+.lane-item[data-type='pulse'] .lane-bar {
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+}
+
+/* Tune: a light region with its notes as dashes placed by time and pitch. */
+.lane-item[data-type='tune'] .lane-bar {
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+
+.lane-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.lane-art.lane-pulse {
+  background: color-mix(in srgb, var(--c) 55%, transparent);
+  mask-repeat: repeat-x;
+  -webkit-mask-repeat: repeat-x;
+  mask-position: 0 0;
+  -webkit-mask-position: 0 0;
+}
+
+.lane-art.lane-tune > span {
+  position: absolute;
+  height: 2px;
+  min-width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--c) 75%, transparent);
+  box-shadow: inset -1px 0 0 var(--paper);
+}
+
 .lane-end {
   display: none;
   position: absolute;

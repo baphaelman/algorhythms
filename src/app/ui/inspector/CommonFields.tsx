@@ -6,6 +6,7 @@
 import { useId, useState } from 'react';
 import { glides, landing } from '../../../core/compiler/glide';
 import { selectorPart } from '../../../core/parts';
+import { TUNE_GLIDE } from '../../../core/defaults';
 import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
 import type { EaseRef, Glide, GlideOrder, Moment, Piece, VoiceSelector } from '../../../core/types';
@@ -191,7 +192,12 @@ function glidePatch<K extends keyof Glide>(k: K) {
 }
 
 export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
-  const g: Glide = { ...piece.defaults.glide, ...m.glide };
+  // A tune (one line, note by note) has its own defaults between the piece's and its own, and
+  // no stagger, jitter, arrival or order: it moves one line.
+  const tune = m.type === 'tune';
+  const g: Glide = tune
+    ? { ...piece.defaults.glide, ...TUNE_GLIDE, ...m.glide }
+    : { ...piece.defaults.glide, ...m.glide };
   const length = fieldSetter<number>(m.id, 'Edit glide length', glidePatch('length'));
   const stagger = fieldSetter<number>(m.id, 'Edit stagger', glidePatch('stagger'));
   const jitter = fieldSetter<number>(m.id, 'Edit jitter', glidePatch('jitter'));
@@ -217,48 +223,56 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
         )}
       </legend>
       <NumberField
-        label="Length"
+        label={tune ? 'Glide' : 'Length'}
         unit="s"
         value={g.length}
         set={length}
-        min={0}
+        min={tune ? 0.01 : 0}
         max={120}
-        step={0.1}
-        slider={{ min: 0, max: 20 }}
+        step={tune ? 0.01 : 0.1}
+        slider={tune ? { min: 0.01, max: 1 } : { min: 0, max: 20 }}
         testId="insp-glide-length"
       />
-      <NumberField
-        label="Stagger"
-        unit="s"
-        value={g.stagger}
-        set={stagger}
-        min={0}
-        max={60}
-        step={0.05}
-        slider={{ min: 0, max: 5 }}
-        testId="insp-glide-stagger"
-      />
-      <Slider
-        label="Jitter"
-        value={g.jitter}
-        set={jitter}
-        min={0}
-        max={1}
-        step={0.01}
-        testId="insp-glide-jitter"
-      />
-      <CheckField
-        label="Arrive together"
-        checked={g.arrive !== 'spread'}
-        testId="insp-arrive"
-        onChange={(on) =>
-          updateMoment(
-            m.id,
-            { glide: arriveGlide(m.glide, piece.defaults.glide.arrive, on) },
-            on ? 'Arrive together' : 'Arrive spread',
-          )
-        }
-      />
+      {tune ? (
+        <p className="insp-note" data-testid="insp-tune-glide-note">
+          Each note glides in over this, at most its length.
+        </p>
+      ) : (
+        <>
+          <NumberField
+            label="Stagger"
+            unit="s"
+            value={g.stagger}
+            set={stagger}
+            min={0}
+            max={60}
+            step={0.05}
+            slider={{ min: 0, max: 5 }}
+            testId="insp-glide-stagger"
+          />
+          <Slider
+            label="Jitter"
+            value={g.jitter}
+            set={jitter}
+            min={0}
+            max={1}
+            step={0.01}
+            testId="insp-glide-jitter"
+          />
+          <CheckField
+            label="Arrive together"
+            checked={g.arrive !== 'spread'}
+            testId="insp-arrive"
+            onChange={(on) =>
+              updateMoment(
+                m.id,
+                { glide: arriveGlide(m.glide, piece.defaults.glide.arrive, on) },
+                on ? 'Arrive together' : 'Arrive spread',
+              )
+            }
+          />
+        </>
+      )}
       {glides(m) && (
         <>
           <CheckField
@@ -276,19 +290,24 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
           />
           {g.land === true && (
             <p className="insp-note" data-testid="insp-land-note">
-              {landNote(m.at, g)}
+              {tune
+                ? 'Each note arrives on its start; its glide runs before it.'
+                : landNote(m.at, g)}
             </p>
           )}
         </>
       )}
-      <Chips
-        legend="Order"
-        options={ORDERS}
-        pressed={(v) => v === g.order}
-        onPick={(order) =>
-          order !== g.order && updateMoment(m.id, { glide: { ...m.glide, order } }, 'Change order')
-        }
-      />
+      {!tune && (
+        <Chips
+          legend="Order"
+          options={ORDERS}
+          pressed={(v) => v === g.order}
+          onPick={(order) =>
+            order !== g.order &&
+            updateMoment(m.id, { glide: { ...m.glide, order } }, 'Change order')
+          }
+        />
+      )}
       <Chips
         legend="Curve"
         options={curves}

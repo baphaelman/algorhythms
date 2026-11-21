@@ -17,6 +17,13 @@
 
 .palette-add {
   border: 1px solid var(--rule);
+  gap: 3px;
+}
+
+/* Thirteen moment types (R9-7) still fit one row at 1280 px. */
+.palette.palette-add button {
+  gap: 4px;
+  padding: 6px 5px;
 }
 
 .app[data-layout='player'] .palette {

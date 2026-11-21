@@ -399,6 +399,8 @@ class LaneController {
     const barLabel = el.querySelector('.lane-bar-text');
     if (label) label.textContent = it.text;
     if (barLabel) barLabel.textContent = barText(it);
+    const art = el.querySelector<HTMLElement>('.lane-art');
+    if (art) paintArt(art, it.art);
   }
 
   /**
@@ -651,7 +653,7 @@ class LaneController {
       d.ids = [d.id];
       const it = this.items.find((x) => x.id === d.id);
       if (it) d.orig = { at: it.at, start: it.start, end: it.end, land: it.land };
-      beginGesture(d.shift ? 'Change stagger' : 'Change glide length');
+      beginGesture(endLabel(it?.endEdit, d.shift));
       return;
     }
     // A plain or Shift press on a selected item drags the whole selection.
@@ -674,10 +676,21 @@ class LaneController {
   private preview(d: Drag): void {
     if (d.kind === 'end') {
       const it = this.items.find((x) => x.id === d.id);
+      let raw = d.raw;
+      // A region's end (walk, pulse, tune) snaps like a moment (beats, note changes; Alt: free).
+      if (d.orig && it && (it.endEdit === 'until' || it.endEdit === 'notes')) {
+        const st = usePlayer.getState();
+        d.snaps ??= {
+          points: changePoints(st.compiled, st.piece),
+          exclude: ofMoments([d.id]),
+          grid: beatStep(st.piece.view),
+        };
+        raw = snapTime(d.orig.end + d.raw, d.snaps, this.view?.pps ?? 0, d.alt) - d.orig.end;
+      }
       // A bar that lands at its marker grows to the left: the glide gets longer as it drags left.
       // The preview is the bar as it was at the press, dragged (the piece updates under it).
-      d.dt = d.orig ? endDragDelta(d.orig, d.raw) : d.raw;
-      if (d.orig) this.previewEnd = { id: d.id, ...endDragSpan(d.orig, d.raw) };
+      d.dt = d.orig ? endDragDelta(d.orig, raw) : raw;
+      if (d.orig) this.previewEnd = { id: d.id, ...endDragSpan(d.orig, raw) };
       if (it && this.view) this.place(it, this.view.pps);
       return;
     }
@@ -783,8 +796,11 @@ class LaneController {
     const more = d.ids.length > 1 ? ` and ${d.ids.length - 1} more` : '';
     if (d.kind === 'move') {
       this.announce(`${d.dup ? 'Duplicated' : 'Moved'} ${name}${more} to ${spokenTime(m.at)}`);
-    } else if (m.type === 'walk') {
+    } else if (m.type === 'walk' || m.type === 'pulse') {
       this.announce(`${name} ends at ${spokenTime(m.until)}`);
+    } else if (m.type === 'tune') {
+      const last = m.notes.at(-1);
+      if (last) this.announce(`${name} last note ${spokenTime(last.len)}`);
     } else if (m.type === 'level') {
       this.announce(`${name} ramp ${spokenTime(m.over)}`);
     } else {
@@ -909,6 +925,71 @@ class LaneController {
   }
 }
 
+/** The undo label of a span-end drag. */
+function endLabel(edit: LaneItem['endEdit'] | undefined, shift: boolean): string {
+  if (edit === 'until') return 'Change region';
+  if (edit === 'notes') return 'Change last note length';
+  if (edit === 'over') return 'Change ramp';
+  return shift ? 'Change stagger' : 'Change glide length';
+}
+
+/** CSS mask for a pulse's accent cycle: the SVG as a data URL, repeated every `share` %. */
+function pulseMask(art: Extract<LaneItem['art'], { kind: 'pulse' }>): {
+  url: string;
+  size: string;
+} {
+  return {
+    url: `url("data:image/svg+xml,${encodeURIComponent(art.svg)}")`,
+    size: `${art.share.toFixed(4)}% 100%`,
+  };
+}
+
+/** A tune note dash's vertical place: 0 % (the highest note) to 70 % of the bar, 1 px down. */
+const tuneTop = (top: number): string => `calc(${(top * 0.7).toFixed(2)}% + 1px)`;
+
+/** A pulse's accent cycle or a tune's notes, drawn inside its bar (R9-7). */
+function BarArt({ art }: { art: LaneItem['art'] }) {
+  if (!art) return null;
+  if (art.kind === 'pulse') {
+    const { url, size } = pulseMask(art);
+    return (
+      <span
+        className="lane-art lane-pulse"
+        aria-hidden="true"
+        style={{ maskImage: url, WebkitMaskImage: url, maskSize: size, WebkitMaskSize: size }}
+      />
+    );
+  }
+  return (
+    <span className="lane-art lane-tune" aria-hidden="true">
+      {art.notes.map((n, i) => (
+        <span key={i} style={{ left: `${n.left}%`, width: `${n.width}%`, top: tuneTop(n.top) }} />
+      ))}
+    </span>
+  );
+}
+
+/** `BarArt` written into the lane ghost's art slot (the ghost is laid out without React). */
+function paintArt(el: HTMLElement, art: LaneItem['art']): void {
+  el.className = art ? `lane-art lane-${art.kind}` : 'lane-art';
+  el.replaceChildren();
+  const st = el.style;
+  st.maskImage = st.webkitMaskImage = st.maskSize = st.webkitMaskSize = '';
+  if (art?.kind === 'pulse') {
+    const { url, size } = pulseMask(art);
+    st.maskImage = st.webkitMaskImage = url;
+    st.maskSize = st.webkitMaskSize = size;
+  } else if (art?.kind === 'tune') {
+    for (const n of art.notes) {
+      const d = document.createElement('span');
+      d.style.left = `${n.left}%`;
+      d.style.width = `${n.width}%`;
+      d.style.top = tuneTop(n.top);
+      el.append(d);
+    }
+  }
+}
+
 /** A span's length as shown on its bar. */
 function barText(it: LaneItem): string {
   const len = it.end - it.start;
@@ -971,7 +1052,8 @@ function itemLabel(it: LaneItem): string {
       : it.land
         ? `, ${spokenTime(long)} glide, arriving at the marker`
         : `, ${spokenTime(long)} long`;
-  return `${kind} at ${spokenTime(it.at)}${span}${it.muted ? ', muted' : ''}`;
+  const notes = it.art?.kind === 'tune' ? `, ${it.art.notes.length} notes` : '';
+  return `${kind} at ${spokenTime(it.at)}${span}${notes}${it.muted ? ', muted' : ''}`;
 }
 
 /** The moment lane. Rendered only in the wide (editor) layout. */
@@ -1218,6 +1300,7 @@ export function Lane() {
               hidden
             >
               <span className="lane-bar">
+                <span className="lane-art" aria-hidden="true" />
                 <span className="lane-bar-text" />
               </span>
               <span className="lane-marker" />
@@ -1254,6 +1337,7 @@ export function Lane() {
                 }}
               >
                 <span className="lane-bar">
+                  <BarArt art={it.art} />
                   <span className="lane-bar-text">{barText(it)}</span>
                   {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
                 </span>

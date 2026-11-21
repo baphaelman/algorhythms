@@ -652,3 +652,108 @@
 .insp-note-list .step-move:hover {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
+
+/* Tune notes (R9-7): start, name, length box, ▲ ▼ ×. */
+
+.insp-tune legend .dim {
+  color: var(--ink-2);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.insp-tune li > .step-t,
+.insp-tune li > .step-n {
+  padding: 3px 6px;
+  font: 11.5px var(--f-mono);
+  white-space: nowrap;
+}
+
+.insp-tune li > .step-t {
+  flex: 0 0 4.6em;
+  color: var(--ink-2);
+}
+
+.insp-tune li > .step-n {
+  flex: 1;
+  min-width: 0;
+}
+
+.insp-tune .weight-box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--rule);
+  font: 11px var(--f-mono);
+}
+
+.insp-tune .weight-box .scrub-label {
+  padding: 0 2px 0 6px;
+  color: var(--ink-2);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.insp-tune .weight-box input {
+  width: 3.4em;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+
+.insp-tune .insp-actions {
+  margin-top: 4px;
+}
+
+/* Pulse pattern (R9-7): one cell per step, filled to its accent. */
+
+.pulse-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.pulse-cell {
+  position: relative;
+  width: 18px;
+  height: 36px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.pulse-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pulse-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 1px;
+}
+
+.pulse-cell[data-rest]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 6px;
+  height: 1px;
+  margin-left: -3px;
+  background: var(--ink-2);
+}
+
+.pulse-steps {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
