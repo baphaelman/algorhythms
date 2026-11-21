@@ -5,7 +5,7 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 ## Needs you
 ### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
 Try these in the newest preview; the integrator adds to this list as work lands:
-- **The pop at moment ends.** Nothing had regressed. It was the arrival "bloom": glass's articulation re-strikes when a glide lands, +3.7 dB in 12 ms on every note at once. It is being softened for all sustained timbres; pluck keeps its approved 12 ms attack. Listen to Kite Day: is the pop gone, and do arrivals still sound alive?
+- **The pop at moment ends (fixed in v30).** Nothing had regressed: it was glass's arrival "bloom", +3.7 dB in 12 ms on every note at once. Sustained timbres now rise over at least 50 ms·√amount (glass 30 ms, reed 22 ms), and strikes within 40 ms share one bloom, so a glass chord bumps +2.0 dB instead of +3.7. Pluck keeps its approved 12 ms attack. **Organ changed too:** its 12 ms click measured just over the pop bar, so it now blooms over 17 ms; you approved the 12 ms click, so check it still sounds right. Listen to Kite Day: is the pop gone, and do arrivals still sound alive? Any timbre can opt back into the sharp attack with `articulation.crisp`.
 - **Moments bar (dense lanes v2).** Full-height rows that scroll inside the lane area, levels on the Level row, a Pins row, and a draggable divider between score and lanes. Open Kite Day and drag the divider.
 - **Pulse moments (R9-3a)** work in the engine and files but have nothing to try yet. The palette button and inspector come with R9-7, the sound of hits with R9-3b, and the compositions use them after the rewrite.
 
