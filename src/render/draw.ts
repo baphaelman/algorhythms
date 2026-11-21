@@ -152,7 +152,7 @@ export function drawScore(
     g.globalAlpha = 0.75;
     g.fillText(
       `A${Math.floor(n / 12) - 1} ${hzOf(n, compiled.referenceHz).toFixed(0)} Hz`,
-      6,
+      6 + (style.axisInset ?? 0),
       y - 4,
     );
     g.globalAlpha = 1;

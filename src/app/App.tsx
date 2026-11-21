@@ -69,7 +69,7 @@ export function App() {
         {/* Everything on the shared time axis (§10); the editor's one playhead spans it all. */}
         <div className="timeline" data-testid="timeline">
           {wide && <Ruler />}
-          <ScoreView />
+          <ScoreView editor={wide} />
           {wide && <Lane />}
           {wide && <LoopRegion />}
           {wide && <Playhead />}

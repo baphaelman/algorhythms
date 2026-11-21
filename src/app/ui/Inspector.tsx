@@ -5,7 +5,8 @@
  */
 
 import type { Moment, MomentId, Piece } from '../../core/types';
-import { deleteMoments, setPieceKey, updateMoment } from '../editor/actions';
+import { deleteMoments, freezeMoments, setPieceKey, updateMoment } from '../editor/actions';
+import { canFreeze, isFrozen } from '../editor/freeze';
 import { isPieceKey, pieceKeyMoment } from '../editor/piece-key';
 import {
   beginGesture,
@@ -41,6 +42,10 @@ const TYPE_NAMES: Record<Moment['type'], string> = {
   pulse: 'Pulse',
   tune: 'Tune',
 };
+
+/** The Freeze button's tooltip (§11.3). */
+const FREEZE_HINT =
+  'Replace the result with fixed notes, so edits to earlier moments no longer change it';
 
 /** Sets `muted` on every moment in `ids` as one undo entry. */
 function setMuted(ids: readonly MomentId[], muted: boolean): void {
@@ -178,17 +183,37 @@ function PieceKey({ piece }: { piece: Piece }) {
 function Many({ moments }: { moments: Moment[] }) {
   const ids = moments.map((m) => m.id);
   const allMuted = moments.every((m) => m.muted);
+  const freezable = moments.filter((m) => canFreeze(m) && !isFrozen(m)).map((m) => m.id);
   return (
-    <div className="insp-many">
+    <div className="insp-many" data-testid="insp-many">
       <h2>{moments.length} moments selected</h2>
       <div className="insp-actions">
         <button type="button" onClick={() => setMuted(ids, !allMuted)}>
           {allMuted ? 'Unmute all' : 'Mute all'}
         </button>
-        <button type="button" className="danger" onClick={() => deleteMoments(ids)}>
+        {freezable.length > 0 && (
+          <button
+            type="button"
+            data-testid="insp-freeze"
+            title={FREEZE_HINT}
+            onClick={() => freezeMoments(freezable)}
+          >
+            Freeze {freezable.length}
+          </button>
+        )}
+        <button
+          type="button"
+          className="danger"
+          data-testid="insp-delete"
+          onClick={() => deleteMoments(ids)}
+        >
           Delete
         </button>
       </div>
+      <p className="insp-note">
+        ⌘/Ctrl+C, X and V copy, cut and paste them at the playhead; ←/→ on a selected lane moment
+        nudges them all.
+      </p>
     </div>
   );
 }
@@ -274,6 +299,16 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
       {seeded && <SeedField m={m} piece={piece} />}
 
       <div className="insp-actions">
+        {canFreeze(m) && !isFrozen(m) && (
+          <button
+            type="button"
+            data-testid="insp-freeze"
+            title={FREEZE_HINT}
+            onClick={() => freezeMoments([m.id])}
+          >
+            Freeze
+          </button>
+        )}
         <button
           type="button"
           className="danger"

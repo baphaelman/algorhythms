@@ -14,11 +14,13 @@
  * change. Drags write transforms at once and commit the piece once per animation frame through
  * an editor gesture (one undo entry per drag; Escape cancels).
  *
- * Pointer: click selects, Shift-click toggles, a click on empty lane clears and a drag there pans
- * (Follow turns off during playback); drag an item to move it (snapping
+ * Pointer: click selects, Shift- or ⌘/Ctrl-click toggles, a click on empty lane clears and a drag
+ * there pans (Follow turns off during playback); a Shift-drag there draws a marquee that selects the
+ * moments it touches (⌘/Ctrl+Shift: adds them); drag an item to move it (snapping
  * to the BPM grid unless Alt is held); Alt at press duplicates; dragging a span end changes the
  * glide length (Shift: stagger; a walk's end, a level ramp's length). Keys on a focused item:
- * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter selects (Space plays and pauses). Focusing an
+ * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter selects, Shift+Enter toggles
+ * (Space plays and pauses); on a selected item these act on the whole selection. Focusing an
  * off-screen item pans the paused view to it.
  */
 
@@ -62,6 +64,7 @@ import {
 } from '../editor/lane';
 import { loadLaneSplit, saveLaneSplit } from '../lane-split';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
+import { idsInRect, marqueeSelection, rectOf, type Rect } from '../editor/selection';
 import { beatStep, changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
@@ -123,12 +126,18 @@ const pieceNow = (): Piece => usePlayer.getState().piece;
 const momentOf = (p: Piece, id: MomentId): Moment | undefined => p.moments.find((m) => m.id === id);
 const nameOf = (m: Pick<Moment, 'type' | 'label'>): string => m.label?.trim() || m.type;
 
-/** A press on the lane background: a click clears the selection, a drag pans. */
+/**
+ * A press on the lane background: a click clears the selection, a drag pans; with Shift the drag
+ * draws a marquee that selects the moments it touches (⌘/Ctrl+Shift: added to the selection).
+ */
 interface Pan {
   pointerId: number;
   x0: number;
+  y0: number;
   lastX: number;
   shift: boolean;
+  /** ⌘/Ctrl at press: the marquee extends the selection. */
+  extend: boolean;
   started: boolean;
 }
 
@@ -142,6 +151,8 @@ interface Drag {
   dup: boolean;
   /** Shift at press: an end drag edits the stagger. */
   shift: boolean;
+  /** Shift or ⌘/Ctrl at press: a click toggles the item in the selection. */
+  toggle: boolean;
   started: boolean;
   /** Moments moved or copied (move); [id] for an end drag. */
   ids: MomentId[];
@@ -185,6 +196,9 @@ class LaneController {
   private ghostRow = 0;
   private lastGhost: PreviewGhost | null = null;
   private keyPress: KeyPress | null = null;
+  /** The Shift-drag selection rectangle (track px), and the items it touches during the drag. */
+  marqueeEl: HTMLElement | null = null;
+  private marqueeIds: MomentId[] = [];
   liveRegion: HTMLElement | null = null;
   levelLine: SVGPolylineElement | null = null;
   levelFill: SVGPolygonElement | null = null;
@@ -559,7 +573,12 @@ class LaneController {
     const target = e.target instanceof Element ? e.target : null;
     if (target?.closest('[data-piece-key]')) {
       this.track?.setPointerCapture(e.pointerId);
-      this.keyPress = { pointerId: e.pointerId, x0: e.clientX, shift: e.shiftKey, moved: false };
+      this.keyPress = {
+        pointerId: e.pointerId,
+        x0: e.clientX,
+        shift: e.shiftKey || e.metaKey || e.ctrlKey,
+        moved: false,
+      };
       return;
     }
     const itemEl = target?.closest<HTMLElement>('[data-moment]');
@@ -568,8 +587,10 @@ class LaneController {
       this.pan = {
         pointerId: e.pointerId,
         x0: e.clientX,
+        y0: e.clientY,
         lastX: e.clientX,
         shift: e.shiftKey,
+        extend: e.metaKey || e.ctrlKey,
         started: false,
       };
       return;
@@ -578,7 +599,8 @@ class LaneController {
     const onHandle = !!target?.closest('[data-end-handle]');
     const sel = useEditor.getState().selection;
     const wasSelected = sel.includes(id);
-    if (!wasSelected && !e.shiftKey) select([id]);
+    const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (!wasSelected && !toggle) select([id]);
     this.track?.setPointerCapture(e.pointerId);
     this.drag = {
       pointerId: e.pointerId,
@@ -588,6 +610,7 @@ class LaneController {
       t0: this.timeAt(e.clientX),
       dup: !onHandle && e.altKey,
       shift: e.shiftKey,
+      toggle,
       started: false,
       ids: [],
       newIds: [],
@@ -599,23 +622,78 @@ class LaneController {
     };
   };
 
-  /** Background drag: the content follows the pointer. */
+  /** Background drag: the content follows the pointer; with Shift, a marquee. */
   private onPanMove(e: PointerEvent, p: Pan): void {
     if (!p.started) {
-      if (Math.abs(e.clientX - p.x0) <= DRAG_SLOP) return;
+      const dy = p.shift ? e.clientY - p.y0 : 0;
+      if (Math.hypot(e.clientX - p.x0, dy) <= DRAG_SLOP) return;
       p.started = true;
-      this.track?.classList.add('panning');
+      if (!p.shift) this.track?.classList.add('panning');
+    }
+    if (p.shift) {
+      this.drawMarquee(p, e.clientX, e.clientY);
+      return;
     }
     const dx = e.clientX - p.lastX;
     p.lastX = e.clientX;
     if (dx !== 0 && this.pps > 0) panBy(-dx / this.pps);
   }
 
+  /** Shows the marquee from the press to (x, y) and marks the items it touches. */
+  private drawMarquee(p: Pan, x: number, y: number): void {
+    const el = this.marqueeEl;
+    const track = this.track;
+    if (!el || !track) return;
+    const r = rectOf(p.x0, p.y0, x, y);
+    const t = track.getBoundingClientRect();
+    el.hidden = false;
+    el.style.left = `${r.left - t.left}px`;
+    el.style.top = `${r.top - t.top}px`;
+    el.style.width = `${r.right - r.left}px`;
+    el.style.height = `${r.bottom - r.top}px`;
+    const boxes: ({ id: MomentId } & Rect)[] = [];
+    for (const [id, item] of this.els) {
+      // The marker and the bar, not the item's whole box (it spans both rows).
+      for (const part of item.querySelectorAll<HTMLElement>(
+        '.lane-marker, .lane-bar, .lane-label',
+      )) {
+        const b = part.getBoundingClientRect();
+        if (b.width > 0 || b.height > 0)
+          boxes.push({ id, left: b.left, top: b.top, right: b.right, bottom: b.bottom });
+      }
+    }
+    const inside = [...new Set(idsInRect(boxes, r))];
+    for (const id of this.marqueeIds)
+      if (!inside.includes(id)) this.els.get(id)?.removeAttribute('data-marquee');
+    for (const id of inside) this.els.get(id)?.setAttribute('data-marquee', '');
+    this.marqueeIds = inside;
+  }
+
+  private clearMarquee(): void {
+    if (this.marqueeEl) this.marqueeEl.hidden = true;
+    for (const id of this.marqueeIds) this.els.get(id)?.removeAttribute('data-marquee');
+    this.marqueeIds = [];
+  }
+
   private endPan(e: PointerEvent, p: Pan): void {
     this.pan = null;
     this.track?.classList.remove('panning');
     if (this.track?.hasPointerCapture(p.pointerId)) this.track.releasePointerCapture(p.pointerId);
-    if (!p.started && e.type !== 'pointercancel' && !p.shift) select([]);
+    const ok = e.type !== 'pointercancel';
+    if (p.shift && p.started) {
+      if (ok) this.drawMarquee(p, e.clientX, e.clientY);
+      const inside = this.marqueeIds;
+      this.clearMarquee();
+      if (!ok) return;
+      const next = marqueeSelection(useEditor.getState().selection, inside, p.extend);
+      select(next);
+      this.announce(`Selected ${next.length} ${next.length === 1 ? 'moment' : 'moments'}`);
+      // Focus the first so ←/→ nudge and Delete act on the group.
+      const first = next.find((id) => this.els.has(id));
+      if (first) this.els.get(first)?.focus({ preventScroll: true });
+      return;
+    }
+    if (!p.started && ok && !p.shift && !p.extend) select([]);
   }
 
   onMove = (e: PointerEvent): void => {
@@ -657,7 +735,7 @@ class LaneController {
       return;
     }
     // A plain or Shift press on a selected item drags the whole selection.
-    if (d.shift && !d.wasSelected) select([...useEditor.getState().selection, d.id]);
+    if (d.toggle && !d.wasSelected) select([...useEditor.getState().selection, d.id]);
     const sel = useEditor.getState().selection;
     d.ids = sel.includes(d.id) ? [...sel] : [d.id];
     const p = pieceNow();
@@ -769,7 +847,7 @@ class LaneController {
     this.finish();
     if (!d.started) {
       const sel = useEditor.getState().selection;
-      if (d.shift) {
+      if (d.toggle) {
         select(d.wasSelected ? sel.filter((x) => x !== d.id) : [...sel, d.id]);
       } else {
         select([d.id]);
@@ -852,7 +930,9 @@ class LaneController {
     inner: HTMLElement,
     ghost: HTMLElement | null,
     divider: HTMLElement | null,
+    marquee: HTMLElement | null = null,
   ): () => void {
+    this.marqueeEl = marquee;
     this.scroller = scroller;
     this.divider = divider;
     if (divider) {
@@ -1083,13 +1163,21 @@ export function Lane() {
   const pieceKeyEl = useRef<HTMLDivElement>(null);
   const ghost = useRef<HTMLDivElement>(null);
   const divider = useRef<HTMLDivElement>(null);
+  const marqueeRef = useRef<HTMLDivElement>(null);
   const keyText = keyName(piece.key);
 
   useLayoutEffect(() => ctl.setItems(items, curve));
   useEffect(
     () =>
       scroller.current && track.current && inner.current
-        ? ctl.attach(scroller.current, track.current, inner.current, ghost.current, divider.current)
+        ? ctl.attach(
+            scroller.current,
+            track.current,
+            inner.current,
+            ghost.current,
+            divider.current,
+            marqueeRef.current,
+          )
         : undefined,
     [ctl],
   );
@@ -1266,6 +1354,13 @@ export function Lane() {
           <div className="lane-row" data-row="level" aria-hidden="true">
             <span className="lane-row-name">Level</span>
           </div>
+          <div
+            ref={marqueeRef}
+            className="lane-marquee"
+            data-testid="lane-marquee"
+            aria-hidden="true"
+            hidden
+          />
           <div ref={inner} className="lane-inner">
             <svg
               className="lane-level"
@@ -1350,7 +1445,9 @@ export function Lane() {
       </div>
       <p id="lane-help" className="visually-hidden">
         Left and right arrows nudge the moment, up and down move between moments, Delete removes it,
-        Enter selects it.
+        Enter selects it, Shift+Enter adds it to the selection. On a selected moment these act on
+        the whole selection. Command or Control with C, X and V copy, cut and paste at the playhead;
+        with A, select all. Shift-drag on the lane selects the moments it touches.
       </p>
       <div className="visually-hidden" aria-live="polite" data-testid="lane-live" />
     </div>

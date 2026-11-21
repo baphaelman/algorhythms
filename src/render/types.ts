@@ -117,6 +117,11 @@ export interface ScoreStyle {
    * meter, defaults in ./bars). Absent: none.
    */
   bars?: { bpm?: number; meter?: number };
+  /**
+   * Width (px) covered at the left by the editor's piano ruler (§11.3): the pitch axis labels
+   * start after it. @default 0
+   */
+  axisInset?: number;
   /** Draw the playhead line. The editor layout draws its own DOM playhead (§10). @default true */
   playhead?: boolean;
   /**

@@ -22,7 +22,15 @@ import { keyBefore } from '../../core/transpose';
 import { offerKeyCarry } from './key-carry';
 import { PIECE_KEY_ID, setKeyOf } from './piece-key';
 import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
-import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
+import {
+  beginGesture,
+  cancelGesture,
+  edit,
+  endGesture,
+  select,
+  updateGesture,
+  useEditor,
+} from './history';
 import { defaultMoment } from './new-moment';
 import { stepNoteTo } from './note-points';
 import { freezeWalk } from '../../core/moments/walk';
@@ -43,6 +51,10 @@ import {
 import { inRange } from './drag-edge';
 import { OCTAVE, octaveGuides, octaveSnap, octaveSpan } from './octave-drag';
 import { keepOrder, noteOrder } from './line-order';
+import { clipOf, pasteAnchor, pasteClip, type Clip } from './clipboard';
+import { freezeAll } from './freeze';
+import { toggledNotes, type ToggleRefusal } from './piano';
+import { beatStep } from './snap';
 import {
   copyMoments,
   insertMoments,
@@ -573,4 +585,72 @@ export function addPointDrag(at: Seconds, voice: number, from: Pitch): PitchDrag
       if (cancel) selectStep(null);
     },
   };
+}
+
+/** Freezes the freezable moments in `ids` (./freeze) as one undo entry. False if none changed. */
+export function freezeMoments(ids: readonly MomentId[]): boolean {
+  return edit(
+    (p) => freezeAll(p, ids, scoreOf),
+    ids.length === 1 ? 'Freeze moment' : 'Freeze moments',
+  );
+}
+
+/** What a piano-ruler key did to the selected chord or pin. */
+export type PianoEdit =
+  | { kind: 'added' | 'removed' | 'pin'; pitch: Pitch }
+  | { kind: 'refused'; reason: ToggleRefusal }
+  | { kind: 'none' };
+
+/**
+ * A piano-ruler key on moment `id` (§11.3 "Piano ruler"): a chord gets `pitch` toggled in its
+ * notes (freezing it; its note count follows), a pin moves to `pitch`. One undo entry; sounds the
+ * chord or the pin's note once the edit has compiled.
+ */
+export function pianoKeyEdit(id: MomentId, pitch: Pitch): PianoEdit {
+  const piece = usePlayer.getState().piece;
+  const m = piece.moments.find((x) => x.id === id);
+  if (m?.type === 'pin') {
+    if (!updateMoment(id, { pitch }, 'Move pin')) return { kind: 'none' };
+    auditionAfterEdit(id, [pitch]);
+    return { kind: 'pin', pitch };
+  }
+  if (m?.type !== 'chord') return { kind: 'none' };
+  const notes = chordNotes(piece, scoreOf(piece), m);
+  if (!notes) return { kind: 'none' };
+  const r = toggledNotes(notes, pitch, piece.voices.length);
+  if ('refused' in r) return { kind: 'refused', reason: r.refused };
+  // The note count follows the notes (an added note is a new line, a removed one ends).
+  const count =
+    r.notes.length !== notes.length || m.count !== undefined ? r.notes.length : undefined;
+  const label = m.frozenFrom
+    ? `${r.added ? 'Add' : 'Remove'} chord note`
+    : `Freeze chord and ${r.added ? 'add' : 'remove'} note`;
+  if (!updateMoment(id, { ...frozenPatch(m, r.notes, true), count }, label)) {
+    return { kind: 'none' };
+  }
+  auditionAfterEdit(id);
+  return { kind: r.added ? 'added' : 'removed', pitch };
+}
+
+/** The clip of the selected moments (./clipboard), or null when none is a moment. */
+export function clipOfSelection(): Clip | null {
+  return clipOf(usePlayer.getState().piece, useEditor.getState().selection);
+}
+
+/** Deletes `ids` after a copy ("Cut"), as one undo entry. */
+export function cutMoments(ids: readonly MomentId[]): boolean {
+  return edit((p) => removeMoments(p, ids), ids.length === 1 ? 'Cut moment' : 'Cut moments');
+}
+
+/**
+ * Pastes `clip` with its earliest moment at `at` (on the nearest beat when Snap to beats is on)
+ * as one undo entry, and selects the new moments. Null if its moments are not valid here.
+ */
+export function pasteClipAt(clip: Clip, at: Seconds): MomentId[] | null {
+  const piece = usePlayer.getState().piece;
+  const r = pasteClip(piece, clip, pasteAnchor(at, beatStep(piece.view)));
+  if (!r) return null;
+  edit(() => r.piece, r.ids.length === 1 ? 'Paste moment' : 'Paste moments');
+  select(r.ids);
+  return r.ids;
 }

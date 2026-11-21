@@ -4,9 +4,13 @@ import { startScoreLoop } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { usePlayer } from '../store';
 import { ArrivalDots } from './ArrivalDots';
+import { PianoRuler } from './PianoRuler';
 
-/** The score canvas. Drawn by `startScoreLoop` outside React; this component only mounts it. */
-export function ScoreView() {
+/**
+ * The score canvas. Drawn by `startScoreLoop` outside React; this component only mounts it. The
+ * editor layout adds the piano ruler on the pitch axis.
+ */
+export function ScoreView({ editor = false }: { editor?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const voices = usePlayer((s) => s.compiled.voices.length);
@@ -34,6 +38,7 @@ export function ScoreView() {
         aria-label={`Pitch lines for ${voices} notes over time: ${title}. Press Space to play and pause.`}
       />
       <ArrivalDots />
+      {editor && <PianoRuler />}
       <div ref={tip} className="score-hover" data-testid="score-hover" aria-hidden="true" hidden />
     </div>
   );
