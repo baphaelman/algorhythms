@@ -7,6 +7,7 @@ import {
   SMOOTH_X,
   axisOf,
   cameraAt,
+  canvasEnd,
   clampStart,
   clampWindow,
   followStart,
@@ -24,6 +25,8 @@ import {
 const score: CameraScore = { duration: 200, pitchRange: [40, 88] };
 const size = { width: 1600, height: 900 };
 const D = 200;
+/** The open canvas of a 200 s piece: max(4 × 200, 200 + 600). */
+const L = 800;
 
 /** Plays from 0 to D at 60 fps under `mode`; returns [t, start] per frame. */
 function play(mode: FollowMode, window: number, start0 = 0): [number, number][] {
@@ -38,42 +41,50 @@ function play(mode: FollowMode, window: number, start0 = 0): [number, number][] 
 
 describe('window scale', () => {
   it('slider and window are inverse on a log scale', () => {
-    for (const w of [2, 3.7, 20, 77, 200]) {
+    for (const w of [2, 3.7, 20, 77, 200, 700]) {
       expect(sliderToWindow(windowToSlider(w, 200), 200)).toBeCloseTo(w, 9);
     }
     expect(sliderToWindow(0, 200)).toBeCloseTo(2, 9);
-    expect(sliderToWindow(1, 200)).toBeCloseTo(200, 9);
+    expect(sliderToWindow(1, 200)).toBeCloseTo(L, 9);
     // log scale: the middle is the geometric mean
-    expect(sliderToWindow(0.5, 200)).toBeCloseTo(Math.sqrt(2 * 200), 9);
+    expect(sliderToWindow(0.5, 200)).toBeCloseTo(Math.sqrt(2 * L), 9);
   });
 
-  it('clamps to [2 s, whole piece], and short pieces never go below 2 s', () => {
+  it('clamps to [2 s, the open canvas]; a missing window fits the piece', () => {
     expect(clampWindow(0.1, 200)).toBe(MIN_WINDOW);
-    expect(clampWindow(9999, 200)).toBe(200);
+    expect(clampWindow(9999, 200)).toBe(L);
+    expect(clampWindow(500, 200)).toBe(500);
     expect(clampWindow(NaN, 200)).toBe(200);
-    expect(clampWindow(5, 1.5)).toBe(2);
+    expect(clampWindow(1.5, 1.5)).toBe(2);
+  });
+
+  it('the open canvas is max(4 × the piece, the end + 10 min)', () => {
+    expect(canvasEnd(200)).toBe(800);
+    expect(canvasEnd(60)).toBe(660);
+    expect(canvasEnd(1000)).toBe(4000);
+    expect(canvasEnd(0)).toBe(600);
+    expect(canvasEnd(NaN)).toBe(600);
   });
 });
 
 describe('start clamping', () => {
-  it('keeps start in [0, duration − window]', () => {
+  it('keeps start in [0, canvas end − window]: free past the piece, never before 0', () => {
     expect(clampStart(-5, 20, D)).toBe(0);
-    expect(clampStart(500, 20, D)).toBe(180);
+    expect(clampStart(500, 20, D)).toBe(500);
+    expect(clampStart(5000, 20, D)).toBe(L - 20);
     expect(clampStart(42, 20, D)).toBe(42);
     expect(clampStart(NaN, 20, D)).toBe(0);
-    // at Fit (or a window longer than the piece) nothing scrolls
-    expect(clampStart(50, 200, D)).toBe(0);
-    expect(clampStart(50, 2, 1.5)).toBe(0);
+    // a window as wide as the canvas never scrolls
+    expect(clampStart(50, L, D)).toBe(0);
   });
 
-  it('cameraAt clamps start and window', () => {
+  it('cameraAt clamps start and window to the open canvas', () => {
     const v = cameraAt(score, { start: 190, window: 20 }, 199, size);
-    expect(v.start).toBe(180);
-    expect(timeToX(v, 200)).toBeCloseTo(size.width, 9);
-    const fit = cameraAt(score, { start: 30, window: 1e6 }, 50, size);
-    expect([fit.start, fit.window]).toEqual([0, 200]);
-    expect(timeToX(fit, 0)).toBe(0);
-    expect(timeToX(fit, 200)).toBeCloseTo(size.width, 9);
+    expect(v.start).toBe(190);
+    expect(v.tR).toBe(210);
+    const wide = cameraAt(score, { start: 30, window: 1e6 }, 50, size);
+    expect([wide.start, wide.window]).toEqual([0, L]);
+    expect(timeToX(wide, L)).toBeCloseTo(size.width, 9);
   });
 });
 
@@ -122,9 +133,17 @@ describe('follow', () => {
     expect(followStart('page', 100, 30, 20, D)).toBeCloseTo(30 - PAGE_LAND_X * 20, 9);
   });
 
-  it('Off never moves the view (only clamps it)', () => {
+  it('Off never moves the view (only clamps it to the canvas)', () => {
     for (const [, start] of play('off', 20, 77)) expect(start).toBe(77);
-    expect(followStart('off', 190, 10, 20, D)).toBe(180);
+    expect(followStart('off', 190, 10, 20, D)).toBe(190);
+    expect(followStart('off', 5000, 10, 20, D)).toBe(L - 20);
+    // Page leaves a view panned past the end alone while the playhead is in it
+    expect(followStart('page', 250, 255, 20, D)).toBe(250);
+  });
+
+  it('a playhead resting past the end is followed out there', () => {
+    expect(followStart('smooth', 0, 300, 20, D)).toBeCloseTo(300 - SMOOTH_X * 20, 9);
+    expect(followStart('page', 0, 300, 20, D)).toBeCloseTo(300 - PAGE_LAND_X * 20, 9);
   });
 
   it('at Fit nothing scrolls in any mode', () => {
@@ -153,11 +172,14 @@ describe('zoom', () => {
   });
 
   it('clamps the window and the start', () => {
-    expect(zoomAround({ start: 40, window: 20 }, 1e6, 47, D)).toEqual({ start: 0, window: 200 });
+    expect(zoomAround({ start: 40, window: 20 }, 1e6, 47, D)).toEqual({ start: 0, window: L });
     expect(zoomAround({ start: 40, window: 20 }, 0.1, 47, D).window).toBe(MIN_WINDOW);
-    // zooming out near the end cannot push the view past the piece
+    // zooming out near the end goes past the piece, keeping the anchor
     const z = zoomAround({ start: 180, window: 20 }, 60, 199, D);
-    expect(z.start).toBe(140);
+    expect(z.start).toBeCloseTo(142, 9);
+    // ...but not past the canvas end or before 0
+    expect(zoomAround({ start: 780, window: 20 }, 100, 780, D).start).toBe(L - 100);
+    expect(zoomAround({ start: 1, window: 20 }, 100, 2, D).start).toBe(0);
   });
 });
 

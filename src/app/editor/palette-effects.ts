@@ -20,9 +20,18 @@ export const PROBE_ID = '__probe';
 
 export type PaletteEffects = Record<MomentType, MomentEffect>;
 
+/**
+ * The time whose state an add at `t` acts on: `t`, or just before the end when `t` is at or past
+ * it (open-ended canvas: adding there extends the piece, and the voices hold until then).
+ */
+export function effectTime(score: CompiledScore, t: Seconds): Seconds {
+  const last = Math.max(0, Math.round((score.duration - 0.01) * 1000) / 1000);
+  return t > last ? last : t;
+}
+
 /** Per type: would a default moment of that type at `t` have an effect? */
 export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): PaletteEffects {
-  return momentEffectsAt(piece, score, t, (type, at) =>
+  return momentEffectsAt(piece, score, effectTime(score, t), (type, at) =>
     defaultMoment(type, at, PROBE_ID, piece, score),
   );
 }
@@ -35,7 +44,7 @@ export function addTime(): Seconds {
 /** The effect of adding `type` at the playhead now (computed fresh, for clicks and keys). */
 export function playheadEffect(type: MomentType): MomentEffect {
   const { piece, compiled } = usePlayer.getState();
-  const t = addTime();
+  const t = effectTime(compiled, addTime());
   return momentEffectAt(piece, compiled, defaultMoment(type, t, PROBE_ID, piece, compiled));
 }
 

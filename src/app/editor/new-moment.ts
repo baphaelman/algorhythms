@@ -47,7 +47,10 @@ export function defaultMoment<T extends MomentType>(
   piece: Piece,
   score: CompiledScore,
 ): MomentOf<T> {
-  const { active, key } = stateAt(score, at);
+  // At or past the end (open-ended canvas) the defaults follow the state just before it: adding
+  // there extends the piece, and the voices hold until then.
+  const read = Math.min(at, Math.max(0, score.duration - 0.01));
+  const { active, key } = stateAt(score, read);
   const n = active.length;
   const pool = piece.voices.length;
   const base = { id, at };
@@ -102,7 +105,7 @@ export function defaultMoment<T extends MomentType>(
       break;
     case 'note':
       // The sounding note nearest the middle, one scale step up (core/moments/note.ts).
-      m = { ...base, type: 'note', ...defaultNoteFields(score, at) };
+      m = { ...base, type: 'note', ...defaultNoteFields(score, read) };
       break;
     case 'pin': {
       // The top sounding voice, two scale steps up (the first pool voice if nothing sounds).

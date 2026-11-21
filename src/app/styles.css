@@ -423,6 +423,31 @@ input[type='range'] {
   cursor: col-resize;
 }
 
+/* The piece's end (open-ended canvas, §11.3 revision 7): a handle line at the end, the ruler past
+   it tinted. Placed by Ruler.tsx; dashed while the end is automatic. */
+.ruler-end {
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 0;
+  width: 100%;
+  border-left: 2px solid var(--ink-2);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--rule) 55%, transparent) 4px 5px
+  );
+  pointer-events: none;
+}
+
+.ruler-end[data-auto='true'] {
+  border-left-style: dashed;
+}
+
+.ruler[data-hover='end'] {
+  cursor: col-resize;
+}
+
 /* The loop region: shaded over the ruler, score and rows; placed by LoopRegion.tsx. */
 .loop-region {
   position: absolute;

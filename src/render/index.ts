@@ -9,6 +9,8 @@ export {
   axisOf,
   cameraAt,
   cameraScore,
+  canvasEnd,
+  CANVAS_EXTRA,
   clampStart,
   clampWindow,
   followStart,
