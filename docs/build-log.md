@@ -1792,3 +1792,6 @@ Owner: "artifacts in front of the playhead where lines split".
 - **Perf** (`render.spec` @perf, chromium-dev, this Linux box, software raster, 2 runs each, before → after): ink-24 flush 4.7–5.1 → 4.5–4.8; pitch-24 flush 6.9–7.2 → 6.6–7.1; pitch-24 draw-only 2.1–2.2 → 2.8–3.7; ink-24 draw-only 2.1–2.3 → 2.8; overview 7.0–7.2 → 8.1–8.5. Draw-only rises because `drawImage` rasterises the layer inside `drawScore`. The strict 4 ms gate fails on this box before and after.
 - **Tests:** `render.spec` "ghost lines do not stack…" (8 lines merge at 4 s, split at 8 s, all ahead; ink colours; darkest pixel at the merge and split ≤ a lone ghost line + 3/255; before: 122 vs 76, after 76 vs 76). `strands.test.ts`: `Bundle.lo/hi`; with a stubbed `OffscreenCanvas`, one composite per bundle at 0.35, boxes < 5 % of the canvas, strands at full strength in the layer, 0.35 outside; selection dims; past/opaque/no-bundle frames draw the same fills as without a layer. `path-ctx.ts` records `drawImage` and `clip`. Dev entry: `frame()`.
 - **Seen, not fixed:** thin AA seams across the rope where strand pieces meet at staggered split events (Tidewater 91.9 s); in the past too.
+
+## Portable DSP math: macOS check (2026-11-21)
+Owner ran `render-golden.test.ts` at origin/main 1b6ee64 on the Mac (arm64): 1 passed. The Linux-pinned goldens hold on both platforms.
