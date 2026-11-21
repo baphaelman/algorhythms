@@ -2,7 +2,7 @@
  * The long-press menu for touch editing (PLAN.md §11.3b), opened by ../touch `openTouchMenu` from
  * the lane or the score: Duplicate, Delete and Copy on the pressed moment (the whole selection
  * when it holds it), Paste at the playhead, and the latched modifiers that replace Alt and Shift
- * (Snap, "Ends set stagger", Select more). While a modifier is latched, a chip shows it; tapping
+ * (Snap, "Ends set stagger", Select more); with dots selected, Octave up/down (Shift+▲/▼). While a modifier is latched, a chip shows it; tapping
  * the chip turns it off.
  *
  * The menu opens under a finger that is still down, so an item reacts only to a press that
@@ -13,7 +13,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MomentId } from '../../core/types';
 import { announce, momentsText } from '../announce';
 import { copySelection, hasClip, pasteHere } from '../clipboard';
-import { deleteMoments, duplicateMoments } from '../editor/actions';
+import { deleteMoments, duplicateMoments, octaveDots } from '../editor/actions';
+import { currentDots, selectDots, useDotSelection } from '../editor/dot-selection';
 import { select, useEditor } from '../editor/history';
 import { endEditOf } from '../editor/lane';
 import { isPieceKey } from '../editor/piece-key';
@@ -55,6 +56,7 @@ const CHIPS: readonly [keyof TouchMods, string][] = [
 export function TouchMenu() {
   const at = useTouchMenu((s) => s.at);
   const mods = useTouchMods();
+  useDotSelection((s) => s.dots);
   const box = useRef<HTMLDivElement>(null);
   const armed = useRef(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -124,6 +126,14 @@ export function TouchMenu() {
       closeTouchMenu();
       fn();
     };
+  // Dots selected (tap or long-press one): the touch stand-in for Shift+▲/▼ (octave move).
+  const dots = currentDots();
+  const octave = (dir: 1 | -1) =>
+    act(() => {
+      const landed = octaveDots(dots, dir);
+      if (landed) selectDots(landed);
+      announce(landed ? `Moved ${dir > 0 ? 'up' : 'down'} an octave` : 'Out of range');
+    });
   const toggle = (k: keyof TouchMods, label: string, checked: boolean) => (
     <button
       type="button"
@@ -197,6 +207,21 @@ export function TouchMenu() {
               })}
             >
               Delete
+            </button>
+          </>
+        )}
+        {dots.length > 0 && (
+          <>
+            <button type="button" role="menuitem" data-testid="touch-octave-up" onClick={octave(1)}>
+              Octave up
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="touch-octave-down"
+              onClick={octave(-1)}
+            >
+              Octave down
             </button>
           </>
         )}

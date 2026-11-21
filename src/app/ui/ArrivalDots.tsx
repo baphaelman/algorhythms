@@ -49,7 +49,7 @@ import { dotSnaps, ofVoice, snapTime, type SnapSet } from '../editor/snap';
 import { selectStep, useStepSelection } from '../editor/step-selection';
 import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
-import { freeOf, slopFor, touchMods } from '../touch';
+import { freeOf, openTouchMenu, slopFor, startLongPress, touchMods } from '../touch';
 import { onScoreFrame } from '../loop';
 import { marquee } from '../marquee';
 import { hideOctaves, octaveGuide, showOctaves } from '../octave-guide';
@@ -295,6 +295,17 @@ export function ArrivalDots() {
     let snaps: SnapSet | null = null;
     /** The last pointer position and modifiers, re-applied when Shift or Alt changes mid-drag. */
     let at = { x: x0, y: y0, shift: e.shiftKey, alt: freeOf(e) };
+    // A held finger or pen opens the touch menu on this dot (§11.3b): Octave up/down, Delete...
+    let menu = false;
+    const nativeEvent = e.nativeEvent;
+    const hold = startLongPress(nativeEvent, () => {
+      if (drag !== undefined) return;
+      menu = true;
+      const cur = currentDots();
+      if (!cur.some((d) => isDot(d, dot))) selectDots(add ? [...cur, dot] : [dot]);
+      if (el.hasPointerCapture(id)) el.releasePointerCapture(id);
+      openTouchMenu(nativeEvent.clientX, nativeEvent.clientY, dot.momentId);
+    });
     const apply = () => {
       const v = view.current;
       const r = box.current?.getBoundingClientRect();
@@ -320,6 +331,8 @@ export function ArrivalDots() {
     };
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
+      hold?.move(ev.clientX, ev.clientY);
+      if (menu) return;
       if (drag === undefined) {
         if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= slop) return;
         h.dragging = true;
@@ -349,6 +362,7 @@ export function ArrivalDots() {
     };
     const done = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
+      hold?.cancel();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
@@ -363,6 +377,7 @@ export function ArrivalDots() {
       el.style.visibility = '';
       if (ghost.current) ghost.current.hidden = true;
       stopAudition();
+      if (menu) return;
       if (drag) {
         const r = drag.end(ev.type === 'pointercancel');
         if (!r) return;
@@ -442,6 +457,11 @@ export function ArrivalDots() {
                   data-t={d.t.toFixed(3)}
                   data-pitch={d.pitch}
                   onPointerDown={(e) => press(e, d)}
+                  onContextMenu={(e) => {
+                    // A long press is the touch menu, not the browser's.
+                    const pt = (e.nativeEvent as MouseEvent & { pointerType?: string }).pointerType;
+                    if (pt !== undefined && pt !== 'mouse') e.preventDefault();
+                  }}
                 />
               );
             })}
