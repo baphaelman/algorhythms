@@ -3,6 +3,7 @@
  * the inspector's note fields.
  */
 
+import { noteChanges } from '../../core/moments/note';
 import { noteAt, pitchAt } from '../../core/query';
 import type { CompiledScore, Key, NoteMoment, Pitch, Seconds } from '../../core/types';
 import { scaleNeighbour } from './walk-steps';
@@ -53,22 +54,31 @@ export function stepNoteTo(to: Pitch, dir: 1 | -1, key: Key): Pitch {
 
 /**
  * When the note reaches `to`, for its score dot: the end of the earliest segment the note produced
- * that ends on `to` (not the return), else `at`.
+ * that ends on `to` (not the return), else `at`. Several changes: the first change's.
  */
 export function noteArrival(score: CompiledScore, m: NoteMoment): Seconds {
   return noteLanding(score, m).t;
 }
 
-/** `noteArrival` and the pool index of the voice that lands on `to` (undefined if none). */
-export function noteLanding(score: CompiledScore, m: NoteMoment): { t: Seconds; voice?: number } {
+/**
+ * `noteArrival` for the change to `to` (default: the first change's), and the pool index of the
+ * voice that lands there (undefined if none); voices in `skip` (other changes') are passed over.
+ */
+export function noteLanding(
+  score: CompiledScore,
+  m: NoteMoment,
+  to: Pitch = noteChanges(m)[0]?.to ?? NaN,
+  skip?: ReadonlySet<number>,
+): { t: Seconds; voice?: number } {
   let best = Infinity;
   let voice: number | undefined;
   for (const v of score.voices) {
+    if (skip?.has(v.index)) continue;
     for (const s of v.segments) {
       if (s.momentId !== m.id || s.t0 < m.at - 1e-9) continue;
       const end = s.curve ? s.curve.t1 : s.t1;
       const p1 = s.curve ? s.curve.p1 : s.p1;
-      if (Math.abs(p1 - m.to) < 0.5 && end < best) {
+      if (Math.abs(p1 - to) < 0.5 && end < best) {
         best = end;
         voice = v.index;
       }

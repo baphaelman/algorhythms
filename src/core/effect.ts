@@ -19,7 +19,8 @@ import { mergeGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
 import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
-import { keyAt, lifeAt, pitchAt, segmentIndexAt } from './query';
+import { countsLines } from './compiler/lines';
+import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
   CompiledScore,
@@ -192,12 +193,14 @@ export interface StateAt {
   dormant: number[];
   /** Per pool index: the voice's level target at t. */
   level: Float64Array;
-  /**
-   * Revision 8: the line each logical voice belongs to. A line of weight w stands for round(w)
-   * stacked voices, as the compiler's moments see it (compiler/lines.ts): its phantoms take
-   * dormant pool indices, then indices ≥ the pool size.
-   */
+  /** Revision 8: the line each (logical) voice belongs to; identity on lines. */
   base: number[];
+  /**
+   * Revision 8: the same state with each line listed as many times as the voices it stands for
+   * (`stack`), as the compiler's moments without a count see it (compiler/lines.ts): its phantoms
+   * take dormant pool indices, then indices ≥ the pool size. Absent when no line is stacked.
+   */
+  stacked?: StateAt;
 }
 
 /** True for moment types that can end a voice's life (§7.4). */
@@ -256,26 +259,34 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   });
   const lines: number[] = [];
   for (let i = 0; i < n; i++) if (dest[i] === dest[i]) lines.push(i);
-  // Stacked voices of weighted lines (revision 8).
-  const base: number[] = [];
-  for (let i = 0; i < n; i++) base.push(i);
+  const identity: number[] = [];
+  for (let i = 0; i < n; i++) identity.push(i);
+  const key = keyAt(score, t);
+  const flat: StateAt = {
+    t,
+    key,
+    dest,
+    active: lines.slice().sort((a, b) => dest[a] - dest[b] || a - b),
+    dormant: dormant.slice(),
+    level,
+    base: identity,
+  };
+  // Stacked voices of lines that stand for several (revision 8), for moments without a count.
   const extra: { b: number; u: number }[] = [];
+  const free = dormant.slice();
   let synth = n;
   for (const b of lines) {
-    let w = 1;
-    for (const c of score.voices[b].weight ?? []) if (c.t <= t) w = c.w;
-    for (let j = Math.max(1, Math.round(w)); j > 1; j--) {
-      const u = dormant.length > 0 ? dormant.shift()! : synth++;
+    for (let j = stackAt(score.voices[b], t); j > 1; j--) {
+      const u = free.length > 0 ? free.shift()! : synth++;
       extra.push({ b, u });
     }
   }
-  let all = dest;
-  if (synth > n) {
-    all = new Float64Array(synth).fill(NaN);
-    all.set(dest);
-  }
-  const lvl = synth > n ? new Float64Array(synth).fill(1) : level;
-  if (lvl !== level) lvl.set(level);
+  if (extra.length === 0) return flat;
+  const base = identity.slice();
+  const all = new Float64Array(synth).fill(NaN);
+  all.set(dest);
+  const lvl = new Float64Array(synth).fill(1);
+  lvl.set(level);
   for (const { b, u } of extra) {
     all[u] = all[b];
     lvl[u] = level[b];
@@ -284,7 +295,10 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   const active: number[] = [];
   for (let i = 0; i < all.length; i++) if (all[i] === all[i]) active.push(i);
   active.sort((a, b) => all[a] - all[b] || a - b);
-  return { t, key: keyAt(score, t), dest: all, active, dormant, level: lvl, base };
+  return {
+    ...flat,
+    stacked: { t, key, dest: all, active, dormant: free, level: lvl, base },
+  };
 }
 
 function resolveTarget(
@@ -309,7 +323,9 @@ function resolveTarget(
   return active.slice();
 }
 
-function effectOn(piece: Piece, score: CompiledScore, st: StateAt, m: Moment): MomentEffect {
+function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): MomentEffect {
+  // Moments with a count count lines; the others see stacked voices (compiler/lines.ts).
+  const st = countsLines(m) ? st0 : (st0.stacked ?? st0);
   const no = (reason: string): MomentEffect => ({ effect: false, reason });
   const ids = score.voices.map((v) => v.id);
   for (let u = ids.length; u < st.dest.length; u++) ids.push(`${ids[st.base[u]]}~${u}`);

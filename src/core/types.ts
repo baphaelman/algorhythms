@@ -392,22 +392,36 @@ export interface WalkStepRecord {
   fixed: boolean;
 }
 
-/**
- * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. With `order`, the target
- * set is the current pitches with one `from` replaced by `to`, reached by ordered voice leading
- * (§7.2); without, only that voice moves.
- */
-export interface NoteMoment extends MomentBase {
-  type: 'note';
+/** One note change of a `note` moment: the sounding note `from` becomes `to`. */
+export interface NoteChange {
   /** The sounding note to change (matched to the nearest committed destination within ½ semitone). */
   from: Pitch;
   /** Its new pitch. */
   to: Pitch;
-  /** When present, the note returns this many seconds after its glide ends. */
+}
+
+/**
+ * A note point (§6.2, revision 6): the sounding note `from` becomes `to`. With `order`, the target
+ * set is the current pitches with one `from` replaced by `to`, reached by ordered voice leading
+ * (§7.2); without, only that voice moves.
+ *
+ * Grouped note changes (§11.3 revision 7): `changes` holds several changes made at the same time
+ * (one moment, shown as "Shift"); each matches a different voice. A moment has either `from` and
+ * `to` (one change) or `changes`; read them through `noteChanges` (core/moments/note.ts).
+ */
+export interface NoteMoment extends MomentBase {
+  type: 'note';
+  /** One change: the sounding note to change (nearest committed destination within ½ semitone). */
+  from?: Pitch;
+  /** One change: its new pitch. */
+  to?: Pitch;
+  /** Several changes at once (instead of `from`/`to`), applied together. */
+  changes?: NoteChange[];
+  /** When present, the notes return this many seconds after their glides end. */
   back?: Seconds;
   /**
    * Keep lines in order (revision 6): true = ordered voice leading, no crossings; false or absent
-   * = only the voice sounding `from` moves, and may cross its neighbours.
+   * = only the voices sounding the `from`s move, and may cross their neighbours.
    */
   order?: boolean;
 }
@@ -731,6 +745,15 @@ export interface WeightChange {
   over: Seconds;
 }
 
+/**
+ * A change in how many voices a line stands for (revision 8): `n` from `t` on. Stacked voices
+ * (a coincidence merge) count; a moment without a count sees the line `n` times.
+ */
+export interface StackChange {
+  t: Seconds;
+  n: number;
+}
+
 /** One pool voice's compiled output. */
 export interface CompiledVoice {
   /** Voice id, as in Piece.voices. */
@@ -753,6 +776,8 @@ export interface CompiledVoice {
    * 1 throughout. Merged lines sum their weights; splits share them out.
    */
   weight?: WeightChange[];
+  /** Stack timeline, sorted (revision 8): 1 before the first entry; absent: 1 throughout. */
+  stack?: StackChange[];
   /** Static linear gain from VoiceDef.gain. Extension of §7.9, so the DSP needs only this score. */
   gain: number;
   /** Static pan from VoiceDef.pan. Extension of §7.9. */

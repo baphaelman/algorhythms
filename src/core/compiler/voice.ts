@@ -18,7 +18,16 @@ import {
   type OvershootLimits,
   type StartState,
 } from '../interrupt';
-import type { EaseRef, Life, Pitch, Seconds, Segment, VoiceDef, WeightChange } from '../types';
+import type {
+  EaseRef,
+  Life,
+  Pitch,
+  Seconds,
+  Segment,
+  StackChange,
+  VoiceDef,
+  WeightChange,
+} from '../types';
 
 /** Local aliases for the hot paths: under Vitest's module runner an imported binding is a getter. */
 const segAt = evalSegment;
@@ -89,6 +98,8 @@ export interface Birth {
    * ramping down over the newborn's fade-in.
    */
   fork?: number;
+  /** When the fork was decided (its moment's time): a parent born later never had the share. */
+  forkAt?: Seconds;
 }
 
 /**
@@ -289,6 +300,8 @@ export class VoiceRun {
   /** While dying: the voice it merges into and follows (−1: none), and its fade length. */
   into = -1;
   deathFade = 0;
+  /** Revision 8: its weight already passed to the line it merges into. */
+  handed = false;
   /** Moves scheduled but not started, in start order. */
   pending: Move[] = [];
   /** A birth not yet happened (never cancelled). */
@@ -307,6 +320,8 @@ export class VoiceRun {
   members: number[] = [];
   /** Weight timeline (absolute targets, pushed at the simulation time). */
   readonly weights: WeightChange[] = [];
+  /** `count` timeline (pushed at the simulation time; `setCount`). */
+  readonly counts: StackChange[] = [];
 
   constructor(
     readonly index: number,
@@ -326,6 +341,17 @@ export class VoiceRun {
   get lastWeight(): number {
     const w = this.weights;
     return w.length > 0 ? w[w.length - 1].w : 1;
+  }
+
+  /** Sets `count` from t on (the current simulation time), recording it in `counts`. */
+  setCount(t: Seconds, n: number): void {
+    this.count = n;
+    const c = this.counts;
+    const last = c[c.length - 1];
+    if ((last ? last.n : 1) === n) return;
+    // Replace, never mutate (as rampWeight).
+    if (last && last.t === t) c[c.length - 1] = { t, n };
+    else c.push({ t, n });
   }
 
   /** Appends a weight ramp at t (the current simulation time) to `w`, unless already there. */

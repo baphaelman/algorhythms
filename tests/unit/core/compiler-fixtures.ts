@@ -3,7 +3,7 @@
  */
 import { newPiece } from '../../../src/core/defaults';
 import { evalSegment } from '../../../src/core/segment';
-import { pitchAt } from '../../../src/core/query';
+import { pitchAt, stackAt } from '../../../src/core/query';
 import type {
   CompiledScore,
   CompiledVoice,
@@ -80,16 +80,16 @@ export function weightAt(v: CompiledScore['voices'][number], t: number): number 
 }
 
 /**
- * Sorted pitches at t with each line repeated by its (rounded) weight: the stacked voices the
- * lines stand for (revision 8 "Distinct notes").
+ * Sorted pitches at t with each line repeated by the voices it stands for (`stack`, revision 8
+ * "Distinct notes").
  */
 export function stackedChordAt(score: CompiledScore, t: number): Pitch[] {
   const out: Pitch[] = [];
+  const ps = pitchesAt(score, t);
   score.voices.forEach((v, i) => {
-    const p = pitchesAt(score, t)[i];
+    const p = ps[i];
     if (p === null) return;
-    const n = Math.max(1, Math.round(weightAt(v, t)));
-    for (let j = 0; j < n; j++) out.push(p);
+    for (let j = stackAt(v, t); j > 0; j--) out.push(p);
   });
   return out.sort((a, b) => a - b);
 }

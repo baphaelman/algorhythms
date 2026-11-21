@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { barGrid, xToTime, type View } from '../../render';
 import { onScoreFrame } from '../loop';
 import { snapToGrid } from '../editor/shortcuts';
+import { withEnd } from '../editor/end';
+import { beginGesture, cancelGesture, edit, endGesture, updateGesture } from '../editor/history';
+import { changePoints, snapTime, type ChangePoint } from '../editor/snap';
 import {
   LOOP_BAND_PX,
   LOOP_DRAG_PX,
@@ -20,7 +23,9 @@ import { camera, loopDraft, loopRegion, scrubEnd, scrubTo, setLoop, usePlayer } 
  * (beats faint, bars stronger; §11.3 revision 7), on the shared axis (§10). Click or drag seeks (silent while dragging, like the
  * player's scrubber); the view holds still during the drag. Its top strip is the loop band
  * (§11.3 revision 6): drag there, or Shift-drag anywhere, to set the loop region; drag a region
- * edge to move it; double-click the band to clear it (Alt skips grid snapping). Placed every frame from the loop's
+ * edge to move it; double-click the band to clear it (Alt skips grid snapping). The piece's end is
+ * a handle (open-ended canvas, revision 7): drag it to set `end.at` (one undo entry; snaps to note
+ * changes, Alt free), double-click it for the automatic end; the canvas past it is tinted. Placed every frame from the loop's
  * camera (`onScoreFrame`) by direct DOM writes; its content box lines up with the score canvas.
  */
 /** Draws lines every `step` s as a repeating gradient on `el` (hidden when `step` is 0). */
@@ -33,11 +38,15 @@ function stripe(el: HTMLElement, step: number, v: View): void {
   el.dataset.step = String(step);
 }
 
+/** How close to the piece's end a ruler press grabs the end handle, px. */
+const END_GRAB_PX = 6;
+
 export function Ruler() {
   const root = useRef<HTMLDivElement>(null);
   const ticks = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const barsEl = useRef<HTMLDivElement>(null);
+  const endEl = useRef<HTMLDivElement>(null);
   const duration = usePlayer((s) => s.compiled.duration);
 
   useEffect(() => {
@@ -45,12 +54,14 @@ export function Ruler() {
     const box = ticks.current;
     const beats = grid.current;
     const bars = barsEl.current;
-    if (!el || !box || !beats || !bars) return;
+    const endMark = endEl.current;
+    if (!el || !box || !beats || !bars || !endMark) return;
     const pool: HTMLSpanElement[] = [];
     let view: View | null = null;
     let lastKey = '';
     let lastBeat = '';
     let lastNow = -1;
+    let lastEnd = '';
 
     const layout = (v: View): void => {
       view = v;
@@ -88,6 +99,16 @@ export function Ruler() {
         stripe(beats, bt, v);
         stripe(bars, bar, v);
       }
+      const st = usePlayer.getState();
+      const endX = (st.compiled.duration - v.start) * v.pps;
+      const auto = st.piece.end.at === undefined;
+      const endKey = `${endX}|${auto}`;
+      if (endKey !== lastEnd) {
+        lastEnd = endKey;
+        endMark.style.transform = `translateX(${endX}px)`;
+        endMark.dataset.t = String(st.compiled.duration);
+        endMark.dataset.auto = String(auto);
+      }
       const now = Math.round(v.t);
       if (now !== lastNow) {
         lastNow = now;
@@ -101,7 +122,8 @@ export function Ruler() {
     type Drag =
       | { id: number; kind: 'seek' }
       | { id: number; kind: 'new'; t0: number; x0: number }
-      | { id: number; kind: 'edge'; edge: 'start' | 'end'; span: LoopSpan };
+      | { id: number; kind: 'edge'; edge: 'start' | 'end'; span: LoopSpan }
+      | { id: number; kind: 'end'; points: readonly ChangePoint[] };
     let drag: Drag | null = null;
     const timeAt = (clientX: number): number | null => {
       if (!view) return null;
@@ -114,6 +136,9 @@ export function Ruler() {
     const pieceLength = (): number => usePlayer.getState().compiled.duration;
     const edgeAt = (t: number): 'start' | 'end' | null =>
       view ? loopEdgeAt(loopRegion(), t, view.pps) : null;
+    /** True when time `t` is within `END_GRAB_PX` of the piece's end. */
+    const onEnd = (t: number): boolean =>
+      !!view && Math.abs(t - pieceLength()) * view.pps <= END_GRAB_PX;
     const onDown = (e: PointerEvent): void => {
       if (e.button !== 0 || drag !== null) return;
       const t = timeAt(e.clientX);
@@ -133,6 +158,12 @@ export function Ruler() {
         }
         return;
       }
+      if (onEnd(t)) {
+        const { compiled, piece } = usePlayer.getState();
+        drag = { id: e.pointerId, kind: 'end', points: changePoints(compiled, piece) };
+        beginGesture('Move the end');
+        return;
+      }
       drag = { id: e.pointerId, kind: 'seek' };
       scrubTo(t);
     };
@@ -140,14 +171,23 @@ export function Ruler() {
       if (!drag) {
         const t = timeAt(e.clientX);
         const band = inBand(e.clientY) || e.shiftKey;
-        el.dataset.hover = !band ? '' : t !== null && edgeAt(t) ? 'edge' : 'band';
+        el.dataset.hover = !band
+          ? t !== null && onEnd(t)
+            ? 'end'
+            : ''
+          : t !== null && edgeAt(t)
+            ? 'edge'
+            : 'band';
         return;
       }
       if (e.pointerId !== drag.id) return;
       const t = timeAt(e.clientX);
       if (t === null) return;
       if (drag.kind === 'seek') scrubTo(t);
-      else if (drag.kind === 'edge') {
+      else if (drag.kind === 'end') {
+        const at = snapTime(t, { points: drag.points }, view?.pps ?? 0, e.altKey);
+        updateGesture((p) => withEnd(p, at));
+      } else if (drag.kind === 'edge') {
         loopDraft.span = dragLoopEdge(drag.span, drag.edge, snapped(t, e), pieceLength());
       } else if (Math.abs(e.clientX - drag.x0) >= LOOP_DRAG_PX) {
         loopDraft.span = loopFromDrag(drag.t0, snapped(t, e), pieceLength());
@@ -162,12 +202,22 @@ export function Ruler() {
         scrubEnd();
         return;
       }
+      if (d.kind === 'end') {
+        if (e.type === 'pointercancel') cancelGesture();
+        else endGesture();
+        return;
+      }
       const span = loopDraft.span;
       if (span && e.type !== 'pointercancel') setLoop(span);
       else loopDraft.span = null;
     };
     const onDouble = (e: MouseEvent): void => {
-      if (inBand(e.clientY)) setLoop(null);
+      if (inBand(e.clientY)) {
+        setLoop(null);
+        return;
+      }
+      const t = timeAt(e.clientX);
+      if (t !== null && onEnd(t)) edit((p) => withEnd(p, undefined), 'Automatic end');
     };
     const onLeave = (): void => {
       if (!drag) el.dataset.hover = '';
@@ -200,7 +250,7 @@ export function Ruler() {
       data-testid="ruler"
       role="slider"
       tabIndex={0}
-      aria-label="Position in the piece (click or drag to seek; arrow keys step; drag the top strip to loop)"
+      aria-label="Position in the piece (click or drag to seek; arrow keys step; drag the top strip to loop; drag the end mark to set the end)"
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
     >
@@ -211,6 +261,7 @@ export function Ruler() {
       <div ref={grid} className="ruler-grid" data-testid="ruler-beats" hidden />
       <div ref={barsEl} className="ruler-grid ruler-bars" data-testid="ruler-bars" hidden />
       <div ref={ticks} className="ruler-ticks" />
+      <div ref={endEl} className="ruler-end" data-testid="ruler-end" aria-hidden="true" />
     </div>
   );
 }

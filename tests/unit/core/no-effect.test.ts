@@ -28,8 +28,9 @@ describe('no-effect diagnostic', () => {
   });
 
   it('merge on a unison', () => {
+    // Start voices on one pitch are one line, and merge counts lines (owner, 2026-11-21).
     expect(check(UNI, { type: 'merge', at: 1, count: 1, which: 'top', fade: 1 })).toEqual([
-      'No effect: all voices already on one pitch.',
+      'No effect: only one voice is sounding.',
     ]);
     expect(check([57], { type: 'merge', at: 1, count: 1, which: 'top', fade: 1 })).toEqual([
       'No effect: only one voice is sounding.',
@@ -195,8 +196,9 @@ describe('momentEffectsAt (palette)', () => {
       moments: [{ type: 'unison', at: 1, pitch: 60, octaves: false }],
     });
     const r = effects(p, 10);
-    expect(off(r)).toEqual(['merge', 'spread', 'unison']);
-    expect(r.merge.reason).toBe('all voices already on one pitch');
+    // One line now: merge counts lines, and the default unison (one note: the tonic) moves it.
+    expect(off(r)).toEqual(['merge', 'spread']);
+    expect(r.merge.reason).toBe('only one voice is sounding');
     // Mid-glide (moves still pending or running), the unison's targets already count.
     expect(off(effects(p, 1.2))).toEqual(['merge', 'spread', 'unison']);
   });

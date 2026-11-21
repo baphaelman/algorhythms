@@ -4,6 +4,7 @@
  * the piece-wide index for hover, the hover pick, and what a drag of a dot does.
  */
 
+import { noteChanges } from '../../core/moments/note';
 import { noteAt } from '../../core/query';
 import type {
   ChordMoment,
@@ -32,6 +33,8 @@ export interface ArrivalDot {
   voice?: number;
   /** Walk dots: the step. */
   step?: StepRef;
+  /** Note dots: the index of the change in `noteChanges(m)`. */
+  change?: number;
 }
 
 /** True if voice `v` is fading out (a merge's dying voice) at t. */
@@ -106,11 +109,17 @@ function walkDots(score: CompiledScore, w: WalkMoment): ArrivalDot[] {
   return out;
 }
 
-function noteDot(score: CompiledScore, m: NoteMoment): ArrivalDot {
-  const { t, voice } = noteLanding(score, m);
-  const d: ArrivalDot = { momentId: m.id, type: 'note', t, pitch: m.to };
-  if (voice !== undefined) d.voice = voice;
-  return d;
+/** A note moment's dots: one per change, at its `to` where it arrives (§11.3 revision 7). */
+function noteDots(score: CompiledScore, m: NoteMoment): ArrivalDot[] {
+  const list = noteChanges(m);
+  const used = new Set<number>();
+  return list.map((c, change) => {
+    const { t, voice } = noteLanding(score, m, c.to, used);
+    if (voice !== undefined) used.add(voice);
+    const d: ArrivalDot = { momentId: m.id, type: 'note', t, pitch: c.to, change };
+    if (voice !== undefined) d.voice = voice;
+    return d;
+  });
 }
 
 /**
@@ -124,7 +133,7 @@ export function momentArrivals(
   chordNotes?: readonly Pitch[] | null,
 ): ArrivalDot[] {
   if (m.type === 'walk') return walkDots(score, m);
-  if (m.type === 'note') return [noteDot(score, m)];
+  if (m.type === 'note') return noteDots(score, m);
   if (m.type === 'chord' && chordNotes) {
     const t = chordArrival(score, m);
     return chordNotes.map((pitch) => {
@@ -187,7 +196,7 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
       step: { momentId: w.id, tick: s.tick, voice: s.voice },
     });
   }
-  for (const m of byId.values()) if (m.type === 'note') out.push(noteDot(score, m));
+  for (const m of byId.values()) if (m.type === 'note') out.push(...noteDots(score, m));
   return out.sort((a, b) => a.t - b.t || a.pitch - b.pitch);
 }
 
@@ -201,7 +210,7 @@ export interface DotMapping {
 
 /**
  * The dots to show for a pointer at (x, y): those of the moment(s) with a dot within `radius` px,
- * excluding `exclude` (the selected moment, whose dots already show). A walk shows only its near
+ * excluding `exclude` (the selected moment or moments, whose dots already show). A walk shows only its near
  * steps (it may have hundreds); other moments show all their dots, nearest moment first, at most
  * `max` in all. `dots` must be sorted by t.
  */
@@ -211,7 +220,7 @@ export function hoverPick(
   x: number,
   y: number,
   radius: number,
-  exclude: MomentId | null = null,
+  exclude: MomentId | ReadonlySet<MomentId> | null = null,
   max = 16,
 ): ArrivalDot[] {
   const t0 = map.t(x - radius);
@@ -226,7 +235,7 @@ export function hoverPick(
   const near: { d: ArrivalDot; dist: number }[] = [];
   for (let i = lo; i < dots.length && dots[i].t <= t1; i++) {
     const d = dots[i];
-    if (d.momentId === exclude) continue;
+    if (typeof exclude === 'string' ? d.momentId === exclude : exclude?.has(d.momentId)) continue;
     const dist = Math.hypot(map.x(d.t) - x, map.y(d.pitch) - y);
     if (dist <= radius) near.push({ d, dist });
   }
@@ -256,7 +265,7 @@ export function hoverPick(
 export type DotAction =
   | { kind: 'chord'; id: MomentId; index: number; voice?: number }
   | { kind: 'walk'; step: StepRef }
-  | { kind: 'note'; id: MomentId; voice?: number }
+  | { kind: 'note'; id: MomentId; change: number; voice?: number }
   | { kind: 'override'; id: MomentId; voice: number }
   | { kind: 'none' };
 
@@ -287,7 +296,21 @@ export function dotAction(
         : { kind: 'chord', id: m.id, index, voice };
   }
   if (m.type === 'walk') return dot.step ? { kind: 'walk', step: dot.step } : { kind: 'none' };
-  if (m.type === 'note')
-    return voice === undefined ? { kind: 'note', id: m.id } : { kind: 'note', id: m.id, voice };
+  if (m.type === 'note') {
+    const change = dot.change ?? 0;
+    return voice === undefined
+      ? { kind: 'note', id: m.id, change }
+      : { kind: 'note', id: m.id, change, voice };
+  }
   return voice === undefined ? { kind: 'none' } : { kind: 'override', id: m.id, voice };
+}
+
+let cached: { piece: Piece; score: CompiledScore; dots: ArrivalDot[] } | null = null;
+
+/** `allArrivals`, cached for the last piece and score (hover and the marquee share it). */
+export function cachedArrivals(piece: Piece, score: CompiledScore): readonly ArrivalDot[] {
+  if (cached?.piece !== piece || cached.score !== score) {
+    cached = { piece, score, dots: allArrivals(piece, score) };
+  }
+  return cached.dots;
 }

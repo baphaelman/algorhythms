@@ -12,13 +12,22 @@
  * - lines sent to the same pitch glide there and merge on arrival (compile.ts `onJoin`).
  * Phantoms use dormant pool voices (the line's former members first), so their keyed draws and
  * ranges are those of the voices they were; with none left, a synthetic index ≥ the pool size.
+ *
+ * Moments that set how many notes sound (`split`, `merge`, a chord with `count`) count lines, not
+ * stacked voices (owner, 2026-11-21): they see each line once (`countsLines`), and a newborn whose
+ * parent stands for several voices forks off with a share of them (`collapse`).
  */
 
 import { hash32 } from '../rng';
 import { IntentKind, type Intent, type MomentPlan } from '../moments/types';
-import type { Pitch } from '../types';
+import type { Moment, Pitch } from '../types';
 import { foldIntoRange } from './range';
 import type { VoiceRun } from './voice';
+
+/** True for moments whose count is a number of lines heard after them (owner, 2026-11-21). */
+export function countsLines(m: Moment): boolean {
+  return m.type === 'split' || m.type === 'merge' || (m.type === 'chord' && m.count !== undefined);
+}
 
 /** Logical voices of the active lines at one moment. */
 export interface Expansion {
@@ -41,13 +50,15 @@ export interface Expansion {
 
 /**
  * Builds the logical voices of the active lines `lines` (sorted by committed destination).
- * `dormant`: pool voices free to stand in as phantoms, in pool order.
+ * `dormant`: pool voices free to stand in as phantoms, in pool order. `flat`: one per line
+ * (`countsLines`).
  */
 export function expand(
   voices: readonly VoiceRun[],
   lines: readonly number[],
   dormant: readonly number[],
   dest: (v: number) => Pitch,
+  flat = false,
 ): Expansion {
   const pool = voices.length;
   const base = new Map<number, number>();
@@ -60,7 +71,7 @@ export function expand(
   for (const b of lines) {
     base.set(b, b);
     copies.set(b, [b]);
-    if (voices[b].count > 1) stacked = true;
+    if (voices[b].count > 1 && !flat) stacked = true;
   }
   if (!stacked)
     return { pool, base, copies, reserved, synthId, synthHash, active: lines.slice(), stacked };
@@ -120,6 +131,13 @@ export interface Collapsed {
   lose: Map<number, { count: number; weight: number }>;
   /** Per surviving line that split: its count and members after the moment. */
   keep: Map<number, { count: number; members: number[] }>;
+  /**
+   * Per line (or newborn): voices and weight it takes from newborns that were not born, their
+   * note being its own (weight may be negative: a parent's share passed on).
+   */
+  absorb: Map<number, { count: number; weight: number }>;
+  /** Newborns and forks not born (their note already sounds). */
+  absorbed: number;
   /** Some fork found no free pool voice and stayed on its line. */
   exhausted: number;
 }
@@ -215,13 +233,14 @@ export function collapse(
     const forkGroups = groups.filter((g) => g !== primary);
     const carriers = forkGroups.map((g) => takeFor(spare, g.to, voices));
     const membersOf = (n: number): number[] => spare.splice(0, Math.max(0, n));
-    keep.set(b, {
-      count: primary.us.length,
-      members: [
-        ...voices[b].members.filter((u) => !x.reserved.has(u)),
-        ...membersOf(primary.us.length - 1),
-      ],
-    });
+    if (x.stacked)
+      keep.set(b, {
+        count: primary.us.length,
+        members: [
+          ...voices[b].members.filter((u) => !x.reserved.has(u)),
+          ...membersOf(primary.us.length - 1),
+        ],
+      });
     forkGroups.forEach((g, j) => {
       const it: Intent = { voice: carriers[j], to: g.to, kind: IntentKind.Birth, parent: b };
       for (const u of g.us) carrierOf.set(u, it);
@@ -229,6 +248,45 @@ export function collapse(
       pendingIntents.push(it);
       pendingForks.push({ b, to: g.to, members: membersOf(g.us.length - 1) });
     });
+  }
+  // Notes already taken after the moment: line moves and the lines it leaves alone. A fork or
+  // newborn bound for a note taken by its own parent, or by a sibling from the same parent (it
+  // would move with it as one line), is not born: its voices and weight join that line instead.
+  // Bound for another line's note, it glides there and merges on arrival (compile.ts onJoin).
+  const absorb = new Map<number, { count: number; weight: number }>();
+  const add = (v: number, count: number, weight: number): void => {
+    const a = absorb.get(v);
+    if (a) {
+      a.count += count;
+      a.weight += weight;
+    } else absorb.set(v, { count, weight });
+  };
+  const fold = (v: number, p: Pitch): number => {
+    const r = voices[v < x.pool ? v : x.base.get(v)!].range;
+    return key(Number.isFinite(p) ? foldIntoRange(p, r[0], r[1]).p : p);
+  };
+  let absorbed = 0;
+  /** Folded note → the voice that takes it; voice → the line it starts from (−1: nowhere). */
+  const held = new Map<number, number>();
+  const origin = new Map<number, number>();
+  const hold = (k: number, v: number, from: number): void => {
+    if (held.has(k)) return;
+    held.set(k, v);
+    origin.set(v, from);
+  };
+  /** The voice taking `k` if it starts where `from` does (they would move as one line). */
+  const sameLine = (k: number, from: number): number | undefined => {
+    const r = held.get(k);
+    return r !== undefined && origin.get(r) === from ? r : undefined;
+  };
+  const moved = new Set<number>();
+  for (const it of intents) {
+    moved.add(it.voice);
+    if (it.kind !== IntentKind.Death) hold(fold(it.voice, it.to), it.voice, it.voice);
+  }
+  for (const b of x.active) {
+    if (x.base.get(b) !== b || moved.has(b)) continue;
+    hold(fold(b, dest(b)), b, b);
   }
   // Forks without a phantom of their own take any other free pool voice.
   const free = [
@@ -240,6 +298,20 @@ export function collapse(
     const pf = pendingForks[j];
     let n = 0;
     for (const c of carrierOf.values()) if (c === it) n++;
+    const r = sameLine(fold(pf.b, it.to), pf.b);
+    if (r !== undefined) {
+      absorbed++;
+      const w = (voices[pf.b].weight * n) / x.copies.get(pf.b)!.length;
+      add(r, n, w);
+      add(pf.b, 0, -w);
+      const to = intents.find((m) => m.voice === r && m.kind !== IntentKind.Death);
+      for (const [u2, c] of carrierOf) {
+        if (c !== it) continue;
+        if (to) carrierOf.set(u2, to);
+        else carrierOf.delete(u2);
+      }
+      return;
+    }
     if (it.voice < 0) {
       const u = free.length > 0 ? takeFor(free, it.to, voices) : undefined;
       if (u === undefined) {
@@ -260,6 +332,7 @@ export function collapse(
       members: pf.members.filter((u) => u !== it.voice),
     });
     intents.push(it);
+    hold(fold(it.voice, it.to), it.voice, pf.b);
   });
   // A dying line merges into whatever now carries its absorber.
   for (const d of deaths) {
@@ -268,16 +341,74 @@ export function collapse(
     else d.it.into = d.into >= 0 ? (x.base.get(d.into) ?? -1) : -1;
     if (d.it.into === d.it.voice) d.it.into = -1;
   }
-  // Births from the moment itself fork from the line their parent belongs to.
-  for (const it of births) {
-    const p = it.parent ?? -1;
-    intents.push({ ...it, parent: p >= 0 ? (x.base.get(p) ?? p) : p });
+  // Births from the moment itself fork from the line their parent belongs to. A parent line that
+  // still stands for several voices shares them out evenly with its newborns (the parent first,
+  // then the newborns low to high); newborns past its count are fresh voices (weight 1). A
+  // newborn bound for a note that another line already sounds or heads to (more notes asked for
+  // than there are, owner 2026-11-21) is not born: its share, or its fresh voice, joins that line.
+  const mapped = births
+    .map((it) => {
+      const p = it.parent ?? -1;
+      return { ...it, parent: p >= 0 ? (x.base.get(p) ?? p) : p };
+    })
+    .sort((p, q) => p.to - q.to || p.voice - q.voice);
+  const into = new Map<number, number>();
+  for (const it of mapped) {
+    const k = fold(it.voice, it.to);
+    const r = sameLine(k, it.parent!);
+    if (r !== undefined) {
+      absorbed++;
+      into.set(it.voice, r);
+      if (it.parent! < 0) add(r, 1, 1);
+    } else {
+      hold(k, it.voice, it.parent!);
+      intents.push(it);
+    }
+  }
+  const byParent = new Map<number, Intent[]>();
+  for (const it of mapped) {
+    const b = it.parent ?? -1;
+    if (b < 0) continue;
+    let list = byParent.get(b);
+    if (!list) byParent.set(b, (list = []));
+    list.push(it);
+  }
+  for (const [b, list] of byParent) {
+    const k = keep.get(b)?.count ?? voices[b].count;
+    const W = voices[b].weight;
+    const n = Math.min(list.length + 1, Math.max(1, k));
+    const parts = Array.from({ length: n }, (_, j) => Math.floor(k / n) + (j < k % n ? 1 : 0));
+    let mine = parts[0];
+    list.forEach((it, j) => {
+      const share = j + 1 < n ? parts[j + 1] : 0;
+      const r = into.get(it.voice);
+      if (r === undefined) {
+        if (share > 0)
+          forks.set(it.voice, { parent: b, count: share, weight: (W * share) / k, members: [] });
+      } else if (share === 0) add(r, 1, 1);
+      else if (r === b) mine += share;
+      else {
+        add(r, share, (W * share) / k);
+        add(b, 0, -(W * share) / k);
+      }
+    });
+    if (k > 1 || into.size > 0) {
+      const born = new Set(list.map((it) => it.voice));
+      keep.set(b, {
+        count: mine,
+        members: (keep.get(b)?.members ?? voices[b].members).filter((u) => !born.has(u)),
+      });
+    }
   }
   const out: MomentPlan = { ordered: plan.ordered, intents };
-  if (plan.note) {
-    const c = carrierOf.get(plan.intents[plan.note.intent].voice);
-    const j = c ? intents.indexOf(c) : -1;
-    if (j >= 0) out.note = { intent: j, from: plan.note.from };
+  if (plan.notes) {
+    const notes: { intent: number; from: Pitch }[] = [];
+    for (const n of plan.notes) {
+      const c = carrierOf.get(plan.intents[n.intent].voice);
+      const j = c ? intents.indexOf(c) : -1;
+      if (j >= 0 && !notes.some((q) => q.intent === j)) notes.push({ intent: j, from: n.from });
+    }
+    if (notes.length > 0) out.notes = notes;
   }
-  return { plan: out, forks, lose, keep, exhausted };
+  return { plan: out, forks, lose, keep, absorb, absorbed, exhausted };
 }

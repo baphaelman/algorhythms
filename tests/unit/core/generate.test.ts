@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
-import { stackedCountAt } from '../../../src/core/query';
+import { activeAt, lifeAt, stackAt } from '../../../src/core/query';
 import {
   SECTION_NAMES,
   generate,
@@ -13,7 +13,7 @@ import {
 } from '../../../src/core/generate';
 import { parsePiece, serializePiece } from '../../../src/core/schema';
 import { isScaleTone } from '../../../src/core/scales';
-import type { Moment, Piece } from '../../../src/core/types';
+import type { CompiledScore, Moment, Piece } from '../../../src/core/types';
 import { prototypeSections } from './prototype-compose';
 
 const MODES: GenerateMode[] = ['dorian', 'aeolian', 'lydian', 'pentatonic'];
@@ -54,6 +54,26 @@ function pieceSections(piece: Piece): { name: string; retargets: number[]; end: 
     section.end = active;
   }
   return out;
+}
+
+/**
+ * Voices the lines heard at t stand for (Σ `stack`, revision 8): the prototype's voice count. A
+ * unison makes one line of 12 voices; a merge's dying lines leave.
+ */
+function stackedVoicesAt(score: CompiledScore, t: number): number {
+  let n = 0;
+  for (const i of activeAt(score, t)) {
+    const v = score.voices[i];
+    const life = lifeAt(v, t);
+    if (
+      life?.died !== undefined &&
+      life.died < score.duration &&
+      t >= life.died - (life.fadeOut ?? 0)
+    )
+      continue;
+    n += stackAt(v, t);
+  }
+  return n;
 }
 
 describe('generate: matches the prototype compose()', () => {
@@ -316,8 +336,8 @@ describe('generate: compiles', () => {
       const expected = pieceSections(piece).map((s) => s.end);
       for (let i = 1; i < sections.length; i++) {
         const t = sections[i].at;
-        // Voices, not lines: merged notes count by weight (revision 8).
-        const alive = stackedCountAt(score, t);
+        // Just before the next section's first moment, which may split a stacked line at t.
+        const alive = stackedVoicesAt(score, t - 1e-3);
         expect(alive, `seed ${seed}, end of ${sections[i - 1].name}`).toBe(expected[i - 1]);
       }
     }

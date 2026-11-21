@@ -185,7 +185,7 @@ test('the piece ends with the view parked at its end, and play restarts it', asy
   await expect.poll(() => shownTime(page), { timeout: 10_000 }).toBeLessThan(5);
 });
 
-test('the window slider is logarithmic from 2 s to the whole piece; = and − zoom', async ({
+test('the window slider is logarithmic from 2 s to the open canvas; = and − zoom', async ({
   page,
 }) => {
   await openApp(page);
@@ -195,11 +195,13 @@ test('the window slider is logarithmic from 2 s to the whole piece; = and − zo
   await slider.fill('0');
   await expect(out).toHaveText('2.0 s');
   expect((await getState(page)).view.window).toBeCloseTo(2, 5);
+  // The far end is the open canvas (§11.3 revision 7): max(4 × the piece, its end + 10 min).
+  const canvas = Math.max(duration * 4, duration + 600);
   await slider.fill('1000');
-  expect((await getState(page)).view.window).toBeCloseTo(duration, 3);
+  expect((await getState(page)).view.window).toBeCloseTo(canvas, 3);
   await slider.fill('500');
-  // Log scale: the middle is the geometric mean of 2 s and the piece.
-  expect((await getState(page)).view.window).toBeCloseTo(Math.sqrt(2 * duration), 1);
+  // Log scale: the middle is the geometric mean of 2 s and the canvas.
+  expect((await getState(page)).view.window).toBeCloseTo(Math.sqrt(2 * canvas), 1);
 
   await slider.fill('300');
   const w = (await getState(page)).view.window;
@@ -220,7 +222,7 @@ test('the window slider is logarithmic from 2 s to the whole piece; = and − zo
   await expect.poll(async () => (await getState(page)).view.window).toBeLessThan(before);
 });
 
-test('dragging pans the paused view', async ({ page }) => {
+test('a middle-button drag pans the paused view', async ({ page }) => {
   await openApp(page);
   await seek(page, 60);
   await expect(page.getByTestId('time')).toHaveText('01:00.0');
@@ -231,9 +233,9 @@ test('dragging pans the paused view', async ({ page }) => {
   const start = () => page.evaluate(() => window.__algorhythms!.frameStats.start);
   const before = await start();
   await page.mouse.move(box.x + 300, y);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'middle' });
   await page.mouse.move(box.x + 500, y, { steps: 8 });
-  await page.mouse.up();
+  await page.mouse.up({ button: 'middle' });
   await frames(page);
   const { view, status } = await getState(page);
   expect(status).toBe('paused'); // a drag is not a click

@@ -240,22 +240,31 @@ export function weightTargetAt(voice: CompiledVoice, t: Seconds): number {
   return w;
 }
 
+/** Voices line `voice` stands for at t (revision 8 `stack`; 1 without a stack timeline). */
+export function stackAt(voice: CompiledVoice, t: Seconds): number {
+  let n = 1;
+  for (const c of voice.stack ?? []) {
+    if (c.t > t) break;
+    n = c.n;
+  }
+  return n;
+}
+
 /**
- * Voices the sounding lines stand for at t: Σ max(1, round(weight target)) over the active
- * lines, a line fading out after merging into another excluded (revision 8).
+ * Lines heard at t (what `count` and "Notes: n" count, owner 2026-11-21): the active lines, a
+ * line fading out after merging into another excluded.
  */
-export function stackedCountAt(score: CompiledScore, t: Seconds): number {
+export function linesAt(score: CompiledScore, t: Seconds): number {
   let n = 0;
   for (const i of activeAt(score, t)) {
-    const v = score.voices[i];
-    const life = lifeAt(v, t);
+    const life = lifeAt(score.voices[i], t);
     if (
       life?.died !== undefined &&
       life.died < score.duration &&
       t >= life.died - (life.fadeOut ?? 0)
     )
       continue;
-    n += Math.max(1, Math.round(weightTargetAt(v, t)));
+    n++;
   }
   return n;
 }

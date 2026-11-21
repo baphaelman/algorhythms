@@ -1,6 +1,6 @@
 {
   "clockwork-heron.algorhythms.json": {
-    "hash": "759a7517dc6d9275",
+    "hash": "2af808801cd96f55",
     "duration": 149.51922053318904,
     "voices": [
       {
@@ -68,7 +68,7 @@
     "spans": 20
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "592b342b2d88bbf8",
+    "hash": "aeb4a968407aa0f3",
     "duration": 186.07914339979678,
     "voices": [
       {
@@ -140,15 +140,15 @@
       {
         "id": "v12",
         "lives": 1,
-        "segments": 12,
-        "lastPitch": 81
+        "segments": 10,
+        "lastPitch": 78
       }
     ],
     "diagnostics": ["info:range-fold", "info:range-fold", "info:range-fold"],
     "spans": 24
   },
   "seven-doors-in-fog.algorhythms.json": {
-    "hash": "efae39d34525fc89",
+    "hash": "49cdd6d9efad80c1",
     "duration": 152.54460038437662,
     "voices": [
       {
@@ -228,13 +228,13 @@
     "spans": 24
   },
   "the-cartographers-rain.algorhythms.json": {
-    "hash": "444056e84c2359fe",
-    "duration": 176.47596976884665,
+    "hash": "1934576bfedf793e",
+    "duration": 176.34934337858135,
     "voices": [
       {
         "id": "v1",
-        "lives": 3,
-        "segments": 31,
+        "lives": 2,
+        "segments": 21,
         "lastPitch": 57
       },
       {
@@ -258,8 +258,8 @@
       {
         "id": "v5",
         "lives": 1,
-        "segments": 41,
-        "lastPitch": 57
+        "segments": 25,
+        "lastPitch": 59
       },
       {
         "id": "v6",
@@ -270,8 +270,8 @@
       {
         "id": "v7",
         "lives": 2,
-        "segments": 14,
-        "lastPitch": 59
+        "segments": 28,
+        "lastPitch": 57
       },
       {
         "id": "v8",
@@ -282,7 +282,7 @@
       {
         "id": "v9",
         "lives": 2,
-        "segments": 14,
+        "segments": 16,
         "lastPitch": 59
       },
       {
@@ -294,14 +294,14 @@
       {
         "id": "v11",
         "lives": 1,
-        "segments": 21,
+        "segments": 19,
         "lastPitch": 59
       },
       {
         "id": "v12",
         "lives": 1,
-        "segments": 10,
-        "lastPitch": 45
+        "segments": 18,
+        "lastPitch": 59
       },
       {
         "id": "v13",
@@ -312,27 +312,27 @@
       {
         "id": "v14",
         "lives": 2,
-        "segments": 12,
-        "lastPitch": 79
+        "segments": 14,
+        "lastPitch": 59
       },
       {
         "id": "v15",
         "lives": 2,
-        "segments": 16,
+        "segments": 14,
         "lastPitch": 59
       },
       {
         "id": "v16",
         "lives": 1,
-        "segments": 9,
-        "lastPitch": 82
+        "segments": 13,
+        "lastPitch": 59
       }
     ],
-    "diagnostics": [],
+    "diagnostics": ["info:crossing-untargeted"],
     "spans": 20
   },
   "tidewater-hymn.algorhythms.json": {
-    "hash": "b7f34d44e7b60e99",
+    "hash": "c85129da8542606f",
     "duration": 160.7894776722789,
     "voices": [
       {
@@ -380,7 +380,7 @@
       {
         "id": "v8",
         "lives": 2,
-        "segments": 18,
+        "segments": 16,
         "lastPitch": 57
       },
       {
@@ -392,7 +392,7 @@
       {
         "id": "v10",
         "lives": 1,
-        "segments": 16,
+        "segments": 18,
         "lastPitch": 57
       },
       {

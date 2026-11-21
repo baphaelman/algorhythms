@@ -1,18 +1,23 @@
 /**
  * Pointer, wheel and keyboard input for the score view (PLAN.md §10 camera, §11.5):
- * - a click or tap on the canvas plays or pauses;
+ * - editor layout (§11.3 revision 7 "Score selection"): clicking a line selects the moment that
+ *   owns that section (Shift adds or removes it); dragging on the background (or a line) draws a
+ *   selection rectangle that selects the arrival dots inside (Shift extends); a click on empty
+ *   background places the playhead there. There is no click-to-play on the score;
  * - editor layout: double-clicking a line, or clicking it with `N` held, adds a note point there
  *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry); on a line a walk
- *   drives there it inserts a walk step instead (freezing the walk). A double-click
- *   puts the transport back as it was before its first click;
- * - dragging pans the view (during playback this turns Follow off);
+ *   drives there it inserts a walk step instead (freezing the walk);
+ * - player layout: a click or tap plays or pauses; dragging pans (during playback this turns
+ *   Follow off);
+ * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
+ *   pauses on release only when it did not pan);
  * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
  * - `−` / `=` change the window, Space plays and pauses, ←/→ seek;
  * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
  * - wide layout only: C U S M T P W I K L add a moment at the playhead, Delete/Backspace delete
- *   the selection, Escape clears it (editor/shortcuts.ts), unless another handler already used
- *   the key (`defaultPrevented`, e.g. Escape closing the menu); ▲/▼ step a selected note
- *   point's `to` by a scale step.
+ *   the selection, Escape clears it and the dot selection (editor/shortcuts.ts), unless another
+ *   handler already used the key (`defaultPrevented`, e.g. Escape closing the menu); ▲/▼ step a
+ *   selected note point's `to` by a scale step.
  *
  * Handlers write the store (`setWindow`, `panBy`); the animation loop picks the change up on its
  * next frame, so no React render sits on the pointer path.
@@ -20,14 +25,18 @@
 
 import { keyAt } from '../core/query';
 import type { Key, Pitch } from '../core/types';
-import { HOVER_RADIUS_PX, nearestLine, xToTime, type View } from '../render';
+import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
 import { addPointDrag, stepNote, type PitchDrag } from './editor/actions';
+import { cachedArrivals } from './editor/arrival-points';
 import { dragPitch } from './editor/chord-notes';
+import { clearDots, currentDots, selectDots } from './editor/dot-selection';
 import { edgePitch, inRange } from './editor/drag-edge';
+import { dotsInRect } from './editor/group-move';
 import { changePoints, snapTime } from './editor/snap';
-import { redo, undo, useEditor } from './editor/history';
+import { redo, select, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
+import { sectionOwner } from './editor/section';
 import {
   addAtPlayhead,
   clearSelection,
@@ -37,26 +46,22 @@ import {
 } from './editor/shortcuts';
 import { clearHover, setHover } from './hover';
 import { currentPps, onScoreFrame } from './loop';
-import {
-  camera,
-  currentTime,
-  panBy,
-  seekBy,
-  seekTo,
-  toggleLoop,
-  togglePlay,
-  usePlayer,
-  zoomBy,
-  type TransportStatus,
-} from './store';
+import { marquee } from './marquee';
+import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_SLOP = 4;
+
+/** Space held (editor layout): a drag pans, and the release plays/pauses only if none did. */
+const space = { down: false, panned: false };
 
 interface PointerInfo {
   x: number;
   y: number;
 }
+
+/** What the current press does once it moves past the slop, or on release. */
+type Mode = 'press' | 'pan' | 'marquee' | 'note';
 
 /** Attaches the canvas handlers; returns a function that removes them. */
 export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
@@ -65,22 +70,27 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   let pinching = false;
   let pinchStart = 0;
   let pinchWindow = 0;
+  let mode: Mode = 'press';
+  /** Shift at the press (the marquee extends the selection). */
+  let shift = false;
 
-  // Note points (§11.3).
   let view: View | null = null;
   const stopFrames = onScoreFrame((v) => {
     view = v;
   });
   let nHeld = false;
-  /** This press, and the last press that ended as a click (with the transport before it). */
+  /** This press, and the last press that ended as a click (for double-clicks). */
   let press: Press | null = null;
-  let lastClick: { press: Press; status: TransportStatus; t: number } | null = null;
+  let lastClick: Press | null = null;
   let note: { drag: PitchDrag; key: Key; last: Pitch; range?: [Pitch, Pitch] } | null = null;
   /** Ends the note drag (and releases the held pitch range). */
   const endNote = (cancel: boolean): void => {
     note?.drag.end(cancel);
     note = null;
     camera.pitch = null;
+  };
+  const endMarquee = (): void => {
+    marquee.on = false;
   };
 
   const local = (e: PointerEvent): { x: number; y: number } => {
@@ -110,11 +120,45 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     return true;
   };
 
-  /** Undoes the play/pause of a double-click's first click. */
-  const restoreTransport = (before: { status: TransportStatus; t: number }): void => {
-    const was = before.status === 'playing';
-    if ((usePlayer.getState().transport.status === 'playing') !== was) togglePlay();
-    if (!was) seekTo(before.t);
+  /** A click in the editor: a line's section selects its moment; empty background seeks. */
+  const clickAt = (x: number, y: number, add: boolean): void => {
+    const v = view;
+    if (!v) return;
+    const { compiled } = usePlayer.getState();
+    const hit = nearestLine(compiled, v, x, y, HOVER_RADIUS_PX, true);
+    const owner = hit && sectionOwner(compiled, hit.voice, hit.t);
+    if (owner) {
+      clearDots();
+      const sel = useEditor.getState().selection;
+      if (!add) select([owner]);
+      else select(sel.includes(owner) ? sel.filter((id) => id !== owner) : [...sel, owner]);
+      return;
+    }
+    clearDots();
+    seekTo(Math.max(0, xToTime(v, x)));
+  };
+
+  /** Ends the marquee: selects the dots inside (`add`: added to the dot selection). */
+  const finishMarquee = (): void => {
+    const v = view;
+    endMarquee();
+    if (!v) return;
+    const { compiled, piece } = usePlayer.getState();
+    const inside = dotsInRect(
+      cachedArrivals(piece, compiled),
+      marquee,
+      (t) => timeToX(v, t),
+      (p) => pitchToY(v, p),
+    );
+    if (!shift) {
+      selectDots(inside);
+      return;
+    }
+    const cur = currentDots();
+    const fresh = inside.filter(
+      (d) => !cur.some((s) => s.momentId === d.momentId && s.t === d.t && s.pitch === d.pitch),
+    );
+    selectDots([...cur, ...fresh], true);
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -133,23 +177,33 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   };
 
   const onDown = (e: PointerEvent): void => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const middle = e.pointerType === 'mouse' && e.button === 1;
+    if (e.pointerType === 'mouse' && e.button !== 0 && !middle) return;
+    if (middle) e.preventDefault(); // no autoscroll
     clearHover();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
       travelled = 0;
       pinching = false;
+      shift = e.shiftKey;
       const { x, y } = local(e);
       press = { x, y, time: performance.now() };
       const prev = lastClick;
       lastClick = null;
-      const double = prev !== null && isDoublePress(prev.press, press);
-      if ((double || nHeld) && editorLayout() && startNote(x, y, e.altKey)) {
-        if (double && prev) restoreTransport(prev);
+      const editor = editorLayout();
+      mode = 'press';
+      if (middle || (editor && space.down)) mode = 'pan';
+      else if (
+        editor &&
+        (nHeld || (prev !== null && isDoublePress(prev, press))) &&
+        startNote(x, y, e.altKey)
+      ) {
+        mode = 'note';
       }
     } else if (pointers.size === 2) {
       if (note) endNote(true);
+      if (marquee.on) endMarquee();
       pinching = true;
       pinchStart = Math.max(1, distance());
       pinchWindow = usePlayer.getState().view.window;
@@ -179,8 +233,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     }
     travelled += Math.abs(dx) + Math.abs(dy);
     if (travelled <= DRAG_SLOP) return;
-    if (note) {
-      if (!view) return;
+    if (mode === 'note') {
+      if (!view || !note) return;
       const q = inRange(dragPitch(edgePitch(view, local(e).y), note.key, e.shiftKey), note.range);
       if (q !== note.last) {
         note.last = q;
@@ -188,24 +242,52 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       }
       return;
     }
-    // Dragging right shows earlier time.
+    if (mode === 'press') {
+      if (editorLayout() && press) {
+        mode = 'marquee';
+        Object.assign(marquee, { on: true, x0: press.x, y0: press.y });
+      } else mode = 'pan';
+    }
+    if (mode === 'marquee') {
+      const { x, y } = local(e);
+      marquee.x1 = x;
+      marquee.y1 = y;
+      return;
+    }
+    // Pan: dragging right shows earlier time.
+    if (space.down) space.panned = true;
     const pps = currentPps(canvas);
     if (pps > 0) panBy(-dx / pps);
   };
 
   const onUp = (e: PointerEvent): void => {
     if (!pointers.delete(e.pointerId)) return;
-    if (note) {
-      endNote(e.type !== 'pointerup');
+    const up = e.type === 'pointerup';
+    if (mode === 'note' && note) {
+      endNote(!up);
       press = null;
+      mode = 'press';
       return;
     }
-    if (pointers.size === 0 && !pinching && travelled <= DRAG_SLOP && e.type === 'pointerup') {
-      const status = usePlayer.getState().transport.status;
-      if (press) lastClick = { press, status, t: currentTime() };
-      togglePlay();
+    if (mode === 'marquee') {
+      if (up && pointers.size === 0 && !pinching) finishMarquee();
+      else endMarquee();
+      mode = 'press';
+      if (pointers.size === 0) pinching = false;
+      return;
     }
-    if (pointers.size === 0) pinching = false;
+    if (pointers.size === 0 && !pinching && travelled <= DRAG_SLOP && up && mode === 'press') {
+      if (editorLayout()) {
+        if (press) {
+          lastClick = press;
+          clickAt(press.x, press.y, e.shiftKey);
+        }
+      } else togglePlay();
+    }
+    if (pointers.size === 0) {
+      pinching = false;
+      mode = 'press';
+    }
   };
 
   const onWheel = (e: WheelEvent): void => {
@@ -235,12 +317,17 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     const s = usePlayer.getState();
     zoomBy(gestureWindow / Math.max(0.05, scale) / s.view.window);
   };
+  // Middle-button clicks would paste or open links on some systems.
+  const onAux = (e: MouseEvent): void => {
+    if (e.button === 1) e.preventDefault();
+  };
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('pointerleave', clearHover);
+  canvas.addEventListener('auxclick', onAux);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('gesturestart', onGestureStart);
   canvas.addEventListener('gesturechange', onGestureChange);
@@ -250,6 +337,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   return () => {
     stopFrames();
     if (note) endNote(true);
+    endMarquee();
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onBlur);
@@ -258,6 +346,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onUp);
     canvas.removeEventListener('pointerleave', clearHover);
+    canvas.removeEventListener('auxclick', onAux);
     clearHover();
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('gesturestart', onGestureStart);
@@ -331,7 +420,13 @@ export function attachKeys(): () => void {
     } else if (e.code === 'Space' || e.key === ' ') {
       if (ownsKeys(e.target, ' ')) return;
       e.preventDefault();
-      togglePlay();
+      if (!editorLayout()) {
+        togglePlay();
+      } else if (!e.repeat && !space.down) {
+        // Editor: Space-drag pans, so play/pause waits for the release (`onKeyUp`).
+        space.down = true;
+        space.panned = false;
+      }
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       // ▲/▼ on a selected note point (§11.3); the lane's own arrows came first.
       if (e.defaultPrevented || e.shiftKey || ownsKeys(e.target, e.key) || !editorLayout()) return;
@@ -343,6 +438,20 @@ export function attachKeys(): () => void {
       seekBy((e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 15 : 5));
     }
   };
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (!(e.code === 'Space' || e.key === ' ') || !space.down) return;
+    space.down = false;
+    if (!space.panned && !document.querySelector('dialog[open]')) togglePlay();
+  };
+  const onBlur = (): void => {
+    space.down = false;
+  };
   document.addEventListener('keydown', onKey);
-  return () => document.removeEventListener('keydown', onKey);
+  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
+  return () => {
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onBlur);
+  };
 }

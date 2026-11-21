@@ -74,9 +74,9 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
     expect(tried).toBeGreaterThan(100);
   });
 
-  it('down from a unison: dying voices end on their order neighbour’s target, no crossing', () => {
-    // Survivors share a pitch but go to different targets: a dying top voice must not take the
-    // lowest one (it used to cross the whole cluster).
+  it('from a stacked line: count counts lines, so the line forks; no crossing', () => {
+    // Five start voices on 60 are one line standing for five (revision 8); count 3 is three lines
+    // (owner, 2026-11-21): the stacked line shares its voices with the newborn, nothing dies.
     const s = compile(
       piece({
         start: [60, 60, 60, 60, 60, 61],
@@ -86,9 +86,14 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
       }),
     );
     expect(show(lineArtifacts(s))).toEqual([]);
-    const top = s.voices[5];
-    expect(top.lives[0].died).toBeLessThan(20);
-    expect(pitchAt(top, top.lives[0].died! - 1e-6)).toBe(72);
+    const heard = activeAt(s, 15);
+    expect(heard).toHaveLength(3);
+    expect(heard.map((i) => pitchAt(s.voices[i], 15)).sort((a, b) => a! - b!)).toEqual([
+      48, 60, 72,
+    ]);
+    expect(s.voices[5].lives[0].died).toBe(20);
+    const w = heard.reduce((a, i) => a + (s.voices[i].weight?.at(-1)?.w ?? 1), 0);
+    expect(w).toBeCloseTo(6, 9);
   });
 
   it('a survivor that moves on while a voice fades into it carries that voice along', () => {

@@ -1,6 +1,8 @@
 /**
  * `chord` (§6.2): moves the targeted voices to a voicing of `notes` (§7.3) by voice leading
- * (§7.2). Without `count` the voice count is unchanged; fewer notes than voices means doubling.
+ * (§7.2). Without `count` the voice count is unchanged. A chord or degrees chord takes free octaves
+ * of its chord tones in the lines' range before two lines share a note (owner, 2026-11-21,
+ * `distinctTargets`); explicit pitch lists double as written (the lines then merge).
  *
  * With `count` (revision 6) the active count becomes `count` in the same moment:
  * - more: dormant voices are born as in a split (§7.4; `voiceWithBirths`): the chord is voiced for
@@ -16,7 +18,8 @@
  */
 
 import { assignFree, assignOrdered } from '../voice-leading';
-import { voiceNotes } from '../voicing';
+import { pitchesWithPcs } from '../scales';
+import { fillOctaves, pitchClasses, voiceNotes } from '../voicing';
 import type { ChordMoment, Pitch } from '../types';
 import { chordByVoice } from './chord-by-voice';
 import { absorbers, chooseDying } from './merge';
@@ -38,8 +41,72 @@ export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
   return voiceChord(m, env, env.targeted);
 }
 
+/** Explicit pitch lists (and `current`) stay as written: their unisons merge (owner, 2026-11-21). */
+const literal = (m: ChordMoment): boolean =>
+  m.notes.kind === 'pitches' || m.notes.kind === 'current';
+
+/**
+ * Free octaves before merging lines (owner, 2026-11-21), on the voicing's targets `q` for k lines:
+ * missing targets (fewer notes than lines) first take free octaves of the targets in the lines'
+ * own range (`fillOctaves`, which may lie outside an explicit register); then a target that an
+ * untargeted line holds, or that an earlier target already takes, moves to the free chord tone
+ * in range nearest it (ties: lower); still missing ones take the free chord tones nearest the
+ * targets. A slash bass stays the lowest note. What finds no free pitch stays, and merges.
+ */
+function distinctTargets(
+  m: ChordMoment,
+  env: MomentEnv,
+  q: readonly Pitch[],
+  k: number,
+  perVoice: boolean,
+  range: readonly [Pitch, Pitch],
+  sounding: readonly Pitch[],
+): Pitch[] {
+  const slash = m.notes.kind === 'chord' && m.notes.symbol.includes('/');
+  const floor = slash && q.length > 0 ? q[0] : -Infinity;
+  const out =
+    q.length < k && !perVoice ? fillOctaves(q, k, range[0], range[1], floor, sounding) : q.slice();
+  if (m.notes.kind === 'pitches') return out;
+  const pc = pitchClasses(m.notes, env.key, []);
+  if (!pc.ok) return out;
+  const cands = pitchesWithPcs(pc.pcs, range[0], range[1]).filter((p) => p > floor);
+  const same = (a: Pitch, b: Pitch): boolean => Math.abs(a - b) < 1e-9;
+  const free = (x: Pitch): boolean =>
+    !sounding.some((p) => same(p, x)) && !out.some((p) => same(p, x));
+  const nearestFree = (x: Pitch): Pitch => {
+    let best = NaN;
+    for (const c of cands)
+      if (free(c) && (best !== best || Math.abs(c - x) < Math.abs(best - x))) best = c;
+    return best;
+  };
+  if (out.length <= k) {
+    for (let j = 0; j < out.length; j++) {
+      const x = out[j];
+      if (!sounding.some((p) => same(p, x)) && !out.slice(0, j).some((p) => same(p, x))) continue;
+      if (j === 0 && slash) continue;
+      const y = nearestFree(x);
+      if (y === y) out[j] = y;
+    }
+  }
+  while (!perVoice && out.length > 0 && out.length < k) {
+    let best = NaN;
+    for (const x of out) {
+      const y = nearestFree(x);
+      if (y === y && (best !== best || Math.abs(y - x) < Math.abs(best - x))) best = y;
+    }
+    if (best !== best) break;
+    out.push(best);
+  }
+  return out.sort((a, b) => a - b);
+}
+
 /** The chord voiced for `vs` (sorted by committed destination), with no births or deaths. */
-function voiceChord(m: ChordMoment, env: MomentEnv, vs: readonly number[]): MomentPlan | null {
+function voiceChord(
+  m: ChordMoment,
+  env: MomentEnv,
+  vs: readonly number[],
+  dying: readonly number[] = [],
+): MomentPlan | null {
   if (vs.length === 0) {
     env.diag('info', 'no-targets', 'The chord targets no active voice.');
     return null;
@@ -58,7 +125,17 @@ function voiceChord(m: ChordMoment, env: MomentEnv, vs: readonly number[]): Mome
     env.diag('error', voiced.code, voiced.message);
     return null;
   }
-  const q = voiced.targets;
+  const q = literal(m)
+    ? voiced.targets
+    : distinctTargets(
+        m,
+        env,
+        voiced.targets,
+        vs.length,
+        voiced.perVoice,
+        unionRange(env, vs),
+        untargeted(env, [...vs, ...dying]),
+      );
   const free = m.assign === 'free';
   const f = voiced.perVoice ? p.map((_, i) => i) : free ? assignFree(p, q) : assignOrdered(p, q);
   if (q.length > vs.length && !voiced.perVoice) {
@@ -105,7 +182,22 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
     return null;
   }
   const free = m.assign === 'free';
-  return { ordered: !free, intents: voiceWithBirths(env, vs, p, newborns, voiced, free) };
+  const k = vs.length + births;
+  const targets = literal(m)
+    ? voiced.targets
+    : distinctTargets(
+        m,
+        env,
+        voiced.targets,
+        k,
+        voiced.perVoice,
+        unionRange(env, [...vs, ...newborns]),
+        untargeted(env, vs),
+      );
+  return {
+    ordered: !free,
+    intents: voiceWithBirths(env, vs, p, newborns, { ...voiced, targets }, free),
+  };
 }
 
 function withDeaths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | null {
@@ -126,6 +218,7 @@ function withDeaths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
     m,
     env,
     vs.filter((v) => !dying.has(v)),
+    [...dying],
   );
   if (!plan) return null;
   const target = new Map<number, Pitch>();

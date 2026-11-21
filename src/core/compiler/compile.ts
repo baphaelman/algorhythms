@@ -55,7 +55,7 @@ import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from 
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldIntoRange, sanitizeRange } from './range';
-import { collapse, expand, type Collapsed, type Expansion } from './lines';
+import { collapse, countsLines, expand, type Collapsed, type Expansion } from './lines';
 import { Status, VoiceRun, type Birth, type Move } from './voice';
 
 /**
@@ -89,19 +89,20 @@ export const SUB_BIRTH = 1;
 export const SUB_MOVE = 2;
 /** A line's arrival: merge it into a line resting on the same pitch (revision 8). */
 export const SUB_JOIN = 3;
+/** A dying line's fade starts: its weight passes to the line it merges into (revision 8). */
+export const SUB_HANDOVER = 4;
 export const SUB_STRIDE = 64;
 
 /** `sub` of a moment-class event that returns a note moment's note (`back`, §6.2). */
 export const SUB_NOTE_BACK = 1;
 
 /**
- * A note moment's scheduled return (§6.2 `back`): at `t`, the note `from` (where the move
- * arrived) becomes `to` (the pitch it replaced). Immutable once queued.
+ * A note moment's scheduled return (§6.2 `back`): at `t`, each change's note `from` (where its
+ * move arrived) becomes `to` (the pitch it replaced). Immutable once queued.
  */
 export interface NoteBack {
   t: Seconds;
-  from: Pitch;
-  to: Pitch;
+  changes: { from: Pitch; to: Pitch }[];
 }
 
 /** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
@@ -191,6 +192,12 @@ interface CloseRec {
   fade: Seconds;
 }
 
+/** A dying line's fade start (revision 8 weight hand-over). Immutable once queued. */
+interface HandoverRec {
+  voice: number;
+  died: Seconds;
+}
+
 /** When a voice reaches its committed destination: the end of its last scheduled or running move. */
 function arrivalOf(run: VoiceRun): Seconds {
   let end = -Infinity;
@@ -211,6 +218,8 @@ export class Compiler {
   readonly byId = new Map<string, number>();
   readonly diags: Diagnostic[] = [];
   readonly queue = new EventQueue();
+  /** Time of the event being handled. */
+  clock: Seconds = 0;
   readonly moments: readonly Moment[];
   readonly valid: boolean[] = [];
   readonly seeds: number[] = [];
@@ -331,7 +340,7 @@ export class Compiler {
         (r) => r.status === Status.Active && Math.abs(r.frontier.heading - f.p) <= SAME_PITCH,
       );
       if (same) {
-        same.count++;
+        same.setCount(0, same.count + 1);
         same.weight++;
         same.members.push(v);
         same.rampWeight(0, same.weight, 0);
@@ -588,6 +597,7 @@ export class Compiler {
       const ev = this.queue.peek();
       if (!ev || ev.t >= this.endAt) break;
       this.queue.pop();
+      this.clock = ev.t;
       // Move starts, births and closes never change a committed destination or the active set
       // (a started move's target was already the destination), so only moments and walk ticks
       // invalidate the caches.
@@ -609,6 +619,7 @@ export class Compiler {
           if (sub === SUB_CLOSE) this.onClose(ev.obj as CloseRec);
           else if (sub === SUB_BIRTH) this.onBirth(ev.obj as Birth);
           else if (sub === SUB_JOIN) this.onJoin(ev.obj as JoinRec);
+          else if (sub === SUB_HANDOVER) this.onHandover(ev.obj as HandoverRec);
           else this.onMove(ev.obj as Move);
           break;
         }
@@ -685,10 +696,12 @@ export class Compiler {
     const before = this.destsInto(this.effBefore);
     const activeBefore = this.sortedActive();
     const dormant = this.dormantAt(this.moments[i].at).length;
-    // The reason reads voices, not lines: a line stands for `count` stacked voices (revision 8).
-    const counts = this.voices.map((r) => r.count);
+    // The reason reads what the moment saw: lines for a moment with a count, else the voices
+    // the lines stand for (revision 8; owner, 2026-11-21).
+    const flat = countsLines(this.moments[i]);
+    const counts = this.voices.map((r) => (flat ? 1 : r.count));
     const d0 = this.diags.length;
-    const { targeted, res, lost } = this.applyPointMoment(i, back);
+    const { targeted, res, lost, absorbed } = this.applyPointMoment(i, back);
     if (back) return;
     for (let k = d0; k < this.diags.length; k++) {
       const d = this.diags[k];
@@ -708,7 +721,7 @@ export class Compiler {
       `No effect: ${noEffectReason(this.moments[i], {
         targeted: targeted.flatMap((v) => Array<number>(counts[v]).fill(before[v])),
         active: activeBefore.flatMap((v) => Array<number>(counts[v]).fill(before[v])),
-        births: births.length,
+        births: births.length + absorbed,
         deaths: deaths.length + lost,
         dormant,
       })}.`,
@@ -737,16 +750,30 @@ export class Compiler {
   private applyPointMoment(
     i: number,
     back: NoteBack | null,
-  ): { targeted: number[]; res: PlanResult | null; lost: number } {
+  ): { targeted: number[]; res: PlanResult | null; lost: number; absorbed: number } {
     const m0 = this.moments[i];
     // A return runs the note moment again at its own time, `from` and `to` swapped.
     const m: Moment = back
-      ? { ...(m0 as NoteMoment), at: back.t, from: back.from, to: back.to, back: undefined }
+      ? {
+          ...(m0 as NoteMoment),
+          at: back.t,
+          from: undefined,
+          to: undefined,
+          changes: back.changes,
+          back: undefined,
+        }
       : m0;
     const T = m.at;
-    // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices.
+    // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices,
+    // or once when the moment's count is a number of lines (`countsLines`).
     const dormant = this.dormantAt(T);
-    const x = expand(this.voices, this.sortedActive(), dormant, (v) => this.destOf(v));
+    const x = expand(
+      this.voices,
+      this.sortedActive(),
+      dormant,
+      (v) => this.destOf(v),
+      countsLines(m),
+    );
     let pre: number[];
     let subset: boolean;
     if (m.type === 'pin') {
@@ -806,7 +833,7 @@ export class Compiler {
     if (!plan) {
       if (!back) this.span(i, T, T); // a skipped return leaves the span as it is
       this.traceMoment(i, targetedLines, subset, null, null, T);
-      return { targeted: targetedLines, res: null, lost: 0 };
+      return { targeted: targetedLines, res: null, lost: 0, absorbed: 0 };
     }
     const host = {
       voices: this.voices,
@@ -869,8 +896,31 @@ export class Compiler {
         obj: mv,
       });
     }
+    // A newborn of an earlier moment whose move this one replaced is born at its new departure,
+    // not left waiting on its parent's pitch (revision 8: lines never rest on one note).
+    for (const mv of res.moves) {
+      const run = this.voices[mv.voice];
+      const b = run.pendingBirth;
+      if (!b || mv.death || b.momentId === m.id || !(mv.t0 > b.t)) continue;
+      const nb: Birth = { ...b, t: mv.t0 };
+      run.pendingBirth = nb;
+      this.queue.push({
+        t: nb.t,
+        cls: EventClass.MoveStart,
+        key: SUB_BIRTH * SUB_STRIDE + nb.voice,
+        sub: 0,
+        ref: 0,
+        obj: nb,
+      });
+    }
+    // Lines this moment left holding (a cancelled move, no new one) may now share a note.
+    for (const v of targetedLines) {
+      const run = this.voices[v];
+      if (run.pending.length === 0 && this.holding(run, T)) this.queueJoin(v, T);
+    }
     if (res.moves.length === 0) this.span(i, T, T);
-    else if (!back && m.type === 'note' && plan.note) this.scheduleBack(i, m, plan.note, plan, res);
+    else if (!back && m.type === 'note' && plan.notes)
+      this.scheduleBack(i, m, plan.notes, plan, res);
     this.touch();
     this.recordHarmony(i, T);
     this.traceMoment(
@@ -885,7 +935,7 @@ export class Compiler {
     );
     let lost = 0;
     for (const l of col.lose.values()) lost += l.count;
-    return { targeted: targetedLines, res, lost };
+    return { targeted: targetedLines, res, lost, absorbed: col.absorbed };
   }
 
   /**
@@ -902,7 +952,7 @@ export class Compiler {
   ): void {
     for (const [b, k] of col.keep) {
       const run = this.voices[b];
-      run.count = k.count;
+      run.setCount(T, k.count);
       run.members = k.members;
     }
     for (const b of res.births) {
@@ -910,14 +960,15 @@ export class Compiler {
       const f = col.forks.get(b.voice);
       if (f) {
         b.fork = f.weight;
+        b.forkAt = T;
         b.weight = f.weight;
         b.fadeIn = FORK_FADE;
-        run.count = f.count;
+        run.setCount(T, f.count);
         run.weight = f.weight;
         run.members = f.members;
         this.voices[f.parent].weight -= f.weight;
       } else {
-        run.count = 1;
+        run.setCount(T, 1);
         run.weight = 1;
         run.members = [];
       }
@@ -925,9 +976,17 @@ export class Compiler {
     const g = this.glides[i];
     for (const [b, l] of col.lose) {
       const run = this.voices[b];
-      run.count = Math.max(1, run.count - l.count);
+      run.setCount(T, Math.max(1, run.count - l.count));
       run.weight -= l.weight;
       run.rampWeight(T, run.lastWeight - l.weight, g.length);
+    }
+    for (const [v, a] of col.absorb) {
+      const run = this.voices[v];
+      run.setCount(T, run.count + a.count);
+      run.weight += a.weight;
+      const b = res.births.find((x) => x.voice === v);
+      if (b) b.weight = run.weight;
+      else if (!run.pendingBirth) run.rampWeight(T, run.lastWeight + a.weight, g.length);
     }
     if (!ov) return;
     for (const [v, o] of ov) {
@@ -950,7 +1009,7 @@ export class Compiler {
   private scheduleBack(
     i: number,
     m: NoteMoment,
-    note: { intent: number; from: Pitch },
+    notes: readonly { intent: number; from: Pitch }[],
     plan: { intents: readonly Intent[] },
     res: PlanResult,
   ): void {
@@ -960,7 +1019,10 @@ export class Compiler {
     for (const mv of res.moves) if (mv.t0 + mv.dur > end) end = mv.t0 + mv.dur;
     const t = end + wait;
     // The carrier's target after range folding (planMoment folds the intents in place).
-    const rec: NoteBack = { t, from: plan.intents[note.intent].to, to: note.from };
+    const rec: NoteBack = {
+      t,
+      changes: notes.map((n) => ({ from: plan.intents[n.intent].to, to: n.from })),
+    };
     this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_NOTE_BACK, ref: i, obj: rec });
   }
 
@@ -1049,12 +1111,17 @@ export class Compiler {
     run.frontier.openAt(b.t, parent ?? { p: b.pitch, v: 0, mid: false });
     run.life = { born: b.t, fadeIn: b.fadeIn };
     run.lives.push(run.life);
-    run.rampWeight(b.t, b.weight ?? 1, 0);
-    // A fork hands its share over while the newborn fades in on the parent's pitch.
+    // Its committed weight now: forks taken from it before it sounded are already out of it.
+    run.rampWeight(b.t, run.weight, 0);
+    // A fork hands its share over while the newborn fades in on the parent's pitch (a parent not
+    // sounding yet starts without it).
     if (b.fork !== undefined && b.parent >= 0) {
       const p = this.voices[b.parent];
-      p.rampWeight(b.t, p.lastWeight - b.fork, b.fadeIn);
+      if (p.life && p.life.born < (b.forkAt ?? b.t))
+        p.rampWeight(b.t, p.lastWeight - b.fork, b.fadeIn);
     }
+    // A newborn whose own move a later moment replaced may now go where its parent goes.
+    this.queueJoin(b.voice, b.t);
     this.activity(b.t);
   }
 
@@ -1094,46 +1161,50 @@ export class Compiler {
       this.scheduleClose(run, (arrive > seg.t1 ? arrive : seg.t1) + mv.death.fade);
     }
     this.follow(run, mv, to, mv.death ? mv.death.into : null, 0);
-    if (!mv.death) {
-      const rec: JoinRec = { voice: mv.voice, t: seg.t1 };
-      this.queue.push({
-        t: seg.t1,
-        cls: EventClass.MoveStart,
-        key: SUB_JOIN * SUB_STRIDE + mv.voice,
-        sub: 0,
-        ref: 0,
-        obj: rec,
-      });
-    }
+    if (!mv.death) this.queueJoin(mv.voice, seg.t1);
     return true;
   }
 
-  /** Active and holding at t: no glide running, nothing pending (revision 8 joins). */
-  private resting(run: VoiceRun, t: Seconds): boolean {
-    return (
-      run.status === Status.Active &&
-      run.frontier.alive &&
-      !run.pendingBirth &&
-      run.pending.length === 0 &&
-      !run.frontier.busyAt(t)
-    );
+  /** Queues a join check for line v at t (revision 8; `onJoin`). */
+  private queueJoin(v: number, t: Seconds): void {
+    const rec: JoinRec = { voice: v, t };
+    this.queue.push({
+      t,
+      cls: EventClass.MoveStart,
+      key: SUB_JOIN * SUB_STRIDE + v,
+      sub: 0,
+      ref: 0,
+      obj: rec,
+    });
+  }
+
+  /** Active and holding at t: no glide running, or one that keeps its pitch (revision 8 joins). */
+  private holding(run: VoiceRun, t: Seconds): boolean {
+    if (run.status !== Status.Active || !run.frontier.alive || run.pendingBirth) return false;
+    if (!run.frontier.busyAt(t)) return true;
+    const g = run.frontier.tail!;
+    return g.p0 === g.p1 && !g.curve && !g.m0;
   }
 
   /**
    * Distinct notes (revision 8): a line that comes to rest on another line's resting pitch merges
-   * into it. The line that was there first survives (the same time: the lower pool index); the
-   * other fades out over HANDOVER, following it, while the survivor takes its count, weight and
-   * members.
+   * into it, when both are heading to the same place (nothing pending, or pending moves to one
+   * destination: a later moment already sends both there). The line that was there first
+   * survives (the same time: the lower pool index); the other drops its pending moves and fades
+   * out over HANDOVER, following it, while the survivor takes its count, weight and members.
+   * Lines that only pass through each other's pitch on the way to different notes stay apart.
    */
   private onJoin(j: JoinRec): void {
     const a = this.voices[j.voice];
     const t = j.t;
-    if (!this.resting(a, t)) return;
+    if (!this.holding(a, t)) return;
     const p = a.frontier.heading;
+    const da = a.dest(() => NaN);
     const group: VoiceRun[] = [a];
     for (const run of this.voices) {
-      if (run === a || !this.resting(run, t)) continue;
-      if (Math.abs(run.frontier.heading - p) <= SAME_PITCH) group.push(run);
+      if (run === a || !this.holding(run, t)) continue;
+      if (Math.abs(run.frontier.heading - p) > SAME_PITCH) continue;
+      if (Math.abs(run.dest(() => NaN) - da) <= SAME_PITCH) group.push(run);
     }
     if (group.length < 2) return;
     const since = (r: VoiceRun): Seconds =>
@@ -1152,21 +1223,27 @@ export class Compiler {
       const gs = this.levelOf(s.index);
       const gd = this.levelOf(d.index);
       const f = gs > 0 ? (gd * gd) / (gs * gs) : 1;
-      s.count += d.count;
+      s.setCount(t, s.count + d.count);
       s.weight += d.weight * f;
       s.members = [...s.members, d.index, ...d.members];
       s.rampWeight(t, s.lastWeight + d.lastWeight * f, HANDOVER);
-      d.count = 1;
+      d.setCount(t, 1);
       d.weight = 1;
       d.members = [];
+      for (const mv of d.pending) mv.cancelled = true;
+      d.pending.length = 0;
       d.status = Status.Dying;
       d.into = s.index;
       d.deathFade = HANDOVER;
+      d.handed = true;
       this.scheduleClose(d, t + HANDOVER);
     }
   }
 
-  /** (Re)schedules a dying voice's close; an earlier close event becomes stale (onClose). */
+  /**
+   * (Re)schedules a dying voice's close, and the hand-over of its weight when its fade starts; an
+   * earlier close or hand-over event becomes stale (onClose, onHandover).
+   */
   private scheduleClose(run: VoiceRun, died: Seconds): void {
     run.diedAt = died;
     this.activity(died);
@@ -1179,6 +1256,47 @@ export class Compiler {
       ref: 0,
       obj: rec,
     });
+    if (run.into < 0 || run.handed || run.deathFade <= 0) return;
+    const h: HandoverRec = { voice: run.index, died };
+    const t = died - run.deathFade;
+    this.queue.push({
+      t: t > this.clock ? t : this.clock,
+      cls: EventClass.MoveStart,
+      key: SUB_HANDOVER * SUB_STRIDE + run.index,
+      sub: 0,
+      ref: 0,
+      obj: h,
+    });
+  }
+
+  /** A merge or `count` death's fade starts: its weight passes to its survivor (owner, 2026-11-21). */
+  private onHandover(rec: HandoverRec): void {
+    const d = this.voices[rec.voice];
+    if (rec.died !== d.diedAt || d.status !== Status.Dying) return;
+    this.handOver(d, this.clock, d.deathFade);
+  }
+
+  /**
+   * Passes dying `d`'s weight to the line it merges into (following survivors that already
+   * handed theirs on), ramped over `over`, in the survivor's level (as `onJoin`).
+   */
+  private handOver(d: VoiceRun, t: Seconds, over: Seconds): void {
+    if (d.handed) return;
+    d.handed = true;
+    let s = d.into;
+    for (let k = 0; s >= 0 && k <= this.voices.length; k++) {
+      const r = this.voices[s];
+      if (r.status !== Status.Dying || !r.handed) break;
+      s = r.into;
+    }
+    if (s < 0 || s === d.index) return;
+    const sr = this.voices[s];
+    if (sr.status === Status.Dormant || !sr.frontier.alive) return;
+    const gs = this.levelOf(s);
+    const gd = this.levelOf(d.index);
+    const f = gs > 0 ? (gd * gd) / (gs * gs) : 1;
+    sr.weight += d.weight * f;
+    sr.rampWeight(t, sr.lastWeight + d.lastWeight * f, over);
   }
 
   /**
@@ -1268,6 +1386,8 @@ export class Compiler {
   private onClose(rec: CloseRec): void {
     const run = this.voices[rec.voice];
     if (rec.died !== run.diedAt) return; // rescheduled by `follow`
+    if (run.status === Status.Dying && run.into >= 0) this.handOver(run, rec.died, 0); // no fade
+    run.handed = false;
     run.frontier.close(rec.died);
     if (run.life) {
       run.life.died = rec.died;
@@ -1569,6 +1689,7 @@ export class Compiler {
         sends,
       };
       if (run.weights.length > 0) cv.weight = run.weights;
+      if (run.counts.length > 0) cv.stack = run.counts;
       return cv;
     });
     let duration = 0;

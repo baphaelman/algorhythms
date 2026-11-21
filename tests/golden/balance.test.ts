@@ -3,8 +3,10 @@
  * line rests, each pitch's share of the output power matches the pre-revision-8 compile (stacked
  * voices, recorded in examples.balance.json) within 0.5 dB, and as many such times as before
  * still exist. Walks step lines, not stacked voices, so their notes may differ: times from a walk's
- * start to the next point moment after it are skipped. Never regenerate the fixture from the
- * current compiler.
+ * start to the next point moment after it are skipped. An explicit merge (or a chord `count`
+ * death) passes the dying lines' weight to their survivors (owner, 2026-11-21), which the stacked
+ * compile did not: times from it to the next unison (which joins every line again) are skipped
+ * too. Never regenerate the fixture from the current compiler.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,12 +41,22 @@ describe('example balance through merges (revision 8)', () => {
             .sort((a, b) => a - b)[0];
           return [w.at, next ?? Infinity] as const;
         });
+      const merged = ms
+        .filter((m) => m.type === 'merge' || (m.type === 'chord' && m.count !== undefined))
+        .map((m) => {
+          const next = ms
+            .filter((u) => u.type === 'unison' && u.at > m.at)
+            .map((u) => u.at)
+            .sort((a, b) => a - b)[0];
+          return [m.at, next ?? Infinity] as const;
+        });
+      const skipped = [...walky, ...merged];
       const before = BEFORE[f];
       let compared = 0;
       let worst = 0;
       let total = 0;
       for (const [t, old] of Object.entries(before)) {
-        if (walky.some(([a, b]) => Number(t) >= a && Number(t) < b)) continue;
+        if (skipped.some(([a, b]) => Number(t) >= a && Number(t) < b)) continue;
         total++;
         const now = restingPower(s, Number(t));
         if (!now) continue;

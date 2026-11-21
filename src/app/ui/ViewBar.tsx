@@ -1,5 +1,5 @@
 import type { FollowMode } from '../../core/types';
-import { MIN_WINDOW, sliderToWindow, windowToSlider } from '../../render';
+import { MIN_WINDOW, sliderToWindow, windowRange, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
 import { Palette } from './Palette';
 import { Suggestions } from './Suggestions';
@@ -44,7 +44,9 @@ export function ViewBar() {
   const theme = usePlayer((s) => s.view.theme);
   const follow = usePlayer((s) => s.view.follow);
   const keepOrder = useLineOrder((s) => s.keep);
-  const fit = win >= Math.max(MIN_WINDOW, duration) - 1e-6;
+  // The window can open past the piece (open-ended canvas); Fit is the whole piece exactly.
+  const fit = Math.abs(win - Math.max(MIN_WINDOW, duration)) < 1e-6;
+  const widest = win >= windowRange(duration)[1] - 1e-6;
 
   return (
     <div className="viewbar" data-region="view">
@@ -58,7 +60,7 @@ export function ViewBar() {
           aria-label="Zoom out"
           title="Zoom out (−)"
           data-testid="zoom-out"
-          disabled={fit}
+          disabled={widest}
           onClick={() => zoomBy(1.25)}
         >
           −
@@ -175,7 +177,8 @@ export function ViewBar() {
 
       <p className="keys">
         <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}
-        <kbd>−</kbd> <kbd>=</kbd> zooms. Drag to pan; during playback that turns Follow off.
+        <kbd>−</kbd> <kbd>=</kbd> zooms. Scroll sideways or drag to pan (editor: middle-drag or{' '}
+        <kbd>Space</kbd>-drag; a plain drag selects dots); panning while playing turns Follow off.
       </p>
     </div>
   );

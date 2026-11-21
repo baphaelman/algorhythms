@@ -114,7 +114,7 @@ function pick(
 }
 
 /** Resolves a NoteSet to pitch classes (and a slash bass); `pitches` is handled separately. */
-function pitchClasses(
+export function pitchClasses(
   notes: Exclude<NoteSet, { kind: 'pitches' }>,
   key: Key,
   current: readonly Pitch[],

@@ -4,60 +4,139 @@
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { compile } from '../../../src/core/compiler/compile';
-import { lifeAt, segmentAt, weightTargetAt } from '../../../src/core/query';
-import type { CompiledScore, Piece } from '../../../src/core/types';
+import { compile, compileWithTrace, type CompileTrace } from '../../../src/core/compiler/compile';
+import { lifeAt, linesAt, segmentAt, weightTargetAt } from '../../../src/core/query';
+import { degreesToPcs, pitchesWithPcs } from '../../../src/core/scales';
+import type { CompiledScore } from '../../../src/core/types';
 import { piece } from '../../unit/core/compiler-fixtures';
 import { pieceArb } from './compiler-arbitraries';
 
-const RUNS = 150;
+const RUNS = Number(process.env.PROP_RUNS ?? 150);
+// Reproducible by default; set PROP_SEED=random (or a number) to explore other pieces.
+const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
+/** Longest wait for a scheduled departure (glide length + stagger + jitter in the arbitraries). */
+const PART = 10;
+
+/** Death times (moment time) per voice from a compile trace: lines killed by a moment (§7.4). */
+type Killed = Map<number, number[]>;
+
+function killedBy(trace: CompileTrace): Killed {
+  const out: Killed = new Map();
+  for (const m of trace.moments)
+    for (const it of m.intents ?? [])
+      if (it.kind === 'death') out.set(it.voice, [...(out.get(it.voice) ?? []), m.t]);
+  return out;
+}
 
 /**
- * Pitches of the lines resting at t (holding, life open and not fading out). With `p`, lines
+ * Pitches of the lines resting at t (holding, life open and not fading out). With `killed`, lines
  * dying by a merge or a chord `count` (they glide into a survivor and wait for it, §7.4) are left
  * out too.
  */
-function resting(s: CompiledScore, t: number, p?: Piece): number[] {
-  const out: number[] = [];
-  const killers = new Set(
-    (p?.moments ?? [])
-      .filter((m) => m.type === 'merge' || (m.type === 'chord' && m.count !== undefined))
-      .map((m) => m.id),
-  );
-  for (const v of s.voices) {
+function resting(s: CompiledScore, t: number, killed?: Killed): number[] {
+  return restingLines(s, t, killed).map((l) => l.p);
+}
+
+/**
+ * As `resting`, with when each line next leaves its pitch in this life (Infinity: it stays).
+ */
+function restingLines(
+  s: CompiledScore,
+  t: number,
+  killed?: Killed,
+): { p: number; leaves: number }[] {
+  const out: { p: number; leaves: number }[] = [];
+  s.voices.forEach((v, vi) => {
     const life = lifeAt(v, t);
-    if (!life) continue;
-    if (life.died !== undefined && t >= life.died - (life.fadeOut ?? 0)) continue;
-    if (life.died !== undefined && life.died < s.duration) {
-      const last = v.segments.filter((g) => g.t0 < life.died! && g.t1 > life.born && g.momentId);
-      const mid = last.length > 0 ? last[last.length - 1].momentId : undefined;
-      if (mid !== undefined && killers.has(mid)) continue;
-    }
+    if (!life) return;
+    const died = life.died;
+    if (died !== undefined && t >= died - (life.fadeOut ?? 0)) return;
+    // On its way out: a moment killed it in this life (or before it was born).
+    const prev = v.lives.filter((l) => l.born < life.born).at(-1)?.died ?? -Infinity;
+    if (killed?.get(vi)?.some((k) => k > prev && k <= t)) return;
     const g = segmentAt(v, t);
-    if (!g || g.p0 !== g.p1 || (g.m0 ?? 0) !== 0 || g.curve) continue;
+    if (!g || g.p0 !== g.p1 || (g.m0 ?? 0) !== 0 || g.curve) return;
     // A line still settling (its move ended within the join hand-over window) may not have merged.
-    if (g.t0 > t - 0.2 && g.t0 > life.born) continue;
-    out.push(g.p0);
-  }
-  return out.sort((a, b) => a - b);
+    if (g.t0 > t - 0.2 && g.t0 > life.born) return;
+    let leaves = Infinity;
+    for (const h of v.segments) {
+      if (h.t0 <= t || h.t0 >= (died ?? Infinity)) continue;
+      if ((h.curve ? h.curve.p1 : h.p1) !== g.p0) {
+        leaves = h.t0;
+        break;
+      }
+    }
+    out.push({ p: g.p0, leaves });
+  });
+  return out.sort((a, b) => a.p - b.p);
 }
 
 describe('distinct notes (property)', () => {
-  // WIP (M4.5-29 handoff): fails at seed 2611 (two lines on 42 at 1.25 s); see docs/build-log.md.
-  it.skip('no two resting lines share a pitch', () => {
+  // Two lines may share a pitch only on their way apart: a later moment already moves one of
+  // them on (its staggered moves start after the other arrives), within PART seconds.
+  it('no two resting lines share a pitch', () => {
     fc.assert(
       fc.property(pieceArb(), (p) => {
-        const s = compile(p);
+        const { score: s, trace } = compileWithTrace(p);
+        const killed = killedBy(trace);
         for (let t = 0.25; t < s.duration; t += 0.5) {
-          const ps = resting(s, t, p);
-          for (let i = 1; i < ps.length; i++) {
-            if (Math.abs(ps[i] - ps[i - 1]) < 1e-6) {
-              expect.fail(`two lines rest on ${ps[i]} at ${t}`);
+          const ls = restingLines(s, t, killed);
+          for (let i = 0; i < ls.length; i++) {
+            for (let j = i + 1; j < ls.length && Math.abs(ls[j].p - ls[i].p) < 1e-6; j++) {
+              if (Math.min(ls[i].leaves, ls[j].leaves) - t > PART)
+                expect.fail(`two lines rest on ${ls[i].p} at ${t}`);
             }
           }
         }
       }),
-      { numRuns: RUNS, seed: 2611 },
+      { numRuns: RUNS, seed: SEED },
+    );
+  });
+
+  // Owner, 2026-11-21: a chord or degrees chord (any voicing, with or without count) takes free
+  // octaves of its chord tones in the lines' range before two lines share a note, so the lines
+  // heard are min(lines, chord tones in range).
+  it('chords take free octaves before merging lines', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 36, max: 72 }),
+        fc.integer({ min: 4, max: 30 }),
+        fc.uniqueArray(fc.integer({ min: 0, max: 30 }), { minLength: 1, maxLength: 8 }),
+        fc.uniqueArray(fc.integer({ min: 0, max: 6 }), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom('even', 'close', 'nearest'),
+        fc.option(fc.integer({ min: 0, max: 12 }), { nil: undefined }),
+        fc.option(fc.integer({ min: 1, max: 8 }), { nil: undefined }),
+        (lo, w, offs, degrees, voicing, reg, count) => {
+          const hi = lo + w;
+          const start = [...new Set(offs.map((o) => lo + (o % (w + 1))))];
+          const p = piece({
+            start,
+            range: [lo, hi],
+            pool: 12,
+            glide: { length: 1, jitter: 0, stagger: 0.3 },
+            end: { at: 20, fade: 1 },
+            moments: [
+              {
+                type: 'chord',
+                at: 1,
+                notes: { kind: 'degrees', degrees },
+                voicing,
+                assign: 'ordered',
+                ...(reg === undefined || lo + reg + 4 > hi
+                  ? {}
+                  : { register: [lo + reg, lo + reg + 4] }),
+                ...(count === undefined ? {} : { count }),
+              },
+            ],
+          });
+          const s = compile(p);
+          if (s.diagnostics.some((d) => d.level === 'error')) return;
+          const tones = pitchesWithPcs(degreesToPcs(degrees, p.key), lo, hi).length;
+          if (tones === 0) return; // folded into range: not a voicing question
+          expect(linesAt(s, 15)).toBe(Math.min(count ?? start.length, tones));
+        },
+      ),
+      { numRuns: RUNS, seed: SEED },
     );
   });
 

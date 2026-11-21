@@ -6,7 +6,7 @@
 
 import { mod } from '../../core/math';
 import { defaultNoteFields } from '../../core/moments/note';
-import { activeAt, keyAt, pitchAt, stackedCountAt } from '../../core/query';
+import { activeAt, keyAt, pitchAt } from '../../core/query';
 import {
   FLAT_NAMES,
   SHARP_NAMES,
@@ -47,9 +47,12 @@ export function defaultMoment<T extends MomentType>(
   piece: Piece,
   score: CompiledScore,
 ): MomentOf<T> {
-  const { active, key } = stateAt(score, at);
-  // Voices, not lines: a merged note stands for its weight's worth (revision 8).
-  const n = stackedCountAt(score, at);
+  // At or past the end (open-ended canvas) the defaults follow the state just before it: adding
+  // there extends the piece, and the voices hold until then.
+  const read = Math.min(at, Math.max(0, score.duration - 0.01));
+  const { active, key } = stateAt(score, read);
+  // Lines, not Σ weights: count sets how many lines are heard (owner, 2026-11-21).
+  const n = active.length;
   const pool = piece.voices.length;
   const base = { id, at };
   let m: Moment;
@@ -103,7 +106,7 @@ export function defaultMoment<T extends MomentType>(
       break;
     case 'note':
       // The sounding note nearest the middle, one scale step up (core/moments/note.ts).
-      m = { ...base, type: 'note', ...defaultNoteFields(score, at) };
+      m = { ...base, type: 'note', ...defaultNoteFields(score, read) };
       break;
     case 'pin': {
       // The top sounding voice, two scale steps up (the first pool voice if nothing sounds).

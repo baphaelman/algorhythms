@@ -75,7 +75,9 @@ export function suggestNext(
   count = 4,
 ): Suggestion[] {
   const at = round3(Math.max(0, t));
-  const st = readState(piece, score, at);
+  // Stacked voices (revision 8): a merged unison still opens into a chord.
+  const st0 = readState(piece, score, at);
+  const st = st0.stacked ?? st0;
   const n = st.active.length;
   if (n === 0 || count <= 0) return [];
   const key = st.key;

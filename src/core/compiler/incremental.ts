@@ -34,7 +34,9 @@ import type {
   Piece,
   Seconds,
   Segment,
+  StackChange,
   WalkStepRecord,
+  WeightChange,
 } from '../types';
 import { Compiler, SUB_MOVE, SUB_NOTE_BACK, SUB_STRIDE, type CompileOptions } from './compile';
 import { EventClass, type QueuedEvent } from './queue';
@@ -50,11 +52,12 @@ const STRIDE = 2;
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
  * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
- * length. References, REFS per voice: pending moves (a copy), pending birth, open life, tail,
- * tail curve, members (a copy).
+ * length, handed, counts length. References, REFS per voice: pending moves (a copy), pending birth,
+ * open life, tail, tail curve, members (a copy), the last weight and stack entries (`rampWeight` and
+ * `setCount` may replace them in the shared arrays after the checkpoint).
  */
-const NUMS = 16;
-const REFS = 6;
+const NUMS = 18;
+const REFS = 8;
 const NO_MOVES: readonly Move[] = [];
 
 interface Checkpoint {
@@ -94,6 +97,7 @@ interface State {
   lives: Life[][];
   level: VoiceRun['level'][];
   weights: VoiceRun['weights'][];
+  counts: VoiceRun['counts'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
   walkSteps: WalkStepRecord[];
@@ -216,6 +220,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.count,
       run.weight,
       run.weights.length,
+      run.handed ? 1 : 0,
+      run.counts.length,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -224,6 +230,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       tail,
       tail ? tail.curve : undefined,
       run.members.slice(),
+      run.weights[run.weights.length - 1],
+      run.counts[run.counts.length - 1],
     );
   }
   return {
@@ -286,7 +294,12 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     run.weight = nums[n + 14];
     run.weights.length = 0;
     pushPrefix(run.weights, prev.weights[v], nums[n + 15]);
+    if (run.weights.length > 0) run.weights[run.weights.length - 1] = refs[r + 6] as WeightChange;
     run.members = (refs[r + 5] as number[]).slice();
+    run.handed = nums[n + 16] === 1;
+    run.counts.length = 0;
+    pushPrefix(run.counts, prev.counts[v], nums[n + 17]);
+    if (run.counts.length > 0) run.counts[run.counts.length - 1] = refs[r + 7] as StackChange;
     run.segs.length = 0;
     pushPrefix(run.segs, prev.segs[v], nums[n + 2]);
     run.lives.length = 0;
@@ -415,6 +428,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       lives: c.voices.map((r) => r.lives),
       level: c.voices.map((r) => r.level),
       weights: c.voices.map((r) => r.weights),
+      counts: c.voices.map((r) => r.counts),
       keys: c.keys,
       harmony: c.harmony,
       walkSteps: c.walkSteps,

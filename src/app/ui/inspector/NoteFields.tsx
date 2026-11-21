@@ -1,9 +1,10 @@
 /**
- * Note point fields (§11.3, revision 6): `from → to` as note names with ▲/▼ on `to` (one scale
- * step in the key), the chord before → after (compiled harmony), "Keep lines in order" (`order`) and
- * "Return after" (`back`).
+ * Note point fields (§11.3, revision 6): per change (revision 7: a grouped "Shift" has several)
+ * `from → to` as note names with ▲/▼ on `to` (one scale step in the key), the chord before → after
+ * (compiled harmony), "Keep lines in order" (`order`) and "Return after" (`back`).
  */
 
+import { noteChanges } from '../../../core/moments/note';
 import type { Key, NoteMoment } from '../../../core/types';
 import { noteLabel } from '../../../render';
 import { stepNote, updateMoment } from '../../editor/actions';
@@ -14,35 +15,40 @@ import { CheckField, NumberField, Row, fieldSetter } from './controls';
 export function NoteFields({ m, keyAt }: { m: NoteMoment; keyAt: Key }) {
   const compiled = usePlayer((s) => s.compiled);
   const { before, after } = noteHarmony(compiled, m);
-  const from = noteLabel(m.from, keyAt);
-  const to = noteLabel(m.to, keyAt);
+  const list = noteChanges(m);
   const back = fieldSetter<number>(m.id, 'Edit return', (_x, v) => ({ back: v }));
   return (
     <>
-      <Row label="Note">
-        <span className="insp-note-move" data-testid="insp-note-move">
-          <span data-testid="insp-note-from">{from}</span> →{' '}
-          <span data-testid="insp-note-to">{to}</span>
-        </span>
-        <button
-          type="button"
-          className="step-move"
-          data-testid="insp-note-up"
-          aria-label={`Up a scale step: ${to}`}
-          onClick={() => stepNote(m.id, 1)}
-        >
-          ▲
-        </button>
-        <button
-          type="button"
-          className="step-move"
-          data-testid="insp-note-down"
-          aria-label={`Down a scale step: ${to}`}
-          onClick={() => stepNote(m.id, -1)}
-        >
-          ▼
-        </button>
-      </Row>
+      {list.map((c, i) => {
+        const from = noteLabel(c.from, keyAt);
+        const to = noteLabel(c.to, keyAt);
+        return (
+          <Row key={i} label={list.length > 1 ? `Note ${i + 1}` : 'Note'}>
+            <span className="insp-note-move" data-testid="insp-note-move">
+              <span data-testid="insp-note-from">{from}</span> →{' '}
+              <span data-testid="insp-note-to">{to}</span>
+            </span>
+            <button
+              type="button"
+              className="step-move"
+              data-testid="insp-note-up"
+              aria-label={`Up a scale step: ${to}`}
+              onClick={() => stepNote(m.id, 1, i)}
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              className="step-move"
+              data-testid="insp-note-down"
+              aria-label={`Down a scale step: ${to}`}
+              onClick={() => stepNote(m.id, -1, i)}
+            >
+              ▼
+            </button>
+          </Row>
+        );
+      })}
       <Row label="Chord">
         <span data-testid="insp-note-chord">
           <span data-testid="insp-note-chord-before">{before ?? '—'}</span> →{' '}
