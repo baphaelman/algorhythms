@@ -6,6 +6,10 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Key at 0:00 and lane previews (M4.5-39).**
+  - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
+  - Adding a key at exactly 0:00 selects the piece's key instead of adding a moment. An old file with key moments at the very start folds them into the piece's key.
+  - Palette and suggestion previews draw a dashed, ghosted lane item, with its marker, label and transition bar, at the drop time. Escape now clears hover previews too.
 - **Compose in play order (M4.5-38).**
   - Moments appear strictly left to right, already in their final form.
   - Generate had no refinements for the final sweep, so the composer now adds upper-neighbour notes: on the full split and on each "Thin" chord, the top note steps up one scale tone and back, inside the chord's hold. This changes Generate's output, and nothing else in it moves.
