@@ -8,6 +8,11 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **Silent lines (R9-5).**
+  - Each line's opacity follows its level and its fade-in and fade-out.
+  - In the editor, a selected or hovered line below 25 % opacity shows as a faint dotted trace.
+  - In the player, silent lines can't be hovered, so no readout appears over empty paper.
+  - Two level moments with exactly the same span both show the trace.
 - **Free octaves stay inside the chord's register (follow-up to 29a).** When a chord targets only some lines and the register runs out of free notes, the extra notes no longer drop below the register or cross the lines it doesn't touch. They take free octaves inside the register first, then between the untouched neighbours within the lines' range, and merge only when neither has room. The Cartographers' Rain chord `CrChd2` had put two notes at 59 and 43, below a register of 60–84 and under eight untouched lines.
 - **Space (M4.5-37).**
   - Space plays and pauses everywhere except while typing in a text field.
