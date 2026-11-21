@@ -201,7 +201,7 @@ test('the divider drags the split, persists across reload, and resets on double-
       // storage unavailable
     }
   });
-  await open(page, 'dense', 1024, 768);
+  await open(page, 'dense', 1280, 800);
   const div = page.getByTestId('lane-divider');
   const sc = page.getByTestId('lane-scroll');
   const h0 = (await box(sc)).height;
@@ -209,23 +209,23 @@ test('the divider drags the split, persists across reload, and resets on double-
   const d = await box(div);
   await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
   await page.mouse.down();
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 20, { steps: 4 });
   await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 40, { steps: 4 });
-  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 60, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await box(sc)).height).toBeGreaterThan(h0 + 50);
+  await expect.poll(async () => (await box(sc)).height).toBeGreaterThan(h0 + 30);
   const h1 = (await box(sc)).height;
-  expect((await box(page.getByTestId('stage'))).height).toBeLessThan(stage0 - 50);
+  expect((await box(page.getByTestId('stage'))).height).toBeLessThan(stage0 - 30);
 
-  // Way up: the score keeps at least a quarter of the timeline.
+  // Way up: the score keeps at least a quarter of the timeline and its 200 px minimum.
   const d1 = await box(div);
   await page.mouse.move(d1.x + 100, d1.y + 5);
   await page.mouse.down();
   await page.mouse.move(d1.x + 100, 0, { steps: 6 });
   await page.mouse.up();
   const timeline = await box(page.getByTestId('timeline'));
-  expect((await box(page.getByTestId('stage'))).height).toBeGreaterThanOrEqual(
-    timeline.height * 0.25 - 1,
-  );
+  const stageUp = (await box(page.getByTestId('stage'))).height;
+  expect(stageUp).toBeGreaterThanOrEqual(timeline.height * 0.25 - 1);
+  expect(stageUp).toBeGreaterThanOrEqual(199);
   // Drag back to h1; it survives a reload.
   const d2 = await box(div);
   const hNow = (await box(sc)).height;
@@ -236,7 +236,7 @@ test('the divider drags the split, persists across reload, and resets on double-
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
   // Reload (the link's hash is cleared once it opens, so open it again).
-  await open(page, 'dense', 1024, 768);
+  await open(page, 'dense', 1280, 800);
   await expect.poll(async () => Math.abs((await box(sc)).height - h1)).toBeLessThanOrEqual(2);
 
   // Keyboard: a focusable separator; ↓ shrinks the lanes.
@@ -251,7 +251,7 @@ test('the divider drags the split, persists across reload, and resets on double-
   await div.dblclick();
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
   // Reload (the link's hash is cleared once it opens, so open it again).
-  await open(page, 'dense', 1024, 768);
+  await open(page, 'dense', 1280, 800);
   await expect.poll(async () => Math.abs((await box(sc)).height - h0)).toBeLessThanOrEqual(1);
 });
 

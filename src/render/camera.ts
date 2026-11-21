@@ -202,6 +202,30 @@ export function cameraScore(score: CompiledScore): CameraScore {
   return { duration: score.duration, pitchRange: pitchExtent(score) };
 }
 
+/** The plot keeps at least this share of the canvas height when the paddings would crowd it. */
+export const MIN_PLOT_SHARE = 0.4;
+
+/**
+ * Top and bottom paddings (px) of a canvas `H` tall: ≥ 28 / ≥ 54 with the HUD (≥ 16 without), shrunk
+ * proportionally on a short canvas so the plot keeps MIN_PLOT_SHARE of it (from ~137 px with the
+ * HUD down): the plot height is always > 0 for H > 0.
+ */
+export function scorePads(H: number, hud = true): { padT: number; padB: number } {
+  const h = H > 0 ? H : 0;
+  const padT = Math.max(28, h * 0.08);
+  const padB = hud ? Math.max(54, h * 0.15) : Math.max(16, h * 0.05);
+  const room = h * (1 - MIN_PLOT_SHARE);
+  if (padT + padB <= room) return { padT, padB };
+  const k = room / (padT + padB);
+  return { padT: padT * k, padB: padB * k };
+}
+
+/** HUD text lines (14 px apart, 10.5 px type) that fit in a bottom padding `padB` px tall (0–3). */
+export function hudLines(padB: number): number {
+  if (!(padB >= 16)) return 0;
+  return Math.min(3, Math.floor((padB - 16) / 14) + 1);
+}
+
 /**
  * Resolves camera `cam` (window and start clamped to the piece) on a canvas of `size` CSS px, with
  * the playhead at time `t`. `hud` reserves room for the heads-up display at the bottom.
@@ -218,8 +242,7 @@ export function cameraAt(
   const window = clampWindow(cam.window, D);
   const start = clampStart(cam.start, window, D);
   const pps = W / window;
-  const padT = Math.max(28, H * 0.08);
-  const padB = hud ? Math.max(54, H * 0.15) : Math.max(16, H * 0.05);
+  const { padT, padB } = scorePads(H, hud);
   const padL = Math.max(16, W * 0.025);
   const [pLo, pHi] = cam.pitchRange ?? score.pitchRange;
   return {

@@ -31,7 +31,7 @@ import type {
   Seconds,
 } from '../core/types';
 import { barGrid } from './bars';
-import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
+import { cameraAt, cameraScore, hudLines, pitchToY, timeToX } from './camera';
 import { drawGhost, ghostOf } from './ghost';
 import { OPACITY_EPS, breaksIn, opacityIn } from './level';
 import { outlineFrame, outlinePath } from './outline';
@@ -922,7 +922,10 @@ function drawHud(
 ): void {
   const C = style.tokens;
   const { t, width: W, height: H, padB } = view;
-  const hy = H - padB + 22;
+  // Three lines from H − padB + 22; a short canvas keeps the first that fit, bottom-anchored.
+  const lines = hudLines(padB);
+  if (lines === 0) return;
+  const hy = Math.min(H - padB + 22, H - 4 - 14 * (lines - 1));
   const active = activeAt(compiled, t);
   const pool = compiled.voices.length;
   g.globalAlpha = 1;
@@ -943,8 +946,11 @@ function drawHud(
   if (!chord || padL + formula.length * 6.4 + 16 + chordW < W - padR) {
     g.fillText(formula, padL, hy);
   }
-  g.fillText(`notes   ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
-  g.fillText(`t       ${formatTime(t)} / ${formatTime(view.duration)}`, padL, hy + 28);
+  if (lines > 1) {
+    g.fillText(`notes   ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
+  }
+  if (lines > 2)
+    g.fillText(`t       ${formatTime(t)} / ${formatTime(view.duration)}`, padL, hy + 28);
 
   g.textAlign = 'right';
   if (chord) {
@@ -955,7 +961,9 @@ function drawHud(
   g.fillStyle = C.ink2;
   g.font = `10.5px ${MONO}`;
   const mode = view.window >= view.duration ? 'whole piece' : 'following';
-  g.fillText(`${keyName(keyAt(compiled, t)).toLowerCase()} · ${mode}`, W - padR, hy + 14);
+  if (lines > 1) {
+    g.fillText(`${keyName(keyAt(compiled, t)).toLowerCase()} · ${mode}`, W - padR, hy + 14);
+  }
   let lo = Infinity;
   let hi = -Infinity;
   for (const i of active) {
@@ -964,7 +972,7 @@ function drawHud(
     if (p < lo) lo = p;
     if (p > hi) hi = p;
   }
-  if (hi >= lo) {
+  if (lines > 2 && hi >= lo) {
     const f = (p: number): string => hzOf(p, compiled.referenceHz).toFixed(1);
     g.fillText(`${f(lo)}–${f(hi)} Hz`, W - padR, hy + 28);
   }

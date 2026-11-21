@@ -285,13 +285,21 @@ class LaneController {
   };
 
   /** The timeline's height, the ruler's and the lane content's (px), for the split. */
-  private dims(): { columnH: number; rulerH: number; contentH: number } | null {
+  private dims(): {
+    columnH: number;
+    rulerH: number;
+    contentH: number;
+    scoreMin: number;
+  } | null {
     const timeline = this.scroller?.parentElement?.parentElement;
     if (!timeline) return null;
+    const stage = timeline.querySelector<HTMLElement>('.stage');
+    const scoreMin = stage ? parseFloat(getComputedStyle(stage).minHeight) : 0;
     return {
       columnH: timeline.clientHeight,
       rulerH: timeline.querySelector<HTMLElement>('.ruler')?.offsetHeight ?? 0,
       contentH: this.scroller?.scrollHeight ?? Infinity,
+      scoreMin: Number.isFinite(scoreMin) ? scoreMin : 0,
     };
   }
 
@@ -303,7 +311,7 @@ class LaneController {
     const slot = this.scroller?.parentElement;
     const d = this.dims();
     if (!slot || !d) return;
-    const lane = splitLanePx(this.split, d.columnH, d.rulerH, DIVIDER_H);
+    const lane = splitLanePx(this.split, d.columnH, d.rulerH, DIVIDER_H, Infinity, d.scoreMin);
     const v = `${lane + DIVIDER_H}px`;
     if (slot.style.maxHeight !== v) slot.style.maxHeight = v;
     const div = this.divider;
@@ -318,7 +326,7 @@ class LaneController {
   private setLaneHeight(px: number, save: boolean): void {
     const d = this.dims();
     if (!d || !(d.columnH > 0)) return;
-    const h = clampLanePx(px, d.columnH, d.rulerH, DIVIDER_H, d.contentH);
+    const h = clampLanePx(px, d.columnH, d.rulerH, DIVIDER_H, d.contentH, d.scoreMin);
     this.split = h / d.columnH;
     if (save) saveLaneSplit(this.split);
     this.capHeight();

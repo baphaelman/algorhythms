@@ -337,6 +337,26 @@ describe('dense lanes: the divider', () => {
     expect(splitLanePx(Number.NaN, 341, 30, 10)).toBe(laneMaxPx(341, 30, 10));
   });
 
+  it('the split never takes the score below its minimum height (scoreMin)', () => {
+    // Timeline 284 = ruler 30 + score 200 + divider 10 + lanes 44: lanes get exactly 44.
+    expect(clampLanePx(1e6, 284, 30, 10, Infinity, 200)).toBe(44);
+    expect(splitLanePx(0.7, 284, 30, 10, Infinity, 200)).toBe(44);
+    expect(splitLanePx(null, 284, 30, 10, Infinity, 200)).toBe(44);
+    // A taller timeline: the stored share applies until the score would drop under 200.
+    expect(splitLanePx(0.3, 600, 30, 10, Infinity, 200)).toBe(180);
+    expect(splitLanePx(0.7, 600, 30, 10, Infinity, 200)).toBe(360);
+    expect(splitLanePx(null, 600, 30, 10, Infinity, 200)).toBe(laneMaxPx(600, 30, 10));
+    for (const H of [284, 300, 341, 400, 600, 900]) {
+      for (const share of [null, 0, 0.2, 0.5, 0.75, 1]) {
+        const lane = splitLanePx(share, H, 30, 10, Infinity, 200);
+        expect(H - 30 - 10 - lane, `${H} ${share}`).toBeGreaterThanOrEqual(200);
+        expect(lane).toBeGreaterThanOrEqual(SPLIT_MIN_LANE);
+      }
+    }
+    // Too short for both: the lanes keep their row (CSS then keeps the score's minimum).
+    expect(clampLanePx(1e6, 250, 30, 10, Infinity, 200)).toBe(SPLIT_MIN_LANE);
+  });
+
   it('the split is remembered in localStorage; a failing or bad store reads as default', () => {
     const store = new Map<string, string>();
     const ls = {

@@ -5,7 +5,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import {
@@ -16,6 +16,8 @@ import {
   chordTolerance,
   drawScore,
   followStart,
+  hudLines,
+  scorePads,
   type Ctx2D,
 } from '../../../src/render';
 
@@ -88,6 +90,81 @@ describe('short score', () => {
       );
       const tol = chordTolerance(view);
       expect(tol, `${h}px`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the plot height is > 0 and upright for canvas heights 20–4000 px (pads shrink)', () => {
+    const score = load('examples/compositions/kite-day.algorhythms.json');
+    for (const hud of [true, false]) {
+      for (let h = 20; h <= 4000; h += h < 300 ? 1 : 37) {
+        const v = cameraAt(
+          cameraScore(score),
+          { start: 0, window: 12 },
+          0,
+          { width: 1200, height: h },
+          hud,
+        );
+        const plot = v.height - v.padT - v.padB;
+        expect(plot, `${h}px hud ${hud}`).toBeGreaterThan(0);
+        expect(plot / h).toBeGreaterThanOrEqual(0.4 - 1e-9);
+        expect(v.padT).toBeGreaterThan(0);
+      }
+    }
+    // Unchanged where the pads fit (≥ 137 px with the HUD): 28 / 54, then 8 % / 15 %.
+    expect(scorePads(143)).toEqual({ padT: 28, padB: 54 });
+    expect(scorePads(800)).toEqual({ padT: 64, padB: 120 });
+    expect(scorePads(100, false)).toEqual({ padT: 28, padB: 16 });
+    // Shrunk proportionally below: 82 px keeps 40 % plot, pads in the 28:54 ratio.
+    const p = scorePads(82);
+    expect(p.padT + p.padB).toBeCloseTo(82 * 0.6, 9);
+    expect(p.padT / p.padB).toBeCloseTo(28 / 54, 9);
+    expect(scorePads(0)).toEqual({ padT: 0, padB: 0 });
+  });
+
+  it('HUD lines that do not fit the shrunk bottom pad are hidden; the rest stay inside it', () => {
+    expect(hudLines(54)).toBe(3);
+    expect(hudLines(120)).toBe(3);
+    expect(hudLines(40)).toBe(2);
+    expect(hudLines(29)).toBe(1);
+    expect(hudLines(15)).toBe(0);
+    const score = load('examples/compositions/kite-day.algorhythms.json');
+    for (const h of [20, 40, 60, 82, 100, 137, 143, 400]) {
+      const ys: number[] = [];
+      const { ctx } = countingCtx();
+      const g = ctx as unknown as Record<string, unknown>;
+      const fill = vi.fn((s: string, _x: number, y: number) => {
+        if (/^(f\(n\)|notes|t {2})/.test(s)) ys.push(y);
+      });
+      const proxy = new Proxy(g, {
+        get: (t, k: string) => (k === 'fillText' ? fill : t[k]),
+        set: (t, k: string, val: unknown) => {
+          t[k] = val;
+          return true;
+        },
+      }) as unknown as Ctx2D;
+      const view = drawScore(
+        proxy,
+        score,
+        { start: 0, window: 12 },
+        {
+          tokens: LIGHT_TOKENS,
+          dark: false,
+          colors: 'pitch',
+          oklch: false,
+          futureOpacity: DEFAULT_FUTURE_OPACITY,
+          hud: true,
+        },
+        score.duration * 0.3,
+        { width: 1200, height: h },
+        1,
+      );
+      expect(ys.length, `${h}px`).toBe(hudLines(view.padB));
+      for (const y of ys) {
+        expect(y - 9, `${h}px`).toBeGreaterThanOrEqual(view.height - view.padB);
+        expect(y).toBeLessThanOrEqual(h);
+      }
+      if (h >= 137)
+        expect(ys).toEqual([h - view.padB + 22, h - view.padB + 36, h - view.padB + 50]);
     }
   });
 

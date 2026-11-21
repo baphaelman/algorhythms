@@ -5,11 +5,11 @@
 }
 
 .sound-drawer {
-  flex: 0 0 auto;
+  flex: 0 1 auto; /* gives way to the score on short windows (styles.css --score-min) */
   display: flex;
   flex-direction: column;
   max-height: 46vh;
-  min-height: 0;
+  min-height: min(80px, 12vh);
   border: 1px solid var(--rule);
   background: var(--panel);
   border-radius: 3px;
