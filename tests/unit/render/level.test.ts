@@ -1,6 +1,9 @@
 /** Line opacity by audible level (revision 9, "Silent lines vanish"). */
 
 import { describe, expect, it } from 'vitest';
+import { compile } from '../../../src/core/compiler/compile';
+import { pulseGainAt } from '../../../src/core/pulse';
+import { piece } from '../core/compiler-fixtures';
 import type { CompiledScore, CompiledVoice, LevelChange, Life } from '../../../src/core/types';
 import {
   LINE_WIDTH,
@@ -251,5 +254,36 @@ describe('drawn opacity', () => {
     expect(nearestLine(s, view, x, y)?.voice).toBe(0);
     expect(nearestLine(s, view, x, y, undefined, true, true)).toBeNull();
     expect(OPACITY_EPS).toBeGreaterThan(0);
+  });
+
+  it('follows a pulse: hits flicker the opacity, and the breaks list the hits', () => {
+    const p = piece({
+      pool: 2,
+      start: [48, 55],
+      glide: { length: 1, jitter: 0, stagger: 0, ease: 'smootherstep' },
+      end: { at: 12, fade: 1 },
+      moments: [
+        {
+          type: 'pulse',
+          at: 2,
+          until: 6,
+          step: 1,
+          pattern: [1],
+          decay: 0.4,
+          floor: 0,
+          mode: 'together',
+        },
+      ],
+    });
+    const v = compile(p).voices[0];
+    expect(v.pulse?.length).toBeGreaterThan(0);
+    expect(pulseGainAt(v, 3)).toBe(1);
+    expect(opacityAt(v, 3)).toBeCloseTo(levelAt(v, 3), 12);
+    expect(pulseGainAt(v, 3.7)).toBeCloseTo(0, 12);
+    expect(opacityAt(v, 3.7)).toBeLessThan(OPACITY_EPS);
+    expect(opacityAt(v, 3.2)).toBeCloseTo(pulseGainAt(v, 3.2) * levelAt(v, 3.2), 12);
+    const br = opacityBreaks(v);
+    expect(br).not.toBeNull();
+    expect(Array.from(br!)).toContain(3);
   });
 });

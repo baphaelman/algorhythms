@@ -41,7 +41,10 @@ import type {
 /** Pitches closer than this are the same (semitones). */
 export const EFFECT_EPS = 1e-6;
 
-/** Every v1 moment type, in palette order. */
+/**
+ * The palette's moment types, in palette order. `pulse` (revision 9) is not listed until the
+ * editor can make one (R9-7); `momentEffectAt` handles it already.
+ */
 export const EFFECT_MOMENT_TYPES: readonly MomentType[] = [
   'chord',
   'unison',
@@ -123,7 +126,7 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
   const n = c.active.length;
   if (n === 0 && m.type !== 'key') {
     // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
-    return isEstablishing(m) || m.type === 'level'
+    return isEstablishing(m) || m.type === 'level' || m.type === 'pulse'
       ? 'no note is sounding'
       : 'no note is sounding; start with a chord or a unison';
   }
@@ -170,6 +173,8 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
       return 'the notes are already at this level';
     case 'walk':
       return 'no note is sounding';
+    case 'pulse':
+      return 'it targets no sounding note';
   }
 }
 
@@ -378,6 +383,7 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
         ? { effect: true }
         : no(noEffectReason(m, ctx()));
     case 'walk':
+    case 'pulse':
       return targeted.length > 0 ? { effect: true } : no(noEffectReason(m, ctx()));
     default:
   }
@@ -483,6 +489,7 @@ export function momentEffectsAt(
   t: Seconds,
   make: (type: MomentType, at: Seconds) => Moment,
 ): Record<MomentType, MomentEffect> {
+  // Only EFFECT_MOMENT_TYPES are filled (no `pulse` yet).
   const cache = new Map<Seconds, StateAt>();
   const out = {} as Record<MomentType, MomentEffect>;
   for (const type of EFFECT_MOMENT_TYPES) {

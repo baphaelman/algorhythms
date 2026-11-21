@@ -132,6 +132,18 @@ export function defaultMoment<T extends MomentType>(
     case 'level':
       m = { ...base, type: 'level', gain: 0.5, over: 2 };
       break;
+    case 'pulse':
+      m = {
+        ...base,
+        type: 'pulse',
+        until: at + 4,
+        step: 0.5,
+        pattern: [1],
+        decay: 0.3,
+        floor: 0,
+        mode: 'together',
+      };
+      break;
   }
   return withChordFill(m, piece, score, at) as MomentOf<T>;
 }

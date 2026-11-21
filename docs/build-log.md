@@ -1462,6 +1462,30 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
 - Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
 - Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.
 
+## R9-3a: the `pulse` moment (core, 2026-11-21)
+PLAN rev 9 `pulse` in core: types (`PulseMoment`, `PulseRecord`, `CompiledVoice.pulse`), schema (defaults step 0.5, pattern [1], decay 0.3, floor 0, mode together; `strike` optional = true), compile, incremental, flat layout, reference envelope.
+- **Records** (per voice, sorted, pushed at the simulation time): `{ t, accent, decay, floor, strike, hit? }`. A hit is one step; a boundary (accent 1, decay 0) puts a voice at `floor` when it joins a pulse, or back at 1 (floor 1) at `until`.
+- **Envelope** (`segment.ts pulseEnvelope`, leaf, + − × only, so the DSP can call it as is; `pulse.ts pulseGainAt`): the last record with t ≤ now applies: accent·(floor + (1 − floor)·(1 − u)³), u = dt/decay; accent·floor once u ≥ 1. 1 before the first record. Multiplies level and life fades.
+- **Steps** are tick events (`at + k·step` while < until, then one at `until` that ends it); a pulse tick changes no pitch, so no cache invalidation. Its walk state rides on the queued event (immutable), so checkpoints need only the per-voice pulse length and owner (NUMS 18 → 20).
+- **Flat layout v4:** `FlatVoice.pulses`, PULSE_STRIDE 6 (T, ACCENT, DECAY, FLOOR, STRIKE, HIT), constants in segment.ts, re-exported by flat.ts. Transfer list gains one buffer per voice.
+
+**Decisions (PLAN is silent):**
+- Targets resolve at each step as for any moment (active voices; `{ part }` works). Only sounding voices are hit; dying voices (merge) are no longer targetable, so they leave the walk and keep their last envelope while they fade.
+- A rest (accent 0) hits nothing and does not advance the walk. Accents and floor are clamped to 0..1.
+- Arpeggio order: the sounding targeted voices by their pitch at the step instant (ties: pool index). up/down/updown keep their index when voices join or leave (clamped), updown bounces without repeating ends (0 1 2 1 0). random: `randHashed(momentSeed, hash(''), k, PulsePick)` (new Purpose 16), uniform, repeats allowed.
+- A voice born inside a pulse that targets it sits at the floor from its birth (boundary at the birth), not from the next step.
+- Overlaps: the later-started pulse (later `at`, then array order) drives a voice; it claims at its moment event, so an earlier pulse's step at the same time skips it. When it ends, the voice goes to the latest earlier pulse still running that targets it (at that pulse's floor), else back to 1.
+- A pulse's region counts as activity (end = last activity + 4 s), like a walk.
+- `no-effect` when no targeted voice sounded at any step, raised at `until` (none if the piece ends first). `pulse-invalid` (error): step ≤ 0, until ≤ at, empty or non-numeric pattern. Schema rejects an empty pattern, step ≤ 0 and accents outside 0..1; until ≤ at is left to the compiler, as for walks.
+- The palette list (`EFFECT_MOMENT_TYPES`) leaves `pulse` out until the editor makes one (the app's `defaultMoment` has no case); `momentEffectAt` handles it.
+
+**Needs the integrator (outside src/core):**
+- Typecheck fails on three app records/switches: `actions.ts` LABELS and `Inspector.tsx` TYPE_NAMES need `pulse: 'pulse'` / `pulse: 'Pulse'`; `new-moment.ts` needs a `case 'pulse'`, e.g. `m = { ...base, type: 'pulse', until: at + 4, step: 0.5, pattern: [1], decay: 0.3, floor: 0, mode: 'together' }`.
+- Render (R9-5 hook, `src/render/level.ts`): `pulseLevel(v, t)` → `pulseGainAt(v, t)` from core/pulse, and `opacityBreaks` adds `pulseBreaks(v)` (records and uncut decay ends; not flat when `v.pulse` is non-empty; cache on `voice.pulse` too). Not done here: another builder is in src/render.
+
+**Tests:** `tests/unit/core/pulse.test.ts` (envelope, walk order, together/strike/floor/decay/cycling, up/down/updown/random, crossing glide, births and deaths, `{ part }`, overlaps, diagnostics, schema, palette, incremental = full over edits inside the region, flat round trip); pulse in `pieceArb`; property "pulse records" in compiler.property. Goldens unchanged.
+**Gates:** lint clean; typecheck clean in core/tests (the three app errors above); `pnpm test` 1416/1416 after the schema message fix; `test:perf` 5/5 (load ~21). 1000-run sweeps (seeds logged): incremental 7197195 and chord-count 784328314 green; compiler 893200642 fails "no crossings" and distinct-notes 1028843820 fails "no two resting lines share a pitch". Both counterexamples compile to identical segments and lives with their pulses removed, so neither comes from pulse; left open with the earlier crossings seeds.
+
 ### Hardening merged with main (2026-11-21)
 Merged 600e653. Added 30 s per-file timeouts to the `incremental` and `overrides` property suites and `dsp/probe`. The new e2e specs (parts, naming, piece-key, lane-preview) assert only geometry and state, with no time budgets, so they need no change; the fast-check alias (vite `test.alias`) covers every property file. Seen once in 7 runs: `ease.property` "standard eases stay in [0, 1] and are monotone" failed (seed 353562081, values `[0, 0.9999999999995448, 0.9999970971090307]`). Not caused by this merge; needs a look at `core/ease`.
 ## Dense lanes: capped lane area + compact rows (owner bug, 2026-11-21)
@@ -1497,6 +1521,9 @@ PLAN rev 9 "Land on the beat" (§5 `Glide.land`, §11.3) and "Split and merge ho
 **Tests:** `tests/unit/core/land.test.ts` (together, spread, lone voice, clamp, `decisionTime`, overlap both ways, key at the marker, establishing from silence, effect check vs compiler, freezeChord, incremental with lead-in/land/key edits, schema; split and merge ranks for each order; land on births and deaths). Adjusted for the new timing: compiler-moments (cancelled newborn: 3 newborns, high-first), chord-count-lines (fork pitch = parent's at birth; held parents still held), property-seeds-29 (shift at the pin's time; sign-change crossing check; /429 no longer sets up its waiting fork, kept as a no-artifact regression). Arbitraries: `land` in default and moment glides.
 **Sweeps:** `PROP_RUNS=1000`, budget lifted locally only: compiler 731906245, distinct-notes −1290388471, incremental 48151623, chord-count 1999000331, all green (after the `dormantAt` fix; the first compiler run hung on it).
 **Gates:** lint, typecheck, `pnpm test:perf` 5/5. `pnpm test --maxWorkers=2` at load 30+: 20 failures, all timeouts; rerun serially, all pass but two dsp `unison.test.ts` timeouts (5 s, load ~20; they passed serially earlier).
+
+### R9-3a integration (2026-11-21)
+Merged main; wired `pulse` into LABELS, TYPE_NAMES, `defaultMoment` (not in the palette), and render `pulseLevel`/`opacityBreaks` (core `pulseGainAt`/`pulseBreaks`; cache also keyed on `voice.pulse`). Tests: render level (pulse hit and between hits), e2e inspector "Pulse". Regenerated docs/file-format.md. Full `pnpm test`: only the property failures remain (distinct-notes known; "walk steps never overwrite a point moment" seen once, unchecked against main).
 
 ## Thickness transitions: strands and ropes (render, 2026-11-21)
 Owner (via integrator): no taper after the meeting; meeting lines bundle like strands into a rope, and a split peels strands off it. Drawing only: compiled weights, lives and sound unchanged.

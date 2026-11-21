@@ -27,6 +27,13 @@ import {
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
   LIFE_STRIDE,
+  PULSE_ACCENT,
+  PULSE_DECAY,
+  PULSE_FLOOR,
+  PULSE_HIT,
+  PULSE_STRIDE,
+  PULSE_STRIKE,
+  PULSE_T,
   SEG_BX1,
   SEG_BX2,
   SEG_BY1,
@@ -58,7 +65,7 @@ import {
   WEIGHT_T,
   WEIGHT_W,
 } from './segment';
-import type { CompiledScore, CompiledVoice, EaseRef, Life, Segment } from './types';
+import type { CompiledScore, CompiledVoice, EaseRef, Life, PulseRecord, Segment } from './types';
 
 export {
   LEVEL_GAIN,
@@ -70,6 +77,13 @@ export {
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
   LIFE_STRIDE,
+  PULSE_ACCENT,
+  PULSE_DECAY,
+  PULSE_FLOOR,
+  PULSE_HIT,
+  PULSE_STRIDE,
+  PULSE_STRIKE,
+  PULSE_T,
   SEG_BX1,
   SEG_BX2,
   SEG_BY1,
@@ -107,8 +121,9 @@ export { EaseCode };
  * Version of this layout; bump it whenever a stride or offset changes.
  * v2 (M1): segment records gain SEG_CURVE_T1 and SEG_CURVE_P1 (cut segments, §7.5); stride 13.
  * v3 (M4.5-29): per-voice weight records (`FlatVoice.weights`, revision 8).
+ * v4 (R9-3a): per-voice pulse records (`FlatVoice.pulses`, revision 9).
  */
-export const FLAT_LAYOUT_VERSION = 3;
+export const FLAT_LAYOUT_VERSION = 4;
 
 /** One voice's time-varying data. Every array is sorted by time. */
 export interface FlatVoice {
@@ -122,6 +137,11 @@ export interface FlatVoice {
   timbres: Float64Array<ArrayBuffer>;
   /** Weight-change records, WEIGHT_STRIDE doubles each. The weight is 1 before the first. */
   weights: Float64Array<ArrayBuffer>;
+  /**
+   * Pulse records, PULSE_STRIDE doubles each, sorted by time (ties: the later applies). The pulse
+   * gain is 1 before the first; core/pulse.ts gives the envelope (segment.ts `pulseEnvelope`).
+   */
+  pulses: Float64Array<ArrayBuffer>;
 }
 
 /** A compiled score as typed arrays plus a little plain metadata (copied once per load). */
@@ -223,7 +243,19 @@ function flattenVoice(v: CompiledVoice, timbreIndex: Map<string, number>): FlatV
     weights[o + WEIGHT_OVER] = c.over;
   });
 
-  return { segments, lives, levels, timbres, weights };
+  const pl = v.pulse ?? [];
+  const pulses = new Float64Array(pl.length * PULSE_STRIDE);
+  pl.forEach((r, i) => {
+    const o = i * PULSE_STRIDE;
+    pulses[o + PULSE_T] = r.t;
+    pulses[o + PULSE_ACCENT] = r.accent;
+    pulses[o + PULSE_DECAY] = r.decay;
+    pulses[o + PULSE_FLOOR] = r.floor;
+    pulses[o + PULSE_STRIKE] = r.strike ? 1 : 0;
+    pulses[o + PULSE_HIT] = r.hit ? 1 : 0;
+  });
+
+  return { segments, lives, levels, timbres, weights, pulses };
 }
 
 /** Flattens a compiled score into typed arrays. Voices must be in pool order. */
@@ -265,6 +297,7 @@ export function transferList(flat: FlatScore): ArrayBuffer[] {
     out.add(v.levels.buffer);
     out.add(v.timbres.buffer);
     out.add(v.weights.buffer);
+    out.add(v.pulses.buffer);
   }
   return [...out];
 }
@@ -364,6 +397,20 @@ export function unflatten(flat: FlatScore): CompiledScore {
         w: ws[o + WEIGHT_W],
         over: ws[o + WEIGHT_OVER],
       }));
+    }
+    const ps = fv.pulses ?? new Float64Array(0);
+    if (ps.length > 0) {
+      cv.pulse = records(ps, PULSE_STRIDE, (o) => {
+        const r: PulseRecord = {
+          t: ps[o + PULSE_T],
+          accent: ps[o + PULSE_ACCENT],
+          decay: ps[o + PULSE_DECAY],
+          floor: ps[o + PULSE_FLOOR],
+          strike: ps[o + PULSE_STRIKE] === 1,
+        };
+        if (ps[o + PULSE_HIT] === 1) r.hit = true;
+        return r;
+      });
     }
     return cv;
   });

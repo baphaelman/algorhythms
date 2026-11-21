@@ -25,7 +25,8 @@ import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
 import { selectorPart } from '../parts';
-import { hash32, momentSeed, randHashed } from '../rng';
+import { nextPulseIndex, type PulseWalk } from '../pulse';
+import { hash32, momentSeed, Purpose, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
 import { establishPlan, isEstablishing } from '../moments/establish';
@@ -50,6 +51,8 @@ import {
   type NoteMoment,
   type Piece,
   type Pitch,
+  type PulseMoment,
+  type PulseRecord,
   type Seconds,
   type VoiceOverride,
   type VoiceSelector,
@@ -88,6 +91,7 @@ const MOMENT_TYPES: ReadonlySet<MomentType> = new Set<MomentType>([
   'pin',
   'key',
   'level',
+  'pulse',
 ]);
 
 /** Move-start sub-order at equal times (queue `key` = sub·64 + pool index). */
@@ -197,6 +201,17 @@ interface JoinRec {
   t: Seconds;
 }
 
+/**
+ * A pulse's state, carried by its next tick event (revision 9). Immutable once queued, so
+ * incremental checkpoints can keep the queued event as is.
+ */
+interface PulseState extends PulseWalk {
+  /** Some targeted voice was sounding at a step so far. */
+  heard: boolean;
+}
+
+const PULSE_START: PulseState = Object.freeze({ index: -1, dir: 1, heard: false });
+
 /** Resting pitches closer than this are one note. */
 const SAME_PITCH = 1e-6;
 
@@ -250,6 +265,8 @@ export class Compiler {
   readonly spanStart: number[] = [];
   readonly spanEnd: number[] = [];
   readonly walks: number[] = [];
+  /** Valid pulse moments (indices), in array order. */
+  readonly pulses: number[] = [];
   /** Per moment: the frozen walk's notes, or null (not a frozen walk). */
   readonly frozen: (FrozenWalk | null)[] = [];
   /** Steps taken by walks, in event (= time) order (§7.9 walkSteps). */
@@ -380,6 +397,13 @@ export class Compiler {
           return;
         }
       }
+      if (m.type === 'pulse') {
+        const why = pulseProblem(m);
+        if (why !== null) {
+          this.diag('error', 'pulse-invalid', why, m.id);
+          return;
+        }
+      }
       this.valid[i] = true;
       this.seeds[i] = momentSeed(this.piece.seed, m.id, m.seed);
       this.glides[i] = mergeGlide(defaults, m.glide);
@@ -392,6 +416,17 @@ export class Compiler {
         this.walks.push(i);
         if (Array.isArray(m.fixed)) this.frozen[i] = this.initFrozen(m);
         this.queue.push({ t: m.at, cls: EventClass.Tick, key: i, sub: 0, ref: 0 });
+      }
+      if (m.type === 'pulse') {
+        this.pulses.push(i);
+        this.queue.push({
+          t: m.at,
+          cls: EventClass.Tick,
+          key: i,
+          sub: 0,
+          ref: 0,
+          obj: PULSE_START,
+        });
       }
     });
   }
@@ -638,6 +673,11 @@ export class Compiler {
           break;
         }
         case EventClass.Tick:
+          // A pulse changes no pitch, destination or active set: no cache to invalidate.
+          if (this.moments[ev.key].type === 'pulse') {
+            this.onPulseTick(ev.key, ev.ref, ev.obj as PulseState);
+            break;
+          }
           this.touch();
           this.onTick(ev.key, ev.ref);
           break;
@@ -677,6 +717,14 @@ export class Compiler {
         this.traceMoment(i, vs, m.target !== undefined && m.target !== 'all', null, null);
         return;
       }
+      case 'pulse':
+        // Claim at the moment event, before any tick at T: an earlier pulse's step at T must
+        // not hit a voice this one takes over.
+        for (const v of this.resolveTarget(m.target, m.id)) this.pulseClaim(i, v, T);
+        this.span(i, T, m.until);
+        this.activity(m.until);
+        this.traceMoment(i, [], false, null, null);
+        return;
       case 'walk':
         this.span(i, T, m.until);
         this.activity(m.until);
@@ -1306,6 +1354,117 @@ export class Compiler {
     // A newborn whose own move a later moment replaced may now go where its parent goes.
     this.queueJoin(b.voice, b.t);
     this.activity(b.t);
+    if (this.pulses.length > 0) this.pulseJoin(b.voice, b.t);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Pulse (revision 9; envelope and step rules in core/pulse.ts)
+  // -------------------------------------------------------------------------------------------
+
+  /** Pulse a started before pulse b (later `at`, then later in the array, drives a voice). */
+  private pulseBefore(a: number, b: number): boolean {
+    const ta = this.moments[a].at;
+    const tb = this.moments[b].at;
+    return ta < tb || (ta === tb && a < b);
+  }
+
+  /**
+   * Puts voice v under pulse pi at t unless a later-started pulse drives it: a boundary record
+   * at the pulse's floor. Returns whether pi drives it now.
+   */
+  private pulseClaim(pi: number, v: number, t: Seconds): boolean {
+    const run = this.voices[v];
+    const owner = run.pulseOwner;
+    if (owner === pi) return true;
+    if (owner >= 0 && !this.pulseBefore(owner, pi)) return false;
+    run.pulseOwner = pi;
+    const p = this.moments[pi] as PulseMoment;
+    run.pulse.push({ t, accent: 1, decay: 0, floor: unit(p.floor, 0), strike: false });
+    return true;
+  }
+
+  /**
+   * Voice v joins the latest-started pulse running at t that targets it, if any: a voice born
+   * inside a pulse sits at the floor from its birth, not only from the next step, and a voice
+   * whose driving pulse ends goes back to an earlier pulse still running.
+   */
+  private pulseJoin(v: number, t: Seconds): void {
+    let best = -1;
+    for (const pi of this.pulses) {
+      const p = this.moments[pi] as PulseMoment;
+      if (!(p.at <= t && t < p.until)) continue;
+      if (best >= 0 && this.pulseBefore(pi, best)) continue;
+      if (this.resolveTarget(p.target, null).includes(v)) best = pi;
+    }
+    if (best >= 0) this.pulseClaim(best, v, t);
+  }
+
+  /**
+   * Step k of pulse pi (core/pulse.ts): claim the targeted voices, then hit the sounding ones
+   * (all, or one by the mode). The tick at or after `until` ends the pulse: its voices go back
+   * to 1.
+   */
+  private onPulseTick(pi: number, k: number, st: PulseState): void {
+    const p = this.moments[pi] as PulseMoment;
+    const t = p.at + k * p.step;
+    if (!(t < p.until)) {
+      for (const run of this.voices) {
+        if (run.pulseOwner !== pi) continue;
+        run.pulseOwner = -1;
+        this.pulseJoin(run.index, p.until);
+        if (run.pulseOwner < 0)
+          run.pulse.push({ t: p.until, accent: 1, decay: 0, floor: 1, strike: false });
+      }
+      if (!st.heard) this.noEffect(p, [], this.sortedActive());
+      return;
+    }
+    const targets = this.resolveTarget(p.target, null);
+    const members: number[] = [];
+    for (const v of targets) {
+      if (this.pulseClaim(pi, v, t) && this.voices[v].frontier.alive) members.push(v);
+    }
+    const accent = unit(p.pattern[k % p.pattern.length], 0);
+    let next: PulseState = st;
+    if (members.length > 0 && !st.heard) next = { ...next, heard: true };
+    if (accent > 0 && members.length > 0) {
+      const rec: PulseRecord = {
+        t,
+        accent,
+        decay: Number.isFinite(p.decay) && p.decay > 0 ? p.decay : 0,
+        floor: unit(p.floor, 0),
+        strike: p.strike !== false,
+        hit: true,
+      };
+      if (p.mode === 'together' || members.length === 1) {
+        for (const v of members) this.voices[v].pulse.push(rec);
+      } else {
+        // Pitch order at this instant (the chord may be gliding), ties by pool index.
+        const at = members.map((v) => this.voices[v].frontier.stateAt(t)?.p ?? NaN);
+        const order = members
+          .map((_, j) => j)
+          .sort((a, b) => at[a] - at[b] || members[a] - members[b]);
+        let j: number;
+        if (p.mode === 'random') {
+          j = Math.floor(
+            randHashed(this.seeds[pi], this.emptyHash, k, Purpose.PulsePick) * order.length,
+          );
+        } else {
+          const w = nextPulseIndex(p.mode, order.length, st);
+          next = { ...next, index: w.index, dir: w.dir };
+          j = w.index;
+        }
+        this.voices[members[order[j]]].pulse.push(rec);
+      }
+    }
+    const tn = p.at + (k + 1) * p.step;
+    this.queue.push({
+      t: tn < p.until ? tn : p.until,
+      cls: EventClass.Tick,
+      key: pi,
+      sub: 0,
+      ref: k + 1,
+      obj: next,
+    });
   }
 
   /** Starts a move now (§7.1 move-start); returns false if the voice is silent. */
@@ -1947,6 +2106,7 @@ export class Compiler {
       };
       if (run.weights.length > 0) cv.weight = run.weights;
       if (run.counts.length > 0) cv.stack = run.counts;
+      if (run.pulse.length > 0) cv.pulse = run.pulse;
       return cv;
     });
     let duration = 0;
@@ -1976,6 +2136,25 @@ export class Compiler {
       seed: this.piece.seed,
     };
   }
+}
+
+/** A finite number clamped to 0..1, else `fallback`. */
+function unit(x: unknown, fallback: number): number {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return fallback;
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/** Why a pulse can't run (`pulse-invalid`), or null. */
+function pulseProblem(m: PulseMoment): string | null {
+  if (!(typeof m.step === 'number' && Number.isFinite(m.step) && m.step > 0))
+    return 'A pulse needs a step > 0.';
+  if (!(typeof m.until === 'number' && Number.isFinite(m.until) && m.until > m.at))
+    return 'A pulse needs until > at.';
+  if (!Array.isArray(m.pattern) || m.pattern.length === 0)
+    return 'A pulse needs a non-empty pattern.';
+  if (!m.pattern.every((a) => typeof a === 'number' && Number.isFinite(a)))
+    return 'Every accent of a pulse pattern must be a number.';
+  return null;
 }
 
 /**

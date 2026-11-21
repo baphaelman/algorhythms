@@ -666,3 +666,27 @@ test('shift: the By slider snaps to +1 octave (7 scale steps); one undo restores
   await page.keyboard.press('PageDown');
   expect(await by()).toBe(-4);
 });
+
+test('a pulse moment is labelled "Pulse" in the inspector', async ({ page }) => {
+  await page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      store: { getState(): { piece: { moments: unknown[] } } };
+      actions: { setPiece(p: unknown, o?: { now: boolean }): void };
+    };
+    const p = h.store.getState().piece;
+    const pulse = {
+      id: 'pulse1',
+      type: 'pulse',
+      at: 4,
+      until: 8,
+      step: 0.5,
+      pattern: [1],
+      decay: 0.3,
+      floor: 0,
+      mode: 'together',
+    };
+    h.actions.setPiece({ ...p, moments: [...p.moments, pulse] }, { now: true });
+  });
+  await hook(page, 'select', ['pulse1']);
+  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Pulse');
+});

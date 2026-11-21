@@ -339,6 +339,34 @@ export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitr
           { requiredKeys: ['at', 'type', 'gain', 'over'] },
         ),
       },
+      {
+        weight: 1,
+        arbitrary: fc
+          .record(
+            {
+              ...base,
+              type: fc.constant('pulse' as const),
+              len: tenths(0.5, 12),
+              step: fc.constantFrom(0.125, 0.25, 1 / 3, 0.5, 0.75, 1),
+              pattern: fc.array(fc.constantFrom(0, 0.3, 0.5, 0.8, 1), {
+                minLength: 1,
+                maxLength: 4,
+              }),
+              decay: tenths(0, 1),
+              floor: tenths(0, 1),
+              mode: fc.constantFrom(
+                'together' as const,
+                'up' as const,
+                'down' as const,
+                'updown' as const,
+                'random' as const,
+              ),
+              strike: fc.boolean(),
+            },
+            { requiredKeys: ['at', 'type', 'len', 'step', 'pattern', 'decay', 'floor', 'mode'] },
+          )
+          .map(({ len, ...m }) => ({ ...m, until: m.at + len }) as Draft),
+      },
     )
     .map((m) => m as Draft);
 }

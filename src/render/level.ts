@@ -7,6 +7,7 @@
  * frame only binary-searches them.
  */
 
+import { pulseBreaks, pulseGainAt } from '../core/pulse';
 import { lifeAt } from '../core/query';
 import type { CompiledVoice, Life, Seconds } from '../core/types';
 
@@ -55,12 +56,9 @@ function ramp(start: number, k: number, voice: CompiledVoice, t: Seconds): numbe
   return c.over > 0 && t < c.t + c.over ? start + ((c.gain - start) * (t - c.t)) / c.over : c.gain;
 }
 
-/**
- * Pulse envelope at t (revision 9 `pulse`). HOOK: R9-3a adds per-voice hit records to
- * core/flat.ts; evaluate them here and add their times to `opacityBreaks`. Until then: 1.
- */
-export function pulseLevel(_voice: CompiledVoice, _t: Seconds): number {
-  return 1;
+/** Pulse envelope at t (core/pulse): 1 outside any pulse. */
+export function pulseLevel(voice: CompiledVoice, t: Seconds): number {
+  return pulseGainAt(voice, t);
 }
 
 /** Opacity factor of voice `v` at t: level × life × pulse, clamped to 0..1. */
@@ -98,6 +96,7 @@ interface Breaks {
   level: CompiledVoice['level'];
   levels: number;
   lifeCount: number;
+  pulse: CompiledVoice['pulse'];
   out: Float64Array | null;
 }
 const cache = new WeakMap<readonly Life[], Breaks>();
@@ -118,7 +117,8 @@ export function breaksIn(voice: CompiledVoice, lives: readonly Life[]): Float64A
     hit &&
     hit.level === voice.level &&
     hit.levels === voice.level.length &&
-    hit.lifeCount === lives.length
+    hit.lifeCount === lives.length &&
+    hit.pulse === voice.pulse
   ) {
     return hit.out;
   }
@@ -127,6 +127,10 @@ export function breaksIn(voice: CompiledVoice, lives: readonly Life[]): Float64A
   for (const c of voice.level) {
     ts.push(c.t);
     if (c.over > 0) ts.push(c.t + c.over);
+  }
+  if (voice.pulse && voice.pulse.length > 0) {
+    flat = false;
+    ts.push(...pulseBreaks(voice));
   }
   for (const l of lives) {
     ts.push(l.born);
@@ -148,6 +152,7 @@ export function breaksIn(voice: CompiledVoice, lives: readonly Life[]): Float64A
     level: voice.level,
     levels: voice.level.length,
     lifeCount: lives.length,
+    pulse: voice.pulse,
     out,
   });
   return out;

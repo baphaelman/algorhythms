@@ -32,6 +32,7 @@ A moment's `glide` is partial: missing fields come from `defaults.glide`, whose 
 | `pin` | (none) |
 | `key` | (none) |
 | `level` | `over`: `1` |
+| `pulse` | `step`: `0.5`, `pattern`: `[1]`, `decay`: `0.3`, `floor`: `0`, `mode`: `"together"` |
 
 ## JSON Schema
 
@@ -3577,6 +3578,278 @@ This is the *input* form: fields with defaults are optional here.
               "id",
               "at",
               "gain"
+            ],
+            "additionalProperties": {}
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "pulse"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable id (6 base62 characters); seeds the moment."
+              },
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Seconds from the start of the piece."
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "voices": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": [
+                      "voices"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "rank": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        ],
+                        "items": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    },
+                    "required": [
+                      "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              },
+              "glide": {
+                "type": "object",
+                "properties": {
+                  "length": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "jitter": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "stagger": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
+                  "land": {
+                    "type": "boolean"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "random",
+                      "low-first",
+                      "high-first",
+                      "center-out",
+                      "outside-in"
+                    ]
+                  },
+                  "ease": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "smootherstep",
+                          "smoothstep",
+                          "cosine",
+                          "linear",
+                          "expo"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bezier"
+                          },
+                          "x1": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y1": {
+                            "type": "number"
+                          },
+                          "x2": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y2": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "x1",
+                          "y1",
+                          "x2",
+                          "y2"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "label": {
+                "type": "string"
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "until": {
+                "type": "number",
+                "minimum": 0,
+                "description": "End of the region (after `at`); steps at at + k·step while < until."
+              },
+              "step": {
+                "default": 0.5,
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "pattern": {
+                "default": [
+                  1
+                ],
+                "description": "Accent per step, 0..1, cycling; 0 is a rest.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "decay": {
+                "default": 0.3,
+                "description": "Fall time from the accent to floor × accent.",
+                "type": "number",
+                "minimum": 0
+              },
+              "floor": {
+                "default": 0,
+                "description": "Level between hits, relative to the voice level.",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mode": {
+                "default": "together",
+                "description": "together: every targeted voice hits; the others one voice per step, in pitch order.",
+                "type": "string",
+                "enum": [
+                  "together",
+                  "up",
+                  "down",
+                  "updown",
+                  "random"
+                ]
+              },
+              "strike": {
+                "description": "Each hit re-strikes the timbre's articulation (absent: true).",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "at",
+              "until"
             ],
             "additionalProperties": {}
           }
