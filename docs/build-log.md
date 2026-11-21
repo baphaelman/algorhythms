@@ -1089,3 +1089,4 @@ Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow t
 - "×2" doubled-voice marks not built (cancelled by rev 8).
 - **Tests:** text updates in no-effect, draw, selection unit tests and app/generate/export/context-moments/app-perf e2e.
 - Integrator: diagnostics that name file-format fields (e.g. "Pin: there is no voice 'x'.") keep "voice" (PLAN: the file format keeps `voice`).
+- Owner (chat, screenshot): spread crossed lines and did not spread (low targets below range fold up an octave, §7.8). PLAN rev 8 "Spread keeps its shape at range edges": M4.5-30 (core). Shift "By" becomes a slider with octave marks: M4.5-31 (inspector).
