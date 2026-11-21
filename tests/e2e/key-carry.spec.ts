@@ -32,10 +32,8 @@ test('adding a key offers to move fixed notes; Move and the key undo together', 
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=clockwork-heron');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('example-clockwork-heron').click();
   await expect(page.getByTestId('title')).toHaveText('Clockwork Heron');
   await seek(page, 70);
   const before = await moments(page);
@@ -71,10 +69,8 @@ test('adding a key offers to move fixed notes; Move and the key undo together', 
 
 test('Keep dismisses the prompt and leaves the notes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=clockwork-heron');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('example-clockwork-heron').click();
   await expect(page.getByTestId('title')).toHaveText('Clockwork Heron');
   await seek(page, 115);
   await page.getByTestId('palette').locator('[data-moment="key"]').click();

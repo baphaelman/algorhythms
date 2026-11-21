@@ -124,4 +124,11 @@ export interface ScoreStyle {
    * dashed over the real ones. Absent: none.
    */
   preview?: { score: CompiledScore; from: Seconds };
+  /**
+   * Editor (revision 9, "Silent lines vanish"): draw a faint dotted trace where a selected
+   * (`highlight`) or hovered (`traceVoice`) line is silent, so it can still be found.
+   */
+  traces?: boolean;
+  /** Pool index of the line under the pointer, for its dotted trace (with `traces`). */
+  traceVoice?: number;
 }

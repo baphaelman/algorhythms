@@ -77,7 +77,7 @@ async function waitForSilence(page: Page): Promise<void> {
 /** Four voices in C major (C3 G3 C4 E4), a split at 2 s and a chord (Am) at 6 s; ends at 12 s. */
 async function open(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(() => {
     const h = window.__algorhythms!;
