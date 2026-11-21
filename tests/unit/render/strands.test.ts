@@ -4,7 +4,7 @@
  * only at a line's true ends.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { crossfade } from '../../../src/core/ease';
 import type {
@@ -119,6 +119,8 @@ describe('bundles', () => {
     ]);
     expect(b[0].members.map((m) => m.v)).toEqual([1, 0, 2]);
     expect(b[1].members.map((m) => m.v)).toEqual([1, 0, 2]);
+    // Where strands may overlap: from the arriving glides' start, to the departing glides' end.
+    expect([b[0].lo, b[0].hi, b[1].lo, b[1].hi]).toEqual([2, 5, 12, 15]);
   });
 
   it('a merged line ends at the meeting, unfaded; a split strand starts unfaded', () => {
@@ -412,5 +414,100 @@ describe('drawn merge and split', () => {
     const bottom = Math.max(...near.map((q) => q[1]));
     expect(top).toBeCloseTo(yc - (ROPE * 1.5) / 2, 9);
     expect(bottom).toBeCloseTo(yc + (ROPE * 1.5) / 2, 9);
+  });
+});
+
+describe('ghost strands do not stack', () => {
+  // Owner report 2026-11-21: a knot ahead of the playhead where lines split. Where future strands
+  // may overlap they are drawn at full strength into a layer, composited once at the ghost opacity.
+  const style: ScoreStyle = {
+    tokens: {
+      paper: '#000001',
+      ink: '#000002',
+      ink2: '#000003',
+      rule: '#000004',
+      accent: '#000005',
+      panel: '#000006',
+    },
+    dark: false,
+    colors: 'custom',
+    oklch: true,
+    customColors: ['#aa0000', '#aa0001', '#aa0002'],
+    futureOpacity: 0.35,
+    hud: false,
+    heads: false,
+  };
+  const SIZE = { width: 1000, height: 600 };
+  const STRANDS = new Set(['#aa0001', '#aa0002']);
+  let layer: ReturnType<typeof pathCtx> | null = null;
+  class FakeOffscreen {
+    constructor(
+      public width: number,
+      public height: number,
+    ) {}
+    getContext() {
+      layer = pathCtx();
+      return layer.ctx;
+    }
+  }
+  beforeEach(() => {
+    layer = null;
+    vi.stubGlobal('OffscreenCanvas', FakeOffscreen);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const draw = (s: CompiledScore, t: number, over: Partial<ScoreStyle> = {}) => {
+    const p = pathCtx();
+    const view = drawScore(p.ctx, s, { start: 0, window: 20 }, { ...style, ...over }, t, SIZE, 1);
+    return { p, view };
+  };
+  /** The composited boxes: [x, y, w, h] per drawImage. */
+  const boxes = (p: ReturnType<typeof pathCtx>) =>
+    p.images.map((im) => im.args.slice(1, 5) as number[]);
+
+  it('composites the merge and the split once each, at the ghost opacity', () => {
+    const { p, view } = draw(mergeSplit(), 0);
+    expect(p.clips).toEqual([['evenodd']]);
+    expect(p.images.map((im) => im.alpha)).toEqual([0.35, 0.35]);
+    for (const t of [5, 12]) {
+      const x = timeToX(view, t);
+      expect(boxes(p).filter(([x0, , w]) => x0 < x && x0 + w > x)).toHaveLength(1);
+    }
+    // Only around the overlaps: a few percent of the canvas.
+    const area = boxes(p).reduce((sum, [, , w, h]) => sum + w * h, 0);
+    expect(area).toBeLessThan(0.05 * SIZE.width * SIZE.height);
+    // In the layer, strands are drawn at full strength; outside it, at the ghost opacity.
+    const inLayer = layer!.fills.filter((f) => STRANDS.has(f.style as string));
+    expect(inLayer.length).toBeGreaterThan(0);
+    for (const f of inLayer) expect(f.alpha).toBeCloseTo(1, 12);
+    const direct = p.fills.filter((f) => STRANDS.has(f.style as string));
+    expect(direct.length).toBeGreaterThan(0);
+    for (const f of direct) expect(f.alpha).toBeCloseTo(0.35, 12);
+  });
+
+  it('a selection dims the ghost; the selected future goes through the layer too', () => {
+    const s = mergeSplit();
+    for (const v of s.voices) v.segments = v.segments.map((x) => ({ ...x, momentId: 'm' }));
+    const { p } = draw(s, 0, { highlight: new Set(['m']) });
+    expect(p.images.map((im) => im.alpha)).toEqual([0.35 * 0.3, 0.35 * 0.3, 0.6, 0.6]);
+  });
+
+  it('draws as before where nothing overlaps ahead: the past, an opaque ghost, no bundles', () => {
+    const cases: [number, Partial<ScoreStyle>][] = [
+      [20, {}],
+      [0, { futureOpacity: 1 }],
+      [16, {}],
+    ];
+    for (const [t, over] of cases) {
+      const a = draw(mergeSplit(), t, over);
+      expect(a.p.images).toHaveLength(0);
+      expect(a.p.clips).toHaveLength(0);
+      expect(layer).toBeNull();
+      vi.unstubAllGlobals();
+      const b = draw(mergeSplit(), t, over);
+      vi.stubGlobal('OffscreenCanvas', FakeOffscreen);
+      expect(a.p.fills).toEqual(b.p.fills);
+    }
   });
 });
