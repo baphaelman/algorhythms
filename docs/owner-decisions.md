@@ -12,6 +12,11 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Dense lanes v2 (replaces the compact rows you rejected).**
+  - Rows stay full height, and the lane area scrolls inside itself with fades at the edges. At 1024×768 Kite Day's rows take 232 px and the lane area shows 113 px of them.
+  - Level moments sit on the Level row: each one is a marker on the envelope, with no bar. When several levels share a time they stack in up to four sub-rows. A level's ramp length is edited in the inspector only.
+  - Pins get their own thin Pins row, which appears only when the piece has pins. Pin and level labels show on hover, focus or selection.
+  - A divider between the score and the lanes can be dragged, or moved with ↑/↓ and Home/End. Double-click or Enter resets it. The score keeps at least 25 % of the height and the lanes at least 44 px. The split is remembered per viewer, in this browser only.
 - **Land at the marker (R9-2, engine; the toggle comes with R9-9).**
   - A land moment starts its glide length + stagger before its marker, so its notes arrive on the marker. Near 0:00 the glide shortens to fit instead of arriving late.
   - It reads the key at its marker. If nothing is sounding when its lead-in starts, it waits and acts at the marker.
