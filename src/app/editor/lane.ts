@@ -227,34 +227,6 @@ export function itemBoxPx(item: LaneItem, pps: number): [number, number] {
   return [left, right];
 }
 
-/** Marker width plus a gap: what a compact item needs on its sub-row without a label. */
-export const COMPACT_EXTENT_PX = 10;
-
-/** Compact box (dense rows): the marker and the span, no label. */
-export function compactBoxPx(item: LaneItem, pps: number): [number, number] {
-  const left = Math.min(item.start, item.at) * pps;
-  const right = Math.max(item.at * pps + COMPACT_EXTENT_PX, item.end * pps + 2);
-  return [left, right];
-}
-
-/** Rows needing more labelled sub-rows than this switch to compact sub-rows. */
-export const COMPACT_AFTER = 3;
-
-/** Sub-row heights (px) for Moments (`rowH`) and Transitions (`barH`). */
-export interface RowGeometry {
-  compact: boolean;
-  rowH: number;
-  barH: number;
-}
-
-export const NORMAL_ROWS: RowGeometry = { compact: false, rowH: 20, barH: 14 };
-export const COMPACT_ROWS: RowGeometry = { compact: true, rowH: 8, barH: 7 };
-
-/** Normal rows for up to COMPACT_AFTER labelled sub-rows, compact ones beyond. */
-export function rowGeometry(labelledSubRows: number): RowGeometry {
-  return labelledSubRows > COMPACT_AFTER ? COMPACT_ROWS : NORMAL_ROWS;
-}
-
 /**
  * The lane area's maximum height (px) in a timeline `columnH` tall, so the score keeps at least
  * `scoreShare` of it: what is left after that share, the ruler and the gap above the lanes.
@@ -269,6 +241,40 @@ export function laneMaxPx(
 ): number {
   if (!(columnH > 0)) return floor;
   return Math.max(floor, Math.floor(columnH * (1 - scoreShare) - rulerH - gap));
+}
+
+/** The divider's limits: the score keeps at least this share of the timeline… */
+export const SPLIT_MIN_SCORE = 0.25;
+/** …and the lanes at least one row (px: the Key row and one Moments sub-row). */
+export const SPLIT_MIN_LANE = 44;
+
+/**
+ * The lane area's height (px) for a divider set to `share` of the timeline (null: the default,
+ * `laneMaxPx`), clamped so the score keeps SPLIT_MIN_SCORE and the lanes at least SPLIT_MIN_LANE
+ * and no more than their content (`contentH`, when known).
+ */
+export function splitLanePx(
+  share: number | null,
+  columnH: number,
+  rulerH: number,
+  gap: number,
+  contentH = Infinity,
+): number {
+  if (share === null || !Number.isFinite(share)) return laneMaxPx(columnH, rulerH, gap);
+  return clampLanePx(share * columnH, columnH, rulerH, gap, contentH);
+}
+
+/** A lane height (px) clamped to the divider's limits (see `splitLanePx`). */
+export function clampLanePx(
+  px: number,
+  columnH: number,
+  rulerH: number,
+  gap: number,
+  contentH = Infinity,
+): number {
+  const max = Math.min(contentH, Math.floor(columnH * (1 - SPLIT_MIN_SCORE) - rulerH - gap));
+  const min = Math.min(SPLIT_MIN_LANE, Math.max(0, contentH));
+  return Math.round(Math.max(min, Math.min(max, px)));
 }
 
 /**
@@ -327,13 +333,78 @@ export function stackRows(
 }
 
 /**
- * Stacking with dense-row compaction: items packed with their labels; when that needs more than
- * COMPACT_AFTER sub-rows, repacked without labels (compact boxes) onto compact sub-rows.
+ * Which lane row a moment sits on (PLAN §11.3 "Dense lanes"): `level` moments on the Level row
+ * (marker on the envelope), `pin` moments on the Pins row, the rest on Moments and Transitions.
  */
-export function laneStack(items: readonly LaneItem[], pps: number): Stack & { geom: RowGeometry } {
-  const labelled = stackRows(items, pps);
-  const geom = rowGeometry(labelled.count);
-  return geom.compact ? { ...stackRows(items, pps, compactBoxPx), geom } : { ...labelled, geom };
+export type LaneRow = 'main' | 'pins' | 'level';
+
+export function laneRowOf(type: MomentType): LaneRow {
+  return type === 'level' ? 'level' : type === 'pin' ? 'pins' : 'main';
+}
+
+/** Half a marker's width (px) on the Pins and Level rows. */
+export const SMALL_MARKER_HALF = 5;
+
+/** A pin's box on the Pins row: its span (stacking only when spans overlap). */
+export function pinBoxPx(item: LaneItem, pps: number): [number, number] {
+  const left = Math.min(item.start, item.at) * pps;
+  return [left, Math.max(item.end * pps, item.at * pps + 1)];
+}
+
+/** A level marker's box on the Level row: the marker alone (its ramp is the envelope). */
+export function levelBoxPx(item: LaneItem, pps: number): [number, number] {
+  const x = item.at * pps;
+  return [x - SMALL_MARKER_HALF - 1, x + SMALL_MARKER_HALF + 1];
+}
+
+/** Lane row and sub-row per item (input order) and each lane row's sub-row count. */
+export interface LaneLayout {
+  lane: LaneRow[];
+  rows: number[];
+  /** Sub-rows used per lane row (0 when it has no items). */
+  count: Record<LaneRow, number>;
+}
+
+const BOX: Record<LaneRow, (item: LaneItem, pps: number) => [number, number]> = {
+  main: itemBoxPx,
+  pins: pinBoxPx,
+  level: levelBoxPx,
+};
+
+/**
+ * Splits items by lane row and stacks each: Moments/Transitions by marker, label and span
+ * (revision 7), Pins by span overlap, Level by marker collision.
+ */
+export function laneLayout(items: readonly LaneItem[], pps: number): LaneLayout {
+  const lane = items.map((it) => laneRowOf(it.type));
+  const rows = new Array<number>(items.length).fill(0);
+  const count: Record<LaneRow, number> = { main: 0, pins: 0, level: 0 };
+  for (const r of ['main', 'pins', 'level'] as const) {
+    const idx = items.map((_, i) => i).filter((i) => lane[i] === r);
+    const st = stackRows(
+      idx.map((i) => items[i]),
+      pps,
+      BOX[r],
+    );
+    idx.forEach((i, k) => (rows[i] = st.rows[k]));
+    count[r] = st.count;
+  }
+  return { lane, rows, count };
+}
+
+/**
+ * The level curve's value at `t` (after a step at `t`): linear between points, held past either
+ * end; 1 for an empty curve.
+ */
+export function curveAt(curve: readonly LevelPoint[], t: Seconds): number {
+  if (curve.length === 0) return 1;
+  let i = -1;
+  for (let k = 0; k < curve.length && curve[k].t <= t; k++) i = k;
+  if (i < 0) return curve[0].v;
+  const a = curve[i];
+  const b = curve[i + 1];
+  if (!b || b.t <= a.t) return a.v;
+  return a.v + ((b.v - a.v) * (t - a.t)) / (b.t - a.t);
 }
 
 /** One point of the level curve: time and mean level. */

@@ -553,10 +553,9 @@ input[type='range'] {
   display: none;
 }
 
-/* The lane area: capped by Lane.tsx (max-height) so the score keeps ≥ 55 % of the timeline;
-   taller rows scroll inside `.lane-scroll`. */
+/* The lane area: capped by Lane.tsx (max-height) at the divider's split (default: the score keeps
+   ≥ 55 % of the timeline); taller rows scroll inside `.lane-scroll`. Its divider is the gap. */
 .timeline .slot.lane {
-  margin-top: 10px;
   flex: 0 1 auto;
   min-height: 0;
   display: flex;

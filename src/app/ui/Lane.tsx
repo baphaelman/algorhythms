@@ -1,10 +1,12 @@
 /**
- * The lane rows under the score (PLAN.md §11.2, §11.3, §11.3a, §11.5), on the score's time axis
- * at every frame: **Moments** (marker and name) and **Transitions** (each moment's compiled span
- * as a bar; walks striped), both stacked in sub-rows so overlapping moments never share one
- * (revision 7; the lane grows to fit, up to a cap that keeps the score ≥ 55 % of the timeline,
- * then scrolls vertically; dense rows go compact) and **Level** (the mean level curve). One DOM
- * item per moment holds its marker and its bar, so selection, focus and drags act on both.
+ * The lane rows under the score (PLAN.md §11.2, §11.3 incl. "Dense lanes", §11.3a, §11.5), on the
+ * score's time axis at every frame: **Moments** (marker and name) and **Transitions** (each
+ * moment's compiled span as a bar; walks striped), both stacked in sub-rows so overlapping moments
+ * never share one (revision 7); **Pins** (only when the piece has pins: marker and glide bar on
+ * one thin sub-row, stacked when spans overlap) and **Level** (the mean level curve, with each
+ * `level` moment's marker on it; colliding markers stack below). The lane area grows to fit up to
+ * the divider's split (default: the score keeps ≥ 55 % of the timeline), then scrolls vertically.
+ * One DOM item per moment holds its marker and its bar, so selection, focus and drags act on both.
  *
  * React renders the items (on piece, score or selection changes only). Positions are written
  * directly: the loop's per-frame camera (`onScoreFrame`) translates one inner container, and item
@@ -38,22 +40,25 @@ import {
   useEditor,
 } from '../editor/history';
 import {
+  clampLanePx,
+  curveAt,
   dragDt,
   endDragPatch,
   gridStep,
   laneItems,
-  laneMaxPx,
-  laneStack,
+  laneLayout,
+  laneRowOf,
   levelCurve,
-  NORMAL_ROWS,
   nudgeDt,
   revealPan,
   revealScroll,
+  splitLanePx,
   spokenTime,
   type LaneItem,
+  type LaneRow,
   type LevelPoint,
-  type RowGeometry,
 } from '../editor/lane';
+import { loadLaneSplit, saveLaneSplit } from '../lane-split';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
 import { changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
@@ -63,22 +68,35 @@ import { wheelIntent } from '../wheel';
 import './lane.css';
 
 /**
- * Row geometry (px; lane.css reads `--mom-h` and `--trans-h`). Moments and Transitions each hold
- * `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and name per Moments sub-row,
- * a bar per Transitions sub-row; a moment uses the same sub-row index in both. Sub-row heights
- * come from `laneStack` (normal, or compact when dense; lane.css `[data-compact]`).
+ * Row geometry (px; lane.css reads `--mom-h`, `--trans-h`, `--pins-h` and `--level-h`). Moments
+ * and Transitions each hold `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and
+ * name per Moments sub-row, a bar per Transitions sub-row; a moment uses the same sub-row index in
+ * both. Pins: `p` sub-rows of PIN_H (none without pins). Level: the curve's box, plus a
+ * LEVEL_SUB_H strip per extra sub-row of colliding level markers.
  */
 const MIN_SUBROWS = 2;
 /** The Key row on top (lane.css `--key-h`): the piece key at 0:00 (M4.5-39). */
 const KEY_H = 18;
 const MOM_TOP = KEY_H + 2;
+const ROW_H = 20;
+const BAR_H = 14;
+const PIN_H = 12;
+/** Pins and Level items' height (lane.css `[data-lane]`). */
+const SMALL_H = 12;
 /** Moments row height, Transitions row height and the first bar's top for `n` sub-rows. */
-const momH = (n: number, g: RowGeometry): number => n * g.rowH + 4;
-const transH = (n: number, g: RowGeometry): number => n * g.barH + 4;
-const transTop = (n: number, g: RowGeometry): number => KEY_H + momH(n, g) + 2;
-/** Level: the curve's box. */
+const momH = (n: number): number => n * ROW_H + 4;
+const transH = (n: number): number => n * BAR_H + 4;
+const transTop = (n: number): number => KEY_H + momH(n) + 2;
+const pinsH = (p: number): number => (p > 0 ? p * PIN_H + 4 : 0);
+/** Level: the curve's box, and the row for `l` sub-rows of markers. */
 const LEVEL_H = 28;
 const LEVEL_PAD = 3;
+const LEVEL_SUB_H = 14;
+const levelH = (l: number): number => LEVEL_H + 4 + Math.max(0, l - 1) * LEVEL_SUB_H;
+/** The divider between the score and the lanes (lane.css `.lane-divider`). */
+const DIVIDER_H = 10;
+/** Keyboard step (px) for the divider; Shift or Page keys move further. */
+const DIVIDER_STEP = 16;
 /** Half the marker's width: an item's box starts this far left of its time. */
 const MARKER_HALF = 5;
 /** Horizontal travel (px) before a press becomes a drag. */
@@ -154,9 +172,10 @@ class LaneController {
   /** The lane area's vertical scroller (capped height, PLAN rev 7 lane stacking amended). */
   scroller: HTMLElement | null = null;
   inner: HTMLElement | null = null;
-  /** Called when dense-row compaction turns on or off (React shows labels in tooltips). */
-  onCompact: ((compact: boolean) => void) | null = null;
-  private geom: RowGeometry = NORMAL_ROWS;
+  /** The score/lanes divider, and its split (lane share of the timeline; null: default). */
+  divider: HTMLElement | null = null;
+  private split: number | null = loadLaneSplit();
+  private divDrag: { pointerId: number; y0: number; h0: number } | null = null;
   /** The preview's would-be moment (owner 2026-11-21), drawn ghosted; hidden when none. */
   ghostEl: HTMLElement | null = null;
   private ghost: LaneItem | null = null;
@@ -177,8 +196,14 @@ class LaneController {
   /** x of the score canvas's left edge relative to the track's padding box (0 when aligned). */
   private axisLeft = 0;
   private rowOf = new Map<MomentId, number>();
-  /** Sub-rows shown (≥ MIN_SUBROWS; 0 until the first layout). */
+  /** Sub-rows shown: Moments/Transitions (≥ MIN_SUBROWS; 0 until the first layout), Pins, Level. */
   private subRows = 0;
+  private pinRows = 0;
+  private levelRows = 1;
+  /** The level curve's full-height value (≥ 1.2), for markers on the envelope. */
+  private levelPeak = 1.2;
+  /** Each placed item's top (px in the track), for scrolling it into view. */
+  private yOf = new Map<MomentId, number>();
   /** Preview times of moved items, and the preview end of an end drag. */
   private previewAt = new Map<MomentId, Seconds>();
   private previewEnd: { id: MomentId; end: Seconds } | null = null;
@@ -209,18 +234,94 @@ class LaneController {
     }
   };
 
-  /** Caps the lane slot so the score keeps its share of the timeline; the rest scrolls. */
+  /** The timeline's height, the ruler's and the lane content's (px), for the split. */
+  private dims(): { columnH: number; rulerH: number; contentH: number } | null {
+    const timeline = this.scroller?.parentElement?.parentElement;
+    if (!timeline) return null;
+    return {
+      columnH: timeline.clientHeight,
+      rulerH: timeline.querySelector<HTMLElement>('.ruler')?.offsetHeight ?? 0,
+      contentH: this.scroller?.scrollHeight ?? Infinity,
+    };
+  }
+
+  /**
+   * Caps the lane slot at the divider's split (default: the score keeps 55 % of the timeline);
+   * rows past it scroll.
+   */
   private capHeight(): void {
     const slot = this.scroller?.parentElement;
-    const timeline = slot?.parentElement;
-    if (!slot || !timeline) return;
-    const ruler = timeline.querySelector<HTMLElement>('.ruler');
-    const gap = parseFloat(getComputedStyle(slot).marginTop) || 0;
-    const max = laneMaxPx(timeline.clientHeight, ruler?.offsetHeight ?? 0, gap);
-    const v = `${max}px`;
+    const d = this.dims();
+    if (!slot || !d) return;
+    const lane = splitLanePx(this.split, d.columnH, d.rulerH, DIVIDER_H);
+    const v = `${lane + DIVIDER_H}px`;
     if (slot.style.maxHeight !== v) slot.style.maxHeight = v;
+    const div = this.divider;
+    if (div && d.columnH > 0) {
+      const shown = Math.min(lane, d.contentH);
+      div.setAttribute('aria-valuenow', String(Math.round((shown / d.columnH) * 100)));
+    }
     this.updateMore();
   }
+
+  /** Sets the lane area to `px` tall (clamped), remembers the split and re-caps. */
+  private setLaneHeight(px: number, save: boolean): void {
+    const d = this.dims();
+    if (!d || !(d.columnH > 0)) return;
+    const h = clampLanePx(px, d.columnH, d.rulerH, DIVIDER_H, d.contentH);
+    this.split = h / d.columnH;
+    if (save) saveLaneSplit(this.split);
+    this.capHeight();
+  }
+
+  /** Double-click (or Enter) on the divider: back to the default split. */
+  resetSplit = (): void => {
+    this.split = null;
+    saveLaneSplit(null);
+    this.capHeight();
+  };
+
+  private onDividerDown = (e: PointerEvent): void => {
+    if ((e.pointerType === 'mouse' && e.button !== 0) || !this.scroller) return;
+    e.preventDefault();
+    this.divider?.setPointerCapture(e.pointerId);
+    this.divDrag = { pointerId: e.pointerId, y0: e.clientY, h0: this.scroller.clientHeight };
+  };
+
+  private onDividerMove = (e: PointerEvent): void => {
+    const d = this.divDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    this.setLaneHeight(d.h0 - (e.clientY - d.y0), false);
+  };
+
+  private onDividerUp = (e: PointerEvent): void => {
+    const d = this.divDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    this.divDrag = null;
+    if (this.divider?.hasPointerCapture(d.pointerId))
+      this.divider.releasePointerCapture(d.pointerId);
+    if (e.type !== 'pointercancel' && Math.abs(e.clientY - d.y0) > 0) saveLaneSplit(this.split);
+  };
+
+  /** Keys on the focused divider: ↑/↓ grow or shrink the lanes (Shift, PageUp/Down: more). */
+  onDividerKey = (e: KeyboardEvent): void => {
+    const sc = this.scroller;
+    if (!sc) return;
+    const big = DIVIDER_STEP * 4;
+    let dy = 0;
+    if (e.key === 'ArrowUp') dy = e.shiftKey ? big : DIVIDER_STEP;
+    else if (e.key === 'ArrowDown') dy = -(e.shiftKey ? big : DIVIDER_STEP);
+    else if (e.key === 'PageUp') dy = big;
+    else if (e.key === 'PageDown') dy = -big;
+    else if (e.key === 'Home') dy = -Infinity;
+    else if (e.key === 'End') dy = Infinity;
+    else if (e.key === 'Enter') {
+      this.resetSplit();
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (dy !== 0) this.setLaneHeight(sc.clientHeight + dy, true);
+  };
 
   /** Marks the slot when rows are hidden above or below (lane.css draws a fade there). */
   updateMore = (): void => {
@@ -263,14 +364,14 @@ class LaneController {
       // The ghost is stacked with the real items, so it shows the sub-row it would take (and
       // what it would push down).
       const all = this.ghost ? [...this.items, this.ghost] : this.items;
-      const { rows, count, geom } = laneStack(all, pps);
+      const { rows, count } = laneLayout(all, pps);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
       this.ghostRow = this.ghost ? rows[this.items.length] : 0;
-      this.setSubRows(Math.max(MIN_SUBROWS, count), geom);
+      this.setRows(Math.max(MIN_SUBROWS, count.main), count.pins, Math.max(1, count.level));
     }
+    this.placeLevel(pps);
     for (const it of this.items) this.place(it, pps);
     if (this.ghost && this.ghostEl) this.place(this.ghost, pps, this.ghostEl, this.ghostRow);
-    this.placeLevel(pps);
   }
 
   /** Shows the preview's lane item (or hides it), as `place` lays out real ones. */
@@ -288,6 +389,7 @@ class LaneController {
       return;
     }
     el.dataset.type = it.type;
+    el.dataset.lane = laneRowOf(it.type);
     el.dataset.at = String(it.at);
     el.dataset.handle = 'false';
     const label = el.querySelector('.lane-label');
@@ -296,28 +398,43 @@ class LaneController {
     if (barLabel) barLabel.textContent = barText(it);
   }
 
-  /** Grows or shrinks the Moments and Transitions rows to `n` sub-rows of geometry `g`. */
-  private setSubRows(n: number, g: RowGeometry): void {
+  /**
+   * Grows or shrinks the rows: `n` Moments/Transitions sub-rows, `p` Pins sub-rows (0 hides the
+   * Pins row) and `l` Level sub-rows.
+   */
+  private setRows(n: number, p: number, l: number): void {
     const track = this.track;
-    if ((n === this.subRows && g === this.geom) || !track) return;
+    if ((n === this.subRows && p === this.pinRows && l === this.levelRows) || !track) return;
     this.subRows = n;
-    const flipped = g.compact !== this.geom.compact;
-    this.geom = g;
-    track.style.setProperty('--mom-h', `${momH(n, g)}px`);
-    track.style.setProperty('--trans-h', `${transH(n, g)}px`);
+    this.pinRows = p;
+    this.levelRows = l;
+    track.style.setProperty('--mom-h', `${momH(n)}px`);
+    track.style.setProperty('--trans-h', `${transH(n)}px`);
+    track.style.setProperty('--pins-h', `${pinsH(p)}px`);
+    track.style.setProperty('--level-h', `${levelH(l)}px`);
     track.dataset.subrows = String(n);
-    if (g.compact) track.dataset.compact = '';
-    else delete track.dataset.compact;
-    if (flipped) this.onCompact?.(g.compact);
+    track.dataset.pinRows = String(p);
+    track.dataset.levelRows = String(l);
+  }
+
+  /** Top (px in the track) of the Pins row and of the Level row. */
+  private pinsTop(): number {
+    const n = Math.max(MIN_SUBROWS, this.subRows);
+    return KEY_H + momH(n) + transH(n);
+  }
+
+  private levelTop(): number {
+    return this.pinsTop() + pinsH(this.pinRows);
   }
 
   /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
   private placeLevel(pps: number): void {
     const { levelLine, levelFill, levelSvg } = this;
-    if (!levelLine || !levelFill || !levelSvg) return;
     const c = this.curve;
     let peak = 1.2;
     for (const p of c) if (p.v > peak) peak = p.v;
+    this.levelPeak = peak;
+    if (!levelLine || !levelFill || !levelSvg) return;
     const h = LEVEL_H - 2 * LEVEL_PAD;
     const line = c
       .map((p) => `${(p.t * pps).toFixed(2)},${(LEVEL_PAD + (1 - p.v / peak) * h).toFixed(2)}`)
@@ -336,15 +453,36 @@ class LaneController {
     const at = this.previewAt.get(it.id) ?? it.at;
     const row = fixedRow ?? this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
     if (fixedRow !== undefined) el.dataset.row = String(row);
-    const g = this.geom;
-    const y = MOM_TOP + row * g.rowH;
+    const lane: LaneRow = laneRowOf(it.type);
+    let y: number;
+    let barTop: number;
+    if (lane === 'pins') {
+      y = this.pinsTop() + 2 + row * PIN_H;
+      barTop = 3;
+    } else if (lane === 'level') {
+      const top = this.levelTop() + 2;
+      if (row === 0) {
+        // On the envelope at its time.
+        const v = curveAt(this.curve, at);
+        const cy = top + LEVEL_PAD + (1 - v / this.levelPeak) * (LEVEL_H - 2 * LEVEL_PAD);
+        y = Math.round(cy - SMALL_H / 2);
+      } else {
+        y = top + LEVEL_H + (row - 1) * LEVEL_SUB_H + 1;
+      }
+      barTop = 0;
+    } else {
+      y = MOM_TOP + row * ROW_H;
+      barTop = transTop(Math.max(MIN_SUBROWS, this.subRows)) + row * BAR_H - y;
+    }
+    this.yOf.set(it.id, y);
     el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
     const bar = el.firstElementChild as HTMLElement | null;
     if (!bar) return;
+    // Level moments have no bar: their ramp is the envelope.
     const end = this.previewEnd?.id === it.id ? Math.max(it.start, this.previewEnd.end) : it.end;
-    const w = Math.max(0, (end - it.start) * pps);
+    const w = lane === 'level' ? 0 : Math.max(0, (end - it.start) * pps);
     bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
-    bar.style.top = `${transTop(Math.max(MIN_SUBROWS, this.subRows), g) + row * g.barH - y}px`;
+    bar.style.top = `${barTop}px`;
     bar.style.width = `${w.toFixed(2)}px`;
     const handle = fixedRow === undefined && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
@@ -373,10 +511,12 @@ class LaneController {
     const sc = this.scroller;
     if (!sc || this.drag?.started || sc.scrollHeight <= sc.clientHeight) return;
     if (this.dirty && this.view) this.layout(this.view);
-    const row = this.rowOf.get(id);
-    if (row === undefined) return;
-    const top = (this.track?.clientTop ?? 0) + MOM_TOP + row * this.geom.rowH;
-    const next = revealScroll(top, this.geom.rowH, sc.scrollTop, sc.clientHeight);
+    const y = this.yOf.get(id);
+    const it = this.items.find((x) => x.id === id);
+    if (y === undefined || !it) return;
+    const h = laneRowOf(it.type) === 'main' ? ROW_H : SMALL_H;
+    const top = (this.track?.clientTop ?? 0) + y;
+    const next = revealScroll(top, h, sc.scrollTop, sc.clientHeight);
     if (next !== sc.scrollTop) sc.scrollTop = next;
   }
 
@@ -686,12 +826,18 @@ class LaneController {
     track: HTMLElement,
     inner: HTMLElement,
     ghost: HTMLElement | null,
-    onCompact: (compact: boolean) => void,
+    divider: HTMLElement | null,
   ): () => void {
     this.scroller = scroller;
-    this.onCompact = onCompact;
-    // Report the current mode (a remount keeps the controller's geometry).
-    onCompact(this.geom.compact);
+    this.divider = divider;
+    if (divider) {
+      divider.addEventListener('pointerdown', this.onDividerDown);
+      divider.addEventListener('pointermove', this.onDividerMove);
+      divider.addEventListener('pointerup', this.onDividerUp);
+      divider.addEventListener('pointercancel', this.onDividerUp);
+      divider.addEventListener('dblclick', this.resetSplit);
+      divider.addEventListener('keydown', this.onDividerKey);
+    }
     this.inner = inner;
     this.ghostEl = ghost;
     this.track = track;
@@ -738,9 +884,18 @@ class LaneController {
       track.removeEventListener('pointermove', this.onMove);
       track.removeEventListener('pointerup', this.onUp);
       track.removeEventListener('pointercancel', this.onUp);
+      if (divider) {
+        divider.removeEventListener('pointerdown', this.onDividerDown);
+        divider.removeEventListener('pointermove', this.onDividerMove);
+        divider.removeEventListener('pointerup', this.onDividerUp);
+        divider.removeEventListener('pointercancel', this.onDividerUp);
+        divider.removeEventListener('dblclick', this.resetSplit);
+        divider.removeEventListener('keydown', this.onDividerKey);
+      }
+      this.divDrag = null;
       this.track = null;
       this.scroller = null;
-      this.onCompact = null;
+      this.divider = null;
     };
   }
 }
@@ -771,8 +926,8 @@ function momentParts(piece: Piece): Map<MomentId, string> {
 }
 
 /**
- * The lane item's tooltip: its name (compact rows hide it), its part, then the no-effect reason;
- * undefined when none.
+ * The lane item's tooltip: its name (the Pins and Level rows show it only on hover, focus or
+ * selection), its part, then the no-effect reason; undefined when none.
  */
 function itemTitle(
   name: string | undefined,
@@ -815,16 +970,16 @@ export function Lane() {
   const track = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [focusId, setFocusId] = useState<MomentId | null>(null);
-  const [compact, setCompact] = useState(false);
   const pieceKeyEl = useRef<HTMLDivElement>(null);
   const ghost = useRef<HTMLDivElement>(null);
+  const divider = useRef<HTMLDivElement>(null);
   const keyText = keyName(piece.key);
 
   useLayoutEffect(() => ctl.setItems(items, curve));
   useEffect(
     () =>
       scroller.current && track.current && inner.current
-        ? ctl.attach(scroller.current, track.current, inner.current, ghost.current, setCompact)
+        ? ctl.attach(scroller.current, track.current, inner.current, ghost.current, divider.current)
         : undefined,
     [ctl],
   );
@@ -963,6 +1118,22 @@ export function Lane() {
 
   return (
     <div className="slot lane" data-slot="lane" data-testid="lane">
+      <div
+        ref={divider}
+        className="lane-divider"
+        data-testid="lane-divider"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Score and lanes divider"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-describedby="lane-divider-help"
+        title="Drag to resize the score and the lanes; double-click to reset"
+        tabIndex={0}
+      />
+      <p id="lane-divider-help" className="visually-hidden">
+        Up and down arrows resize the lanes, Enter resets.
+      </p>
       <div ref={scroller} className="lane-scroll" data-testid="lane-scroll">
         <div
           ref={track}
@@ -978,6 +1149,9 @@ export function Lane() {
           </div>
           <div className="lane-row" data-row="transitions" aria-hidden="true">
             <span className="lane-row-name">Transitions</span>
+          </div>
+          <div className="lane-row" data-row="pins" aria-hidden="true">
+            <span className="lane-row-name">Pins</span>
           </div>
           <div className="lane-row" data-row="level" aria-hidden="true">
             <span className="lane-row-name">Level</span>
@@ -1031,11 +1205,12 @@ export function Lane() {
                 className="lane-item"
                 data-moment={it.id}
                 data-type={it.type}
+                data-lane={laneRowOf(it.type)}
                 data-selected={selected.has(it.id) || undefined}
                 data-muted={it.muted || undefined}
                 data-no-effect={noEffect.has(it.id) || undefined}
                 title={itemTitle(
-                  compact ? it.text : undefined,
+                  laneRowOf(it.type) !== 'main' ? it.text : undefined,
                   partOfMoment.get(it.id),
                   noEffect.get(it.id),
                 )}
