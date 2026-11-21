@@ -29,6 +29,7 @@ import { freezeWalk } from '../../core/moments/walk';
 import { NOTE_MATCH, noteChanges, withNoteChanges } from '../../core/moments/note';
 import { withoutOverride } from './overrides';
 import { selectStep } from './step-selection';
+import { moveTuneStarts, setTunePitch, stepTuneNote, tuneBeat, tuneNoteStarts } from './tune';
 import { movedFixed, scaleNeighbour, walkInsertAt, withNote, type StepRef } from './walk-steps';
 import { dotAction, type ArrivalDot } from './arrival-points';
 import {
@@ -493,6 +494,37 @@ export function octaveDots(dots: readonly ArrivalDot[], dir: 1 | -1): ArrivalDot
   // Sounds the moved notes once the edit has compiled (§11.3 auditioning).
   if (landed) auditionPointsAfterEdit(landed);
   return landed;
+}
+
+/**
+ * ↑/↓ on a focused tune dot (R9-8): note `k` of tune `id` a scale step (in the key at its start;
+ * `chromatic`: a semitone). Sounds it. False if nothing changed.
+ */
+export function stepTuneDot(id: MomentId, k: number, dir: 1 | -1, chromatic = false): boolean {
+  const piece = usePlayer.getState().piece;
+  const m = piece.moments.find((x) => x.id === id);
+  if (m?.type !== 'tune' || !m.notes[k]) return false;
+  const start = tuneNoteStarts(m)[k];
+  const notes = chromatic
+    ? setTunePitch(m.notes, k, m.notes[k].pitch + dir)
+    : stepTuneNote(m.notes, k, dir, keyAt(scoreOf(piece), start));
+  if (!notes || !updateMoment(id, { notes }, 'Move tune note')) return false;
+  auditionPointsAfterEdit([{ pitch: notes[k].pitch, t: start + notes[k].len / 2 }]);
+  return true;
+}
+
+/**
+ * ←/→ on a focused tune dot (R9-8): note `k`'s start a beat (0.1 s without a tempo) earlier or
+ * later; the note before it and the note change length (./tune `moveTuneStarts`).
+ */
+export function nudgeTuneDot(id: MomentId, k: number, dir: 1 | -1): boolean {
+  const piece = usePlayer.getState().piece;
+  const m = piece.moments.find((x) => x.id === id);
+  if (m?.type !== 'tune' || !m.notes[k]) return false;
+  const step = tuneBeat(piece.view) ?? 0.1;
+  const r = moveTuneStarts(m, new Map([[k, tuneNoteStarts(m)[k] + dir * step]]));
+  if (!r) return false;
+  return updateMoment(id, r.at === m.at ? { notes: r.notes } : r, 'Move tune note');
 }
 
 /** Removes voice `voice`'s override from moment `id` ("Clear override"). False if none. */

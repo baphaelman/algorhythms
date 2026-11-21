@@ -661,21 +661,22 @@
   font-size: 11px;
 }
 
-.insp-tune li > .step-t,
-.insp-tune li > .step-n {
-  padding: 3px 6px;
-  font: 11.5px var(--f-mono);
+/* R9-8: start and name pick the note (its score dot). */
+.insp-tune .step-pick {
+  grid-template-columns: 4.6em minmax(0, 1fr);
   white-space: nowrap;
 }
 
-.insp-tune li > .step-t {
-  flex: 0 0 4.6em;
+.insp-tune .step-pick .step-t {
   color: var(--ink-2);
 }
 
-.insp-tune li > .step-n {
-  flex: 1;
-  min-width: 0;
+.insp-tune .insp-row {
+  margin-top: 2px;
+}
+
+.insp-tune .insp-row input {
+  font-family: var(--f-mono);
 }
 
 .insp-tune .weight-box {

@@ -1,28 +1,35 @@
 /**
  * The tune inspector's note list (PLAN.md §6.2 `tune`, §11.3; R9-7): one row per note, in order:
  * its start, name (in the key at that time), length (beats with a tempo, else seconds), ▲/▼ by a
- * scale step and remove; "Add note" appends one. Each edit is one undo entry. Dragging the dots
- * on the score and typed input come with R9-8.
+ * scale step and remove; "Add note" appends one. Each edit is one undo entry. R9-8: a text field
+ * takes the notes typed ("F#5 2, E5 1, D5 1"), committed on Enter or blur once valid; a row and
+ * the score's tune dot share the dot selection (picking a row selects its dot, and the other way
+ * round).
  */
 
+import { useEffect, useMemo, useRef } from 'react';
 import { activeAt, pitchAt } from '../../../core/query';
 import type { Piece, TuneMoment, TuneNote } from '../../../core/types';
 import { noteLabel } from '../../../render';
 import { auditionPointsAfterEdit } from '../../audition';
 import { updateMoment } from '../../editor/actions';
+import { clearDots, selectDots, useDotSelection } from '../../editor/dot-selection';
 import {
   MIN_TUNE_LEN,
   addTuneNote,
+  formatTuneText,
   lenFromShown,
+  parseTuneText,
   lenShown,
   removeTuneNote,
   setTuneLen,
   stepTuneNote,
   tuneBeat,
+  tuneDots,
   tuneNoteStarts,
 } from '../../editor/tune';
 import { usePlayer } from '../../store';
-import { CompactNumber, fieldSetter } from './controls';
+import { CompactNumber, TextField, fieldSetter } from './controls';
 import { keyAt } from './fields';
 
 /** m:ss.ss (notes can be closer than the inspector's usual tenths). */
@@ -40,6 +47,28 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
   const unit = beat ? 'beats' : 'seconds';
   const write = (notes: TuneNote[] | null, label: string): boolean =>
     notes !== null && updateMoment(m.id, { notes }, label);
+  const sel = useDotSelection((s) => s.dots);
+  /** Notes whose score dot is selected. */
+  const picked = useMemo(() => {
+    const out = new Set<number>();
+    for (const d of sel) if (d.momentId === m.id && d.note !== undefined) out.add(d.note);
+    return out;
+  }, [sel, m.id]);
+  const list = useRef<HTMLOListElement>(null);
+  const first = picked.size > 0 ? Math.min(...picked) : -1;
+  useEffect(() => {
+    if (first < 0) return;
+    list.current?.querySelector(`[data-index="${first}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [first]);
+  const pick = (k: number): void => {
+    if (picked.has(k) && picked.size === 1) {
+      clearDots();
+      return;
+    }
+    const d = tuneDots(compiled, m)[k];
+    if (d) selectDots([d]);
+  };
+  const text = formatTuneText(m, beat, (t) => keyAt(compiled, t, piece.key));
   const lenSetter = (k: number) =>
     fieldSetter<number>(m.id, 'Edit note length', (x, v) => {
       const notes = (x as TuneMoment).notes;
@@ -52,10 +81,24 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
         Notes <span className="insp-count">{m.notes.length}</span>{' '}
         <span className="dim">lengths in {unit}</span>
       </legend>
+      <TextField
+        label="Type"
+        value={text}
+        placeholder={beat ? 'F#5 2, E5 1, D5 1' : 'F#5 1, E5 0.5, D5 0.5'}
+        parse={(t) => {
+          const r = parseTuneText(t, beat, m.notes);
+          return r.ok ? { ok: true } : r;
+        }}
+        onCommit={(t) => {
+          const r = parseTuneText(t, beat, m.notes);
+          if (r.ok) write(r.notes, 'Type tune notes');
+        }}
+        testId="tune-text"
+      />
       {m.notes.length === 0 ? (
         <p className="insp-note">No notes yet.</p>
       ) : (
-        <ol>
+        <ol ref={list}>
           {m.notes.map((n, k) => {
             const key = keyAt(compiled, starts[k], piece.key);
             const name = noteLabel(n.pitch, key);
@@ -67,11 +110,26 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
               auditionPointsAfterEdit([{ pitch: notes[k].pitch, t: starts[k] + n.len / 2 }]);
             };
             return (
-              <li key={k} data-testid="tune-note" data-index={k}>
-                <span className="step-t">{noteTime(starts[k])}</span>
-                <span className="step-n" data-testid="tune-note-name">
-                  {name}
-                </span>
+              <li
+                key={k}
+                data-testid="tune-note"
+                data-index={k}
+                className={picked.has(k) ? 'on' : undefined}
+                data-picked={picked.has(k) ? 'true' : undefined}
+              >
+                <button
+                  type="button"
+                  className="step-pick"
+                  data-testid="tune-note-pick"
+                  aria-pressed={picked.has(k)}
+                  aria-label={`Select ${desc}`}
+                  onClick={() => pick(k)}
+                >
+                  <span className="step-t">{noteTime(starts[k])}</span>
+                  <span className="step-n" data-testid="tune-note-name">
+                    {name}
+                  </span>
+                </button>
                 <CompactNumber
                   value={lenShown(n.len, beat)}
                   set={lenSetter(k)}
