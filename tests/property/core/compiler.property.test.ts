@@ -109,13 +109,31 @@ const plannedEnd = (s: Segment): { t1: number; p1: number } =>
 function isFollow(trace: CompileTrace, score: CompiledScore, v: number, g: Segment): boolean {
   const voice = score.voices[v];
   for (const m of trace.moments) {
-    if (m.t > g.t0) break;
+    // Not `break`: trace moments are in `at` order, and a merge's `t` can precede an earlier-`at` one.
+    if (m.t > g.t0) continue;
     if (!(m.intents ?? []).some((it) => it.kind === 'death' && it.voice === v)) continue;
     const died = lifeAt(voice, m.t)?.died ?? Infinity;
     const glide = voice.segments.find((x) => x.momentId === m.id && x.t0 >= m.t);
     if (g.t0 < died && (glide ? g.t0 > glide.t0 : g.t0 >= m.t)) return true;
   }
   return false;
+}
+
+/** §7.1: a walk step never cuts a running move (except a dying voice following its survivor). */
+function checkWalkCuts(p: Piece): void {
+  const { score, trace } = compileWithTrace(p);
+  const walks = new Set(p.moments.filter((m) => m.type === 'walk').map((m) => m.id));
+  const isWalk = (g: Segment): boolean => g.momentId !== undefined && walks.has(g.momentId);
+  for (const v of score.voices) {
+    for (let i = 0; i + 1 < v.segments.length; i++) {
+      const g = v.segments[i];
+      const next = v.segments[i + 1];
+      if (next.t0 === g.t1 && next.t0 < plannedEnd(g).t1 && !isWalk(g)) {
+        if (isFollow(trace, score, v.index, next)) continue;
+        expect(isWalk(next), `${v.id}: walk step cuts ${g.momentId} at ${next.t0}`).toBe(false);
+      }
+    }
+  }
 }
 
 /** Counts for the crossing property (pairs checked, crossings not caused by a bézier's own overshoot). */
@@ -258,6 +276,7 @@ describe('compiler regressions (pieces that once failed)', () => {
       const stats: CrossingStats = { pairsChecked: 0, unresolved: 0 };
       checkCrossings(p, stats);
       checkRanges(p);
+      checkWalkCuts(p);
       const s = compile(p);
       for (const v of s.voices) {
         for (const g of v.segments) {
