@@ -1301,3 +1301,9 @@ Closes audit gaps 2, 3, 5, 7, 8, 9 and 10 (`docs/m4.5-acceptance.md`). Tests onl
 - **Found, not fixed (core, out of scope):** `wobble-ignored` is not in `DIAGNOSTIC_CODES` (`compiler/diagnostics.ts`).
 - **audition:** "dragging out of the score cancels the drag preview".
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 1269/1269. E2E chromium-dev and -prod (`--workers=1`): inspector, audition, app-perf, edit-latency, key-carry 50/50; score-select 100/100 repeated.
+
+## Fix: number field keeps a stale draft over undo (2026-11-21)
+A focused NumberField (and WeightBox) kept its typed text through an outside undo, and its blur then re-committed it over the undone value.
+- `draftReduce` (`inspector/fields.ts`): typing makes a draft; a changed underlying value drops it and shows the new value; blur commits only a draft. NumberField and WeightBox use it via `useReducer`. The Voices/Notes drawer `NumberField` clears its draft when `value` changes.
+- Tests: `tests/unit/app/number-draft.test.ts`; `tests/e2e/number-field-undo.spec.ts` (type, undo via the editor hook, blur: undone value stays; an undisturbed draft still commits). The app has no Undo button, and a real click would blur first, so the hook stands in.
+- The inspector.spec workaround (blur after Enter) is no longer needed but left alone. TextField (chord symbol) has the same pattern; not changed (not a number field).
