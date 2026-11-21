@@ -87,6 +87,8 @@ The owner moved the integrator to a cloud session to use it from their phone. Li
 - **v35 never deployed:** CI on 8106972 failed `pnpm test`: `render-golden` hashes differ on Linux x64 vs the Mac (merge/crossfade pieces). Builder `fix-golden-platform` (from 042abf8) is making the render portable.
 - The desktop's in-flight builders (M6-b, split-knot render fix) were lost in the move; restarted here.
 - **Pushed 1b6ee64 to main** (= preview version 36; CI green, Pages deployed): portable DSP math (`src/dsp/pmath.ts`, goldens re-pinned on Linux; owner confirmed they pass on the Mac). Local since: M6-b1 timbre moment core, M6-b3 its UI (palette B, Effects row, Sound drawer rename/delete), split-knot fix (`render/ghost.ts`). Verify 0754b7a: unit 1803/1803, chromium e2e 476/477 (render 4 ms budget, known on this box). Firefox isn't installed here; CI covers it. Held from main until M6-b2 (timbre crossfade DSP, running) lands, so the public site doesn't get a silent timbre moment.
+- **Queue (owner, 2026-11-21 cloud):** bell redesign (running; candidates to the owner); tune "Melody on" picker (running, branch tune-line); then, on top of tune-line: tune makes a random melody (inspector button + new tunes start with one), and with a tune selected, double-clicking its line on the score adds a tune note there. Then M6 master FX, M6 acceptance.
+- **Pushed a5cefbf to main** (preview version 38): M6-b timbre moments (v37), knot fix, Next always holds a bar / 2 s after the last end, playhead labels show Hz only.
 - Cloud box setup: pulseaudio null sink installed via apt; Playwright chromium via `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` symlinks (1255 → 1243).
 
 ## M4.5 builder split (approved; walk = freeze into `fixed`, not `edits`)
