@@ -115,13 +115,15 @@ test('the engine worklet renders a preset fixture with FX', async ({ page }) => 
 });
 
 test('Play sounds a live A4 through the engine worklet', async ({ page }) => {
+  test.slow(); // waits for sound; slow on a loaded machine
   await openFixtures(page);
   await page.getByLabel('Fixture').selectOption('a4-sine');
   await page.getByRole('button', { name: 'Play' }).click();
-  await expect(page.locator('#state')).toHaveText('playing', { timeout: 10_000 });
+  await expect(page.locator('#state')).toHaveText('playing', { timeout: 20_000 });
+  // Wait (generously: a loaded machine starts the audio thread late) for sound, then analyse it.
   const captured = await page.evaluate(async () => {
     const hook = (window as unknown as { __fixtures: Hook }).__fixtures;
-    const deadline = performance.now() + 6000;
+    const deadline = performance.now() + 30_000;
     let buf = new Float32Array(0);
     while (performance.now() < deadline) {
       await new Promise((r) => setTimeout(r, 200));
@@ -144,13 +146,14 @@ test('Play sounds a live A4 through the engine worklet', async ({ page }) => {
   expect(a.rms, 'non-silent').toBeGreaterThan(0.05);
   expect(Math.abs(a.frequency - 440), `frequency ${a.frequency.toFixed(2)} Hz`).toBeLessThan(3);
 
-  // The anchor clock (§8.3): the playhead advances in real time and follows a seek.
+  // The anchor clock (§8.3): the playhead advances in real time and follows a seek. Measured over
+  // 2 s so a late timer under load matters less.
   const clock = await page.evaluate(async () => {
     const e = (window as unknown as { __fixtures: Hook }).__fixtures.engine!;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const t0 = e.currentTime();
     const w0 = performance.now();
-    await wait(600);
+    await wait(2000);
     const t1 = e.currentTime();
     const w1 = performance.now();
     e.seek(5);

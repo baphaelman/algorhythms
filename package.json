@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc -b",
     "e2e": "playwright test",
+    "e2e:quick": "playwright test --grep-invert @perf",
     "docs:schema": "node scripts/docs-schema.mjs",
     "render:wavs": "node scripts/render-wavs.mjs"
   },

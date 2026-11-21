@@ -3,13 +3,16 @@
  * in range and are distinct notes, both from the moment function and through the compiler.
  */
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { spreadInRange } from '../../../src/core/moments/spread';
 import { pitchAt } from '../../../src/core/query';
 import { scalePcs } from '../../../src/core/scales';
 import type { CompiledScore, Key } from '../../../src/core/types';
 import { piece } from '../../unit/core/compiler-fixtures';
+
+// Slowest test under 0.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RUNS = Number(process.env.PROP_RUNS ?? 200);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);

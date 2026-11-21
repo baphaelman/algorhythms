@@ -4,11 +4,14 @@
  * range), every one an octave of a given note.
  */
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { voiceNotes } from '../../../src/core/voicing';
 import { chordAt, piece, stackedChordAt } from '../../unit/core/compiler-fixtures';
 import { lineArtifacts } from '../../unit/core/line-artifacts';
+
+// Slowest test 0.8 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RUNS = Number(process.env.PROP_RUNS ?? 200);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);

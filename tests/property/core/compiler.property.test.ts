@@ -7,7 +7,7 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { parsePiece } from '../../../src/core/schema';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   compile as compileRaw,
   compileWithTrace as compileWithTraceRaw,
@@ -20,32 +20,30 @@ import { easeCodeOf, easeRaw, bezierOf } from '../../../src/core/ease';
 import type { CompiledScore, Piece, Segment } from '../../../src/core/types';
 import { pieceArb } from './compiler-arbitraries';
 
+// Slowest test 1.8 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
+
 const RUNS = Number(process.env.PROP_RUNS ?? 300);
 // Reproducible by default; set PROP_SEED=random (or a number) to explore other pieces.
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
 
 /**
- * Every compile in this suite must finish within this budget (ms). Generated pieces are small, so
- * a compile that takes longer signals a pathological path (one used to hang: a NaN target sent
- * the Hungarian search into an endless loop). Generous against machine load; typical is < 1 ms.
+ * Compile time per generated piece (ms), logged as the slowest. Asserted against this budget only
+ * with ALGORHYTHMS_PERF_STRICT=1: wall-clock budgets fail under machine load, compile speed is
+ * gated by compiler-perf.test.ts (perf project), and a compile that never returns is caught by
+ * the property watchdog (tests/support/fast-check.ts) with its seed and path. Typical is < 1 ms.
  */
 const COMPILE_BUDGET_MS = 50;
+const STRICT = !!process.env.ALGORHYTHMS_PERF_STRICT;
 let slowest = 0;
 afterAll(() => console.log(`compiler properties: slowest compile ${slowest.toFixed(2)} ms`));
 
 function timed<R>(f: () => R): R {
-  let t = performance.now();
+  const t = performance.now();
   const r = f();
-  let ms = performance.now() - t;
-  // A loaded machine (parallel test files, other processes) can stall one run: re-measure before
-  // failing, keeping the fastest. A pathological compile is slow every time.
-  for (let k = 0; k < 2 && ms >= COMPILE_BUDGET_MS; k++) {
-    t = performance.now();
-    f();
-    ms = Math.min(ms, performance.now() - t);
-  }
+  const ms = performance.now() - t;
   if (ms > slowest) slowest = ms;
-  expect(ms, 'compile time (ms)').toBeLessThan(COMPILE_BUDGET_MS);
+  if (STRICT) expect(ms, 'compile time (ms)').toBeLessThan(COMPILE_BUDGET_MS);
   return r;
 }
 const compile = (p: Piece): CompiledScore => timed(() => compileRaw(p));

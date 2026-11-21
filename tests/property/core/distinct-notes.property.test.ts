@@ -3,13 +3,16 @@
  * keep the weight of the lines they join.
  */
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile, compileWithTrace, type CompileTrace } from '../../../src/core/compiler/compile';
 import { lifeAt, linesAt, segmentAt, weightTargetAt } from '../../../src/core/query';
 import { degreesToPcs, pitchesWithPcs } from '../../../src/core/scales';
 import type { CompiledScore } from '../../../src/core/types';
 import { piece } from '../../unit/core/compiler-fixtures';
 import { pieceArb } from './compiler-arbitraries';
+
+// Slowest test 0.8 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const RUNS = Number(process.env.PROP_RUNS ?? 150);
 // Reproducible by default; set PROP_SEED=random (or a number) to explore other pieces.

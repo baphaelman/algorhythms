@@ -11,13 +11,16 @@
  * arrival or of the 120 ms before it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DRY_MIX, makeScore, type VoiceSpec } from '../../src/audio/fixtures/scores';
 import { renderOffline } from '../../src/audio/offline';
 import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import type { CompiledScore, EaseRef, Timbre } from '../../src/core/types';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { RATE } from './helpers';
+
+// Slowest test 1.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const STRIKE: Record<string, Timbre> = {
   strike: {

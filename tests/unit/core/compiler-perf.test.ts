@@ -6,9 +6,12 @@
  * glides and staggers, so most moves interrupt running glides (velocity carry, clamps) and every
  * ordered moment runs its 64-point crossing check over up to 24 voices.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { benchmarkPiece } from './compiler-bench-piece';
+
+// Slowest test 4 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 60_000 });
 
 describe('compile performance (§7.10)', () => {
   // §7.10's target is a median ≤ 5 ms. M1b measured about 9 ms on a loaded 6-core dev machine

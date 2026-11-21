@@ -3,7 +3,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { momentEffectAt } from '../../../src/core/effect';
@@ -12,6 +12,9 @@ import { activeAt, lifeAt, pitchAt } from '../../../src/core/query';
 import { parsePiece, serializePiece } from '../../../src/core/schema';
 import type { ChordMoment, CompiledScore, Moment, Piece } from '../../../src/core/types';
 import { chordAt, piece, type MomentInput } from './compiler-fixtures';
+
+// Slowest test 2.6 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const GLIDE = { length: 3, jitter: 0.3, stagger: 1.5, ease: 'smootherstep' as const };

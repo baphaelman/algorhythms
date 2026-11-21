@@ -52,8 +52,9 @@ async function shownTime(page: Page): Promise<number> {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-/** Waits for the output to be audible; returns its RMS. */
-async function waitForSound(page: Page, timeout = 10_000): Promise<number> {
+/** Waits for the output to be audible; returns its RMS (0 if none). Generous: a loaded machine
+ * can take seconds to start the audio thread. */
+async function waitForSound(page: Page, timeout = 20_000): Promise<number> {
   return page.evaluate(async (ms) => {
     const deadline = performance.now() + ms;
     while (performance.now() < deadline) {
@@ -110,17 +111,18 @@ test('opens with the featured example loaded, not playing, at the start', async 
 });
 
 test('play makes sound and time advances; pause holds; seeking works', async ({ page }) => {
+  test.slow(); // waits for sound; slow on a loaded machine
   await openApp(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   const rms = await waitForSound(page);
   expect(rms, 'audible output').toBeGreaterThan(0.002);
 
-  await expect.poll(() => shownTime(page), { timeout: 10_000 }).toBeGreaterThan(1.5);
-  // Real-time rate: ~1 s of piece per second of wall time.
+  await expect.poll(() => shownTime(page), { timeout: 20_000 }).toBeGreaterThan(1.5);
+  // Real-time rate: ~1 s of piece per second of wall time (over 3 s, so a late frame matters less).
   const t0 = await shownTime(page);
   const w0 = Date.now();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(3000);
   const rate = ((await shownTime(page)) - t0) / ((Date.now() - w0) / 1000);
   expect(rate).toBeGreaterThan(0.7);
   expect(rate).toBeLessThan(1.3);
@@ -295,6 +297,7 @@ test('prefers-reduced-motion skips the future-dimming tween', async ({ page }) =
 });
 
 test('the examples gallery loads each example, stopped', async ({ page }) => {
+  test.slow(); // waits for sound
   await openApp(page);
   await page.getByTestId('menu-button').click();
   const list = page.getByRole('list', { name: 'Originals' });
@@ -376,6 +379,7 @@ test('share links round-trip: encode in the page, open in a fresh page', async (
   page,
   context,
 }) => {
+  test.slow(); // waits for sound
   await openApp(page);
   const link = await page.evaluate(async () => {
     const h = window.__algorhythms!;
@@ -473,38 +477,46 @@ test('screenshots: desktop light, desktop dark, phone', async ({ page }, info) =
   await page.screenshot({ path: join(dir, 'phone.png') });
 });
 
-test('time to first sound: press play as soon as the page is up and hear it within 3 s', async ({
-  page,
-}, info) => {
-  await page.goto('./?example=tidewater-hymn', { waitUntil: 'commit' });
-  const play = page.getByRole('button', { name: 'Play', exact: true });
-  await play.click();
-  const heard = await page.evaluate(async () => {
-    const deadline = performance.now() + 15_000;
-    while (performance.now() < deadline) {
-      const an = window.__algorhythms?.analyser();
-      if (an) {
-        const buf = new Float32Array(an.fftSize);
-        an.getFloatTimeDomainData(buf);
-        let sum = 0;
-        for (const v of buf) sum += v * v;
-        if (Math.sqrt(sum / buf.length) > 0.002) return performance.now(); // ms since navigation start
+test(
+  'time to first sound: press play as soon as the page is up and hear it within 3 s',
+  {
+    tag: '@perf',
+  },
+  async ({ page }, info) => {
+    await page.goto('./?example=tidewater-hymn', { waitUntil: 'commit' });
+    const play = page.getByRole('button', { name: 'Play', exact: true });
+    await play.click();
+    const heard = await page.evaluate(async () => {
+      const deadline = performance.now() + 15_000;
+      while (performance.now() < deadline) {
+        const an = window.__algorhythms?.analyser();
+        if (an) {
+          const buf = new Float32Array(an.fftSize);
+          an.getFloatTimeDomainData(buf);
+          let sum = 0;
+          for (const v of buf) sum += v * v;
+          if (Math.sqrt(sum / buf.length) > 0.002) return performance.now(); // ms since navigation start
+        }
+        await new Promise((r) => setTimeout(r, 10));
       }
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    return -1;
-  });
-  console.log(`[${info.project.name}] time to first sound: ${Math.round(heard)} ms`);
-  info.annotations.push({ type: 'time-to-first-sound-ms', description: String(Math.round(heard)) });
-  expect(heard).toBeGreaterThan(0);
-  expect(heard, 'ms from navigation start to audible output').toBeLessThan(3000);
-});
+      return -1;
+    });
+    console.log(`[${info.project.name}] time to first sound: ${Math.round(heard)} ms`);
+    info.annotations.push({
+      type: 'time-to-first-sound-ms',
+      description: String(Math.round(heard)),
+    });
+    expect(heard).toBeGreaterThan(0);
+    expect(heard, 'ms from navigation start to audible output').toBeLessThan(3000);
+  },
+);
 
 test('setPiece recompiles once per frame and hot-swaps while playing', async ({ page }) => {
+  test.slow(); // waits for sound
   await openApp(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await waitForStatus(page, 'playing');
-  await expect.poll(() => shownTime(page), { timeout: 10_000 }).toBeGreaterThan(1);
+  await expect.poll(() => shownTime(page), { timeout: 20_000 }).toBeGreaterThan(1);
 
   const compiles = await page.evaluate(async () => {
     const h = window.__algorhythms!;
@@ -533,7 +545,7 @@ test('setPiece recompiles once per frame and hot-swaps while playing', async ({ 
   await expect(page.getByTestId('keyvoices')).toContainText('D dorian');
   // Still playing, time still advancing, and the output is not silent.
   const t = await shownTime(page);
-  await expect.poll(() => shownTime(page), { timeout: 8000 }).toBeGreaterThan(t + 0.3);
+  await expect.poll(() => shownTime(page), { timeout: 20_000 }).toBeGreaterThan(t + 0.3);
   expect((await getState(page)).status).toBe('playing');
   expect(await waitForSound(page)).toBeGreaterThan(0.002);
 });

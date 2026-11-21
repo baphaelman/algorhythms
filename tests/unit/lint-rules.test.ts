@@ -6,7 +6,10 @@
 
 import { ESLint } from 'eslint';
 import path from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Slowest test 1.7 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
+vi.setConfig({ testTimeout: 30_000 });
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RULES = new Set([

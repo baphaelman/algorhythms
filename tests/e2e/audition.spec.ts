@@ -49,8 +49,8 @@ function peakRms(page: Page, ms: number): Promise<number> {
   }, ms);
 }
 
-/** Waits up to `ms` for audible output; returns its RMS (0 if none). */
-function waitForSound(page: Page, ms = 5000): Promise<number> {
+/** Waits up to `ms` for audible output; returns its RMS (0 if none). Generous for a loaded machine. */
+function waitForSound(page: Page, ms = 20_000): Promise<number> {
   return page.evaluate(async (ms) => {
     const end = performance.now() + ms;
     while (performance.now() < end) {
@@ -229,7 +229,7 @@ test('a chord pick sounds while stopped, and not while playing', async ({ page }
   await expect.poll(async () => (await hook(page)).count).toBe(c0 + 1);
   expect(await waitForSound(page)).toBeGreaterThan(0.002);
   // One-shot: it ends by itself.
-  await expect.poll(async () => (await hook(page)).active, { timeout: 5000 }).toBe(false);
+  await expect.poll(async () => (await hook(page)).active, { timeout: 15_000 }).toBe(false);
 
   // While playing, picks are heard through the hot-swap, not auditioned.
   await page.getByRole('button', { name: 'Play', exact: true }).click();

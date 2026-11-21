@@ -73,6 +73,7 @@ test('New → Compose for me places moments over time, then shows the full piece
   await compose(page, '4242');
   await trace(page);
   const all = expected(4242).length;
+  await expect.poll(() => count(page), { timeout: 15_000 }).toBeGreaterThan(0);
   const seen: number[] = [];
   for (let i = 0; i < 4; i++) {
     await page.waitForTimeout(1500);
@@ -136,7 +137,7 @@ test('Skip ends with the full piece; one undo empties back to before the compose
 
 test('Stop keeps a partial piece that plays', async ({ page }) => {
   await compose(page, '31');
-  await page.waitForTimeout(5000);
+  await expect.poll(() => count(page), { timeout: 30_000 }).toBeGreaterThan(2);
   await page.getByTestId('compose-stop').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'stopped');
   const kept = await count(page);
@@ -164,11 +165,10 @@ test('Stop keeps a partial piece that plays', async ({ page }) => {
 
 test('changing the seed mid-build restarts the build from it', async ({ page }) => {
   await compose(page, '100');
-  await page.waitForTimeout(3000);
-  expect(await count(page)).toBeGreaterThan(2);
+  await expect.poll(() => count(page), { timeout: 30_000 }).toBeGreaterThan(2);
   await page.getByTestId('compose-seed').fill('101');
   // The build starts over: the old moments go, the new seed's come in.
-  await expect.poll(() => count(page), { timeout: 2000 }).toBeLessThan(3);
+  await expect.poll(() => count(page), { timeout: 10_000 }).toBeLessThan(3);
   expect((await piece(page)).title).toBe('Dorian 101');
   const firstSplit = expected(101)[1].id;
   await expect
