@@ -18,6 +18,7 @@ import {
 import { setKeepOrder, useLineOrder } from '../editor/line-order';
 import { refreshSuggestions } from '../editor/suggestions';
 import { beatStep } from '../editor/snap';
+import { SoundToggle } from './SoundDrawer';
 import { VoicesToggle } from './VoicesDrawer';
 
 const COLORS = [
@@ -197,6 +198,7 @@ export function ViewBar() {
       )}
 
       <VoicesToggle />
+      <SoundToggle />
 
       <p className="keys">
         <kbd>Space</kbd> plays and pauses. Pinch, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-scroll or{' '}

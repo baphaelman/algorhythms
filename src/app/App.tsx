@@ -22,6 +22,7 @@ import { TouchMenu } from './ui/TouchMenu';
 import { Scrubber, Transport } from './ui/Transport';
 import { UndoRedo } from './ui/UndoRedo';
 import { ViewBar } from './ui/ViewBar';
+import { SoundDrawer } from './ui/SoundDrawer';
 import { VoicesDrawer } from './ui/VoicesDrawer';
 
 /** Width from which the editor layout is used (PLAN.md §11.5); narrower screens get the player only. */
@@ -82,6 +83,7 @@ export function App() {
         {composing ? <ComposePanel /> : wide && <Inspector />}
       </main>
       {wide && <VoicesDrawer />}
+      {wide && <SoundDrawer />}
       {wide && <TouchMenu />}
     </div>
   );

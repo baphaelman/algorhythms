@@ -6,6 +6,11 @@
 
 import { DEFAULT_GLIDE, MOMENT_DEFAULTS } from '../src/core/defaults';
 import { MOMENT_TYPES, pieceJsonSchema } from '../src/core/schema';
+import {
+  TIMBRE_PRESET_FORMAT,
+  TIMBRE_PRESET_SUFFIX,
+  TIMBRE_PRESET_VERSION,
+} from '../src/core/timbre-preset';
 import { MAX_VOICES, PIECE_FORMAT, PIECE_VERSION } from '../src/core/types';
 
 export function renderFileFormatDoc(): string {
@@ -41,6 +46,10 @@ export function renderFileFormatDoc(): string {
     '| Moment type | Defaults filled in |',
     '|---|---|',
     ...momentDefaults,
+    '',
+    '## Timbre preset files',
+    '',
+    `The Sound drawer saves one timbre as a preset file, usually named \`*${TIMBRE_PRESET_SUFFIX}\`: an object with \`format\` (\`"${TIMBRE_PRESET_FORMAT}"\`), \`version\` (${TIMBRE_PRESET_VERSION}), \`name\` (1–64 characters) and \`timbre\`, which follows the schema of a \`timbres\` entry below. Defaults fill missing timbre fields and unknown fields are kept, so a preset loads back exactly as it was saved. A newer \`version\` loads with a warning.`,
     '',
     '## JSON Schema',
     '',

@@ -1,0 +1,153 @@
+/* Sound drawer (PLAN.md §11.3): a bottom panel like the Notes drawer, wide layout only. */
+
+.app[data-layout='player'] .sound-toggle {
+  display: none;
+}
+
+.sound-drawer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 46vh;
+  min-height: 0;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  border-radius: 3px;
+  font: 400 12px/1.2 var(--f-mono);
+}
+
+.sd-head .sd-users {
+  color: var(--ink-2);
+}
+
+.sd-head .sd-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-head .vd-close {
+  margin-left: auto;
+}
+
+.sound-drawer select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.sd-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 14px;
+  padding: 8px 12px 12px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.sd-section {
+  margin: 0;
+  padding: 4px 10px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  display: grid;
+  grid-template-columns: max-content 110px minmax(9ch, max-content);
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.sd-section legend {
+  padding: 0 4px;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sd-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.sd-row {
+  display: contents;
+}
+
+.sd-row input[type='range'] {
+  width: 110px;
+}
+
+.sd-label {
+  white-space: nowrap;
+}
+
+.sd-out {
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-section:has(input[type='checkbox']:not(:checked)) .sd-row > * {
+  opacity: 0.5;
+}
+
+/* Partials: upright sliders side by side, like drawbars. */
+.sd-partials {
+  grid-template-columns: auto;
+}
+
+.sd-bars {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+}
+
+.sd-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 16px;
+}
+
+.sd-bar input.sd-vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 16px;
+  height: 96px;
+  margin: 0;
+}
+
+.sd-bar-n {
+  font-size: 10px;
+  color: var(--ink-2);
+}
+
+.sd-unused {
+  opacity: 0.35;
+}
+
+.sd-bar-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sound-drawer button.sd-mini {
+  min-height: 24px;
+  min-width: 26px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.sd-count {
+  min-width: 2ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
