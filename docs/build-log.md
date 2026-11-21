@@ -1061,3 +1061,7 @@ Fix:
 - **Kept:** loop region clipped to the piece; player layout shares the open canvas (no grid there).
 - **Tests:** unit `camera.test.ts` updated (canvas clamps, follow past the end, zoom past the end), new `tests/unit/app/end.test.ts` (reach, extend, followContent, withEnd, history/gesture + undo, store pan/zoom/fit/seek caps, palette past the end). e2e `open-canvas.spec.ts` (chromium): pan past the end shows bars + pan/zoom/Fit still work; ruler click past the end + Add extends `end.at`, undo; end handle drag (Alt) sets the end, undo, double-click automatic.
 - **Full chromium e2e (dev + prod):** all pass after updating `app.spec` (slider's far end = the open canvas) and `view-follow.spec` (zoom-out enabled at Fit), except the timing gates `render.spec` 4 ms (7–8 ms here) and `app-perf` 60 fps, which fail the same way on the base commit 435e195 on this box.
+
+## E2E: lane Escape + view-follow race (2026-11-21)
+Cause: lane Escape test expected an exact mid-drag `at` of 5, but grid snapping was removed (M4.5-22), so Firefox/WebKit give 4.994; view-follow read the camera window right after a slider fill, before a frame had drawn.
+Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow test polls `window` < 5 before reading it.
