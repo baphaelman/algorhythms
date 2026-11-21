@@ -1,7 +1,8 @@
 /**
  * No garbage collection in the render loop (PLAN.md §8.11): 60 s of audio from `process()`, after
  * a warm-up, in a child Node process with --trace-gc switched on for exactly that span, must not
- * print a single GC line (and a 'gc' PerformanceObserver must see none).
+ * print a single GC line (and a 'gc' PerformanceObserver must see none). The young generation may
+ * also grow by at most MAX_BYTES over the run: allocation too small to set off a GC still fails.
  *
  * The workload is 24 continuously gliding voices plus reverb and delay, using every ease except
  * the solver-based expo and bézier. Those two allocate a little per control tick, because V8 cannot
@@ -15,10 +16,12 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
+/** The timer and flag calls around the run allocate ~2 KB; one interpreted seek ~8 KB. */
+const MAX_BYTES = 6000;
 
 function runHarness(mode: 'plain' | 'all' | 'lock'): {
   gcLines: string[];
-  summary: { ms: number; observedGc: number };
+  summary: { ms: number; observedGc: number; newSpaceBytes: number };
 } {
   const res = spawnSync(
     process.execPath,
@@ -27,7 +30,11 @@ function runHarness(mode: 'plain' | 'all' | 'lock'): {
   );
   if (res.status !== 0) throw new Error(`harness failed: ${res.stderr}`);
   const lines = res.stdout.split('\n').filter((l) => l.trim() !== '');
-  const summary = JSON.parse(lines[lines.length - 1]) as { ms: number; observedGc: number };
+  const summary = JSON.parse(lines[lines.length - 1]) as {
+    ms: number;
+    observedGc: number;
+    newSpaceBytes: number;
+  };
   const gcLines = lines.filter((l) => /Scavenge|Mark-Compact|Mark-sweep|Minor|MinorMS/.test(l));
   return { gcLines, summary };
 }
@@ -36,26 +43,28 @@ describe('no GC in process()', () => {
   it('runs 60 s of 24 voices + FX with no scavenge', () => {
     const { gcLines, summary } = runHarness('plain');
     console.info(
-      `no-GC run: 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed`,
+      `no-GC run: 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
   }, 120_000);
 
   it('runs 60 s of unisons, merges, births into unisons and seeks with no scavenge', () => {
     const { gcLines, summary } = runHarness('lock');
     console.info(
-      `no-GC run (unison lock): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed`,
+      `no-GC run (unison lock): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
   }, 120_000);
 
   it('reports the GC rate when expo and bézier glides are included', () => {
     const { gcLines, summary } = runHarness('all');
     console.info(
       `with expo/bézier glides: ${gcLines.filter((l) => l.includes('Scavenge')).length} scavenges per 60 s ` +
-        `(${summary.observedGc} observed)`,
+        `(${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated)`,
     );
     expect(gcLines.every((l) => !/Mark-Compact|Mark-sweep/.test(l))).toBe(true); // never a major GC
   }, 120_000);
