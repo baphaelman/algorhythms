@@ -12,8 +12,8 @@
  *
  * A checkpoint holds what the simulation mutates (compile.ts, voice.ts): per voice the status,
  * pending moves and birth, the frontier tail with the fields `finishAt` mutates by value, the open
- * Life, and the lengths of the append-only arrays (segments, lives, level); the queued move starts,
- * walk ticks and note returns with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
+ * Life, and the lengths of the append-only arrays (segments, lives, level, pulse); the queued move
+ * starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable) and note returns with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
  * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
@@ -53,11 +53,11 @@ const STRIDE = 2;
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
  * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
- * length, handed, counts length. References, REFS per voice: pending moves (a copy), pending birth,
+ * length, handed, counts length, pulse length, pulse owner. References, REFS per voice: pending moves (a copy), pending birth,
  * open life, tail, tail curve, members (a copy), the last weight and stack entries (`rampWeight` and
  * `setCount` may replace them in the shared arrays after the checkpoint).
  */
-const NUMS = 18;
+const NUMS = 20;
 const REFS = 8;
 const NO_MOVES: readonly Move[] = [];
 
@@ -99,6 +99,7 @@ interface State {
   level: VoiceRun['level'][];
   weights: VoiceRun['weights'][];
   counts: VoiceRun['counts'][];
+  pulse: VoiceRun['pulse'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
   walkSteps: WalkStepRecord[];
@@ -227,6 +228,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.weights.length,
       run.handed ? 1 : 0,
       run.counts.length,
+      run.pulse.length,
+      run.pulseOwner,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -311,6 +314,9 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     pushPrefix(run.lives, prev.lives[v], nums[n + 3]);
     run.level.length = 0;
     pushPrefix(run.level, prev.level[v], nums[n + 4]);
+    run.pulse.length = 0;
+    pushPrefix(run.pulse, prev.pulse[v], nums[n + 18]);
+    run.pulseOwner = nums[n + 19];
     run.pending = (refs[r] as Move[]).slice();
     run.pendingBirth = refs[r + 1] as Birth | null;
     // An open life has only `born` and `fadeIn` (closing sets the rest, and drops it).
@@ -434,6 +440,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       level: c.voices.map((r) => r.level),
       weights: c.voices.map((r) => r.weights),
       counts: c.voices.map((r) => r.counts),
+      pulse: c.voices.map((r) => r.pulse),
       keys: c.keys,
       harmony: c.harmony,
       walkSteps: c.walkSteps,

@@ -355,7 +355,7 @@ describe('parsePiece: errors', () => {
       }),
     );
     expect(errs).toEqual([
-      "moments[0].type: unknown moment type 'mirror' (expected one of chord, unison, split, merge, shift, spread, walk, note, pin, key, level).",
+      "moments[0].type: unknown moment type 'mirror' (expected one of chord, unison, split, merge, shift, spread, walk, note, pin, key, level, pulse).",
       'moments[1].count: Invalid input: expected number, received undefined',
     ]);
   });

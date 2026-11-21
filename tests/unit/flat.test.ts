@@ -164,7 +164,7 @@ describe('transferList', () => {
   it('lists each buffer once and survives a structured-clone transfer', () => {
     const flat = flatten(fixture());
     const list = transferList(flat);
-    expect(list.length).toBe(1 + 5 * flat.voices.length);
+    expect(list.length).toBe(1 + 6 * flat.voices.length);
     expect(new Set(list).size).toBe(list.length);
 
     const received = structuredClone(flat, { transfer: list });

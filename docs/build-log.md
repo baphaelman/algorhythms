@@ -1446,3 +1446,27 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
 - Save name is an ordinary `edit` (history, autosave). An automatic Generate/Compose title (`generatedTitle` in core/generate.ts, exact match via `isGeneratedTitle`) counts as unnamed like Untitled, so an edited generated piece asks; an untouched one does not (`hasEdited`). A user title that merely resembles one ("Dorian sketch") is a name. (Touches core/generate.ts: extracted the title helper so format and check can't drift.)
 - Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
 - Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.
+
+## R9-3a: the `pulse` moment (core, 2026-11-21)
+PLAN rev 9 `pulse` in core: types (`PulseMoment`, `PulseRecord`, `CompiledVoice.pulse`), schema (defaults step 0.5, pattern [1], decay 0.3, floor 0, mode together; `strike` optional = true), compile, incremental, flat layout, reference envelope.
+- **Records** (per voice, sorted, pushed at the simulation time): `{ t, accent, decay, floor, strike, hit? }`. A hit is one step; a boundary (accent 1, decay 0) puts a voice at `floor` when it joins a pulse, or back at 1 (floor 1) at `until`.
+- **Envelope** (`segment.ts pulseEnvelope`, leaf, + − × only, so the DSP can call it as is; `pulse.ts pulseGainAt`): the last record with t ≤ now applies: accent·(floor + (1 − floor)·(1 − u)³), u = dt/decay; accent·floor once u ≥ 1. 1 before the first record. Multiplies level and life fades.
+- **Steps** are tick events (`at + k·step` while < until, then one at `until` that ends it); a pulse tick changes no pitch, so no cache invalidation. Its walk state rides on the queued event (immutable), so checkpoints need only the per-voice pulse length and owner (NUMS 18 → 20).
+- **Flat layout v4:** `FlatVoice.pulses`, PULSE_STRIDE 6 (T, ACCENT, DECAY, FLOOR, STRIKE, HIT), constants in segment.ts, re-exported by flat.ts. Transfer list gains one buffer per voice.
+
+**Decisions (PLAN is silent):**
+- Targets resolve at each step as for any moment (active voices; `{ part }` works). Only sounding voices are hit; dying voices (merge) are no longer targetable, so they leave the walk and keep their last envelope while they fade.
+- A rest (accent 0) hits nothing and does not advance the walk. Accents and floor are clamped to 0..1.
+- Arpeggio order: the sounding targeted voices by their pitch at the step instant (ties: pool index). up/down/updown keep their index when voices join or leave (clamped), updown bounces without repeating ends (0 1 2 1 0). random: `randHashed(momentSeed, hash(''), k, PulsePick)` (new Purpose 16), uniform, repeats allowed.
+- A voice born inside a pulse that targets it sits at the floor from its birth (boundary at the birth), not from the next step.
+- Overlaps: the later-started pulse (later `at`, then array order) drives a voice; it claims at its moment event, so an earlier pulse's step at the same time skips it. When it ends, the voice goes to the latest earlier pulse still running that targets it (at that pulse's floor), else back to 1.
+- A pulse's region counts as activity (end = last activity + 4 s), like a walk.
+- `no-effect` when no targeted voice sounded at any step, raised at `until` (none if the piece ends first). `pulse-invalid` (error): step ≤ 0, until ≤ at, empty or non-numeric pattern. Schema rejects an empty pattern, step ≤ 0 and accents outside 0..1; until ≤ at is left to the compiler, as for walks.
+- The palette list (`EFFECT_MOMENT_TYPES`) leaves `pulse` out until the editor makes one (the app's `defaultMoment` has no case); `momentEffectAt` handles it.
+
+**Needs the integrator (outside src/core):**
+- Typecheck fails on three app records/switches: `actions.ts` LABELS and `Inspector.tsx` TYPE_NAMES need `pulse: 'pulse'` / `pulse: 'Pulse'`; `new-moment.ts` needs a `case 'pulse'`, e.g. `m = { ...base, type: 'pulse', until: at + 4, step: 0.5, pattern: [1], decay: 0.3, floor: 0, mode: 'together' }`.
+- Render (R9-5 hook, `src/render/level.ts`): `pulseLevel(v, t)` → `pulseGainAt(v, t)` from core/pulse, and `opacityBreaks` adds `pulseBreaks(v)` (records and uncut decay ends; not flat when `v.pulse` is non-empty; cache on `voice.pulse` too). Not done here: another builder is in src/render.
+
+**Tests:** `tests/unit/core/pulse.test.ts` (envelope, walk order, together/strike/floor/decay/cycling, up/down/updown/random, crossing glide, births and deaths, `{ part }`, overlaps, diagnostics, schema, palette, incremental = full over edits inside the region, flat round trip); pulse in `pieceArb`; property "pulse records" in compiler.property. Goldens unchanged.
+**Gates:** lint clean; typecheck clean in core/tests (the three app errors above); `pnpm test` 1416/1416 after the schema message fix; `test:perf` 5/5 (load ~21). 1000-run sweeps (seeds logged): incremental 7197195 and chord-count 784328314 green; compiler 893200642 fails "no crossings" and distinct-notes 1028843820 fails "no two resting lines share a pitch". Both counterexamples compile to identical segments and lives with their pulses removed, so neither comes from pulse; left open with the earlier crossings seeds.

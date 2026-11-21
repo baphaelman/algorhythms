@@ -14,6 +14,7 @@ import {
   type CompileTrace,
 } from '../../../src/core/compiler/compile';
 import { CHECK_SAMPLES } from '../../../src/core/interrupt';
+import { pulseGainAt } from '../../../src/core/pulse';
 import { lifeAt, pitchAt } from '../../../src/core/query';
 import { evalSegment, evalSegmentVelocity } from '../../../src/core/segment';
 import { easeCodeOf, easeRaw, bezierOf } from '../../../src/core/ease';
@@ -604,6 +605,42 @@ describe('compiler properties (§14)', () => {
     );
     expect(applied).toBeGreaterThan(20);
     expect(returns).toBeGreaterThan(5);
+  });
+
+  it('pulse records: sorted, gains in 0..1, hits only sounding voices, one per arpeggio step', () => {
+    let pulsed = 0;
+    check(
+      'pulse',
+      fc.property(pieceArb(), (p) => {
+        const s = compile(p);
+        const hitsAt = new Map<string, number>();
+        for (const v of s.voices) {
+          const r = v.pulse ?? [];
+          if (r.length > 0) pulsed++;
+          for (let i = 0; i < r.length; i++) {
+            if (i > 0) expect(r[i].t).toBeGreaterThanOrEqual(r[i - 1].t);
+            expect(r[i].accent).toBeGreaterThanOrEqual(0);
+            expect(r[i].accent).toBeLessThanOrEqual(1);
+            expect(r[i].floor).toBeGreaterThanOrEqual(0);
+            expect(r[i].floor).toBeLessThanOrEqual(1);
+            const g = pulseGainAt(v, r[i].t + r[i].decay / 2);
+            expect(g).toBeGreaterThanOrEqual(0);
+            expect(g).toBeLessThanOrEqual(1);
+            if (!r[i].hit) continue;
+            expect(r[i].accent).toBeGreaterThan(0);
+            expect(lifeAt(v, r[i].t), `hit on silent ${v.id} at ${r[i].t}`).not.toBeNull();
+            hitsAt.set(String(r[i].t), (hitsAt.get(String(r[i].t)) ?? 0) + 1);
+          }
+        }
+        // With only arpeggio pulses (and no two overlapping), each step hits one voice.
+        const pulses = p.moments.filter((m) => m.type === 'pulse' && !m.muted);
+        if (pulses.length === 1 && pulses[0].type === 'pulse' && pulses[0].mode !== 'together') {
+          for (const n of hitsAt.values()) expect(n).toBe(1);
+        }
+      }),
+      RUNS,
+    );
+    expect(pulsed).toBeGreaterThan(5);
   });
 
   it('every diagnostic has a stable kebab-case code and no generated piece errors out', () => {

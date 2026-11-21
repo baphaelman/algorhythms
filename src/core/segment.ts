@@ -120,6 +120,41 @@ export const VOICE_ID_HASH = 6;
 /** Doubles per voice-params record. */
 export const VOICE_STRIDE = 7;
 
+// Pulse record (revision 9 `pulse`; types.ts PulseRecord): from PULSE_T until the voice's next
+// record the pulse gain is `pulseEnvelope(ACCENT, FLOOR, DECAY, t − PULSE_T)`.
+/** Pulse record: time. */
+export const PULSE_T = 0;
+/** Pulse record: accent 0..1 (1 on a boundary). */
+export const PULSE_ACCENT = 1;
+/** Pulse record: fall time (0 on a boundary). */
+export const PULSE_DECAY = 2;
+/** Pulse record: floor 0..1 (1 on the boundary that ends a pulse). */
+export const PULSE_FLOOR = 3;
+/** Pulse record: 1 = re-strike the articulation (hits only), else 0. */
+export const PULSE_STRIKE = 4;
+/** Pulse record: 1 = a step's hit, 0 = a boundary. */
+export const PULSE_HIT = 5;
+/** Doubles per pulse record. */
+export const PULSE_STRIDE = 6;
+
+/**
+ * The pulse envelope (revision 9), `dt` seconds after a pulse record: a jump to `accent`, then a
+ * cubic fall to floor × accent over `decay`:
+ *
+ *   g = accent · (floor + (1 − floor) · (1 − u)³),   u = dt / decay,
+ *   g = accent · floor   once u ≥ 1, or when decay ≤ 0.
+ *
+ * (1 − u)³ is the "exponential-like" curve: steep at the hit (slope −3/decay), flat where it meets
+ * the floor (C¹ there). Only + − ×, so it is exact on every engine and the DSP can call it as is.
+ * dt < 0 is treated as 0.
+ */
+export function pulseEnvelope(accent: number, floor: number, decay: Seconds, dt: Seconds): number {
+  if (!(decay > 0) || dt >= decay) return accent * floor;
+  const u = dt > 0 ? dt / decay : 0;
+  const w = 1 - u;
+  return accent * (floor + (1 - floor) * w * w * w);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------------------------

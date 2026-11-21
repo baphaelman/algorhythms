@@ -329,6 +329,33 @@ const MOMENT_SCHEMAS = {
     gain: nonNegative,
     over: nonNegative.default(D.level.over),
   }),
+  pulse: z.looseObject({
+    type: z.literal('pulse'),
+    ...momentBase,
+    until: seconds.describe('End of the region (after `at`); steps at at + k·step while < until.'),
+    step: z.number().positive().default(D.pulse.step),
+    pattern: z
+      .array(unitInterval)
+      .min(1)
+      .default(() => [...D.pulse.pattern])
+      .describe('Accent per step, 0..1, cycling; 0 is a rest.'),
+    decay: nonNegative
+      .default(D.pulse.decay)
+      .describe('Fall time from the accent to floor × accent.'),
+    floor: unitInterval
+      .default(D.pulse.floor)
+      .describe('Level between hits, relative to the voice level.'),
+    mode: z
+      .enum(['together', 'up', 'down', 'updown', 'random'])
+      .default(D.pulse.mode)
+      .describe(
+        'together: every targeted voice hits; the others one voice per step, in pitch order.',
+      ),
+    strike: z
+      .boolean()
+      .optional()
+      .describe("Each hit re-strikes the timbre's articulation (absent: true)."),
+  }),
 } satisfies Record<MomentType, z.ZodType>;
 
 /** The moment types this build understands. */
@@ -346,6 +373,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.pin,
   MOMENT_SCHEMAS.key,
   MOMENT_SCHEMAS.level,
+  MOMENT_SCHEMAS.pulse,
 ]);
 
 // ---------------------------------------------------------------------------------------------

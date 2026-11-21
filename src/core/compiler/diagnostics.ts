@@ -35,6 +35,10 @@ export const DIAGNOSTIC_CODES: Readonly<
   'invalid-time': { level: 'error', meaning: 'The moment time is not a non-negative number.' },
   'invalid-moment': { level: 'error', meaning: 'A required field is missing or not a number.' },
   'walk-invalid': { level: 'error', meaning: 'A walk needs grid > 0 and until > at.' },
+  'pulse-invalid': {
+    level: 'error',
+    meaning: 'A pulse needs step > 0, until > at and a non-empty pattern of numbers.',
+  },
   'after-end': { level: 'info', meaning: 'The moment is at or after the end of the piece.' },
   // Targets and notes
   'no-targets': { level: 'info', meaning: 'The moment targets no active voice.' },

@@ -228,7 +228,8 @@ export type MomentType =
   | 'note'
   | 'pin'
   | 'key'
-  | 'level';
+  | 'level'
+  | 'pulse';
 
 /** Fields common to every moment (§6.1). */
 export interface MomentBase {
@@ -463,6 +464,33 @@ export interface LevelMoment extends MomentBase {
   over: Seconds;
 }
 
+/** How a pulse picks the voices it hits on each step (§6.2 `pulse`, revision 9). */
+export type PulseMode = 'together' | 'up' | 'down' | 'updown' | 'random';
+
+/**
+ * Region moment (revision 9): a repeating volume pattern. Every `step` seconds from `at` while
+ * `< until`, the next accent of `pattern` (cycling) hits; between `at` and `until` the targeted
+ * voices sit at `floor` (times their level) except when hit. Multiplies the level; no pitch
+ * effect. Compiled into per-voice `PulseRecord`s (core/pulse.ts documents the envelope).
+ */
+export interface PulseMoment extends MomentBase {
+  type: 'pulse';
+  /** End of the region; steps at at, at + step, … while < until. */
+  until: Seconds;
+  /** Step spacing (> 0). */
+  step: Seconds;
+  /** Accent per step, 0..1, cycling; 0 is a rest (no hit). Non-empty. */
+  pattern: number[];
+  /** Fall time from the accent to floor × accent. */
+  decay: Seconds;
+  /** 0..1: the level a hit falls to, and where the voices sit between hits. */
+  floor: number;
+  /** 'together' hits every targeted voice; the others one voice per step, in pitch order. */
+  mode: PulseMode;
+  /** Each hit re-strikes the timbre's articulation. Absent means true. */
+  strike?: boolean;
+}
+
 /** Any v1 moment, discriminated by `type`. */
 export type Moment =
   | ChordMoment
@@ -475,7 +503,8 @@ export type Moment =
   | NoteMoment
   | PinMoment
   | KeyMoment
-  | LevelMoment;
+  | LevelMoment
+  | PulseMoment;
 
 /** Look up a moment interface by its type, e.g. `MomentOf<'walk'>`. */
 export type MomentOf<T extends MomentType> = Extract<Moment, { type: T }>;
@@ -742,6 +771,27 @@ export interface LevelChange {
 }
 
 /**
+ * A pulse record (revision 9 `pulse`; envelope in core/pulse.ts). From `t` until the voice's next
+ * record the pulse gain is accent·(floor + (1 − floor)·(1 − u)³), u = (t' − t)/decay, and
+ * accent·floor once u ≥ 1 (or when decay is 0). A hit (`hit`) is one step of a pulse; a boundary
+ * (no `hit`) has accent 1 and decay 0: it puts the voice at `floor` when it joins a pulse, or back
+ * at 1 (floor 1) when the pulse ends.
+ */
+export interface PulseRecord {
+  t: Seconds;
+  /** 0..1. */
+  accent: number;
+  /** Fall time (≥ 0). */
+  decay: Seconds;
+  /** 0..1. */
+  floor: number;
+  /** Re-strike the timbre's articulation (hits only). */
+  strike: boolean;
+  /** A step's hit; absent on a boundary. */
+  hit?: true;
+}
+
+/**
  * A weight change (revision 8, "Distinct notes"): ramp linearly from the weight in effect at `t`
  * to `w` over `over` seconds. A line of weight w sounds at the power of w lines (√w amplitude).
  */
@@ -787,6 +837,11 @@ export interface CompiledVoice {
   weight?: WeightChange[];
   /** Stack timeline, sorted (revision 8): 1 before the first entry; absent: 1 throughout. */
   stack?: StackChange[];
+  /**
+   * Pulse records, sorted by t (revision 9; ties: the later one applies). The pulse gain is 1
+   * before the first; absent or empty: 1 throughout. Multiplies the level.
+   */
+  pulse?: PulseRecord[];
   /** Static linear gain from VoiceDef.gain. Extension of §7.9, so the DSP needs only this score. */
   gain: number;
   /** Static pan from VoiceDef.pan. Extension of §7.9. */

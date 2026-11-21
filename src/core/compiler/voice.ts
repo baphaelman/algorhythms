@@ -23,6 +23,7 @@ import type {
   EaseRef,
   Life,
   Pitch,
+  PulseRecord,
   Seconds,
   Segment,
   StackChange,
@@ -327,6 +328,10 @@ export class VoiceRun {
   readonly weights: WeightChange[] = [];
   /** `count` timeline (pushed at the simulation time; `setCount`). */
   readonly counts: StackChange[] = [];
+  /** Pulse records (revision 9), pushed at the simulation time, so sorted; never mutated. */
+  readonly pulse: PulseRecord[] = [];
+  /** Moment index of the pulse driving this voice, or −1 (compile.ts `onPulseTick`). */
+  pulseOwner = -1;
 
   constructor(
     readonly index: number,

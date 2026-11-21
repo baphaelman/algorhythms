@@ -47,6 +47,8 @@ export const enum Purpose {
   GenId = 14,
   /** suggestNext(): choices among next moves. */
   Suggest = 15,
+  /** Pulse with `mode: 'random'`: which voice a step hits. */
+  PulsePick = 16,
 }
 
 // ---------------------------------------------------------------------------------------------
