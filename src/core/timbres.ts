@@ -45,7 +45,7 @@ const WOBBLE_HARMONICS = [1, 0.05, 0.16, 0.02, 0.06, 0, 0.025];
 
 /** The six M2 presets plus `wobble`, by name. */
 export const BUILTIN_TIMBRES: Record<string, Timbre> = {
-  /** Pure sine. Converged voices lock into one steady tone (see `wobble` for the beating kind). */
+  /** Pure sine. Voices meeting mid-glide lock into one steady tone. */
   sine: {
     harmonics: [1],
     stretch: 0,
@@ -112,10 +112,8 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
   },
   /**
-   * Wobble: converged voices do not lock but keep beating against each other, a slowly clumping
-   * shimmer (what every unison did before the unison lock). Soft glass-like partials, about
-   * 3 cents of detune per voice, a gentle bloom on arrival and a very slow drift that keeps the
-   * beat pattern changing.
+   * Wobble: soft glass-like partials, a gentle bloom on arrival and a very slow drift. Its
+   * `wobble` (unison beating) is ignored since revision 8; the preset keeps its name and sound.
    */
   wobble: {
     harmonics: WOBBLE_HARMONICS,

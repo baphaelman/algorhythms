@@ -1,7 +1,8 @@
 /**
  * Unison lock (docs/build-log.md, "Unison lock"; PLAN.md §8.4). Voices that converge on one pitch
  * lock into one steady tone at the level of the same voices spread out (incoherent), and part with
- * unrelated phases; a `wobble` timbre keeps the old beating.
+ * unrelated phases. Revision 8 removed `wobble` (the beating kind); the lock still serves glides that
+ * meet or cross and the 0.1 s hand-over of a merge.
  *
  * Bands (levels relative to one voice alone, or to the incoherent sum of the voices rendered one
  * at a time; deterministic id sets):
@@ -12,8 +13,7 @@
  * - only glides into or out of a unison are warped; crossings, passing glides and intervals of a
  *   semitone sound as with no lock (≤ 1 dB, ≤ 1 cent); a merging glide bends by ≤ 65 cents;
  * - merge: every 0.25 s window within [0.7, 1.3]; the survivor bends by under 8 cents;
- * - a seek into a held unison: level within ±3 % of straight playback, and no click;
- * - `wobble` voices keep beating (envelope variation > 0.2).
+ * - a seek into a held unison: level within ±3 % of straight playback, and no click.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -21,7 +21,6 @@ import { DRY_MIX, makeScore, unisonScore, type VoiceSpec } from '../../src/audio
 import { renderOffline } from '../../src/audio/offline';
 import { flatten } from '../../src/core/flat';
 import { evalFlatSegment, SEG_STRIDE, SEG_T0 } from '../../src/core/segment';
-import { BUILTIN_TIMBRES } from '../../src/core/timbres';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { computeUnisonWarps, lastAtOrBefore, VoiceData } from '../../src/dsp/voice';
 import { clickScore, Driver, RATE, render, stereoRms } from './helpers';
@@ -81,13 +80,6 @@ describe('held unison', () => {
     },
     60_000,
   );
-
-  it('wobble voices keep beating', () => {
-    const out = render(unisonScore(8, { timbre: 'wobble' }), DRY_MIX, 12);
-    const cv = envelopeCv(out, HOLD_FROM, 11.5);
-    console.info(`wobble-8 envelope CV ${cv.toFixed(3)}`);
-    expect(cv).toBeGreaterThan(0.2);
-  });
 });
 
 /**
@@ -320,8 +312,7 @@ describe('unison warp and capture', () => {
   });
 
   it('crossings, passing glides and distinct intervals sound as with no lock at all', () => {
-    // The twin timbre has the same detune (wobble 2.75 = the default detune) and never locks.
-    const timbres = { free: { ...BUILTIN_TIMBRES.sine, wobble: 2.75 } };
+    // The reference renders the same score with the lock off.
     const cases: Record<string, VoiceSpec[]> = {
       crossing: [
         { start: 50, moves: [{ at: 1, to: 62, len: 1 }] },
@@ -346,7 +337,7 @@ describe('unison warp and capture', () => {
           5,
         );
       const a = { score: score('sine'), mix: DRY_MIX, sampleRate: RATE };
-      const b = { score: score('free'), mix: DRY_MIX, sampleRate: RATE, timbres };
+      const b = { score: score('sine'), mix: DRY_MIX, sampleRate: RATE, unlocked: true };
       const ma = renderOffline(a, frames);
       const mb = renderOffline(b, frames);
       let level = 0;

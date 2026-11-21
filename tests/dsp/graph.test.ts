@@ -133,21 +133,6 @@ describe('detune and phase (§8.4)', () => {
     }
   });
 
-  it('wobble scales the base detune to a mean |detune| of `wobble` cents', () => {
-    const base = Array.from({ length: 32 }, (_, i) => graph.voiceAt(i).detuneCents(0));
-    // 2.75 cents is the old always-on detune exactly.
-    for (let i = 0; i < 32; i++) expect(graph.voiceAt(i).detuneCents(0, 2.75)).toBe(base[i]);
-    for (const w of [1, 3, 10]) {
-      const cents = base.map((_, i) => graph.voiceAt(i).detuneCents(0, w));
-      cents.forEach((c, i) => {
-        expect(Math.sign(c)).toBe(Math.sign(base[i]));
-        expect(c / base[i]).toBeCloseTo(w / 2.75, 12);
-      });
-    }
-    // Small wobbles scale the 1-cent floor too.
-    expect(Math.abs(graph.voiceAt(0).detuneCents(-100, 0.55))).toBeCloseTo(0.2, 12);
-  });
-
   it('seeds the start phase from the voice id and piece seed', () => {
     const a = new Graph(RATE);
     a.load(flatten(makeScore([{ id: 'x', start: 60 }], 1, 1)), DRY_MIX);

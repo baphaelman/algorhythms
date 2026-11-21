@@ -14,7 +14,7 @@
  */
 
 import { zipSync } from 'fflate';
-import { segmentIndexAt } from '../core/query';
+import { segmentIndexAt, weightTargetAt } from '../core/query';
 import { evalSegment } from '../core/segment';
 import type { CompiledScore, CompiledVoice, Life, Segment } from '../core/types';
 import { SmfTrack, writeSmf } from './smf';
@@ -37,7 +37,10 @@ export interface MidiExportOptions {
   restrikeOnArrival?: boolean;
   /** Write life and level gain as CC11 (smootherstep life fades, as the sound engine plays them). Default false. */
   cc11?: boolean;
-  /** Note-on velocity, 1..127; default 100. */
+  /**
+   * Note-on velocity of a weight-1 line, 1..127; default 100. A line of weight w strikes at
+   * √w times this (revision 8), all scaled down together if the heaviest would pass 127.
+   */
   velocity?: number;
   /** Minimum pitch-bend events per second of a glide; default 250 (never below 200). */
   bendRate?: number;
@@ -141,7 +144,8 @@ interface PitchCtx {
   tps: number;
   range: number;
   shift: number;
-  velocity: number;
+  /** Note-on velocity of `voice` for a note starting at t seconds. */
+  velocity: (voice: CompiledVoice, t: number) => number;
   bendRate: number;
   restrike: boolean;
 }
@@ -178,7 +182,7 @@ function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
     note = clampNote(rounded);
     pinned = note !== rounded;
     bend(tick, p - note, true); // bend first, then the note, at the same tick
-    ev.push({ tick, kind: ON, a: note, b: c.velocity });
+    ev.push({ tick, kind: ON, a: note, b: c.velocity(voice, Math.max(tick / c.tps, lifeBorn)) });
   };
   const endNote = (tick: number): void => {
     ev.push({ tick, kind: OFF, a: note, b: 0 });
@@ -307,11 +311,41 @@ function noteOnlyEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
       const off = Math.min(tk(last.t1), tEnd);
       if (off <= on) continue;
       const n = clampNote(Math.round(first.p0));
-      ev.push({ tick: on, kind: ON, a: n, b: c.velocity });
+      ev.push({ tick: on, kind: ON, a: n, b: c.velocity(voice, first.t0) });
       ev.push({ tick: off, kind: OFF, a: n, b: 0 });
     }
   }
   return ev;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Velocity: line weight
+// ---------------------------------------------------------------------------------------------
+
+/** Largest weight anywhere in the score, at least 1. */
+function weightPeak(score: CompiledScore): number {
+  let peak = 1;
+  for (const v of score.voices) for (const c of v.weight ?? []) if (c.w > peak) peak = c.w;
+  return peak;
+}
+
+/**
+ * Note-on velocity by line weight (revision 8, integrator: velocity follows √weight): `base`·√w at
+ * the weight the note settles on, where a weight-1 line strikes at `base`. If the heaviest line in
+ * the score would pass 127, every velocity scales down by the same factor, so ratios hold. 1..127.
+ */
+export function weightVelocity(
+  score: CompiledScore,
+  base: number,
+  slack = 0,
+): (voice: CompiledVoice, t: number) => number {
+  const scale = Math.min(1, 127 / (base * Math.sqrt(weightPeak(score))));
+  // `slack` (half a tick): a note-on rounded to a tick a hair before the join that sets it.
+  return (voice, t) => {
+    if (!voice.weight || voice.weight.length === 0) return Math.max(1, Math.round(base * scale));
+    const w = weightTargetAt(voice, t + slack);
+    return Math.max(1, Math.min(127, Math.round(base * scale * Math.sqrt(w))));
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -486,7 +520,7 @@ function buildFile(
     tps,
     range: o.range,
     shift: o.notesOnly ? 0 : shift,
-    velocity: o.velocity,
+    velocity: weightVelocity(score, o.velocity, 0.5 / tps),
     bendRate: o.bendRate,
     restrike: o.restrikeOnArrival,
   };

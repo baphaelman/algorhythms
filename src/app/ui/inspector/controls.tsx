@@ -617,3 +617,114 @@ export function TextField({
     </div>
   );
 }
+
+/**
+ * A compact note-weight box for a note row (revision 8): "×" then the weight. Type and press
+ * Enter (or leave) to commit; ↑/↓ step by 0.25 (Shift: 1), one entry per press. Drag the "×"
+ * sideways to scrub: one undo entry per drag.
+ */
+export function WeightBox({
+  value,
+  set,
+  min,
+  max,
+  label,
+  testId,
+}: {
+  value: number;
+  set: Setter<number>;
+  min: number;
+  max: number;
+  label: string;
+  testId?: string;
+}) {
+  const id = useId();
+  const shown = formatNum(value, 2);
+  const [text, setText] = useState(shown);
+  // Typed but not committed: only then does a value change (undo) leave the text alone.
+  const dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current) setText(shown);
+  }, [shown]);
+  const clamp = (v: number): number => Math.min(max, Math.max(min, Math.round(v * 100) / 100));
+  const submit = (): void => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    const v = parseNum(text, min, max);
+    if (v === null) {
+      setText(shown);
+      return;
+    }
+    if (Math.abs(v - value) > 1e-9) set.commit(v);
+    setText(formatNum(v, 2));
+  };
+  const drag = useRef<{ x: number; v0: number; moved: boolean } | null>(null);
+  return (
+    <span className="weight-box">
+      <label
+        htmlFor={id}
+        className="scrub-label"
+        title="Weight: loudness, as this many lines. Drag sideways to change"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          drag.current = { x: e.clientX, v0: value, moved: false };
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          const dx = e.clientX - d.x;
+          if (!d.moved && Math.abs(dx) < 3) return;
+          d.moved = true;
+          set.drag(clamp(d.v0 + Math.round(dx / 6) * (e.shiftKey ? 1 : 0.25)));
+        }}
+        onPointerUp={(e) => {
+          const d = drag.current;
+          drag.current = null;
+          if (!d) return;
+          if (d.moved) set.end();
+          else document.getElementById(id)?.focus();
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }}
+        onPointerCancel={() => {
+          if (drag.current?.moved) set.end(true);
+          drag.current = null;
+        }}
+      >
+        ×
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        spellCheck={false}
+        aria-label={label}
+        value={text}
+        data-testid={testId}
+        onBlur={submit}
+        onChange={(e) => {
+          dirty.current = true;
+          setText(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submit();
+          } else if (e.key === 'Escape') {
+            dirty.current = false;
+            setText(shown);
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const base = parseNum(text, min, max) ?? value;
+            const v = clamp(base + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 0.25));
+            dirty.current = false;
+            setText(formatNum(v, 2));
+            if (Math.abs(v - value) > 1e-9) set.commit(v);
+          }
+        }}
+      />
+    </span>
+  );
+}

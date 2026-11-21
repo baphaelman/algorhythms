@@ -10,7 +10,16 @@
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
-import { activeAt, chordAt, keyAt, motionAt, pitchAt, sample, segmentIndexAt } from '../core/query';
+import {
+  activeAt,
+  chordAt,
+  keyAt,
+  motionAt,
+  pitchAt,
+  sample,
+  segmentIndexAt,
+  weightAt,
+} from '../core/query';
 import { hzOf } from '../core/tuning';
 import type {
   CompiledScore,
@@ -39,8 +48,16 @@ const A_PITCHES = [21, 33, 45, 57, 69, 81, 93, 105];
 const DOT_R = 2.6;
 /** Opacity factor of unselected lines while a selection is highlighted. */
 export const DIM_ALPHA = 0.3;
-/** Line width of highlighted segments, px (normal lines are 1.5). */
+/** Line width of weight-1 lines, px. */
+export const LINE_WIDTH = 1.5;
+/** Line width of highlighted weight-1 segments, px. */
 export const HIGHLIGHT_WIDTH = 2.75;
+/** Thinnest and thickest drawn weights (line width ∝ √weight between them). */
+const WEIGHT_MIN = 0.25;
+const WEIGHT_MAX = 16;
+/** A weight ramp is drawn in steps of about this many px (at most RAMP_STEPS_MAX steps). */
+const RAMP_STEP_PX = 6;
+const RAMP_STEPS_MAX = 16;
 const RING_R = 6.5;
 
 /** `mm:ss.s` */
@@ -239,6 +256,65 @@ function drawMarkers(
   if ('letterSpacing' in g) ls.letterSpacing = '0px';
 }
 
+/**
+ * Stroke width of a line of weight `w` (revision 8, "Distinct notes": weight drawn as thickness):
+ * `base`·√w, so area tracks loudness power; weight 1 is `base`, 8 about 2.8×. Clamped to
+ * [WEIGHT_MIN, WEIGHT_MAX].
+ */
+export function weightWidth(w: number, base: number): number {
+  if (w === 1) return base;
+  const c = w > WEIGHT_MAX ? WEIGHT_MAX : w > WEIGHT_MIN ? w : WEIGHT_MIN;
+  return base * Math.sqrt(c);
+}
+
+/**
+ * Strokes voice `v` over [a, b] at `base` width scaled by its weight: one path per run of constant
+ * weight; a weight ramp in a few steps.
+ */
+function traceWeighted(
+  g: CanvasRenderingContext2D,
+  view: View,
+  v: CompiledVoice,
+  a: Seconds,
+  b: Seconds,
+  base: number,
+  maxStep: number,
+  tolerance: number,
+): void {
+  const W = v.weight;
+  if (!W || W.length === 0) {
+    g.lineWidth = base;
+    trace(g, view, sample(v, a, b, maxStep, tolerance));
+    return;
+  }
+  // Breakpoints inside (a, b): every change's start and ramp end.
+  const cuts = [a];
+  for (const c of W) {
+    if (c.t > a && c.t < b) cuts.push(c.t);
+    const e = c.t + c.over;
+    if (c.over > 0 && e > a && e < b) cuts.push(e);
+  }
+  cuts.push(b);
+  cuts.sort((x, y) => x - y);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const t0 = cuts[i];
+    const t1 = cuts[i + 1];
+    if (!(t1 > t0)) continue;
+    const w0 = weightAt(v, t0);
+    const w1 = weightAt(v, t1);
+    const n =
+      Math.abs(w1 - w0) < 1e-9
+        ? 1
+        : Math.min(RAMP_STEPS_MAX, Math.max(1, Math.ceil(((t1 - t0) * view.pps) / RAMP_STEP_PX)));
+    for (let k = 0; k < n; k++) {
+      const u0 = t0 + ((t1 - t0) * k) / n;
+      const u1 = t0 + ((t1 - t0) * (k + 1)) / n;
+      g.lineWidth = weightWidth(weightAt(v, (u0 + u1) / 2), base);
+      trace(g, view, sample(v, u0, u1, maxStep, tolerance));
+    }
+  }
+}
+
 function drawLines(
   g: CanvasRenderingContext2D,
   compiled: CompiledScore,
@@ -250,7 +326,7 @@ function drawLines(
   const maxStep = GLIDE_STEP_PX / pps;
   const tolerance = 0.35 / pxPerSemitone; // under a third of a pixel of chord error
   const ghost = style.futureOpacity > 0.01;
-  g.lineWidth = 1.5;
+  g.lineWidth = LINE_WIDTH;
   g.lineJoin = 'round';
   g.lineCap = 'round';
 
@@ -269,16 +345,15 @@ function drawLines(
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
     if (past) {
       g.globalAlpha = dim;
-      trace(g, view, sample(v, tL, Math.min(t, tR), maxStep, tolerance));
+      traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, maxStep, tolerance);
     }
     if (future) {
       g.globalAlpha = style.futureOpacity * dim;
-      trace(g, view, sample(v, Math.max(t, tL), tR, maxStep, tolerance));
+      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, maxStep, tolerance);
     }
   }
   if (hl) {
     // Selected segments on top, thicker; the future part stays visible even with no ghost.
-    g.lineWidth = HIGHLIGHT_WIDTH;
     const futureA = Math.max(style.futureOpacity, 0.6);
     for (const v of compiled.voices) {
       if (v.segments.length === 0) continue;
@@ -286,11 +361,11 @@ function drawLines(
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) {
           g.globalAlpha = 1;
-          trace(g, view, sample(v, a, Math.min(t, b), maxStep, tolerance));
+          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, maxStep, tolerance);
         }
         if (b > t) {
           g.globalAlpha = futureA;
-          trace(g, view, sample(v, Math.max(t, a), b, maxStep, tolerance));
+          traceWeighted(g, view, v, Math.max(t, a), b, HIGHLIGHT_WIDTH, maxStep, tolerance);
         }
       });
     }

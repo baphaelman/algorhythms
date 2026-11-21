@@ -613,6 +613,31 @@
   cursor: pointer;
 }
 
+.insp-note-list .weight-box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--rule);
+  font: 11px var(--f-mono);
+}
+
+.insp-note-list .weight-box .scrub-label {
+  padding: 0 2px 0 6px;
+  color: var(--ink-2);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.insp-note-list .weight-box input {
+  width: 3.4em;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+
 .insp-note-list .step-move:hover {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }

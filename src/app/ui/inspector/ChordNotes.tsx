@@ -3,16 +3,27 @@
  * voice low → high (by where the voices were heading) with ▲/▼ (one scale step in the key). The
  * first per-note change freezes the chord (one undo entry); then a "Frozen" badge, Unfreeze and
  * "Keep lines in order" (off: `byVoice`) show, and the count is locked until Unfreeze. The score's target dots (ArrivalDots) edit the same notes.
+ * Each row also edits its note's weight (revision 8): an `overrides[].weight` on the line resting
+ * there; editing it does not freeze the chord.
  */
 
 import { useMemo } from 'react';
 import { activeAt } from '../../../core/query';
-import type { ChordMoment, Piece } from '../../../core/types';
+import type { ChordMoment, Moment, Piece } from '../../../core/types';
 import { noteLabel } from '../../../render';
 import { moveChordNote, unfreezeChord, updateMoment } from '../../editor/actions';
 import { chordKeepsOrder, chordNotes, chordOrderPatch } from '../../editor/chord-notes';
+import type { MomentPatch } from '../../editor/ops';
+import {
+  WEIGHT_MAX,
+  WEIGHT_MIN,
+  noteLines,
+  weightForNote,
+  withOverride,
+  type NoteLine,
+} from '../../editor/overrides';
 import { usePlayer } from '../../store';
-import { CheckField, NumberField, fieldSetter } from './controls';
+import { CheckField, NumberField, WeightBox, fieldSetter, type Setter } from './controls';
 import { keyAt } from './fields';
 
 /** The chord's notes for the current piece and score (memoised: freezing recompiles). */
@@ -23,6 +34,18 @@ export function useChordNotes(m: ChordMoment | null): number[] | null {
   return useMemo(() => (m ? chordNotes(piece, compiled, m) : null), [piece, compiled, m]);
 }
 
+/** A setter for the weight of the note on `line`: one undo entry per commit or drag. */
+function weightSetter(id: string, line: NoteLine): Setter<number> {
+  return fieldSetter<number>(
+    id,
+    'Edit note weight',
+    (mm: Moment, w) =>
+      ({
+        overrides: withOverride(mm.overrides, line.voice, { weight: weightForNote(line, w) }),
+      }) as MomentPatch,
+  );
+}
+
 export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
   const compiled = usePlayer((s) => s.compiled);
   const notes = useChordNotes(m);
@@ -31,6 +54,7 @@ export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
   const pool = piece.voices.length;
   const shown = m.count ?? notes?.length ?? Math.max(1, activeAt(compiled, m.at).length);
   const count = fieldSetter<number>(m.id, 'Edit note count', (_x, n) => ({ count: n }));
+  const lines = useMemo(() => (notes ? noteLines(compiled, m, notes) : []), [compiled, m, notes]);
 
   return (
     <fieldset className="insp-group insp-chord-notes" data-testid="insp-chord-notes">
@@ -80,9 +104,20 @@ export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
         <ol className="insp-note-list" data-testid="insp-chord-note-list">
           {notes.map((p, i) => {
             const name = noteLabel(p, key);
+            const line = lines[i];
             return (
               <li key={i} data-testid="chord-note" data-index={i} data-pitch={p}>
                 <span className="note-name">{name}</span>
+                {line && (
+                  <WeightBox
+                    value={line.weight}
+                    set={weightSetter(m.id, line)}
+                    min={WEIGHT_MIN + line.joined}
+                    max={WEIGHT_MAX}
+                    label={`Weight of ${name}`}
+                    testId="chord-note-weight"
+                  />
+                )}
                 <button
                   type="button"
                   className="step-move"

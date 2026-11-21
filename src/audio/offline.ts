@@ -19,6 +19,8 @@ export interface RenderInput {
   /** Piece timbres (Piece.timbres); built-ins are always available. */
   timbres?: Record<string, Timbre>;
   sampleRate: number;
+  /** Turn the unison lock off (tests: the no-lock reference). */
+  unlocked?: boolean;
 }
 
 function isFlat(score: CompiledScore | FlatScore): score is FlatScore {
@@ -30,6 +32,7 @@ export function createLoadedGraph(input: RenderInput): Graph {
   const flat = isFlat(input.score) ? input.score : flatten(input.score);
   const graph = new Graph(input.sampleRate);
   graph.load(flat, input.mix);
+  if (input.unlocked) graph.setLockable(false);
   for (const name of flat.timbreNames) {
     graph.setTables(name, tablesFor(resolveTimbre(name, input.timbres), input.sampleRate), 0);
   }

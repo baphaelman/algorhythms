@@ -102,8 +102,6 @@ const PAN_PITCH_MAX = 0.8;
 const DETUNE_MIN = 1.5;
 const DETUNE_RANGE = 2.5;
 const DETUNE_FLOOR = 1;
-/** Mean base detune magnitude (DETUNE_MIN + DETUNE_RANGE / 2): `wobble` scales the base by w/this. */
-const INV_DETUNE_MEAN = 1 / (DETUNE_MIN + DETUNE_RANGE / 2);
 /** Hash salts. */
 const SALT_DETUNE = 0x0de7;
 const SALT_SPREAD = 0x5bd1;
@@ -505,6 +503,12 @@ export class VoiceContext {
   readonly phaseBuf = new Float64Array(CONTROL_PERIOD);
   readonly mixBuf = new Float64Array(CONTROL_PERIOD);
 
+  /**
+   * 1: the unison lock is on (always, in the app). 0 turns it off for every voice: only the tests'
+   * no-lock reference uses it (revision 8 removed `wobble`, the per-timbre way to turn it off).
+   */
+  lockable = 1;
+
   // Unison lock, by pool index. Written by each main voice at the end of its block (g*In), read
   // by the graph's group pass, which writes the per-block controls (g*Out) the voices then read.
   /** 1 when the voice synthesised (was alive with tables) at its last tick. */
@@ -522,7 +526,7 @@ export class VoiceContext {
   readonly gInc = new Float64Array(DSP_MAX_VOICES);
   /** Accumulated phase pull θ (cycles, wrapped to [−0.5, 0.5)). */
   readonly gTheta = new Float64Array(DSP_MAX_VOICES);
-  /** Lockability 0..1 (1 when the timbre's wobble is 0). */
+  /** Lockability 0..1 (VoiceContext.lockable). */
   readonly gLock = new Float64Array(DSP_MAX_VOICES).fill(1);
   /** 1 while the voice is inside a unison warp zone (see warpOffset). */
   readonly gWarp = new Float64Array(DSP_MAX_VOICES);
@@ -718,13 +722,12 @@ export class Voice {
   }
 
   /**
-   * Detune in cents for a timbre's spread and wobble, before any unison lock fades it (§8.4:
-   * alternating sign; never below 1 cent, or below 1 cent × wobble / 2.75 for small wobbles). Tests.
+   * Detune in cents for a timbre's spread, before any unison lock fades it (§8.4: alternating
+   * sign; never below 1 cent). Tests.
    */
-  detuneCents(spread: number, wobble = 0): number {
-    const scale = wobble > 0 ? wobble * INV_DETUNE_MEAN : 1;
-    const m = this.st[S_DET_MAG] * scale + spread * this.st[S_DET_U];
-    return this.st[S_DET_SIGN] * Math.max(m, DETUNE_FLOOR * Math.min(1, scale));
+  detuneCents(spread: number): number {
+    const m = this.st[S_DET_MAG] + spread * this.st[S_DET_U];
+    return this.st[S_DET_SIGN] * Math.max(m, DETUNE_FLOOR);
   }
 
   /** Unison lock amount λ (0..1) in effect for the last block (tests). */
@@ -1092,7 +1095,7 @@ export class Voice {
             );
             motion = segmentMotion(t0, t1, s[so + SEG_P0], m0, t, ct1, cp1);
             // Unison warp (see warpOffset; written out here, not called: render's inlining
-            // budget). Faded by both voices' lockability, so `wobble` timbres glide as written.
+            // budget). Faded by both voices' lockability (VoiceContext.lockable).
             const wia = d.warpInA[si];
             const woa = d.warpOutA[si];
             if (wia === wia || woa === woa) {
@@ -1111,8 +1114,7 @@ export class Voice {
                   if (st[S_WARP] !== 1) st[S_WARP] = e === 0 ? 1 : 2;
                 }
               }
-              const wl = (A.wobble > 0 ? 0 : xa) + (B.wobble > 0 ? 0 : x);
-              p += off * wl;
+              p += off * ctx.lockable;
             }
           }
 
@@ -1253,16 +1255,11 @@ export class Voice {
           if (slewR > 0 && sp === sp) p += (sp - p) * slewR;
           st[S_PITCH] = p;
 
-          // Detune (§8.4), scaled by the timbre's wobble when it has one. Interpolating the scale
-          // and the lockability (not the wobble itself) keeps timbre crossfades continuous.
-          const wA = A.wobble;
-          const wB = B.wobble;
-          const scale =
-            (wA > 0 ? wA * INV_DETUNE_MEAN : 1) * xa + (wB > 0 ? wB * INV_DETUNE_MEAN : 1) * x;
-          st[S_LOCKABLE] = (wA > 0 ? 0 : xa) + (wB > 0 ? 0 : x);
+          // Detune (§8.4).
+          st[S_LOCKABLE] = ctx.lockable;
           const spread = A.detuneSpread * xa + B.detuneSpread * x;
-          const mag = st[S_DET_MAG] * scale + spread * st[S_DET_U];
-          const detune = st[S_DET_SIGN] * Math.max(mag, DETUNE_FLOOR * Math.min(1, scale));
+          const mag = st[S_DET_MAG] + spread * st[S_DET_U];
+          const detune = st[S_DET_SIGN] * Math.max(mag, DETUNE_FLOOR);
 
           // Frequency and mip position: log2 f is linear in pitch, so no logarithm is needed.
           // Within a group, the correction moves the voice to the group's (stillness-weighted)

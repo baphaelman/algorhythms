@@ -37,19 +37,29 @@ export function overridesOf(m: Moment, voiceCount: number): Map<number, VoiceOve
   return out;
 }
 
+/** True if `o` edits the path (pitch or arrival); a weight alone does not (M4.5-29b). */
+function editsPath(o: VoiceOverride | undefined): boolean {
+  return o !== undefined && (o.pitch !== undefined || o.end !== undefined);
+}
+
 /**
  * Applies the pitch overrides to `plan` in place: an intent of that voice gets the pitch; a
- * targeted voice without one gets a move. The plan becomes unordered (hand edits may cross), and
- * an overridden dying voice does not follow its survivor.
+ * targeted voice without one gets a move. With any pitch or arrival override, the plan becomes
+ * unordered (hand edits may cross), and an overridden dying voice does not follow its survivor.
+ * Weight-only overrides leave the plan alone.
  */
 export function applyOverridePitches(
   plan: MomentPlan,
   ov: ReadonlyMap<number, VoiceOverride>,
   targeted: readonly number[],
 ): void {
+  let any = false;
+  for (const o of ov.values()) any ||= editsPath(o);
+  if (!any) return;
   plan.ordered = false;
   // A hand-edited dying voice keeps its own path: it does not follow its survivor (M4.5-17).
-  for (const it of plan.intents) if (it.kind === IntentKind.Death && ov.has(it.voice)) it.into = -1;
+  for (const it of plan.intents)
+    if (it.kind === IntentKind.Death && editsPath(ov.get(it.voice))) it.into = -1;
   for (const [v, o] of ov) {
     if (o.pitch === undefined) continue;
     let found = false;
