@@ -1,11 +1,13 @@
 /**
  * A moment's per-voice overrides (§11.3 "Every dot is draggable", revision 6): one row per voice
- * (its note and/or arrival, written by dragging a dot), each with ×, and Clear for all.
+ * (its note and/or arrival, written by dragging a dot, and its weight), each with ×, and Clear for
+ * all.
  */
 
 import type { Key, Moment, Piece } from '../../../core/types';
 import { noteLabel } from '../../../render';
 import { clearOverride, clearOverrides } from '../../editor/actions';
+import { formatNum } from './fields';
 
 export function Overrides({ m, piece, keyAt }: { m: Moment; piece: Piece; keyAt: Key }) {
   const list = m.overrides ?? [];
@@ -30,6 +32,7 @@ export function Overrides({ m, piece, keyAt }: { m: Moment; piece: Piece; keyAt:
           const parts: string[] = [];
           if (o.pitch !== undefined) parts.push(noteLabel(o.pitch, keyAt));
           if (o.end !== undefined) parts.push(`arrives +${o.end.toFixed(2)} s`);
+          if (o.weight !== undefined) parts.push(`weight ${formatNum(o.weight, 2)}`);
           return (
             <li key={o.voice} data-testid="insp-override" data-voice={o.voice}>
               <span className="note-name">

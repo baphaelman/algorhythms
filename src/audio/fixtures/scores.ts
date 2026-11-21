@@ -410,8 +410,6 @@ export const FIXTURE_NAMES = [
   'unison-8',
   'unison-split-8',
   'unison-chord',
-  'wobble-8',
-  'wobble-phrase',
   'merge',
   'long-glide',
   'stress',
@@ -437,10 +435,6 @@ export function fixtureScore(name: FixtureName): CompiledScore {
       return unisonSplitScore(8);
     case 'unison-chord':
       return unisonChordScore();
-    case 'wobble-8':
-      return unisonScore(8, { timbre: 'wobble' });
-    case 'wobble-phrase':
-      return unisonChordScore('wobble');
     case 'merge':
       return mergeScore();
     case 'long-glide':

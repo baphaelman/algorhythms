@@ -426,6 +426,11 @@ export class Graph {
     this.stemVoice = voiceIndex;
   }
 
+  /** Turns the unison lock off for every voice (tests' no-lock reference only). */
+  setLockable(on: boolean): void {
+    this.ctx.lockable = on ? 1 : 0;
+  }
+
   /** Records the limiter gain g_L, one value per output frame from now on (null stops). */
   setLimiterCapture(buffer: Float32Array | null): void {
     this.limiter.capture = buffer;
@@ -755,7 +760,7 @@ export class Graph {
    * The unison-lock group pass (once per block, before the voices render). From each voice's state
    * at the end of the last block it computes, per voice j:
    * - pair weights w(j, l): 1 when the score pitches are within LOCK_FULL cents, 0 beyond
-   *   LOCK_EDGE, smoothstep between, times both voices' lockability (timbre wobble = 0);
+   *   LOCK_EDGE, smoothstep between, times both voices' lockability (VoiceContext.lockable);
    * - the lock amount λ_j = max over l of w(j, l), smoothed (fast up, slower down);
    * - a pitch correction λ_j·(m̄ − m_j) toward the group's mean modulated pitch m̄ (detune, drift
    *   and vibrato included), weighted by amplitude and settled stillness (STILL_SETTLE);
@@ -822,7 +827,7 @@ export class Graph {
           d.gain *
           d.probeLife *
           Math.exp(-(pp - LOUDNESS_PITCH) * LOUDNESS_SLOPE);
-        Lk[i] = this.slots[slot].wobble > 0 ? 0 : 1;
+        Lk[i] = ctx.lockable;
         INC[i] = 0;
         this.gTh[i] = 0;
         this.gV[i] = 0;

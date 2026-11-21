@@ -486,7 +486,7 @@ export interface Timbre {
   brightness: { tilt: number; track: number };
   /**
    * Extra detune spread across voices, in cents; can't take any voice below 1 cent (§8.4). Voices
-   * that converge on one pitch still lock into one steady tone (unless `wobble` > 0).
+   * that meet on one pitch mid-glide still lock into one steady tone.
    */
   detuneSpread: number;
   /** Amount by which motion raises the level: gain · (1 + accent · motion). */
@@ -511,9 +511,8 @@ export interface Timbre {
    */
   drift?: { cents: number; rate: number; amp?: number };
   /**
-   * Unison wobble, in cents (default 0). At 0, voices that converge on one pitch phase-lock into
-   * one steady tone. Above 0, they never lock and keep beating: each voice is detuned by about
-   * `wobble` cents (0.55–1.45 × wobble, alternating sign), plus `detuneSpread`.
+   * Unison wobble, in cents. Revision 8: read and ignored (`info wobble-ignored`), since lines
+   * never rest on one pitch; the engine no longer reads it.
    */
   wobble?: number;
 }

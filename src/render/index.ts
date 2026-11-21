@@ -34,9 +34,11 @@ export {
   DIM_ALPHA,
   GLIDE_STEP_PX,
   HIGHLIGHT_WIDTH,
+  LINE_WIDTH,
   drawScore,
   formatTime,
   keyName,
+  weightWidth,
   type Ctx2D,
 } from './draw';
 export { HOVER_RADIUS_PX, hoverLabel, nearestLine, noteLabel, type LineHit } from './hover';
