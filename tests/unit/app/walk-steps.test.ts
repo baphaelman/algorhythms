@@ -5,6 +5,7 @@ import {
   sameStep,
   scaleNeighbour,
   stepsOf,
+  walkAt,
   withNote,
 } from '../../../src/app/editor/walk-steps';
 import { compile } from '../../../src/core/compiler/compile';
@@ -108,5 +109,17 @@ describe('movedFixed', () => {
     expect(sameStep(a, { ...a })).toBe(true);
     expect(sameStep(a, { ...a, tick: 2 })).toBe(false);
     expect(sameStep(a, null)).toBe(false);
+  });
+});
+
+describe('walkAt with a { part } target', () => {
+  it('drives only voices whose part matches', () => {
+    const p = base([{ ...walk, target: { part: 'lead' } } as MomentInput]);
+    p.voices[0] = { ...p.voices[0], part: 'lead' };
+    p.voices[1] = { ...p.voices[1], part: 'pad' };
+    const s = compile(p);
+    expect(walkAt(p, s, 0, 5)?.id).toBe('w');
+    expect(walkAt(p, s, 1, 5)).toBeNull();
+    expect(walkAt(p, s, 2, 5)).toBeNull(); // default part ''
   });
 });

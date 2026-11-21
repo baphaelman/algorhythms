@@ -1406,3 +1406,6 @@ PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schem
 **Merged main** (0a473e7: M4.5-38/39). The only conflict was the build log; both sides are kept.
 **Sweeps:** `PROP_RUNS=1000` over `tests/property/core` with the budget lifted locally only. First set: 3 of 4 runs completed, and the fourth hung in a sync loop (seed unknown, since random seeds aren't printed; not reproduced). Second set, with logged seeds 485958476, 460949692, −320129613, −75233451: 3 green. The failing one (chord-count "spaced pieces" −320129613/300) fails identically on main's core, and so do two earlier crossings seeds (−883975252/819, −440599787/662). None comes from parts; all are left open.
 **Gates:** lint and `pnpm test --maxWorkers=2` (1377/1377) pass, and so does `pnpm test:perf` (5/5, load ~9). Typecheck fails only on `walk-steps.ts`, as above.
+
+**R9-1 app fix:** `walk-steps.ts` `targets()` handles `{ part }` (voices whose `partOf` equals it); test `walkAt with a { part } target` in `tests/unit/app/walk-steps.test.ts`.
+Inspector `targetMode` has no part mode yet (R9-6): a `{ part }` target falls through to the `rank` mode with no range shown. Typecheck is clean.

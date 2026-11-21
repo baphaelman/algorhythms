@@ -4,6 +4,7 @@
  */
 
 import { freezeWalk, walkTickTime } from '../../core/moments/walk';
+import { partOf } from '../../core/parts';
 import { activeAt, keyAt, pitchAt, segmentAt } from '../../core/query';
 import { snapToScale, stepByScale } from '../../core/scales';
 import type {
@@ -133,6 +134,7 @@ function targets(
   const sel = w.target;
   if (sel === undefined || sel === 'all') return true;
   if ('voices' in sel) return sel.voices.includes(piece.voices[v]?.id ?? '');
+  if ('part' in sel) return partOf(piece.voices[v]) === sel.part;
   const active = activeAt(score, t)
     .map((i) => ({ i, p: pitchAt(score.voices[i], t) ?? 0 }))
     .sort((a, b) => a.p - b.p || a.i - b.i);
