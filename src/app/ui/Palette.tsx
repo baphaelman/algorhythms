@@ -75,8 +75,9 @@ export function Palette() {
               cancelHover();
               startPaletteDrag(ev.nativeEvent, e.type);
             }}
-            onPointerEnter={() => {
-              if (!off) hover(e.type);
+            onPointerEnter={(ev) => {
+              // Mouse only: a finger's tap adds (§11.3b, nothing depends on hover).
+              if (!off && ev.pointerType === 'mouse') hover(e.type);
             }}
             onDragEnd={endPaletteDrag}
             onPointerLeave={cancelHover}

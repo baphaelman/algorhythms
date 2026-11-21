@@ -49,6 +49,7 @@ import { dotSnaps, ofVoice, snapTime, type SnapSet } from '../editor/snap';
 import { selectStep, useStepSelection } from '../editor/step-selection';
 import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
+import { freeOf, slopFor, touchMods } from '../touch';
 import { onScoreFrame } from '../loop';
 import { marquee } from '../marquee';
 import { hideOctaves, octaveGuide, showOctaves } from '../octave-guide';
@@ -282,7 +283,9 @@ export function ArrivalDots() {
     const id = e.pointerId;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const add = e.shiftKey || e.metaKey || e.ctrlKey;
+    const add = e.shiftKey || e.metaKey || e.ctrlKey || touchMods().add;
+    // A finger needs more travel before the press drags (§11.3b).
+    const slop = slopFor(e.pointerType, SLOP);
     const key = keyAt(usePlayer.getState().compiled, dot.t);
     const h = hover.current;
     let drag: ReturnType<typeof dragDots> | undefined;
@@ -291,7 +294,7 @@ export function ArrivalDots() {
     let sideways = false;
     let snaps: SnapSet | null = null;
     /** The last pointer position and modifiers, re-applied when Shift or Alt changes mid-drag. */
-    let at = { x: x0, y: y0, shift: e.shiftKey, alt: e.altKey };
+    let at = { x: x0, y: y0, shift: e.shiftKey, alt: freeOf(e) };
     const apply = () => {
       const v = view.current;
       const r = box.current?.getBoundingClientRect();
@@ -300,7 +303,7 @@ export function ArrivalDots() {
       // Shift: whole octaves from the start pitch; Alt: chromatic and off the grid; else the key.
       const oct = at.shift && !at.alt ? drag.octaves(raw) : null;
       const p = oct ? oct.pitch : dragPitch(raw, key, at.alt);
-      if (Math.abs(at.x - x0) > SLOP) sideways = true;
+      if (Math.abs(at.x - x0) > slop) sideways = true;
       let t = dot.t;
       if (sideways && snaps) t = snapTime(xToTime(v, at.x - r.left), snaps, v.pps, at.alt);
       follow.current = { ...dot, t, pitch: p };
@@ -318,7 +321,7 @@ export function ArrivalDots() {
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       if (drag === undefined) {
-        if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= SLOP) return;
+        if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= slop) return;
         h.dragging = true;
         const group = groupFor(dot, add);
         drag = dragDots(group, dot);
@@ -334,14 +337,14 @@ export function ArrivalDots() {
             ? own
             : { ...own, exclude: (p) => !!ex?.(p) || others.some((f) => f(p)) };
       }
-      at = { x: ev.clientX, y: ev.clientY, shift: ev.shiftKey, alt: ev.altKey };
+      at = { x: ev.clientX, y: ev.clientY, shift: ev.shiftKey, alt: freeOf(ev) };
       apply();
     };
     /** Pressing or releasing Shift or Alt mid-drag switches mode live. */
     const keys = (ev: KeyboardEvent) => {
       if (ev.key !== 'Shift' && ev.key !== 'Alt') return;
-      if (at.shift === ev.shiftKey && at.alt === ev.altKey) return;
-      at = { ...at, shift: ev.shiftKey, alt: ev.altKey };
+      if (at.shift === ev.shiftKey && at.alt === freeOf(ev)) return;
+      at = { ...at, shift: ev.shiftKey, alt: freeOf(ev) };
       apply();
     };
     const done = (ev: PointerEvent) => {
