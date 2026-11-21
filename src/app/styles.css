@@ -344,8 +344,20 @@ input[type='range'] {
   min-height: 0;
 }
 
+/* Short windows (build-log "Score minimum height"): the score keeps --score-min (the canvas
+   plot ≥ ~120 px), the lanes --lane-min (lane.ts SPLIT_MIN_LANE); the lanes give way down to
+   theirs, then the open drawer (to its min-height; it scrolls inside), then the page scrolls.
+   --timeline-min: ruler, score, divider, lanes; ViewBar.tsx sets --viewbar-h (it wraps). */
+.app[data-layout='full'] {
+  --score-min: min(204px, 34vh);
+  --lane-min: 44px;
+  --timeline-min: calc(30px + var(--score-min) + 10px + var(--lane-min));
+}
+
 .app[data-layout='full'] .workspace {
-  grid-template-rows: minmax(0, 1fr) auto;
+  flex: 1 1 0;
+  min-height: calc(var(--timeline-min) + 10px + var(--viewbar-h, 34px));
+  grid-template-rows: minmax(var(--timeline-min), 1fr) auto;
   grid-template-areas:
     'score inspector'
     'view inspector';
@@ -563,7 +575,7 @@ input[type='range'] {
 }
 
 .app[data-layout='full'] .stage {
-  min-height: 0;
+  min-height: var(--score-min);
 }
 
 .slot.inspector {

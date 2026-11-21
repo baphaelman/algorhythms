@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { FollowMode } from '../../core/types';
 import { MIN_WINDOW, sliderToWindow, windowRange, windowToSlider } from '../../render';
 import { formatWindow } from '../platform';
@@ -56,8 +57,24 @@ export function ViewBar() {
   const fit = Math.abs(win - Math.max(MIN_WINDOW, duration)) < 1e-6;
   const widest = win >= windowRange(duration)[1] - 1e-6;
 
+  // Its height (it wraps) goes into the workspace's minimum (styles.css `--viewbar-h`).
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    const app = el?.closest<HTMLElement>('.app');
+    if (!el || !app) return;
+    const set = (): void => app.style.setProperty('--viewbar-h', `${el.offsetHeight}px`);
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    set();
+    return () => {
+      ro.disconnect();
+      app.style.removeProperty('--viewbar-h');
+    };
+  }, []);
+
   return (
-    <div className="viewbar" data-region="view">
+    <div ref={bar} className="viewbar" data-region="view">
       <Palette />
       <Suggestions />
       <div className="ctl zoom" role="group" aria-label="Zoom">

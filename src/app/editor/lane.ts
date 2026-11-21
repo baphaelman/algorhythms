@@ -368,8 +368,9 @@ export const SPLIT_MIN_LANE = 44;
 
 /**
  * The lane area's height (px) for a divider set to `share` of the timeline (null: the default,
- * `laneMaxPx`), clamped so the score keeps SPLIT_MIN_SCORE and the lanes at least SPLIT_MIN_LANE
- * and no more than their content (`contentH`, when known).
+ * `laneMaxPx`), clamped so the score keeps SPLIT_MIN_SCORE and `scoreMin` px (the stage's CSS
+ * min-height), and the lanes at least SPLIT_MIN_LANE and no more than their content (`contentH`,
+ * when known). The lane minimum wins a conflict; CSS keeps the score's minimum then.
  */
 export function splitLanePx(
   share: number | null,
@@ -377,9 +378,13 @@ export function splitLanePx(
   rulerH: number,
   gap: number,
   contentH = Infinity,
+  scoreMin = 0,
 ): number {
-  if (share === null || !Number.isFinite(share)) return laneMaxPx(columnH, rulerH, gap);
-  return clampLanePx(share * columnH, columnH, rulerH, gap, contentH);
+  if (share === null || !Number.isFinite(share)) {
+    const room = Math.floor(columnH - rulerH - gap - scoreMin);
+    return Math.min(laneMaxPx(columnH, rulerH, gap), Math.max(SPLIT_MIN_LANE, room));
+  }
+  return clampLanePx(share * columnH, columnH, rulerH, gap, contentH, scoreMin);
 }
 
 /** A lane height (px) clamped to the divider's limits (see `splitLanePx`). */
@@ -389,8 +394,13 @@ export function clampLanePx(
   rulerH: number,
   gap: number,
   contentH = Infinity,
+  scoreMin = 0,
 ): number {
-  const max = Math.min(contentH, Math.floor(columnH * (1 - SPLIT_MIN_SCORE) - rulerH - gap));
+  const max = Math.min(
+    contentH,
+    Math.floor(columnH * (1 - SPLIT_MIN_SCORE) - rulerH - gap),
+    Math.floor(columnH - rulerH - gap - scoreMin),
+  );
   const min = Math.min(SPLIT_MIN_LANE, Math.max(0, contentH));
   return Math.round(Math.max(min, Math.min(max, px)));
 }
