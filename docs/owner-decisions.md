@@ -11,6 +11,11 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Land at the marker (R9-2, engine; the toggle comes with R9-9).**
+  - A land moment starts its glide length + stagger before its marker, so its notes arrive on the marker. Near 0:00 the glide shortens to fit instead of arriving late.
+  - It reads the key at its marker. If nothing is sounding when its lead-in starts, it waits and acts at the marker.
+  - A later moment whose marker falls inside the lead-in interrupts it.
+  - Splits and merges now use the moment's stagger and order like other moments, which you approved in rev 9. The five original examples change timing slightly; the compositions are unchanged.
 - **Dense lanes (Kite Day fix).**
   - The score keeps at least 55 % of the timeline's height. Lane rows past that scroll inside the lane area, and a fade shows when rows are hidden above or below.
   - A plain wheel over the lanes scrolls them. Shift-wheel or a sideways trackpad swipe pans time, on the score too. Ctrl/Cmd-wheel zooms.
