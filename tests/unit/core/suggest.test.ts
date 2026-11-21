@@ -8,7 +8,9 @@ import { generate } from '../../../src/core/generate';
 import { parsePiece } from '../../../src/core/schema';
 import { SUGGEST_ID, suggestNext } from '../../../src/core/suggest';
 import type { Moment, Piece } from '../../../src/core/types';
-import { piece } from './compiler-fixtures';
+import { chordAt, piece } from './compiler-fixtures';
+import { pitchClassOf } from '../../../src/core/scales';
+import { keyAt } from '../../../src/core/query';
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const examples: [string, Piece][] = readdirSync(EXAMPLES)
@@ -94,5 +96,49 @@ describe('suggestNext', () => {
       }
     }
     expect(total).toBeGreaterThan(80);
+  });
+
+  it('Home is a tonic unison and sounds like the numeric one (rev 8)', () => {
+    let seen = 0;
+    for (const [name, ex] of examples) {
+      const s = compile(ex);
+      for (let i = 0; i < 8; i++) {
+        const t = Math.round(((i + 0.5) / 8) * s.duration * 0.9 * 1000) / 1000;
+        for (const x of suggestNext(ex, s, t, 12)) {
+          if (x.kind !== 'collapse' || !x.label.startsWith('Home')) continue;
+          const m = x.moment;
+          expect(m.type === 'unison' && m.pitch, `${name} @ ${t}`).toBe('tonic');
+          const upTo = {
+            ...ex,
+            moments: ex.moments.filter((y) => y.at <= t),
+            end: { at: t + 40, fade: 1 },
+          };
+          const after = chordAt(compile(withMoment(upTo, m)), t + 15);
+          const pc = pitchClassOf(keyAt(s, t).tonic);
+          const same = [-2, -1, 0, 1, 2].some((o) => {
+            const pitch = pc + 12 * (Math.round((after[0] - pc) / 12) + o);
+            const numeric = { ...m, pitch } as Moment;
+            const got = chordAt(compile(withMoment(upTo, numeric)), t + 15);
+            return got.length === after.length && got.every((q, k) => q === after[k]);
+          });
+          expect(same, `${name} @ ${t}: ${x.label}`).toBe(true);
+          seen++;
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(3);
+  });
+
+  it('a home suggestion follows a key change written after it', () => {
+    const ch = piece({ start: [45, 52, 57, 60, 64, 67], key: { tonic: 'A', scale: 'dorian' } });
+    const late = { ...ch, end: { at: 4, fade: 1 } };
+    const x = suggestNext(late, compile(late), 3, 12).find((y) => y.label.startsWith('Home'))!;
+    expect(x.moment).toMatchObject({ type: 'unison', pitch: 'tonic' });
+    const inA = chordAt(compile(withMoment(ch, x.moment)), 20);
+    const inB = chordAt(
+      compile(withMoment({ ...ch, key: { tonic: 'B', scale: 'dorian' } }, x.moment)),
+      20,
+    );
+    expect(inB.map((p, i) => p - inA[i])).toEqual(inA.map(() => 2));
   });
 });

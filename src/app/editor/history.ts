@@ -88,6 +88,27 @@ export function edit(recipe: Recipe, label = 'Edit'): boolean {
   return true;
 }
 
+/** An opaque handle on the newest undo entry (null when there is none), for `amend`. */
+export function lastEntry(): object | null {
+  return past.at(-1) ?? null;
+}
+
+/**
+ * Applies `recipe` to the current piece and joins the change to undo entry `entry`, so one undo
+ * reverts both; `entry` must still be the newest entry (from `lastEntry`) with no gesture open.
+ * Otherwise the change is its own entry, as with `edit`. False when the recipe changes nothing.
+ */
+export function amend(entry: object | null, recipe: Recipe, label = 'Edit'): boolean {
+  if (gesture || entry === null || past.at(-1) !== entry) return edit(recipe, label);
+  const before = piece();
+  const after = followContent(before, recipe(before));
+  if (after === before) return false;
+  future = [];
+  publish();
+  setPiece(after);
+  return true;
+}
+
 /** Starts a drag-like gesture: later `updateGesture` calls replace each other; one entry at the end. */
 export function beginGesture(label = 'Edit'): void {
   if (gesture) endGesture();

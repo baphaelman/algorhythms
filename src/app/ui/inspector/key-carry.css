@@ -1,0 +1,20 @@
+/* The "move the fixed notes?" prompt under a key moment (PLAN.md §6.2 `key`, owner 2026-11-21). */
+
+.key-carry {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  border-radius: 4px;
+}
+
+.key-carry p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.key-carry-actions {
+  display: flex;
+  gap: 8px;
+}
