@@ -16,7 +16,8 @@ export const OPACITY_EPS = 0.01;
 /** Life fades this short (the DSP's declick minimum) are drawn as steps. */
 const MIN_LIFE_FADE = 0.005;
 
-function smootherstep(x: number): number {
+/** 6x⁵ − 15x⁴ + 10x³ on [0, 1]: zero slope and curvature at both ends. */
+export function smootherstep(x: number): number {
   return x * x * x * (x * (x * 6 - 15) + 10);
 }
 
@@ -62,7 +63,30 @@ export function pulseLevel(voice: CompiledVoice, t: Seconds): number {
 
 /** Opacity factor of voice `v` at t: level × life × pulse, clamped to 0..1. */
 export function opacityAt(voice: CompiledVoice, t: Seconds): number {
-  const life = lifeAt(voice, t);
+  return opacityIn(voice, voice.lives, t);
+}
+
+/** The life of `lives` (sorted, disjoint) containing t, or null. */
+function lifeIn(lives: readonly Life[], t: Seconds): Life | null {
+  let lo = 0;
+  let hi = lives.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const l = lives[mid];
+    if (t < l.born) hi = mid - 1;
+    else if (l.died !== undefined && t >= l.died) lo = mid + 1;
+    else return l;
+  }
+  return null;
+}
+
+/**
+ * `opacityAt` with `lives` in place of the voice's own: the drawing's lives, where a line that
+ * bundles into another ends at the meeting and a strand peeling off a rope starts without a fade
+ * (strands.ts).
+ */
+export function opacityIn(voice: CompiledVoice, lives: readonly Life[], t: Seconds): number {
+  const life = lives === voice.lives ? lifeAt(voice, t) : lifeIn(lives, t);
   if (!life) return 0;
   const o = levelAt(voice, t) * lifeLevel(life, t) * pulseLevel(voice, t);
   return o > 1 ? 1 : o > 0 ? o : 0;
@@ -71,11 +95,11 @@ export function opacityAt(voice: CompiledVoice, t: Seconds): number {
 interface Breaks {
   level: CompiledVoice['level'];
   levels: number;
-  lives: CompiledVoice['lives'];
+  lifeCount: number;
   pulse: CompiledVoice['pulse'];
   out: Float64Array | null;
 }
-const cache = new WeakMap<CompiledVoice, Breaks>();
+const cache = new WeakMap<readonly Life[], Breaks>();
 
 /**
  * Sorted times where the voice's opacity curve changes shape (births, deaths, fade ends, level
@@ -83,12 +107,17 @@ const cache = new WeakMap<CompiledVoice, Breaks>();
  * drawing fast path. Cached per compiled voice.
  */
 export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
-  const hit = cache.get(voice);
+  return breaksIn(voice, voice.lives);
+}
+
+/** `opacityBreaks` over `lives` in place of the voice's own (see `opacityIn`); cached per array. */
+export function breaksIn(voice: CompiledVoice, lives: readonly Life[]): Float64Array | null {
+  const hit = cache.get(lives);
   if (
     hit &&
     hit.level === voice.level &&
     hit.levels === voice.level.length &&
-    hit.lives === voice.lives &&
+    hit.lifeCount === lives.length &&
     hit.pulse === voice.pulse
   ) {
     return hit.out;
@@ -103,7 +132,7 @@ export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
     flat = false;
     ts.push(...pulseBreaks(voice));
   }
-  for (const l of voice.lives) {
+  for (const l of lives) {
     ts.push(l.born);
     if (l.fadeIn > MIN_LIFE_FADE) {
       ts.push(l.born + l.fadeIn);
@@ -119,10 +148,10 @@ export function opacityBreaks(voice: CompiledVoice): Float64Array | null {
     }
   }
   const out = flat ? null : Float64Array.from(ts).sort();
-  cache.set(voice, {
+  cache.set(lives, {
     level: voice.level,
     levels: voice.level.length,
-    lives: voice.lives,
+    lifeCount: lives.length,
     pulse: voice.pulse,
     out,
   });

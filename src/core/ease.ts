@@ -259,7 +259,14 @@ export function easeRaw(
   let e: number;
   switch (code) {
     case EaseCode.Smootherstep:
-      e = x * x * x * (x * (x * 6 - 15) + 10);
+      if (x <= 0.5) {
+        e = x * x * x * (x * (x * 6 - 15) + 10);
+      } else {
+        // e(x) = 1 − e(1 − x): near x = 1 the direct form cancels (x(6x − 15) + 10 → 1) and
+        // dipped by up to 4e-15. 1 − x is exact here (Sterbenz).
+        const u = 1 - x;
+        e = 1 - u * u * u * (u * (u * 6 - 15) + 10);
+      }
       break;
     case EaseCode.Smoothstep:
       e = x * x * (3 - 2 * x);

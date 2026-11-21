@@ -19,6 +19,7 @@ import {
   type Ctx2D,
   type ScoreStyle,
 } from '../../../src/render';
+import { pathCtx } from './path-ctx';
 
 interface Stroke {
   stroke: unknown;
@@ -188,22 +189,26 @@ describe('opacityAt', () => {
 describe('drawn opacity', () => {
   it('a line at full level draws as before; a level-0 line is not drawn after its ramp', () => {
     const v1 = voice(1, 67, [{ t: 10, gain: 0, over: 0 }]);
-    const { ctx, strokes } = fakeCtx();
-    drawScore(ctx, score([voice(0, 60), v1]), CAM, style(), 20, SIZE, 1);
-    const red = strokes.filter((s) => s.stroke === RED);
+    const p = pathCtx();
+    drawScore(p.ctx, score([voice(0, 60), v1]), CAM, style(), 20, SIZE, 1);
+    const red = p.strokes.filter((s) => s.style === RED);
     expect(red).toHaveLength(2);
     expect(red.every((s) => s.alpha === 1 && s.width === LINE_WIDTH)).toBe(true);
-    const blue = strokes.filter((s) => s.stroke === BLUE);
+    const blue = p.fills.filter((s) => s.style === BLUE);
     expect(blue.length).toBeGreaterThan(0);
-    // Nothing drawn right of 10 s (x 250).
-    expect(blue.every((s) => s.x < 250)).toBe(true);
+    // Nothing drawn right of 10 s (x 250), and no round end at the cut.
+    expect(blue.every((s) => s.pts.every(([x]) => x <= 250 + 1e-9))).toBe(true);
+    expect(blue.every((s) => s.arcs.every((a) => a.x < 249))).toBe(true);
   });
 
-  it('a fade-in draws in steps of rising opacity, times the dim and ghost', () => {
+  it('a fade-in fills thin slices of rising opacity, times the dim and ghost', () => {
     const v = voice(0, 60, [], [{ born: 10, fadeIn: 4 }]);
-    const { ctx, strokes } = fakeCtx();
-    drawScore(ctx, score([v]), CAM, style({ futureOpacity: 0.5 }), 0, SIZE, 1);
-    const red = strokes.filter((s) => s.stroke === RED).sort((a, b) => a.x - b.x);
+    const p = pathCtx();
+    drawScore(p.ctx, score([v]), CAM, style({ futureOpacity: 0.5 }), 0, SIZE, 1);
+    const red = p.fills
+      .filter((s) => s.style === RED)
+      .map((s) => ({ alpha: s.alpha, x: Math.min(...s.pts.map((q) => q[0])) }))
+      .sort((a, b) => a.x - b.x);
     expect(red.length).toBeGreaterThan(3);
     for (let i = 1; i < red.length; i++)
       expect(red[i].alpha).toBeGreaterThanOrEqual(red[i - 1].alpha);
@@ -214,9 +219,10 @@ describe('drawn opacity', () => {
   it('heads follow the opacity; a silent head is not drawn', () => {
     const v0 = voice(0, 60, [{ t: 0, gain: 0.5, over: 0 }]);
     const v1 = voice(1, 67, [{ t: 0, gain: 0, over: 0 }]);
-    const { ctx, fills } = fakeCtx();
-    drawScore(ctx, score([v0, v1]), CAM, style({ heads: true }), 20, SIZE, 1);
-    expect(fills.map((f) => f.alpha)).toEqual([0.5]);
+    const p = pathCtx();
+    drawScore(p.ctx, score([v0, v1]), CAM, style({ heads: true }), 20, SIZE, 1);
+    const heads = p.fills.filter((f) => f.pts.length === 0 && f.arcs.length === 1);
+    expect(heads.map((f) => f.alpha)).toEqual([0.5]);
   });
 
   it('a selected silent line gets a dotted trace (traces on); off in the player', () => {

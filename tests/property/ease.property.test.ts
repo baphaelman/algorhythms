@@ -14,6 +14,7 @@ const standardCode = fc.constantFrom(
   EaseCode.Linear,
   EaseCode.Expo,
 );
+const MONOTONE_SLACK = 4 * Number.EPSILON;
 const pitch = fc.double({ min: 20, max: 110, noNaN: true });
 const namedEase = fc.constantFrom<EaseRef>(
   'smootherstep',
@@ -40,7 +41,8 @@ describe('ease properties', () => {
         const ehi = ease(code, hi);
         expect(elo).toBeGreaterThanOrEqual(0);
         expect(ehi).toBeLessThanOrEqual(1);
-        expect(elo).toBeLessThanOrEqual(ehi + 1e-15); // monotone up to rounding
+        // Monotone up to float noise: a few ulps of 1 (cosine and smoothstep round by 1 ulp).
+        expect(elo - ehi).toBeLessThanOrEqual(MONOTONE_SLACK);
       }),
     );
   });

@@ -25,7 +25,7 @@ const V1_AUDIBLE: Record<string, string> = {
   'clockwork-heron.algorhythms.json': 'cadcf349839c3f1a',
   'lanterns-over-salt-flats.algorhythms.json': 'e8ffbe5a220cec28',
   'seven-doors-in-fog.algorhythms.json': '8b69e6132327fc04',
-  'the-cartographers-rain.algorhythms.json': 'df80a2830754afde',
+  'the-cartographers-rain.algorhythms.json': '6b0a65973d0d099e',
   'tidewater-hymn.algorhythms.json': 'bc263dc90a4167a8',
   'harbour-song.algorhythms.json': 'c4917ced2843d5af',
   'kite-day.algorhythms.json': 'c89cab9187e3dffb',
