@@ -118,6 +118,7 @@ describe('parsePiece: defaults', () => {
       { id: 'm8', type: 'pin', at: 8, voice: 'v1', pitch: 60 },
       { id: 'm9', type: 'key', at: 9, key: { tonic: 'C', scale: 'major' } },
       { id: 'm10', type: 'level', at: 10, gain: 0.5 },
+      { id: 'm11', type: 'timbre', at: 11, preset: 'bell' },
     ];
     const { piece } = ok(parsePiece({ ...MINIMAL, moments }));
     piece.moments.forEach((m, i) => {
@@ -363,7 +364,7 @@ describe('parsePiece: errors', () => {
       }),
     );
     expect(errs).toEqual([
-      "moments[0].type: unknown moment type 'mirror' (expected one of chord, unison, split, merge, shift, spread, walk, note, pin, key, level, pulse, tune).",
+      "moments[0].type: unknown moment type 'mirror' (expected one of chord, unison, split, merge, shift, spread, walk, note, pin, key, level, pulse, tune, timbre).",
       'moments[1].count: Invalid input: expected number, received undefined',
     ]);
   });

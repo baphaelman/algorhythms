@@ -26,6 +26,21 @@
   gap: 6px;
 }
 
+/* Renaming the piece's own timbre (M6-b3). */
+.sd-head input.sd-name {
+  width: 14ch;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.sd-head input.sd-name[aria-invalid='true'] {
+  border-color: var(--accent);
+}
+
 .sd-head .vd-close {
   margin-left: auto;
 }

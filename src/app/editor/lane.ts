@@ -36,6 +36,8 @@ export type EndEdit =
   | 'notes'
   /** A level ramp's `over`. */
   | 'over'
+  /** A timbre change's `fade` (M6). */
+  | 'fade'
   /** Nothing (key changes have no span). */
   | 'none';
 
@@ -115,6 +117,7 @@ export function nudgeDt(at: Seconds, dir: 1 | -1, step: Seconds | null): Seconds
 export function endEditOf(type: MomentType): EndEdit {
   if (type === 'walk' || type === 'pulse') return 'until';
   if (type === 'tune') return 'notes';
+  if (type === 'timbre') return 'fade';
   return type === 'level' ? 'over' : type === 'key' ? 'none' : 'glide';
 }
 
@@ -146,6 +149,7 @@ export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
     return [start, Math.max(m.at, tuneEnd(m))];
   }
   if (m.type === 'level') return [m.at, m.at + Math.max(0, m.over)];
+  if (m.type === 'timbre') return [m.at, m.at + Math.max(0, m.fade)];
   if (m.type === 'key') return [m.at, m.at];
   const g = effectiveGlide(m, defaults);
   if (g.land === true && glides(m)) {
@@ -176,8 +180,8 @@ export function endDragDelta(item: Pick<LaneItem, 'land'>, raw: Seconds): Second
 }
 
 /**
- * A moment's name on the Moments row: its label, else chord name, `level 55%`, key, "Shift" (a
- * note moment with several changes), or type.
+ * A moment's name on the lane: its label, else chord name, `level 55%`, key, "Shift" (a note
+ * moment with several changes), a timbre change's preset, or type.
  */
 export function momentText(m: Moment, chordName?: string): string {
   const label = m.label?.trim();
@@ -185,6 +189,7 @@ export function momentText(m: Moment, chordName?: string): string {
   if (m.type === 'chord' && chordName) return chordName;
   if (m.type === 'level') return `level ${Math.round(m.gain * 100)}%`;
   if (m.type === 'key') return keyName(m.key);
+  if (m.type === 'timbre' && typeof m.preset === 'string' && m.preset !== '') return m.preset;
   // Grouped note changes (§11.3 revision 7): several at once read as one "Shift".
   if (m.type === 'note' && noteChanges(m).length > 1) return 'Shift';
   return m.type;
@@ -293,9 +298,9 @@ export function laneArt(m: Moment, start: Seconds, end: Seconds): LaneArt | unde
 
 /**
  * The patch for dragging moment `m`'s span end by `dt` seconds: the glide length (or the stagger
- * when `stagger`), a walk's or pulse's `until`, a tune's last note length, or a level ramp's
- * `over`, each kept ≥ 0 (a walk or pulse ends at least one tick or step after it starts). Null
- * when nothing changes.
+ * when `stagger`), a walk's or pulse's `until`, a tune's last note length, a level ramp's `over`
+ * or a timbre change's `fade`, each kept ≥ 0 (a walk or pulse ends at least one tick or step
+ * after it starts). Null when nothing changes.
  */
 export function endDragPatch(
   m: Moment,
@@ -316,6 +321,10 @@ export function endDragPatch(
   if (m.type === 'level') {
     const over = roundMs(Math.max(0, m.over + dt));
     return over === m.over ? null : { over };
+  }
+  if (m.type === 'timbre') {
+    const fade = roundMs(Math.max(0, m.fade + dt));
+    return fade === m.fade ? null : { fade };
   }
   const g = effectiveGlide(m, defaults);
   const key = stagger ? 'stagger' : 'length';
@@ -442,12 +451,14 @@ export function stackRows(
 }
 
 /**
- * Which lane row a moment sits on (PLAN §11.3 "Dense lanes"): `level` moments on the Level row
- * (marker on the envelope), `pin` moments on the Pins row, the rest on Moments and Transitions.
+ * Which lane row a moment sits on (PLAN §11.3 "Dense lanes", §11.2 Effects): `level` moments on
+ * the Level row (marker on the envelope), `pin` moments on the Pins row, `timbre` changes on the
+ * Effects row (M6), the rest on Moments and Transitions.
  */
-export type LaneRow = 'main' | 'pins' | 'level';
+export type LaneRow = 'main' | 'pins' | 'level' | 'effects';
 
 export function laneRowOf(type: MomentType): LaneRow {
+  if (type === 'timbre') return 'effects';
   return type === 'level' ? 'level' : type === 'pin' ? 'pins' : 'main';
 }
 
@@ -478,17 +489,20 @@ const BOX: Record<LaneRow, (item: LaneItem, pps: number) => [number, number]> = 
   main: itemBoxPx,
   pins: pinBoxPx,
   level: levelBoxPx,
+  effects: itemBoxPx,
 };
 
+const LANE_ROWS: readonly LaneRow[] = ['main', 'pins', 'level', 'effects'];
+
 /**
- * Splits items by lane row and stacks each: Moments/Transitions by marker, label and span
- * (revision 7), Pins by span overlap, Level by marker collision.
+ * Splits items by lane row and stacks each: Moments/Transitions and Effects by marker, label and
+ * span (revision 7), Pins by span overlap, Level by marker collision.
  */
 export function laneLayout(items: readonly LaneItem[], pps: number): LaneLayout {
   const lane = items.map((it) => laneRowOf(it.type));
   const rows = new Array<number>(items.length).fill(0);
-  const count: Record<LaneRow, number> = { main: 0, pins: 0, level: 0 };
-  for (const r of ['main', 'pins', 'level'] as const) {
+  const count: Record<LaneRow, number> = { main: 0, pins: 0, level: 0, effects: 0 };
+  for (const r of LANE_ROWS) {
     const idx = items.map((_, i) => i).filter((i) => lane[i] === r);
     const st = stackRows(
       idx.map((i) => items[i]),

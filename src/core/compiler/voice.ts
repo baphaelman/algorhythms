@@ -45,6 +45,16 @@ export function isGlide(s: Segment): boolean {
   return s.p0 !== (s.curve ? s.curve.p1 : s.p1) || (s.m0 ?? 0) !== 0;
 }
 
+/** A timbre moment's change on one voice (M6), as the simulation records it. */
+export interface TimbreEntry {
+  t: Seconds;
+  preset: string;
+  /** Crossfade length, ≥ 0. */
+  fade: Seconds;
+  /** Index of the timbre moment in `Piece.moments`. */
+  moment: number;
+}
+
 /** A move scheduled by a moment or walk (§7.1). */
 export interface Move {
   voice: number;
@@ -316,6 +326,11 @@ export class VoiceRun {
   life: Life | null = null;
   /** Level timeline. */
   readonly level: { t: Seconds; gain: number; over: Seconds }[] = [];
+  /**
+   * Timbre changes (M6), pushed at the simulation time, so sorted; never mutated. `finish` builds
+   * the output timeline from them (compile.ts `timbreTimeline`).
+   */
+  readonly timbre: TimbreEntry[] = [];
   /**
    * Distinct notes (revision 8): logical voices this line stands for (merged lines add up), and
    * its committed weight (loudness: power of `weight` lines). Moments see `count` stacked voices.

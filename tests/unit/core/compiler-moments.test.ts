@@ -633,7 +633,7 @@ describe('the end, spans and robustness', () => {
     const p = tight({ start: [50], moments: [{ type: 'pin', at: 1, voice: 'v1', pitch: 60 }] });
     (p as { version: number }).version = 3;
     p.moments.push({ id: 'zz9', type: 'mirror', at: 2, axis: 60 } as unknown as Moment);
-    p.moments.push({ id: 'zz8', type: 'timbre', at: 3, preset: 'glass' } as unknown as Moment);
+    p.moments.push({ id: 'zz8', type: 'camera', at: 3, zoom: 2 } as unknown as Moment);
     const s = compile(p);
     const unknown = s.diagnostics.filter((d) => d.code === 'unknown-moment-type');
     expect(unknown.map((d) => [d.level, d.momentId])).toEqual([

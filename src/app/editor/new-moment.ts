@@ -4,6 +4,7 @@
  * can. The choices are listed in docs/build-log.md (M4b).
  */
 
+import { MOMENT_DEFAULTS } from '../../core/defaults';
 import { mod } from '../../core/math';
 import { defaultNoteFields } from '../../core/moments/note';
 import { activeAt, keyAt, pitchAt } from '../../core/query';
@@ -15,6 +16,7 @@ import {
   stepByScale,
 } from '../../core/scales';
 import { pitchClasses } from '../../core/voicing';
+import { timbreOptions } from './voices';
 import type {
   ChordMoment,
   CompiledScore,
@@ -174,8 +176,40 @@ export function defaultMoment<T extends MomentType>(
       };
       break;
     }
+    case 'timbre':
+      m = {
+        ...base,
+        type: 'timbre',
+        preset: newTimbrePreset(piece, score, at),
+        fade: MOMENT_DEFAULTS.timbre.fade,
+      };
+      break;
   }
   return withChordFill(m, piece, score, at) as MomentOf<T>;
+}
+
+/** The preset voice `v` (pool index) is heading for at `t` (changes at `t` included). */
+function timbreAt(score: CompiledScore, v: number, t: Seconds): string | undefined {
+  let preset: string | undefined;
+  for (const c of score.voices[v]?.timbre ?? []) if (c.t <= t) preset = c.preset;
+  return preset;
+}
+
+/**
+ * A new timbre moment's preset: the first of the piece's timbres, then the built-ins
+ * (`timbreOptions` order), that no note plays at `at`, so the change is heard on every note it
+ * targets (the default target 'all' includes silent notes). If every one is in use, the first
+ * that differs from the most common timbre there.
+ */
+export function newTimbrePreset(piece: Piece, score: CompiledScore, at: Seconds): string {
+  const now = piece.voices.map((def, v) => timbreAt(score, v, at) ?? def.timbre);
+  const options = timbreOptions(piece);
+  const free = options.find((t) => !now.includes(t));
+  if (free !== undefined) return free;
+  const count = new Map<string, number>();
+  for (const t of now) count.set(t, (count.get(t) ?? 0) + 1);
+  const common = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return options.find((t) => t !== common) ?? options[0];
 }
 
 /** How many notes a chord names: its pitch list's length or its distinct pitch classes (0: unknown). */

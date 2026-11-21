@@ -6,8 +6,9 @@
  * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
  * note points (with and without returns, some with grouped `changes`; `from` often a start pitch,
  * so it sounds), out-of-range
- * pitches (folding), key changes, pulses, tunes (revision 9) and every ease (béziers with finite
- * start slopes).
+ * pitches (folding), key changes, pulses, tunes (revision 9), timbre changes (M6; some name
+ * `mine`, which pieces lack unless an edit adds it, or an unknown preset) and every ease (béziers
+ * with finite start slopes).
  */
 import fc from 'fast-check';
 import { newPiece } from '../../../src/core/defaults';
@@ -367,6 +368,21 @@ export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitr
             { requiredKeys: ['at', 'type', 'len', 'step', 'pattern', 'decay', 'floor', 'mode'] },
           )
           .map(({ len, ...m }) => ({ ...m, until: m.at + len }) as Draft),
+      },
+      {
+        // M6: a timbre change, often on silent voices; `mine` is a piece timbre only after an
+        // edit adds it, `nope` never exists.
+        weight: 1,
+        arbitrary: fc.record(
+          {
+            at,
+            target: base.target,
+            type: fc.constant('timbre' as const),
+            preset: fc.constantFrom('glass', 'bell', 'reed', 'pluck', 'mine', 'nope'),
+            fade: tenths(0, 4),
+          },
+          { requiredKeys: ['at', 'type', 'preset', 'fade'] },
+        ),
       },
       {
         // Revision 9: a melody on one line (it may cross others; joins within its part).

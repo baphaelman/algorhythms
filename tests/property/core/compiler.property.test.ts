@@ -734,6 +734,46 @@ describe('compiler properties (§14)', () => {
     expect(played).toBeGreaterThan(20);
   });
 
+  it('timbre changes move no pitch: muting them changes only the timbre timelines (M6)', () => {
+    let changes = 0;
+    check(
+      'timbre',
+      fc.property(pieceArb({ parts: true }), (p0) => {
+        // A fixed end, so a late change's fade does not move the end (the last activity).
+        const p: Piece = { ...p0, end: { at: 45, fade: 3 } };
+        const ids = new Set(p.moments.filter((m) => m.type === 'timbre').map((m) => m.id));
+        const muted = {
+          ...p,
+          moments: p.moments.map((m) => (ids.has(m.id) ? { ...m, muted: true } : m)),
+        };
+        const strip = (s: CompiledScore) => ({
+          ...s,
+          voices: s.voices.map((v) => ({ ...v, timbre: undefined })),
+          momentSpans: s.momentSpans.filter((x) => !ids.has(x.id)),
+          diagnostics: s.diagnostics.filter(
+            (d) => d.momentId === undefined || !ids.has(d.momentId),
+          ),
+        });
+        const s = compile(p);
+        expect(strip(s)).toStrictEqual(strip(compile(muted)));
+        for (const v of s.voices) {
+          const tl = v.timbre;
+          expect(tl[0]).toEqual({ t: 0, preset: p.voices[v.index].timbre, fade: 0 });
+          for (let i = 1; i < tl.length; i++) {
+            changes++;
+            expect(tl[i].preset).not.toBe(tl[i - 1].preset);
+            expect(tl[i].fade).toBeGreaterThanOrEqual(0);
+            expect(tl[i].t).toBeGreaterThanOrEqual(tl[i - 1].t);
+            if (i > 1) expect(tl[i].t).toBeGreaterThan(tl[i - 1].t);
+            expect(['glass', 'bell', 'reed', 'pluck']).toContain(tl[i].preset);
+          }
+        }
+      }),
+      RUNS,
+    );
+    expect(changes).toBeGreaterThan(20);
+  });
+
   it('every diagnostic has a stable kebab-case code and no generated piece errors out', () => {
     check(
       'diagnostics',

@@ -44,6 +44,10 @@ export const DIAGNOSTIC_CODES: Readonly<
     meaning: 'A tune needs a list of notes, each with a numeric pitch and a length > 0.',
   },
   'after-end': { level: 'info', meaning: 'The moment is at or after the end of the piece.' },
+  'unknown-timbre': {
+    level: 'warn',
+    meaning: 'A timbre moment names no key of `timbres` and no built-in preset; it is skipped.',
+  },
   // Targets and notes
   'no-targets': { level: 'info', meaning: 'The moment targets no active voice.' },
   'chord-parse': { level: 'error', meaning: 'The chord symbol could not be parsed.' },
@@ -93,7 +97,7 @@ export const DIAGNOSTIC_CODES: Readonly<
   'no-effect': {
     level: 'info',
     meaning:
-      'The moment changes nothing at its time: no pitch target, audible count, level or key change (revision 6).',
+      'The moment changes nothing at its time: no pitch target, audible count, level, key or timbre change (revision 6).',
   },
   'merge-nothing': {
     level: 'info',

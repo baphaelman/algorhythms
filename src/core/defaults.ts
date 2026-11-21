@@ -150,6 +150,7 @@ export const MOMENT_DEFAULTS = deepFreeze({
   level: { over: 1 },
   pulse: { step: 0.5, pattern: [1], decay: 0.3, floor: 0, mode: 'together' },
   tune: { notes: [] },
+  timbre: { fade: 2 },
 } as const) satisfies Record<MomentType, object>;
 
 /**

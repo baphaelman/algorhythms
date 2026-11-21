@@ -3,7 +3,8 @@
  * FM, noise, accent, articulation, vibrato), save it as a preset file, or load one into notes.
  * Wide layout only. Edits apply live through the store's recompile and hot-swap; a slider drag is
  * one undo entry, a keyboard step one each (editor/timbre-edit.ts). Editing a built-in stores an
- * edited copy in the piece under its name; Revert puts the built-in's values back.
+ * edited copy in the piece under its name; Revert puts the built-in's values back. The piece's own
+ * timbres can be renamed (notes and timbre moments follow) and deleted when no note uses them.
  */
 
 import { useRef, useState, type ReactNode } from 'react';
@@ -19,6 +20,7 @@ import { edit } from '../editor/history';
 import {
   addPartial,
   beginTimbreDrag,
+  deleteTimbre,
   dragTimbre,
   duplicateTimbre,
   editedName,
@@ -31,6 +33,7 @@ import {
   PARTIAL_CONTROL,
   positionOf,
   removePartial,
+  renameTimbre,
   revertTimbre,
   selectTimbre,
   setAt,
@@ -43,7 +46,9 @@ import {
   strikeOf,
   TIMBRE_CONTROLS,
   timbreIn,
+  timbreMoments,
   timbreRecipe,
+  timbreRenameError,
   timbreUsers,
   toggleSoundDrawer,
   useSoundDrawer,
@@ -283,6 +288,82 @@ function decodeTarget(s: string): LoadTarget {
   return s.startsWith('voice:') ? { voice: s.slice(6) } : (s as LoadTarget);
 }
 
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** Who uses the timbre: its notes, and the timbre changes (M6) to it. */
+function usersText(notes: number, changes: number): string {
+  const n = notes === 0 ? 'No notes use it' : `${plural(notes, 'note uses', 'notes use')} it`;
+  return changes === 0 ? n : `${n} · ${plural(changes, 'timbre change', 'timbre changes')}`;
+}
+
+/**
+ * Renames the piece's own timbre `name`: a button that opens a name field. Enter commits (a
+ * refused name shows why), Escape cancels, leaving the field commits a valid name. One undo entry;
+ * the notes and timbre moments using it follow.
+ */
+function RenameTimbre({ name }: { name: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const close = (): void => {
+    setDraft(null);
+    setError(null);
+  };
+  const commit = (onBlur: boolean): void => {
+    if (draft === null) return;
+    const err = timbreRenameError(usePlayer.getState().piece, name, draft);
+    if (err) {
+      if (onBlur) close();
+      else setError(err);
+      return;
+    }
+    const next = draft.trim();
+    close();
+    if (next !== name && edit((p) => renameTimbre(p, name, next), 'Rename timbre')) {
+      selectTimbre(next);
+    }
+  };
+  if (draft === null) {
+    return (
+      <button
+        type="button"
+        data-testid="sound-rename"
+        title="Rename this timbre (its notes and timbre changes follow)"
+        onClick={() => setDraft(name)}
+      >
+        Rename
+      </button>
+    );
+  }
+  return (
+    <input
+      type="text"
+      className="sd-name"
+      aria-label={`New name for ${name}`}
+      aria-invalid={error ? true : undefined}
+      title={error ?? undefined}
+      data-testid="sound-name"
+      spellCheck={false}
+      autoComplete="off"
+      // The field opens on a click of Rename, to be typed in at once.
+      autoFocus
+      value={draft}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        setError(null);
+      }}
+      onBlur={() => commit(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit(false);
+        else if (e.key === 'Escape') {
+          e.stopPropagation();
+          close();
+        }
+      }}
+    />
+  );
+}
+
 /** The drawer itself; renders nothing while closed. Mount it in the wide layout only. */
 export function SoundDrawer() {
   const open = useSoundDrawer((s) => s.open);
@@ -294,8 +375,10 @@ export function SoundDrawer() {
   const name = editedName(piece, chosen);
   const timbre = timbreIn(piece, name);
   const users = timbreUsers(piece, name);
+  const changes = timbreMoments(piece, name).length;
   const modified = isModified(piece, name);
   const builtin = name in BUILTIN_TIMBRES;
+  const custom = isCustom(piece, name);
 
   const save = (): void => {
     downloadBlob(
@@ -377,10 +460,27 @@ export function SoundDrawer() {
           </select>
         </label>
         <span className="sd-users" data-testid="sound-users">
-          {users.length === 0
-            ? 'No notes use it'
-            : `${users.length} ${users.length === 1 ? 'note uses' : 'notes use'} it`}
+          {usersText(users.length, changes)}
         </span>
+        {custom && <RenameTimbre key={name} name={name} />}
+        {custom && (
+          <button
+            type="button"
+            className="danger"
+            data-testid="sound-delete"
+            disabled={users.length > 0}
+            title={
+              users.length > 0
+                ? `${plural(users.length, 'note uses', 'notes use')} it: give them another timbre first`
+                : changes > 0
+                  ? `Delete it; ${plural(changes, 'timbre change', 'timbre changes')} will name a missing timbre`
+                  : 'Delete this timbre from the piece'
+            }
+            onClick={() => edit((p) => deleteTimbre(p, name), 'Delete timbre')}
+          >
+            Delete
+          </button>
+        )}
         {builtin && (
           <button
             type="button"

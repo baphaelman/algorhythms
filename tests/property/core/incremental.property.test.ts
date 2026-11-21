@@ -15,6 +15,7 @@ import {
 } from '../../../src/app/editor/ops';
 import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
+import { BUILTIN_TIMBRES } from '../../../src/core/timbres';
 import type { Glide, Moment, Piece } from '../../../src/core/types';
 import { glideArb, momentArb, pieceArb, type Draft } from './compiler-arbitraries';
 import { withStart } from '../../unit/core/compiler-fixtures';
@@ -36,6 +37,8 @@ type Edit =
   | { kind: 'swap'; a: number; b: number }
   | { kind: 'mute'; j: number }
   | { kind: 'gain'; v: number; gain: number }
+  | { kind: 'timbre'; v: number; preset: string }
+  | { kind: 'mine' }
   | { kind: 'start'; pitch: number }
   | { kind: 'clone' };
 
@@ -74,6 +77,16 @@ const editArb: fc.Arbitrary<Edit> = fc.oneof(
     weight: 1,
     arbitrary: fc.record({ kind: fc.constant('gain' as const), v: fc.nat(), gain: tenths(0, 2) }),
   },
+  {
+    // M6: a voice's own timbre (read fresh), and the piece timbre `mine` timbre moments may name.
+    weight: 1,
+    arbitrary: fc.record({
+      kind: fc.constant('timbre' as const),
+      v: fc.nat(),
+      preset: fc.constantFrom('glass', 'bell', 'reed'),
+    }),
+  },
+  { weight: 1, arbitrary: fc.constant({ kind: 'mine' as const }) },
   {
     weight: 1,
     arbitrary: fc.record({
@@ -127,6 +140,16 @@ function apply(p: Piece, e: Edit): Piece {
     case 'gain': {
       const v = e.v % p.voices.length;
       return { ...p, voices: p.voices.map((d, i) => (i === v ? { ...d, gain: e.gain } : d)) };
+    }
+    case 'timbre': {
+      const v = e.v % p.voices.length;
+      return { ...p, voices: p.voices.map((d, i) => (i === v ? { ...d, timbre: e.preset } : d)) };
+    }
+    case 'mine': {
+      const timbres = { ...p.timbres };
+      if ('mine' in timbres) delete timbres.mine;
+      else timbres.mine = { ...BUILTIN_TIMBRES.organ };
+      return { ...p, timbres };
     }
     case 'start':
       return { ...p, moments: withStart(p, [e.pitch]) };

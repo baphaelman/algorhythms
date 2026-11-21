@@ -1,7 +1,8 @@
 /**
- * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the twelve letters add
- * a moment at the playhead (R pulse and E tune, R9-7; the palette's `note` has no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles
- * the loop region (revision 6).
+ * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the thirteen letters
+ * add a moment at the playhead (R pulse and E tune, R9-7; B timbre, M6; the palette's `note` has
+ * no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles the loop region
+ * (revision 6).
  */
 
 import { clearDots } from './dot-selection';
@@ -36,6 +37,7 @@ export const PALETTE: readonly PaletteEntry[] = [
   { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one note' },
   { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
   { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade notes' },
+  { type: 'timbre', key: 'B', name: 'timbre', icon: '◐', hint: 'Crossfade notes to another sound' },
 ];
 
 const BY_KEY: ReadonlyMap<string, MomentType> = new Map(

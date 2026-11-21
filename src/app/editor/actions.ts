@@ -80,6 +80,7 @@ const LABELS: Record<MomentType, string> = {
   level: 'level',
   pulse: 'pulse',
   tune: 'tune',
+  timbre: 'timbre change',
 };
 
 let cached: { piece: Piece; score: CompiledScore } | null = null;

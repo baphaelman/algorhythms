@@ -46,6 +46,7 @@ const REQUIRED: Record<string, Record<string, unknown>> = {
   level: { gain: 0.5 },
   pulse: { until: 4 },
   tune: {},
+  timbre: { preset: 'bell' },
 };
 
 describe('stripDefaults', () => {

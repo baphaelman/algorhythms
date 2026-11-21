@@ -380,6 +380,12 @@ const MOMENT_SCHEMAS = {
         'The melody, in order: from `at` the targeted line moves to each note in turn (glide default length 0.1 s, no stagger or jitter).',
       ),
   }),
+  timbre: z.looseObject({
+    type: z.literal('timbre'),
+    ...momentBase,
+    preset: z.string().min(1).describe('A key of `timbres` or a built-in.'),
+    fade: nonNegative.default(D.timbre.fade).describe('Crossfade length (s); 0 is instant.'),
+  }),
 } satisfies Record<MomentType, z.ZodType>;
 
 /** The moment types this build understands. */
@@ -399,6 +405,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.level,
   MOMENT_SCHEMAS.pulse,
   MOMENT_SCHEMAS.tune,
+  MOMENT_SCHEMAS.timbre,
 ]);
 
 // ---------------------------------------------------------------------------------------------
