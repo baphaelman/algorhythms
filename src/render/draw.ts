@@ -19,21 +19,32 @@ import {
   pitchAt,
   sample,
   segmentIndexAt,
-  weightAt,
 } from '../core/query';
 import { hzOf } from '../core/tuning';
 import type {
   CompiledScore,
   CompiledVoice,
   Key,
+  Life,
   MomentId,
   MomentSpan,
   Seconds,
 } from '../core/types';
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
-import { OPACITY_EPS, opacityAt, opacityBreaks } from './level';
+import { OPACITY_EPS, breaksIn, opacityIn } from './level';
+import { outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
+import {
+  drawnLives,
+  geometryAt,
+  hasStrands,
+  strandEvents,
+  strandFrame,
+  varyingRanges,
+  widthUnits,
+  type StrandFrame,
+} from './strands';
 import type { CameraState, MomentTimes, ScoreStyle, View } from './types';
 
 /** A 2D context drawScore can paint on (a canvas, an offscreen canvas, or a test double). */
@@ -54,12 +65,9 @@ export const DIM_ALPHA = 0.3;
 export const LINE_WIDTH = 1.5;
 /** Line width of highlighted weight-1 segments, px. */
 export const HIGHLIGHT_WIDTH = 2.75;
-/** Thinnest and thickest drawn weights (line width ∝ √weight between them). */
-const WEIGHT_MIN = 0.25;
-const WEIGHT_MAX = 16;
-/** A weight ramp is drawn in steps of about this many px (at most RAMP_STEPS_MAX steps). */
-const RAMP_STEP_PX = 6;
-const RAMP_STEPS_MAX = 16;
+/** The dotted trace is checked for silence in steps of about this many px (at most 16). */
+const TRACE_STEP_PX = 24;
+const TRACE_STEPS_MAX = 16;
 const RING_R = 6.5;
 
 /** `mm:ss.s` */
@@ -163,7 +171,8 @@ export function drawScore(
     g.rect(0, 0, Math.max(0, timeToX(view, style.reveal ?? 0)), H);
     g.clip();
   }
-  drawLines(g, compiled, style, view);
+  const sf = strandFrame(compiled, view.pps);
+  drawLines(g, compiled, style, view, sf);
   if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
 
@@ -171,7 +180,7 @@ export function drawScore(
   const headA = style.heads === false ? 0 : 1;
   const xH = view.xHead;
   if (headA > 0.02 && xH > -RING_R && xH < W + RING_R) {
-    drawHeads(g, compiled, style, view, headA, MONO);
+    drawHeads(g, compiled, style, view, headA, MONO, sf);
   }
 
   // 6. playhead (the editor layout draws a DOM one instead)
@@ -273,19 +282,68 @@ function drawMarkers(
  * [WEIGHT_MIN, WEIGHT_MAX].
  */
 export function weightWidth(w: number, base: number): number {
-  if (w === 1) return base;
-  const c = w > WEIGHT_MAX ? WEIGHT_MAX : w > WEIGHT_MIN ? w : WEIGHT_MIN;
-  return base * Math.sqrt(c);
+  return w === 1 ? base : base * widthUnits(w);
 }
 
 /** Opacity steps narrower than this count as a constant run. */
 const OPACITY_FLAT = 1e-3;
+/** An opacity ramp is filled in slices whose alpha differs by at most this. */
+const ALPHA_STEP = 0.025;
+const NO_RANGES: number[] = [];
+
+// Scratch arrays of the outline path, grown as needed and reused across frames.
+let SN = 0;
+let ST = new Float64Array(0);
+let SP = new Float64Array(0);
+let SA = new Float64Array(0);
+let SR = new Uint8Array(0);
+let SX = new Float64Array(0);
+let SY = new Float64Array(0);
+let SU = new Float64Array(0);
+let SNX = new Float64Array(0);
+let SNY = new Float64Array(0);
+let SH = new Float64Array(0);
+function grow(n: number): void {
+  if (n <= ST.length) return;
+  const m = Math.max(n, ST.length * 2, 256);
+  const g2 = (a: Float64Array): Float64Array<ArrayBuffer> => {
+    const b = new Float64Array(m);
+    b.set(a);
+    return b;
+  };
+  const r = new Uint8Array(m);
+  r.set(SR);
+  SR = r;
+  ST = g2(ST);
+  SP = g2(SP);
+  SA = g2(SA);
+  SX = new Float64Array(m);
+  SY = new Float64Array(m);
+  SU = new Float64Array(m);
+  SNX = new Float64Array(m);
+  SNY = new Float64Array(m);
+  SH = new Float64Array(m);
+}
+/**
+ * Appends a centre-line point (time, pitch) and the alpha of the interval ending at it, which is
+ * part of an opacity ramp or not.
+ */
+function push(t: number, p: number, a: number, ramp: boolean): void {
+  grow(SN + 1);
+  ST[SN] = t;
+  SP[SN] = p;
+  SA[SN] = a;
+  SR[SN] = ramp ? 1 : 0;
+  SN++;
+}
 
 /**
- * Strokes voice `v` over [a, b] at `base` width scaled by its weight and at `alpha` times its
- * audible level (revision 9, "Silent lines vanish"): one path per run of constant weight and
- * opacity; a weight or opacity ramp in a few steps (butt-capped in an opacity ramp, so the seams
- * don't bead). Silent runs are skipped.
+ * Draws voice `v` over [a, b] at `base` width scaled by its weight and at `alpha` times its
+ * audible level (revision 9, "Silent lines vanish"), with merges and splits drawn as strands and
+ * ropes (strands.ts; owner 2026-11-21, "Thickness transitions"). A line whose width, place and
+ * opacity never change is one stroke; any other is filled as a variable-width outline: one shape
+ * per run of equal opacity, thin slices through an opacity ramp, straight ends where pieces meet
+ * and round ends only at a line's true start and end (and at a and b).
  */
 function traceWeighted(
   g: CanvasRenderingContext2D,
@@ -297,61 +355,171 @@ function traceWeighted(
   alpha: number,
   maxStep: number,
   tolerance: number,
+  sf: StrandFrame,
 ): void {
-  const W = v.weight && v.weight.length > 0 ? v.weight : null;
-  const O = opacityBreaks(v);
-  if (!W && !O) {
+  const weighted = v.weight !== undefined && v.weight.length > 0;
+  const strands = hasStrands(sf, v);
+  const lives = drawnLives(sf, v);
+  const O = breaksIn(v, lives);
+  if (!weighted && !strands && !O) {
     g.globalAlpha = alpha;
     g.lineWidth = base;
     trace(g, view, sample(v, a, b, maxStep, tolerance));
     return;
   }
-  // Breakpoints inside (a, b): weight changes and ramp ends, opacity breaks.
-  const cuts = [a];
-  if (W) {
-    for (const c of W) {
-      if (c.t > a && c.t < b) cuts.push(c.t);
-      const e = c.t + c.over;
-      if (c.over > 0 && e > a && e < b) cuts.push(e);
+  g.fillStyle = g.strokeStyle;
+  const events = strandEvents(sf, v);
+  const vary = weighted || strands ? varyingRanges(sf, v, a, b) : NO_RANGES;
+  for (const l of lives) {
+    const lo = l.born > a ? l.born : a;
+    const hi = l.died !== undefined && l.died < b ? l.died : b;
+    if (!(hi > lo)) continue;
+    let p0 = lo;
+    for (const e of events) {
+      if (e <= lo + EVENT_EPS || e >= hi - EVENT_EPS) continue;
+      tracePiece(g, view, v, lives, O, vary, p0, e, events, base, alpha, maxStep, tolerance, sf);
+      p0 = e;
     }
+    tracePiece(g, view, v, lives, O, vary, p0, hi, events, base, alpha, maxStep, tolerance, sf);
   }
-  if (O) {
-    for (let i = lowerBound(O, a); i < O.length && O[i] < b; i++) if (O[i] > a) cuts.push(O[i]);
-  }
-  cuts.push(b);
-  cuts.sort((x, y) => x - y);
-  const minA = OPACITY_EPS * alpha;
-  for (let i = 0; i + 1 < cuts.length; i++) {
-    const t0 = cuts[i];
-    const t1 = cuts[i + 1];
-    if (!(t1 > t0)) continue;
-    const wRamp = W !== null && Math.abs(weightAt(v, t1) - weightAt(v, t0)) > 1e-9;
-    let oRamp = false;
+}
+const EVENT_EPS = 1e-6;
+
+function isEvent(events: readonly number[], t: Seconds): boolean {
+  for (const e of events) if (Math.abs(e - t) <= EVENT_EPS) return true;
+  return false;
+}
+
+function inRanges(r: readonly number[], t: Seconds): boolean {
+  for (let i = 0; i + 1 < r.length; i += 2) if (r[i] <= t && r[i + 1] >= t) return true;
+  return false;
+}
+
+function overlaps(r: readonly number[], t0: Seconds, t1: Seconds): boolean {
+  for (let i = 0; i + 1 < r.length; i += 2) if (r[i] < t1 && r[i + 1] > t0) return true;
+  return false;
+}
+
+/** One piece of one life with continuous geometry, [p0, p1]: sampled, then filled in slices. */
+function tracePiece(
+  g: CanvasRenderingContext2D,
+  view: View,
+  v: CompiledVoice,
+  lives: readonly Life[],
+  O: Float64Array | null,
+  vary: readonly number[],
+  p0: Seconds,
+  p1: Seconds,
+  events: readonly number[],
+  base: number,
+  alpha: number,
+  maxStep: number,
+  tolerance: number,
+  sf: StrandFrame,
+): void {
+  SN = 0;
+  // Sub-intervals between opacity breaks: constant opacity, or a ramp sampled densely.
+  let c0 = p0;
+  let i = O ? lowerBound(O, p0) : 0;
+  for (;;) {
+    let c1 = p1;
+    while (O && i < O.length && O[i] <= c0) i++;
+    if (O && i < O.length && O[i] < p1) c1 = O[i];
+    let ramp = false;
+    let o = alpha;
     if (O) {
-      // Sampled just inside the run: the curve may jump at the cuts themselves (a birth).
-      const e = (t1 - t0) * 1e-3;
-      const o0 = opacityAt(v, t0 + e);
-      oRamp =
-        Math.abs(opacityAt(v, t1 - e) - o0) > OPACITY_FLAT ||
-        Math.abs(opacityAt(v, (t0 + t1) / 2) - o0) > OPACITY_FLAT;
+      const e = (c1 - c0) * 1e-3;
+      const o0 = opacityIn(v, lives, c0 + e);
+      ramp =
+        Math.abs(opacityIn(v, lives, c1 - e) - o0) > OPACITY_FLAT ||
+        Math.abs(opacityIn(v, lives, (c0 + c1) / 2) - o0) > OPACITY_FLAT;
+      o = alpha * (ramp ? o0 : opacityIn(v, lives, (c0 + c1) / 2));
     }
-    const n =
-      wRamp || oRamp
-        ? Math.min(RAMP_STEPS_MAX, Math.max(1, Math.ceil(((t1 - t0) * view.pps) / RAMP_STEP_PX)))
-        : 1;
-    g.lineCap = oRamp ? 'butt' : 'round';
-    for (let k = 0; k < n; k++) {
-      const u0 = t0 + ((t1 - t0) * k) / n;
-      const u1 = t0 + ((t1 - t0) * (k + 1)) / n;
-      const mid = (u0 + u1) / 2;
-      const al = O ? alpha * opacityAt(v, mid) : alpha;
-      if (al < minA) continue;
-      g.globalAlpha = al;
-      g.lineWidth = W ? weightWidth(weightAt(v, mid), base) : base;
-      trace(g, view, sample(v, u0, u1, maxStep, tolerance));
+    const dense = ramp || overlaps(vary, c0, c1);
+    const pts = sample(v, c0, c1, maxStep, tolerance);
+    let lastO = o;
+    for (let k = 0; k < pts.length; k++) {
+      const t = pts[k][0];
+      const p = pts[k][1];
+      if (p !== p) continue;
+      if (SN > 0 && t <= ST[SN - 1]) continue; // the shared end of the previous sub-interval
+      if (SN > 0 && dense) {
+        const ta = ST[SN - 1];
+        const pa = SP[SN - 1];
+        const n = Math.ceil((t - ta) / maxStep);
+        for (let j = 1; j < n; j++) {
+          const tj = ta + ((t - ta) * j) / n;
+          const oj = ramp ? alpha * opacityIn(v, lives, tj) : o;
+          push(tj, pa + ((p - pa) * j) / n, ramp ? (lastO + oj) / 2 : o, ramp);
+          lastO = oj;
+        }
+      }
+      const ok = ramp ? alpha * opacityIn(v, lives, t < c1 ? t : c1 - (c1 - c0) * 1e-3) : o;
+      push(t, p, ramp ? (lastO + ok) / 2 : o, ramp);
+      lastO = ok;
     }
+    if (c1 >= p1) break;
+    c0 = c1;
   }
-  g.lineCap = 'round';
+  const n = SN;
+  if (n < 2) return;
+  const shaped = v.weight !== undefined || hasStrands(sf, v);
+  // Between varying ranges the geometry is constant (weights step only at piece ends): it is
+  // evaluated once per such stretch.
+  let cu = NaN;
+  let coff = 0;
+  for (let k = 0; k < n; k++) {
+    const t = ST[k];
+    let u = 1;
+    let off = 0;
+    if (shaped) {
+      const side = k === 0 ? 1 : k === n - 1 ? -1 : 0;
+      if (side !== 0 || inRanges(vary, t)) {
+        const q = geometryAt(sf, v, t, side);
+        u = q.u;
+        off = q.off;
+        cu = NaN; // a constant stretch after a varying one may differ from the one before
+      } else {
+        if (cu !== cu) {
+          const q = geometryAt(sf, v, t);
+          cu = q.u;
+          coff = q.off;
+        }
+        u = cu;
+        off = coff;
+      }
+    }
+    SX[k] = timeToX(view, t);
+    SY[k] = pitchToY(view, SP[k]) + off * base;
+    SU[k] = u * base;
+  }
+  outlineFrame(SX, SY, SU, n, SNX, SNY, SH);
+  const capStart = !isEvent(events, p0);
+  const capEnd = !isEvent(events, p1);
+  const minA = OPACITY_EPS * alpha;
+  // Slices of near-equal alpha; SA[k] is the alpha of the interval ending at point k.
+  let j0 = 0;
+  let sum = 0;
+  let cnt = 0;
+  for (let j = 1; j < n; j++) {
+    sum += SA[j];
+    cnt++;
+    const last = j === n - 1;
+    if (!last && SR[j + 1] === SR[j0 + 1]) {
+      const d = Math.abs(SA[j + 1] - SA[j0 + 1]);
+      if (SR[j + 1] ? d <= ALPHA_STEP : d === 0) continue;
+    }
+    const al = sum / cnt;
+    if (al >= minA) {
+      g.globalAlpha = al;
+      g.beginPath();
+      outlinePath(g, SX, SY, SNX, SNY, SH, j0, j, capStart && j0 === 0, capEnd && last);
+      g.fill();
+    }
+    j0 = j;
+    sum = 0;
+    cnt = 0;
+  }
 }
 
 /** First index i with xs[i] >= t. */
@@ -386,8 +554,10 @@ function traceSilent(
   alpha: number,
   maxStep: number,
   tolerance: number,
+  sf: StrandFrame,
 ): void {
-  const O = opacityBreaks(v);
+  const lives = drawnLives(sf, v);
+  const O = breaksIn(v, lives);
   if (!O || !(b > a)) return;
   const cuts = [a];
   for (let i = lowerBound(O, a); i < O.length && O[i] < b; i++) if (O[i] > a) cuts.push(O[i]);
@@ -401,17 +571,17 @@ function traceSilent(
     if (!(t1 > t0)) continue;
     // A ramp is split where it crosses TRACE_BELOW, in steps.
     const n = Math.min(
-      RAMP_STEPS_MAX,
-      Math.max(1, Math.ceil(((t1 - t0) * view.pps) / (RAMP_STEP_PX * 4))),
+      TRACE_STEPS_MAX,
+      Math.max(1, Math.ceil(((t1 - t0) * view.pps) / TRACE_STEP_PX)),
     );
     let runA = NaN;
     for (let k = 0; k <= n; k++) {
       const u0 = t0 + ((t1 - t0) * k) / n;
       const u1 = t0 + ((t1 - t0) * (k + 1)) / n;
-      const silent = k < n && lifeSilent(v, (u0 + u1) / 2);
+      const silent = k < n && lifeSilent(v, lives, (u0 + u1) / 2);
       if (silent && runA !== runA) runA = u0;
       if (!silent && runA === runA) {
-        trace(g, view, sample(v, runA, u0, maxStep, tolerance));
+        trace(g, view, sample(v, runA, u0, maxStep, tolerance), sf, v);
         runA = NaN;
       }
     }
@@ -421,9 +591,11 @@ function traceSilent(
 const NO_DASH: number[] = [];
 
 /** True when v is alive at t but drawn below TRACE_BELOW. */
-function lifeSilent(v: CompiledVoice, t: Seconds): boolean {
+function lifeSilent(v: CompiledVoice, lives: readonly Life[], t: Seconds): boolean {
   if (!lifeAt(v, t)) return false;
-  return opacityAt(v, t) < TRACE_BELOW;
+  if (lives !== v.lives && !lives.some((l) => t >= l.born && (l.died === undefined || t < l.died)))
+    return false;
+  return opacityIn(v, lives, t) < TRACE_BELOW;
 }
 
 /**
@@ -450,6 +622,7 @@ function drawLines(
   compiled: CompiledScore,
   style: ScoreStyle,
   view: View,
+  sf: StrandFrame,
 ): void {
   const { t, tL, tR, pps } = view;
   const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
@@ -473,10 +646,11 @@ function drawLines(
   for (const v of compiled.voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-    if (past) traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, dim, maxStep, tolerance);
+    if (past)
+      traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, dim, maxStep, tolerance, sf);
     if (future) {
       const a = style.futureOpacity * dim;
-      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, a, maxStep, tolerance);
+      traceWeighted(g, view, v, Math.max(t, tL), tR, LINE_WIDTH, a, maxStep, tolerance, sf);
     }
   }
   if (hl) {
@@ -487,7 +661,7 @@ function drawLines(
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) {
-          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, 1, maxStep, tolerance);
+          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, 1, maxStep, tolerance, sf);
         }
         if (b > t) {
           traceWeighted(
@@ -500,6 +674,7 @@ function drawLines(
             futureA,
             maxStep,
             tolerance,
+            sf,
           );
         }
       });
@@ -509,18 +684,18 @@ function drawLines(
   const hv = style.traceVoice;
   if (style.traces && (hl || hv !== undefined)) {
     for (const v of compiled.voices) {
-      if (v.segments.length === 0 || !opacityBreaks(v)) continue;
+      if (v.segments.length === 0 || !breaksIn(v, drawnLives(sf, v))) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       if (v.index === hv) {
-        traceSilent(g, view, v, tL, tR, TRACE_ALPHA, maxStep, tolerance);
+        traceSilent(g, view, v, tL, tR, TRACE_ALPHA, maxStep, tolerance, sf);
         continue;
       }
       if (!hl) continue;
       const from = selectedLevelFrom(v, compiled.momentSpans, hl);
       if (from === from)
-        traceSilent(g, view, v, Math.max(from, tL), tR, TRACE_ALPHA, maxStep, tolerance);
+        traceSilent(g, view, v, Math.max(from, tL), tR, TRACE_ALPHA, maxStep, tolerance, sf);
       forHighlighted(v, hl, tL, tR, (a, b) => {
-        if (!(from <= a)) traceSilent(g, view, v, a, b, TRACE_ALPHA, maxStep, tolerance);
+        if (!(from <= a)) traceSilent(g, view, v, a, b, TRACE_ALPHA, maxStep, tolerance, sf);
       });
     }
   }
@@ -588,9 +763,19 @@ function forHighlighted(
   if (a === a) fn(Math.max(a, tL), Math.min(b, tR));
 }
 
-/** Strokes sampled points as one path; a NaN pitch lifts the pen (gap between lives). */
-function trace(g: CanvasRenderingContext2D, view: View, pts: [number, number][]): void {
+/**
+ * Strokes sampled points as one path; a NaN pitch lifts the pen (gap between lives). With `sf` and
+ * `v`, the points follow v's strand offsets (at the base line width).
+ */
+function trace(
+  g: CanvasRenderingContext2D,
+  view: View,
+  pts: [number, number][],
+  sf?: StrandFrame,
+  v?: CompiledVoice,
+): void {
   if (pts.length === 0) return;
+  const shift = sf !== undefined && v !== undefined && hasStrands(sf, v);
   g.beginPath();
   let pen = false;
   for (let i = 0; i < pts.length; i++) {
@@ -600,7 +785,8 @@ function trace(g: CanvasRenderingContext2D, view: View, pts: [number, number][])
       continue;
     }
     const x = timeToX(view, pts[i][0]);
-    const y = pitchToY(view, p);
+    let y = pitchToY(view, p);
+    if (shift) y += geometryAt(sf, v, pts[i][0]).off * LINE_WIDTH;
     if (pen) g.lineTo(x, y);
     else g.moveTo(x, y);
     pen = true;
@@ -615,6 +801,7 @@ function drawHeads(
   view: View,
   headA: number,
   MONO: string,
+  sf: StrandFrame,
 ): void {
   const { t, xHead: x } = view;
   const stops = style.colors === 'pitch' ? pitchStops(style.dark, style.oklch) : null;
@@ -623,9 +810,11 @@ function drawHeads(
     const v = compiled.voices[i];
     const p = pitchAt(v, t);
     if (p === null) continue;
-    const op = opacityBreaks(v) ? opacityAt(v, t) : 1;
+    const lives = drawnLives(sf, v);
+    const op = breaksIn(v, lives) ? opacityIn(v, lives, t) : 1;
     if (op < OPACITY_EPS) continue;
-    const y = pitchToY(view, p);
+    let y = pitchToY(view, p);
+    if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * LINE_WIDTH;
     const mv = motionAt(v, t);
     let color = lineColor(style, i);
     if (color === null && stops) {
