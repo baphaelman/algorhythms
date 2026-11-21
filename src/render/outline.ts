@@ -94,7 +94,8 @@ export function outlineFrame(
 /**
  * Adds the outline of points i0..i1 (i1 > i0) to `sink` as one closed subpath: one side forward,
  * the end (a half disc of radius w/2 when `capEnd`, else straight across), the other side back,
- * the start likewise. Uses the arrays `outlineFrame` filled.
+ * the start likewise. Uses the arrays `outlineFrame` filled. A straight start or end is pushed
+ * `extStart` / `extEnd` px further along the line (to reach under a clip at a seam).
  */
 export function outlinePath(
   sink: PathSink,
@@ -107,17 +108,24 @@ export function outlinePath(
   i1: number,
   capStart: boolean,
   capEnd: boolean,
+  extStart = 0,
+  extEnd = 0,
 ): void {
-  sink.moveTo(x[i0] + nx[i0] * h[i0], y[i0] + ny[i0] * h[i0]);
-  for (let i = i0 + 1; i <= i1; i++) sink.lineTo(x[i] + nx[i] * h[i], y[i] + ny[i] * h[i]);
+  // The tangent is the normal turned back a quarter: (ny, −nx).
+  const s0 = capStart ? 0 : extStart;
+  const s1 = capEnd ? 0 : extEnd;
+  sink.moveTo(x[i0] + nx[i0] * h[i0] - ny[i0] * s0, y[i0] + ny[i0] * h[i0] + nx[i0] * s0);
+  for (let i = i0 + 1; i < i1; i++) sink.lineTo(x[i] + nx[i] * h[i], y[i] + ny[i] * h[i]);
+  sink.lineTo(x[i1] + nx[i1] * h[i1] + ny[i1] * s1, y[i1] + ny[i1] * h[i1] - nx[i1] * s1);
   if (capEnd && h[i1] > 0) {
     // From the normal side, through the forward direction, to the other side.
     const a = Math.atan2(ny[i1], nx[i1]);
     sink.arc(x[i1], y[i1], h[i1], a, a - Math.PI, true);
   } else {
-    sink.lineTo(x[i1] - nx[i1] * h[i1], y[i1] - ny[i1] * h[i1]);
+    sink.lineTo(x[i1] - nx[i1] * h[i1] + ny[i1] * s1, y[i1] - ny[i1] * h[i1] - nx[i1] * s1);
   }
-  for (let i = i1 - 1; i >= i0; i--) sink.lineTo(x[i] - nx[i] * h[i], y[i] - ny[i] * h[i]);
+  for (let i = i1 - 1; i > i0; i--) sink.lineTo(x[i] - nx[i] * h[i], y[i] - ny[i] * h[i]);
+  sink.lineTo(x[i0] - nx[i0] * h[i0] - ny[i0] * s0, y[i0] - ny[i0] * h[i0] + nx[i0] * s0);
   if (capStart && h[i0] > 0) {
     const a = Math.atan2(-ny[i0], -nx[i0]);
     sink.arc(x[i0], y[i0], h[i0], a, a - Math.PI, true);

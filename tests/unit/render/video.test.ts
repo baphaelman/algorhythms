@@ -376,8 +376,20 @@ describe('drawVideoFrame', () => {
     const view = drawVideoFrameAt(small.ctx, s, o, 2, 0.25);
     expect(view.t).toBe(2);
     expect(small.strokes).toEqual(full.strokes);
-    expect(small.fills).toEqual(full.fills);
-    expect(dprs).toContain(videoLayout('16:9', '720').dpr * 0.25);
+    // Line seams are cut on device-pixel columns, reaching 2 device px past them: at a smaller
+    // pixel ratio those ends move by up to a few device px.
+    const d = videoLayout('16:9', '720').dpr * 0.25;
+    const tol = 3 / d;
+    expect(small.fills.map(({ pts, ...f }) => ({ ...f, n: pts.length }))).toEqual(
+      full.fills.map(({ pts, ...f }) => ({ ...f, n: pts.length })),
+    );
+    small.fills.forEach((f, i) =>
+      f.pts.forEach(([x, y], k) => {
+        expect(Math.abs(x - full.fills[i].pts[k][0])).toBeLessThan(tol);
+        expect(Math.abs(y - full.fills[i].pts[k][1])).toBeLessThan(tol);
+      }),
+    );
+    expect(dprs).toContain(d);
     // Clamped to the piece.
     expect(drawVideoFrameAt(pathCtx().ctx, s, o, 1e9).t).toBe(s.duration);
     expect(drawVideoFrameAt(pathCtx().ctx, s, o, -1).t).toBe(0);

@@ -191,12 +191,21 @@ describe('selection highlight', () => {
 
 describe('reveal (Compose for me)', () => {
   it('clips the lines at the reveal time; absent or infinite: no clip', () => {
+    // Clip rects narrower than the canvas from x = 0 (the past/future cut clips elsewhere).
+    const revealClips = (calls: { op: string; args: unknown[] }[]) =>
+      calls.filter(
+        (c, i) =>
+          c.op === 'rect' &&
+          calls[i + 1]?.op === 'clip' &&
+          c.args[0] === 0 &&
+          (c.args[2] as number) < SIZE.width,
+      );
     const plain = fakeCtx();
     drawScore(plain.ctx, SCORE, CAM, style(), 0, SIZE, 1);
-    expect(plain.calls.some((c) => c.op === 'clip')).toBe(false);
+    expect(revealClips(plain.calls)).toHaveLength(0);
     const all = fakeCtx();
     drawScore(all.ctx, SCORE, CAM, style({ reveal: Infinity }), 0, SIZE, 1);
-    expect(all.calls.some((c) => c.op === 'clip')).toBe(false);
+    expect(revealClips(all.calls)).toHaveLength(0);
 
     const { ctx, calls } = fakeCtx();
     drawScore(ctx, SCORE, CAM, style({ reveal: 10 }), 0, SIZE, 1);
@@ -205,7 +214,14 @@ describe('reveal (Compose for me)', () => {
     expect(clip).toBeGreaterThan(-1);
     const rect = calls.slice(0, clip).findLast((c) => c.op === 'rect');
     expect(rect?.args).toEqual([0, 0, timeToX(view, 10), SIZE.height]);
-    const restore = calls.findIndex((c, i) => i > clip && c.op === 'restore');
+    // Its restore: the first one back at the depth of the save before it.
+    let depth = 0;
+    const restore = calls.findIndex((c, i) => {
+      if (i <= clip) return false;
+      if (c.op === 'save') depth++;
+      if (c.op === 'restore') return depth-- === 0;
+      return false;
+    });
     // Every line stroke lies between the clip and its restore.
     const red = calls.flatMap((c, i) => (c.op === 'stroke' && c.stroke === RED ? [i] : []));
     expect(red.length).toBeGreaterThan(0);
