@@ -22,6 +22,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **Melody on (v39).** Select a tune: the first inspector row picks which sounding note carries it, or Highest/Lowest of its part. New tunes go on the top line when several are sounding (integrator call).
 
 ## Answered
+- 2026-11-21 (afternoon): the second set of compositions (Porch Light, Tide Pools, Interference, Switchyard, Little Round) goes in the Compositions menu. The owner likes the composer's suggestions (`docs/composing.md` §3, end); the integrator schedules them. **Reversal:** Roman numerals should read against the key's scale in minor modes (`VI` in A minor = F); this overrides the earlier "numerals stay read against the major scale" answer. Check the examples that use numerals in minor keys when it lands (Porch Light writes `bVII bVI` in G major, which is unaffected).
 - 2026-11-21 (v37): "the bell sounds awful" (heard in the Tidewater timbre-change render). Being redesigned: candidates rendered for the owner to pick.
 - 2026-11-21 (back): "ship the compositions" (the rev 9 rewrite); organ's 17 ms bloom "sounds fine". Reported: artifacts in front of the playhead where lines split (a knot where translucent future strands overlap); a render fix is in progress.
 - 2026-11-21 (night): the compact lane rows are rejected ("I would prefer scrolling through the old one"); try something else (PLAN "Dense lanes"). A light pop at the end of every moment in version 29 is being bisected.

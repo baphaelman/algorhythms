@@ -64,3 +64,47 @@ Notes for the builder who rewrites the compositions after rev 9, and for any age
 - Check loudness per section and look for clicks (outliers in the second difference).
 - Check that no line dies unexpectedly (count active voices over time).
 - Then give the owner a render: they are the judge.
+
+## 3. The second set: written the editor's way (2026-11-21)
+
+Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mjs`. The owner asked for demos of what one can reasonably make with the tools, not music forced into them, and for more experiment. So: chords as symbols or Roman numerals with `close`/`nearest` voicing (no hand voicings), tunes typed as in the inspector (`"D5 1.5, B4 0.5"`), region moments doing the repetitive work, sections pasted.
+
+| Piece | What it shows | Moments | Link |
+|---|---|---|---|
+| Porch Light | Pop song. Numerals + `close` voice-lead themselves; one `key` moment moves every chord up a tone; `updown`/`up` pulses are the e-piano arpeggio | 95 | 1,932 |
+| Tide Pools | Generative. One mallet line walks, splits to 3, then 5; random pulse = rain; `timbre` marimba → bell → flute; slow choir pad on the default 3 s glide | 39 | 1,106 |
+| Interference | Experiment. 12 sine lines, one part each (so they never merge), a few cents apart: they beat. `spread` (snap off) widens it; `shift` by 0 scale steps snaps the cluster into a chord; `spread` 0 gathers it | 18 | 860 |
+| Switchyard | Rhythm experiment. Four pulses with cycle lengths 4, 8, 10, 16 phase against the bar; one opening voicing, then `shift` by scale steps planes all parts at once; the solo is a walk inside a random pulse | 62 | 1,260 |
+| Little Round | A three-voice round: one tune pasted onto three parts two bars apart; entries are births that swoop up out of the line below; custom colours show the braid | 33 | 842 |
+
+**What works well**
+- Numerals with `close` voicing in a register give good voice leading for free, and a `key` moment carries them.
+- Fourths (D G C F A) planed by `shift` stay clash-free on i, ii and v of dorian.
+- Births are entrances: a part brought in by a chord with `count` swoops out of the nearest line.
+- One voice per part for microtonal work; `snap: 'none'` spreads, then `shift 0 scaleSteps` to resolve.
+
+**Traps met**
+- Only the first establishing moment starts from silence. A `tune` or `unison` on a silent part does nothing (an `info` diagnostic only). Bring a part in with a `chord` + `count`.
+- A one-line part given a chord symbol takes whichever chord tone the voicing picks (often the 3rd or 5th), not the root. Basses are tunes.
+- Tunes have no rests, and a repeated pitch is held, not re-struck.
+- Roman numerals count major-scale degrees in every mode: in minor write `bIII bVI bVII`; `VI` in A minor is F♯.
+- A `shift` past a line's range folds it an octave, onto another line of its part, which then merges and is lost. Give planed parts an octave of headroom.
+- Walks follow the key, not the chord. Over a pentatonic walk, use pad chords made only of the scale's notes (Dm7, F6, Csus2, Gsus4), or set the key to the pentatonic (Porch Light does, for its bells; numerals don't care).
+- A part joining lowers every other line (the 1/√n normalisation): about −1.8 dB when 3 bells join 6 lines. Compensate with `level`.
+- Pulses with `floor: 0` draw as specks (lines show their level); a floor of 0.1–0.2 keeps the rope visible.
+- `nearest` voicing on a 3-voice pad packs maj7 chords into semitone clusters (A–B♭ at A3).
+
+**Checking** (scratch tools, not committed): a semitone-clash finder over audible lines (m2/M7/m9 held ≥ 0.3 s), loudness per 8 s window and per part, headless screenshots via the `__algorhythms` hook. Renders: `renders/compositions-2/*.m4a`.
+
+**Suggestions from this set** (owner: "I like your suggestions", 2026-11-21; not yet scheduled):
+1. A chord-progression moment ("IV V iii vi" typed once, like a tune): half of Porch Light's moments are single chord changes.
+2. Root in the bass: a chord symbol on a one-line part should be able to take the root.
+3. Tunes: rests, re-struck repeated notes, and transposing with a key change.
+4. A part can start from silence partway through (tune, unison or chord on a silent part), and the no-op today should be a warning, not `info`.
+5. Walks over changing harmony: a "chord tones" option, or a walk scale separate from the key.
+6. Range folding must not merge a line into another of its part (it is lost for the rest of the piece).
+7. Pulsed lines drawn by their envelope, with marks for hits, so floor-0 pulses don't draw as dust.
+8. Targets that name several parts ("all but Bells").
+9. An arpeggio note order for pulses (1 3 2 4), so arpeggios line up with the bar.
+10. Roman numerals read against the key's scale in minor modes (`VI` in A minor = F, not F♯). The owner reversed the earlier "read against the major scale" ruling (2026-11-21).
+11. Smaller: compensate the 1/√n drop when a part joins; the HUD chord name in tune-driven pieces.
