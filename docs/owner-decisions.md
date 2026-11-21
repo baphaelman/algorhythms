@@ -20,6 +20,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **Bell redesign (v39): pick one.** Listen to `renders/bell/bell-{0-current,1-church,2-fm-strike,3-glass-bell}-{chord,tidewater}.m4a`. 1-church is now the default bell; say 2 or 3 to switch.
 - **Next leaves a hold (v38)** of a bar (snap on) or 2 s; playhead labels show only Hz.
 - **Melody on (v39).** Select a tune: the first inspector row picks which sounding note carries it, or Highest/Lowest of its part. New tunes go on the top line when several are sounding (integrator call).
+- **Random melody and double-click (v40).** Select a tune: "Random melody" rolls a new one (plays it while stopped); new tunes start with one. With a tune selected, double-click the score to add a note there (inside a note splits it; after the end appends; before the start prepends). Calls: no shortcut key (none free); a double-click on a note's start takes its first half.
 
 ## Answered
 - 2026-11-21 (v37): "the bell sounds awful" (heard in the Tidewater timbre-change render). Being redesigned: candidates rendered for the owner to pick.
