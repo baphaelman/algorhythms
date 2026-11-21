@@ -360,6 +360,8 @@ Sort the active targeted voices by committed destination (§7.1), breaking ties 
 - **Chord parser:** handles triads, 6/7/9/11/13 chords, sus2/sus4, add9, dim, aug, m7b5, slash bass (e.g. `C/E`), and Roman numerals relative to the key (`ii7`, `V9`). Invalid input becomes a diagnostic and the chord is not applied.
 
 ### 7.4 Births and deaths
+
+**Revision 7 (M4.5-17, accepted 2026-11-21):** a newborn forks from the nearer of its two pitch-order neighbours (or the nearest sounding voice if none is targeted), not the voice nearest its target. A dying voice merges into its nearest surviving order neighbour; its fade starts once that survivor has arrived, and it follows the survivor's later moves until the fade ends, so no line ends in mid-air. A voice that parents a not-yet-born voice is not idle for walks (§7.1).
 - **Birth:**
   - A dormant voice becomes active and its life span opens.
   - The parent is the active voice nearest to the birth target, measured at the moment's time.
