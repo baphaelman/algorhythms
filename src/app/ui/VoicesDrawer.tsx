@@ -59,7 +59,7 @@ export function VoicesToggle() {
       data-testid="voices-toggle"
       onClick={() => toggleVoicesDrawer()}
     >
-      Voices
+      Notes
     </button>
   );
 }
@@ -188,7 +188,7 @@ function ColorField({ voice }: { voice: VoiceDef }) {
         aria-label={`Colour of ${voice.id}`}
         value={hexOf(voice.color)}
         onChange={(e) => {
-          if (!inGesture()) beginGesture('Voice colour');
+          if (!inGesture()) beginGesture('Note colour');
           const color = e.target.value;
           updateGesture((p) => patchVoice(p, voice.id, { color }));
         }}
@@ -234,7 +234,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             onClick={() =>
               edit(
                 (p) => setStarts(p, id, startPitch === undefined),
-                startPitch === undefined ? 'Start voice' : 'Stop voice at start',
+                startPitch === undefined ? 'Start note' : 'Stop note at start',
               )
             }
           >
@@ -265,7 +265,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
           value={voice.timbre}
           onChange={(e) => {
             const timbre = e.target.value;
-            edit((p) => patchVoice(p, id, { timbre }), 'Voice timbre');
+            edit((p) => patchVoice(p, id, { timbre }), 'Note timbre');
           }}
         >
           {timbreOptions(piece, voice.timbre).map((t) => (
@@ -284,7 +284,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             aria-label={`Automatic pan for ${id}`}
             title="Auto pan"
             onClick={() =>
-              edit((p) => patchVoice(p, id, { pan: pan === 'auto' ? 0 : 'auto' }), 'Voice pan')
+              edit((p) => patchVoice(p, id, { pan: pan === 'auto' ? 0 : 'auto' }), 'Note pan')
             }
           >
             A
@@ -296,7 +296,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             step={0.01}
             disabled={pan === 'auto'}
             label={`Pan of ${id}`}
-            gestureLabel="Voice pan"
+            gestureLabel="Note pan"
             valueText={pan === 'auto' ? 'auto' : fmtPan(pan)}
             recipe={(x) => (p) => patchVoice(p, id, { pan: x })}
           />
@@ -311,7 +311,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             max={2}
             step={0.01}
             label={`Gain of ${id}`}
-            gestureLabel="Voice gain"
+            gestureLabel="Note gain"
             valueText={fmtGain(voice.gain)}
             recipe={(x) => (p) => patchVoice(p, id, { gain: x })}
           />
@@ -329,7 +329,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             onCommit={(n) =>
               edit(
                 (p) => patchVoice(p, id, { range: normalizeRange(n, voice.range[1]) }),
-                'Voice range',
+                'Note range',
               )
             }
           />
@@ -344,7 +344,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
             onCommit={(n) =>
               edit(
                 (p) => patchVoice(p, id, { range: normalizeRange(voice.range[0], n) }),
-                'Voice range',
+                'Note range',
               )
             }
           />
@@ -358,7 +358,7 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
           aria-pressed={voice.mute === true}
           aria-label={`Mute ${id}`}
           data-testid={`mute-${id}`}
-          onClick={() => edit((p) => toggleMute(p, id), voice.mute ? 'Unmute voice' : 'Mute voice')}
+          onClick={() => edit((p) => toggleMute(p, id), voice.mute ? 'Unmute note' : 'Mute note')}
         >
           M
         </button>
@@ -367,9 +367,9 @@ function VoiceRow({ voice, index, heard }: { voice: VoiceDef; index: number; hea
           className="vd-mini"
           aria-pressed={voice.solo === true}
           aria-label={`Solo ${id}`}
-          title="Solo (Alt: solo only this voice)"
+          title="Solo (Alt: solo only this note)"
           data-testid={`solo-${id}`}
-          onClick={(e) => edit((p) => toggleSolo(p, id, e.altKey), 'Solo voice')}
+          onClick={(e) => edit((p) => toggleSolo(p, id, e.altKey), 'Solo note')}
         >
           S
         </button>
@@ -389,7 +389,7 @@ function resize(size: number): void {
   if (fx.moments > 0) {
     pushNotice(
       'info',
-      `Removed ${fx.moments} ${fx.moments === 1 ? 'moment' : 'moments'} with the voices`,
+      `Removed ${fx.moments} ${fx.moments === 1 ? 'moment' : 'moments'} with the notes`,
       [`They acted only on ${fx.voices.join(', ')}. Undo restores them.`],
     );
   }
@@ -407,7 +407,7 @@ export function VoicesDrawer() {
     <section
       id="voices-drawer"
       className="voices-drawer"
-      aria-label="Voices"
+      aria-label="Notes"
       data-testid="voices-drawer"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) {
@@ -417,7 +417,7 @@ export function VoicesDrawer() {
       }}
     >
       <header className="vd-head">
-        <h2>Voices</h2>
+        <h2>Notes</h2>
         <label className="ctl">
           <span>Pool</span>
           <NumberField
@@ -437,9 +437,9 @@ export function VoicesDrawer() {
             value={startCount(piece)}
             min={0}
             max={voices.length}
-            label="Voices active at start"
+            label="Notes active at start"
             testId="start-count"
-            onCommit={(n) => edit((p) => setStartCount(p, n), 'Voices at start')}
+            onCommit={(n) => edit((p) => setStartCount(p, n), 'Notes at start')}
           />
         </label>
         <button type="button" disabled={!soloed} onClick={() => edit(clearSolo, 'Clear solo')}>
@@ -449,7 +449,7 @@ export function VoicesDrawer() {
         <button
           type="button"
           className="vd-close"
-          aria-label="Close voices drawer"
+          aria-label="Close notes drawer"
           onClick={() => toggleVoicesDrawer(false)}
         >
           ×
@@ -459,7 +459,7 @@ export function VoicesDrawer() {
         <table className="vd-table">
           <thead>
             <tr>
-              <th scope="col">Voice</th>
+              <th scope="col">Note</th>
               <th scope="col">Start</th>
               <th scope="col">Colour</th>
               <th scope="col">Timbre</th>

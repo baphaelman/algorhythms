@@ -103,7 +103,7 @@ test('opens with the featured example loaded, not playing, at the start', async 
   await expect(page.getByTestId('title')).toHaveText('Tidewater Hymn');
   await expect(page.getByTestId('time')).toHaveText('00:00.0');
   await expect(page.getByTestId('duration')).not.toHaveText('00:00.0');
-  await expect(page.getByTestId('keyvoices')).toContainText(/A dorian · \d+ \/ 12 voices/);
+  await expect(page.getByTestId('keyvoices')).toContainText(/A dorian · \d+ \/ 12 notes/);
   // No audio before a gesture beyond preloading: nothing is playing.
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
   expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);

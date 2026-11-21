@@ -81,7 +81,7 @@ export function WalkSteps({ m, piece }: { m: WalkMoment; piece: Piece }) {
                   <span className="step-v">{voice}</span>
                   <span className="step-n">
                     {note}
-                    {blocked && <span title="Blocked: the voice holds"> ⊘</span>}
+                    {blocked && <span title="Blocked: the note holds"> ⊘</span>}
                   </span>
                 </button>
                 <button

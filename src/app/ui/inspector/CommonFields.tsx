@@ -71,7 +71,7 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
     >
       <summary>Advanced</summary>
       <Chips
-        legend="Voices"
+        legend="Notes"
         className="target-modes"
         testId="insp-target"
         options={TARGET_MODES}
@@ -80,7 +80,7 @@ export function TargetField({ m, piece }: { m: Moment; piece: Piece }) {
       />
       {target && target !== 'all' && 'voices' in target && (
         <fieldset className="insp-voices">
-          <legend className="sr-only">Target voices</legend>
+          <legend className="sr-only">Target notes</legend>
           {piece.voices.map((v) => {
             const on = target.voices.includes(v.id);
             return (

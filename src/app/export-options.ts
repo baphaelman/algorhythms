@@ -35,13 +35,13 @@ export const RATES: readonly { id: ExportRate; label: string }[] = [
 export const MIDI_MODES: readonly { id: ExportMidiMode; label: string; hint: string }[] = [
   {
     id: 'perVoice',
-    label: 'Per-voice tracks',
-    hint: 'One track per voice, each with its own pitch-bend range. Use one monophonic synth per track.',
+    label: 'Per-note tracks',
+    hint: 'One track per note, each with its own pitch-bend range. Use one monophonic synth per track.',
   },
   {
     id: 'mpe',
     label: 'MPE',
-    hint: 'For one MPE synth (bend range fixed at ±48). More than 15 voices make several files.',
+    hint: 'For one MPE synth (bend range fixed at ±48). More than 15 notes make several files.',
   },
   {
     id: 'notesOnly',

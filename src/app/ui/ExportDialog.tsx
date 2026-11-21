@@ -277,7 +277,7 @@ export function ExportDialog() {
         >
           <h2 id={`${id}-title`}>Export</h2>
           <p className="dialog-note">
-            {piece.meta.title}: {Math.round(compiled.duration)} s, {piece.voices.length} voices.
+            {piece.meta.title}: {Math.round(compiled.duration)} s, {piece.voices.length} notes.
           </p>
 
           <Radios
@@ -326,8 +326,8 @@ export function ExportDialog() {
                 <span>Mono stems (half the size; the mix stays stereo)</span>
               </label>
               <small>
-                A zip of the mix, one stereo WAV per voice and the effect returns. They add up to
-                the mix.
+                A zip of the mix, one stereo WAV per note and the effect returns. They add up to the
+                mix.
               </small>
             </div>
           )}

@@ -222,7 +222,7 @@ describe('labels', () => {
 
   it('formats voice, note and Hz', () => {
     const hit = { voice: 1, t: 5, pitch: 69, x: 0, y: 0, dist: 0 };
-    expect(hoverLabel(SCORE, hit)).toBe('voice 2 · A4 · 440.00 Hz');
+    expect(hoverLabel(SCORE, hit)).toBe('note 2 · A4 · 440.00 Hz');
     expect(hoverLabel(SCORE, { ...hit, pitch: 66 }, 'alto')).toBe('alto · F♯4 · 369.99 Hz');
   });
 });

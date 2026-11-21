@@ -236,7 +236,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       const active = activeAt(compiled, t).length;
       writeText(
         live.status,
-        `${keyName(keyAt(compiled, t))} · ${active} / ${compiled.voices.length} voices`,
+        `${keyName(keyAt(compiled, t))} · ${active} / ${compiled.voices.length} notes`,
       );
     }
 

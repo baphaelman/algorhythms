@@ -115,50 +115,50 @@ export interface EffectContext {
 /** Why a moment with no effect has none, for the `no-effect` message and the palette. */
 export function noEffectReason(m: Moment, c: EffectContext): string {
   const n = c.active.length;
-  if (n === 0 && m.type !== 'key') return 'no voice is sounding';
+  if (n === 0 && m.type !== 'key') return 'no note is sounding';
   if (c.targeted.length === 0 && m.type !== 'key' && m.type !== 'split' && m.type !== 'merge') {
-    return 'it targets no sounding voice';
+    return 'it targets no sounding note';
   }
   const onePitch = distinctPitches(c.targeted) <= 1;
   switch (m.type) {
     case 'unison':
       return c.targeted.length === 1
-        ? 'the voice is already on that pitch'
+        ? 'the note is already on that pitch'
         : onePitch
-          ? 'all voices already on one pitch'
-          : 'the voices are already there';
+          ? 'all notes already on one pitch'
+          : 'the notes are already there';
     case 'merge':
       if (c.deaths === 0) {
-        return n === 1 ? 'only one voice is sounding' : `only ${n} voices are sounding`;
+        return n === 1 ? 'only one note is sounding' : `only ${n} notes are sounding`;
       }
       return distinctPitches(c.active) === 1
-        ? 'all voices already on one pitch'
-        : 'the merging voices already double the voices they merge into';
+        ? 'all notes already on one pitch'
+        : 'the merging notes already double the notes they merge into';
     case 'split':
       if (c.births === 0) {
         return c.dormant === 0
-          ? 'every pool voice is already sounding'
-          : `${n} voices are already sounding`;
+          ? 'every pool note is already sounding'
+          : `${n} notes are already sounding`;
       }
-      return 'the new voices only double their parents';
+      return 'the new notes only double their parents';
     case 'shift':
-      return m.by === 0 ? 'shift by 0' : 'no voice moves';
+      return m.by === 0 ? 'shift by 0' : 'no note moves';
     case 'spread':
-      if (c.targeted.length === 1) return 'only one voice is sounding';
-      if (onePitch) return 'all voices already on one pitch';
-      return m.factor === 1 ? 'factor 1' : 'no voice moves';
+      if (c.targeted.length === 1) return 'only one note is sounding';
+      if (onePitch) return 'all notes already on one pitch';
+      return m.factor === 1 ? 'factor 1' : 'no note moves';
     case 'chord':
-      return 'the voices already sound this chord';
+      return 'the notes already sound this chord';
     case 'note':
-      return noteIsNoop(m) ? 'the note does not change' : 'no voice moves';
+      return noteIsNoop(m) ? 'the note does not change' : 'no note moves';
     case 'pin':
-      return 'the voice is already on that pitch';
+      return 'the note is already on that pitch';
     case 'key':
       return 'the piece is already in this key';
     case 'level':
-      return 'the voices are already at this level';
+      return 'the notes are already at this level';
     case 'walk':
-      return 'no voice is sounding';
+      return 'no note is sounding';
   }
 }
 
