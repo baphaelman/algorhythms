@@ -35,6 +35,10 @@ A moment's `glide` is partial: missing fields come from `defaults.glide`, whose 
 | `pulse` | `step`: `0.5`, `pattern`: `[1]`, `decay`: `0.3`, `floor`: `0`, `mode`: `"together"` |
 | `tune` | `notes`: `[]` |
 
+## Timbre preset files
+
+The Sound drawer saves one timbre as a preset file, usually named `*.algorhythms-timbre.json`: an object with `format` (`"algorhythms-timbre"`), `version` (1), `name` (1–64 characters) and `timbre`, which follows the schema of a `timbres` entry below. Defaults fill missing timbre fields and unknown fields are kept, so a preset loads back exactly as it was saved. A newer `version` loads with a warning.
+
 ## JSON Schema
 
 This is the *input* form: fields with defaults are optional here.

@@ -54,10 +54,11 @@ function hold(t: Timbre, pitch: number, seconds = 3): Float32Array {
 const db = (x: number) => 20 * Math.log10(x);
 
 describe('M6 params and presets', () => {
-  it('only bell among the built-ins uses an M6 path; its params are sane', () => {
+  it('only bell and the M6-c presets use an M6 path; bell’s params are sane', () => {
+    const m6 = ['bell', 'epiano', 'flute', 'marimba', 'brass'];
     for (const [name, t] of Object.entries(BUILTIN_TIMBRES)) {
       const ext = TimbreExt.of(buildWavetables(t, RATE));
-      expect(ext === null, name).toBe(name !== 'bell');
+      expect(ext === null, name).toBe(!m6.includes(name));
     }
     const p = timbreParams(BUILTIN_TIMBRES.bell);
     expect(p).toMatchObject({ fmRatio: 1.41, fmIndex: 0.35, noiseLevel: 0.04, stretch: 0.12 });
