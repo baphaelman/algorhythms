@@ -8,6 +8,7 @@ import {
   formatPitchList,
   formatTime,
   keyAt,
+  landGlide,
   liveNotes,
   parseIntList,
   parseNum,
@@ -135,5 +136,17 @@ describe('liveNotes', () => {
     expect(liveNotes(score, 'a')).toEqual([59, 67, 72]);
     expect(liveNotes(score, 'b')).toEqual([59, 69, 72]);
     expect(liveNotes(score, 'z')).toEqual([]);
+  });
+});
+
+describe('landGlide (Land at the marker)', () => {
+  it('stores land only when it differs from the piece default', () => {
+    expect(landGlide(undefined, undefined, true)).toEqual({ land: true });
+    expect(landGlide(undefined, undefined, false)).toBeUndefined();
+    expect(landGlide(undefined, true, true)).toBeUndefined();
+    expect(landGlide(undefined, true, false)).toEqual({ land: false });
+    expect(landGlide({ length: 3, land: true }, undefined, false)).toEqual({ length: 3 });
+    expect(landGlide({ length: 3 }, false, true)).toEqual({ length: 3, land: true });
+    expect(landGlide({ land: false }, true, true)).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@ import {
   setColors,
   setFollow,
   setHud,
+  setSnapBeats,
   setTheme,
   setWindow,
   usePlayer,
@@ -15,6 +16,8 @@ import {
   type ThemePref,
 } from '../store';
 import { setKeepOrder, useLineOrder } from '../editor/line-order';
+import { refreshSuggestions } from '../editor/suggestions';
+import { beatStep } from '../editor/snap';
 import { VoicesToggle } from './VoicesDrawer';
 
 const COLORS = [
@@ -44,6 +47,10 @@ export function ViewBar() {
   const theme = usePlayer((s) => s.view.theme);
   const follow = usePlayer((s) => s.view.follow);
   const keepOrder = useLineOrder((s) => s.keep);
+  const view = usePlayer((s) => s.piece.view);
+  // "Snap to beats" shows when the piece has a tempo, on unless the piece turned it off.
+  const hasTempo = beatStep({ gridBpm: view.gridBpm }) !== null;
+  const snapBeats = hasTempo && view.snapBeats !== false;
   // The window can open past the piece (open-ended canvas); Fit is the whole piece exactly.
   const fit = Math.abs(win - Math.max(MIN_WINDOW, duration)) < 1e-6;
   const widest = win >= windowRange(duration)[1] - 1e-6;
@@ -172,6 +179,22 @@ export function ViewBar() {
       >
         Keep lines in order
       </button>
+
+      {hasTempo && (
+        <button
+          type="button"
+          className="toggle snap-beats-toggle"
+          aria-pressed={snapBeats}
+          data-testid="snap-beats-toggle"
+          title="Adding and dragging moments, dots and notes snap to beats (Alt: free)"
+          onClick={() => {
+            setSnapBeats(!snapBeats);
+            refreshSuggestions(true);
+          }}
+        >
+          Snap to beats
+        </button>
+      )}
 
       <VoicesToggle />
 

@@ -5,9 +5,13 @@
  * at the current zoom; zooming in far enough leaves a time free. The bar grid is not a target.
  * Alt disables snapping. Pure: callers take the points at gesture start, so the dragged item's
  * own (moving) times never feed back.
+ *
+ * Revision 9 "Snap to beats": when the piece has a tempo and the toggle is on (`beatStep`), the
+ * beats are a target as well: a time goes to the nearer of its nearest beat and a note change
+ * within `SNAP_PX`.
  */
 
-import type { CompiledScore, MomentId, Piece, Seconds } from '../../core/types';
+import type { CompiledScore, MomentId, Piece, Seconds, ViewSettings } from '../../core/types';
 import { momentArrivals, type ArrivalDot } from './arrival-points';
 import { sameStep } from './walk-steps';
 
@@ -27,6 +31,30 @@ export interface ChangePoint {
 const SAME_T = 1e-6;
 
 const cache = new WeakMap<CompiledScore, { piece: Piece; points: ChangePoint[] }>();
+
+/**
+ * The beat length (s) times snap to: the piece's tempo (`gridBpm`) when "Snap to beats" is on
+ * (`snapBeats` is not false), else null (no tempo, or the toggle is off).
+ */
+export function beatStep(view: Pick<ViewSettings, 'gridBpm' | 'snapBeats'>): Seconds | null {
+  const bpm = view.gridBpm;
+  if (view.snapBeats === false || bpm === undefined || !Number.isFinite(bpm) || !(bpm > 0)) {
+    return null;
+  }
+  return 60 / bpm;
+}
+
+/** `t` rounded to the nearest beat of a `step`-second grid, to 1 µs; never below 0. */
+export function nearestBeat(t: Seconds, step: Seconds): Seconds {
+  return Math.max(0, Math.round(Math.round(t / step) * step * 1e6) / 1e6) + 0;
+}
+
+/** `t` rounded up to the next beat (itself when it is on one), to 1 µs. */
+export function nextBeat(t: Seconds, step: Seconds): Seconds {
+  const k = t / step;
+  const n = Math.abs(k - Math.round(k)) < 1e-6 ? Math.round(k) : Math.ceil(k);
+  return Math.max(0, Math.round(n * step * 1e6) / 1e6) + 0;
+}
 
 /** Every note-change point of `score` (and `piece`'s moment times), sorted by time; cached. */
 export function changePoints(score: CompiledScore, piece: Piece): readonly ChangePoint[] {
@@ -107,11 +135,14 @@ export interface SnapSet {
   exclude?: Exclude;
   /** Times tried first (a walk step's sibling steps), each within the same reach. */
   prefer?: readonly Seconds[];
+  /** Beat length (s) when "Snap to beats" is on (`beatStep`); the nearest beat is a target. */
+  grid?: Seconds | null;
 }
 
 /**
- * `t` snapped at `pps` px/s: to the nearest preferred time within `SNAP_PX`, else the nearest
- * change point within it, else free (ms). `alt` (or no zoom) leaves it free. Never below 0.
+ * `t` snapped at `pps` px/s: to the nearest preferred time within `SNAP_PX`, else the nearer of
+ * the nearest change point within it and the nearest beat (`grid`), else free (ms). `alt` (or no
+ * zoom) leaves it free. Never below 0.
  */
 export function snapTime(t: Seconds, set: SnapSet, pps: number, alt = false): Seconds {
   if (alt || !(pps > 0)) return freeTime(t);
@@ -126,6 +157,8 @@ export function snapTime(t: Seconds, set: SnapSet, pps: number, alt = false): Se
     if (best !== null) return Math.max(0, best);
   }
   const hit = nearestPoint(t, set.points, reach, set.exclude);
+  const beat = set.grid ? nearestBeat(t, set.grid) : null;
+  if (beat !== null && (hit === null || Math.abs(beat - t) <= Math.abs(hit - t))) return beat;
   return hit === null ? freeTime(t) : Math.max(0, hit);
 }
 
@@ -136,7 +169,8 @@ export function snapTime(t: Seconds, set: SnapSet, pps: number, alt = false): Se
  */
 export function dotSnaps(score: CompiledScore, piece: Piece, dot: ArrivalDot): SnapSet {
   const points = changePoints(score, piece);
-  if (!dot.step) return { points, exclude: ofVoice(dot.momentId, dot.voice) };
+  const grid = beatStep(piece.view);
+  if (!dot.step) return { points, exclude: ofVoice(dot.momentId, dot.voice), grid };
   const step = dot.step;
   const walk = piece.moments.find((m) => m.id === dot.momentId);
   const prefer = walk
@@ -144,5 +178,5 @@ export function dotSnaps(score: CompiledScore, piece: Piece, dot: ArrivalDot): S
         .filter((d) => d.step && !sameStep(d.step, step))
         .map((d) => d.t)
     : [];
-  return { points, exclude: ofMoments([dot.momentId]), prefer };
+  return { points, exclude: ofMoments([dot.momentId]), prefer, grid };
 }

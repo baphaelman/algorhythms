@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
+import { piece as pieceOf } from '../core/compiler-fixtures';
 import { newPiece } from '../../../src/core/defaults';
 import type { CompiledVoice, Glide, Moment, Piece } from '../../../src/core/types';
 import {
   dragDt,
+  endDragDelta,
   endDragPatch,
+  endDragSpan,
   estimateSpan,
+  landsAtMarker,
   gridStep,
   laneItems,
   levelCurve,
@@ -191,6 +195,7 @@ describe('stackRows (revision 7)', () => {
     end,
     muted: false,
     endEdit: 'glide',
+    land: false,
   });
 
   it('puts overlapping items on new sub-rows, without a cap, and reuses freed ones', () => {
@@ -249,6 +254,7 @@ describe('dense lanes: rows by kind', () => {
     end,
     muted: false,
     endEdit: 'glide',
+    land: false,
   });
 
   it('laneRowOf: level → Level, pin → Pins, the rest → Moments/Transitions', () => {
@@ -487,5 +493,108 @@ describe('revealPan', () => {
     expect(revealPan(-10, 40, 10, 48)).toBeCloseTo(-3);
     expect(revealPan(-10, 0, 10, 48)).toBe(0);
     expect(revealPan(-10, 1000, 0, 48)).toBe(0);
+  });
+});
+
+describe('land at the marker (revision 9)', () => {
+  const landG: Glide = { ...G, land: true };
+
+  it('estimateSpan: a landing moment ends at `at`, starting at length + stagger before it', () => {
+    const m = chord('a', 10);
+    expect(estimateSpan(m, G)).toEqual([10, 12.5]);
+    expect(estimateSpan(m, landG)).toEqual([7.5, 10]);
+    // The moment's own glide overrides the default either way.
+    expect(estimateSpan(chord('b', 10, { glide: { land: true } }), G)).toEqual([7.5, 10]);
+    expect(estimateSpan(chord('c', 10, { glide: { land: false } }), landG)).toEqual([10, 12.5]);
+  });
+
+  it('estimateSpan clamps the lead-in at 0, as the compiler does', () => {
+    const [start, end] = estimateSpan(chord('a', 1), landG);
+    expect(start).toBe(0);
+    expect(end).toBe(1);
+  });
+
+  it('the lane bar is the compiled span, and the estimate matches it (lead-in, clamped or not)', () => {
+    for (const at of [0.8, 5, 12]) {
+      const p = pieceOf({
+        start: [48, 55, 60, 64],
+        glide: { length: 2, jitter: 0, stagger: 0, land: true },
+        moments: [
+          {
+            id: 'c',
+            type: 'chord',
+            at,
+            notes: { kind: 'chord', symbol: 'Dm9' },
+            voicing: 'even',
+            assign: 'ordered',
+          } as never,
+        ],
+      });
+      const score = compile(p);
+      const it = laneItems(p, score.momentSpans, undefined, score.harmony, score.voices).find(
+        (x) => x.id === 'c',
+      )!;
+      const [es, ee] = estimateSpan(
+        p.moments.find((m) => m.id === 'c')!,
+        p.defaults.glide,
+      );
+      expect(it.land).toBe(true);
+      expect(it.end).toBeCloseTo(at, 6);
+      expect(it.start).toBeCloseTo(es, 6);
+      expect(ee).toBe(at);
+    }
+  });
+
+  it('walks, levels and keys never land', () => {
+    const walk = { id: 'w', type: 'walk', at: 4, until: 8, grid: 1 } as unknown as Moment;
+    expect(landsAtMarker(walk, landG)).toBe(false);
+    expect(estimateSpan(walk, landG)).toEqual([4, 8]);
+    expect(landsAtMarker(chord('a', 1), landG)).toBe(true);
+    expect(landsAtMarker(chord('a', 1), G)).toBe(false);
+  });
+
+  it('laneItems: the compiled span is kept (it ends at `at`); stale and muted items estimate', () => {
+    const p = pieceOf({});
+    p.defaults.glide = { ...p.defaults.glide, length: 2, stagger: 0, jitter: 0, land: true };
+    p.moments = [chord('a', 10), chord('b', 20, { muted: true })];
+    const spans = [{ id: 'a', start: 8, end: 10 }];
+    const items = laneItems(p, spans, new Map([['a', 10]]));
+    expect(items[0]).toMatchObject({ at: 10, start: 8, end: 10, land: true });
+    // Muted: estimated from the glide, still ending at the marker.
+    expect(items[1]).toMatchObject({ at: 20, start: 18, end: 20, land: true });
+    // Stale (the moment moved since the compile): the estimate lands at the new time.
+    const stale = laneItems(p, spans, new Map([['a', 9]]));
+    expect(stale[0]).toMatchObject({ at: 10, start: 8, end: 10 });
+  });
+
+  it('endDragSpan: a landing bar keeps its end and grows to the left', () => {
+    const it = { at: 10, start: 8, end: 10, land: true };
+    expect(endDragSpan(it, -1)).toEqual({ start: 7, end: 10 });
+    expect(endDragSpan(it, 0.5)).toEqual({ start: 8.5, end: 10 });
+    // Never longer than negative: dragging past the marker leaves an empty bar.
+    expect(endDragSpan(it, 5)).toEqual({ start: 10, end: 10 });
+    expect(endDragDelta(it, -1)).toBe(1);
+    expect(endDragDelta(it, 0.5)).toBe(-0.5);
+  });
+
+  it('endDragSpan: a plain bar keeps its start and its end follows', () => {
+    const it = { at: 10, start: 10, end: 12, land: false };
+    expect(endDragSpan(it, 1)).toEqual({ start: 10, end: 13 });
+    expect(endDragSpan(it, -5)).toEqual({ start: 10, end: 10 });
+    expect(endDragDelta(it, 1)).toBe(1);
+  });
+
+  it('a landing end drag edits the same glide length as the preview shows', () => {
+    const m = chord('a', 10, { glide: { land: true } });
+    const raw = -1;
+    const patch = endDragPatch(m, G, endDragDelta({ land: true }, raw), false);
+    expect(patch).toEqual({ glide: { land: true, length: 3 } });
+  });
+
+  it('LaneItem.land is set from the effective glide', () => {
+    const p = pieceOf({});
+    p.moments = [chord('a', 4), chord('b', 8, { glide: { land: true } })];
+    const items = laneItems(p, []);
+    expect(items.map((i) => i.land)).toEqual([false, true]);
   });
 });

@@ -3,6 +3,7 @@
  * snapping, keyboard nudges, span-end drags, sub-row stacking and the level curve. No DOM, no store.
  */
 
+import { glides, landing } from '../../core/compiler/glide';
 import { isEstablishing } from '../../core/moments/establish';
 import { noteChanges } from '../../core/moments/note';
 import type {
@@ -46,6 +47,11 @@ export interface LaneItem {
   end: Seconds;
   muted: boolean;
   endEdit: EndEdit;
+  /**
+   * "Land at the marker" (`glide.land`, revision 9): the voices arrive at `at` and the bar ends
+   * there (`start` is the lead-in); its drag handle is on the bar's start.
+   */
+  land: boolean;
 }
 
 /** Grid step in seconds for a BPM grid, or null when there is none. */
@@ -100,13 +106,46 @@ export function effectiveGlide(m: Moment, defaults: Glide): Glide {
   return { ...defaults, ...m.glide };
 }
 
-/** A span estimate from the piece alone (for moments the compiled score has no span for). */
+/** True when moment `m` lands at its marker (`glide.land`, effective, on a type it applies to). */
+export function landsAtMarker(m: Pick<Moment, 'type' | 'glide'>, defaults: Glide): boolean {
+  return glides(m) && effectiveGlide(m as Moment, defaults).land === true;
+}
+
+/**
+ * A span estimate from the piece alone (for moments the compiled score has no span for). A moment
+ * that lands at its marker (revision 9) ends at `at` and starts at the compiler's lead-in
+ * (`landing`: `at` − length − stagger, clamped at 0).
+ */
 export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
   if (m.type === 'walk') return [m.at, Math.max(m.at, m.until)];
   if (m.type === 'level') return [m.at, m.at + Math.max(0, m.over)];
   if (m.type === 'key') return [m.at, m.at];
   const g = effectiveGlide(m, defaults);
+  if (g.land === true && glides(m)) {
+    return [
+      landing(m.at, { ...g, length: Math.max(0, g.length), stagger: Math.max(0, g.stagger) }).start,
+      m.at,
+    ];
+  }
   return [m.at, m.at + Math.max(0, g.stagger) + Math.max(0, g.length)];
+}
+
+/**
+ * A lane item's span while its end handle is dragged by `raw` seconds (the pointer's offset from
+ * where it grabbed): the bar's far edge follows the pointer. A moment that lands at its marker
+ * keeps its end at `at`, and the start follows; otherwise the end follows. Never negative length.
+ */
+export function endDragSpan(
+  item: Pick<LaneItem, 'start' | 'end' | 'at' | 'land'>,
+  raw: Seconds,
+): { start: Seconds; end: Seconds } {
+  if (item.land) return { start: Math.min(item.end, item.start + raw), end: item.end };
+  return { start: item.start, end: Math.max(item.start, item.end + raw) };
+}
+
+/** The glide-length delta (s) of an end drag by `raw` seconds: a landing bar grows to the left. */
+export function endDragDelta(item: Pick<LaneItem, 'land'>, raw: Seconds): Seconds {
+  return item.land ? -raw : raw;
 }
 
 /**
@@ -184,6 +223,7 @@ export function laneItems(
       end,
       muted: !!m.muted,
       endEdit: endEditOf(m.type),
+      land: landsAtMarker(m, defaults),
     };
   });
 }

@@ -4,9 +4,12 @@ import { momentArrivals } from '../../../src/app/editor/arrival-points';
 import { edgePitch, inRange } from '../../../src/app/editor/drag-edge';
 import {
   SNAP_PX,
+  beatStep,
   changePoints,
   dotSnaps,
+  nearestBeat,
   nearestPoint,
+  nextBeat,
   ofMoments,
   ofVoice,
   snapTime,
@@ -125,5 +128,69 @@ describe('drag past the view edge', () => {
     expect(inRange(100, [36, 96])).toBe(96);
     expect(inRange(50.5, [36, 96])).toBe(50.5);
     expect(inRange(200)).toBe(127);
+  });
+});
+
+describe('snap to beats (revision 9)', () => {
+  const pts: ChangePoint[] = [{ t: 3.3 }];
+
+  it('beatStep: the tempo when the toggle is not off; null without a tempo or when off', () => {
+    expect(beatStep({ gridBpm: 120 })).toBe(0.5);
+    expect(beatStep({ gridBpm: 120, snapBeats: true })).toBe(0.5);
+    expect(beatStep({ gridBpm: 120, snapBeats: false })).toBeNull();
+    expect(beatStep({})).toBeNull();
+    expect(beatStep({ snapBeats: true })).toBeNull();
+    expect(beatStep({ gridBpm: 0 })).toBeNull();
+  });
+
+  it('nearestBeat and nextBeat', () => {
+    expect(nearestBeat(1.26, 0.5)).toBe(1.5);
+    expect(nearestBeat(1.24, 0.5)).toBe(1);
+    expect(nearestBeat(-0.4, 0.5)).toBe(0);
+    expect(nearestBeat(3 * (60 / 70), 60 / 70)).toBe(2.571429);
+    expect(nextBeat(1.01, 0.5)).toBe(1.5);
+    expect(nextBeat(1, 0.5)).toBe(1);
+    expect(nextBeat(0, 0.5)).toBe(0);
+    expect(nextBeat(1 + 1e-9, 0.5)).toBe(1);
+  });
+
+  it('snaps to the nearest beat at any zoom, with no note change in reach', () => {
+    for (const pps of [10, 100, 1000]) {
+      expect(snapTime(1.26, { points: [], grid: 0.5 }, pps)).toBe(1.5);
+      expect(snapTime(1.24, { points: [], grid: 0.5 }, pps)).toBe(1);
+    }
+    expect(snapTime(0.1, { points: [], grid: 0.5 }, 100)).toBe(0);
+  });
+
+  it('a note change within 8 px wins when it is nearer than the beat; else the beat', () => {
+    // 100 px/s: reach 0.08 s. Beats every 0.5 s; a change point at 3.3 (not on a beat).
+    const set = { points: pts, grid: 0.5 };
+    expect(snapTime(3.32, set, 100)).toBe(3.3); // 20 ms from the point, 180 ms from the beat
+    expect(snapTime(3.45, set, 100)).toBe(3.5); // out of the point's reach
+    expect(snapTime(3.26, set, 100)).toBe(3.3);
+    // Equidistant: the beat.
+    expect(snapTime(3.4, { points: [{ t: 3.3 }], grid: 0.2 }, 100)).toBe(3.4);
+  });
+
+  it('Alt, a missing grid and a null grid leave things as before', () => {
+    expect(snapTime(1.2604, { points: [], grid: 0.5 }, 100, true)).toBe(1.26);
+    expect(snapTime(1.26, { points: [], grid: null }, 100)).toBe(1.26);
+    expect(snapTime(1.26, { points: [] }, 100)).toBe(1.26);
+    expect(snapTime(3.32, { points: pts }, 100)).toBe(3.3);
+  });
+
+  it("a walk step's sibling steps still come first", () => {
+    expect(snapTime(1.1, { points: [], grid: 0.5, prefer: [1.15] }, 100)).toBe(1.15);
+  });
+
+  it('dotSnaps carries the piece grid', () => {
+    const p = make();
+    const dots = momentArrivals(compile(p), byId(p, 'n'));
+    const score = compile(p);
+    expect(dotSnaps(score, p, dots[0]!).grid).toBeNull();
+    const withTempo: Piece = { ...p, view: { ...p.view, gridBpm: 90 } };
+    expect(dotSnaps(score, withTempo, dots[0]!).grid).toBeCloseTo(60 / 90, 9);
+    const off: Piece = { ...p, view: { ...p.view, gridBpm: 90, snapBeats: false } };
+    expect(dotSnaps(score, off, dots[0]!).grid).toBeNull();
   });
 });

@@ -43,7 +43,9 @@ import {
   clampLanePx,
   curveAt,
   dragDt,
+  endDragDelta,
   endDragPatch,
+  endDragSpan,
   gridStep,
   laneItems,
   laneLayout,
@@ -60,7 +62,7 @@ import {
 } from '../editor/lane';
 import { loadLaneSplit, saveLaneSplit } from '../lane-split';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
-import { changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
+import { beatStep, changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { panBy, usePlayer, zoomBy } from '../store';
@@ -151,9 +153,10 @@ interface Drag {
   alt: boolean;
   /** Was the pressed item selected at press time. */
   wasSelected: boolean;
-  /** Times of the dragged moments, and the span end of an end drag, at drag start. */
+  /** The dragged bar at the press (an end drag). */
+  orig?: Pick<LaneItem, 'at' | 'start' | 'end' | 'land'>;
+  /** Times of the dragged moments at drag start. */
   origAt: Map<MomentId, Seconds>;
-  origEnd: Seconds;
   /** Snap targets, taken at the first preview. */
   snaps?: SnapSet;
 }
@@ -206,7 +209,7 @@ class LaneController {
   private yOf = new Map<MomentId, number>();
   /** Preview times of moved items, and the preview end of an end drag. */
   private previewAt = new Map<MomentId, Seconds>();
-  private previewEnd: { id: MomentId; end: Seconds } | null = null;
+  private previewEnd: { id: MomentId; start: Seconds; end: Seconds } | null = null;
   drag: Drag | null = null;
   private pan: Pan | null = null;
   private raf = 0;
@@ -479,9 +482,9 @@ class LaneController {
     const bar = el.firstElementChild as HTMLElement | null;
     if (!bar) return;
     // Level moments have no bar: their ramp is the envelope.
-    const end = this.previewEnd?.id === it.id ? Math.max(it.start, this.previewEnd.end) : it.end;
-    const w = lane === 'level' ? 0 : Math.max(0, (end - it.start) * pps);
-    bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
+    const span = this.previewEnd?.id === it.id ? this.previewEnd : it;
+    const w = lane === 'level' ? 0 : Math.max(0, (span.end - span.start) * pps);
+    bar.style.left = `${(MARKER_HALF + (span.start - it.at) * pps).toFixed(2)}px`;
     bar.style.top = `${barTop}px`;
     bar.style.width = `${w.toFixed(2)}px`;
     const handle = fixedRow === undefined && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
@@ -591,7 +594,6 @@ class LaneController {
       alt: e.altKey,
       wasSelected,
       origAt: new Map(),
-      origEnd: 0,
     };
   };
 
@@ -647,7 +649,8 @@ class LaneController {
     window.addEventListener('keydown', this.onKey, true);
     if (d.kind === 'end') {
       d.ids = [d.id];
-      d.origEnd = this.items.find((x) => x.id === d.id)?.end ?? 0;
+      const it = this.items.find((x) => x.id === d.id);
+      if (it) d.orig = { at: it.at, start: it.start, end: it.end, land: it.land };
       beginGesture(d.shift ? 'Change stagger' : 'Change glide length');
       return;
     }
@@ -670,9 +673,11 @@ class LaneController {
   /** Immediate feedback: moved items' transforms, or the dragged bar's end. */
   private preview(d: Drag): void {
     if (d.kind === 'end') {
-      d.dt = d.raw;
-      this.previewEnd = { id: d.id, end: d.origEnd + d.raw };
       const it = this.items.find((x) => x.id === d.id);
+      // A bar that lands at its marker grows to the left: the glide gets longer as it drags left.
+      // The preview is the bar as it was at the press, dragged (the piece updates under it).
+      d.dt = d.orig ? endDragDelta(d.orig, d.raw) : d.raw;
+      if (d.orig) this.previewEnd = { id: d.id, ...endDragSpan(d.orig, d.raw) };
       if (it && this.view) this.place(it, this.view.pps);
       return;
     }
@@ -680,7 +685,11 @@ class LaneController {
     if (primary === undefined) return;
     // Revision 7: snaps to note changes (not the bar grid), outside the dragged moments.
     const st = usePlayer.getState();
-    d.snaps ??= { points: changePoints(st.compiled, st.piece), exclude: ofMoments(d.ids) };
+    d.snaps ??= {
+      points: changePoints(st.compiled, st.piece),
+      exclude: ofMoments(d.ids),
+      grid: beatStep(st.piece.view),
+    };
     const to = snapTime(primary + d.raw, d.snaps, this.view?.pps ?? 0, d.alt);
     let dt = dragDt(primary, to - primary, null, false);
     // The group stops when its earliest moment reaches 0.
@@ -925,24 +934,43 @@ function momentParts(piece: Piece): Map<MomentId, string> {
   return out;
 }
 
+/** What a landing moment's tooltip says: the notes arrive on the marker (revision 9). */
+function landText(it: LaneItem): string | undefined {
+  if (!it.land) return undefined;
+  return it.at - it.start > 1e-3
+    ? `Notes arrive on the marker; the glide starts at ${spokenTime(it.start)}`
+    : 'Notes arrive on the marker';
+}
+
 /**
  * The lane item's tooltip: its name (the Pins and Level rows show it only on hover, focus or
- * selection), its part, then the no-effect reason; undefined when none.
+ * selection), where its notes arrive when it lands at the marker, its part, then the no-effect
+ * reason; undefined when none.
  */
 function itemTitle(
   name: string | undefined,
   part: string | undefined,
   reason: string | undefined,
+  land?: string,
 ): string | undefined {
-  const lines = [name ?? '', part !== undefined ? `Part: ${part}` : '', reason ?? ''].filter(
-    Boolean,
-  );
+  const lines = [
+    name ?? '',
+    land ?? '',
+    part !== undefined ? `Part: ${part}` : '',
+    reason ?? '',
+  ].filter(Boolean);
   return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
 function itemLabel(it: LaneItem): string {
   const kind = it.text === it.type ? it.type : `${it.text} (${it.type})`;
-  const span = it.end - it.at > 1e-3 ? `, ${spokenTime(it.end - it.at)} long` : '';
+  const long = it.end - it.start;
+  const span =
+    long <= 1e-3
+      ? ''
+      : it.land
+        ? `, ${spokenTime(long)} glide, arriving at the marker`
+        : `, ${spokenTime(long)} long`;
   return `${kind} at ${spokenTime(it.at)}${span}${it.muted ? ', muted' : ''}`;
 }
 
@@ -1208,11 +1236,13 @@ export function Lane() {
                 data-lane={laneRowOf(it.type)}
                 data-selected={selected.has(it.id) || undefined}
                 data-muted={it.muted || undefined}
+                data-land={it.land || undefined}
                 data-no-effect={noEffect.has(it.id) || undefined}
                 title={itemTitle(
                   laneRowOf(it.type) !== 'main' ? it.text : undefined,
                   partOfMoment.get(it.id),
                   noEffect.get(it.id),
+                  landText(it),
                 )}
                 role="button"
                 aria-pressed={selected.has(it.id)}
