@@ -1412,3 +1412,16 @@ PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schem
 
 **R9-1 app fix:** `walk-steps.ts` `targets()` handles `{ part }` (voices whose `partOf` equals it); test `walkAt with a { part } target` in `tests/unit/app/walk-steps.test.ts`.
 Inspector `targetMode` has no part mode yet (R9-6): a `{ part }` target falls through to the `rank` mode with no range shown. Typecheck is clean.
+
+## No-GC lock flake (2026-11-21)
+CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with a (b) symptom.**
+- **Real allocation:** the measured minute allocated 102,792 B of young generation in every run (plain: ~1.9 KB, the harness's own timer and flag calls). A heap sampling profile put all of it in code that runs only on a seek or a birth: `probe` ~70 KB, `applyTransport` → `jump`/`isSounding`/`resetNorm`/`ghostOf` ~24 KB, `publishPhase` 5 KB. `--trace-opt`: none of them was ever optimised (12 seeks a minute), and the interpreter boxes every double. The hot paths allocated nothing.
+- **Why "1 observed, 0 traced":** reproduced locally in 1 of 30 runs: a minor GC starting 0.1 ms after the run, outside the `--trace-gc` window, set off by the first allocation after the run in a young generation the run had filled ~100 KB further. The observer counted the 50 ms waits around the run too.
+- **Second cause, found after warming those paths (200+ seeks):** 15 KB a minute stayed, all in the optimised `probe`. TurboFan's 920-byte inlining budget went on lastAtOrBefore ×3 (219), warpOffset ×2 (194), evalFlatSegment (157) and lifeWeight (172), so segmentPitch (491 with easeRaw) was called and boxed its 13 arguments on each probe.
+- **Fixes:**
+  - `VoiceData.probe` writes out the life weight, evalFlatSegment and warpOffset (now 710 B inlined, segmentPitch included). It is bit-identical: tests/dsp/probe.test.ts compares it with the old functions. `lifeWeight` and `smootherstep` are gone; `warpOffset` stays as the reference.
+  - The harness's warm-up seeks 1000 times (every 4 blocks) before its seek cycle, so the seek and birth paths are optimised.
+  - The observer counts only GCs that start inside the measured span.
+  - The test also gates the young generation's growth over the run, `newSpaceBytes` ≤ 6000 B in plain and lock. So any allocation fails on every run, not only when it happens to tip a GC. Now 1864 B in both modes. It would have been 102,792 B before the fixes, and ~12.8 KB with the warm-up but the old probe.
+- **Left (V8 tiering, not fixable in `process()`):** after a page load, the seek and birth paths run interpreted for their first ~200 seeks. In this 12-voice stress that is ~100 KB a minute, so a short scavenge every few minutes of constant seeking.
+- **Stress:** 60 'lock' runs, two at a time beside two CPU burners (load ~12), half with `--max-semi-space-size=1`: 0 GC lines, 0 observed, 1864–1872 B in all 60.
