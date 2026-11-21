@@ -3,7 +3,7 @@
  * snapping, keyboard nudges, span-end drags, sub-row stacking and the level curve. No DOM, no store.
  */
 
-import { glides, landing } from '../../core/compiler/glide';
+import { glides, landing, momentGlide } from '../../core/compiler/glide';
 import { isEstablishing } from '../../core/moments/establish';
 import { noteChanges } from '../../core/moments/note';
 import type {
@@ -20,6 +20,8 @@ import type {
 } from '../../core/types';
 import { keyName } from '../../render/draw';
 import type { MomentPatch } from './ops';
+import { cycleShare, patternSvg } from './pulse';
+import { tuneEnd, tuneEndDrag } from './tune';
 
 /** Nudge step without a grid, seconds. */
 export const NUDGE_NO_GRID: Seconds = 0.1;
@@ -28,8 +30,10 @@ export const NUDGE_NO_GRID: Seconds = 0.1;
 export type EndEdit =
   /** `glide.length` (Shift: `glide.stagger`). */
   | 'glide'
-  /** A walk's `until`. */
+  /** A walk's or a pulse's `until`. */
   | 'until'
+  /** A tune's last note length. */
+  | 'notes'
   /** A level ramp's `over`. */
   | 'over'
   /** Nothing (key changes have no span). */
@@ -52,7 +56,18 @@ export interface LaneItem {
    * there (`start` is the lead-in); its drag handle is on the bar's start.
    */
   land: boolean;
+  /** What the bar draws inside it: a pulse's accent cycle, a tune's notes (R9-7). */
+  art?: LaneArt;
 }
+
+/**
+ * Drawing inside a region bar, in shares (%) of the bar so it follows the bar's width: a pulse's
+ * pattern cycle (an SVG mask, repeated every `share` %), or a tune's notes as dashes placed by time
+ * (`left`, `width`) and pitch (`top`, 0 = the highest note).
+ */
+export type LaneArt =
+  | { kind: 'pulse'; svg: string; share: number }
+  | { kind: 'tune'; notes: { left: number; width: number; top: number }[] };
 
 /** Grid step in seconds for a BPM grid, or null when there is none. */
 export function gridStep(bpm: number | undefined): Seconds | null {
@@ -98,7 +113,9 @@ export function nudgeDt(at: Seconds, dir: 1 | -1, step: Seconds | null): Seconds
 
 /** What a span-end drag edits for this moment type. */
 export function endEditOf(type: MomentType): EndEdit {
-  return type === 'walk' ? 'until' : type === 'level' ? 'over' : type === 'key' ? 'none' : 'glide';
+  if (type === 'walk' || type === 'pulse') return 'until';
+  if (type === 'tune') return 'notes';
+  return type === 'level' ? 'over' : type === 'key' ? 'none' : 'glide';
 }
 
 /** The moment's glide with the piece defaults filled in. */
@@ -106,8 +123,12 @@ export function effectiveGlide(m: Moment, defaults: Glide): Glide {
   return { ...defaults, ...m.glide };
 }
 
-/** True when moment `m` lands at its marker (`glide.land`, effective, on a type it applies to). */
+/**
+ * True when moment `m` lands at its marker (`glide.land`, effective, on a type it applies to). A
+ * pulse moves no pitch and a tune's bar is its region (land applies per note), so neither does.
+ */
 export function landsAtMarker(m: Pick<Moment, 'type' | 'glide'>, defaults: Glide): boolean {
+  if (m.type === 'pulse' || m.type === 'tune') return false;
   return glides(m) && effectiveGlide(m as Moment, defaults).land === true;
 }
 
@@ -117,7 +138,13 @@ export function landsAtMarker(m: Pick<Moment, 'type' | 'glide'>, defaults: Glide
  * (`landing`: `at` − length − stagger, clamped at 0).
  */
 export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
-  if (m.type === 'walk') return [m.at, Math.max(m.at, m.until)];
+  if (m.type === 'walk' || m.type === 'pulse') return [m.at, Math.max(m.at, m.until)];
+  if (m.type === 'tune') {
+    // Its notes' span; with land the first note's glide leads in before `at`.
+    const g = momentGlide(defaults, m);
+    const start = g.land === true ? landing(m.at, g).start : m.at;
+    return [start, Math.max(m.at, tuneEnd(m))];
+  }
   if (m.type === 'level') return [m.at, m.at + Math.max(0, m.over)];
   if (m.type === 'key') return [m.at, m.at];
   const g = effectiveGlide(m, defaults);
@@ -224,14 +251,51 @@ export function laneItems(
       muted: !!m.muted,
       endEdit: endEditOf(m.type),
       land: landsAtMarker(m, defaults),
+      art: laneArt(m, start, end),
     };
   });
 }
 
+/** A pulse's or tune's bar drawing over its bar [start, end] (see `LaneArt`); else undefined. */
+export function laneArt(m: Moment, start: Seconds, end: Seconds): LaneArt | undefined {
+  const len = end - start;
+  if (!(len > 1e-6)) return undefined;
+  if (m.type === 'pulse') {
+    if (!(m.step > 0) || m.pattern.length === 0) return undefined;
+    return {
+      kind: 'pulse',
+      svg: patternSvg(m.pattern),
+      share: cycleShare(m.step, m.pattern.length, len),
+    };
+  }
+  if (m.type === 'tune') {
+    const ps = m.notes.map((n) => n.pitch).filter((p) => Number.isFinite(p));
+    if (ps.length === 0) return undefined;
+    const hi = Math.max(...ps);
+    const range = Math.max(1, hi - Math.min(...ps));
+    const notes: { left: number; width: number; top: number }[] = [];
+    let t = m.at;
+    for (const n of m.notes) {
+      const l = Math.max(0, n.len);
+      if (Number.isFinite(n.pitch)) {
+        notes.push({
+          left: ((t - start) / len) * 100,
+          width: (l / len) * 100,
+          top: ((hi - n.pitch) / range) * 100,
+        });
+      }
+      t += l;
+    }
+    return { kind: 'tune', notes };
+  }
+  return undefined;
+}
+
 /**
  * The patch for dragging moment `m`'s span end by `dt` seconds: the glide length (or the stagger
- * when `stagger`), a walk's `until`, or a level ramp's `over`, each kept ≥ 0 (a walk ends at least
- * one tick after it starts). Null when nothing changes.
+ * when `stagger`), a walk's or pulse's `until`, a tune's last note length, or a level ramp's
+ * `over`, each kept ≥ 0 (a walk or pulse ends at least one tick or step after it starts). Null
+ * when nothing changes.
  */
 export function endDragPatch(
   m: Moment,
@@ -240,9 +304,14 @@ export function endDragPatch(
   stagger: boolean,
 ): MomentPatch | null {
   if (m.type === 'key') return null;
-  if (m.type === 'walk') {
-    const until = roundMs(Math.max(m.at + Math.max(1e-3, m.grid), m.until + dt));
+  if (m.type === 'walk' || m.type === 'pulse') {
+    const tick = m.type === 'walk' ? m.grid : m.step;
+    const until = roundMs(Math.max(m.at + Math.max(1e-3, tick), m.until + dt));
     return until === m.until ? null : { until };
+  }
+  if (m.type === 'tune') {
+    const notes = tuneEndDrag(m, dt);
+    return notes ? { notes } : null;
   }
   if (m.type === 'level') {
     const over = roundMs(Math.max(0, m.over + dt));

@@ -50,9 +50,22 @@ function withMoments(piece: Piece, moments: Moment[]): Piece {
   return { ...piece, moments: sortByAt(moments) };
 }
 
-/** A moment shifted by `dt` (a walk's `until` moves with it). */
+/** A moment shifted by `dt` (a walk's or pulse's `until` moves with it). */
 function shifted(m: Moment, dt: number): Moment {
-  return m.type === 'walk' ? { ...m, at: m.at + dt, until: m.until + dt } : { ...m, at: m.at + dt };
+  return m.type === 'walk' || m.type === 'pulse'
+    ? { ...m, at: m.at + dt, until: m.until + dt }
+    : { ...m, at: m.at + dt };
+}
+
+/**
+ * The patch that moves moment `m` to `at` (the inspector's Time field): a region (walk, pulse)
+ * keeps its length, so its `until` moves too.
+ */
+export function atPatch(m: Moment, at: number): MomentPatch {
+  if (m.type === 'walk' || m.type === 'pulse') {
+    return { at, until: Math.round((m.until + at - m.at) * 1e6) / 1e6 };
+  }
+  return { at };
 }
 
 /** `dt` limited so no moment in `ids` goes before 0 (keeps a group's spacing). */

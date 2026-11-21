@@ -30,6 +30,14 @@ import type {
 /** Length of a new walk region, seconds. */
 export const NEW_WALK_LENGTH = 16;
 
+/** Seconds per beat when the piece has a tempo, else null. */
+function beatOf(piece: Piece): Seconds | null {
+  const bpm = piece.view?.gridBpm;
+  return typeof bpm === 'number' && Number.isFinite(bpm) && bpm > 0 ? 60 / bpm : null;
+}
+
+const round6 = (t: Seconds): Seconds => Math.round(t * 1e6) / 1e6;
+
 /** What the piece is doing at `at`: sounding voices (pool order) and the key. */
 function stateAt(score: CompiledScore, at: Seconds) {
   const active = activeAt(score, at).map((i) => ({
@@ -132,18 +140,24 @@ export function defaultMoment<T extends MomentType>(
     case 'level':
       m = { ...base, type: 'level', gain: 0.5, over: 2 };
       break;
-    case 'pulse':
+    case 'pulse': {
+      // A gated chord with a strong-weak accent: eighth notes for two bars with a tempo, else
+      // 0.5 s steps for 4 s (R9-7).
+      const beat = beatOf(piece);
+      const meter = piece.view?.meter;
+      const bar = typeof meter === 'number' && meter > 0 ? meter : 4;
       m = {
         ...base,
         type: 'pulse',
-        until: at + 4,
-        step: 0.5,
-        pattern: [1],
+        until: beat ? round6(at + 2 * bar * beat) : at + 4,
+        step: beat ? round6(beat / 2) : 0.5,
+        pattern: [1, 0.5, 0.75, 0.5],
         decay: 0.3,
         floor: 0,
         mode: 'together',
       };
       break;
+    }
     case 'tune': {
       // Up and back down the scale from the lowest sounding note (the line a tune targets
       // first), a beat a note (0.5 s without a tempo).
@@ -152,8 +166,7 @@ export function defaultMoment<T extends MomentType>(
         null,
       );
       const from = low ?? 60;
-      const bpm = piece.view?.gridBpm;
-      const len = typeof bpm === 'number' && bpm > 0 ? 60 / bpm : 0.5;
+      const len = beatOf(piece) ?? 0.5;
       m = {
         ...base,
         type: 'tune',

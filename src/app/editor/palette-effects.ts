@@ -29,11 +29,23 @@ export function effectTime(score: CompiledScore, t: Seconds): Seconds {
   return t > last ? last : t;
 }
 
+/**
+ * Palette types core's `momentEffectsAt` leaves out (its EFFECT_MOMENT_TYPES predates them); the
+ * app checks them one by one with `momentEffectAt` (R9-7).
+ */
+const EXTRA_TYPES: readonly MomentType[] = ['pulse', 'tune'];
+
 /** Per type: would a default moment of that type at `t` have an effect? */
 export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): PaletteEffects {
-  return momentEffectsAt(piece, score, effectTime(score, t), (type, at) =>
-    defaultMoment(type, at, PROBE_ID, piece, score),
+  const at = effectTime(score, t);
+  const out = momentEffectsAt(piece, score, at, (type, x) =>
+    defaultMoment(type, x, PROBE_ID, piece, score),
   );
+  for (const type of EXTRA_TYPES) {
+    if (out[type]) continue;
+    out[type] = momentEffectAt(piece, score, defaultMoment(type, at, PROBE_ID, piece, score));
+  }
+  return out;
 }
 
 /** Where a palette click or shortcut adds a moment now: exactly the playhead (revision 7). */

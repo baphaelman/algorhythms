@@ -46,6 +46,8 @@ import { ChordNotes } from './ChordNotes';
 import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
+import { PulseFields } from './PulseFields';
+import { TuneNotes } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
 
@@ -86,6 +88,10 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
       return <KeyFields m={m} />;
     case 'level':
       return <LevelFields m={m} />;
+    case 'pulse':
+      return <PulseFields m={m} piece={ctx.piece} />;
+    case 'tune':
+      return <TuneNotes m={m} piece={ctx.piece} />;
   }
 }
 
