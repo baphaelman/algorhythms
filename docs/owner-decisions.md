@@ -17,6 +17,9 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **Timbre editor (v36).** Open Sound (beside Notes): partial sliders, stretch, FM, noise, articulation and vibrato, with edits heard live. Save and load presets, and try epiano, flute, marimba and brass, or listen in `renders/m6-c/`.
 - **Timbre moments (v37).** Palette ◐ (key B) adds one: the targeted notes crossfade to another timbre over Fade (default 2 s). It shows on a new Effects row under Level; drag its end to change the fade. Listen to `renders/m6-b/tidewater-hymn-glass-bell-glass.m4a` (bell at 20 s, glass at 47 s, epiano at 68 s then sine at 71 s mid-fade, glass at 92 s) against `tidewater-hymn-original.m4a`. Bell sits quieter than glass by design.
 - **No knot where lines split (v37).** Future strands at merges and splits no longer darken where they overlap.
+- **Bell redesign (v39): pick one.** Listen to `renders/bell/bell-{0-current,1-church,2-fm-strike,3-glass-bell}-{chord,tidewater}.m4a`. 1-church is now the default bell; say 2 or 3 to switch.
+- **Next leaves a hold (v38)** of a bar (snap on) or 2 s; playhead labels show only Hz.
+- **Melody on (v39).** Select a tune: the first inspector row picks which sounding note carries it, or Highest/Lowest of its part. New tunes go on the top line when several are sounding (integrator call).
 
 ## Answered
 - 2026-11-21 (v37): "the bell sounds awful" (heard in the Tidewater timbre-change render). Being redesigned: candidates rendered for the owner to pick.
