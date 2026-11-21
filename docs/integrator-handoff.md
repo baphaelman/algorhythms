@@ -129,9 +129,11 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 ## Owner feedback via preview comments
 - The owner comments on the preview artifact. Each comment wakes this session (a webhook notification). Read it with ArtifactComments `read` + `thread_id`, reply on the thread, then put the change in PLAN and give it to a builder. Comments carry text and the `#score` anchor only, with no image or position.
 
-## Cloud done (2026-11-21)
-The cloud integrator has stopped. The local session owns everything from here.
-- **Merged and pushed:** M4.5-23 (score selection + grouped note changes), M4.5-26 (open-ended canvas), and everything before them.
-- **M4.5-29 (distinct notes + weights) is partial.** It is on branch `wip/m4.5-29` (dada013), not on main. Read the handoff note under "M4.5-29" in that branch's build log first. To continue: a fresh builder checks out `wip/m4.5-29`, merges origin/main (expect conflicts in `note.ts`, compiler, schema and the property generator), then finishes the build log's "Left" list.
-- **Design conflict to settle with the owner before finishing 29:** the builder made `count` / "Notes: n" count voices (summed weight), not lines. The owner wants n = the number of notes heard, i.e. lines (PLAN rev 8). Likely fix: n counts lines, and weight only carries loudness. Its other deviations (no weight transfer on explicit merges or count deaths; 0.1 s hand-over; transfer by level) need recording in PLAN.
-- **Queue after 29:** 25 (future dimmed + "notes" wording; can start now since 23 landed), 27 (start is a moment, after 29), 28 (Compose for me, after 27), the rare property seeds, full e2e incl. WebKit on the Mac, then the M4.5 acceptance checks.
+## State (local integrator, 2026-11-21)
+The cloud integrator is done; this local session owns everything. Comment watch on the preview is armed here.
+- **Pushed:** e0604f2 = M4.5-23 (score selection, grouped notes), M4.5-26 (open canvas), e2e spec fixes (lane Escape, view-follow race). CI green on all three engines; Pages deployed; preview artifact already shows this bundle.
+- **Local, not pushed:** 735edb6 = M4.5-25 ("notes" wording; owner withdrew the dimming fix) + doc commits. Verify it (lint, typecheck, test, build, e2e of app/context-moments/export/generate/app-perf/lane/view-follow), then push to main and main-6gnzzw and republish the preview.
+- **In flight:** M4.5-29a (core: merge main into wip/m4.5-29, Notes: n counts lines, weight on every join, distinct-notes property, walk skips held pitches). Builder worktree `.claude/worktrees/agent-a9110287b1835cf4e`, branch `m4.5-29a`; it reports to this session.
+- **Open owner question (affects 29a):** should plain chords (no Notes: n) take free octaves before lines merge? Integrator recommended "octaves first" (fixed pitch lists and hand edits stay literal). Tell the 29a builder the answer.
+- **Queue:** 29b after 29a (DSP wobble removal + √w test, MIDI velocity √w, inspector weight field, line thickness by weight); 27 start is a moment (after 29); 28 Compose for me (after 27); rare property seeds after 29 (walk-over-point 112518007/143 and chord-count 439040815/857 reproduce on main; ranges 811138243 needs a quiet rerun); full e2e (Chromium + Firefox here; WebKit only on CI, it can't be muted on the Mac); M4.5 acceptance checks.
+- **Load:** with builders running, unit tests time out at 5 s; rerun alone with `--testTimeout=60000`. A full e2e at load ~20 gave 37 spurious failures (zero-RMS audio, page timeouts); run e2e on a quiet box.
