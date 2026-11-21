@@ -35,6 +35,7 @@ import { live, writeText } from './dom';
 import { useEditor } from './editor/history';
 import { PIANO_WIDTH } from './editor/piano';
 import { hoverPointer } from './hover';
+import { lineHighlight } from './line-highlight';
 import { previewState, type PreviewGhost } from './preview';
 import { camera, cameraOf, currentTime, usePlayer } from './store';
 
@@ -58,6 +59,8 @@ export const frameStats = {
   ghost: 1,
   /** The last drawn frame showed a moment preview's ghost lines (from this time; NaN: none). */
   preview: NaN,
+  /** The whole line highlighted in the last drawn frame (`lineHighlight`; -1: none). */
+  highlightVoice: -1,
   /** The view of the last drawn frame (pitch ↔ y for e2e pixel checks). */
   view: null as View | null,
   reset(): void {
@@ -141,6 +144,8 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastFlash: MomentId | null = null;
   let lastReveal: Seconds | undefined;
   let highlight: ReadonlySet<MomentId> = new Set();
+  let lastLine = -1;
+  let lineSet: ReadonlySet<number> | undefined;
   let hoverVersion = -1;
   let lastTip = '';
   let domHead = false;
@@ -261,6 +266,11 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       highlight = new Set(flash ? [...selection, flash] : selection);
       dirty = true;
     }
+    if (lineHighlight.voice !== lastLine) {
+      lastLine = lineHighlight.voice;
+      lineSet = lastLine >= 0 ? new Set([lastLine]) : undefined;
+      dirty = true;
+    }
     const reveal = composeView.reveal;
     if (reveal !== lastReveal) {
       lastReveal = reveal;
@@ -306,7 +316,9 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           hud: view.hud,
           labels,
           markerTimes,
-          highlight,
+          // A line pointed at from the inspector replaces the selection's highlight.
+          highlight: lineSet ? undefined : highlight,
+          highlightVoices: lineSet,
           playhead: !domHead,
           traces: domHead,
           traceVoice: domHead && traceVoice >= 0 ? traceVoice : undefined,
@@ -319,6 +331,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.view = lastView;
         frameStats.drawn++;
+        frameStats.highlightVoice = lastLine;
         frameStats.preview = preview ? preview.from : NaN;
         drew = true;
       }

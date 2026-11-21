@@ -658,7 +658,10 @@ function drawLines(
 
   const past = t > tL;
   const future = ghost && t < tR;
-  const hl = style.highlight && style.highlight.size > 0 ? style.highlight : null;
+  const ids = style.highlight && style.highlight.size > 0 ? style.highlight : null;
+  const lines =
+    style.highlightVoices && style.highlightVoices.size > 0 ? style.highlightVoices : null;
+  const hl: Highlight | null = ids || lines ? { ids: ids ?? NO_IDS, voices: lines } : null;
   const dim = hl ? DIM_ALPHA : 1;
   const voices = compiled.voices;
   // A translucent future where strands overlap goes through the ghost layer.
@@ -741,12 +744,12 @@ function drawLines(
     for (const v of compiled.voices) {
       if (v.segments.length === 0 || !breaksIn(v, drawnLives(sf, v))) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-      if (v.index === hv) {
+      if (v.index === hv || hl?.voices?.has(v.index)) {
         traceSilent(g, view, v, tL, tR, TRACE_ALPHA, maxStep, tolerance, sf);
         continue;
       }
       if (!hl) continue;
-      const from = selectedLevelFrom(v, compiled.momentSpans, hl);
+      const from = selectedLevelFrom(v, compiled.momentSpans, hl.ids);
       if (from === from)
         traceSilent(g, view, v, Math.max(from, tL), tR, TRACE_ALPHA, maxStep, tolerance, sf);
       forHighlighted(v, hl, tL, tR, (a, b) => {
@@ -787,21 +790,34 @@ function drawPreview(
   g.restore();
 }
 
-/** Calls `fn(a, b)` for each run of contiguous segments in `ids`, clipped to [tL, tR]. */
+/** What is highlighted: moments' segments, and whole lines (pool indices). */
+interface Highlight {
+  ids: ReadonlySet<MomentId>;
+  voices: ReadonlySet<number> | null;
+}
+const NO_IDS: ReadonlySet<MomentId> = new Set();
+
+/**
+ * Calls `fn(a, b)` for each run of contiguous segments in `hl.ids` (every segment of a line in
+ * `hl.voices`), clipped to [tL, tR].
+ */
 function forHighlighted(
   v: CompiledVoice,
-  ids: ReadonlySet<MomentId>,
+  hl: Highlight,
   tL: Seconds,
   tR: Seconds,
   fn: (a: Seconds, b: Seconds) => void,
 ): void {
   const segs = v.segments;
+  const whole = hl.voices?.has(v.index) ?? false;
+  const ids = hl.ids;
   let a = NaN;
   let b = NaN;
   for (let i = Math.max(0, segmentIndexAt(v, tL)); i < segs.length; i++) {
     const s = segs[i];
     if (s.t0 >= tR) break;
-    if (s.t1 <= tL || s.momentId === undefined || !ids.has(s.momentId)) continue;
+    if (s.t1 <= tL) continue;
+    if (!whole && (s.momentId === undefined || !ids.has(s.momentId))) continue;
     if (a === a && s.t0 === b) {
       b = s.t1;
       continue;

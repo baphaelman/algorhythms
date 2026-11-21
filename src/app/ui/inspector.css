@@ -758,3 +758,66 @@
   gap: 4px;
   margin-top: 4px;
 }
+
+/* "Melody on": a listbox, so hovering an option can highlight its line (owner, 2026-11-21). */
+.insp-listbox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.insp-listbox-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font: inherit;
+  min-height: 0;
+  padding: 3px 6px;
+  background: var(--paper);
+  text-align: left;
+}
+
+.insp-listbox-button > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-listbox [role='listbox'] {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  background: var(--paper);
+  border: 1px solid var(--ink-2);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
+}
+
+.insp-listbox [role='listbox']:focus {
+  outline: none;
+}
+
+.insp-listbox [role='option'] {
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insp-listbox [role='option'][aria-selected='true'] {
+  font-weight: 600;
+}
+
+.insp-listbox [role='option'].active {
+  background: var(--panel);
+  outline: 1px solid var(--rule);
+}

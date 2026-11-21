@@ -5,10 +5,17 @@
  * melodies and notes inserted by a double-click (owner, 2026-11-21).
  */
 
+import { compile } from '../../core/compiler/compile';
 import { readState } from '../../core/effect';
 import { partOf, selectorPart } from '../../core/parts';
 import { chordAt, keyAt } from '../../core/query';
-import { noteName, stepByScale } from '../../core/scales';
+import {
+  isScaleTone,
+  noteName,
+  scaleDegreeIndex,
+  snapToScale,
+  stepByScale,
+} from '../../core/scales';
 import { randomTune } from '../../core/tune-gen';
 import type {
   CompiledScore,
@@ -25,6 +32,7 @@ import type {
 } from '../../core/types';
 import { noteLabel } from '../../render';
 import { formatNum, parseNum, parsePitch } from '../ui/inspector/fields';
+import { patchMoment } from './ops';
 import type { ArrivalDot } from './arrival-points';
 import { scaleNeighbour } from './walk-steps';
 
@@ -403,6 +411,95 @@ export function melodyPatch(
 ): { target: VoiceSelector | undefined; line: TuneLine | undefined } {
   if (c.kind === 'voice') return { target: { voices: [c.id] }, line: undefined };
   return { target: lineTarget(piece, m), line: c.line === 'high' ? 'high' : undefined };
+}
+
+/**
+ * The tune's notes moved from a line at `from` to one at `to` (owner, 2026-11-21: "changing what
+ * note a tune is on should move the tune to that melody"). When both are tones of `key`, every
+ * note moves by the same number of scale steps (an accidental or cents keep their offset from the
+ * scale tone below; `keyOf` gives the key at note k, default `key`); otherwise by semitones. A
+ * note outside `range` folds by octaves into it. Same pitch: the notes unchanged (same array).
+ */
+export function shiftMelody(
+  notes: readonly TuneNote[],
+  from: Pitch,
+  to: Pitch,
+  key: Key,
+  range: readonly [Pitch, Pitch],
+  keyOf: (k: number) => Key = () => key,
+): readonly TuneNote[] {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return notes;
+  const diatonic = isScaleTone(from, key) && isScaleTone(to, key);
+  const steps = diatonic ? scaleDegreeIndex(to, key) - scaleDegreeIndex(from, key) : 0;
+  const [lo, hi] = range[0] <= range[1] ? range : [range[1], range[0]];
+  return notes.map((n, k) => {
+    let p: Pitch;
+    if (diatonic) {
+      const kk = keyOf(k);
+      const base = snapDown(n.pitch, kk);
+      p = stepByScale(base, steps, kk) + (n.pitch - base);
+    } else p = n.pitch + (to - from);
+    // Fold into the range (an octave at a time; a range under an octave keeps the nearest fold).
+    while (p > hi && p - 12 >= lo) p -= 12;
+    while (p < lo && p + 12 <= hi) p += 12;
+    p = clampPitch(Math.round(p * 1e6) / 1e6);
+    return p === n.pitch ? n : { ...n, pitch: p };
+  });
+}
+
+/** The scale tone at or below `p`. */
+function snapDown(p: Pitch, key: Key): Pitch {
+  const s = snapToScale(p, key);
+  return s <= p + 1e-9 ? s : stepByScale(s, -1, key);
+}
+
+/**
+ * The fields a "Melody on" pick writes (`melodyPatch`) plus the notes moved to the new line
+ * (`shiftMelody`): from the line playing the tune now to the one that plays it after the pick
+ * (found by compiling the pick, so Highest/Lowest land where the compiler puts them). `notes` is
+ * left out when they don't change.
+ */
+export function melodyMove(
+  piece: Piece,
+  score: CompiledScore,
+  m: TuneMoment,
+  c: MelodyChoice,
+): { target: VoiceSelector | undefined; line: TuneLine | undefined; notes?: TuneNote[] } {
+  const patch = melodyPatch(piece, m, c);
+  if (m.notes.length === 0) return patch;
+  const old = tuneLineAt(piece, score, m);
+  const now = lineAfter(piece, m, patch);
+  if (!now || now.voice === undefined || now.voice === old.voice) return patch;
+  const starts = tuneNoteStarts(m);
+  const notes = shiftMelody(m.notes, old.pitch, now.pitch, keyAt(score, m.at), now.range, (k) =>
+    keyAt(score, starts[k]),
+  );
+  return notes === m.notes ? patch : { ...patch, notes: notes.slice() };
+}
+
+/** The line (voice index) that would play tune `m` after choice `c`; undefined if none. */
+export function melodyVoice(piece: Piece, m: TuneMoment, c: MelodyChoice): number | undefined {
+  if (c.kind === 'voice') {
+    const i = piece.voices.findIndex((v) => v.id === c.id);
+    return i < 0 ? undefined : i;
+  }
+  return lineAfter(piece, m, melodyPatch(piece, m, c))?.voice;
+}
+
+/** `tuneLineAt` for the tune with `patch` applied (compiled); null if it doesn't compile. */
+function lineAfter(
+  piece: Piece,
+  m: TuneMoment,
+  patch: ReturnType<typeof melodyPatch>,
+): ReturnType<typeof tuneLineAt> | null {
+  const picked = patchMoment(piece, m.id, patch);
+  const pm = picked.moments.find((x) => x.id === m.id) as TuneMoment | undefined;
+  if (!pm) return null;
+  try {
+    return tuneLineAt(picked, compile(picked), pm);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

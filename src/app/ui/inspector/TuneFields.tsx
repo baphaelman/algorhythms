@@ -7,7 +7,7 @@
  * round). "Random melody" replaces the notes with a fresh roll (owner, 2026-11-21).
  */
 
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { activeAt, pitchAt } from '../../../core/query';
 import type { Piece, TuneMoment, TuneNote } from '../../../core/types';
 import { noteLabel } from '../../../render';
@@ -26,8 +26,10 @@ import {
   lenFromShown,
   parseTuneText,
   lenShown,
+  melodyMove,
   melodyOptions,
-  melodyPatch,
+  melodyVoice,
+  type MelodyOption,
   randomMelody,
   removeTuneNote,
   setTuneLen,
@@ -36,6 +38,7 @@ import {
   tuneDots,
   tuneNoteStarts,
 } from '../../editor/tune';
+import { setLineHighlight } from '../../line-highlight';
 import { usePlayer } from '../../store';
 import { CompactNumber, Row, TextField, fieldSetter } from './controls';
 import { keyAt } from './fields';
@@ -50,36 +53,150 @@ function noteTime(t: number): string {
 
 /**
  * "Melody on" (owner, 2026-11-21): which sounding note carries the tune. A note sets the target to
- * its voice; "Highest/Lowest of <part>" keeps the part and sets `line`. One undo entry per pick;
- * the first note sounds on its new line (stopped transport only).
+ * its voice; "Highest/Lowest of <part>" keeps the part and sets `line`; either moves the notes to
+ * the new line (`melodyMove`). One undo entry per pick; the first note sounds on its new line
+ * (stopped transport only). A listbox, not a native select, so hovering or arrowing to an option
+ * can highlight its line on the score (`setLineHighlight`).
  */
 export function MelodyOn({ m, piece }: { m: TuneMoment; piece: Piece }) {
   const id = useId();
+  const listId = `${id}-list`;
   const compiled = usePlayer((s) => s.compiled);
   const { options, current } = useMemo(
     () => melodyOptions(piece, compiled, m),
     [piece, compiled, m],
   );
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  /** Each option's line (compiled once per option while the piece is unchanged). */
+  const voices = useRef(new Map<string, number | undefined>());
+  useEffect(() => voices.current.clear(), [piece, m]);
+  const voiceOf = (o: MelodyOption): number | undefined => {
+    if (!voices.current.has(o.value)) voices.current.set(o.value, melodyVoice(piece, m, o.choice));
+    return voices.current.get(o.value);
+  };
+  const point = (k: number): void => {
+    setActive(k);
+    const o = options[k];
+    setLineHighlight(o ? voiceOf(o) : undefined);
+  };
+  const show = (): void => {
+    setOpen(true);
+    point(
+      Math.max(
+        0,
+        options.findIndex((o) => o.value === current),
+      ),
+    );
+  };
+  const close = (refocus: boolean): void => {
+    setOpen(false);
+    setActive(-1);
+    setLineHighlight(undefined);
+    if (refocus) button.current?.focus();
+  };
+  useEffect(() => {
+    if (open) list.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open || active < 0) return;
+    list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [open, active]);
+  // Unmounting (another selection) clears the highlight.
+  useEffect(() => () => setLineHighlight(undefined), []);
+  const choose = (o: MelodyOption | undefined): void => {
+    close(true);
+    if (!o || o.value === current) return;
+    const patch = melodyMove(piece, compiled, m, o.choice);
+    if (!updateMoment(m.id, patch, 'Change melody line')) return;
+    const first = (patch.notes ?? m.notes)[0];
+    if (first) auditionTuneAfterEdit(m.id, first.pitch, m.at + first.len / 2);
+  };
+  const label = options.find((o) => o.value === current)?.label ?? '';
   return (
     <Row label="Melody on" htmlFor={id}>
-      <select
-        id={id}
-        value={current}
-        data-testid="insp-melody-on"
-        onChange={(e) => {
-          const o = options.find((x) => x.value === e.target.value);
-          if (!o || o.value === current) return;
-          if (!updateMoment(m.id, melodyPatch(piece, m, o.choice), 'Change melody line')) return;
-          const first = m.notes[0];
-          if (first) auditionTuneAfterEdit(m.id, first.pitch, m.at + first.len / 2);
-        }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <div className="insp-listbox">
+        <button
+          ref={button}
+          id={id}
+          type="button"
+          className="insp-listbox-button"
+          data-testid="insp-melody-on"
+          data-value={current}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          onClick={() => (open ? close(true) : show())}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              show();
+            }
+          }}
+        >
+          <span>{label}</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+        {open && (
+          <ul
+            ref={list}
+            id={listId}
+            role="listbox"
+            tabIndex={-1}
+            aria-labelledby={id}
+            aria-activedescendant={active >= 0 ? `${id}-o${active}` : undefined}
+            data-testid="insp-melody-list"
+            onPointerLeave={() => setLineHighlight(undefined)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(false);
+            }}
+            onKeyDown={(e) => {
+              const n = options.length;
+              let k: number | null = null;
+              if (e.key === 'ArrowDown') k = Math.min(n - 1, active + 1);
+              else if (e.key === 'ArrowUp') k = Math.max(0, active - 1);
+              else if (e.key === 'Home') k = 0;
+              else if (e.key === 'End') k = n - 1;
+              else if (e.key === 'Enter') {
+                e.preventDefault();
+                choose(options[active]);
+                return;
+              } else if (e.key === 'Escape') {
+                // Used here: the editor must not also clear the selection.
+                e.preventDefault();
+                close(true);
+                return;
+              } else if (e.key === 'Tab') {
+                close(false);
+                return;
+              }
+              if (k === null) return;
+              e.preventDefault();
+              point(k);
+            }}
+          >
+            {options.map((o, k) => (
+              <li
+                key={o.value}
+                id={`${id}-o${k}`}
+                role="option"
+                data-index={k}
+                data-value={o.value}
+                data-testid="insp-melody-option"
+                aria-selected={o.value === current}
+                className={k === active ? 'active' : undefined}
+                onPointerEnter={() => point(k)}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => choose(o)}
+              >
+                {o.label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Row>
   );
 }
