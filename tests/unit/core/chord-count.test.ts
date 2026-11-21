@@ -132,12 +132,14 @@ describe('chord count', () => {
   });
 
   it('no-effect: births doubling parents, deaths into a unison', () => {
-    const one = (start: number[], m: MomentInput) => {
-      const s = compile(piece({ start, glide: GLIDE, moments: [m] }));
+    const one = (start: number[], m: MomentInput, range?: [number, number]) => {
+      const s = compile(piece({ start, glide: GLIDE, moments: [m], ...(range ? { range } : {}) }));
       return s.diagnostics.filter((d) => d.code === 'no-effect' && d.momentId === m.id);
     };
     const uni: MomentInput = chord(3, { notes: { kind: 'pitches', pitches: [60] } });
-    expect(one([60, 60], uni)).toHaveLength(1);
+    // Births double only when no free octave is in range (PLAN §11.3 rev 7).
+    expect(one([60, 60], uni, [55, 66])).toHaveLength(1);
+    expect(one([60, 60], uni)).toEqual([]);
     expect(one([60, 60, 60, 60], { ...uni, count: 1 } as MomentInput)).toHaveLength(1);
     // A new pitch, or a death that leaves a pitch unsounded, is an effect.
     expect(one([60, 64], chord(3, { notes: { kind: 'pitches', pitches: [60, 64, 67] } }))).toEqual(

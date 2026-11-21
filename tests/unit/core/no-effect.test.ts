@@ -111,16 +111,19 @@ describe('no-effect diagnostic', () => {
       { type: 'walk', at: 1, until: 9, grid: 1, density: 0.5, steps: [-1, 1], stepGlide: 0.3 },
     ];
     for (const m of cases) expect(check(CHORD, m), m.type).toEqual([]);
-    // A split from a unison that only doubles the parents' pitch is not heard either.
-    expect(
-      check([57, 57], {
-        type: 'split',
-        at: 1,
-        count: 4,
-        notes: { kind: 'pitches', pitches: [57] },
-        voicing: 'even',
-      }),
-    ).toEqual(['No effect: the new voices only double their parents.']);
+    // A split from a unison that can only double the parents' pitch (no free octave in a range
+    // narrower than an octave) is not heard either; with room, the new voices take octaves.
+    const split: MomentInput = {
+      type: 'split',
+      at: 1,
+      count: 4,
+      notes: { kind: 'pitches', pitches: [57] },
+      voicing: 'even',
+    };
+    expect(check([57, 57], split, { range: [52, 63] })).toEqual([
+      'No effect: the new voices only double their parents.',
+    ]);
+    expect(check([57, 57], split)).toEqual([]);
   });
 
   it('a moment that changes pending targets has an effect', () => {

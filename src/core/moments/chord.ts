@@ -5,7 +5,9 @@
  * With `count` (revision 6) the active count becomes `count` in the same moment:
  * - more: dormant voices are born as in a split (§7.4; `voiceWithBirths`): the chord is voiced for
  *   the targeted voices plus the newborns, which take the targets the others leave and fork from
- *   the nearest sounding targeted voice. Too few dormant voices: truncated (`pool-exhausted`).
+ *   the nearest sounding targeted voice. With fewer distinct notes than voices the extras take free
+ *   octaves inside the register before any unison (PLAN §11.3 rev 7). Too few dormant voices:
+ *   truncated (`pool-exhausted`).
  * - fewer: the outermost targeted voices die as in a merge (`which: 'outer'`); the chord is voiced
  *   for the survivors, and each dying voice glides to the target of its nearest surviving order
  *   neighbour (`absorbers`; an untargeted survivor's target is where it is heading), then fades
@@ -18,7 +20,7 @@ import { voiceNotes } from '../voicing';
 import type { ChordMoment, Pitch } from '../types';
 import { chordByVoice } from './chord-by-voice';
 import { absorbers, chooseDying } from './merge';
-import { voiceWithBirths } from './split';
+import { untargeted, voiceWithBirths } from './split';
 import { IntentKind, type MomentEnv, type MomentPlan, unionRange } from './types';
 
 export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
@@ -95,6 +97,8 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
     key: env.key,
     current: env.active.map((v) => env.dest(v)),
     voices: p,
+    octaves: true,
+    sounding: untargeted(env, vs),
   });
   if (!voiced.ok) {
     env.diag('error', voiced.code, voiced.message);
