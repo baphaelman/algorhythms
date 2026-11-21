@@ -3,9 +3,7 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- **Pluck and organ attack (M4.5-32).** The arrival-tick fix gives every attack a smooth curve of at least 12 ms. Glass's attack goes from 4 to 12 ms, organ's from 3 to 12 ms and pluck's from 2 to 12 ms, so pluck is softer and organ loses its key-click. The other option is to apply the floor only to gentle strikes (≤ ~50 %, such as glass) and keep pluck and organ crisp. To check, set "All notes" to pluck, then organ, in the Notes drawer.
-- **Arrival tick (M4.5-32).** Listen to whether the tick when all notes land after a transition is gone. The examples all use glass.
-- **Starting key.** The piece's own key (`piece.key`) still has no control; a key moment at 0:00 does the same job. Do you want a Key control (for example in the opening chord's inspector), or is a key moment fine?
+- Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
 - **Mouse-only gaps (found by the M4.5 final check; being built).**
