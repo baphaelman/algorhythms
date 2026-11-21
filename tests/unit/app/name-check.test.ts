@@ -9,6 +9,14 @@ describe('shouldAskName', () => {
     expect(shouldAskName({ ...base, title: '  Untitled ' })).toBe(true);
     expect(shouldAskName({ ...base, title: '' })).toBe(true);
   });
+  it('treats an automatic Generate or Compose title as unnamed', () => {
+    expect(shouldAskName({ ...base, title: 'Dorian 4242' })).toBe(true);
+    expect(shouldAskName({ ...base, title: 'Pentatonic 0' })).toBe(true);
+  });
+  it('keeps a user title that only resembles one', () => {
+    for (const title of ['Dorian sketch', 'Dorian 12 b', 'dorian 12', 'Dorian 007', 'Dorian'])
+      expect(shouldAskName({ ...base, title })).toBe(false);
+  });
   it('does not ask when the piece has a name', () => {
     expect(shouldAskName({ ...base, title: 'Tidewater Hymn' })).toBe(false);
   });

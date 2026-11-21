@@ -115,3 +115,31 @@ test('an unedited piece asks nothing', async ({ page }) => {
   await expect(prompt(page)).toBeHidden();
   await expect.poll(() => title(page)).toBe('Kite Day');
 });
+
+test('an edited piece that kept its Generate title asks; an untouched one does not', async ({
+  page,
+}) => {
+  const generate = async (): Promise<void> => {
+    await page.getByTestId('menu-button').click();
+    await page.getByTestId('open-generate').click();
+    await page.getByTestId('generate-panel').getByLabel('Seed', { exact: true }).fill('99');
+    await page.getByTestId('generate-run').click();
+    await expect(page.getByTestId('generate-panel')).toBeHidden();
+  };
+  await generate();
+  expect(await title(page)).toMatch(/^[A-Z][a-z]+ 99$/);
+  // Untouched: no question.
+  await openExample(page, 'kite-day');
+  await expect(prompt(page)).toBeHidden();
+  await generate();
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const ms = h.store.getState().piece.moments;
+    h.actions.select([ms[0]!.id, ms[1]!.id]);
+  });
+  await page.getByTestId('inspector').getByRole('button', { name: 'Mute all' }).click();
+  await openExample(page, 'harbour-song');
+  await expect(prompt(page)).toBeVisible();
+  await page.getByTestId('name-prompt-skip').click();
+  await expect.poll(() => title(page)).toBe('Harbour Song');
+});

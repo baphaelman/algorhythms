@@ -1389,6 +1389,6 @@ CI (2 vCPU) missed the 50 ms gate on inspector clicks (`clickChord` medians 54โ€
 ## Name it before moving on (PLAN ยง11.4, 2026-11-21)
 - Every replace-the-piece path goes through `runOpen` (store.ts): examples, files, share links (`openPieceJson`), My pieces (`openEntry`), New, Compose for me, Generate. `naming.ts` installs the gate; `ui/NamePrompt.tsx` is a native modal `<dialog>` (Enter saves, Escape or Skip moves on). `name-check.ts` holds the pure decision.
 - "Edited" is `hasEdited()` in editor/history.ts: set by a committed edit or amend, cleared by every load and by Compose's own finished build. Undoing everything still counts as edited. Skip is remembered per My pieces entry id.
-- Save name is an ordinary `edit` (history, autosave). Generated pieces get a mode title (not Untitled), so they never ask.
+- Save name is an ordinary `edit` (history, autosave). An automatic Generate/Compose title (`generatedTitle` in core/generate.ts, exact match via `isGeneratedTitle`) counts as unnamed like Untitled, so an edited generated piece asks; an untouched one does not (`hasEdited`). A user title that merely resembles one ("Dorian sketch") is a name. (Touches core/generate.ts: extracted the title helper so format and check can't drift.)
 - Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
 - Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.
