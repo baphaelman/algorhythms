@@ -8,6 +8,7 @@ import { keyAt, pitchAt } from '../core/query';
 import { hzOf } from '../core/tuning';
 import type { CompiledScore, Key, Pitch, Seconds } from '../core/types';
 import { pitchToY, timeToX, xToTime } from './camera';
+import { OPACITY_EPS, opacityAt } from './level';
 import type { View } from './types';
 
 /** Default hit radius, CSS px. */
@@ -29,7 +30,8 @@ export interface LineHit {
 /**
  * The line nearest (x, y) within `radius` px, or null. Each voice is probed at a few times across
  * ±radius around the pointer, so steep glides are found too. Lines later than `view.t` count only
- * when `includeFuture` (the ghost is visible).
+ * when `includeFuture` (the ghost is visible). With `audibleOnly`, silent stretches of lines (drawn
+ * at no opacity, revision 9) are skipped; the editor leaves it off so silent lines stay selectable.
  */
 export function nearestLine(
   compiled: CompiledScore,
@@ -38,6 +40,7 @@ export function nearestLine(
   y: number,
   radius = HOVER_RADIUS_PX,
   includeFuture = true,
+  audibleOnly = false,
 ): LineHit | null {
   if (!(view.pps > 0)) return null;
   const steps = 4;
@@ -51,6 +54,7 @@ export function nearestLine(
       if (!includeFuture && t > view.t) continue;
       const p = pitchAt(v, t);
       if (p === null) continue;
+      if (audibleOnly && opacityAt(v, t) < OPACITY_EPS) continue;
       const py = pitchToY(view, p);
       const dist = Math.hypot(px - x, py - y);
       if (dist <= radius && (!best || dist < best.dist)) {
