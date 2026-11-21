@@ -36,7 +36,7 @@ import { clearDots, currentDots, selectDots } from './editor/dot-selection';
 import { edgePitch, inRange } from './editor/drag-edge';
 import { dotsInRect } from './editor/group-move';
 import { OCTAVE, octaveGuides, octaveSnap, octaveSpan } from './editor/octave-drag';
-import { changePoints, snapTime } from './editor/snap';
+import { beatStep, changePoints, snapTime } from './editor/snap';
 import { redo, select, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
@@ -151,9 +151,15 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     const { compiled, piece } = usePlayer.getState();
     const hit = nearestLine(compiled, v, x, y, HOVER_RADIUS_PX, true);
     if (!hit) return false;
-    // Revision 7: snapped to a nearby note change (not the bar grid); Alt: exact.
+    // Revision 7: snapped to a nearby note change; revision 9: and to a beat (Snap to beats).
+    // Alt: exact.
     const t = xToTime(v, x);
-    const at = snapTime(t, { points: changePoints(compiled, piece) }, v.pps, exact);
+    const at = snapTime(
+      t,
+      { points: changePoints(compiled, piece), grid: beatStep(piece.view) },
+      v.pps,
+      exact,
+    );
     const from = noteFrom(compiled, hit.voice, at, hit.pitch);
     if (from === null) return false;
     note = {

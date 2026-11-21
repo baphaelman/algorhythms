@@ -85,6 +85,20 @@ describe('Next at the end (revision 7)', () => {
     expect(suggestionTime(empty, compile(empty))).toBe(0);
   });
 
+  it('Snap to beats: the next beat at or after the last end (revision 9)', () => {
+    const { piece: p, compiled } = usePlayer.getState();
+    // 6 s on a 70 bpm grid (0.857 s beats) is not on a beat: the next one is 7 × 0.857 = 6.
+    const grid = (bpm: number, extra: object = {}): Piece => ({
+      ...p,
+      view: { ...p.view, gridBpm: bpm, ...extra },
+    });
+    expect(suggestionTime(grid(70), compiled)).toBe(6);
+    expect(suggestionTime(grid(100), compiled)).toBe(6); // 6 s = 10 beats at 100 bpm
+    expect(suggestionTime(grid(64), compiled)).toBe(6.563); // 0.9375 s beats: 7 × 0.9375, to the ms
+    expect(suggestionTime(grid(64, { snapBeats: false }), compiled)).toBe(6);
+    expect(suggestionTime(p, compiled)).toBe(6);
+  });
+
   it('appends a suggestion at the end, one undo entry, selected', () => {
     seekTo(1);
     refreshSuggestions(true);

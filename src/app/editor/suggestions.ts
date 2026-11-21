@@ -11,6 +11,7 @@ import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core
 import { usePlayer } from '../store';
 import { edit, select } from './history';
 import { extendEnd } from './end';
+import { beatStep, nextBeat } from './snap';
 import { withChordFill } from './new-moment';
 import { insertMoments, newMomentIds } from './ops';
 
@@ -23,11 +24,15 @@ function momentEnd(m: Moment, score: CompiledScore): Seconds {
   return Math.max(own, span?.end ?? -Infinity);
 }
 
-/** The time suggestions are for: the latest end of the piece's unmuted moments (0 with none). */
+/**
+ * The time suggestions are for: the latest end of the piece's unmuted moments (0 with none); with
+ * "Snap to beats" (revision 9), the next beat at or after it.
+ */
 export function suggestionTime(piece: Piece, score: CompiledScore): Seconds {
   let end = 0;
   for (const m of piece.moments) if (!m.muted) end = Math.max(end, momentEnd(m, score));
-  return round3(end);
+  const step = beatStep(piece.view);
+  return round3(step ? nextBeat(end, step) : end);
 }
 
 /** `m` moved by `dt` (a walk's `until` too). */

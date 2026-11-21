@@ -4214,6 +4214,10 @@ This is the *input* form: fields with defaults are optional here.
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "snapBeats": {
+          "description": "Snap to beats (needs `gridBpm`): absent = on when the piece has a tempo.",
+          "type": "boolean"
+        },
         "meter": {
           "description": "Beats per bar.",
           "type": "integer",

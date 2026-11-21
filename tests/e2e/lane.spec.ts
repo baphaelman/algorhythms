@@ -91,7 +91,8 @@ test.beforeEach(async ({ page }) => {
       },
     ];
     p.end = { at: 20, fade: 1 };
-    p.view = { ...p.view, gridBpm: 60, window: 20 };
+    // Beats are drawn, not snapped to, in these tests ("Snap to beats" is covered in snap-beats).
+    p.view = { ...p.view, gridBpm: 60, snapBeats: false, window: 20 };
     h.actions.loadPiece(p);
   });
   await expect(page.getByTestId('lane').locator('[data-moment]')).toHaveCount(3);

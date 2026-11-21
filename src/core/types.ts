@@ -636,6 +636,11 @@ export interface ViewSettings {
    * target; absent draws bars at 60 bpm.
    */
   gridBpm?: number;
+  /**
+   * "Snap to beats" (revision 9): with a tempo (`gridBpm`), adding and dragging moments, dots and
+   * note points snap to its beats. Absent = on when the piece has a tempo; false turns it off.
+   */
+  snapBeats?: boolean;
   /** Beats per bar of the drawn bar grid (revision 7). @default 4 */
   meter?: number;
   /** 0..1 opacity of the future (not yet played) lines. @default 0.35 (revision 5; was 0) */

@@ -4,6 +4,7 @@
  */
 
 import { useId, useState } from 'react';
+import { glides, landing } from '../../../core/compiler/glide';
 import { selectorPart } from '../../../core/parts';
 import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
@@ -12,7 +13,14 @@ import { reroll, updateMoment } from '../../editor/actions';
 import { partNames } from '../../editor/parts';
 import { usePlayer } from '../../store';
 import { CheckField, Chips, NumberField, Row, Slider, fieldSetter } from './controls';
-import { arriveGlide, easePath, partTarget, targetMode, type TargetMode } from './fields';
+import {
+  arriveGlide,
+  easePath,
+  landGlide,
+  partTarget,
+  targetMode,
+  type TargetMode,
+} from './fields';
 
 const ALL = '\u0000all';
 const OTHER = '\u0000other';
@@ -251,6 +259,28 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
           )
         }
       />
+      {glides(m) && (
+        <>
+          <CheckField
+            label="Land at the marker"
+            checked={g.land === true}
+            testId="insp-land"
+            title="The moment's time is when its notes arrive; the transition runs before it"
+            onChange={(on) =>
+              updateMoment(
+                m.id,
+                { glide: landGlide(m.glide, piece.defaults.glide.land, on) },
+                on ? 'Land at the marker' : 'Start at the marker',
+              )
+            }
+          />
+          {g.land === true && (
+            <p className="insp-note" data-testid="insp-land-note">
+              {landNote(m.at, g)}
+            </p>
+          )}
+        </>
+      )}
       <Chips
         legend="Order"
         options={ORDERS}
@@ -278,6 +308,15 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
       {bz && <BezierFields m={m} piece={piece} bz={bz} />}
     </fieldset>
   );
+}
+
+/** What the Land toggle means for this moment: the notes arrive on the marker, the glide starts before. */
+function landNote(at: number, g: Glide): string {
+  const start = landing(at, g).start;
+  const from = Number(start.toFixed(2));
+  return start < at - 1e-3
+    ? `Notes arrive on the marker; the glide starts at ${from} s.`
+    : 'Notes arrive on the marker.';
 }
 
 const DEFAULT_BEZIER = { kind: 'bezier' as const, x1: 0.42, y1: 0, x2: 0.58, y2: 1 };

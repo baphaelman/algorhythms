@@ -181,6 +181,14 @@ describe('parsePiece: defaults', () => {
     expect(piece.moments[4]).toMatchObject({ octaves: false });
   });
 
+  it('keeps view.snapBeats (revision 9); absent stays absent', () => {
+    const p = newPiece({ seed: 5 });
+    p.view = { ...p.view, gridBpm: 96, snapBeats: false };
+    const r = ok(parsePiece(JSON.parse(serializePiece(p))));
+    expect(r.piece.view.snapBeats).toBe(false);
+    expect(ok(parsePiece(newPiece({ seed: 5 }))).piece.view.snapBeats).toBeUndefined();
+  });
+
   it('keeps view.loop (revision 6)', () => {
     const p = { ...newPiece({ seed: 5 }) };
     p.view = { ...p.view, loop: { start: 4, end: 9.5, on: false } };

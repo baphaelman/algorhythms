@@ -430,3 +430,9 @@
 .slot.lane[data-more-below]::after {
   opacity: 1;
 }
+
+/* "Land at the marker" (revision 9): the bar ends at the marker, so its handle is on the start. */
+.lane-item[data-land] .lane-end {
+  right: auto;
+  left: -4px;
+}

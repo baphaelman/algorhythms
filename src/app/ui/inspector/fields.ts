@@ -78,6 +78,22 @@ export function arriveGlide(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+/**
+ * The glide patch for "Land at the marker" (`glide.land`, revision 9): the moment's own `land`
+ * only when it differs from the piece default (`fallback`), so "on" over an "on" default stores
+ * nothing. Undefined when no glide field is left.
+ */
+export function landGlide(
+  glide: Partial<Glide> | undefined,
+  fallback: boolean | undefined,
+  on: boolean,
+): Partial<Glide> | undefined {
+  const rest = { ...glide };
+  delete rest.land;
+  const next = on === (fallback === true) ? rest : { ...rest, land: on };
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 /** Shortest decimal text for `x`, at most `digits` decimals ("3", "0.25", "-1.5"). */
 export function formatNum(x: number, digits = 3): string {
   if (!Number.isFinite(x)) return '';

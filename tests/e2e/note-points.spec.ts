@@ -63,7 +63,7 @@ async function openHeld(page: Page): Promise<void> {
       moments: unknown[];
       key: unknown;
       end: unknown;
-      view: { gridBpm?: number };
+      view: { gridBpm?: number; snapBeats?: boolean };
     };
     // The start is a moment (schema v2): an opening chord at 0.
     const opening = {
@@ -77,7 +77,7 @@ async function openHeld(page: Page): Promise<void> {
     p.moments = [];
     p.key = { tonic: 'C', scale: 'major' };
     p.end = { at: 40, fade: 2 };
-    p.view = { ...p.view, gridBpm: 60 };
+    p.view = { ...p.view, gridBpm: 60, snapBeats: false };
     p.moments.unshift(opening);
     h.actions.loadPiece(p);
   });
@@ -116,8 +116,8 @@ test('double-click a line and drag adds a note point; undo removes it', async ({
   await frames(page);
   expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);
   await page.mouse.down({ clickCount: 2 });
-  await page.mouse.move(x, y - 20, { steps: 4 });
-  await page.mouse.move(x, y - 40, { steps: 4 });
+  await page.mouse.move(x, y - 10, { steps: 4 });
+  await page.mouse.move(x, y - 25, { steps: 4 });
   await page.mouse.up({ clickCount: 2 });
 
   const ns = await notes(page);

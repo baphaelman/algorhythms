@@ -497,6 +497,10 @@ export const ViewSchema = z.looseObject({
   colors: z.enum(['ink', 'pitch', 'custom']).default(V.colors),
   hud: z.boolean().default(V.hud),
   gridBpm: z.number().positive().optional(),
+  snapBeats: z
+    .boolean()
+    .optional()
+    .describe('Snap to beats (needs `gridBpm`): absent = on when the piece has a tempo.'),
   meter: z.number().int().min(1).max(32).optional().describe('Beats per bar.'),
   futureOpacity: unitInterval.optional(),
   playheadX: unitInterval.optional(),

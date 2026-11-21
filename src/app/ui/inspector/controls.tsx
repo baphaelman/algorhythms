@@ -518,14 +518,16 @@ export function CheckField({
   checked,
   onChange,
   testId,
+  title,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   testId?: string;
+  title?: string;
 }) {
   return (
-    <label className="insp-check">
+    <label className="insp-check" title={title}>
       <input
         type="checkbox"
         checked={checked}

@@ -389,11 +389,15 @@ let compiledInTask = false;
  */
 export function setPiece(next: Piece, opts: { now?: boolean } = {}): void {
   const prev = get().piece;
-  // The loop region is view state, not an edit: undo and edits keep the current one.
-  const piece =
-    next.view.loop === prev.view.loop
-      ? next
-      : { ...next, view: withLoop(next.view, prev.view.loop) };
+  // The loop region and "Snap to beats" are view state, not edits: undo and edits keep the
+  // current ones.
+  let piece = next;
+  if (next.view.loop !== prev.view.loop) {
+    piece = { ...piece, view: withLoop(piece.view, prev.view.loop) };
+  }
+  if (next.view.snapBeats !== prev.view.snapBeats) {
+    piece = { ...piece, view: withSnapBeats(piece.view, prev.view.snapBeats) };
+  }
   if (piece.mix !== prev.mix) void mixAudio(piece.mix).catch(() => undefined);
   if (opts.now) {
     commitCompile(piece, true);
@@ -672,6 +676,24 @@ export function toggleLoop(on?: boolean): boolean {
   const next = on ?? r.on === false;
   if ((r.on !== false) !== next) storeLoop({ ...r, on: next });
   return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Snap to beats (§11.3 revision 9): `piece.view.snapBeats`, saved with the piece, not undone
+// ---------------------------------------------------------------------------------------------
+
+function withSnapBeats(view: Piece['view'], snapBeats: boolean | undefined): Piece['view'] {
+  const { snapBeats: _old, ...rest } = view;
+  return snapBeats === undefined ? rest : { ...rest, snapBeats };
+}
+
+/**
+ * Turns "Snap to beats" on or off for the piece (absent = on when the piece has a tempo; stored
+ * only when off). Takes effect on the next edit gesture; the piece itself compiles the same.
+ */
+export function setSnapBeats(on: boolean): void {
+  const { piece } = get();
+  set({ piece: { ...piece, view: withSnapBeats(piece.view, on ? undefined : false) } });
 }
 
 // ---------------------------------------------------------------------------------------------

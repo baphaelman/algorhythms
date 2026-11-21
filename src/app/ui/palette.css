@@ -124,7 +124,8 @@
   height: 32px;
 }
 
-/* "Keep lines in order" (§11.3) is an editor control. */
-.app[data-layout='player'] .keep-order-toggle {
+/* "Keep lines in order" and "Snap to beats" (§11.3) are editor controls. */
+.app[data-layout='player'] .keep-order-toggle,
+.app[data-layout='player'] .snap-beats-toggle {
   display: none;
 }

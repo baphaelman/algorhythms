@@ -1,8 +1,8 @@
 /**
  * Drag from the moment palette (PLAN.md §11.3 "click or drag"): palette buttons are HTML5 drag
  * sources; the score canvas and the moment lane are drop targets. A drop adds that moment at the
- * time under the pointer, snapped to a nearby note change (revision 7; one undo entry, the new
- * moment selected).
+ * time under the pointer, snapped to a nearby note change (revision 7) and, with "Snap to beats",
+ * to a beat (revision 9; Alt: free); one undo entry, the new moment selected.
  *
  * While a drag is over a target, the score previews the moment at the pointer's drop time
  * (../preview.ts, owner 2026-11-21): ghost lines from that time, updated as the pointer moves.
@@ -13,7 +13,7 @@ import type { MomentType, Seconds } from '../core/types';
 import { xToTime, type View } from '../render';
 import { addMoment } from './editor/actions';
 import { PALETTE } from './editor/shortcuts';
-import { changePoints, snapTime, type SnapSet } from './editor/snap';
+import { beatStep, changePoints, snapTime, type SnapSet } from './editor/snap';
 import { onScoreFrame } from './loop';
 import { previewState, startPreview, stopPreview } from './preview';
 import { usePlayer } from './store';
@@ -29,8 +29,8 @@ export function droppedType(data: string): MomentType | null {
 }
 
 /** Drop time for `x` px from the target's left edge (aligned with the canvas), snapped. */
-export function dropTime(view: View, x: number, snaps: SnapSet): Seconds {
-  return snapTime(xToTime(view, x), snaps, view.pps);
+export function dropTime(view: View, x: number, snaps: SnapSet, alt = false): Seconds {
+  return snapTime(xToTime(view, x), snaps, view.pps, alt);
 }
 
 /** The palette drag in progress: its type, and whether Escape cancelled it. */
@@ -95,7 +95,12 @@ export function attachPaletteDrop(el: HTMLElement): () => void {
     const r = el.getBoundingClientRect();
     const x = e.clientX - r.left - el.clientLeft;
     const { compiled, piece } = usePlayer.getState();
-    return dropTime(view, x, { points: changePoints(compiled, piece) });
+    return dropTime(
+      view,
+      x,
+      { points: changePoints(compiled, piece), grid: beatStep(piece.view) },
+      e.altKey,
+    );
   };
   const onOver = (e: DragEvent): void => {
     if (!carries(e)) return;
