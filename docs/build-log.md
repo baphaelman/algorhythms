@@ -1090,3 +1090,10 @@ Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow t
 - **Tests:** text updates in no-effect, draw, selection unit tests and app/generate/export/context-moments/app-perf e2e.
 - Integrator: diagnostics that name file-format fields (e.g. "Pin: there is no voice 'x'.") keep "voice" (PLAN: the file format keeps `voice`).
 - Owner (chat, screenshot): spread crossed lines and did not spread (low targets below range fold up an octave, §7.8). PLAN rev 8 "Spread keeps its shape at range edges": M4.5-30 (core). Shift "By" becomes a slider with octave marks: M4.5-31 (inspector).
+
+## M4.5-31: shift amount slider (app, 2026-11-21)
+- Shift "By" is now `ShiftSlider` (`inspector/controls.tsx`): a range input over ±2 octaves (`SHIFT_OCTAVES`) of the moment's unit; octave = 12 semitones or the key's scale length (`shiftOctave`, key at the moment). Unit select kept.
+- Native `step="any"`; a drag value snaps to the nearest octave mark within 0.75 step (`SHIFT_SNAP`), else rounds to an integer (`snapShift`/`shiftAtPosition` in `fields.ts`), so every step stays reachable. Drag = one gesture via `fieldSetter` (heard while dragging, one undo entry). Keys handled in `onKeyDown`: arrows ±1, Page Up/Down ±octave, Home/End to the ends; one entry per press.
+- Marks are drawn spans (8 px inset, half a native thumb), not a `<datalist>`. Value beside it shows "+7"; its tooltip and `aria-valuetext` name octaves ("+7 (+1 oct)"). The value box has a fixed min-width: a growing label shrank the track mid-drag.
+- Values outside ±2 octaves (typed in files) still show; the thumb sits at the end. No number box any more (the old one allowed ±48).
+- **Tests:** `tests/unit/app/inspector-shift.test.ts` (mapping, round trip of every step, snapping, text); `inspector.spec` drag to the +1 octave mark → by 7, one undo → 2, arrow/PageDown keys. The spec file is Chromium-only; the new test also passed on Firefox with the skip lifted locally.
