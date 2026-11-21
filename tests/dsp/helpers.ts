@@ -92,6 +92,11 @@ export function dbfs(x: number): number {
  * level (RMS over ±`window` seconds around n, floored at `floor`). A clean signal of moderate
  * bandwidth stays well below the threshold; a discontinuity of a few percent of full scale
  * stands out. Returns the worst ratio and where it happened.
+ *
+ * `order` 2 uses the second difference d[n] = x[n] − 2x[n−1] + x[n−2] and divides it by the local
+ * RMS of d itself: a steady tone's d has a small crest factor whatever its brightness, so a step
+ * in gain or slope stands out far more than in the first difference (tests/dsp/clicks.test.ts,
+ * moment ends).
  */
 export function clickScore(
   x: Float32Array,
@@ -100,18 +105,22 @@ export function clickScore(
   rate = RATE,
   window = 0.01,
   floor = 1e-3,
+  order: 1 | 2 = 1,
 ): { ratio: number; at: number } {
   const w = Math.max(1, Math.round(window * rate));
-  // Prefix sums of squares for O(1) local RMS.
+  // The signal the step is measured on, and prefix sums of its squares for O(1) local RMS.
+  const y = order === 1 ? x : new Float64Array(x.length);
+  if (order === 2) for (let i = 2; i < x.length; i++) y[i] = x[i] - 2 * x[i - 1] + x[i - 2];
   const pre = new Float64Array(x.length + 1);
-  for (let i = 0; i < x.length; i++) pre[i + 1] = pre[i] + x[i] * x[i];
+  for (let i = 0; i < x.length; i++) pre[i + 1] = pre[i] + y[i] * y[i];
   let worst = 0;
   let at = -1;
-  for (let i = Math.max(1, from); i < to; i++) {
+  for (let i = Math.max(order, from); i < to; i++) {
     const a = Math.max(0, i - w);
     const b = Math.min(x.length, i + w);
     const local = Math.sqrt((pre[b] - pre[a]) / (b - a));
-    const ratio = Math.abs(x[i] - x[i - 1]) / Math.max(local, floor);
+    const step = order === 1 ? x[i] - x[i - 1] : y[i];
+    const ratio = Math.abs(step) / Math.max(local, order === 1 ? floor : floor * 1e-3);
     if (ratio > worst) {
       worst = ratio;
       at = i;
