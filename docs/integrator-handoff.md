@@ -81,6 +81,12 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 ## Running in the cloud (owner, 2026-11-20)
 The owner moved the integrator to a cloud session to use it from their phone. Linux, 4 cores; repo `/home/user/algorhythms`; `git push origin <sha>:main` works (owner OK); `gh` isn't authenticated, so watch CI with the GitHub MCP tools (`mcp__github__actions_list`). **Demo links from the cloud:** the owner wants a link right away, not after CI. Build with `ALGORHYTHMS_BASE=./ pnpm exec vite build --outDir dist-art --sourcemap false`, drop fixtures.html and its chunk, and publish index.html plus `assets/*` with the Artifact tool (`files` map), republishing the same file path to keep the URL (https://claude.ai/artifact/PkiBVk62JzhoWUaqqDKGgJ). There: no Homebrew (skip the `brew shellenv` lines); localhost demo links don't reach the phone, so the demo is the Pages deploy after a push; check whether `gh` is authenticated before relying on it.
 
+## Cloud session (2026-11-21, moved from the desktop)
+- **Owner: no messages until there is a build to show** ("keep your messages to nothing until there is a build to show me, so coming back I see the most recent one"). Work silently; the next message is the new preview/deploy.
+- Push target per the cloud harness: `main-7glpov` (session branch) plus `origin <sha>:main` for deploys (owner OK, above).
+- **v35 never deployed:** CI on 8106972 failed `pnpm test`: `render-golden` hashes differ on Linux x64 vs the Mac (merge/crossfade pieces). Builder `fix-golden-platform` (from 042abf8) is making the render portable.
+- The desktop's in-flight builders (M6-b, split-knot render fix) were lost in the move; restarted here.
+
 ## M4.5 builder split (approved; walk = freeze into `fixed`, not `edits`)
 1. **Core frozen walks** (Opus medium): `types.ts`, `schema.ts`, `moments/walk.ts`, compiler emit of `walkSteps`; tests incl. incremental compile. Independent.
 2. **Camera + follow + zoom** (Opus medium): `render/camera.ts`, `app/loop.ts`, `ViewBar.tsx`, store view slice; future dimmed. First of the UI chain.
