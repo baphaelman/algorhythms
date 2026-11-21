@@ -9,7 +9,12 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 
 ## Decided by the integrator (veto if wrong)
 - **Free octaves stay inside the chord's register (follow-up to 29a).** When a chord targets only some lines and the register runs out of free notes, the extra notes no longer drop below the register or cross the lines it doesn't touch. They take free octaves inside the register first, then between the untouched neighbours within the lines' range, and merge only when neither has room. The Cartographers' Rain chord `CrChd2` had put two notes at 59 and 43, below a register of 60–84 and under eight untouched lines.
-- **Space (M4.5-37).** Space plays and pauses everywhere except while typing in a text field. Space held during a drag still pans. The degree picker's chips use Enter instead of Space.
+- **Space (M4.5-37).**
+  - Space plays and pauses everywhere except while typing in a text field.
+  - Space held during a drag still pans. In the editor, play/pause therefore happens when Space is released, not when it's pressed.
+  - Inside an open dialog, Space works as the browser normally does.
+  - The degree picker's chips use Enter instead of Space.
+  - Enter now ticks checkboxes and selects lane items.
 - **Drag preview and auditioning (M4.5-35).**
   - Auditions play only while the transport is stopped; during playback the edit is heard live anyway.
   - Selecting a moment plays its target notes once.
@@ -20,7 +25,10 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Key carry-forward (M4.5-36).**
   - "Carry it forward" is read as: a key change offers to move the fixed notes up to the next key change, and later key moments are not shifted.
   - Fixed notes are remapped by scale degree. The tonic moves the shorter way, with ties going down.
-  - Suggestions are written relative to the key.
+  - The prompt reads like this: "9 moments until the end use fixed notes. Move them to E lydian?". Move joins the key edit's undo entry.
+  - A named chord stays a named chord when only the tonic changes, for example Dmaj7#11 becomes Amaj7#11. When the scale changes, it becomes the list of pitches it plays.
+  - "Home to …" suggestions now follow the key. "Thin to …" and "Collapse to …" a non-tonic note still write fixed pitches until schema v2 (M4.5-27), so they get the prompt like any other fixed notes.
+  - Follow-up: a note change whose starting note is held from before the key change is no longer remapped there, because remapping it made it miss its note.
 - **Weights (M4.5-29b).**
   - Line width is √weight: 1.5 px at weight 1, 3 px at 4, 4.2 px at 8. There is no "×n" mark, because next to the Hz label it read as several notes.
   - MIDI velocity is √weight, scaled down evenly when the loudest note would pass 127.
