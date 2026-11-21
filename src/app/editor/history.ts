@@ -15,6 +15,7 @@ import { create } from 'zustand';
 import type { MomentId, Piece } from '../../core/types';
 import { onLoadPiece, setPiece, usePlayer } from '../store';
 import { followContent } from './end';
+import { PIECE_KEY_ID } from './piece-key';
 
 /** Maximum number of undo entries. */
 export const HISTORY_CAP = 200;
@@ -190,9 +191,13 @@ export function resetHistory(): void {
   publish();
 }
 
-/** Replaces the selection (ids not in the piece are dropped; duplicates removed). */
+/**
+ * Replaces the selection (ids not in the piece are dropped; duplicates removed). The piece key
+ * at 0:00 (`PIECE_KEY_ID`) is always present.
+ */
 export function select(ids: readonly MomentId[]): void {
   const present = new Set(piece().moments.map((m) => m.id));
+  present.add(PIECE_KEY_ID);
   const next = [...new Set(ids)].filter((id) => present.has(id));
   const cur = useEditor.getState().selection;
   if (next.length === cur.length && next.every((id, i) => id === cur[i])) return;

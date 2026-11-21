@@ -5,7 +5,8 @@
  */
 
 import type { Moment, MomentId, Piece } from '../../core/types';
-import { deleteMoments, updateMoment } from '../editor/actions';
+import { deleteMoments, setPieceKey, updateMoment } from '../editor/actions';
+import { isPieceKey, pieceKeyMoment } from '../editor/piece-key';
 import {
   beginGesture,
   cancelGesture,
@@ -20,7 +21,7 @@ import { usePlayer } from '../store';
 import { NumberField, TextField, fieldSetter, type Setter } from './inspector/controls';
 import { GlideFields, SeedField, TargetField } from './inspector/CommonFields';
 import { formatTime, keyAt } from './inspector/fields';
-import { TypeFields } from './inspector/TypeFields';
+import { KeyFields, TypeFields } from './inspector/TypeFields';
 import { Overrides } from './inspector/Overrides';
 import './inspector.css';
 
@@ -52,6 +53,8 @@ export function Inspector() {
   const selected = selection
     .map((id) => piece.moments.find((m) => m.id === id))
     .filter((m): m is Moment => !!m);
+  // The piece key at 0:00 alone (M4.5-39); with other moments it is left out of the group.
+  const pieceKey = selection.length === 1 && isPieceKey(selection[0]);
 
   return (
     <aside
@@ -60,7 +63,8 @@ export function Inspector() {
       aria-label="Inspector"
       data-testid="inspector"
     >
-      {selected.length === 0 && <Empty />}
+      {pieceKey && <PieceKey piece={piece} />}
+      {selected.length === 0 && !pieceKey && <Empty />}
       {selected.length === 1 && <One key={selected[0].id} m={selected[0]} piece={piece} />}
       {selected.length > 1 && <Many moments={selected} />}
     </aside>
@@ -134,6 +138,36 @@ function Empty() {
         key, <kbd>L</kbd> level.
       </p>
       <BarFields />
+    </div>
+  );
+}
+
+/** Why the piece key can't be deleted (the disabled button's tooltip). */
+const PIECE_KEY_LOCKED = "The piece's key can't be deleted or moved; edit it here";
+
+/** The piece's key as the key moment at 0:00: editable, never moved, copied or deleted. */
+function PieceKey({ piece }: { piece: Piece }) {
+  const m = pieceKeyMoment(piece);
+  return (
+    <div className="insp-one" data-moment-id={m.id} data-moment-type="key" data-piece-key="">
+      <header className="insp-head">
+        <h2>
+          Key <span className="insp-at">@ {formatTime(0)}</span>
+        </h2>
+      </header>
+      <p className="insp-note">The piece's key, until the first key change.</p>
+      <KeyFields m={m} write={setPieceKey} />
+      <div className="insp-actions">
+        <button
+          type="button"
+          className="danger"
+          disabled
+          title={PIECE_KEY_LOCKED}
+          data-testid="insp-delete"
+        >
+          Delete moment
+        </button>
+      </div>
     </div>
   );
 }
@@ -225,7 +259,12 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
       {pitched && <SeedField m={m} piece={piece} />}
 
       <div className="insp-actions">
-        <button type="button" className="danger" onClick={() => deleteMoments([m.id])}>
+        <button
+          type="button"
+          className="danger"
+          data-testid="insp-delete"
+          onClick={() => deleteMoments([m.id])}
+        >
           Delete moment
         </button>
       </div>
