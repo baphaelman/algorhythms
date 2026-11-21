@@ -10,7 +10,7 @@
  */
 
 import { compile } from '../core/compiler/compile';
-import type { Moment, MomentType, Seconds } from '../core/types';
+import type { Moment, MomentType, Piece, Seconds } from '../core/types';
 import { getEngine, primeAudio, resumeAudio, swapAudio } from './audio';
 import { insertMoments } from './editor/ops';
 import { defaultMoment } from './editor/new-moment';
@@ -54,9 +54,13 @@ export function startPreview(type: MomentType): boolean {
 
 /**
  * Starts a preview of `moment` (a next-move suggestion, `label`) from its time; false if the
- * transport is busy.
+ * transport is busy. `build` makes the temporary piece (default: the moment inserted).
  */
-export function startMomentPreview(moment: Moment, label: string | null): boolean {
+export function startMomentPreview(
+  moment: Moment,
+  label: string | null,
+  build: (piece: Piece, m: Moment) => Piece = (p, m) => insertMoments(p, [m]),
+): boolean {
   stopPreview();
   const { piece, transport } = usePlayer.getState();
   if (transport.status === 'playing' || transport.scrubbing || transport.audio !== 'ready') {
@@ -65,7 +69,7 @@ export function startMomentPreview(moment: Moment, label: string | null): boolea
   const t = moment.at;
   let score;
   try {
-    score = compile(insertMoments(piece, [{ ...moment, id: PROBE_ID }]));
+    score = compile(build(piece, { ...moment, id: PROBE_ID }));
   } catch {
     return false;
   }

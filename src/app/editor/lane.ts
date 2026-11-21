@@ -1,6 +1,6 @@
 /**
  * Pure helpers for the lane rows (PLAN.md §11.2, §11.3): what each lane item shows, grid
- * snapping, keyboard nudges, span-end drags, row packing and the level curve. No DOM, no store.
+ * snapping, keyboard nudges, span-end drags, sub-row stacking and the level curve. No DOM, no store.
  */
 
 import type {
@@ -189,48 +189,43 @@ export function itemExtentPx(item: LaneItem): number {
   return 14 + item.text.length * 6.5 + 6;
 }
 
-/** Pixel extent a transition bar needs on the Transitions row (bar, or room for a short label). */
-export function barExtentPx(item: LaneItem, pps: number): number {
-  return Math.max(4, (item.end - item.start) * pps) + 4;
+/** The pixel interval an item occupies on its sub-row: marker and label, and its span. */
+export function itemBoxPx(item: LaneItem, pps: number): [number, number] {
+  const left = Math.min(item.start, item.at) * pps;
+  const right = Math.max(item.at * pps + itemExtentPx(item), item.end * pps + 4);
+  return [left, right];
+}
+
+/** Sub-row per item (input order) and the number of sub-rows used. */
+export interface Stack {
+  rows: number[];
+  count: number;
 }
 
 /**
- * Greedy row packing in pixel space: each item (ordered by its left edge) goes on the first row
- * whose last item ends before it starts; when all `rows` are taken, on the row that frees up
- * first. Returns the row index per item, in input order.
+ * Lane stacking (revision 7): greedy interval packing in pixel space. Items, ordered by their
+ * left edge (ties keep input order), each go on the first sub-row whose last item ends at or
+ * before their left edge, else on a new sub-row. The box is the marker and label plus the span,
+ * so overlapping spans (and labels) never share a sub-row. A moment's marker and its transition
+ * bar sit on the same sub-row index in the Moments and Transitions rows.
  */
-function pack(
-  items: readonly LaneItem[],
-  rows: number,
-  left: (it: LaneItem) => number,
-  extent: (it: LaneItem) => number,
-): number[] {
-  const order = items.map((_, i) => i).sort((a, b) => left(items[a]) - left(items[b]) || a - b);
-  const ends = new Array<number>(Math.max(1, rows)).fill(-Infinity);
-  const out = new Array<number>(items.length).fill(0);
+export function stackRows(items: readonly LaneItem[], pps: number): Stack {
+  const boxes = items.map((it) => itemBoxPx(it, pps));
+  const order = items.map((_, i) => i).sort((a, b) => boxes[a][0] - boxes[b][0] || a - b);
+  const ends: number[] = [];
+  const rows = new Array<number>(items.length).fill(0);
   for (const i of order) {
-    const x = left(items[i]);
-    let r = ends.findIndex((e) => e <= x);
-    if (r < 0) r = ends.indexOf(Math.min(...ends));
-    out[i] = r;
-    ends[r] = x + extent(items[i]);
+    const [l, r] = boxes[i];
+    let row = ends.findIndex((e) => e <= l);
+    if (row < 0) {
+      row = ends.length;
+      ends.push(r);
+    } else {
+      ends[row] = r;
+    }
+    rows[i] = row;
   }
-  return out;
-}
-
-/** Rows for the moments' markers and labels. */
-export function packRows(items: readonly LaneItem[], pps: number, rows: number): number[] {
-  return pack(items, rows, (it) => it.at * pps, itemExtentPx);
-}
-
-/** Rows for the transition bars (by span). */
-export function packBars(items: readonly LaneItem[], pps: number, rows: number): number[] {
-  return pack(
-    items,
-    rows,
-    (it) => it.start * pps,
-    (it) => barExtentPx(it, pps),
-  );
+  return { rows, count: ends.length };
 }
 
 /** One point of the level curve: time and mean level. */

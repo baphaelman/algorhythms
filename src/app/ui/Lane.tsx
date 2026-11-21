@@ -1,7 +1,8 @@
 /**
  * The lane rows under the score (PLAN.md §11.2, §11.3, §11.3a, §11.5), on the score's time axis
- * at every frame: **Moments** (marker and name, two staggered rows), **Transitions** (each
- * moment's compiled span as a bar; walks striped) and **Level** (the mean level curve). One DOM
+ * at every frame: **Moments** (marker and name) and **Transitions** (each moment's compiled span
+ * as a bar; walks striped), both stacked in sub-rows so overlapping moments never share one
+ * (revision 7; the lane grows to fit) and **Level** (the mean level curve). One DOM
  * item per moment holds its marker and its bar, so selection, focus and drags act on both.
  *
  * React renders the items (on piece, score or selection changes only). Positions are written
@@ -37,9 +38,8 @@ import {
   laneItems,
   levelCurve,
   nudgeDt,
-  packBars,
-  packRows,
   revealPan,
+  stackRows,
   spokenTime,
   type LaneItem,
   type LevelPoint,
@@ -50,16 +50,20 @@ import { attachPaletteDrop } from '../palette-drop';
 import { panBy, usePlayer } from '../store';
 import './lane.css';
 
-/** Row geometry (px; keep in step with lane.css). Moments: two rows of markers and names. */
-const ROWS = 2;
+/**
+ * Row geometry (px; lane.css reads `--mom-h` and `--trans-h`). Moments and Transitions each hold
+ * `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and name per Moments sub-row,
+ * a bar per Transitions sub-row; a moment uses the same sub-row index in both.
+ */
+const MIN_SUBROWS = 2;
 const ROW_H = 20;
 const MOM_TOP = 2;
-/** Transitions: two rows of bars. */
-const BAR_ROWS = 2;
 const BAR_H = 14;
-const TRANS_TOP = 46;
+/** Moments row height, Transitions row height and the first bar's top for `n` sub-rows. */
+const momH = (n: number): number => n * ROW_H + 4;
+const transH = (n: number): number => n * BAR_H + 4;
+const transTop = (n: number): number => momH(n) + 2;
 /** Level: the curve's box. */
-const LEVEL_TOP = 78;
 const LEVEL_H = 28;
 const LEVEL_PAD = 3;
 /** Half the marker's width: an item's box starts this far left of its time. */
@@ -139,7 +143,8 @@ class LaneController {
   /** x of the score canvas's left edge relative to the track's padding box (0 when aligned). */
   private axisLeft = 0;
   private rowOf = new Map<MomentId, number>();
-  private barRowOf = new Map<MomentId, number>();
+  /** Sub-rows shown (≥ MIN_SUBROWS; 0 until the first layout). */
+  private subRows = 0;
   /** Preview times of moved items, and the preview end of an end drag. */
   private previewAt = new Map<MomentId, Seconds>();
   private previewEnd: { id: MomentId; end: Seconds } | null = null;
@@ -189,13 +194,22 @@ class LaneController {
     this.pps = view.pps;
     const pps = view.pps;
     if (!this.drag?.started) {
-      const rows = packRows(this.items, pps, ROWS);
-      const bars = packBars(this.items, pps, BAR_ROWS);
+      const { rows, count } = stackRows(this.items, pps);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
-      this.barRowOf = new Map(this.items.map((it, i) => [it.id, bars[i]]));
+      this.setSubRows(Math.max(MIN_SUBROWS, count));
     }
     for (const it of this.items) this.place(it, pps);
     this.placeLevel(pps);
+  }
+
+  /** Grows or shrinks the Moments and Transitions rows to `n` sub-rows. */
+  private setSubRows(n: number): void {
+    const track = this.track;
+    if (n === this.subRows || !track) return;
+    this.subRows = n;
+    track.style.setProperty('--mom-h', `${momH(n)}px`);
+    track.style.setProperty('--trans-h', `${transH(n)}px`);
+    track.dataset.subrows = String(n);
   }
 
   /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
@@ -223,7 +237,6 @@ class LaneController {
     if (!el) return;
     const at = this.previewAt.get(it.id) ?? it.at;
     const row = this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
-    const barRow = this.barRowOf.get(it.id) ?? this.rowOfCopy(it.id, this.barRowOf);
     const y = MOM_TOP + row * ROW_H;
     el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
     const bar = el.firstElementChild as HTMLElement | null;
@@ -231,7 +244,7 @@ class LaneController {
     const end = this.previewEnd?.id === it.id ? Math.max(it.start, this.previewEnd.end) : it.end;
     const w = Math.max(0, (end - it.start) * pps);
     bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
-    bar.style.top = `${TRANS_TOP + barRow * BAR_H - y}px`;
+    bar.style.top = `${transTop(Math.max(MIN_SUBROWS, this.subRows)) + row * BAR_H - y}px`;
     bar.style.width = `${w.toFixed(2)}px`;
     const handle = it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
@@ -686,13 +699,7 @@ export function Lane() {
           <span className="lane-row-name">Level</span>
         </div>
         <div ref={inner} className="lane-inner">
-          <svg
-            className="lane-level"
-            data-testid="lane-level"
-            height={LEVEL_H}
-            style={{ top: LEVEL_TOP }}
-            aria-hidden="true"
-          >
+          <svg className="lane-level" data-testid="lane-level" height={LEVEL_H} aria-hidden="true">
             <polygon className="lane-level-fill" />
             <polyline className="lane-level-line" />
           </svg>

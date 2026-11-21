@@ -4,7 +4,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import './app-hook';
+import { seek } from './app-hook';
 
 interface M {
   id: string;
@@ -48,6 +48,47 @@ test('palette click adds a moment at the playhead', async ({ page }) => {
   expect(ms).toHaveLength(1);
   expect(ms[0].type).toBe('chord');
   expect(ms[0].at).toBeCloseTo(10, 3);
+});
+
+test('Add is exactly at the playhead line, not snapped to the bar grid (revision 7)', async ({
+  page,
+}) => {
+  await openNoGrid(page);
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as {
+      view: Record<string, unknown>;
+    };
+    p.view = { ...p.view, gridBpm: 60 };
+    h.actions.loadPiece(p);
+  });
+  await seek(page, 3.3);
+  const before = await moments(page);
+  await page.getByTestId('palette').locator('[data-moment="chord"]').click();
+  const added = (await moments(page)).filter((m) => !before.some((b) => b.id === m.id));
+  expect(added).toHaveLength(1);
+  expect(added[0].at).toBeCloseTo(3.3, 3);
+});
+
+test('Add and Next are separate, labelled groups with their own styles', async ({ page }) => {
+  await openNoGrid(page);
+  const add = page.getByTestId('palette');
+  const next = page.getByTestId('suggestions');
+  await expect(add).toContainText(/Add\s*at playhead/i);
+  await expect(next).toContainText(/Next\s*at end/i);
+  const style = (sel: string) =>
+    page.evaluate((q) => {
+      const cs = getComputedStyle(document.querySelector(q)!);
+      return { border: cs.borderTopStyle, bg: cs.backgroundColor };
+    }, sel);
+  const a = await style('[data-testid="palette"]');
+  const n = await style('[data-testid="suggestions"]');
+  expect(a.border).toBe('solid');
+  expect(n.border).toBe('dashed');
+  expect(n.bg).not.toBe(a.bg);
+  const ab = (await add.boundingBox())!;
+  const nb = (await next.boundingBox())!;
+  expect(nb.y).toBeGreaterThanOrEqual(ab.y + ab.height - 1);
 });
 
 test('letters add each type; modified letters do not', async ({ page }) => {

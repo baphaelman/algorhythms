@@ -1,14 +1,17 @@
 /*
  * The lane rows (PLAN.md §11.2) under the score view, horizontally aligned with the canvas (same
  * 1 px border; Lane.tsx also measures it). Items are absolutely placed by Lane.tsx (transforms).
- * Rows, top to bottom (keep in step with the constants there): Moments 0–44 px (two rows of
- * 20 px), Transitions 44–76 (two rows of 14 px bars), Level 76–108. Row names sit in a left
+ * Rows, top to bottom (keep in step with the constants there): Moments (n sub-rows of 20 px,
+ * + 4), Transitions (n sub-rows of 14 px bars, + 4), Level 32 px. Lane.tsx sets `--mom-h` and
+ * `--trans-h` for n ≥ 2 (revision 7 stacking); the defaults are n = 2. Row names sit in a left
  * gutter over the axis.
  */
 
 .lane-track {
+  --mom-h: 44px;
+  --trans-h: 32px;
   position: relative;
-  height: 110px;
+  height: calc(var(--mom-h) + var(--trans-h) + 34px);
   border: 1px solid var(--rule);
   background: var(--paper);
   overflow: clip;
@@ -30,17 +33,17 @@
 
 .lane-row[data-row='moments'] {
   top: 0;
-  height: 44px;
+  height: var(--mom-h);
 }
 
 .lane-row[data-row='transitions'] {
-  top: 44px;
-  height: 32px;
+  top: var(--mom-h);
+  height: var(--trans-h);
   border-top: 1px dashed var(--rule);
 }
 
 .lane-row[data-row='level'] {
-  top: 76px;
+  top: calc(var(--mom-h) + var(--trans-h));
   height: 32px;
   border-top: 1px dashed var(--rule);
 }
@@ -71,6 +74,7 @@
 .lane-level {
   position: absolute;
   left: 0;
+  top: calc(var(--mom-h) + var(--trans-h) + 2px);
   overflow: visible;
   pointer-events: none;
 }
