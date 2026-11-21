@@ -10,6 +10,12 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Parts in the editor (R9-6).**
+  - The Notes drawer shows one group per part. Each header has a name field, delete, and whole-part timbre, pan, gain and range. Notes without a part sit under "Unassigned", and each note row has a Part menu.
+  - A piece without parts gains one "New part" button. With no parts it puts every note in "Part 1"; with parts it groups the unassigned notes into "Part n". A note's own "New part…" puts just that note in a new part.
+  - When a part's notes differ, its controls say "Mixed": timbre shows a disabled Mixed choice, pan and gain read Mixed and a drag sets every note, and a range field left blank leaves that bound alone.
+  - Two parts can't share a name. Deleting a part unassigns its notes; moments that targeted it ask inline, then target those same notes directly.
+  - The inspector's Part chooser sits after Time. A moment that targets a part says so in its header and lane tooltip. New notes from growing the pool start unassigned.
 - **Naming prompt.** Skip is remembered per piece for the session, so the popup asks at most once per piece. Untouched pieces (fresh New, unchanged example or generated piece) never ask.
 - **Key at 0:00 and lane previews (M4.5-39).**
   - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
