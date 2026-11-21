@@ -80,3 +80,33 @@ test('voices drawer edits the pool, mute and timbre, and undo restores them', as
   await page.getByTestId('voices-toggle').click();
   await expect(drawer).toHaveCount(0);
 });
+
+test('All notes timbre sets every note at once, undoes in one step, and shows Mixed', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('./');
+  await expect(page.getByTestId('play')).toBeVisible();
+  await page.getByTestId('voices-toggle').click();
+  await expect(page.getByTestId('voices-drawer')).toBeVisible();
+
+  const before = await voices(page);
+  const all = page.getByTestId('timbre-all');
+  const target = before.every((v) => v.timbre === 'reed') ? 'organ' : 'reed';
+  await all.selectOption(target);
+  for (const v of before) await expect(page.getByTestId(`timbre-${v.id}`)).toHaveValue(target);
+  await expect(all).toHaveValue(target);
+
+  await blurAndUndo(page);
+  expect(await voices(page)).toEqual(before);
+  for (const v of before) {
+    await expect(page.getByTestId(`timbre-${v.id}`)).toHaveValue(v.timbre);
+  }
+
+  // Redo the pick, then change one note: the menu shows Mixed (a disabled placeholder).
+  await all.selectOption(target);
+  const other = target === 'organ' ? 'glass' : 'organ';
+  await page.getByTestId(`timbre-${before[0].id}`).selectOption(other);
+  await expect(all.locator('option:checked')).toHaveText('Mixed');
+  await expect(all.locator('option', { hasText: 'Mixed' })).toBeDisabled();
+});
