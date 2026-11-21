@@ -10,7 +10,7 @@
  * compiler-arbitraries.ts with chord counts, checked for (b), (c) and, per moment, (a) for
  * newborns (which the general crossing property exempts at their first sample).
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 import { compileWithTrace } from '../../../src/core/compiler/compile';
@@ -233,6 +233,23 @@ function checkLives(
     expect(a, `${a.kind} ${a.voice} at ${a.t}: ${a.detail}`).toBeUndefined();
   }
 }
+
+describe('chord count regressions', () => {
+  // Seed −320129613 (path 300): v2 dies into v3 and rides it through a walk step; the unison at
+  // 11.34 moves v3 with a tightened crossing scale, and v2 followed with scale 1 (other m₀).
+  it('a follower on its survivor takes the survivor’s crossing scale', () => {
+    const p = JSON.parse(
+      readFileSync(
+        new URL('./regressions/count-follow-seed-320129613.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Piece;
+    const { score, into, parent } = lifeEvents(p);
+    checkLives(score, into, parent);
+    const [v2, v3] = [score.voices[1], score.voices[2]];
+    for (let t = 11.483; t < 12.2; t += 0.01) expect(pitchAt(v2, t)).toBe(pitchAt(v3, t));
+  });
+});
 
 describe('chord count keeps lines whole (M4.5-17)', () => {
   it('spaced pieces: no crossings, no lines starting or stopping in mid-air', () => {

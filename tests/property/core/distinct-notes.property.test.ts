@@ -2,6 +2,7 @@
  * Distinct notes (PLAN §11.3 revision 8, M4.5-29): resting lines never share a pitch, and merges
  * keep the weight of the lines they join.
  */
+import { readFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -10,6 +11,7 @@ import {
   HANDOVER,
   type CompileTrace,
 } from '../../../src/core/compiler/compile';
+import { pieceDecisionTime } from '../../../src/core/compiler/glide';
 import { lifeAt, linesAt, pitchAt, segmentAt, weightTargetAt } from '../../../src/core/query';
 import { degreesToPcs, pitchesWithPcs } from '../../../src/core/scales';
 import { partOf } from '../../../src/core/parts';
@@ -94,12 +96,43 @@ function checkDistinct(p: Piece): void {
     for (let i = 0; i < ls.length; i++) {
       for (let j = i + 1; j < ls.length && Math.abs(ls[j].p - ls[i].p) < 1e-6; j++) {
         if (part(ls[i].v) !== part(ls[j].v)) continue;
-        if (Math.min(ls[i].leaves, ls[j].leaves) - t > PART)
-          expect.fail(`two lines of part '${part(ls[i].v)}' rest on ${ls[i].p} at ${t}`);
+        if (Math.min(ls[i].leaves, ls[j].leaves) - t <= PART) continue;
+        if (leavesAsKnownAt(p, t, ls[i].v, ls[j].v)) continue;
+        expect.fail(`two lines of part '${part(ls[i].v)}' rest on ${ls[i].p} at ${t}`);
       }
     }
   }
 }
+
+/**
+ * Whether line a or b leaves within PART as the compiler knew at t: in the piece cut to the
+ * moments decided by t. The compile is causal, so the cut piece's score equals the full one up
+ * to t; a departure that a later moment cancels (a merge, a chord) shows only there.
+ */
+function leavesAsKnownAt(p: Piece, t: number, a: number, b: number): boolean {
+  const cut: Piece = { ...p, moments: p.moments.filter((m) => pieceDecisionTime(p, m) <= t) };
+  if (cut.moments.length === p.moments.length) return false;
+  const { score, trace } = compileWithTrace(cut);
+  const ls = restingLines(score, t, killedBy(trace)).filter((l) => l.v === a || l.v === b);
+  return ls.length === 2 && Math.min(ls[0].leaves, ls[1].leaves) - t <= PART;
+}
+
+describe('distinct notes regressions', () => {
+  // Seed 2611 (path 101): v1 and v3 arrive on 74 at 8.73 (unison); v3's staggered split move
+  // to 86 is pending, so they don't join. The merge at 9.3 cancels that move and kills both.
+  it('a shared rest whose departure a later moment cancels', () => {
+    const p = JSON.parse(
+      readFileSync(
+        new URL('./regressions/distinct-cancelled-departure-seed2611.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Piece;
+    const s = compile(p);
+    expect(resting(s, 9.25).filter((x) => x === 74)).toHaveLength(2);
+    expect(leavesAsKnownAt(p, 9.25, 0, 2)).toBe(true);
+    checkDistinct(p);
+  });
+});
 
 describe('distinct notes (property)', () => {
   it('no two resting lines share a pitch', () => {

@@ -971,7 +971,7 @@ export class Compiler {
     }
     plan = col.plan;
     const res = planMoment(host, plan, targetedLines, subset);
-    if (ov) applyOverrideEnds(res, ov, T, this.voices);
+    if (ov) applyOverrideEnds(res, ov, T, m.at, this.voices);
     this.commitLines(col, res, T, i, ov);
     for (const b of res.births) {
       const run = this.voices[b.voice];
@@ -1484,6 +1484,7 @@ export class Compiler {
         arrive = arrivalOf(a);
       }
     }
+    const lead = run.frontier.stateAt(mv.t0);
     const seg = run.frontier.start(
       mv.t0,
       mv.dur,
@@ -1502,7 +1503,7 @@ export class Compiler {
       run.deathFade = mv.death.fade;
       this.scheduleClose(run, (arrive > seg.t1 ? arrive : seg.t1) + mv.death.fade);
     }
-    this.follow(run, mv, to, mv.death ? mv.death.into : null, 0);
+    this.follow(run, mv, to, mv.death ? mv.death.into : null, 0, lead);
     if (!mv.death) this.queueJoin(mv.voice, seg.t1);
     return true;
   }
@@ -1655,9 +1656,18 @@ export class Compiler {
    * fades"; M4.5-17), so a survivor that moves on never leaves one hanging where it was. A voice
    * still in its death glide (its fade not started) also waits for the survivor to arrive: its
    * fade then starts when this move ends. `chain`: `a` itself dies into this voice, which its
-   * followers follow from then on.
+   * followers follow from then on. `lead`: the leader's pitch and velocity as `mv` starts; a
+   * follower riding on the leader then takes the leader's crossing scale, so the two stay one
+   * line (seed −320129613/300: with scale 1 its carried velocity bowed it off the leader).
    */
-  private follow(a: VoiceRun, mv: Move, to: Pitch, chain: number | null, depth: number): void {
+  private follow(
+    a: VoiceRun,
+    mv: Move,
+    to: Pitch,
+    chain: number | null,
+    depth: number,
+    lead: { p: Pitch; v: number } | null,
+  ): void {
     if (depth > this.voices.length) return;
     for (const d of this.voices) {
       if (d.into !== a.index || d.status !== Status.Dying) continue;
@@ -1672,13 +1682,20 @@ export class Compiler {
       if (d.frontier.heading !== to || !(own || (!d.frontier.open && tail.t1 === end))) {
         // Replacing a glide that starts now drops it: keep its C⁰ flag on the replacement.
         const wasClamped = tail.t0 === mv.t0 && tail.clamped === true;
+        // The leader's crossing scale is for its own neighbours: a follower elsewhere keeps 1.
+        const st = d.frontier.stateAt(mv.t0);
+        const onLead =
+          lead !== null &&
+          st !== null &&
+          Math.abs(st.p - lead.p) < 1e-9 &&
+          Math.abs(st.v - lead.v) < 1e-9;
         const seg = d.frontier.start(
           mv.t0,
           mv.dur,
           to,
           mv.ease,
           mv.limits,
-          1, // the leader's crossing scale is for its own neighbours
+          onLead ? mv.crossScale : 1,
           d.range,
           mv.momentId,
         );
@@ -1688,7 +1705,7 @@ export class Compiler {
       }
       const fadeStart = d.diedAt - d.deathFade;
       if (mv.t0 < fadeStart && end > fadeStart) this.scheduleClose(d, end + d.deathFade);
-      this.follow(d, mv, to, null, depth + 1);
+      this.follow(d, mv, to, null, depth + 1, lead);
     }
   }
 
