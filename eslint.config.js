@@ -92,6 +92,20 @@ export default defineConfig(
     languageOptions: { globals: globals.audioWorklet },
   },
   {
+    files: ['tests/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Literal[value=/^\\/(private\\/)?tmp\\//], TemplateElement[value.raw=/^\\/(private\\/)?tmp\\//]',
+          message:
+            'No hard-coded /tmp paths in tests: use testInfo.outputPath() or ALGORHYTHMS_SHOTS_DIR.',
+        },
+      ],
+    },
+  },
+  {
     files: ['src/core/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-properties': ['error', ...NON_PORTABLE_MATH],

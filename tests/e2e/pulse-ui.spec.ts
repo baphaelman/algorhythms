@@ -5,13 +5,11 @@
  * re-strike), with undo and a share link. Chromium only.
  */
 
-import { mkdirSync } from 'node:fs';
+import { shot } from './shots';
 import { expect, test, type Page } from '@playwright/test';
 import { seek } from './app-hook';
 
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough here');
-
-const SHOTS = '/private/tmp/claude-501/r9-7';
 
 interface M {
   id: string;
@@ -313,8 +311,8 @@ test('inspector: every field edits the pulse, one undo entry each; a share link 
   m = await pulseOf(page);
   expect([m.at, m.until]).toEqual([3, 9]);
 
-  await page.screenshot({ path: `${SHOTS}/pulse-inspector-lane.png` });
-  await insp.screenshot({ path: `${SHOTS}/pulse-inspector.png` });
+  await shot(page, 'pulse-inspector-lane.png');
+  await shot(insp, 'pulse-inspector.png');
 
   // A share link carries every edit.
   const link = await page.evaluate(() => {
@@ -326,8 +324,4 @@ test('inspector: every field edits the pulse, one undo entry each; a share link 
   await expect(fresh.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   const back = await pulseOf(fresh);
   expect(back).toEqual(m);
-});
-
-test.beforeAll(() => {
-  mkdirSync(SHOTS, { recursive: true });
 });

@@ -5,13 +5,11 @@
  * add, remove), with undo and a share link. Chromium only.
  */
 
-import { mkdirSync } from 'node:fs';
+import { shot } from './shots';
 import { expect, test, type Page } from '@playwright/test';
 import { seek } from './app-hook';
 
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough here');
-
-const SHOTS = '/private/tmp/claude-501/r9-7';
 
 interface Note {
   pitch: number;
@@ -141,10 +139,6 @@ async function dragBy(page: Page, from: { x: number; y: number }, dx: number, al
   if (alt) await page.keyboard.up('Alt');
 }
 
-test.beforeAll(() => {
-  mkdirSync(SHOTS, { recursive: true });
-});
-
 test('palette: greyed with no sounding line; hover shows a tune ghost with its notes; E adds one', async ({
   page,
 }) => {
@@ -262,8 +256,8 @@ test('inspector: notes in beats with a tempo; ▲/▼, lengths, add, remove, gli
   await expect(tr.getByTestId('insp-land-note')).toHaveText(/Each note arrives on its start/);
   expect((await tuneOf(page)).glide).toEqual({ length: 0.05, land: true });
 
-  await page.screenshot({ path: `${SHOTS}/tune-inspector-lane.png` });
-  await insp.screenshot({ path: `${SHOTS}/tune-inspector.png` });
+  await shot(page, 'tune-inspector-lane.png');
+  await shot(insp, 'tune-inspector.png');
 
   const m = await tuneOf(page);
   const link = await page.evaluate(() => {
