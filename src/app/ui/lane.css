@@ -4,8 +4,9 @@
  * Rows, top to bottom (keep in step with the constants there): Key (18 px: the piece key at
  * 0:00, M4.5-39), Moments (n sub-rows of 20 px,
  * + 4), Transitions (n sub-rows of 14 px bars, + 4), Pins (p sub-rows of 12 px, + 4; 0 without
- * pins), Level (32 px, + 14 px per extra sub-row). Lane.tsx sets `--mom-h`, `--trans-h`,
- * `--pins-h` and `--level-h`; the defaults are n = 2, p = 0, one Level sub-row. Row names sit in
+ * pins), Level (32 px, + 14 px per extra sub-row), Effects (e sub-rows of 16 px, + 4; 0 without
+ * timbre changes, M6). Lane.tsx sets `--mom-h`, `--trans-h`, `--pins-h`, `--level-h` and
+ * `--effects-h`; the defaults are n = 2, p = 0, one Level sub-row, e = 0. Row names sit in
  * a left gutter over the axis. Pins and Level items (`[data-lane]`) show their label only on
  * hover, focus or selection. The track sits in `.lane-scroll`, which scrolls vertically past the
  * divider's split; `.lane-divider` sits above it.
@@ -26,8 +27,12 @@
   --trans-h: 32px;
   --pins-h: 0px;
   --level-h: 32px;
+  --effects-h: 0px;
   position: relative;
-  height: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h) + var(--level-h) + 2px);
+  height: calc(
+    var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h) + var(--level-h) +
+      var(--effects-h) + 2px
+  );
   border: 1px solid var(--rule);
   background: var(--paper);
   overflow: clip;
@@ -79,6 +84,17 @@
   top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h));
   height: var(--level-h);
   border-top: 1px dashed var(--rule);
+}
+
+.lane-row[data-row='effects'] {
+  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + var(--pins-h) + var(--level-h));
+  height: var(--effects-h);
+  border-top: 1px dashed var(--rule);
+}
+
+.lane-track:not([data-effect-rows]) .lane-row[data-row='effects'],
+.lane-track[data-effect-rows='0'] .lane-row[data-row='effects'] {
+  display: none;
 }
 
 .lane-row-name {
@@ -394,6 +410,34 @@
 /* A level moment's ramp is the envelope itself: no bar. */
 .lane-item[data-lane='level'] .lane-bar {
   display: none;
+}
+
+/* ---- Effects row (M6): a timbre change's marker, preset name and fade bar on one sub-row ---- */
+
+.lane-item[data-lane='effects'] {
+  height: 16px;
+  font-size: 10px;
+}
+
+.lane-item[data-lane='effects'] .lane-marker {
+  transform: rotate(45deg) scale(0.65);
+}
+
+.lane-item[data-lane='effects'] .lane-bar {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--c) 40%, transparent),
+    color-mix(in srgb, var(--c) 12%, transparent)
+  );
+}
+
+.lane-item[data-lane='effects'] .lane-bar-text {
+  display: none;
+}
+
+.lane-item[data-lane='effects'] .lane-end {
+  top: -2px;
+  height: 16px;
 }
 
 /* ---- the score/lanes divider --------------------------------------------------------------- */

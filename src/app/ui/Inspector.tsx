@@ -41,6 +41,7 @@ const TYPE_NAMES: Record<Moment['type'], string> = {
   level: 'Level',
   pulse: 'Pulse',
   tune: 'Tune',
+  timbre: 'Timbre',
 };
 
 /** The Freeze button's tooltip (§11.3). */
@@ -143,7 +144,7 @@ function Empty() {
         Select a moment on the lane to edit it here, or add one at the playhead with a key:{' '}
         <kbd>C</kbd> chord, <kbd>U</kbd> unison, <kbd>S</kbd> split, <kbd>M</kbd> merge,{' '}
         <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>R</kbd> pulse, <kbd>E</kbd>{' '}
-        tune, <kbd>I</kbd> pin, <kbd>K</kbd> key, <kbd>L</kbd> level.
+        tune, <kbd>I</kbd> pin, <kbd>K</kbd> key, <kbd>L</kbd> level, <kbd>B</kbd> timbre.
       </p>
       <BarFields />
     </div>
@@ -224,8 +225,10 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
   const at = fieldSetter<number>(m.id, 'Move moment', (x, v) => atPatch(x, v));
   const diags = compiled.diagnostics.filter((d) => d.momentId === m.id);
   const key = keyAt(compiled, m.at, piece.key);
-  // A pulse moves no pitch: no transition; its seed matters only for random order.
-  const pitched = m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse';
+  // A pulse or a timbre change moves no pitch: no transition; a pulse's seed matters only for
+  // random order.
+  const pitched =
+    m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse' && m.type !== 'timbre';
   // A tune draws nothing at random (one line, no jitter): no seed either.
   const seeded = (pitched && m.type !== 'tune') || (m.type === 'pulse' && m.mode === 'random');
   const part = selectorPart(m.target);

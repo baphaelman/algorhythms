@@ -283,8 +283,13 @@ describe('dense lanes: rows by kind', () => {
     expect([L.rows[1], L.rows[4], L.rows[7]]).toEqual([0, 1, 0]);
     // Level: l1's ramp (to 3 s) doesn't stack l2; l2 and l3 share a time → two sub-rows.
     expect([L.rows[2], L.rows[5], L.rows[6]]).toEqual([0, 0, 1]);
-    expect(L.count).toEqual({ main: 2, pins: 2, level: 2 });
-    expect(laneLayout([it_('c', 'chord', 0)], 10).count).toEqual({ main: 1, pins: 0, level: 0 });
+    expect(L.count).toEqual({ main: 2, pins: 2, level: 2, effects: 0 });
+    expect(laneLayout([it_('c', 'chord', 0)], 10).count).toEqual({
+      main: 1,
+      pins: 0,
+      level: 0,
+      effects: 0,
+    });
   });
 
   it('pinBoxPx is the span; levelBoxPx is the marker alone', () => {

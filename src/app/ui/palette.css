@@ -20,10 +20,10 @@
   gap: 3px;
 }
 
-/* Thirteen moment types (R9-7) still fit one row at 1280 px. */
+/* Fourteen moment types (R9-7, M6 timbre) still fit one row at 1280 px. */
 .palette.palette-add button {
-  gap: 4px;
-  padding: 6px 5px;
+  gap: 3px;
+  padding: 6px 3px;
 }
 
 .app[data-layout='player'] .palette {

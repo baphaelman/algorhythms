@@ -8,11 +8,14 @@
  * - **One drag, one undo entry.** `dragTimbre` opens a history gesture, coalesces the slider's
  *   input events to one piece update per animation frame (each rebuilds the timbre's tables), and
  *   `endTimbreDrag` flushes and closes it. Keyboard steps are one `edit` each.
+ * - **Names follow (M6-b3).** Renaming the piece's own timbre renames it on its notes and on the
+ *   timbre moments naming it; deleting one (only when no note uses it) leaves those moments
+ *   naming a missing timbre, so they show `unknown-timbre`.
  */
 
 import { create } from 'zustand';
 import { BUILTIN_TIMBRES } from '../../core/timbres';
-import type { Piece, Timbre, VoiceId } from '../../core/types';
+import type { MomentId, Piece, Timbre, VoiceId } from '../../core/types';
 import { beginGesture, endGesture, inGesture, updateGesture, type Recipe } from './history';
 
 /** Most partials a timbre has (§8.5); a stretched timbre plays only the first 16. */
@@ -91,6 +94,11 @@ export function isCustom(piece: Piece, name: string): boolean {
 /** Ids of the notes (voices) whose timbre is `name`. */
 export function timbreUsers(piece: Piece, name: string): VoiceId[] {
   return piece.voices.filter((v) => v.timbre === name).map((v) => v.id);
+}
+
+/** Ids of the timbre moments (M6) that change to `name`. */
+export function timbreMoments(piece: Piece, name: string): MomentId[] {
+  return piece.moments.filter((m) => m.type === 'timbre' && m.preset === name).map((m) => m.id);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -219,6 +227,48 @@ export function freeTimbreName(piece: Piece, base: string): string {
   const stem = base.replace(/ \d+$/, '').trim() || 'timbre';
   if (!taken(base)) return base;
   for (let k = 2; ; k++) if (!taken(`${stem} ${k}`)) return `${stem} ${k}`;
+}
+
+/** Why the piece's own timbre `from` can't be renamed `to`, or null when it can. */
+export function timbreRenameError(piece: Piece, from: string, to: string): string | null {
+  const name = to.trim();
+  if (name === '') return 'A timbre needs a name';
+  if (name === from) return null;
+  if (Object.hasOwn(piece.timbres, name) || Object.hasOwn(BUILTIN_TIMBRES, name)) {
+    return `A timbre named ${name} exists`;
+  }
+  return null;
+}
+
+/**
+ * Renames the piece's own timbre `from` (not a built-in) to `to` (trimmed): its entry in
+ * `timbres` (order kept), the notes using it and the timbre moments naming it, so one `edit` is
+ * one undo entry. Same piece when the name is unchanged or refused (`timbreRenameError`).
+ */
+export function renameTimbre(piece: Piece, from: string, to: string): Piece {
+  const name = to.trim();
+  if (!isCustom(piece, from) || name === from || timbreRenameError(piece, from, name) !== null) {
+    return piece;
+  }
+  const timbres = Object.fromEntries(
+    Object.entries(piece.timbres).map(([k, t]) => [k === from ? name : k, t]),
+  );
+  const voices = piece.voices.map((v) => (v.timbre === from ? { ...v, timbre: name } : v));
+  const moments = piece.moments.map((m) =>
+    m.type === 'timbre' && m.preset === from ? { ...m, preset: name } : m,
+  );
+  return { ...piece, timbres, voices, moments };
+}
+
+/**
+ * Deletes the piece's own timbre `name` (not a built-in) when no note uses it. Timbre moments
+ * naming it are kept: they name a missing timbre (`unknown-timbre`, skipped) until one exists.
+ */
+export function deleteTimbre(piece: Piece, name: string): Piece {
+  if (!isCustom(piece, name) || timbreUsers(piece, name).length > 0) return piece;
+  const timbres = { ...piece.timbres };
+  delete timbres[name];
+  return { ...piece, timbres };
 }
 
 /** A copy of timbre `name` under a fresh name (no note uses it yet). */

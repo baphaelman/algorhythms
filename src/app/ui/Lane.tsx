@@ -3,8 +3,10 @@
  * score's time axis at every frame: **Moments** (marker and name) and **Transitions** (each
  * moment's compiled span as a bar; walks striped), both stacked in sub-rows so overlapping moments
  * never share one (revision 7); **Pins** (only when the piece has pins: marker and glide bar on
- * one thin sub-row, stacked when spans overlap) and **Level** (the mean level curve, with each
- * `level` moment's marker on it; colliding markers stack below). The lane area grows to fit up to
+ * one thin sub-row, stacked when spans overlap), **Level** (the mean level curve, with each
+ * `level` moment's marker on it; colliding markers stack below) and **Effects** (M6, only when the
+ * piece or the preview has a timbre change: marker, preset name and fade bar on one sub-row,
+ * stacked like Moments; the end handle sets the fade). The lane area grows to fit up to
  * the divider's split (default: the score keeps ≥ 55 % of the timeline), then scrolls vertically.
  * One DOM item per moment holds its marker and its bar, so selection, focus and drags act on both.
  *
@@ -86,11 +88,13 @@ import { wheelIntent } from '../wheel';
 import './lane.css';
 
 /**
- * Row geometry (px; lane.css reads `--mom-h`, `--trans-h`, `--pins-h` and `--level-h`). Moments
+ * Row geometry (px; lane.css reads `--mom-h`, `--trans-h`, `--pins-h`, `--level-h` and
+ * `--effects-h`). Moments
  * and Transitions each hold `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and
  * name per Moments sub-row, a bar per Transitions sub-row; a moment uses the same sub-row index in
  * both. Pins: `p` sub-rows of PIN_H (none without pins). Level: the curve's box, plus a
- * LEVEL_SUB_H strip per extra sub-row of colliding level markers.
+ * LEVEL_SUB_H strip per extra sub-row of colliding level markers. Effects: `e` sub-rows of
+ * EFFECT_H (none without timbre changes).
  */
 const MIN_SUBROWS = 2;
 /** The Key row on top (lane.css `--key-h`): the piece key at 0:00 (M4.5-39). */
@@ -111,6 +115,9 @@ const LEVEL_H = 28;
 const LEVEL_PAD = 3;
 const LEVEL_SUB_H = 14;
 const levelH = (l: number): number => LEVEL_H + 4 + Math.max(0, l - 1) * LEVEL_SUB_H;
+/** Effects sub-row height (lane.css `[data-lane='effects']` items are this tall). */
+const EFFECT_H = 16;
+const effectsH = (e: number): number => (e > 0 ? e * EFFECT_H + 4 : 0);
 /** The divider between the score and the lanes (lane.css `.lane-divider`). */
 const DIVIDER_H = 10;
 /** Keyboard step (px) for the divider; Shift or Page keys move further. */
@@ -235,10 +242,14 @@ class LaneController {
   /** x of the score canvas's left edge relative to the track's padding box (0 when aligned). */
   private axisLeft = 0;
   private rowOf = new Map<MomentId, number>();
-  /** Sub-rows shown: Moments/Transitions (≥ MIN_SUBROWS; 0 until the first layout), Pins, Level. */
+  /**
+   * Sub-rows shown: Moments/Transitions (≥ MIN_SUBROWS; 0 until the first layout), Pins, Level,
+   * Effects.
+   */
   private subRows = 0;
   private pinRows = 0;
   private levelRows = 1;
+  private effectRows = 0;
   /** The level curve's full-height value (≥ 1.2), for markers on the envelope. */
   private levelPeak = 1.2;
   /** Each placed item's top (px in the track), for scrolling it into view. */
@@ -406,7 +417,12 @@ class LaneController {
       const { rows, count } = laneLayout(all, pps);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
       this.ghostRow = this.ghost ? rows[this.items.length] : 0;
-      this.setRows(Math.max(MIN_SUBROWS, count.main), count.pins, Math.max(1, count.level));
+      this.setRows(
+        Math.max(MIN_SUBROWS, count.main),
+        count.pins,
+        Math.max(1, count.level),
+        count.effects,
+      );
     }
     this.placeLevel(pps);
     for (const it of this.items) this.place(it, pps);
@@ -441,24 +457,29 @@ class LaneController {
 
   /**
    * Grows or shrinks the rows: `n` Moments/Transitions sub-rows, `p` Pins sub-rows (0 hides the
-   * Pins row) and `l` Level sub-rows.
+   * Pins row), `l` Level sub-rows and `e` Effects sub-rows (0 hides the Effects row).
    */
-  private setRows(n: number, p: number, l: number): void {
+  private setRows(n: number, p: number, l: number, e: number): void {
     const track = this.track;
-    if ((n === this.subRows && p === this.pinRows && l === this.levelRows) || !track) return;
+    const same =
+      n === this.subRows && p === this.pinRows && l === this.levelRows && e === this.effectRows;
+    if (same || !track) return;
     this.subRows = n;
     this.pinRows = p;
     this.levelRows = l;
+    this.effectRows = e;
     track.style.setProperty('--mom-h', `${momH(n)}px`);
     track.style.setProperty('--trans-h', `${transH(n)}px`);
     track.style.setProperty('--pins-h', `${pinsH(p)}px`);
     track.style.setProperty('--level-h', `${levelH(l)}px`);
+    track.style.setProperty('--effects-h', `${effectsH(e)}px`);
     track.dataset.subrows = String(n);
     track.dataset.pinRows = String(p);
     track.dataset.levelRows = String(l);
+    track.dataset.effectRows = String(e);
   }
 
-  /** Top (px in the track) of the Pins row and of the Level row. */
+  /** Top (px in the track) of the Pins, Level and Effects rows. */
   private pinsTop(): number {
     const n = Math.max(MIN_SUBROWS, this.subRows);
     return KEY_H + momH(n) + transH(n);
@@ -466,6 +487,10 @@ class LaneController {
 
   private levelTop(): number {
     return this.pinsTop() + pinsH(this.pinRows);
+  }
+
+  private effectsTop(): number {
+    return this.levelTop() + levelH(this.levelRows);
   }
 
   /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
@@ -500,6 +525,10 @@ class LaneController {
     if (lane === 'pins') {
       y = this.pinsTop() + 2 + row * PIN_H;
       barTop = 3;
+    } else if (lane === 'effects') {
+      // The fade bar runs through the marker and the preset name.
+      y = this.effectsTop() + 2 + row * EFFECT_H;
+      barTop = 2;
     } else if (lane === 'level') {
       const top = this.levelTop() + 2;
       if (row === 0) {
@@ -555,7 +584,8 @@ class LaneController {
     const y = this.yOf.get(id);
     const it = this.items.find((x) => x.id === id);
     if (y === undefined || !it) return;
-    const h = laneRowOf(it.type) === 'main' ? ROW_H : SMALL_H;
+    const lane = laneRowOf(it.type);
+    const h = lane === 'main' ? ROW_H : lane === 'effects' ? EFFECT_H : SMALL_H;
     const top = (this.track?.clientTop ?? 0) + y;
     const next = revealScroll(top, h, sc.scrollTop, sc.clientHeight);
     if (next !== sc.scrollTop) sc.scrollTop = next;
@@ -1012,6 +1042,8 @@ class LaneController {
       if (last) this.announce(`${name} last note ${spokenTime(last.len)}`);
     } else if (m.type === 'level') {
       this.announce(`${name} ramp ${spokenTime(m.over)}`);
+    } else if (m.type === 'timbre') {
+      this.announce(`${name} fade ${spokenTime(m.fade)}`);
     } else {
       const g = { ...p.defaults.glide, ...m.glide };
       this.announce(
@@ -1144,6 +1176,7 @@ function endLabel(edit: LaneItem['endEdit'] | undefined, shift: boolean): string
   if (edit === 'until') return 'Change region';
   if (edit === 'notes') return 'Change last note length';
   if (edit === 'over') return 'Change ramp';
+  if (edit === 'fade') return 'Change fade';
   return shift ? 'Change stagger' : 'Change glide length';
 }
 
@@ -1487,6 +1520,9 @@ export function Lane() {
           </div>
           <div className="lane-row" data-row="level" aria-hidden="true">
             <span className="lane-row-name">Level</span>
+          </div>
+          <div className="lane-row" data-row="effects" aria-hidden="true">
+            <span className="lane-row-name">Effects</span>
           </div>
           <div
             ref={marqueeRef}

@@ -16,6 +16,7 @@ import type {
   ShiftMoment,
   SplitMoment,
   SpreadMoment,
+  TimbreMoment,
   UnisonMoment,
   WalkMoment,
 } from '../../../core/types';
@@ -50,6 +51,9 @@ import { PulseFields } from './PulseFields';
 import { TuneNotes } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
+import { isCustom, isModified } from '../../editor/timbre-edit';
+import { timbreOptions } from '../../editor/voices';
+import { isTimbreName } from '../../../core/timbres';
 
 interface Ctx {
   piece: Piece;
@@ -92,6 +96,8 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
       return <PulseFields m={m} piece={ctx.piece} />;
     case 'tune':
       return <TuneNotes m={m} piece={ctx.piece} />;
+    case 'timbre':
+      return <TimbreFields m={m} piece={ctx.piece} />;
   }
 }
 
@@ -579,6 +585,43 @@ function LevelFields({ m }: { m: LevelMoment }) {
         step={0.1}
         slider={{ min: 0, max: 20 }}
         testId="insp-level-ramp"
+      />
+    </>
+  );
+}
+
+/** How a preset is listed: built-in, edited built-in, the piece's own, or missing. */
+function presetText(piece: Piece, name: string): string {
+  if (!isTimbreName(name, piece.timbres)) return `${name} (missing)`;
+  return isModified(piece, name)
+    ? `${name} (edited)`
+    : isCustom(piece, name)
+      ? `${name} (piece)`
+      : name;
+}
+
+/** A timbre change (M6): the preset (the piece's timbres, then built-ins) and the fade. */
+function TimbreFields({ m, piece }: { m: TimbreMoment; piece: Piece }) {
+  const fade = field<number>(m.id, 'fade', 'Edit fade');
+  return (
+    <>
+      <SelectField
+        label="Timbre"
+        value={m.preset}
+        options={timbreOptions(piece, m.preset).map((t) => [t, presetText(piece, t)] as const)}
+        onChange={(preset) => updateMoment(m.id, { preset }, 'Change timbre')}
+        testId="insp-timbre-preset"
+      />
+      <NumberField
+        label="Fade"
+        unit="s"
+        value={m.fade}
+        set={fade}
+        min={0}
+        max={120}
+        step={0.1}
+        slider={{ min: 0, max: 10 }}
+        testId="insp-timbre-fade"
       />
     </>
   );

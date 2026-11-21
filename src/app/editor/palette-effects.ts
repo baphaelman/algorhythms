@@ -31,9 +31,9 @@ export function effectTime(score: CompiledScore, t: Seconds): Seconds {
 
 /**
  * Palette types core's `momentEffectsAt` leaves out (its EFFECT_MOMENT_TYPES predates them); the
- * app checks them one by one with `momentEffectAt` (R9-7).
+ * app checks them one by one with `momentEffectAt` (R9-7, M6).
  */
-const EXTRA_TYPES: readonly MomentType[] = ['pulse', 'tune'];
+const EXTRA_TYPES: readonly MomentType[] = ['pulse', 'tune', 'timbre'];
 
 /** Per type: would a default moment of that type at `t` have an effect? */
 export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): PaletteEffects {
