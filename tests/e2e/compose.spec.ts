@@ -1,7 +1,8 @@
 /**
- * Compose for me (PLAN.md §11.3 "Compose in New piece", M4.5-28): New → Compose for me builds a
- * piece on screen; Skip shows all of it, Stop keeps a playable part, a seed change restarts the
- * build, and one undo goes back to the empty piece.
+ * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order"; M4.5-28,
+ * M4.5-38): New → Compose for me builds a piece on screen, the camera and pen only moving forward;
+ * Skip shows all of it, Stop keeps a playable part, a seed change restarts a build in progress,
+ * inputs after the finish wait for Compose again, and one undo goes back to the empty piece.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { generate } from '../../src/core/generate';
@@ -40,10 +41,37 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 
+interface Sample {
+  start: number;
+  pen: number;
+  detail: boolean;
+  status: string | null;
+}
+
+/** Records the camera, pen and phase every frame until the build ends. */
+async function trace(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const out: Sample[] = [];
+    (window as unknown as { __trace: Sample[] }).__trace = out;
+    const tick = (): void => {
+      const status =
+        document.querySelector('[data-testid="compose-panel"]')?.getAttribute('data-status') ??
+        null;
+      out.push({ start: h.frameStats.start, pen: h.compose.pen, detail: h.compose.detail, status });
+      if (status === 'building') requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+const traced = (page: Page): Promise<Sample[]> =>
+  page.evaluate(() => (window as unknown as { __trace: Sample[] }).__trace);
+
 test('New → Compose for me places moments over time, then shows the full piece', async ({
   page,
 }) => {
   await compose(page, '4242');
+  await trace(page);
   const all = expected(4242).length;
   const seen: number[] = [];
   for (let i = 0; i < 4; i++) {
@@ -61,6 +89,25 @@ test('New → Compose for me places moments over time, then shows the full piece
     .toBeGreaterThan(5);
   await expect(panel(page)).toHaveAttribute('data-status', 'done', { timeout: 30_000 });
   expect((await piece(page)).moments).toEqual(expected(4242));
+
+  // In play order: the camera and pen never move back while the structure is placed; the detail
+  // sweep then shows the whole piece (the camera still) and its pen also only moves forward.
+  const samples = (await traced(page)).filter((s) => s.status === 'building');
+  const structure = samples.filter((s) => !s.detail);
+  const details = samples.filter((s) => s.detail);
+  expect(structure.length).toBeGreaterThan(100);
+  expect(details.length).toBeGreaterThan(5);
+  expect(samples.findIndex((s) => s.detail)).toBe(structure.length);
+  for (let i = 1; i < structure.length; i++) {
+    expect(structure[i].start).toBeGreaterThanOrEqual(structure[i - 1].start - 1e-6);
+    expect(structure[i].pen).toBeGreaterThanOrEqual(structure[i - 1].pen - 1e-6);
+  }
+  expect(structure.at(-1)!.pen).toBeGreaterThan(140);
+  // The first detail frame may still show the last structural camera; from then on it holds.
+  for (let i = 2; i < details.length; i++) {
+    expect(details[i].start).toBe(details[1].start);
+    expect(details[i].pen).toBeGreaterThanOrEqual(details[i - 1].pen);
+  }
 });
 
 test('Skip ends with the full piece; one undo empties back to before the compose', async ({
@@ -74,12 +121,13 @@ test('Skip ends with the full piece; one undo empties back to before the compose
   expect(done.title).toBe('Dorian 77');
   expect(done.moments).toEqual(expected(77));
 
-  // Undo from the keyboard (not in the seed field, which keeps its own text undo).
-  await page.getByTestId('compose-close').click();
-  await expect(panel(page)).toBeHidden();
+  // Undo from the keyboard (not in the seed field, which keeps its own text undo). The user's own
+  // history change closes the panel, and the inspector returns.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(async () => (await piece(page)).moments.length).toBe(1);
+  await expect(panel(page)).toBeHidden();
+  await expect(page.getByTestId('inspector')).toBeVisible();
   expect((await piece(page)).title).toBe('Untitled');
   expect(await page.evaluate(() => window.__algorhythms!.editor.state.getState().canUndo)).toBe(
     false,
@@ -128,4 +176,31 @@ test('changing the seed mid-build restarts the build from it', async ({ page }) 
     .toBe(true);
   await page.getByTestId('compose-skip').click();
   expect((await piece(page)).moments).toEqual(expected(101));
+});
+
+test('after the finish, inputs wait for Compose again', async ({ page }) => {
+  await compose(page, '55');
+  await page.getByTestId('compose-skip').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  const done = await piece(page);
+  expect(done.moments).toEqual(expected(55));
+
+  await page.getByTestId('compose-seed').fill('56');
+  await page.waitForTimeout(1500);
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  expect(await piece(page)).toEqual(done);
+
+  await page.getByTestId('compose-again').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  await expect.poll(async () => (await piece(page)).title).toBe('Dorian 56');
+  await page.getByTestId('compose-skip').click();
+  expect((await piece(page)).moments).toEqual(expected(56));
+  // Still one undo entry back to the empty piece.
+  await page.getByTestId('compose-close').click();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(async () => (await piece(page)).moments.length).toBe(1);
+  expect(await page.evaluate(() => window.__algorhythms!.editor.state.getState().canUndo)).toBe(
+    false,
+  );
 });

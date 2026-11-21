@@ -1,14 +1,15 @@
 /**
  * The pace of Compose for me (PLAN.md §11.3 "Compose in New piece", M4.5-28), as pure functions.
  *
- * The composer's pen sweeps the piece left to right: an add step places its moment at the pen,
- * then the pen draws its lines in up to the next moment's time. The pen moves at `PEN_SPEED`
- * seconds of music per second (a 2:30 piece draws in 20 s), faster for long pieces so the pen never
- * takes more than `MAX_PEN_SECONDS`. An edit step (an adjustment pass) holds the pen for `EDIT_MS`,
- * a whole pass for at most `MAX_PASS_MS`.
+ * The composer's pen sweeps the piece once, left to right: a structural step places its moment at
+ * the pen, then the pen draws its lines in up to the next moment's time. The pen moves at
+ * `PEN_SPEED` seconds of music per second (a 2:30 piece draws in 20 s), faster for long pieces so
+ * the pen never takes more than `MAX_PEN_SECONDS`. Then the detail sweep (M4.5-38): each detail
+ * step is shown for `DETAIL_MS`, the whole sweep for at most `MAX_DETAIL_MS`, its pen at the
+ * detail's time.
  */
 
-import type { ComposePass, ComposeStep, Composition } from '../core/generate';
+import type { Composition } from '../core/generate';
 import type { Moment, Seconds } from '../core/types';
 
 /** Seconds of music the pen draws per second. */
@@ -17,10 +18,10 @@ export const PEN_SPEED = 7.5;
 export const MAX_PEN_SECONDS = 40;
 /** Shortest time an add step is shown, ms. */
 export const MIN_ADD_MS = 250;
-/** Time an edit step is shown, ms. */
-export const EDIT_MS = 450;
-/** Longest an adjustment pass is shown, ms (its edits share it). */
-export const MAX_PASS_MS = 3000;
+/** Time a detail step is shown, ms. */
+export const DETAIL_MS = 700;
+/** Longest the detail sweep is shown, ms (its steps share it). */
+export const MAX_DETAIL_MS = 3000;
 
 /** One step on the build's clock. */
 export interface Beat {
@@ -31,6 +32,8 @@ export interface Beat {
   /** The pen (seconds of music) at the step's start and end. */
   penFrom: Seconds;
   penTo: Seconds;
+  /** A step of the detail sweep. */
+  detail: boolean;
 }
 
 /** The build's clock: one beat per step, and the total, ms. */
@@ -48,33 +51,31 @@ function reach(m: Moment): Seconds {
 /** The timeline for `c`'s steps. */
 export function composeTimeline(c: Composition): Timeline {
   const { steps } = c;
-  const adds = steps.filter((s): s is Extract<ComposeStep, { kind: 'add' }> => s.kind === 'add');
-  const passSize = new Map<ComposePass, number>();
-  for (const s of steps)
-    if (s.kind === 'edit') passSize.set(s.pass, (passSize.get(s.pass) ?? 0) + 1);
-  const last = adds.at(-1);
+  const structure = steps.filter((s) => s.phase === 'structure');
+  const details = steps.length - structure.length;
+  const last = structure.at(-1);
   const sweep = last ? reach(last.moment) : 0;
   const speed = Math.max(PEN_SPEED, sweep / MAX_PEN_SECONDS);
 
   const beats: Beat[] = [];
   let clock = 0;
-  let pen = 0;
-  let nextAdd = 0;
+  let next = 0;
   for (const s of steps) {
     let dur: number;
-    let to = pen;
-    if (s.kind === 'add') {
-      nextAdd++;
-      pen = s.moment.at;
-      const next = adds[nextAdd];
-      to = next ? Math.max(pen, next.moment.at) : Math.max(pen, reach(s.moment));
-      dur = Math.max(MIN_ADD_MS, ((to - pen) / speed) * 1000);
+    let from: Seconds;
+    let to: Seconds;
+    if (s.phase === 'structure') {
+      next++;
+      from = s.moment.at;
+      const after = structure[next];
+      to = after ? Math.max(from, after.moment.at) : Math.max(from, reach(s.moment));
+      dur = Math.max(MIN_ADD_MS, ((to - from) / speed) * 1000);
     } else {
-      dur = Math.min(EDIT_MS, MAX_PASS_MS / (passSize.get(s.pass) ?? 1));
+      from = to = s.moment.at;
+      dur = Math.min(DETAIL_MS, MAX_DETAIL_MS / details);
     }
-    beats.push({ start: clock, dur, penFrom: pen, penTo: to });
+    beats.push({ start: clock, dur, penFrom: from, penTo: to, detail: s.phase === 'detail' });
     clock += dur;
-    pen = to;
   }
   return { beats, total: clock };
 }

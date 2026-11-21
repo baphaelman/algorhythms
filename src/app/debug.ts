@@ -8,6 +8,7 @@ import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
 import { frameStats } from './loop';
 import { auditionState } from './audition';
+import { composeView } from './compose-view';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
@@ -40,6 +41,8 @@ export interface AlgoRhythmsDebug {
   preview: typeof previewState;
   /** Audition state (§11.3 auditioning). */
   audition: typeof auditionState;
+  /** Compose for me's pen and phase (M4.5-38). */
+  compose: typeof composeView;
 }
 
 declare global {
@@ -72,5 +75,6 @@ export function installDebug(): void {
     editor: { state: useEditor, select, undo, redo },
     preview: previewState,
     audition: auditionState,
+    compose: composeView,
   };
 }
