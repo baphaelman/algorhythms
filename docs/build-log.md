@@ -1050,3 +1050,7 @@ Fix:
 - The splitStacked follow-up was cancelled with nothing merged. Rare property failures to fix after M4.5-29, all with seeds, at 1000 runs:
   - `compiler.property`: crossings at 512133634/31 and -1185324365/662; ranges at 811138243/954; walk-over-point at 112518007/143.
   - chord-count "far side": 439040815/857.
+
+## E2E: lane Escape + view-follow race (2026-11-21)
+Cause: lane Escape test expected an exact mid-drag `at` of 5, but grid snapping was removed (M4.5-22), so Firefox/WebKit give 4.994; view-follow read the camera window right after a slider fill, before a frame had drawn.
+Fix: mid-drag poll uses `toBeCloseTo(5, 1)` (final `toBe(2)` kept); the follow test polls `window` < 5 before reading it.

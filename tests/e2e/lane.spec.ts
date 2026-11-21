@@ -134,7 +134,9 @@ test('Escape during a drag cancels it', async ({ page }) => {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + k * 3, from.y, { steps: 4 });
-  await expect.poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at).toBe(5);
+  await expect
+    .poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at)
+    .toBeCloseTo(5, 1);
   await page.keyboard.press('Escape');
   await page.mouse.up();
   await expect.poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at).toBe(2);
