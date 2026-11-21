@@ -155,8 +155,16 @@ export function drawScore(
   // 3. moment and section markers
   drawMarkers(g, compiled, style, view, MONO);
 
-  // 4. lines
+  // 4. lines (up to the composer's pen while Compose for me builds)
+  const clip = style.reveal !== undefined && Number.isFinite(style.reveal);
+  if (clip) {
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, Math.max(0, timeToX(view, style.reveal ?? 0)), H);
+    g.clip();
+  }
   drawLines(g, compiled, style, view);
+  if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
 
   // 5. heads

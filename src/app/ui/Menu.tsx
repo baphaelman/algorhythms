@@ -3,6 +3,7 @@ import { PALETTE } from '../editor/shortcuts';
 import { COMPOSITIONS, ORIGINALS } from '../examples';
 import { canLinkFiles, linkToFile, newPieceNow, openMyPieces, saveAsFile } from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
+import { openCompose } from '../compose';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
 
@@ -115,7 +116,8 @@ export function Menu() {
           ))}
           <h2>Pieces</h2>
           <ul>
-            <li>
+            <li className="menu-new" role="group" aria-label="New">
+              <span>New</span>
               <button
                 type="button"
                 data-testid="new-piece"
@@ -124,7 +126,17 @@ export function Menu() {
                   newPieceNow();
                 }}
               >
-                New
+                Empty
+              </button>
+              <button
+                type="button"
+                data-testid="compose-piece"
+                onClick={() => {
+                  close();
+                  openCompose();
+                }}
+              >
+                Compose for me
               </button>
             </li>
             <li>

@@ -1,7 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
+import { useCompose } from './compose';
 import { startPersistence } from './persist';
 import { startPlayer } from './store';
+import { ComposePanel } from './ui/ComposePanel';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
@@ -41,6 +43,7 @@ function useWide(): boolean {
  */
 export function App() {
   const wide = useWide();
+  const composing = useCompose((s) => s.open);
 
   useEffect(() => {
     startPersistence();
@@ -69,7 +72,7 @@ export function App() {
         </div>
         {!wide && <Scrubber />}
         <ViewBar />
-        {wide && <Inspector />}
+        {composing ? <ComposePanel /> : wide && <Inspector />}
       </main>
       {wide && <VoicesDrawer />}
     </div>
