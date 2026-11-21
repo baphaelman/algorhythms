@@ -32,6 +32,14 @@ import type {
   TuneMoment,
 } from '../../core/types';
 
+/**
+ * Where adding at `t` puts a moment: 0:00 while the piece has no moments (the piece key is not one,
+ * M4.5-39), so the first moment always opens the piece (owner 2026-11-21); else `t`.
+ */
+export function addTimeIn(piece: Piece, t: Seconds): Seconds {
+  return piece.moments.length === 0 ? 0 : t;
+}
+
 /** Length of a new walk region, seconds. */
 export const NEW_WALK_LENGTH = 16;
 

@@ -126,7 +126,7 @@ test('Skip ends with the full piece; one undo empties back to before the compose
   // history change closes the panel, and the inspector returns.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('ControlOrMeta+z');
-  await expect.poll(async () => (await piece(page)).moments.length).toBe(1);
+  await expect.poll(async () => (await piece(page)).moments.length).toBe(0);
   await expect(panel(page)).toBeHidden();
   await expect(page.getByTestId('inspector')).toBeVisible();
   expect((await piece(page)).title).toBe('Untitled');
@@ -199,7 +199,7 @@ test('after the finish, inputs wait for Compose again', async ({ page }) => {
   await page.getByTestId('compose-close').click();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('ControlOrMeta+z');
-  await expect.poll(async () => (await piece(page)).moments.length).toBe(1);
+  await expect.poll(async () => (await piece(page)).moments.length).toBe(0);
   expect(await page.evaluate(() => window.__algorhythms!.editor.state.getState().canUndo)).toBe(
     false,
   );

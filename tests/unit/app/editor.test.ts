@@ -29,6 +29,7 @@ vi.mock('../../../src/app/audio', () => {
 
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { momentSeed } from '../../../src/core/rng';
 import { parsePiece } from '../../../src/core/schema';
 import { activeAt, keyAt, pitchAt } from '../../../src/core/query';
@@ -85,8 +86,8 @@ function examplePiece(): Piece {
 }
 
 beforeEach(() => {
-  // Without the opening chord, so `moments` holds only what each test adds.
-  loadPiece({ ...newPiece({ seed: 7 }), moments: [] });
+  // No moments: `moments` holds only what each test adds (the first add goes at 0).
+  loadPiece(newPiece({ seed: 7 }));
 });
 
 /** Runs `action`, then checks that undo restores the piece before it and redo the piece after. */
@@ -119,24 +120,26 @@ describe('actions undo and redo', () => {
   });
 
   it('moveMoments clamps a group at 0 and moves a walk region', () => {
+    addMoment('chord', 0);
     const a = addMoment('walk', 4);
     const b = addMoment('chord', 10);
     roundTrip(() => moveMoments([a, b], -6));
-    const [w, c] = piece().moments;
+    const [, w, c] = piece().moments;
     expect(w).toMatchObject({ id: a, at: 0, until: 16 });
     expect(c).toMatchObject({ id: b, at: 6 });
     expect(moveMoments([a], -1)).toBe(false);
   });
 
   it('keeps moments sorted by at, stably', () => {
+    const o = addMoment('chord', 0);
     const a = addMoment('chord', 5);
     const b = addMoment('shift', 2);
     const c = addMoment('level', 5);
-    expect(ids()).toEqual([b, a, c]);
+    expect(ids()).toEqual([o, b, a, c]);
     moveMoments([b], 3); // ties keep their previous order
-    expect(ids()).toEqual([b, a, c]);
+    expect(ids()).toEqual([o, b, a, c]);
     moveMoments([b], 1);
-    expect(ids()).toEqual([a, c, b]);
+    expect(ids()).toEqual([o, a, c, b]);
   });
 
   it('deleteMoments prunes the selection', () => {
@@ -149,6 +152,7 @@ describe('actions undo and redo', () => {
   });
 
   it('duplicateMoments keeps the effective seed', () => {
+    addMoment('chord', 0);
     const a = addMoment('walk', 1);
     const b = addMoment('chord', 3);
     updateMoment(b, { seed: 1234 });
@@ -210,7 +214,7 @@ describe('history', () => {
     const start = piece();
     beginGesture('Move moment');
     for (let i = 1; i <= 10; i++) updateGesture((p) => moveMomentsBy(p, [a], i));
-    expect(piece().moments[0].at).toBe(11);
+    expect(piece().moments[0].at).toBe(10); // the first add went at 0
     endGesture();
     expect(ed().undoLabel).toBe('Move moment');
     undo();
@@ -250,7 +254,7 @@ describe('history', () => {
     for (let i = 1; i <= 3; i++) updateGesture((p) => copyMoments(p, [a], i, fresh).piece);
     endGesture();
     expect(ids()).toEqual([a, fresh[0]]);
-    expect(piece().moments[1].at).toBe(4);
+    expect(piece().moments[1].at).toBe(3); // the first add went at 0
   });
 
   it(`is capped at ${HISTORY_CAP} entries`, () => {
@@ -330,8 +334,8 @@ describe('default moments', () => {
     expect(defaultMoment('tune', 30, 'yyyyyy', p, s).notes).not.toEqual(m.notes);
   });
 
-  it('a chord on the empty piece moves the voice', () => {
-    const p = newPiece({ seed: 3 });
+  it('a chord on a one-note opening moves the voice', () => {
+    const p = withOpening(newPiece({ seed: 3 }));
     const m = defaultMoment('chord', 1, 'zzzzzz', p, compile(p));
     const score = compile({ ...p, moments: [...p.moments, m] });
     expect(score.voices[0].segments.some((s) => s.p0 !== s.p1)).toBe(true);
@@ -349,8 +353,8 @@ describe('default moments', () => {
     }
   });
 
-  it('a chord on the one-note opening brings in its extra notes: count 3, three lines', () => {
-    const p = newPiece({ seed: 3 });
+  it('a chord on a one-note opening brings in its extra notes: count 3, three lines', () => {
+    const p = withOpening(newPiece({ seed: 3 }));
     const m = defaultMoment('chord', 5, 'zzzzzz', p, compile(p));
     expect(m.count).toBe(3);
     const score = compile({ ...p, moments: [...p.moments, m] });
@@ -368,7 +372,7 @@ describe('default moments', () => {
   });
 
   it('withChordFill: only chords without count or voice target; at most the pool', () => {
-    const p = newPiece({ seed: 3 });
+    const p = withOpening(newPiece({ seed: 3 }));
     const s = compile(p);
     const seventh: ChordMoment = {
       id: 'zzzzzz',

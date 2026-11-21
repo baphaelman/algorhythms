@@ -17,6 +17,18 @@ export const PIECE_KEY_ID: MomentId = '__pieceKey';
 
 export const isPieceKey = (id: MomentId): boolean => id === PIECE_KEY_ID;
 
+let focusWanted = false;
+/** Asks the inspector to focus the piece key's Tonic control once it shows (New > Empty). */
+export function requestPieceKeyFocus(): void {
+  focusWanted = true;
+}
+/** True once after `requestPieceKeyFocus` (the inspector consumes it). */
+export function takePieceKeyFocus(): boolean {
+  const w = focusWanted;
+  focusWanted = false;
+  return w;
+}
+
 /** The piece's key as a key moment at 0 (never stored). */
 export function pieceKeyMoment(piece: Piece): KeyMoment {
   return { id: PIECE_KEY_ID, type: 'key', at: 0, key: piece.key };

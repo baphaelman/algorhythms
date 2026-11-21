@@ -14,7 +14,7 @@ import type { CompiledScore, Moment, MomentType, Piece, Seconds } from '../core/
 import { extendEnd } from './editor/end';
 import { laneItems, type LaneItem } from './editor/lane';
 import { insertMoments } from './editor/ops';
-import { defaultMoment } from './editor/new-moment';
+import { addTimeIn, defaultMoment } from './editor/new-moment';
 import { PROBE_ID, addTime } from './editor/palette-effects';
 import { usePlayer } from './store';
 
@@ -53,7 +53,7 @@ export function startPreview(type: MomentType, t: Seconds = addTime(), drag = fa
   const { piece, compiled } = usePlayer.getState();
   let m: Moment;
   try {
-    m = defaultMoment(type, Math.max(0, t), PROBE_ID, piece, compiled);
+    m = defaultMoment(type, Math.max(0, addTimeIn(piece, t)), PROBE_ID, piece, compiled);
   } catch {
     return false;
   }

@@ -31,7 +31,7 @@ import {
   updateGesture,
   useEditor,
 } from './history';
-import { defaultMoment } from './new-moment';
+import { addTimeIn, defaultMoment } from './new-moment';
 import { stepNoteTo } from './note-points';
 import { freezeWalk } from '../../core/moments/walk';
 import { NOTE_MATCH, noteChanges, withNoteChanges } from '../../core/moments/note';
@@ -106,11 +106,11 @@ function pendingSince(piece: Piece): boolean {
 
 /**
  * Adds a default moment of `type` at `at` (seconds, clamped at 0), selects it and returns its
- * id. The defaults depend on the piece's state at `at` (see ./new-moment). A key at 0 selects the
- * piece key instead (`PIECE_KEY_ID`).
+ * id. The defaults depend on the piece's state at `at` (see ./new-moment). The first moment goes
+ * at 0 (`addTimeIn`). A key at 0 selects the piece key instead (`PIECE_KEY_ID`).
  */
 export function addMoment(type: MomentType, at: Seconds): MomentId {
-  const t = Math.max(0, at);
+  const t = Math.max(0, addTimeIn(usePlayer.getState().piece, at));
   // The key at 0:00 is the piece key (M4.5-39): adding one there selects it instead.
   if (type === 'key' && t === 0) {
     select([PIECE_KEY_ID]);
@@ -644,12 +644,13 @@ export function cutMoments(ids: readonly MomentId[]): boolean {
 }
 
 /**
- * Pastes `clip` with its earliest moment at `at` (on the nearest beat when Snap to beats is on)
+ * Pastes `clip` with its earliest moment at `at` (on the nearest beat when Snap to beats is on;
+ * at 0 into a piece with no moments)
  * as one undo entry, and selects the new moments. Null if its moments are not valid here.
  */
 export function pasteClipAt(clip: Clip, at: Seconds): MomentId[] | null {
   const piece = usePlayer.getState().piece;
-  const r = pasteClip(piece, clip, pasteAnchor(at, beatStep(piece.view)));
+  const r = pasteClip(piece, clip, pasteAnchor(addTimeIn(piece, at), beatStep(piece.view)));
   if (!r) return null;
   edit(() => r.piece, r.ids.length === 1 ? 'Paste moment' : 'Paste moments');
   select(r.ids);

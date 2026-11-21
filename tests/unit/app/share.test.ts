@@ -15,6 +15,7 @@ import {
 } from '../../../src/app/share';
 import { SHARE_DICTIONARY_V2 } from '../../../src/app/share-dict';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { parsePiece } from '../../../src/core/schema';
 import { BUILTIN_TIMBRES } from '../../../src/core/timbres';
 import type { Piece } from '../../../src/core/types';
@@ -177,7 +178,7 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
   });
 
   it('a piece that is not canonical opens as its canonical form', async () => {
-    const piece = newPiece({ seed: 1 });
+    const piece = withOpening(newPiece({ seed: 1 }));
     piece.moments.push({ id: 'lvl001', type: 'level', at: 2.00049, gain: 0.123456, over: 1 });
     const back = await open(await encodeShareLink(piece, BASE));
     expect(back.moments[1]).toMatchObject({ at: 2, gain: 0.123 });

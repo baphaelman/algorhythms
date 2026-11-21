@@ -14,6 +14,7 @@ import {
 } from '../../../src/core/canonical';
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import { PieceSchema, parsePiece } from '../../../src/core/schema';
 import type { Moment, Piece } from '../../../src/core/types';
 
@@ -51,7 +52,7 @@ describe('rounding rules', () => {
 
 describe('canonicalPiece', () => {
   const noisy = (): Piece => {
-    const p = newPiece({ seed: 1 });
+    const p = withOpening(newPiece({ seed: 1 }));
     p.voices[0].gain = 1.23456;
     p.voices[0].pan = -0.33333;
     p.voices[0].sends = { reverb: 0.55555 };
@@ -128,7 +129,7 @@ describe('canonicalPiece', () => {
   });
 
   it('leaves unknown fields, timbres and the mix as written', () => {
-    const p = newPiece({ seed: 1 }) as Piece & Record<string, unknown>;
+    const p = withOpening(newPiece({ seed: 1 })) as Piece & Record<string, unknown>;
     p.future = { x: 1.234567890123456 };
     p.mix.reverb.size = 0.123456789;
     p.timbres.glass.accent = 0.123456789;

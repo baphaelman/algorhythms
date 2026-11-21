@@ -28,6 +28,7 @@ vi.mock('../../../src/app/audio', () => {
 
 import { compile } from '../../../src/core/compiler/compile';
 import { newPiece } from '../../../src/core/defaults';
+import { withOpening } from '../opened-piece';
 import type { Moment, Piece } from '../../../src/core/types';
 import { select, useEditor } from '../../../src/app/editor/history';
 import {
@@ -42,7 +43,7 @@ import { loadPiece, seekTo, usePlayer } from '../../../src/app/store';
 
 /** Split at 0, a level ramp 1 → 6 s, a unison at 2 s (ends ~2.5 s): the latest end is 6 s. */
 function piece(end?: number): Piece {
-  const p = newPiece({ seed: 7 });
+  const p = withOpening(newPiece({ seed: 7 }));
   const moments = [
     { id: 'spl001', type: 'split', at: 0, count: 4, voicing: 'even' },
     { id: 'lvl001', type: 'level', at: 1, gain: 0.8, over: 5 },
@@ -148,8 +149,18 @@ describe('Next at the end (revision 7)', () => {
 });
 
 describe('Next after a zero-length tail', () => {
-  it('a fresh piece: a hold after the opening chord, a bar with a tempo', () => {
+  it('an empty piece (New > Empty): Next is at 0:00', () => {
     const p = newPiece({ seed: 7 });
+    const s = compile(p);
+    expect(suggestionTime(p, s)).toBe(0);
+    expect(suggestionTime({ ...p, view: { ...p.view, gridBpm: 120 } }, s)).toBe(0);
+    const items = suggestionsAt(p, s, 0);
+    expect(items.length).toBeGreaterThan(0);
+    for (const it of items) expect(it.moment.at).toBe(0);
+  });
+
+  it('a one-note opening: a hold after it, a bar with a tempo', () => {
+    const p = withOpening(newPiece({ seed: 7 }));
     const s = compile(p);
     expect(suggestionTime(p, s)).toBe(2);
     // 120 bpm, 4/4: one bar = 2 s; 3/4 at 90 bpm: 2 s too, on a beat.
@@ -174,7 +185,7 @@ describe('Next after a zero-length tail', () => {
 
 describe('suggested chords on fewer lines (mouse-only gaps)', () => {
   it('bring in their extra notes: count is the chord size', () => {
-    const p0 = newPiece({ seed: 7 });
+    const p0 = withOpening(newPiece({ seed: 7 }));
     const split = { id: 'spl001', type: 'split', at: 0.5, count: 2, voicing: 'even' } as Moment;
     const p = { ...p0, moments: [...p0.moments, split] };
     const s = compile(p);
