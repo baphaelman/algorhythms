@@ -147,7 +147,8 @@ test('zoom: −/+, Fit and keys; the playhead keeps its x; the future is dimmed'
   expect(fit.window).toBeCloseTo(fit.duration, 3);
   expect(fit.start).toBe(0);
   await expect(page.getByTestId('zoom-fit')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('zoom-out')).toBeDisabled();
+  // The canvas is open-ended: zooming out past Fit is allowed.
+  await expect(page.getByTestId('zoom-out')).toBeEnabled();
 
   // At Fit nothing scrolls during playback; the future is dimmed to 0.35.
   await page.getByRole('button', { name: 'Play', exact: true }).click();
