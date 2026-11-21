@@ -10,8 +10,9 @@
  * 'm6' (plain eases on the M6 timbres: the M6-a bell, FM on a wavetable, breath noise, a bell with
  * struck partials and an FM index envelope) or 'timbre' (the 'lock' workload with seeks, every
  * voice changing timbre every ~1.5 s across every synthesis path, with overlapping fades: timbre
- * moments, M6-b2).
- * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre]
+ * moments, M6-b2) or 'fx' (the plain workload with a master FX edit every 0.25 s: tilt, low-pass
+ * in and out of bypass, room size and delay-time crossfades and glides).
+ * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx]
  */
 
 import { PerformanceObserver } from 'node:perf_hooks';
@@ -28,10 +29,14 @@ import {
   withTimbreChanges,
 } from '../../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../../src/dsp/constants';
+import type { MixSettings } from '../../../src/core/types';
 
 const RATE = 48000;
 const arg = process.argv[2];
-const mode = arg === 'all' || arg === 'lock' || arg === 'm6' || arg === 'timbre' ? arg : 'plain';
+const mode =
+  arg === 'all' || arg === 'lock' || arg === 'm6' || arg === 'timbre' || arg === 'fx'
+    ? arg
+    : 'plain';
 const seeking = mode === 'lock' || mode === 'timbre';
 // Every other voice pulses (R9-3b): onsets, strikes and decays on the audio thread.
 const score = withPulses(
@@ -79,19 +84,48 @@ graph.play(0);
 const SEEK_TO = new Int32Array([12, 19, 31, 44]);
 const seekEvery = seeking ? Math.round((5 * RATE) / BLOCK_FRAMES) : 0;
 const WARM_SEEKS = 1000;
+const WARM_EDITS = 5000;
+// 'fx': cycles through three mixes, built once (the edit itself arrives from postMessage).
+const F = FIXTURE_MIX;
+const FX_EDITS: MixSettings[] = [
+  F,
+  {
+    ...F,
+    reverb: { ...F.reverb, size: 0.15 },
+    delay: { ...F.delay, time: 1.2 },
+    tone: { tilt: 4, lowpassHz: 600 },
+  },
+  {
+    ...F,
+    reverb: { ...F.reverb, size: 0.9 },
+    delay: { ...F.delay, time: 1.195 },
+    tone: { tilt: -3, lowpassHz: 24000 },
+  },
+];
+const editEvery = mode === 'fx' ? Math.round((0.25 * RATE) / BLOCK_FRAMES) : 0;
 /** One block of the run; block i of a seek cycle seeks first when it starts a 5 s span. */
 function step(i: number): void {
   if (seekEvery > 0 && i % seekEvery === 0) graph.seek(SEEK_TO[(i / seekEvery) & 3]);
+  if (editEvery > 0 && i % editEvery === 0) graph.setMix(FX_EDITS[(i / editEvery) % 3]);
   graph.process(left, right);
 }
 const runBlocks = Math.round((60 * RATE) / BLOCK_FRAMES);
 const playThrough = Math.round(((seeking ? 76 : 5) * RATE) / BLOCK_FRAMES);
-for (let i = 0; i < playThrough; i++) graph.process(left, right);
+for (let i = 0; i < playThrough; i++) {
+  if (editEvery > 0) step(i);
+  else graph.process(left, right);
+}
 if (seekEvery > 0) {
   for (let i = 0; i < WARM_SEEKS * 4; i++) {
     if ((i & 3) === 0) graph.seek(SEEK_TO[(i >> 2) & 3]);
     graph.process(left, right);
   }
+}
+// 'fx': setMix is message handling, not process(); it runs interpreted (boxing doubles, ~3 KB
+// per edit) until V8 tiers it up, so the warm-up sends it WARM_EDITS times first.
+if (editEvery > 0) {
+  for (let i = 0; i < WARM_EDITS; i++) graph.setMix(FX_EDITS[i % 3]);
+  graph.setMix(F);
 }
 const warmCycle = seekEvery > 0 ? 4 * seekEvery : Math.round((5 * RATE) / BLOCK_FRAMES);
 for (let i = 0; i < warmCycle; i++) step(i);
