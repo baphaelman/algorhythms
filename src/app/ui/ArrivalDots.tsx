@@ -6,22 +6,24 @@
  *   marquee; ./editor/dot-selection) are marked `picked`.
  * - Hover: with the mouse near another moment's arrival, that moment's dots (a walk: the near
  *   steps), from a fixed pool of buttons written per frame, so no React render on pointer moves.
- * - The selection rectangle canvas-input draws (../marquee), placed per frame.
+ * - The selection rectangle canvas-input draws (../marquee), and the Shift-drag octave guides and
+ *   label (../octave-guide), placed per frame.
  * Dragging a dot moves it (`dragDots`), with every other selected dot when it is selected (Shift
- * on an unselected one adds it): vertically its pitch (snapped to the key, Shift = chromatic, the
- * others by the same scale steps; clamped at the view's edge, which holds still during the drag),
- * horizontally its arrival (snapped to note changes within 8 px, a walk step first to its walk's
- * other steps, Alt = free; only once the pointer has moved sideways past the slop), one undo
- * entry; the grabbed dot follows the pointer and the moved dots stay selected. A click without a
- * drag selects the dot (and its moment; a walk dot also its step); Shift-click adds or removes it.
- * DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
+ * on an unselected one adds it): vertically its pitch (snapped to the key, the others by the same
+ * scale steps; Shift: whole octaves from its start, all by the same octaves; Alt = chromatic;
+ * clamped at the view's edge, which holds still during the drag), horizontally its arrival
+ * (snapped to note changes within 8 px, a walk step first to its walk's other steps, Alt = free;
+ * only once the pointer has moved sideways past the slop), one undo entry; Shift or Alt pressed
+ * mid-drag switch live. The grabbed dot follows the pointer and the moved dots stay selected. A
+ * click without a drag selects the dot (and its moment; a walk dot also its step); Shift-click
+ * adds or removes it. DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { keyAt } from '../../core/query';
 import type { Moment, MomentId } from '../../core/types';
 import { pitchToY, timeToX, xToTime, type View } from '../../render';
-import { dragDots } from '../editor/actions';
+import { dragDots, landedDots } from '../editor/actions';
 import {
   cachedArrivals,
   hoverPick,
@@ -45,6 +47,7 @@ import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
 import { onScoreFrame } from '../loop';
 import { marquee } from '../marquee';
+import { hideOctaves, octaveGuide, showOctaves } from '../octave-guide';
 import { camera, usePlayer } from '../store';
 import './walk-dots.css';
 
@@ -55,6 +58,8 @@ const HOVER_PX = 12;
 const HOVER_MAX = 16;
 /** Pointer travel (px) before a press on a dot becomes a drag. */
 const SLOP = 3;
+/** Most octave guide lines (MIDI 0..127 holds 11 octaves of a pitch). */
+const GUIDES_MAX = 11;
 
 const TEST_IDS: Record<string, [box: string, dot: string]> = {
   walk: ['walk-dots', 'walk-dot'],
@@ -68,6 +73,35 @@ function place(el: HTMLElement, v: View, d: { t: number; pitch: number }): void 
   const tf = show ? `translate(${x.toFixed(1)}px, ${pitchToY(v, d.pitch).toFixed(1)}px)` : '';
   if (el.style.transform !== tf) el.style.transform = tf;
   if (el.hidden === show) el.hidden = !show;
+}
+
+/** Shift-drag feedback (../octave-guide): a line per octave of the start pitch, and the label. */
+function placeOctaves(
+  v: View,
+  lines: readonly (HTMLDivElement | null)[],
+  label: HTMLDivElement | null,
+): void {
+  const g = octaveGuide;
+  for (let i = 0; i < GUIDES_MAX; i++) {
+    const el = lines[i];
+    if (!el) continue;
+    const p = g.on ? g.guides[i] : undefined;
+    if (p === undefined) {
+      if (!el.hidden) el.hidden = true;
+      continue;
+    }
+    const tf = `translateY(${pitchToY(v, p).toFixed(1)}px)`;
+    if (el.style.transform !== tf) el.style.transform = tf;
+    el.dataset.pitch = String(p);
+    if (el.hidden) el.hidden = false;
+  }
+  if (!label) return;
+  if (!g.on) {
+    if (!label.hidden) label.hidden = true;
+    return;
+  }
+  if (label.textContent !== g.label) label.textContent = g.label;
+  place(label, v, g);
 }
 
 function placeMarquee(el: HTMLElement): void {
@@ -116,6 +150,8 @@ export function ArrivalDots() {
   /** The dragged dot, drawn at the pointer (the pressed one hides while the score catches up). */
   const ghost = useRef<HTMLDivElement>(null);
   const rect = useRef<HTMLDivElement>(null);
+  const guideEls = useRef<(HTMLDivElement | null)[]>([]);
+  const octLabel = useRef<HTMLDivElement>(null);
   const follow = useRef<ArrivalDot | null>(null);
   const view = useRef<View | null>(null);
   const geo = useRef<ArrivalDot[]>([]);
@@ -144,6 +180,7 @@ export function ArrivalDots() {
           if (el) place(el, v, g[i]);
         }
         if (rect.current) placeMarquee(rect.current);
+        placeOctaves(v, guideEls.current, octLabel.current);
         // Hover: re-picked when the pointer, the camera or the score changed; held while the
         // pointer is on a hover dot (the canvas then reports a leave) or a drag runs.
         const h = hover.current;
@@ -215,6 +252,29 @@ export function ArrivalDots() {
     let lastT = dot.t;
     let sideways = false;
     let snaps: SnapSet | null = null;
+    /** The last pointer position and modifiers, re-applied when Shift or Alt changes mid-drag. */
+    let at = { x: x0, y: y0, shift: e.shiftKey, alt: e.altKey };
+    const apply = () => {
+      const v = view.current;
+      const r = box.current?.getBoundingClientRect();
+      if (!drag || !v || !r) return;
+      const raw = edgePitch(v, at.y - r.top);
+      // Shift: whole octaves from the start pitch; Alt: chromatic and off the grid; else the key.
+      const oct = at.shift && !at.alt ? drag.octaves(raw) : null;
+      const p = oct ? oct.pitch : dragPitch(raw, key, at.alt);
+      if (Math.abs(at.x - x0) > SLOP) sideways = true;
+      let t = dot.t;
+      if (sideways && snaps) t = snapTime(xToTime(v, at.x - r.left), snaps, v.pps, at.alt);
+      follow.current = { ...dot, t, pitch: p };
+      if (oct) showOctaves(oct.k, t, p, oct.guides);
+      else hideOctaves();
+      if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+      if (ghost.current) place(ghost.current, v, follow.current);
+      if (p === last && t === lastT) return;
+      last = p;
+      lastT = t;
+      drag.to(p, t, oct !== null || at.alt);
+    };
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       if (drag === undefined) {
@@ -234,26 +294,24 @@ export function ArrivalDots() {
             ? own
             : { ...own, exclude: (p) => !!ex?.(p) || others.some((f) => f(p)) };
       }
-      const v = view.current;
-      const r = box.current?.getBoundingClientRect();
-      if (!drag || !v || !r) return;
-      const p = dragPitch(edgePitch(v, ev.clientY - r.top), key, ev.shiftKey);
-      if (Math.abs(ev.clientX - x0) > SLOP) sideways = true;
-      let t = dot.t;
-      if (sideways && snaps) t = snapTime(xToTime(v, ev.clientX - r.left), snaps, v.pps, ev.altKey);
-      follow.current = { ...dot, t, pitch: p };
-      if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
-      if (ghost.current) place(ghost.current, v, follow.current);
-      if (p === last && t === lastT) return;
-      last = p;
-      lastT = t;
-      drag.to(p, t, ev.shiftKey);
+      at = { x: ev.clientX, y: ev.clientY, shift: ev.shiftKey, alt: ev.altKey };
+      apply();
+    };
+    /** Pressing or releasing Shift or Alt mid-drag switches mode live. */
+    const keys = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Shift' && ev.key !== 'Alt') return;
+      if (at.shift === ev.shiftKey && at.alt === ev.altKey) return;
+      at = { ...at, shift: ev.shiftKey, alt: ev.altKey };
+      apply();
     };
     const done = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
+      window.removeEventListener('keydown', keys);
+      window.removeEventListener('keyup', keys);
+      hideOctaves();
       h.dragging = false;
       if (drag) camera.pitch = null;
       h.held = false;
@@ -265,14 +323,7 @@ export function ArrivalDots() {
         const r = drag.end(ev.type === 'pointercancel');
         if (!r) return;
         // The moved dots stay selected, where they ended up.
-        selectDots(
-          r.targets.map(({ dot: d, pitch, t }, i) => {
-            const out: ArrivalDot = { ...d, momentId: r.hosts[i], pitch, t };
-            const step = r.steps[i];
-            if (step) out.step = step;
-            return out;
-          }),
-        );
+        selectDots(landedDots(r));
         const step = r.targets.length === 1 ? r.steps[0] : undefined;
         if (step) selectStep(step);
       } else if (drag === undefined && ev.type === 'pointerup') {
@@ -286,6 +337,8 @@ export function ArrivalDots() {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', done);
     window.addEventListener('pointercancel', done);
+    window.addEventListener('keydown', keys);
+    window.addEventListener('keyup', keys);
   };
 
   let flat = 0;
@@ -330,6 +383,18 @@ export function ArrivalDots() {
       })}
       <div ref={box} className="walk-dots" data-testid="hover-dots" aria-hidden="true">
         <div ref={rect} className="marquee" data-testid="marquee" hidden />
+        {Array.from({ length: GUIDES_MAX }, (_, i) => (
+          <div
+            key={i}
+            ref={(el) => {
+              guideEls.current[i] = el;
+            }}
+            className="octave-guide"
+            data-testid="octave-guide"
+            hidden
+          />
+        ))}
+        <div ref={octLabel} className="octave-label" data-testid="octave-label" hidden />
         <div ref={ghost} className="walk-dot on drag-dot" data-testid="drag-dot" hidden />
         {Array.from({ length: HOVER_MAX }, (_, i) => (
           <button

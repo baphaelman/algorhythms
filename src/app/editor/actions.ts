@@ -35,6 +35,7 @@ import {
   type MoveResult,
 } from './group-move';
 import { inRange } from './drag-edge';
+import { OCTAVE, octaveGuides, octaveSnap, octaveSpan } from './octave-drag';
 import { keepOrder, noteOrder } from './line-order';
 import {
   copyMoments,
@@ -280,13 +281,20 @@ function noteOf(piece: Piece, id: MomentId): NoteMoment | null {
  * Steps note `id`'s change `change` (all its changes when absent) one scale step (in the key at
  * its time). False if nothing changed.
  */
-export function stepNote(id: MomentId, dir: 1 | -1, change?: number): boolean {
+export function stepNote(id: MomentId, dir: 1 | -1, change?: number, octave = false): boolean {
   const piece = usePlayer.getState().piece;
   const m = noteOf(piece, id);
   if (!m) return false;
   const key = keyAt(scoreOf(piece), m.at);
+  // Shift+▲/▼ (§11.3 "Shift-drag moves by octaves"): an octave, unless that leaves 0..127.
+  const byOctave = (to: Pitch): Pitch => {
+    const q = to + dir * OCTAVE;
+    return q >= 0 && q <= 127 ? q : to;
+  };
   const list = noteChanges(m).map((c, i) =>
-    change === undefined || i === change ? { from: c.from, to: stepNoteTo(c.to, dir, key) } : c,
+    change === undefined || i === change
+      ? { from: c.from, to: octave ? byOctave(c.to) : stepNoteTo(c.to, dir, key) }
+      : c,
   );
   const next = withNoteChanges(m, list);
   return updateMoment(
@@ -325,6 +333,12 @@ export interface DotsDrag {
    * that are gone from the piece are left out.
    */
   to(pitch: Pitch, t: Seconds, chromatic?: boolean): void;
+  /**
+   * Shift-drag (§11.3 "Shift-drag moves by octaves"): the whole octaves from the grabbed dot's
+   * start nearest `raw`, kept so every dot stays inside its range; its pitch (pass it to `to` with
+   * `chromatic`), and the guide pitches at each reachable octave of the start.
+   */
+  octaves(raw: Pitch): { k: number; pitch: Pitch; guides: Pitch[] };
   /**
    * Closes the gesture: the last move's result and its targets (per dot, in `dots` order), or
    * null when cancelled or nothing moved.
@@ -373,9 +387,15 @@ export function dragDots(dots: readonly ArrivalDot[], grabbed: ArrivalDot): Dots
     order: noteOrder(),
     ids: newMomentIds(piece, live.length),
   };
+  const span = octaveSpan(live.map((d) => ({ pitch: d.pitch, range: range(d) })));
+  const guides = octaveGuides(grabbed.pitch, span);
   beginGesture(label);
   let last: (MoveResult & { targets: DotMove[] }) | null = null;
   return {
+    octaves(raw) {
+      const k = octaveSnap(grabbed.pitch, raw, span);
+      return { k, pitch: grabbed.pitch + k * OCTAVE, guides };
+    },
     to(pitch, t, chromatic = false) {
       const moves = groupTargets(
         live,
@@ -397,6 +417,36 @@ export function dragDots(dots: readonly ArrivalDot[], grabbed: ArrivalDot): Dots
       return cancel ? null : last;
     },
   };
+}
+
+/** Where moved dots ended up (`DotsDrag.end`'s result), for re-selecting them. */
+export function landedDots(r: MoveResult & { targets: DotMove[] }): ArrivalDot[] {
+  return r.targets.map(({ dot: d, pitch, t }, i) => {
+    const out: ArrivalDot = { ...d, momentId: r.hosts[i], pitch, t };
+    const step = r.steps[i];
+    if (step) out.step = step;
+    return out;
+  });
+}
+
+/**
+ * Shift+▲/▼ on selected dots (§11.3 "Shift-drag moves by octaves"): all of them an octave up or
+ * down (none when one would leave its range), one undo entry; returns where they landed, or null
+ * when nothing moved.
+ */
+export function octaveDots(dots: readonly ArrivalDot[], dir: 1 | -1): ArrivalDot[] | null {
+  const g = dots[0];
+  if (!g) return null;
+  const d = dragDots(dots, g);
+  if (!d) return null;
+  const { k, pitch } = d.octaves(g.pitch + dir * OCTAVE);
+  if (k === 0) {
+    d.end(true);
+    return null;
+  }
+  d.to(pitch, g.t, true);
+  const r = d.end();
+  return r && landedDots(r);
 }
 
 /** Removes voice `voice`'s override from moment `id` ("Clear override"). False if none. */

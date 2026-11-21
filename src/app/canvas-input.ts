@@ -5,8 +5,9 @@
  *   selection rectangle that selects the arrival dots inside (Shift extends); a click on empty
  *   background places the playhead there. There is no click-to-play on the score;
  * - editor layout: double-clicking a line, or clicking it with `N` held, adds a note point there
- *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry); on a line a walk
- *   drives there it inserts a walk step instead (freezing the walk);
+ *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry; snapped to the key,
+ *   Shift: whole octaves from `from`, Alt: chromatic); on a line a walk drives there it inserts a
+ *   walk step instead (freezing the walk);
  * - player layout: a click or tap plays or pauses; dragging pans (during playback this turns
  *   Follow off);
  * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
@@ -17,21 +18,22 @@
  * - wide layout only: C U S M T P W I K L add a moment at the playhead, Delete/Backspace delete
  *   the selection, Escape clears it and the dot selection (editor/shortcuts.ts), unless another
  *   handler already used the key (`defaultPrevented`, e.g. Escape closing the menu); ▲/▼ step a
- *   selected note point's `to` by a scale step.
+ *   selected note point's `to` by a scale step, Shift+▲/▼ by an octave (also the selected dots).
  *
  * Handlers write the store (`setWindow`, `panBy`); the animation loop picks the change up on its
  * next frame, so no React render sits on the pointer path.
  */
 
 import { keyAt } from '../core/query';
-import type { Key, Pitch } from '../core/types';
+import type { Key, Pitch, Seconds } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
-import { addPointDrag, stepNote, type PitchDrag } from './editor/actions';
+import { addPointDrag, octaveDots, stepNote, type PitchDrag } from './editor/actions';
 import { cachedArrivals } from './editor/arrival-points';
 import { dragPitch } from './editor/chord-notes';
 import { clearDots, currentDots, selectDots } from './editor/dot-selection';
 import { edgePitch, inRange } from './editor/drag-edge';
 import { dotsInRect } from './editor/group-move';
+import { OCTAVE, octaveGuides, octaveSnap, octaveSpan } from './editor/octave-drag';
 import { changePoints, snapTime } from './editor/snap';
 import { redo, select, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
@@ -47,6 +49,7 @@ import {
 import { clearHover, setHover } from './hover';
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
+import { hideOctaves, showOctaves } from './octave-guide';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
 /** Pixels a pointer must travel before a press counts as a drag rather than a click. */
@@ -82,12 +85,46 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   /** This press, and the last press that ended as a click (for double-clicks). */
   let press: Press | null = null;
   let lastClick: Press | null = null;
-  let note: { drag: PitchDrag; key: Key; last: Pitch; range?: [Pitch, Pitch] } | null = null;
+  let note: {
+    drag: PitchDrag;
+    key: Key;
+    at: Seconds;
+    from: Pitch;
+    last: Pitch;
+    range?: [Pitch, Pitch];
+    /** The last pointer y (canvas px) and modifiers, re-applied when Shift or Alt changes. */
+    y: number;
+    shift: boolean;
+    alt: boolean;
+  } | null = null;
   /** Ends the note drag (and releases the held pitch range). */
   const endNote = (cancel: boolean): void => {
     note?.drag.end(cancel);
     note = null;
     camera.pitch = null;
+    hideOctaves();
+  };
+  /**
+   * Sets the note's `to` from the pointer: snapped to the key; Shift: whole octaves from `from`
+   * (with the guides and label); Alt: chromatic.
+   */
+  const applyNote = (): void => {
+    if (!view || !note) return;
+    const raw = edgePitch(view, note.y);
+    let q: Pitch;
+    if (note.shift && !note.alt) {
+      const span = octaveSpan([{ pitch: note.from, range: note.range }]);
+      const k = octaveSnap(note.from, raw, span);
+      q = note.from + k * OCTAVE;
+      showOctaves(k, note.at, q, octaveGuides(note.from, span));
+    } else {
+      q = inRange(dragPitch(raw, note.key, note.alt), note.range);
+      hideOctaves();
+    }
+    if (q !== note.last) {
+      note.last = q;
+      note.drag.to(q);
+    }
   };
   const endMarquee = (): void => {
     marquee.on = false;
@@ -113,8 +150,13 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     note = {
       drag: addPointDrag(at, hit.voice, from),
       key: keyAt(compiled, at),
+      at,
+      from,
       last: from,
       range: piece.voices[hit.voice]?.range,
+      y,
+      shift: false,
+      alt: false,
     };
     camera.pitch = [v.pLo, v.pHi];
     return true;
@@ -161,11 +203,21 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     selectDots([...cur, ...fresh], true);
   };
 
+  /** Shift or Alt pressed or released during a note drag (past the slop) switches live. */
+  const noteKeys = (e: KeyboardEvent): void => {
+    if (!note || travelled <= DRAG_SLOP || (e.key !== 'Shift' && e.key !== 'Alt')) return;
+    if (note.shift === e.shiftKey && note.alt === e.altKey) return;
+    note.shift = e.shiftKey;
+    note.alt = e.altKey;
+    applyNote();
+  };
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'n' || e.key === 'N') nHeld = !takesText(e.target);
+    noteKeys(e);
   };
   const onKeyUp = (e: KeyboardEvent): void => {
     if (e.key === 'n' || e.key === 'N') nHeld = false;
+    noteKeys(e);
   };
   const onBlur = (): void => {
     nHeld = false;
@@ -234,12 +286,11 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     travelled += Math.abs(dx) + Math.abs(dy);
     if (travelled <= DRAG_SLOP) return;
     if (mode === 'note') {
-      if (!view || !note) return;
-      const q = inRange(dragPitch(edgePitch(view, local(e).y), note.key, e.shiftKey), note.range);
-      if (q !== note.last) {
-        note.last = q;
-        note.drag.to(q);
-      }
+      if (!note) return;
+      note.y = local(e).y;
+      note.shift = e.shiftKey;
+      note.alt = e.altKey;
+      applyNote();
       return;
     }
     if (mode === 'press') {
@@ -428,10 +479,21 @@ export function attachKeys(): () => void {
         space.panned = false;
       }
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      // ▲/▼ on a selected note point (§11.3); the lane's own arrows came first.
-      if (e.defaultPrevented || e.shiftKey || ownsKeys(e.target, e.key) || !editorLayout()) return;
+      // ▲/▼ on a selected note point (§11.3); Shift+▲/▼ an octave, also on selected dots. The
+      // lane's own arrows came first.
+      if (e.defaultPrevented || ownsKeys(e.target, e.key) || !editorLayout()) return;
+      const dir = e.key === 'ArrowUp' ? 1 : -1;
+      if (e.shiftKey) {
+        const dots = currentDots();
+        if (dots.length > 0) {
+          e.preventDefault();
+          const landed = octaveDots(dots, dir);
+          if (landed) selectDots(landed);
+          return;
+        }
+      }
       const sel = useEditor.getState().selection;
-      if (sel.length === 1 && stepNote(sel[0], e.key === 'ArrowUp' ? 1 : -1)) e.preventDefault();
+      if (sel.length === 1 && stepNote(sel[0], dir, undefined, e.shiftKey)) e.preventDefault();
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       if (ownsKeys(e.target, e.key)) return;
       e.preventDefault();
