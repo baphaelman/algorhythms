@@ -10,6 +10,19 @@ import './app-hook';
 
 const DURATION_END = 40;
 
+// No console errors (React warnings included): a shift moment without `by` once rendered its
+// inspector slider with value NaN.
+let consoleErrors: string[] = [];
+test.beforeEach(({ page }) => {
+  consoleErrors = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') consoleErrors.push(m.text());
+  });
+});
+test.afterEach(() => {
+  expect(consoleErrors).toEqual([]);
+});
+
 /** A 40 s piece with a moment every 1.5 s (glides and staggers vary) and a 60 BPM grid. */
 async function load(page: Page, extra: unknown[] = [], many = true): Promise<void> {
   await page.goto('./?example=tidewater-hymn');
@@ -246,7 +259,14 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
     [
       chord('stk001', 4, 6),
       { id: 'stk002', type: 'level', at: 4, gain: 0.5, over: 4 },
-      { id: 'stk003', type: 'shift', at: 5, steps: 1, glide: { length: 2, stagger: 0 } },
+      {
+        id: 'stk003',
+        type: 'shift',
+        at: 5,
+        by: 1,
+        unit: 'scaleSteps',
+        glide: { length: 2, stagger: 0 },
+      },
       chord('stk004', 30, 1),
     ],
     false,

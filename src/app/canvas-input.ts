@@ -189,6 +189,9 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       return;
     }
     clearDots();
+    // As on the ruler, the seek never scrolls the view: a double-click's second press must land
+    // where the first one did.
+    camera.hold = camera.release = true;
     seekTo(Math.max(0, xToTime(v, x)));
   };
 
