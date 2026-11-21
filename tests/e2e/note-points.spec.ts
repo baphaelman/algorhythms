@@ -104,6 +104,9 @@ test('double-click a line and drag adds a note point; undo removes it', async ({
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.up();
+  // The first click seeks without moving the view (it once followed, and the note landed at 13.4).
+  await frames(page);
+  expect(await page.evaluate(() => window.__algorhythms!.frameStats.start)).toBe(0);
   await page.mouse.down({ clickCount: 2 });
   await page.mouse.move(x, y - 20, { steps: 4 });
   await page.mouse.move(x, y - 40, { steps: 4 });
