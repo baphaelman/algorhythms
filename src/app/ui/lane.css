@@ -1,17 +1,19 @@
 /*
  * The lane rows (PLAN.md §11.2) under the score view, horizontally aligned with the canvas (same
  * 1 px border; Lane.tsx also measures it). Items are absolutely placed by Lane.tsx (transforms).
- * Rows, top to bottom (keep in step with the constants there): Moments (n sub-rows of 20 px,
+ * Rows, top to bottom (keep in step with the constants there): Key (18 px: the piece key at
+ * 0:00, M4.5-39), Moments (n sub-rows of 20 px,
  * + 4), Transitions (n sub-rows of 14 px bars, + 4), Level 32 px. Lane.tsx sets `--mom-h` and
  * `--trans-h` for n ≥ 2 (revision 7 stacking); the defaults are n = 2. Row names sit in a left
  * gutter over the axis.
  */
 
 .lane-track {
+  --key-h: 18px;
   --mom-h: 44px;
   --trans-h: 32px;
   position: relative;
-  height: calc(var(--mom-h) + var(--trans-h) + 34px);
+  height: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + 34px);
   border: 1px solid var(--rule);
   background: var(--paper);
   overflow: clip;
@@ -31,19 +33,25 @@
   right: 0;
 }
 
-.lane-row[data-row='moments'] {
+.lane-row[data-row='key'] {
   top: 0;
+  height: var(--key-h);
+}
+
+.lane-row[data-row='moments'] {
+  top: var(--key-h);
   height: var(--mom-h);
+  border-top: 1px dashed var(--rule);
 }
 
 .lane-row[data-row='transitions'] {
-  top: var(--mom-h);
+  top: calc(var(--key-h) + var(--mom-h));
   height: var(--trans-h);
   border-top: 1px dashed var(--rule);
 }
 
 .lane-row[data-row='level'] {
-  top: calc(var(--mom-h) + var(--trans-h));
+  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h));
   height: 32px;
   border-top: 1px dashed var(--rule);
 }
@@ -74,7 +82,7 @@
 .lane-level {
   position: absolute;
   left: 0;
-  top: calc(var(--mom-h) + var(--trans-h) + 2px);
+  top: calc(var(--key-h) + var(--mom-h) + var(--trans-h) + 2px);
   overflow: visible;
   pointer-events: none;
 }
@@ -217,4 +225,40 @@
 .lane-item[data-no-effect] .lane-label,
 .lane-item[data-no-effect] .lane-bar {
   opacity: 0.4;
+}
+
+/* The piece key at 0:00 (M4.5-39), on the Key row: selectable, never dragged. */
+.lane-piece-key {
+  height: var(--key-h);
+  cursor: pointer;
+}
+
+.lane-piece-key:active {
+  cursor: pointer;
+}
+
+/* The preview's would-be moment (owner 2026-11-21): ghosted, not interactive. */
+.lane-ghost {
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.lane-ghost[hidden] {
+  display: none;
+}
+
+.lane-ghost .lane-marker {
+  background: transparent;
+  border-style: dashed;
+}
+
+.lane-ghost .lane-label {
+  font-style: italic;
+}
+
+.lane-ghost .lane-bar {
+  background: transparent;
+  outline: 1px dashed var(--c);
+  outline-offset: -1px;
 }

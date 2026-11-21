@@ -1,7 +1,8 @@
 /**
  * Score previews (PLAN.md §11.3; owner 2026-11-21: silent): hovering a palette item or a next-move
  * suggestion, or dragging a palette item over the score or lane, shows what the moment would do
- * as ghost lines on the score from its time. Nothing sounds.
+ * as ghost lines on the score from its time, and as a ghost item on the lane (its marker, label
+ * and transition bar). Nothing sounds. Escape, leaving and dropping clear it.
  *
  * A preview compiles a temporary piece with the moment inserted; the score loop (./loop.ts) draws
  * its lines from `from` on top of the real score. The store, the undo history, the saved piece and
@@ -11,6 +12,7 @@
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, Moment, MomentType, Piece, Seconds } from '../core/types';
 import { extendEnd } from './editor/end';
+import { laneItems, type LaneItem } from './editor/lane';
 import { insertMoments } from './editor/ops';
 import { defaultMoment } from './editor/new-moment';
 import { PROBE_ID, addTime } from './editor/palette-effects';
@@ -23,6 +25,11 @@ export const PREVIEW_DELAY_MS = 300;
 export interface PreviewGhost {
   score: CompiledScore;
   from: Seconds;
+  /**
+   * The would-be moment on the lane (owner 2026-11-21): laid out from the preview's compile as
+   * the lane lays out real moments (id `PROBE_ID`); null if it cannot be laid out.
+   */
+  lane: LaneItem | null;
 }
 
 /** What the preview is doing (read by the score loop, and by tests through the debug hook). */
@@ -65,24 +72,37 @@ export function startMomentPreview(
 ): boolean {
   const { piece } = usePlayer.getState();
   let score: CompiledScore;
+  let built: Piece;
   try {
-    score = compile(build(piece, { ...moment, id: PROBE_ID }));
+    built = build(piece, { ...moment, id: PROBE_ID });
+    score = compile(built);
   } catch {
     stopPreview();
     return false;
   }
+  const lane =
+    laneItems(built, score.momentSpans, undefined, score.harmony, score.voices).find(
+      (it) => it.id === PROBE_ID,
+    ) ?? null;
   previewState.type = moment.type;
   previewState.label = label;
   previewState.count++;
   previewState.from = moment.at;
   previewState.drag = drag;
-  previewState.ghost = { score, from: moment.at };
+  previewState.ghost = { score, from: moment.at, lane };
+  if (typeof document !== 'undefined') document.addEventListener('keydown', onEscape, true);
   return true;
+}
+
+/** Escape clears a hover preview as well as a drag's (../palette-drop.ts also cancels the drop). */
+function onEscape(e: KeyboardEvent): void {
+  if (e.key === 'Escape') stopPreview();
 }
 
 /** Clears the preview (if any). */
 export function stopPreview(): void {
   if (previewState.type === null) return;
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', onEscape, true);
   previewState.type = null;
   previewState.label = null;
   previewState.ghost = null;

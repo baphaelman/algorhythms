@@ -14,6 +14,7 @@ import { carryKey, fixedNoteMoments } from '../../core/transpose';
 import type { CompiledScore, Key, MomentId, Seconds } from '../../core/types';
 import { pushNotice, usePlayer } from '../store';
 import { amend, lastEntry, useEditor } from './history';
+import { keyMomentOf, withPieceKeyMoment, withoutPieceKeyMoment } from './piece-key';
 
 export interface KeyCarryPrompt {
   keyId: MomentId;
@@ -49,9 +50,10 @@ const clear = (): void => {
  * open, unanswered prompt for the same moment keeps its `from`: the notes are still in that key.
  */
 export function offerKeyCarry(keyId: MomentId, from: Key): void {
-  const piece = usePlayer.getState().piece;
-  const m = piece.moments.find((x) => x.id === keyId);
-  if (!m || m.type !== 'key') return clear();
+  // The piece key at 0:00 is a key moment here (editor/piece-key.ts).
+  const piece = withPieceKeyMoment(usePlayer.getState().piece);
+  const m = keyMomentOf(piece, keyId);
+  if (!m) return clear();
   const open = useKeyCarry.getState().prompt ?? unanswered;
   const old = open?.keyId === keyId ? open.from : from;
   const { ids, until } = fixedNoteMoments(piece, keyId);
@@ -70,7 +72,8 @@ export function moveKeyCarry(): boolean {
   let skipped = 0;
   const changed = amend(
     p.entry,
-    (piece) => {
+    (stored) => {
+      const piece = withPieceKeyMoment(stored);
       let score: CompiledScore | null = null;
       const voiced = (m: { id: MomentId; type: string }) => {
         if (m.type !== 'chord') return null;
@@ -81,7 +84,7 @@ export function moveKeyCarry(): boolean {
       const r = carryKey(piece, p.keyId, p.from, { voiced });
       folds = r.folds.length;
       skipped = r.skipped.length;
-      return r.piece;
+      return r.piece === piece ? stored : withoutPieceKeyMoment(r.piece);
     },
     'Move fixed notes',
   );
@@ -115,8 +118,8 @@ useEditor.subscribe((s, prev) => {
 usePlayer.subscribe((s, prev) => {
   const p = useKeyCarry.getState().prompt;
   if (!p || s.piece === prev.piece) return;
-  const m = s.piece.moments.find((x) => x.id === p.keyId);
-  if (m && m.type === 'key' && sameKey(m.key, p.to)) return;
+  const m = keyMomentOf(s.piece, p.keyId);
+  if (m && sameKey(m.key, p.to)) return;
   useKeyCarry.setState({ prompt: null });
   unanswered = m ? { keyId: p.keyId, from: p.from } : null;
 });
