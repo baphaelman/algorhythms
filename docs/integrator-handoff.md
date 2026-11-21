@@ -109,10 +109,10 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 
 ## Waiting on the owner
 - **Device checks:** MIDI in FL Studio once the owner has it (until then the automatic round-trip tests stand). The iPhone silent-switch check is optional, not a release blocker.
-- **Generate:** warn before replacing the open piece? Unanswered; it doesn't warn. Less pressing now: edited pieces autosave to My pieces.
+- **Generate:** answered 2026-11-21: no warning; an edited, unnamed piece gets a name prompt before the next opens (PLAN §11.4).
 - **To hear:** `renders/gen-30s.wav`, `gen-60s.wav` (short Generate pieces); the unison glide WAVs once they exist.
 - **HUD chord choices to review if the owner cares:** written chord symbols get no inversion slash; a single pitch class reads "A (unison)"; the key and follow mode share one HUD line.
-- **Older, unanswered:** reed A/B (`reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (numerals read against the major scale: in A dorian, `III` = C♯ major, `bIII` = C; keep unless they object). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
+- **Older, unanswered:** reed A/B (`reed-before`/`-after`); the fixture page on the live site; the roman numeral convention (kept, owner 2026-11-21). The app uses system fonts, not IBM Plex (bundling Plex would be a dependency).
 
 ## Owner rulings so far (details in the build log)
 - **Phones are not a priority (2026-11-20).** Desktop is the focus. Keep the phone layout usable, but don't spend effort on phone-specific testing or polish: no phone screenshots or e2e beyond what exists, and no device checks as blockers. Tablets (M5 touch editing) are probably low priority too (integrator's reading; confirm with the owner before M5).

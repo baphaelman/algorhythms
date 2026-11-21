@@ -3,9 +3,14 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
+- **Release announcement (M3):** do you want one? Asked 2026-11-21.
+
+## Answered
+- 2026-11-21 (later): M4.5 looks good (done); M2 sound is fine (done); no vetoes on the calls below. Generate doesn't warn before replacing a piece, but an edited, unnamed piece gets a popup offering to name it before the next piece opens (PLAN §11.4, being built). Roman numerals stay read against the major scale.
+- 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Naming prompt.** Skip is remembered per piece for the session, so the popup asks at most once per piece. Untouched pieces (fresh New, unchanged example or generated piece) never ask.
 - **Key at 0:00 and lane previews (M4.5-39).**
   - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
   - Adding a key at exactly 0:00 selects the piece's key instead of adding a moment. An old file with key moments at the very start folds them into the piece's key.

@@ -74,10 +74,10 @@ The integrator continues the work with a fresh agent.
 |---|---|
 | M0 Scaffold + shared contracts | **done** 2026-11-20. CI green on all three engines; site live |
 | M1 Core compiler | **done** 2026-11-20. The owner's listening test passed. Open: the strict §7.10 5 ms target is missed (~8 ms full compile); M4j's incremental compile makes late edits cheap |
-| M2 Sound engine + WAV | built and verified 2026-11-20; awaiting the owner's listening check on fixtures.html. Known gap: expo and bezier glides allocate on the audio thread (fix planned for M6) |
+| M2 Sound engine + WAV | **done** 2026-11-21: the owner's listening check passed. Known gap: expo and bezier glides allocate on the audio thread (fix planned for M6) |
 | M3 Player, Generate, exports (first public release) | feature-complete and live 2026-11-20 (player, Generate, Export WAV/stems/MIDI, HUD chord, unison lock + wobble preset). unison glide fix approved and pushed. Left: the release announcement (phones are not a priority). Next: M4 editor |
 | M4 Editor core | **done** 2026-11-20: all §15 acceptance checks pass (build log "M4 acceptance checks"); incremental compile and editor polish merged and pushed. Awaiting the owner's look. Next: M5 |
-| M4.5 Editor view redesign | **built** 2026-11-21: all §15 acceptance lines covered and passing (`docs/m4.5-acceptance.md`); awaiting the owner's look. Polish in flight (undo buttons, chord fill, loop rounding). Owner questions in `docs/owner-decisions.md` |
+| M4.5 Editor view redesign | **done** 2026-11-21: all §15 acceptance lines pass (`docs/m4.5-acceptance.md`); owner approved the preview. Follow-up: name-before-moving-on prompt (PLAN §11.4) |
 | R9 Parts, pulse, tune, land (PLAN rev 9) | in progress 2026-11-21: R9-5 silent lines done; R9-1 parts building; then 2, 3a/3b, 4, UI 6–9, composition rewrite |
 | M5 Editor completion | not started |
 | M6 Timbre depth | not started |
