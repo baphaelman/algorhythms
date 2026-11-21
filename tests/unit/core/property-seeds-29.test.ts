@@ -494,3 +494,43 @@ describe('a line dying into its own unborn newborn (chord-count -41577023/608, s
     expect(lineArtifacts(s, { noCross: true }).filter((a) => a.kind === 'birth')).toEqual([]);
   });
 });
+
+describe('a merge and its survivor’s walk tick at one time (overlap −41577023/907)', () => {
+  it('the dying line follows the walk step from the start: no death glide of its own is left', () => {
+    // v2 dies into v1 at 3 while the walk steps v1 at 3. The follow (M4.5-17) replaces v2's
+    // death glide as it starts, so v2's next segment is the walk's; the property took that for
+    // a walk step cutting v2's pin glide. Compiler unchanged (predates the 29 seeds fixes).
+    const s = compile(
+      piece({
+        start: [48, 60],
+        glide: { length: 2, jitter: 0, stagger: 0, ease: 'linear' },
+        moments: [
+          { type: 'pin', at: 1.5, voice: 'v2', pitch: 64 },
+          {
+            type: 'walk',
+            at: 0,
+            target: { voices: ['v1'] },
+            grid: 1,
+            density: 1,
+            steps: [1],
+            stepGlide: 0.2,
+            until: 8,
+          },
+          { type: 'merge', at: 3, count: 1, which: 'top', fade: 0.2 },
+        ],
+      }),
+    );
+    const [v1, v2] = s.voices;
+    const step = v1.segments.find((g) => g.t0 === 3)!;
+    expect(step.momentId).toBe('m1');
+    const cut = v2.segments.find((g) => g.momentId === 'm0')!;
+    expect(cut.t1).toBe(3); // the pin's glide was still running
+    const next = v2.segments.find((g) => g.t0 === 3)!;
+    expect(next.momentId).toBe('m1');
+    expect(next.p1).toBe(step.p1);
+    expect(v2.segments.some((g) => g.momentId === 'm2')).toBe(false);
+    // It still dies after the merge's glide and fade, riding v1's steps until then.
+    expect(v2.lives[0].died).toBeCloseTo(5.2, 6);
+    for (const t of [3.5, 4.5, 5]) expect(pitchAt(v2, t)).toBe(pitchAt(v1, t));
+  });
+});

@@ -1,8 +1,9 @@
 /**
  * `chord` (§6.2): moves the targeted voices to a voicing of `notes` (§7.3) by voice leading
  * (§7.2). Without `count` the voice count is unchanged. A chord or degrees chord takes free octaves
- * of its chord tones in the lines' range before two lines share a note (owner, 2026-11-21,
- * `distinctTargets`); explicit pitch lists double as written (the lines then merge).
+ * of its chord tones before two lines share a note (owner, 2026-11-21, `distinctTargets`): inside
+ * its register first, then beyond it short of the untargeted lines (integrator, 2026-11-21);
+ * explicit pitch lists double as written (the lines then merge).
  *
  * With `count` (revision 6) the active count becomes `count` in the same moment:
  * - more: dormant voices are born as in a split (§7.4; `voiceWithBirths`): the chord is voiced for
@@ -45,13 +46,58 @@ export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
 const literal = (m: ChordMoment): boolean =>
   m.notes.kind === 'pitches' || m.notes.kind === 'current';
 
+/** Just clear of an untargeted line's pitch (exclusive bounds as inclusive ones). */
+const GAP = 1e-6;
+
+/**
+ * Where a chord's free octaves may go (integrator, 2026-11-21, "Free octaves stay inside the
+ * chord's register"): `inner`, the moment's register within the lines' range, searched first;
+ * then `outer`, which adds the room beyond the register between the untargeted neighbours, within
+ * the lines' range: below the register, above every untargeted line lower than the register or
+ * than the lowest targeted line (`held`: their committed destinations), so no line steps past one
+ * to get there; above it, likewise. With no untargeted line, or no explicit register, both are
+ * the lines' range (the 29a rule).
+ */
+function octaveRoom(
+  register: readonly [Pitch, Pitch] | undefined,
+  range: readonly [Pitch, Pitch],
+  sounding: readonly Pitch[],
+  held: readonly Pitch[],
+): { inner: [Pitch, Pitch]; outer: [Pitch, Pitch] } {
+  if (!register || sounding.length === 0)
+    return { inner: [range[0], range[1]], outer: [range[0], range[1]] };
+  const rl = register[0] < register[1] ? register[0] : register[1];
+  const rh = register[0] < register[1] ? register[1] : register[0];
+  const lo = rl > range[0] ? rl : range[0];
+  const hi = rh < range[1] ? rh : range[1];
+  if (lo > hi) return { inner: [range[0], range[1]], outer: [range[0], range[1]] };
+  // An untargeted line lower than the register or than the lowest held line bounds the room
+  // below; one higher than the register or than the highest held line, the room above.
+  let pmin = Infinity;
+  let pmax = -Infinity;
+  for (const p of held) {
+    if (p < pmin) pmin = p;
+    if (p > pmax) pmax = p;
+  }
+  const pl = pmin > lo && pmin !== Infinity ? pmin : lo;
+  const ph = pmax < hi && pmax !== -Infinity ? pmax : hi;
+  let below = range[0];
+  let above = range[1];
+  for (const u of sounding) {
+    if (u < pl && u + GAP > below) below = u + GAP;
+    if (u > ph && u - GAP < above) above = u - GAP;
+  }
+  return { inner: [lo, hi], outer: [below < lo ? below : lo, above > hi ? above : hi] };
+}
+
 /**
  * Free octaves before merging lines (owner, 2026-11-21), on the voicing's targets `q` for k lines:
- * missing targets (fewer notes than lines) first take free octaves of the targets in the lines'
- * own range (`fillOctaves`, which may lie outside an explicit register); then a target that an
- * untargeted line holds, or that an earlier target already takes, moves to the free chord tone
- * in range nearest it (ties: lower); still missing ones take the free chord tones nearest the
- * targets. A slash bass stays the lowest note. What finds no free pitch stays, and merges.
+ * missing targets (fewer notes than lines) first take free octaves of the targets (`fillOctaves`)
+ * inside the register, then in the room beyond it short of the untargeted lines (`octaveRoom`);
+ * then a target that an untargeted line holds, or that an earlier target already takes, moves to
+ * the free chord tone nearest it (ties: lower), inside the register if one is free there, else in
+ * that room; still missing ones take the free chord tones nearest the targets, the same way. A
+ * slash bass stays the lowest note. What finds no free pitch stays, and merges.
  */
 function distinctTargets(
   m: ChordMoment,
@@ -61,24 +107,48 @@ function distinctTargets(
   perVoice: boolean,
   range: readonly [Pitch, Pitch],
   sounding: readonly Pitch[],
+  held: readonly Pitch[],
 ): Pitch[] {
   const slash = m.notes.kind === 'chord' && m.notes.symbol.includes('/');
   const floor = slash && q.length > 0 ? q[0] : -Infinity;
-  const out =
-    q.length < k && !perVoice ? fillOctaves(q, k, range[0], range[1], floor, sounding) : q.slice();
+  const { inner, outer } = octaveRoom(m.register, range, sounding, held);
+  let out = q.slice();
+  if (q.length < k && !perVoice) {
+    out = fillOctaves(q, k, inner[0], inner[1], floor, sounding);
+    if (out.length < k && (outer[0] < inner[0] || outer[1] > inner[1])) {
+      // Beyond the register: fillOctaves again on the original notes, with those already added
+      // counted as sounding; keep only its additions.
+      const more = fillOctaves(q, q.length + k - out.length, outer[0], outer[1], floor, [
+        ...sounding,
+        ...out,
+      ]);
+      out = [...out, ...more.filter((p) => !q.includes(p))].sort((a, b) => a - b);
+    }
+  }
   if (m.notes.kind === 'pitches') return out;
   const pc = pitchClasses(m.notes, env.key, []);
   if (!pc.ok) return out;
-  const cands = pitchesWithPcs(pc.pcs, range[0], range[1]).filter((p) => p > floor);
+  const inside = (p: Pitch): boolean => p >= inner[0] && p <= inner[1];
+  const cands = pitchesWithPcs(pc.pcs, outer[0], outer[1]).filter((p) => p > floor);
   const same = (a: Pitch, b: Pitch): boolean => Math.abs(a - b) < 1e-9;
   const free = (x: Pitch): boolean =>
     !sounding.some((p) => same(p, x)) && !out.some((p) => same(p, x));
   const nearestFree = (x: Pitch): Pitch => {
     let best = NaN;
-    for (const c of cands)
-      if (free(c) && (best !== best || Math.abs(c - x) < Math.abs(best - x))) best = c;
+    let bestIn = false;
+    for (const c of cands) {
+      if (!free(c)) continue;
+      const ci = inside(c);
+      if (best !== best || better(c, ci, best, bestIn, x)) {
+        best = c;
+        bestIn = ci;
+      }
+    }
     return best;
   };
+  /** c (inside the register: ci) beats b (bi) as the free note for x: inside first, then nearer. */
+  const better = (c: Pitch, ci: boolean, b: Pitch, bi: boolean, x: Pitch): boolean =>
+    ci !== bi ? ci : Math.abs(c - x) < Math.abs(b - x);
   if (out.length <= k) {
     for (let j = 0; j < out.length; j++) {
       const x = out[j];
@@ -92,7 +162,7 @@ function distinctTargets(
     let best = NaN;
     for (const x of out) {
       const y = nearestFree(x);
-      if (y === y && (best !== best || Math.abs(y - x) < Math.abs(best - x))) best = y;
+      if (y === y && (best !== best || better(y, inside(y), best, inside(best), x))) best = y;
     }
     if (best !== best) break;
     out.push(best);
@@ -135,6 +205,7 @@ function voiceChord(
         voiced.perVoice,
         unionRange(env, vs),
         untargeted(env, [...vs, ...dying]),
+        p,
       );
   const free = m.assign === 'free';
   const f = voiced.perVoice ? p.map((_, i) => i) : free ? assignFree(p, q) : assignOrdered(p, q);
@@ -193,6 +264,7 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
         voiced.perVoice,
         unionRange(env, [...vs, ...newborns]),
         untargeted(env, vs),
+        p,
       );
   return {
     ordered: !free,

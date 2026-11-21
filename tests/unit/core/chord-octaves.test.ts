@@ -94,3 +94,102 @@ describe('free octaves before merging lines (owner, 2026-11-21)', () => {
     expect(chordAt(s, 25)).toEqual([60, 64]);
   });
 });
+
+describe('free octaves stay inside the chord’s register (integrator, 2026-11-21)', () => {
+  const subset = (
+    start: number[],
+    rank: [number, number],
+    notes: NoteSet,
+    register: [number, number],
+    extra: {
+      count?: number;
+      key?: { tonic: 'A'; scale: 'aeolian' };
+      range?: [number, number];
+    } = {},
+  ) =>
+    compile(
+      piece({
+        pool: 16,
+        start,
+        glide: GLIDE,
+        key: extra.key,
+        range: extra.range,
+        end: { at: 30, fade: 1 },
+        moments: [
+          {
+            type: 'chord',
+            at: 1,
+            target: { rank },
+            notes,
+            voicing: 'close',
+            assign: 'ordered',
+            register,
+            ...(extra.count === undefined ? {} : { count: extra.count }),
+          },
+        ],
+      }),
+    );
+  const crossings = (s: ReturnType<typeof compile>) =>
+    s.diagnostics.filter((d) => d.code === 'crossing-untargeted');
+
+  it('the register is full and untargeted lines lie just below it: the lines merge (CrChd2)', () => {
+    // As in The Cartographers' Rain (range [38, 84]): bVII in A aeolian has 6 notes in [60, 84]
+    // for 7 upper lines; untargeted lines hold 60 and 61. 29a sent the extra line to 59, across
+    // them.
+    const s = subset(
+      [45, 47, 50, 55, 60, 61, 66, 69, 71, 73, 78, 81, 82],
+      [6, 12],
+      { kind: 'chord', symbol: 'bVII' },
+      [60, 84],
+      { key: { tonic: 'A', scale: 'aeolian' }, range: [38, 84] },
+    );
+    const c = chordAt(s, 25);
+    expect(c.slice(0, 6)).toEqual([45, 47, 50, 55, 60, 61]);
+    expect(c.slice(6)).toEqual([62, 67, 71, 74, 79, 83]);
+    expect(crossings(s)).toEqual([]);
+  });
+
+  it('room between the register and the untargeted neighbour: the extra note goes there', () => {
+    // C in [60, 67] has 3 notes for 4 lines; 53 and 70 are untargeted. 29a took 52, below 53.
+    const s = subset([53, 60, 62, 64, 66, 70], [1, 4], { kind: 'chord', symbol: 'C' }, [60, 67]);
+    expect(chordAt(s, 25)).toEqual([53, 55, 60, 64, 67, 70]);
+    expect(crossings(s)).toEqual([]);
+    expect(lineArtifacts(s)).toEqual([]);
+  });
+
+  it('no room between the neighbours either: the lines merge rather than cross', () => {
+    // As above, with 56 and 70 untargeted: nothing of C lies in (56, 60) or (67, 70).
+    const s = subset([56, 60, 62, 64, 66, 70], [1, 4], { kind: 'chord', symbol: 'C' }, [60, 67]);
+    expect(chordAt(s, 25)).toEqual([56, 60, 64, 67, 70]);
+    expect(linesAt(s, 25)).toBe(5);
+    expect(crossings(s)).toEqual([]);
+  });
+
+  it('an untargeted line inside the register bounds the room below the targeted lines', () => {
+    // 58 and 70 are untargeted, the register [57, 67] holds C's 60 64 67 for four lines above
+    // 58: the room below the register lies under 58, so the fourth line merges instead of
+    // crossing it (29a took 55).
+    const s = subset(
+      [45, 58, 61, 63, 65, 66, 70],
+      [2, 5],
+      { kind: 'chord', symbol: 'C' },
+      [57, 67],
+    );
+    expect(chordAt(s, 25)).toEqual([45, 58, 60, 64, 67, 70]);
+    expect(crossings(s)).toEqual([]);
+  });
+
+  it('with count: newborns take the room between the neighbours too', () => {
+    // Two lines become four: C in [60, 67] gives 60 64 67; the fourth note must lie between
+    // the untargeted 53 and 75 (55 or 72), not at 52 or 76.
+    const s = subset([53, 62, 65, 75], [1, 2], { kind: 'chord', symbol: 'C' }, [60, 67], {
+      count: 6,
+    });
+    const c = chordAt(s, 25);
+    expect(linesAt(s, 25)).toBe(6);
+    expect(c.slice(1, 5).filter((p) => p !== 55 && p !== 72)).toEqual([60, 64, 67]);
+    expect(c[0]).toBe(53);
+    expect(c[5]).toBe(75);
+    expect(crossings(s)).toEqual([]);
+  });
+});

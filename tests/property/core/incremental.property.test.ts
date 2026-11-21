@@ -157,7 +157,7 @@ describe('incremental compile', () => {
           }
         },
       ),
-      { numRuns: RUNS, seed: SEED, endOnFailure: true },
+      { numRuns: RUNS, seed: SEED, path: process.env.PROP_PATH, endOnFailure: true },
     );
     console.log(`incremental: ${resumed}/${steps} edits resumed from a checkpoint`);
     expect(resumed).toBeGreaterThan(steps / 3);

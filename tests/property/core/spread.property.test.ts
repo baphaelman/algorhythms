@@ -13,7 +13,7 @@ import { piece } from '../../unit/core/compiler-fixtures';
 
 const RUNS = Number(process.env.PROP_RUNS ?? 200);
 const SEED = process.env.PROP_SEED === 'random' ? undefined : Number(process.env.PROP_SEED ?? 2611);
-const params = { numRuns: RUNS, seed: SEED };
+const params = { numRuns: RUNS, seed: SEED, path: process.env.PROP_PATH };
 
 const KEYS: Key[] = [
   { tonic: 'C', scale: 'major' },
