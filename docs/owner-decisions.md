@@ -8,6 +8,13 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **The start is a moment (M4.5-27).**
+  - A new piece opens on one chord at 0:00 with a single note (A3). Deleting it leaves silence.
+  - From silence, only chord, unison and key are enabled in the palette. Shift, split, merge, spread, walk, note and pin say "no note is sounding; start with a chord or a unison".
+  - From silence, suggestions offer "Start on Am" (the tonic triad) and "Start on A" (a unison). You didn't ask for this.
+  - A chord that starts from silence with no register is voiced close, in a window of 12 + 3 × (number of notes) semitones around the middle of the range. Spread over the whole range, a triad lost its third.
+  - Old files and share links open and sound the same, and saving writes the new format. The Notes drawer's "At start" field is gone.
+  - Known glitch: the opening's label on the lane can push a moment a few seconds later onto a second row. It's queued for the lane.
 - **Edit latency gate.** The release build must hear an edit within 50 ms; the dev build gets a looser 150 ms ceiling. On CI's slow runners, chord picks from the inspector took 54–62 ms (release) and 85–113 ms (dev), so a builder is cutting that path: the sound swap goes ahead of the UI work.
 - **Build order.** "The start is a moment" (M4.5-27) comes before rev 9's Parts (R9-1). Both change the file format, and this way pieces migrate once. The rest of rev 9 follows Parts. "Compose for me" (M4.5-28) runs alongside Parts.
 - **A click on the score never pans the view.** A click on empty score seeks the playhead and holds the view still, as the ruler already did, so a double-click lands where you clicked. Before this, Smooth follow could pan 3 s between the two clicks.
