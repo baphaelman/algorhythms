@@ -316,6 +316,12 @@
   color: var(--accent);
 }
 
+/* The piece key's Delete (M4.5-39): disabled, the reason in its tooltip. */
+.insp-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Chord picker (§11.3, revision 5). */
 
 .chord-picker {

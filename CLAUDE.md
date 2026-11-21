@@ -77,7 +77,8 @@ The integrator continues the work with a fresh agent.
 | M2 Sound engine + WAV | built and verified 2026-11-20; awaiting the owner's listening check on fixtures.html. Known gap: expo and bezier glides allocate on the audio thread (fix planned for M6) |
 | M3 Player, Generate, exports (first public release) | feature-complete and live 2026-11-20 (player, Generate, Export WAV/stems/MIDI, HUD chord, unison lock + wobble preset). unison glide fix approved and pushed. Left: the release announcement (phones are not a priority). Next: M4 editor |
 | M4 Editor core | **done** 2026-11-20: all §15 acceptance checks pass (build log "M4 acceptance checks"); incremental compile and editor polish merged and pushed. Awaiting the owner's look. Next: M5 |
-| M4.5 Editor view redesign | in progress 2026-11-21: 1–26, 29a, 30, 31, 32 pushed; building 29b weights, property seeds, e2e flake; then 27, 28, full e2e, acceptance |
+| M4.5 Editor view redesign | **built** 2026-11-21: all §15 acceptance lines covered and passing (`docs/m4.5-acceptance.md`); awaiting the owner's look. Polish in flight (undo buttons, chord fill, loop rounding). Owner questions in `docs/owner-decisions.md` |
+| R9 Parts, pulse, tune, land (PLAN rev 9) | in progress 2026-11-21: R9-5 silent lines done; R9-1 parts building; then 2, 3a/3b, 4, UI 6–9, composition rewrite |
 | M5 Editor completion | not started |
 | M6 Timbre depth | not started |
 | M7 Live instrument | not started |

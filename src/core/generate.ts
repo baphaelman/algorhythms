@@ -15,6 +15,12 @@
  *   Thin    the voices collapse onto three-note chords       2 × chord (explicit pitches)
  *   Home    everyone back to the root                        unison
  *
+ *   Detail  neighbour notes on the full split and each Thin  note (up a scale tone and back)
+ *
+ * `composeSteps` gives the composition as steps (Compose for me, M4.5-28/38): the structural
+ * moments in play order, each in its final form, then the detail notes in one left-to-right
+ * sweep. `generate` replays them.
+ *
  * Randomness comes from counter-based draws keyed by the seed (core/rng), never Math.random, so
  * the same seed and options always give the same piece. The keys do not include the mode, so
  * switching mode keeps the timing and chord-degree sequence of a 7-note mode, as in the prototype.
@@ -270,11 +276,64 @@ function shortPlan(
   return plan;
 }
 
-/** `generate`, also returning where each section starts (for tests and the Generate panel). */
-export function generateWithSections(
+// ---------------------------------------------------------------------------------------------
+// Composition steps (M4.5-28: Compose for me)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * `structure`: the sections' moments, in play order, each final when placed. `detail`: the
+ * refinements a person would add last (note changes; in principle also pins, per-voice overrides
+ * and frozen-note edits), in one left-to-right sweep after every structural step.
+ */
+export type ComposePhase = 'structure' | 'detail';
+
+/** One step of a composition, in composition order. */
+export type ComposeStep =
+  /** Inserts `moment` into the piece's moments, which stay in time order. */
+  | { kind: 'add'; moment: Moment; section: SectionName; phase: ComposePhase }
+  /** Replaces the placed moment with `moment.id` by `moment` (a detail edit). */
+  | { kind: 'edit'; moment: Moment; phase: 'detail' };
+
+/** A composition: the piece without moments, and the steps that place and adjust them. */
+export interface Composition {
+  /** The finished piece's settings (voices, key, timbres, title, end) with no moments. */
+  base: Piece;
+  steps: ComposeStep[];
+  /** Where each section starts in the finished piece. */
+  sections: GeneratedSection[];
+}
+
+/**
+ * The piece after the first `count` steps (all by default). The finished piece is `generate()`'s.
+ * A partial one has an automatic end (4 s after the last activity), so it is an ordinary piece.
+ */
+export function composedPiece(c: Composition, count: number = c.steps.length): Piece {
+  const k = Math.max(0, Math.min(c.steps.length, Math.floor(count)));
+  const moments: Moment[] = [];
+  for (let i = 0; i < k; i++) {
+    const { kind, moment } = c.steps[i];
+    if (kind === 'add') {
+      // In time order: after every moment at or before it (structural adds simply append).
+      let j = moments.length;
+      while (j > 0 && moments[j - 1].at > moment.at) j--;
+      moments.splice(j, 0, moment);
+    } else {
+      const j = moments.findIndex((m) => m.id === moment.id);
+      if (j >= 0) moments[j] = moment;
+    }
+  }
+  const end = k === c.steps.length ? c.base.end : { fade: c.base.end.fade };
+  return { ...c.base, moments, end };
+}
+
+/**
+ * The composer (§11.3 "Generate"), as its steps: the structural moments in play order, then the
+ * detail sweep. `composedPiece` replays them.
+ */
+export function composeSteps(
   seed: number,
   opts: GenerateOptions = { mode: 'dorian' },
-): { piece: Piece; sections: GeneratedSection[] } {
+): Composition {
   const pieceSeed = Math.trunc(Number.isFinite(seed) ? seed : 0) >>> 0;
   const mode: GenerateMode = opts.mode in MODE_SCALE ? opts.mode : 'dorian';
   const n = Math.max(2, Math.min(MAX_VOICES, Math.round(opts.voices ?? PROTOTYPE_VOICES)));
@@ -351,6 +410,7 @@ export function generateWithSections(
 
   // Moments, with deterministic, unique 6-character ids.
   const moments: Moment[] = [];
+  const composed: ComposeStep[] = [];
   let opening = 0;
   const usedIds = new Set<string>();
   // The opening chord (M4.5-27) is keyed apart, so the later moments keep their ids and seeds.
@@ -364,13 +424,18 @@ export function generateWithSections(
     }
   };
   const sections: GeneratedSection[] = [];
+  let section: SectionName = 'Seed';
   let pendingLabel: SectionName | null = null;
   const mark = (name: SectionName, at: Seconds): void => {
     sections.push({ name, at: round3(at) });
+    section = name;
     pendingLabel = name;
   };
-  /** Adds a moment; the first one of a section is labelled with the section's name. */
-  const add = (m: NewMoment, key?: number): void => {
+  /**
+   * Places a moment (an add step); the first one of a section is labelled with the section's
+   * name.
+   */
+  const add = (m: NewMoment, key?: number, phase: ComposePhase = 'structure'): void => {
     const moment = { id: nextId(key), ...m } as Moment;
     moment.at = round3(moment.at);
     if (pendingLabel !== null) {
@@ -378,6 +443,16 @@ export function generateWithSections(
       pendingLabel = null;
     }
     moments.push(moment);
+    composed.push({ kind: 'add', moment, section, phase });
+  };
+  /**
+   * Detail candidates, collected as the sections are placed: a held chord whose top note gets an
+   * upper neighbour (a scale tone up and back) in the detail sweep, at `at`, once its lines have
+   * arrived.
+   */
+  const ornaments: { at: Seconds; top: Pitch; section: SectionName }[] = [];
+  const ornament = (at: Seconds, pitches: Pitch[]): void => {
+    ornaments.push({ at, top: Math.max(...pitches), section });
   };
 
   let c = 0;
@@ -398,20 +473,26 @@ export function generateWithSections(
   let t = (8 + draw('seed', 0, Purpose.GenTiming) * 2) * s;
 
   mark('Split', t);
+  const lastSplit = plan.splits[plan.splits.length - 1];
   for (const j of plan.splits) {
     const k = stages[j];
+    const pitches = voicing(c, k, CENTER);
     add({
       type: 'split',
       at: t,
       count: k,
-      notes: { kind: 'pitches', pitches: voicing(c, k, CENTER) },
+      notes: { kind: 'pitches', pitches },
       voicing: 'even',
       glide: glide(0.5, 2.6, 3.8),
     });
-    t += (7 + draw('split', j, Purpose.GenTiming) * 1.5) * s;
+    // The full split holds 7–8.5 s: its lines have arrived by 4.5 s.
+    if (j === lastSplit) ornament(t + 4.5 * s, pitches);
+    const gap = 7 + draw('split', j, Purpose.GenTiming) * 1.5;
+    t += gap * s;
     c = nextChord(c);
   }
 
+  // Drift: chord changes, each voiced around a wandering centre.
   if (drifts > 0) mark('Drift', t);
   for (let i = 0; i < drifts; i++) {
     const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
@@ -420,11 +501,12 @@ export function generateWithSections(
       at: t,
       notes: { kind: 'degrees', degrees: chordDegrees(c) },
       voicing: 'even',
-      register: registerFor(c, n, center),
       assign: 'ordered',
       glide: glide(1.4, 2.2, 4),
+      register: registerFor(c, n, center),
     });
-    t += (5.8 + draw('drift', i, Purpose.GenTiming) * 2.2) * s;
+    const gap = 5.8 + draw('drift', i, Purpose.GenTiming) * 2.2;
+    t += gap * s;
     c = nextChord(c);
   }
 
@@ -481,17 +563,17 @@ export function generateWithSections(
       nearestIn(pool, CENTER),
       nearestIn(pool, CENTER + 10),
     ];
+    const pitches = Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]);
     add({
       type: 'chord',
       at: t,
-      notes: {
-        kind: 'pitches',
-        pitches: Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]),
-      },
+      notes: { kind: 'pitches', pitches },
       voicing: 'even',
       assign: 'ordered',
       glide: glide(1.3, 3, 5),
     });
+    // A Thin chord holds 9 s: its lines have arrived by 6.5 s.
+    ornament(t + 6.5 * s, pitches);
     t += 9 * s;
   }
 
@@ -499,10 +581,30 @@ export function generateWithSections(
   add({ type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) });
   t += 13.5 * s;
 
+  // Detail: one left-to-right sweep after the structure. Each ornament moves a held chord's top
+  // note up a scale tone and back (an upper neighbour), inside the chord's hold.
+  for (const o of ornaments) {
+    const up = tones.find((p) => p > o.top);
+    if (up === undefined) continue;
+    section = o.section;
+    add(
+      {
+        type: 'note',
+        at: o.at,
+        from: o.top,
+        to: up,
+        back: round3(0.9 * s),
+        glide: { length: round3(0.6 * s), stagger: 0, jitter: 0 },
+      },
+      undefined,
+      'detail',
+    );
+  }
+
   const voices = defaultVoices(n);
   for (const v of voices) v.range = [LOW, HIGH];
   const now = opts.now ?? DEFAULT_TIMESTAMP;
-  const piece: Piece = {
+  const base: Piece = {
     format: PIECE_FORMAT,
     version: PIECE_VERSION,
     meta: { title: `${MODE_TITLE[mode]} ${pieceSeed}`, created: now, modified: now },
@@ -511,19 +613,28 @@ export function generateWithSections(
     key: { tonic: 'A', scale: MODE_SCALE[mode] },
     defaults: { glide: defaultGlide() },
     voices,
-    moments,
+    moments: [],
     timbres: builtinTimbresFor(voices),
     mix: defaultMix(),
     end: { at: round3(t), fade: DEFAULT_END_FADE },
     view: defaultView(),
   };
-  return { piece, sections };
+  return { base, steps: composed, sections };
+}
+
+/** `generate`, also returning where each section starts (for tests and the Generate panel). */
+export function generateWithSections(
+  seed: number,
+  opts: GenerateOptions = { mode: 'dorian' },
+): { piece: Piece; sections: GeneratedSection[] } {
+  const c = composeSteps(seed, opts);
+  return { piece: composedPiece(c), sections: c.sections };
 }
 
 /**
  * Generates a piece made of moments from a seed (§11.3): the prototype composer's eight
  * sections. Deterministic: the same seed and options give the same piece. The seed is taken
- * modulo 2³² and becomes the piece seed.
+ * modulo 2³² and becomes the piece seed. It replays `composeSteps`.
  */
 export function generate(seed: number, opts: GenerateOptions = { mode: 'dorian' }): Piece {
   return generateWithSections(seed, opts).piece;

@@ -48,6 +48,7 @@ import {
   whenReady,
 } from './audio';
 import { writeMeter } from './dom';
+import { foldOpeningKeys } from './editor/piece-key';
 import { featuredExample } from './examples';
 import { clampLoop, type LoopSpan } from './ruler';
 import { decodeSharePayload, sharePayloadOf } from './share';
@@ -127,7 +128,7 @@ function viewFor(piece: Piece, compiled: CompiledScore, theme: ThemePref): ViewS
   };
 }
 
-const initialPiece = parseOrThrow(featuredExample().json);
+const initialPiece = foldOpeningKeys(parseOrThrow(featuredExample().json));
 /** Edits recompile from the last checkpoint before the first changed moment (§7.10). */
 const incremental = createIncrementalCompiler();
 const initialCompiled = incremental.compile(initialPiece);
@@ -333,9 +334,13 @@ export function onLoadPiece(fn: () => void): void {
 /**
  * Opens a piece: compiles it, resets the transport (stopped at 0, overview shown) and the view
  * (window, colours and HUD from `piece.view`), and loads the audio engine (at idle, or when play
- * is pressed, whichever comes first). The theme choice is kept.
+ * is pressed, whichever comes first). The theme choice is kept. Key moments opening the piece
+ * at 0 are folded into `piece.key` (editor/piece-key.ts).
  */
-export function loadPiece(piece: Piece, opts: LoadOptions = {}): void {
+export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
+  // The piece key is the key moment at 0:00 (M4.5-39): opening key moments fold into it.
+  const piece = foldOpeningKeys(loaded);
+  if (piece !== loaded) opts = { ...opts, compiled: undefined };
   clock.token++;
   clock.pos = 0;
   clock.started = false;

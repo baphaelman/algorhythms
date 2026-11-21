@@ -471,13 +471,26 @@ const TONICS: readonly PitchClass[] = SHARP_NAMES.flatMap((s, i) =>
   s === FLAT_NAMES[i] ? [s] : [s, FLAT_NAMES[i]],
 );
 
-function KeyFields({ m }: { m: KeyMoment }) {
+/**
+ * Tonic, scale and custom intervals of key moment `m`, with the carry-forward prompt. `write`
+ * stores an edit (default: the moment's `key`, then the prompt); the piece key at 0:00 passes
+ * `setPieceKey`.
+ */
+export function KeyFields({
+  m,
+  write,
+}: {
+  m: KeyMoment;
+  write?: (key: Key, label: string) => boolean;
+}) {
   const custom = typeof m.key.scale === 'object' ? m.key.scale : null;
-  const setKey = (key: Key, label: string): boolean => {
-    const ok = updateMoment(m.id, { key }, label);
-    if (ok) offerKeyCarry(m.id, m.key);
-    return ok;
-  };
+  const setKey =
+    write ??
+    ((key: Key, label: string): boolean => {
+      const ok = updateMoment(m.id, { key }, label);
+      if (ok) offerKeyCarry(m.id, m.key);
+      return ok;
+    });
   return (
     <>
       <SelectField

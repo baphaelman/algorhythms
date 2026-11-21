@@ -50,3 +50,7 @@ export function formatWindow(seconds: number): string {
   const s = Math.round(seconds);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** The undo modifier as shown in tooltips and Help: ⌘ on Apple platforms, Ctrl elsewhere. */
+export const MOD_KEY =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';

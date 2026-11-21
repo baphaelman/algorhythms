@@ -149,6 +149,11 @@ input[type='range'] {
   gap: 8px 20px;
 }
 
+.transport .history {
+  display: flex;
+  gap: 4px;
+}
+
 .readout {
   font: 500 14px/1 var(--f-mono);
   font-variant-numeric: tabular-nums;

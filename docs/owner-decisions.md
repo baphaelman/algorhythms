@@ -1,21 +1,40 @@
 # Owner decisions (kept by the integrator)
 
-The owner is away from 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
+The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- **Pluck and organ attack (M4.5-32).** The arrival-tick fix gives every attack a smooth curve of at least 12 ms. Glass's attack goes from 4 to 12 ms, organ's from 3 to 12 ms and pluck's from 2 to 12 ms, so pluck is softer and organ loses its key-click. The other option is to apply the floor only to gentle strikes (≤ ~50 %, such as glass) and keep pluck and organ crisp. To check, set "All notes" to pluck, then organ, in the Notes drawer.
-- **Arrival tick (M4.5-32).** Listen to whether the tick when all notes land after a transition is gone. The examples all use glass.
-- **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
+- Nothing open. Answered 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Key at 0:00 and lane previews (M4.5-39).**
+  - The piece's key sits on a new thin Key row above the moments, so it never pushes the opening chord onto a sub-row.
+  - Adding a key at exactly 0:00 selects the piece's key instead of adding a moment. An old file with key moments at the very start folds them into the piece's key.
+  - Palette and suggestion previews draw a dashed, ghosted lane item, with its marker, label and transition bar, at the drop time. Escape now clears hover previews too.
+- **Compose in play order (M4.5-38).**
+  - Moments appear strictly left to right, already in their final form.
+  - Generate had no refinements for the final sweep, so the composer now adds upper-neighbour notes: on the full split and on each "Thin" chord, the top note steps up one scale tone and back, inside the chord's hold. This changes Generate's output, and nothing else in it moves.
+  - When the detail sweep starts, the view fits the whole piece once and then holds still while each detail lights up left to right. That fit is the one deliberate jump.
+  - After a build finishes, inputs don't rebuild; "Compose again" does. Your own edit, undo or redo closes the panel.
+- **Mouse-only gaps (found by the M4.5 final check; being built).**
+  - Undo and Redo buttons go in the editor, since today undo needs the keyboard.
+  - A chord added while fewer notes sound than the chord has brings in the extra notes, so a chord dropped on a fresh piece sounds as a triad, not "D (unison)". "Notes: n" defaults to the chord's size there.
+  - Dragged loop edges round to the grid, or to the millisecond with Alt, so they no longer store values like 1.9999999.
+  - Loop changes stay out of undo, because the loop is view state.
+- **Compose for me (M4.5-28).**
+  - New now offers Empty and Compose for me side by side.
+  - The Compose panel takes the inspector's place while it's open, and its inputs are the same as the Generate dialog's.
+  - The pen draws 7.5 s of music per second, so a 2:30 piece builds in about 23 s. Long pieces speed up and take at most about 45 s.
+  - The build is silent unless you press Play, which plays the piece as it grows.
+  - The composer's adjustment passes show as edits: chord registers, and time-fitting for short pieces. With 12 notes the register pass changes little on screen.
+  - The whole compose is one undo. Editing during a build stops it.
 - **The start is a moment (M4.5-27).**
   - A new piece opens on one chord at 0:00 with a single note (A3). Deleting it leaves silence.
   - From silence, only chord, unison and key are enabled in the palette. Shift, split, merge, spread, walk, note and pin say "no note is sounding; start with a chord or a unison".
   - From silence, suggestions offer "Start on Am" (the tonic triad) and "Start on A" (a unison). You didn't ask for this.
   - A chord that starts from silence with no register is voiced close, in a window of 12 + 3 × (number of notes) semitones around the middle of the range. Spread over the whole range, a triad lost its third.
   - Old files and share links open and sound the same, and saving writes the new format. The Notes drawer's "At start" field is gone.
-  - Known glitch: the opening's label on the lane can push a moment a few seconds later onto a second row. It's queued for the lane.
-- **Edit latency gate.** The release build must hear an edit within 50 ms; the dev build gets a looser 150 ms ceiling. On CI's slow runners, chord picks from the inspector took 54–62 ms (release) and 85–113 ms (dev), so a builder is cutting that path: the sound swap goes ahead of the UI work.
+  - The opening is a point on the lane, as wide as its label, so it no longer pushes a later moment onto a second row (fixed in the M4.5 final pass).
+- **Edit latency gate.** The release build must hear an edit within 50 ms; the dev build gets a looser 150 ms ceiling. The sound swap now goes ahead of the UI work: a chord pick reaches the audio in about 1 ms, and in 15–22 ms on a machine slowed to CI speed.
 - **Build order.** "The start is a moment" (M4.5-27) comes before rev 9's Parts (R9-1). Both change the file format, and this way pieces migrate once. The rest of rev 9 follows Parts. "Compose for me" (M4.5-28) runs alongside Parts.
 - **A click on the score never pans the view.** A click on empty score seeks the playhead and holds the view still, as the ruler already did, so a double-click lands where you clicked. Before this, Smooth follow could pan 3 s between the two clicks.
 - **Silent lines (R9-5).**
@@ -36,13 +55,13 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
   - Picks in the inspector play the result once, for about 1.5 s.
   - A dragged note sounds at each snapped pitch.
   - Hover previews are visual only: dashed ghost lines, shown during playback too.
-  - Not sounding yet: ▲/▼ on walk steps and on chord notes in the inspector, and Shift+▲/▼ on dots. These will be added once the inspector work settles.
+  - ▲/▼ on walk steps and chord notes, and Shift+▲/▼ on dots, sound too (polish pass).
 - **Key carry-forward (M4.5-36).**
   - "Carry it forward" is read as: a key change offers to move the fixed notes up to the next key change, and later key moments are not shifted.
   - Fixed notes are remapped by scale degree. The tonic moves the shorter way, with ties going down.
   - The prompt reads like this: "9 moments until the end use fixed notes. Move them to E lydian?". Move joins the key edit's undo entry.
   - A named chord stays a named chord when only the tonic changes, for example Dmaj7#11 becomes Amaj7#11. When the scale changes, it becomes the list of pitches it plays.
-  - "Home to …" suggestions now follow the key. "Thin to …" and "Collapse to …" a non-tonic note still write fixed pitches until schema v2 (M4.5-27), so they get the prompt like any other fixed notes.
+  - "Home to …" suggestions now follow the key. "Thin to …" and "Collapse to …" a non-tonic note still write fixed pitches, because the format can't say them relative to the key yet, so they get the prompt like any other fixed notes.
   - Follow-up: a note change whose starting note is held from before the key change is no longer remapped there, because remapping it made it miss its note.
 - **Weights (M4.5-29b).**
   - Line width is √weight: 1.5 px at weight 1, 3 px at 4, 4.2 px at 8. There is no "×n" mark, because next to the Hz label it read as several notes.
@@ -52,7 +71,7 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Distinct notes (M4.5-29a).**
   - Two lines may briefly share a note only while one of them is already leaving (within 10 s).
   - A new line bound for its parent's note is not born; its weight joins that line.
-  - Free octaves for a chord come from the lines' own range, so they can fall outside the chord's register.
+  - Free octaves for a chord stay inside its register when it has one (see the register entry above).
   - Explicit merges pass their loudness on.
 - **Shift-drag octaves (M4.5-33).**
   - Alt now means "free": chromatic pitch and time off the grid.

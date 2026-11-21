@@ -2,14 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import {
   DEFAULT_FORM,
-  GENERATE_MODES,
-  LENGTH_MAX,
-  LENGTH_MIN,
-  LENGTH_STEP,
-  VOICES_MAX,
-  VOICES_MIN,
   checkForm,
-  formatLength,
   generateFromRequest,
   newSeed,
   type FieldErrors,
@@ -17,6 +10,7 @@ import {
 } from '../generate-options';
 import { useEditor } from '../editor/history';
 import { loadPiece, pushNotice } from '../store';
+import { GenerateFields } from './GenerateFields';
 
 interface GenerateUi {
   open: boolean;
@@ -144,140 +138,16 @@ export function GeneratePanel() {
             Composes a new piece from a seed. The same seed and settings always give the same piece.
           </p>
 
-          <div className="field">
-            <label htmlFor={`${id}-seed`}>Seed</label>
-            <div className="field-row">
-              <input
-                id={`${id}-seed`}
-                type="text"
-                value={form.seed}
-                spellCheck={false}
-                autoComplete="off"
-                aria-invalid={errors.seed ? true : undefined}
-                aria-describedby={`${id}-seed-hint${errors.seed ? ` ${id}-seed-err` : ''}`}
-                data-testid="generate-seed"
-                onChange={(e) => {
-                  patch({ seed: e.target.value });
-                  if (errors.seed) useGenerateUi.setState({ errors: {} });
-                }}
-              />
-              <button
-                type="button"
-                data-testid="generate-new-seed"
-                onClick={() => {
-                  patch({ seed: String(newSeed()) });
-                  useGenerateUi.setState({ errors: {} });
-                }}
-              >
-                New seed
-              </button>
-            </div>
-            <small id={`${id}-seed-hint`}>A number, or any text.</small>
-            {errors.seed && (
-              <small id={`${id}-seed-err`} className="field-error" role="alert">
-                {errors.seed}
-              </small>
-            )}
-          </div>
-
-          <fieldset className="field">
-            <legend>Mode</legend>
-            <div className="seg radios" data-testid="generate-mode">
-              {GENERATE_MODES.map((m) => (
-                <label key={m.id} className={form.mode === m.id ? 'on' : undefined}>
-                  <input
-                    type="radio"
-                    name={`${id}-mode`}
-                    value={m.id}
-                    checked={form.mode === m.id}
-                    onChange={() => patch({ mode: m.id })}
-                  />
-                  <span>{m.label}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <div className="field">
-            <label htmlFor={`${id}-length`}>Length</label>
-            <div className="field-row">
-              <input
-                id={`${id}-length`}
-                type="range"
-                min={LENGTH_MIN}
-                max={LENGTH_MAX}
-                step={LENGTH_STEP}
-                value={form.length}
-                disabled={form.naturalLength}
-                aria-valuetext={formatLength(form.length)}
-                data-testid="generate-length"
-                onChange={(e) => patch({ length: Number(e.target.value) })}
-              />
-              <output htmlFor={`${id}-length`}>
-                {form.naturalLength ? 'about 2:30' : formatLength(form.length)}
-              </output>
-            </div>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={form.naturalLength}
-                data-testid="generate-natural"
-                onChange={(e) => patch({ naturalLength: e.target.checked })}
-              />
-              <span>Natural length (the prototype&rsquo;s proportions)</span>
-            </label>
-            {errors.length && (
-              <small className="field-error" role="alert">
-                {errors.length}
-              </small>
-            )}
-          </div>
-
-          <div className="field">
-            <label htmlFor={`${id}-voices`}>Notes</label>
-            <div className="field-row">
-              <input
-                id={`${id}-voices`}
-                type="range"
-                min={VOICES_MIN}
-                max={VOICES_MAX}
-                step={1}
-                value={form.voices}
-                data-testid="generate-voices"
-                onChange={(e) => patch({ voices: Number(e.target.value) })}
-              />
-              <output htmlFor={`${id}-voices`}>{form.voices}</output>
-            </div>
-            {errors.voices && (
-              <small className="field-error" role="alert">
-                {errors.voices}
-              </small>
-            )}
-          </div>
-
-          <div className="field">
-            <label htmlFor={`${id}-density`}>Walk density</label>
-            <div className="field-row">
-              <input
-                id={`${id}-density`}
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={Math.round(form.density * 100)}
-                aria-valuetext={`${Math.round(form.density * 100)} percent`}
-                data-testid="generate-density"
-                onChange={(e) => patch({ density: Number(e.target.value) / 100 })}
-              />
-              <output htmlFor={`${id}-density`}>{Math.round(form.density * 100)}%</output>
-            </div>
-            <small>How often a note steps in the walking section.</small>
-            {errors.density && (
-              <small className="field-error" role="alert">
-                {errors.density}
-              </small>
-            )}
-          </div>
+          <GenerateFields
+            id={id}
+            form={form}
+            errors={errors}
+            testPrefix="generate"
+            onChange={(p) => {
+              patch(p);
+              if (p.seed !== undefined && errors.seed) useGenerateUi.setState({ errors: {} });
+            }}
+          />
 
           <div className="dialog-actions">
             <button type="button" onClick={closeGenerate}>

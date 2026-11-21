@@ -14,8 +14,11 @@ import {
   pitchClassOf,
   stepByScale,
 } from '../../core/scales';
+import { pitchClasses } from '../../core/voicing';
 import type {
+  ChordMoment,
   CompiledScore,
+  Key,
   Moment,
   MomentId,
   MomentOf,
@@ -130,5 +133,34 @@ export function defaultMoment<T extends MomentType>(
       m = { ...base, type: 'level', gain: 0.5, over: 2 };
       break;
   }
-  return m as MomentOf<T>;
+  return withChordFill(m, piece, score, at) as MomentOf<T>;
+}
+
+/** How many notes a chord names: its pitch list's length or its distinct pitch classes (0: unknown). */
+export function chordSize(m: ChordMoment, key: Key): number {
+  if (m.notes.kind === 'pitches') return m.notes.pitches.length;
+  if (m.notes.kind === 'current') return 0;
+  const pc = pitchClasses(m.notes, key, []);
+  return pc.ok ? pc.pcs.length : 0;
+}
+
+/**
+ * A new chord brings in its extra notes (owner, "Mouse-only gaps"): when fewer lines sound at `at`
+ * than the chord has notes, `count` becomes its size (at most the pool), so it sounds as a chord.
+ * Otherwise, or with a count or a voice target already set, `m` is returned as is. From silence
+ * the chord establishes one voice per note anyway (core/moments/establish), so nothing is added.
+ */
+export function withChordFill<M extends Moment>(
+  m: M,
+  piece: Piece,
+  score: CompiledScore,
+  at: Seconds,
+): M {
+  if (m.type !== 'chord' || m.count !== undefined || m.byVoice) return m;
+  if (m.target && typeof m.target === 'object') return m;
+  const read = Math.min(at, Math.max(0, score.duration - 0.01));
+  const n = activeAt(score, read).length;
+  if (n === 0) return m;
+  const want = Math.min(piece.voices.length, chordSize(m, keyAt(score, read)));
+  return want > n ? { ...m, count: want } : m;
 }

@@ -131,3 +131,19 @@ describe('Next at the end (revision 7)', () => {
     }
   });
 });
+
+describe('suggested chords on fewer lines (mouse-only gaps)', () => {
+  it('bring in their extra notes: count is the chord size', () => {
+    const p0 = newPiece({ seed: 7 });
+    const split = { id: 'spl001', type: 'split', at: 0.5, count: 2, voicing: 'even' } as Moment;
+    const p = { ...p0, moments: [...p0.moments, split] };
+    const s = compile(p);
+    const items = suggestionsAt(p, s, suggestionTime(p, s));
+    const chords = items.filter((i) => i.moment.type === 'chord');
+    expect(chords.length).toBeGreaterThan(0);
+    for (const { moment } of chords) {
+      if (moment.type !== 'chord' || moment.notes.kind !== 'degrees') continue;
+      expect(moment.count).toBe(Math.min(p.voices.length, moment.notes.degrees.length));
+    }
+  });
+});

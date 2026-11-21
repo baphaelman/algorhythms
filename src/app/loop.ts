@@ -30,6 +30,7 @@ import {
   type ScoreStyle,
   type View,
 } from '../render';
+import { composeView } from './compose-view';
 import { live, writeText } from './dom';
 import { useEditor } from './editor/history';
 import { hoverPointer } from './hover';
@@ -136,6 +137,8 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastWindow = NaN;
   let lastView: View | null = null;
   let lastSelection: readonly MomentId[] = [];
+  let lastFlash: MomentId | null = null;
+  let lastReveal: Seconds | undefined;
   let highlight: ReadonlySet<MomentId> = new Set();
   let hoverVersion = -1;
   let lastTip = '';
@@ -249,9 +252,18 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     }
 
     const selection = useEditor.getState().selection;
-    if (selection !== lastSelection) {
+    // Compose for me: the moment a pass is editing is highlighted with the selection.
+    const flash = composeView.flash;
+    if (selection !== lastSelection || flash !== lastFlash) {
       lastSelection = selection;
-      highlight = new Set(selection);
+      lastFlash = flash;
+      highlight = new Set(flash ? [...selection, flash] : selection);
+      dirty = true;
+    }
+    const reveal = composeView.reveal;
+    if (reveal !== lastReveal) {
+      lastReveal = reveal;
+      dirty = true;
     }
 
     const cam: CameraState = { start: camera.start, window: win };
@@ -300,6 +312,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           // The bar grid in the editor layout (the one with the DOM playhead).
           bars: domHead ? { bpm: piece.view.gridBpm, meter: piece.view.meter } : undefined,
           preview: preview ?? undefined,
+          reveal,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.view = lastView;

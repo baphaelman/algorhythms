@@ -23,6 +23,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
 import type { View } from '../../render';
 import { auditionMoment } from '../audition';
+import { keyName } from '../../render';
+import { PIECE_KEY_ID } from '../editor/piece-key';
+import { previewState, type PreviewGhost } from '../preview';
 import { deleteMoments, moveMoments } from '../editor/actions';
 import {
   beginGesture,
@@ -59,12 +62,14 @@ import './lane.css';
  */
 const MIN_SUBROWS = 2;
 const ROW_H = 20;
-const MOM_TOP = 2;
+/** The Key row on top (lane.css `--key-h`): the piece key at 0:00 (M4.5-39). */
+const KEY_H = 18;
+const MOM_TOP = KEY_H + 2;
 const BAR_H = 14;
 /** Moments row height, Transitions row height and the first bar's top for `n` sub-rows. */
 const momH = (n: number): number => n * ROW_H + 4;
 const transH = (n: number): number => n * BAR_H + 4;
-const transTop = (n: number): number => momH(n) + 2;
+const transTop = (n: number): number => KEY_H + momH(n) + 2;
 /** Level: the curve's box. */
 const LEVEL_H = 28;
 const LEVEL_PAD = 3;
@@ -129,10 +134,24 @@ interface Drag {
   snaps?: SnapSet;
 }
 
+/** A press on the piece key at 0:00: a click selects it; a drag does nothing (it can't move). */
+interface KeyPress {
+  pointerId: number;
+  x0: number;
+  shift: boolean;
+  moved: boolean;
+}
+
 /** The imperative half of the lane: element registry, layout and pointer drags. */
 class LaneController {
   track: HTMLElement | null = null;
   inner: HTMLElement | null = null;
+  /** The preview's would-be moment (owner 2026-11-21), drawn ghosted; hidden when none. */
+  ghostEl: HTMLElement | null = null;
+  private ghost: LaneItem | null = null;
+  private ghostRow = 0;
+  private lastGhost: PreviewGhost | null = null;
+  private keyPress: KeyPress | null = null;
   liveRegion: HTMLElement | null = null;
   levelLine: SVGPolylineElement | null = null;
   levelFill: SVGPolygonElement | null = null;
@@ -183,9 +202,10 @@ class LaneController {
     if (this.view) this.layout(this.view);
   }
 
-  /** Per-frame: translate the container; re-place items when the zoom or items changed. */
+  /** Per-frame: translate the container; re-place items when the zoom, items or preview changed. */
   layout(view: View): void {
     this.view = view;
+    if (previewState.ghost !== this.lastGhost) this.setGhost(previewState.ghost);
     const inner = this.inner;
     if (!inner || !(view.pps > 0)) return;
     const offset = this.axisLeft - view.start * view.pps;
@@ -198,12 +218,40 @@ class LaneController {
     this.pps = view.pps;
     const pps = view.pps;
     if (!this.drag?.started) {
-      const { rows, count } = stackRows(this.items, pps);
+      // The ghost is stacked with the real items, so it shows the sub-row it would take (and
+      // what it would push down).
+      const all = this.ghost ? [...this.items, this.ghost] : this.items;
+      const { rows, count } = stackRows(all, pps);
       this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
+      this.ghostRow = this.ghost ? rows[this.items.length] : 0;
       this.setSubRows(Math.max(MIN_SUBROWS, count));
     }
     for (const it of this.items) this.place(it, pps);
+    if (this.ghost && this.ghostEl) this.place(this.ghost, pps, this.ghostEl, this.ghostRow);
     this.placeLevel(pps);
+  }
+
+  /** Shows the preview's lane item (or hides it), as `place` lays out real ones. */
+  private setGhost(g: PreviewGhost | null): void {
+    this.lastGhost = g;
+    this.ghost = g?.lane ?? null;
+    this.dirty = true;
+    const el = this.ghostEl;
+    if (!el) return;
+    const it = this.ghost;
+    el.hidden = !it;
+    if (!it) {
+      delete el.dataset.at;
+      delete el.dataset.row;
+      return;
+    }
+    el.dataset.type = it.type;
+    el.dataset.at = String(it.at);
+    el.dataset.handle = 'false';
+    const label = el.querySelector('.lane-label');
+    const barLabel = el.querySelector('.lane-bar-text');
+    if (label) label.textContent = it.text;
+    if (barLabel) barLabel.textContent = barText(it);
   }
 
   /** Grows or shrinks the Moments and Transitions rows to `n` sub-rows. */
@@ -236,11 +284,11 @@ class LaneController {
     levelSvg.style.width = `${((last?.t ?? 0) * pps).toFixed(2)}px`;
   }
 
-  private place(it: LaneItem, pps: number): void {
-    const el = this.els.get(it.id);
+  private place(it: LaneItem, pps: number, el = this.els.get(it.id), fixedRow?: number): void {
     if (!el) return;
     const at = this.previewAt.get(it.id) ?? it.at;
-    const row = this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
+    const row = fixedRow ?? this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
+    if (fixedRow !== undefined) el.dataset.row = String(row);
     const y = MOM_TOP + row * ROW_H;
     el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
     const bar = el.firstElementChild as HTMLElement | null;
@@ -250,7 +298,7 @@ class LaneController {
     bar.style.left = `${(MARKER_HALF + (it.start - it.at) * pps).toFixed(2)}px`;
     bar.style.top = `${transTop(Math.max(MIN_SUBROWS, this.subRows)) + row * BAR_H - y}px`;
     bar.style.width = `${w.toFixed(2)}px`;
-    const handle = it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
+    const handle = fixedRow === undefined && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
   }
 
@@ -288,8 +336,14 @@ class LaneController {
   // ---- pointer ------------------------------------------------------------------------------
 
   onDown = (e: PointerEvent): void => {
-    if (this.drag || this.pan || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (this.drag || this.pan || this.keyPress || (e.pointerType === 'mouse' && e.button !== 0))
+      return;
     const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('[data-piece-key]')) {
+      this.track?.setPointerCapture(e.pointerId);
+      this.keyPress = { pointerId: e.pointerId, x0: e.clientX, shift: e.shiftKey, moved: false };
+      return;
+    }
     const itemEl = target?.closest<HTMLElement>('[data-moment]');
     if (!itemEl) {
       this.track?.setPointerCapture(e.pointerId);
@@ -348,6 +402,11 @@ class LaneController {
   }
 
   onMove = (e: PointerEvent): void => {
+    const k = this.keyPress;
+    if (k && e.pointerId === k.pointerId) {
+      if (Math.abs(e.clientX - k.x0) > DRAG_SLOP) k.moved = true;
+      return;
+    }
     const p = this.pan;
     if (p && e.pointerId === p.pointerId) {
       this.onPanMove(e, p);
@@ -439,6 +498,28 @@ class LaneController {
   }
 
   onUp = (e: PointerEvent): void => {
+    const k = this.keyPress;
+    if (k && e.pointerId === k.pointerId) {
+      this.keyPress = null;
+      if (this.track?.hasPointerCapture(k.pointerId)) this.track.releasePointerCapture(k.pointerId);
+      if (e.type === 'pointercancel') return;
+      // The piece key never moves: a drag is ignored.
+      if (k.moved) {
+        this.announce("The piece's key stays at 0:00");
+        return;
+      }
+      const sel = useEditor.getState().selection;
+      if (k.shift) {
+        select(
+          sel.includes(PIECE_KEY_ID)
+            ? sel.filter((x) => x !== PIECE_KEY_ID)
+            : [...sel, PIECE_KEY_ID],
+        );
+      } else {
+        select([PIECE_KEY_ID]);
+      }
+      return;
+    }
     const p = this.pan;
     if (p && e.pointerId === p.pointerId) {
       this.endPan(e, p);
@@ -527,8 +608,9 @@ class LaneController {
     this.cancel();
   };
 
-  attach(track: HTMLElement, inner: HTMLElement): () => void {
+  attach(track: HTMLElement, inner: HTMLElement, ghost: HTMLElement | null): () => void {
     this.inner = inner;
+    this.ghostEl = ghost;
     this.track = track;
     this.liveRegion = track.parentElement?.querySelector<HTMLElement>('[aria-live]') ?? null;
     this.levelSvg = inner.querySelector<SVGSVGElement>('.lane-level');
@@ -547,6 +629,7 @@ class LaneController {
     this.measure();
     return () => {
       this.cancel();
+      this.keyPress = null;
       off();
       offDrop();
       ro.disconnect();
@@ -587,7 +670,14 @@ export function Lane() {
   const selection = useEditor((s) => s.selection);
   const noEffect = useMemo(() => noEffectReasons(compiled), [compiled]);
   const items = useMemo(
-    () => laneItems(piece, compiled.momentSpans, sourceAt.get(compiled), compiled.harmony),
+    () =>
+      laneItems(
+        piece,
+        compiled.momentSpans,
+        sourceAt.get(compiled),
+        compiled.harmony,
+        compiled.voices,
+      ),
     [piece, compiled],
   );
   const curve = useMemo(() => levelCurve(compiled), [compiled]);
@@ -595,10 +685,16 @@ export function Lane() {
   const track = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [focusId, setFocusId] = useState<MomentId | null>(null);
+  const pieceKeyEl = useRef<HTMLDivElement>(null);
+  const ghost = useRef<HTMLDivElement>(null);
+  const keyText = keyName(piece.key);
 
   useLayoutEffect(() => ctl.setItems(items, curve));
   useEffect(
-    () => (track.current && inner.current ? ctl.attach(track.current, inner.current) : undefined),
+    () =>
+      track.current && inner.current
+        ? ctl.attach(track.current, inner.current, ghost.current)
+        : undefined,
     [ctl],
   );
 
@@ -618,8 +714,51 @@ export function Lane() {
     ctl.els.get(id)?.focus({ preventScroll: true });
   };
 
+  /** Keys on the piece key at 0:00: Enter selects; it can't be nudged or deleted. */
+  const onPieceKeyKey = (e: React.KeyboardEvent<HTMLElement>): void => {
+    let handled = true;
+    switch (e.key) {
+      case 'Enter':
+        if (e.shiftKey) {
+          select(
+            selected.has(PIECE_KEY_ID)
+              ? selection.filter((x) => x !== PIECE_KEY_ID)
+              : [...selection, PIECE_KEY_ID],
+          );
+        } else {
+          select([PIECE_KEY_ID]);
+        }
+        break;
+      case 'Delete':
+      case 'Backspace':
+        ctl.announce("The piece's key can't be deleted");
+        break;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        ctl.announce("The piece's key stays at 0:00");
+        break;
+      case 'ArrowDown':
+      case 'Home':
+        focusItem(byTime[0]?.it.id);
+        break;
+      case 'End':
+        focusItem(byTime.at(-1)?.it.id);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLElement>): void => {
     if (e.metaKey || e.ctrlKey) return;
+    if ((e.target as Element).closest('[data-piece-key]')) {
+      if (!ctl.drag) onPieceKeyKey(e);
+      return;
+    }
     const el = (e.target as Element).closest<HTMLElement>('[data-moment]');
     if (!el || ctl.drag) return;
     const id = el.dataset.moment as MomentId;
@@ -645,11 +784,14 @@ export function Lane() {
         break;
       }
       case 'ArrowUp':
-      case 'ArrowDown':
-        focusItem(byTime[pos + (e.key === 'ArrowUp' ? -1 : 1)]?.it.id);
+      case 'ArrowDown': {
+        const next = byTime[pos + (e.key === 'ArrowUp' ? -1 : 1)]?.it.id;
+        if (next) focusItem(next);
+        else if (e.key === 'ArrowUp') pieceKeyEl.current?.focus({ preventScroll: true });
         break;
+      }
       case 'Home':
-        focusItem(byTime[0]?.it.id);
+        pieceKeyEl.current?.focus({ preventScroll: true });
         break;
       case 'End':
         focusItem(byTime.at(-1)?.it.id);
@@ -698,6 +840,7 @@ export function Lane() {
         aria-describedby="lane-help"
         onKeyDown={onKeyDown}
       >
+        <div className="lane-row" data-row="key" aria-hidden="true" />
         <div className="lane-row" data-row="moments" aria-hidden="true">
           <span className="lane-row-name">Moments</span>
         </div>
@@ -712,6 +855,35 @@ export function Lane() {
             <polygon className="lane-level-fill" />
             <polyline className="lane-level-line" />
           </svg>
+          <div
+            ref={pieceKeyEl}
+            className="lane-item lane-piece-key"
+            data-piece-key=""
+            data-type="key"
+            data-testid="lane-piece-key"
+            data-selected={selected.has(PIECE_KEY_ID) || undefined}
+            title="The piece's key: edit it in the inspector. It stays at 0:00."
+            role="button"
+            aria-pressed={selected.has(PIECE_KEY_ID)}
+            aria-label={`Piece key ${keyText} at 0 s, fixed`}
+            tabIndex={0}
+          >
+            <span className="lane-marker" />
+            <span className="lane-label">{keyText}</span>
+          </div>
+          <div
+            ref={ghost}
+            className="lane-item lane-ghost"
+            data-testid="lane-ghost"
+            aria-hidden="true"
+            hidden
+          >
+            <span className="lane-bar">
+              <span className="lane-bar-text" />
+            </span>
+            <span className="lane-marker" />
+            <span className="lane-label" />
+          </div>
           {items.map((it) => (
             <div
               key={it.id}

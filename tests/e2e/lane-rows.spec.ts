@@ -24,11 +24,11 @@ test.afterEach(() => {
 });
 
 /** A 40 s piece with a moment every 1.5 s (glides and staggers vary) and a 60 BPM grid. */
-async function load(page: Page, extra: unknown[] = [], many = true, opening = true): Promise<void> {
+async function load(page: Page, extra: unknown[] = [], many = true): Promise<void> {
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate(
-    ({ extra, many, end, opening }) => {
+    ({ extra, many, end }) => {
       const h = window.__algorhythms!;
       const p = structuredClone(h.store.getState().piece) as unknown as Record<string, unknown> & {
         view: Record<string, unknown>;
@@ -59,8 +59,8 @@ async function load(page: Page, extra: unknown[] = [], many = true, opening = tr
         );
       }
       p.moments = [
-        // The opening (schema v2), unless the test leaves the start silent.
-        ...(p.moments as { id: string }[]).filter((m) => opening && m.id === 'start0'),
+        // The opening (schema v2): a one-note chord at 0.
+        ...(p.moments as { id: string }[]).filter((m) => m.id === 'start0'),
         ...ms,
         ...extra,
       ];
@@ -68,17 +68,21 @@ async function load(page: Page, extra: unknown[] = [], many = true, opening = tr
       p.view = { ...p.view, gridBpm: 60, window: 20 };
       h.actions.loadPiece(p);
     },
-    { extra, many, end: DURATION_END, opening },
+    { extra, many, end: DURATION_END },
   );
   await expect(page.getByTestId('lane').locator('[data-moment]')).toHaveCount(
-    (opening ? 1 : 0) + (many ? 16 : 0) + extra.length,
+    1 + (many ? 16 : 0) + extra.length,
   );
 }
 
-/** Sets the visible window (s) through the zoom slider (log scale, 2 s … whole piece). */
+/**
+ * Sets the visible window (s) through the zoom slider (log scale, 2 s … the open canvas,
+ * max(4 × duration, duration + 10 min): render/camera.ts `windowRange`).
+ */
 async function setWindow(page: Page, w: number): Promise<void> {
   const D = await page.evaluate(() => window.__algorhythms!.store.getState().compiled.duration);
-  const k = Math.log(w / 2) / Math.log(D / 2);
+  const hi = Math.max(4 * D, D + 600);
+  const k = Math.log(w / 2) / Math.log(hi / 2);
   await page.getByTestId('window-slider').fill(String(Math.round(k * 1000)));
 }
 
@@ -255,8 +259,7 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
     voicing: 'even',
     glide: { length, stagger: 0 },
   });
-  // No opening: its label would take a sub-row of its own. stk001 starts the sound.
-  await load(page, [], false, false);
+  await load(page, [], false);
   await setWindow(page, 20);
   await frames(page);
   const h0 = (await page.locator('.lane-track').boundingBox())!.height;
@@ -276,7 +279,6 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
       chord('stk004', 30, 1),
     ],
     false,
-    false,
   );
   await setWindow(page, 20);
   await frames(page, 4);
@@ -286,6 +288,11 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
   const markers = await Promise.all(ids.map((id) => box(id, '.lane-marker')));
   const labels = await Promise.all(ids.map((id) => box(id, '.lane-label')));
   const bars = await Promise.all(ids.map((id) => box(id, '.lane-bar')));
+  // The opening at 0 brings its note in from silence: no glide bar, and its label alone leaves
+  // room for stk001 at 4 s on the first sub-row.
+  const opening = await box('start0', '.lane-marker');
+  expect((await box('start0', '.lane-bar')).width).toBeLessThan(1);
+  expect(Math.abs(opening.y - markers[0].y)).toBeLessThan(1);
   // Three distinct sub-rows, in piece order; no two labels or bars overlap.
   expect(markers[1].y).toBeGreaterThan(markers[0].y + 10);
   expect(markers[2].y).toBeGreaterThan(markers[1].y + 10);

@@ -7,6 +7,7 @@
 import { compile } from '../../core/compiler/compile';
 import type {
   CompiledScore,
+  Key,
   MomentId,
   MomentType,
   NoteMoment,
@@ -19,6 +20,7 @@ import { auditionAfterEdit, auditionPointsAfterEdit, auditionStepAfterEdit } fro
 import { usePlayer } from '../store';
 import { keyBefore } from '../../core/transpose';
 import { offerKeyCarry } from './key-carry';
+import { PIECE_KEY_ID, setKeyOf } from './piece-key';
 import { chordNotes, frozenPatch, unfreezePatch, withChordNote } from './chord-notes';
 import { beginGesture, cancelGesture, edit, endGesture, select, updateGesture } from './history';
 import { defaultMoment } from './new-moment';
@@ -88,10 +90,16 @@ function pendingSince(piece: Piece): boolean {
 
 /**
  * Adds a default moment of `type` at `at` (seconds, clamped at 0), selects it and returns its
- * id. The defaults depend on the piece's state at `at` (see ./new-moment).
+ * id. The defaults depend on the piece's state at `at` (see ./new-moment). A key at 0 selects the
+ * piece key instead (`PIECE_KEY_ID`).
  */
 export function addMoment(type: MomentType, at: Seconds): MomentId {
   const t = Math.max(0, at);
+  // The key at 0:00 is the piece key (M4.5-39): adding one there selects it instead.
+  if (type === 'key' && t === 0) {
+    select([PIECE_KEY_ID]);
+    return PIECE_KEY_ID;
+  }
   const piece = usePlayer.getState().piece;
   const [id] = newMomentIds(piece, 1);
   const m = defaultMoment(type, t, id, piece, scoreOf(piece));
@@ -99,6 +107,17 @@ export function addMoment(type: MomentType, at: Seconds): MomentId {
   select([id]);
   if (type === 'key') offerKeyCarry(id, keyBefore(usePlayer.getState().piece, id));
   return id;
+}
+
+/**
+ * Sets the piece's key (the key moment at 0:00) as one undo entry, then offers to carry its
+ * span's fixed notes. False if nothing changed.
+ */
+export function setPieceKey(key: Key, label = 'Change key'): boolean {
+  const old = usePlayer.getState().piece.key;
+  const ok = edit((p) => setKeyOf(p, key), label);
+  if (ok) offerKeyCarry(PIECE_KEY_ID, old);
+  return ok;
 }
 
 /** Sets fields of moment `id` (`undefined` removes an optional field). False if nothing changed. */

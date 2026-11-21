@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { barGrid, xToTime, type View } from '../../render';
 import { onScoreFrame } from '../loop';
-import { snapToGrid } from '../editor/shortcuts';
 import { withEnd } from '../editor/end';
 import { beginGesture, cancelGesture, edit, endGesture, updateGesture } from '../editor/history';
 import { changePoints, snapTime, type ChangePoint } from '../editor/snap';
@@ -11,6 +10,7 @@ import {
   dragLoopEdge,
   loopEdgeAt,
   loopFromDrag,
+  loopTime,
   rulerLabel,
   rulerStep,
   tickTimes,
@@ -132,8 +132,10 @@ export function Ruler() {
     const inBand = (clientY: number): boolean =>
       clientY - el.getBoundingClientRect().top - el.clientTop < LOOP_BAND_PX;
     const snapped = (t: number, e: PointerEvent): number =>
-      e.altKey ? Math.max(0, t) : snapToGrid(t, usePlayer.getState().piece.view.gridBpm);
-    const pieceLength = (): number => usePlayer.getState().compiled.duration;
+      loopTime(t, usePlayer.getState().piece.view.gridBpm, e.altKey);
+    // To the millisecond, so an edge clamped to the end stores a clean time too.
+    const pieceLength = (): number =>
+      Math.floor(usePlayer.getState().compiled.duration * 1000) / 1000;
     const edgeAt = (t: number): 'start' | 'end' | null =>
       view ? loopEdgeAt(loopRegion(), t, view.pps) : null;
     /** True when time `t` is within `END_GRAB_PX` of the piece's end. */

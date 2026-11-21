@@ -38,6 +38,11 @@ export interface Hook {
     seek(t: number): void;
   };
   encodeShareLink(piece: unknown, base?: string): Promise<string>;
+  editor: {
+    state: { getState(): { canUndo: boolean; undoLabel: string; selection: string[] } };
+  };
+  /** Compose for me's pen (NaN when idle) and whether the detail sweep is on. */
+  compose: { pen: number; detail: boolean };
 }
 
 /** Moves the playhead to `t` s (the editor layout has no scrubber; the ruler seeks by pointer). */

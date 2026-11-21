@@ -1,7 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
+import { useCompose } from './compose';
 import { startPersistence } from './persist';
 import { startPlayer } from './store';
+import { ComposePanel } from './ui/ComposePanel';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
@@ -14,6 +16,7 @@ import { Playhead } from './ui/Playhead';
 import { Ruler } from './ui/Ruler';
 import { ScoreView } from './ui/ScoreView';
 import { Scrubber, Transport } from './ui/Transport';
+import { UndoRedo } from './ui/UndoRedo';
 import { ViewBar } from './ui/ViewBar';
 import { VoicesDrawer } from './ui/VoicesDrawer';
 
@@ -41,6 +44,7 @@ function useWide(): boolean {
  */
 export function App() {
   const wide = useWide();
+  const composing = useCompose((s) => s.open);
 
   useEffect(() => {
     startPersistence();
@@ -50,7 +54,7 @@ export function App() {
 
   return (
     <div className="app" data-layout={wide ? 'full' : 'player'}>
-      <Transport>
+      <Transport history={wide && <UndoRedo />}>
         <Menu />
       </Transport>
       <GeneratePanel />
@@ -69,7 +73,7 @@ export function App() {
         </div>
         {!wide && <Scrubber />}
         <ViewBar />
-        {wide && <Inspector />}
+        {composing ? <ComposePanel /> : wide && <Inspector />}
       </main>
       {wide && <VoicesDrawer />}
     </div>

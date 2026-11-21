@@ -4,7 +4,14 @@ import { clampLoop } from '../ruler';
 import { scrubEnd, scrubTo, toggleLoop, togglePlay, usePlayer } from '../store';
 
 /** Play/pause, the time readout, the meter and the key and voice status. */
-export function Transport({ children }: { children?: React.ReactNode }) {
+export function Transport({
+  children,
+  history,
+}: {
+  children?: React.ReactNode;
+  /** Shown after Loop: the editor's Undo and Redo. */
+  history?: React.ReactNode;
+}) {
   const status = usePlayer((s) => s.transport.status);
   const title = usePlayer((s) => s.piece.meta.title);
   const playing = status === 'playing';
@@ -44,6 +51,7 @@ export function Transport({ children }: { children?: React.ReactNode }) {
       >
         Loop
       </button>
+      {history}
       <div className="readout" role="timer" aria-label="Playback time">
         <span ref={time} data-testid="time" />
         <span className="sep"> / </span>
