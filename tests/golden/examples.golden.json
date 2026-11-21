@@ -68,25 +68,25 @@
     "spans": 20
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "21510f8ed01cef7a",
+    "hash": "102ea19df02ef7cb",
     "duration": 185.97264601881338,
     "voices": [
       {
         "id": "v1",
         "lives": 1,
-        "segments": 24,
+        "segments": 23,
         "lastPitch": 57
       },
       {
         "id": "v2",
         "lives": 1,
-        "segments": 31,
+        "segments": 30,
         "lastPitch": 57
       },
       {
         "id": "v3",
         "lives": 1,
-        "segments": 31,
+        "segments": 28,
         "lastPitch": 57
       },
       {
@@ -98,7 +98,7 @@
       {
         "id": "v5",
         "lives": 1,
-        "segments": 24,
+        "segments": 20,
         "lastPitch": 57
       },
       {
@@ -110,7 +110,7 @@
       {
         "id": "v7",
         "lives": 1,
-        "segments": 21,
+        "segments": 20,
         "lastPitch": 57
       },
       {
@@ -122,13 +122,13 @@
       {
         "id": "v9",
         "lives": 1,
-        "segments": 27,
+        "segments": 26,
         "lastPitch": 57
       },
       {
         "id": "v10",
         "lives": 1,
-        "segments": 28,
+        "segments": 30,
         "lastPitch": 57
       },
       {

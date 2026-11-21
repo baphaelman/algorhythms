@@ -23,7 +23,8 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  */
 const PRE_REV6: Record<string, string> = {
   'clockwork-heron.algorhythms.json': '3c2665b69df22274',
-  'lanterns-over-salt-flats.algorhythms.json': 'c4db88c56394475b',
+  // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
+  'lanterns-over-salt-flats.algorhythms.json': 'adbed53ac4f17d57',
   'seven-doors-in-fog.algorhythms.json': '50a8e70bf243bbad',
   'the-cartographers-rain.algorhythms.json': '06989b08c5eeffbf',
   'tidewater-hymn.algorhythms.json': '8eb0e9e43d43919f',
