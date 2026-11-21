@@ -30,7 +30,7 @@ function clock(t: number): string {
  * Next-move suggestions, "Next" (PLAN.md §11.3, revisions 6–7): 3–4 moves appended at the end of
  * the piece's last moment, from the Generate composer's grammar (core/suggest.ts). Its own group,
  * styled apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering
- * for 300 ms previews it (../preview.ts).
+ * for 300 ms previews it silently on the score (../preview.ts).
  */
 export function Suggestions() {
   const items = useSuggestions((s) => s.items);
@@ -77,7 +77,7 @@ export function Suggestions() {
           data-suggestion={i}
           data-kind={s.kind}
           data-label={s.label}
-          title={`Append at ${clock(s.moment.at)} (hover to hear)`}
+          title={`Append at ${clock(s.moment.at)} (hover to preview)`}
           onPointerEnter={() => hover(s)}
           onPointerLeave={cancelHover}
           onClick={() => {

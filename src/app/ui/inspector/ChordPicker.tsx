@@ -2,7 +2,7 @@
  * Chord picker (PLAN.md §11.3, inspector revision 5): a header with the chord's name, its Roman
  * numeral in the key in effect and the notes the moment produces, then one-click choices: the
  * key's diatonic chords, root, quality, bass and voicing. Every pick writes a `chord` NoteSet (or
- * the moment's voicing) as one undo entry.
+ * the moment's voicing) as one undo entry, and auditions the result (../../audition.ts).
  */
 
 import {
@@ -19,6 +19,7 @@ import { parseChord } from '../../../core/chords';
 import { harmonyLabel, spellPc } from '../../../core/harmony';
 import { noteName, pitchClassOf } from '../../../core/scales';
 import type { Key, MomentId, NoteSet, Voicing } from '../../../core/types';
+import { auditionAfterEdit } from '../../audition';
 import { usePlayer } from '../../store';
 import { formatNum, liveNotes, prefersFlats } from './fields';
 
@@ -79,7 +80,9 @@ export function ChordPicker({
 
   const current = value.kind === 'chord' ? value.symbol.trim() : null;
   const write = (symbol: string, label: string): void => {
-    if (symbol !== current) onChange({ kind: 'chord', symbol }, label);
+    if (symbol === current) return;
+    onChange({ kind: 'chord', symbol }, label);
+    auditionAfterEdit(momentId);
   };
   const bassOf = (r: ChordReading | null): ChordBass => (r && r.bass !== 'other' ? r.bass : 'any');
   const pick = (
@@ -193,7 +196,11 @@ export function ChordPicker({
             key={v}
             type="button"
             aria-pressed={voicing === v}
-            onClick={() => v !== voicing && onVoicing(v)}
+            onClick={() => {
+              if (v === voicing) return;
+              onVoicing(v);
+              auditionAfterEdit(momentId);
+            }}
           >
             {text}
           </button>

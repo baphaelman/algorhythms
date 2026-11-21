@@ -22,6 +22,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
 import type { View } from '../../render';
+import { auditionMoment } from '../audition';
 import { deleteMoments, moveMoments } from '../editor/actions';
 import {
   beginGesture,
@@ -456,6 +457,8 @@ class LaneController {
         select(d.wasSelected ? sel.filter((x) => x !== d.id) : [...sel, d.id]);
       } else {
         select([d.id]);
+        // Plays what the moment moves to (§11.3 auditioning; stopped transport only).
+        auditionMoment(d.id);
       }
       return;
     }
@@ -674,6 +677,7 @@ export function Lane() {
           select(selected.has(id) ? selection.filter((x) => x !== id) : [...selection, id]);
         } else {
           select([id]);
+          auditionMoment(id);
         }
         break;
       default:

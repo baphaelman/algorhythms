@@ -33,6 +33,7 @@ import {
 import { live, writeText } from './dom';
 import { useEditor } from './editor/history';
 import { hoverPointer } from './hover';
+import { previewState, type PreviewGhost } from './preview';
 import { camera, cameraOf, currentTime, usePlayer } from './store';
 
 /** Duration of the future-ghost fade, ms (the prototype's 900). */
@@ -53,6 +54,8 @@ export const frameStats = {
   head: 0,
   /** Opacity of the future lines as of the last frame. */
   ghost: 1,
+  /** The last drawn frame showed a moment preview's ghost lines (from this time; NaN: none). */
+  preview: NaN,
   reset(): void {
     this.work = [];
     this.interval = [];
@@ -136,6 +139,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastTip = '';
   let domHead = false;
   let lastPitch: [number, number] | null = null;
+  let lastPreview: PreviewGhost | null = null;
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -257,6 +261,13 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       for (const fn of frameListeners) fn(v, compiled);
     }
 
+    // A moment preview's ghost lines (./preview.ts).
+    const preview = previewState.ghost;
+    if (preview !== lastPreview) {
+      lastPreview = preview;
+      dirty = true;
+    }
+
     // The editor layout's DOM playhead replaces the canvas one (§10 Drawing rules 5).
     if ((live.playhead !== null) !== domHead) {
       domHead = live.playhead !== null;
@@ -282,9 +293,11 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           playhead: !domHead,
           // The bar grid in the editor layout (the one with the DOM playhead).
           bars: domHead ? { bpm: piece.view.gridBpm, meter: piece.view.meter } : undefined,
+          preview: preview ?? undefined,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.drawn++;
+        frameStats.preview = preview ? preview.from : NaN;
         drew = true;
       }
     }

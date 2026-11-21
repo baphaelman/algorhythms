@@ -1,7 +1,7 @@
 /**
  * M4.5-12 context-aware moments (PLAN.md §11.3 revision 6): a no-effect moment is dimmed on the
  * lane with its reason; the palette greys out types with no effect at the playhead; hovering an
- * enabled type previews it without touching the piece or the undo history.
+ * enabled type previews it silently on the score without touching the piece or the undo history.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -11,13 +11,15 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 
 interface PreviewState {
   type: string | null;
-  playing: boolean;
+  shown: boolean;
   count: number;
 }
 const previewOf = (page: Page): Promise<PreviewState> =>
   page.evaluate(() => {
-    const h = window.__algorhythms as unknown as { preview: PreviewState };
-    return { type: h.preview.type, playing: h.preview.playing, count: h.preview.count };
+    const h = window.__algorhythms as unknown as {
+      preview: { type: string | null; ghost: object | null; count: number };
+    };
+    return { type: h.preview.type, shown: h.preview.ghost !== null, count: h.preview.count };
   });
 const editorState = (page: Page) =>
   page.evaluate(() => {
@@ -115,21 +117,19 @@ test('hovering an enabled item previews it and leaves the piece and history alon
   await expect(chord).not.toHaveAttribute('aria-disabled');
   await chord.hover();
   await expect.poll(async () => (await previewOf(page)).type).toBe('chord');
-  await expect.poll(async () => (await previewOf(page)).playing).toBe(true);
+  await expect.poll(async () => (await previewOf(page)).shown).toBe(true);
+  // Silent (owner 2026-11-21): shown on the score, the engine not playing.
   await expect
-    .poll(() => page.evaluate(() => window.__algorhythms!.engine()?.isPlaying))
-    .toBe(true);
-  // The store's transport is not playing: the preview is outside it.
-  expect(
-    await page.evaluate(() => window.__algorhythms!.store.getState().transport.status),
-  ).not.toBe('playing');
+    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.preview))
+    .toBeCloseTo(1, 3);
+  expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
 
   // Leaving the item stops it.
   await page.mouse.move(2, 400);
   await expect.poll(async () => (await previewOf(page)).type).toBeNull();
   await expect
-    .poll(() => page.evaluate(() => window.__algorhythms!.engine()?.isPlaying))
-    .toBe(false);
+    .poll(() => page.evaluate(() => Number.isNaN(window.__algorhythms!.frameStats.preview)))
+    .toBe(true);
   expect(await page.evaluate(() => window.__algorhythms!.store.getState().piece)).toEqual(piece);
   expect(await editorState(page)).toEqual(before);
 

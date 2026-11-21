@@ -5,6 +5,7 @@
 
 import { parseChord } from '../../../core/chords';
 import type { Key, MomentId, NoteSet, Voicing } from '../../../core/types';
+import { auditionAfterEdit } from '../../audition';
 import { ChordPicker } from './ChordPicker';
 import { SelectField, TextField } from './controls';
 import {
@@ -93,7 +94,10 @@ export function NoteSetField({
           <DegreePicker
             degrees={value.degrees}
             keyAtMoment={keyAtMoment}
-            onChange={(d) => onChange({ kind: 'degrees', degrees: d }, 'Change degrees')}
+            onChange={(d) => {
+              onChange({ kind: 'degrees', degrees: d }, 'Change degrees');
+              auditionAfterEdit(momentId);
+            }}
           />
         )}
         {value.kind === 'pitches' && (

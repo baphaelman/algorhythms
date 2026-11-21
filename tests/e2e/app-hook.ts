@@ -26,6 +26,8 @@ export interface Hook {
     window: number;
     head: number;
     ghost: number;
+    /** Start time of the preview ghost in the last drawn frame; NaN: none. */
+    preview: number;
     reset(): void;
   };
   actions: {
