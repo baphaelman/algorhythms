@@ -106,5 +106,5 @@ Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mj
 7. Pulsed lines drawn by their envelope, with marks for hits, so floor-0 pulses don't draw as dust.
 8. Targets that name several parts ("all but Bells").
 9. An arpeggio note order for pulses (1 3 2 4), so arpeggios line up with the bar.
-10. Roman numerals read against the key's scale in minor modes (`VI` in A minor = F, not F♯). The owner reversed the earlier "read against the major scale" ruling (2026-11-21).
+10. Roman numerals keep the major-scale ruler (owner, 2026-11-21, after weighing both conventions): it means the same thing in every mode and works for pentatonic keys (Porch Light relies on it). Add an inspector hint instead: when a typed numeral falls outside a minor-type key's scale, suggest the flat ("`VI` here is F♯; did you mean `♭VI` = F?").
 11. Smaller: compensate the 1/√n drop when a part joins; the HUD chord name in tune-driven pieces.
