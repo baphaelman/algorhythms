@@ -23,6 +23,8 @@ export function isDot(s: ArrivalDot, d: ArrivalDot): boolean {
   if (s.momentId !== d.momentId) return false;
   if (Math.abs(s.t - d.t) < NEAR_T && Math.abs(s.pitch - d.pitch) < NEAR_P) return true;
   if (s.step || d.step) return sameStep(s.step ?? null, d.step ?? null);
+  // Tune dots share one line: the note index tells them apart.
+  if (s.note !== undefined || d.note !== undefined) return s.note === d.note;
   return s.voice !== undefined && s.voice === d.voice;
 }
 

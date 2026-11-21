@@ -21,6 +21,7 @@ import type {
 } from '../../core/types';
 import { chordArrival } from './chord-notes';
 import { noteLanding } from './note-points';
+import { tuneDots } from './tune';
 import type { StepRef } from './walk-steps';
 
 /** One dot: moment `momentId` brings a voice to `pitch` at `t`. */
@@ -35,6 +36,8 @@ export interface ArrivalDot {
   step?: StepRef;
   /** Note dots: the index of the change in `noteChanges(m)`. */
   change?: number;
+  /** Tune dots: the note's index in `notes` (R9-8). */
+  note?: number;
 }
 
 /** True if voice `v` is fading out (a merge's dying voice) at t. */
@@ -151,6 +154,7 @@ export function momentArrivals(
 ): ArrivalDot[] {
   if (m.type === 'walk') return walkDots(score, m);
   if (m.type === 'note') return noteDots(score, m);
+  if (m.type === 'tune') return tuneDots(score, m);
   if (m.type === 'chord' && chordNotes) {
     const t = chordArrival(score, m);
     return chordNotes.map((pitch) => {
@@ -194,7 +198,7 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
     }
     for (const [id, b] of best) {
       const type = byId.get(id)?.type;
-      if (type === undefined || type === 'walk' || type === 'note') continue;
+      if (type === undefined || type === 'walk' || type === 'note' || type === 'tune') continue;
       let list = landings.get(id);
       if (!list) landings.set(id, (list = []));
       if (addLanding(list, score, b)) out.push({ momentId: id, type, t: b.t, pitch: b.p });
@@ -217,7 +221,10 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
       step: { momentId: w.id, tick: s.tick, voice: s.voice },
     });
   }
-  for (const m of byId.values()) if (m.type === 'note') out.push(...noteDots(score, m));
+  for (const m of byId.values()) {
+    if (m.type === 'note') out.push(...noteDots(score, m));
+    else if (m.type === 'tune') out.push(...tuneDots(score, m));
+  }
   return out.sort((a, b) => a.t - b.t || a.pitch - b.pitch);
 }
 
@@ -281,12 +288,14 @@ export function hoverPick(
 /**
  * What dragging a dot does (§11.3, revision 6): it moves that dot by editing its moment. Chord:
  * that note (freezing) and that voice's arrival; walk: that step's tick and pitch; note: `to` and
- * the arrival; anything else: a per-voice override. `none`: the moment is gone.
+ * the arrival; tune: that note's pitch and start; anything else: a per-voice override. `none`:
+ * the moment is gone.
  */
 export type DotAction =
   | { kind: 'chord'; id: MomentId; index: number; voice?: number }
   | { kind: 'walk'; step: StepRef }
   | { kind: 'note'; id: MomentId; change: number; voice?: number }
+  | { kind: 'tune'; id: MomentId; note: number }
   | { kind: 'override'; id: MomentId; voice: number }
   | { kind: 'none' };
 
@@ -322,6 +331,9 @@ export function dotAction(
     return voice === undefined
       ? { kind: 'note', id: m.id, change }
       : { kind: 'note', id: m.id, change, voice };
+  }
+  if (m.type === 'tune') {
+    return dot.note === undefined ? { kind: 'none' } : { kind: 'tune', id: m.id, note: dot.note };
   }
   return voice === undefined ? { kind: 'none' } : { kind: 'override', id: m.id, voice };
 }

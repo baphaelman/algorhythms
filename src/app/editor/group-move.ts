@@ -25,6 +25,7 @@ import type {
   Piece,
   Pitch,
   Seconds,
+  TuneMoment,
   WalkMoment,
   WalkNote,
 } from '../../core/types';
@@ -33,6 +34,7 @@ import { frozenPatch } from './chord-notes';
 import { inRange } from './drag-edge';
 import { insertMoments, patchMoment, removeMoments, type MomentPatch } from './ops';
 import { arrivalEnd, withOverride } from './overrides';
+import { moveTuneStarts, setTunePitch } from './tune';
 import { tickAt, withNote, type StepRef } from './walk-steps';
 
 /** Times within this (s) are the same time: a note change there joins that note moment. */
@@ -110,6 +112,8 @@ const roundUs = (t: Seconds): Seconds => Math.max(0, Math.round(t * 1e6) / 1e6) 
  * when it differs from the dot's, a time only when it differs from `dot.t`.
  * - chord: that note (freezing) and that voice's arrival (`overrides` `end`);
  * - walk: the step's pitch and tick (freezing);
+ * - tune: the note's pitch, and sideways its start (the note before it and the note change
+ *   length; every note of the tune moving shifts the tune);
  * - note: the change's `to`, and sideways its time (the change's `at`, glide kept): it joins a
  *   note moment already at the new time, else moves its moment (when every change of it moves
  *   together) or splits into a new moment;
@@ -139,7 +143,8 @@ export function moveDots(piece: Piece, moves: readonly DotMove[], env: MoveEnv):
         patch = { fixed: r.fixed };
         idx.forEach((i, j) => (steps[i] = r.refs[j]));
       }
-    } else patch = overridePatch(piece, m, ms);
+    } else if (m.type === 'tune') patch = tunePatch(m, ms);
+    else patch = overridePatch(piece, m, ms);
     if (patch) p = patchMoment(p, id, patch);
   }
   if (notes.length > 0) p = moveNoteChanges(p, moves, notes, env, hosts);
@@ -189,6 +194,20 @@ function walkPatch(
     return { momentId: w.id, tick, voice: ref.voice };
   });
   return { fixed, refs };
+}
+
+function tunePatch(m: TuneMoment, ms: readonly DotMove[]): MomentPatch | null {
+  let notes = m.notes;
+  const starts = new Map<number, Seconds>();
+  for (const { dot, pitch, t } of ms) {
+    const k = dot.note;
+    if (k === undefined) continue;
+    if (pitch !== dot.pitch) notes = setTunePitch(notes, k, pitch) ?? notes;
+    if (t !== dot.t) starts.set(k, t);
+  }
+  const moved = starts.size > 0 ? moveTuneStarts({ at: m.at, notes }, starts) : null;
+  if (moved) return moved.at === m.at ? { notes: moved.notes } : moved;
+  return notes === m.notes ? null : { notes };
 }
 
 function overridePatch(piece: Piece, m: Moment, ms: readonly DotMove[]): MomentPatch | null {

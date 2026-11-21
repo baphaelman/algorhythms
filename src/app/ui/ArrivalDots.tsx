@@ -17,13 +17,16 @@
  * mid-drag switch live. The grabbed dot follows the pointer and the moved dots stay selected. A
  * click without a drag selects the dot (and its moment; a walk dot also its step); Shift-click
  * adds or removes it. DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
+ * Tune dots (R9-8) are the exception: one per note at its start, tab stops; a click focuses one,
+ * and with it focused ↑/↓ move the note a scale step (Alt: a semitone), ←/→ its start a beat
+ * (0.1 s without a tempo).
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { keyAt } from '../../core/query';
 import type { Moment, MomentId } from '../../core/types';
-import { pitchToY, timeToX, xToTime, type View } from '../../render';
-import { dragDots, landedDots } from '../editor/actions';
+import { noteLabel, pitchToY, timeToX, xToTime, type View } from '../../render';
+import { dragDots, landedDots, nudgeTuneDot, stepTuneDot } from '../editor/actions';
 import {
   cachedArrivals,
   hoverPick,
@@ -66,7 +69,31 @@ const TEST_IDS: Record<string, [box: string, dot: string]> = {
   walk: ['walk-dots', 'walk-dot'],
   chord: ['chord-dots', 'chord-dot'],
   note: ['note-dots', 'note-dot'],
+  tune: ['tune-dots', 'tune-dot'],
 };
+
+/** m:ss.ss for a tune dot's label. */
+function dotTime(t: number): string {
+  const cs = Math.round(Math.max(0, t) * 100);
+  const m = Math.floor(cs / 6000);
+  const s = (cs - m * 6000) / 100;
+  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(2)}`;
+}
+
+/** Arrow keys on a focused tune dot: ↑/↓ its pitch, ←/→ its start; the dot stays selected. */
+function tuneKey(e: React.KeyboardEvent<HTMLButtonElement>, d: ArrivalDot): void {
+  const k = d.note;
+  if (k === undefined || e.metaKey || e.ctrlKey) return;
+  const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+  const sideways = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+  // Shift+↑/↓ is the document's octave move of the selected dots.
+  if (!(sideways || (vertical && !e.shiftKey))) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (vertical) stepTuneDot(d.momentId, k, e.key === 'ArrowUp' ? 1 : -1, e.altKey);
+  else nudgeTuneDot(d.momentId, k, e.key === 'ArrowLeft' ? -1 : 1);
+  selectDots([d]);
+}
 
 function place(el: HTMLElement, v: View, d: { t: number; pitch: number }): void {
   const x = (d.t - v.start) * v.pps;
@@ -154,6 +181,8 @@ export function ArrivalDots() {
   const guideEls = useRef<(HTMLDivElement | null)[]>([]);
   const octLabel = useRef<HTMLDivElement>(null);
   const follow = useRef<ArrivalDot | null>(null);
+  /** A clicked tune dot, focused once its moment's dots are drawn. */
+  const focusTune = useRef<ArrivalDot | null>(null);
   const view = useRef<View | null>(null);
   const geo = useRef<ArrivalDot[]>([]);
   const pickedRef = useRef<boolean[]>([]);
@@ -169,7 +198,15 @@ export function ArrivalDots() {
     geo.current = dots;
     pickedRef.current = picked;
     selectedIds.current = new Set(groups.map((g) => g.m.id));
-  }, [dots, picked, groups]);
+    const f = focusTune.current;
+    if (f) {
+      const i = dots.findIndex((d) => d.momentId === f.momentId && d.note === f.note);
+      if (i >= 0) {
+        focusTune.current = null;
+        els.current[i]?.focus({ preventScroll: true });
+      }
+    }
+  });
 
   useEffect(
     () =>
@@ -328,6 +365,7 @@ export function ArrivalDots() {
         if (!r) return;
         // The moved dots stay selected, where they ended up.
         selectDots(landedDots(r));
+        if (dot.note !== undefined) focusTune.current = dot;
         const step = r.targets.length === 1 ? r.steps[0] : undefined;
         if (step) selectStep(step);
       } else if (drag === undefined && ev.type === 'pointerup') {
@@ -335,6 +373,8 @@ export function ArrivalDots() {
         else {
           selectDots([dot]);
           if (dot.step) selectStep(dot.step);
+          // A tune dot takes the keyboard (R9-8); a hover dot becomes its moment's dot.
+          if (dot.note !== undefined) focusTune.current = dot;
         }
       }
     };
@@ -351,27 +391,47 @@ export function ArrivalDots() {
       {groups.map(({ m, dots: ds }) => {
         const ids = TEST_IDS[m.type] ?? ['arrival-dots', 'arrival-dot'];
         if (ds.length === 0) return null;
+        const tune = m.type === 'tune';
         return (
-          <div key={m.id} className="walk-dots" data-testid={ids[0]} aria-hidden="true">
+          <div
+            key={m.id}
+            className="walk-dots"
+            data-testid={ids[0]}
+            aria-hidden={tune ? undefined : 'true'}
+            role={tune ? 'group' : undefined}
+            aria-label={tune ? `Notes of ${m.label ?? 'the tune'}` : undefined}
+          >
             {ds.map((d, j) => {
               const i = flat++;
               const on = d.type === 'note' || (!!d.step && sameStep(d.step, selectedStep));
               const base = d.type === 'walk' ? 'walk-dot' : 'walk-dot chord-dot';
               const cls = `${base}${on ? ' on' : ''}${picked[i] ? ' picked' : ''}`;
+              const k = d.note;
+              const label =
+                k === undefined
+                  ? undefined
+                  : `Tune note ${k + 1}, ${noteLabel(d.pitch, keyAt(compiled, d.t))} at ${dotTime(d.t)}`;
               return (
                 <button
-                  key={d.step ? `${d.step.tick}:${d.step.voice}` : j}
+                  key={d.step ? `${d.step.tick}:${d.step.voice}` : k !== undefined ? `n${k}` : j}
                   ref={(el) => {
                     els.current[i] = el;
                   }}
                   type="button"
-                  tabIndex={-1}
+                  tabIndex={k === undefined ? -1 : 0}
+                  aria-label={label}
+                  aria-pressed={k === undefined ? undefined : picked[i]}
+                  aria-keyshortcuts={
+                    k === undefined ? undefined : 'ArrowUp ArrowDown ArrowLeft ArrowRight'
+                  }
+                  onKeyDown={k === undefined ? undefined : (e) => tuneKey(e, d)}
                   hidden
                   className={cls}
                   data-testid={ids[1]}
                   data-dot-moment={m.id}
                   data-index={d.type === 'chord' ? j : undefined}
                   data-change={d.change}
+                  data-note={k}
                   data-tick={d.step?.tick}
                   data-voice={d.step?.voice}
                   data-selected={d.step && on ? 'true' : undefined}

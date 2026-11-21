@@ -250,7 +250,17 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
         options={WHICH}
         onChange={(which) => updateMoment(m.id, { which }, 'Change merge')}
       />
-      <NumberField label="Fade" unit="s" value={m.fade} set={fade} min={0} max={60} step={0.1} />
+      {/* A line that merges into a survivor crossfades into it; `fade` is for a line with none. */}
+      <NumberField
+        label="Fade (when no line survives)"
+        unit="s"
+        value={m.fade}
+        set={fade}
+        min={0}
+        max={60}
+        step={0.1}
+        testId="insp-merge-fade"
+      />
     </>
   );
 }
