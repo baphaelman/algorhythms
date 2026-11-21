@@ -28,6 +28,7 @@ The integrator continues the work with a fresh agent.
 - Tools (installed in M0 with Homebrew): Node 22 (`node@22`, 22.23.5), pnpm 12.18.0, and `gh` 2.103.3, which is not logged in until the owner runs `gh auth login`.
   - `node@22` is keg-only but is linked into `/opt/homebrew/bin`, so `brew shellenv` finds it.
   - If `node --version` is not v22 (for example after something installs the `node` formula), run `brew link --force --overwrite node@22`. Or put it first on the PATH: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`.
+- **The Mac has 6 cores and several builders share it.** While iterating, run only the tests you need, with `--maxWorkers=2`, and run Playwright with `--workers=1`. Run the full `pnpm test` once at the end, also with `--maxWorkers=2`. Timing gates (rtf, compile perf, render budget) miss under load: report them, don't chase them.
 - Playwright's browsers live in `~/Library/Caches/ms-playwright`. Reinstall them with `pnpm exec playwright install chromium firefox webkit`.
 - Commands, set up in M0:
   - `pnpm test` runs Vitest without the timing and GC gates;
