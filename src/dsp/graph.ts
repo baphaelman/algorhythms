@@ -55,7 +55,7 @@ import {
   VoiceContext,
   VoiceData,
 } from './voice';
-import { MIP_BASE_HZ, type WavetableSet } from './wavetable';
+import { COH_NOISE, COH_REST, COH_STRIDE, MIP_BASE_HZ, type WavetableSet } from './wavetable';
 import * as pmath from './pmath';
 
 /** pmath's registers (allocation-free calls on the audio thread). */
@@ -251,6 +251,12 @@ export class Graph {
   private readonly gLy = new Float64Array(DSP_MAX_VOICES);
   private readonly gLamS = new Float64Array(DSP_MAX_VOICES);
   private readonly gHS = new Float64Array(DSP_MAX_VOICES).fill(1);
+  /** Group members and their weights (computeGroups → timbreZ2), and its result. */
+  private readonly gMemb = new Int32Array(DSP_MAX_VOICES);
+  private readonly gMembC = new Float64Array(DSP_MAX_VOICES);
+  private readonly gZ2 = new Float64Array(1);
+  /** Render frame at which each voice last published its spectrum (timbreZ2). */
+  private readonly gCohStamp = new Float64Array(DSP_MAX_VOICES).fill(-1);
   private readonly lockUp: number = 0;
   private readonly lockDown: number = 0;
   private readonly lockGain: number = 0;
@@ -469,6 +475,11 @@ export class Graph {
   /** The limiter's look-ahead in frames: every output is delayed by this much. */
   get limiterDelayFrames(): number {
     return this.limiter.delay;
+  }
+
+  /** The slot holding timbre `name`, or −1 (tests: `Voice.timbreWeight`). */
+  timbreSlotOf(name: string): number {
+    return this.slotByName.get(name) ?? -1;
   }
 
   /** The voice in pool slot `i` (for tests and diagnostics). */
@@ -846,6 +857,7 @@ export class Graph {
         // Starts this block (seek, birth, swap): probe where it starts.
         const d = v.data;
         d.probe(frameEnd, this.sampleRate);
+        d.probeMix(this.slots);
         const slot = d.probeSlot;
         const pp = d.probePitch;
         if (slot < 0 || !(pp === pp) || this.slots[slot].data === null) continue;
@@ -997,6 +1009,12 @@ export class Graph {
       let lamT = 0;
       let lamC = 0;
       let parting = 0;
+      // Members of j's sum Z (j first), for timbreZ2.
+      const memb = this.gMemb;
+      const membC = this.gMembC;
+      memb[0] = j;
+      membC[0] = aj;
+      let mc = 1;
       if (any > 1 && Lk[j] > 0) {
         const wj = WG[j];
         for (let l = 0; l < n; l++) {
@@ -1047,6 +1065,11 @@ export class Graph {
             if (!cap && w - lw > parting) parting = w - lw;
           } else if (w > lamT) lamT = w;
           const za = wz * Am[l];
+          if (za > 0) {
+            memb[mc] = l;
+            membC[mc] = za;
+            mc++;
+          }
           zx += za * HX[l];
           zy += za * HY[l];
           q += za * za;
@@ -1068,7 +1091,8 @@ export class Graph {
       ctx.gLam[j] = lam;
       ctx.gCorr[j] = sa > 0 ? lam * (sam / sa - M[j]) : 0;
 
-      const z2 = zx * zx + zy * zy;
+      let z2 = zx * zx + zy * zy;
+      if (mc > 1 && this.timbreZ2(mc) === 1) z2 = this.gZ2[0];
       let dInc = 0;
       let dLfo = 0;
       if (part[j] === 1) {
@@ -1114,6 +1138,86 @@ export class Graph {
       this.gWas[j] = 1;
       this.gPrevP[j] = P[j];
     }
+  }
+
+  /**
+   * |Z|² for a group whose members sound different timbres (or mixes), else 0 and nothing: the
+   * phasor sum assumes every member's waveform is the same, so they add as amplitudes. Members a
+   * and b sounding different spectra add with their correlation ρ_ab instead (phase-locked
+   * harmonics as amplitudes, the free-running parts of a shared table and the noise as before,
+   * anything else as powers): |Z|² = Σ_ab c_a·c_b·ρ_ab·cos(φ_a − φ_b), so h keeps the group at
+   * the level of the same voices in a chord. Members starting this block, or without coherence
+   * rows, count as matching everyone; a group none of whose voices has timbre changes is left
+   * alone. Reads gMemb/gMembC (mc members), writes gZ2[0]; returns 1
+   * when it did.
+   */
+  private timbreZ2(mc: number): number {
+    const ctx = this.ctx;
+    const memb = this.gMemb;
+    const part = this.gPart;
+    const tab = ctx.gTab;
+    // Only for groups with a voice that changes timbre: static multi-timbre unisons keep the
+    // amplitude sum, bit for bit (render goldens; docs/build-log.md, "M6-b2").
+    let moves = false;
+    for (let a = 0; a < mc && !moves; a++) moves = this.voices[memb[a]].changesTimbre;
+    if (!moves) return 0;
+    let ref: Float32Array | null = null;
+    let mixed = false;
+    let known = 0;
+    for (let a = 0; a < mc; a++) {
+      const v = memb[a];
+      if (part[v] !== 1) continue;
+      const t = this.voices[v].soleTable();
+      if (known === 0) ref = t;
+      else if (t !== ref) mixed = true;
+      if (t === null) mixed = true;
+      known++;
+    }
+    if (!mixed || known < 2) return 0;
+    // Spectra of the members, once per block each.
+    for (let a = 0; a < mc; a++) {
+      const v = memb[a];
+      if (part[v] !== 1 || this.gCohStamp[v] === this.renderFrame) continue;
+      this.gCohStamp[v] = this.renderFrame;
+      this.voices[v].publishTimbre(ctx);
+    }
+    const C = COH_STRIDE;
+    const coh = ctx.gCoh;
+    const HX = this.gHx;
+    const HY = this.gHy;
+    const membC = this.gMembC;
+    let z2 = 0;
+    for (let a = 0; a < mc; a++) {
+      const va = memb[a];
+      const ca = membC[a];
+      z2 += ca * ca;
+      const ka = part[va] === 1 && ctx.gCohOk[va] === 1;
+      for (let b = a + 1; b < mc; b++) {
+        const vb = memb[b];
+        let rho = 1;
+        if (ka && part[vb] === 1 && ctx.gCohOk[vb] === 1 && tab[va] !== tab[vb]) {
+          const oa = va * C;
+          const ob = vb * C;
+          let num = 0;
+          for (let i = 0; i <= COH_NOISE; i++) num += coh[oa + i] * coh[ob + i];
+          for (let r = 0; r < 4; r++) {
+            const ta = ctx.gRoleTab[va * 4 + r];
+            if (ta === null) continue;
+            for (let q = 0; q < 4; q++) {
+              if (ctx.gRoleTab[vb * 4 + q] !== ta) continue;
+              num +=
+                ctx.gRoleG[va * 4 + r] *
+                ctx.gRoleG[vb * 4 + q] *
+                Math.sqrt(ctx.gRoleRest[va * 4 + r] * ctx.gRoleRest[vb * 4 + q]);
+            }
+          }
+          rho = num / Math.sqrt(coh[oa + COH_REST] * coh[ob + COH_REST]);
+        }
+        z2 += 2 * ca * membC[b] * rho * (HX[va] * HX[vb] + HY[va] * HY[vb]);
+      }
+    }
+    this.gZ2[0] = z2 > 1e-30 ? z2 : 1e-30;
+    return 1;
   }
 
   private freeGhosts(): number {
@@ -1245,7 +1349,7 @@ export class Graph {
         if (
           v.enabled &&
           v.isSounding() &&
-          v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)
+          v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate, this.slots)
         )
           needed++;
       }
@@ -1264,7 +1368,7 @@ export class Graph {
         continue;
       }
       const audible = v.enabled && v.isSounding();
-      if (audible && v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate)) {
+      if (audible && v.swapNeedsCrossfade(nd, this.pieceFrame, this.sampleRate, this.slots)) {
         this.ghostOf(v, this.swapFadeFrames, true);
         v.data = nd;
         if (identityChanged) v.setIdentity(i, nd.hash, this.seed, this.voiceCount);

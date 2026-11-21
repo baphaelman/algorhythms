@@ -464,6 +464,82 @@ export function lockStressScore(n = 12, seconds = 80, seed = 17): CompiledScore 
   return makeScore(specs, seconds, seed);
 }
 
+/**
+ * Adds timbre changes (M6-b timbre moments) to every voice, in place: from 1 s, a change every
+ * ~`every` seconds (varied per voice, so locked voices change at different times) through
+ * `presets` in turn, with fades of 0.4–2.4 s that often overlap the next change. For the no-GC
+ * workload and the click tests. Deterministic from `seed`.
+ */
+export function withTimbreChanges(
+  score: CompiledScore,
+  presets: string[],
+  every = 1.5,
+  seed = 29,
+): CompiledScore {
+  const rng = new Prng(seed);
+  score.voices.forEach((v, i) => {
+    const own = v.timbre[0]?.preset ?? 'sine';
+    const recs: TimbreChange[] = [{ t: 0, preset: own, fade: 0 }];
+    let t = 1 + rng.next() * every;
+    let k = i;
+    while (t < score.duration - 1) {
+      let preset = presets[k++ % presets.length];
+      if (preset === recs[recs.length - 1].preset) preset = presets[k++ % presets.length];
+      const fade = Math.round((0.4 + rng.next() * 2) * 1000) / 1000;
+      recs.push({ t: Math.round(t * 1000) / 1000, preset, fade });
+      t += every * (0.5 + rng.next());
+    }
+    v.timbre = recs;
+  });
+  return score;
+}
+
+/**
+ * Timbre moments (M6-b): a glass chord and a glass unison pair whose voices change timbre at
+ * different times, across every synthesis path (wavetable, additive + FM + noise in `bell`, FM in
+ * `epiano`, noise in `flute`, formants in `choir`), with fades that overlap (a change arriving
+ * mid-fade) and one locked voice changing while its partner keeps glass.
+ */
+export function timbreMomentScore(): CompiledScore {
+  const glass = (changes: TimbreChange[]): TimbreChange[] => [
+    { t: 0, preset: 'glass', fade: 0 },
+    ...changes,
+  ];
+  const specs: VoiceSpec[] = [
+    {
+      start: 60,
+      moves: [{ at: 3.2, to: 62, len: 0.6 }],
+      timbre: glass([
+        { t: 1, preset: 'bell', fade: 1.5 },
+        { t: 1.8, preset: 'sine', fade: 1 },
+        { t: 4, preset: 'glass', fade: 0.6 },
+      ]),
+    },
+    {
+      start: 64,
+      timbre: glass([
+        { t: 1.2, preset: 'bell', fade: 1.5 },
+        { t: 3, preset: 'epiano', fade: 0.5 },
+      ]),
+    },
+    {
+      start: 67,
+      moves: [{ at: 2.5, to: 69, len: 0.4 }],
+      timbre: glass([{ t: 0.8, preset: 'choir', fade: 2 }]),
+    },
+    {
+      start: 55,
+      moves: [{ at: 0.3, to: 57, len: 0.8 }],
+      timbre: glass([
+        { t: 2, preset: 'flute', fade: 1 },
+        { t: 3.5, preset: 'epiano', fade: 1 },
+      ]),
+    },
+    { start: 59, moves: [{ at: 0.3, to: 57, len: 0.8 }], timbre: 'glass' },
+  ];
+  return makeScore(specs, 8, 31);
+}
+
 /** Names of the fixtures the hidden page offers. */
 export const FIXTURE_NAMES = [
   'a4-sine',
@@ -482,6 +558,7 @@ export const FIXTURE_NAMES = [
   'preset-wobble',
   'preset-bell',
   'dense-24',
+  'timbre-moments',
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
@@ -504,6 +581,8 @@ export function fixtureScore(name: FixtureName): CompiledScore {
       return stressScore();
     case 'dense-24':
       return denseScore(24, 30);
+    case 'timbre-moments':
+      return timbreMomentScore();
     default:
       return presetScore(name.slice('preset-'.length));
   }

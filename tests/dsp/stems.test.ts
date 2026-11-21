@@ -9,6 +9,7 @@ import {
   lockStressScore,
   M6_WORKLOAD_TIMBRES,
   stressScore,
+  timbreMomentScore,
   unisonChordScore,
 } from '../../src/audio/fixtures/scores';
 import type { CompiledScore, MixSettings, Timbre } from '../../src/core/types';
@@ -100,6 +101,14 @@ describe('stems exact sum', () => {
     for (const v of score.voices) v.gain = 3;
     const { worst } = stemSum(score, FIXTURE_MIX, 9, M6_WORKLOAD_TIMBRES);
     console.info(`stems residual, M6 timbres: ${dbfs(worst).toFixed(1)} dBFS`);
+    expect(dbfs(worst)).toBeLessThanOrEqual(-90);
+  }, 90_000);
+
+  it('holds through timbre moments (overlapping fades, locked voices changing apart)', () => {
+    const score = timbreMomentScore();
+    for (const v of score.voices) v.gain = 2;
+    const { worst } = stemSum(score, FIXTURE_MIX, 7);
+    console.info(`stems residual, timbre moments: ${dbfs(worst).toFixed(1)} dBFS`);
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
   }, 90_000);
 

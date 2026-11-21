@@ -68,10 +68,15 @@ export class TimbreSlot {
   /** M6 synthesis of `data` and of `prevData` (null = plain wavetable). */
   ext: TimbreExt | null = null;
   prevExt: TimbreExt | null = null;
+  /** Coherence rows of `data` and of `prevData` (WavetableSet.coherence; null = none). */
+  coh: Float64Array | null = null;
+  prevCoh: Float64Array | null = null;
   /** Render frame at which the replacement fade started. */
   fadeStart = 0;
   /** Length of the replacement fade in frames (0 = none running). */
   fadeLen = 0;
+  /** Bumped by every install (voices cache the params they copied). */
+  version = 0;
 
   detuneSpread = 0;
   accent = 0;
@@ -89,11 +94,14 @@ export class TimbreSlot {
 
   /** Installs new tables, fading from the old ones (or from silence) over `fadeFrames`. */
   install(set: WavetableSet, renderFrame: number, fadeFrames: number): void {
+    this.version++;
     this.prevData = this.data;
     this.prevSame = this.same;
     this.prevMipsPerOctave = this.mipsPerOctave;
     this.prevExt = this.ext;
     this.ext = TimbreExt.of(set);
+    this.prevCoh = this.coh;
+    this.coh = set.coherence ?? null;
     this.data = set.data;
     this.same = set.sameAsNext;
     this.mipsPerOctave = set.mipsPerOctave;
@@ -129,11 +137,13 @@ export class TimbreSlot {
       this.prevData = null;
       this.prevSame = null;
       this.prevExt = null;
+      this.prevCoh = null;
     }
   }
 
   /** Forgets everything (on graph reset). */
   clear(): void {
+    this.version++;
     this.name = '';
     this.data = null;
     this.same = null;
@@ -141,6 +151,8 @@ export class TimbreSlot {
     this.prevSame = null;
     this.ext = null;
     this.prevExt = null;
+    this.coh = null;
+    this.prevCoh = null;
     this.fadeLen = 0;
   }
 }

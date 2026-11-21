@@ -13,7 +13,13 @@ import { flatten } from '../../src/core/flat';
 import type { CompiledScore, Piece } from '../../src/core/types';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { piece } from '../unit/core/compiler-fixtures';
-import { DRY_MIX, FIXTURE_MIX, stressScore, swapPair } from '../../src/audio/fixtures/scores';
+import {
+  DRY_MIX,
+  FIXTURE_MIX,
+  stressScore,
+  swapPair,
+  withTimbreChanges,
+} from '../../src/audio/fixtures/scores';
 import { clickScore, Driver, RATE, render } from './helpers';
 
 // Slowest test 1.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
@@ -21,7 +27,18 @@ vi.setConfig({ testTimeout: 30_000 });
 
 // bell: the M6 paths (stretched partials, FM at the non-integer ratio 1.41, noise); M6-c: FM
 // (epiano), noise (flute), stretch with a short decay (marimba).
-const TIMBRES = ['sine', 'organ', 'pluck', 'bell', 'epiano', 'flute', 'marimba'] as const;
+// 'timbre changes': glass voices changing timbre every ~1.5 s through every path, with
+// overlapping fades (M6-b2), so seeks and loop wraps land mid-fade.
+const TIMBRES = [
+  'sine',
+  'organ',
+  'pluck',
+  'bell',
+  'epiano',
+  'flute',
+  'marimba',
+  'timbre changes',
+] as const;
 
 /** A driver that records the output frame at which each operation was requested. */
 class Session extends Driver {
@@ -46,7 +63,18 @@ function worstAround(x: Float32Array, events: number[]): { ratio: number; at: nu
 }
 
 describe.each(TIMBRES)('click detector, %s', (timbre) => {
-  const score = stressScore(8, 20, 1.2, 11, [timbre]);
+  const score =
+    timbre === 'timbre changes'
+      ? withTimbreChanges(stressScore(8, 20, 1.2, 11, ['glass']), [
+          'bell',
+          'epiano',
+          'flute',
+          'choir',
+          'sine',
+          'marimba',
+          'glass',
+        ])
+      : stressScore(8, 20, 1.2, 11, [timbre]);
   const reference = render(score, DRY_MIX, 20);
   const clean = Math.max(
     clickScore(reference.left, 480).ratio,
