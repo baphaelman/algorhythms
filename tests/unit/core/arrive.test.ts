@@ -29,7 +29,7 @@ const PRE_REV6: Record<string, string> = {
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
   'lanterns-over-salt-flats.algorhythms.json': 'cc74d2f001217f38',
   'seven-doors-in-fog.algorhythms.json': 'aa5e783a1a6079fa',
-  'the-cartographers-rain.algorhythms.json': '5ec74bbcaa89b4b5',
+  'the-cartographers-rain.algorhythms.json': '48d9d520e2cdd19d', // smootherstep fix: 7e-15 st
   'tidewater-hymn.algorhythms.json': 'acc6785548f591b4',
 };
 

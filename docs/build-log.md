@@ -1446,3 +1446,9 @@ CI failed `no-gc` 'lock' twice with "0 GC lines, 1 observed". **Cause (a), with 
 - Save name is an ordinary `edit` (history, autosave). An automatic Generate/Compose title (`generatedTitle` in core/generate.ts, exact match via `isGeneratedTitle`) counts as unnamed like Untitled, so an edited generated piece asks; an untouched one does not (`hasEdited`). A user title that merely resembles one ("Dorian sketch") is a name. (Touches core/generate.ts: extracted the title helper so format and check can't drift.)
 - Deviation: Generate's "Replace the current piece?" confirm is removed (PLAN: opening never warns); generate.spec updated.
 - Choices PLAN left open: title "Name this piece?", empty field or "Untitled" on Save name acts as Skip; a click on the backdrop is Skip; the startup piece never asks.
+
+## Fix: smootherstep monotone near 1 (2026-11-21)
+- The flaky "standard eases … monotone" property was smootherstep, not a 3e-6 dip: fast-check printed its *inputs* `[code 0, x, x]`. Near x = 1 the direct polynomial cancels (`x(6x − 15) + 10 → 1`) and dipped by up to 4e-15, beyond the old 1e-15 slack.
+- Fix: for x > 1/2 evaluate `1 − s(1 − x)` (point symmetry; `1 − x` is exact). Output changes ≤ 2.1e-15; no other ease changes. No-GC gate still passes.
+- The-cartographers-rain's compile moves by 7e-15 st in 2 numbers (structure unchanged), so its pinned hashes in examples.golden.json, migration-v2 and arrive tests are updated (outside the ease scope, but forced).
+- The property's slack is now 4·ε (cosine and smoothstep still round by 1 ulp of 1); with the old code it fails 8 of 10 times at 20 000 runs, with the fix 0 of 30. Regression unit test at the seed-353562081 inputs plus a dense sweep below 1.
