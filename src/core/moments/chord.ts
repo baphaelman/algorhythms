@@ -24,7 +24,7 @@ import { fillOctaves, pitchClasses, voiceNotes } from '../voicing';
 import type { ChordMoment, Pitch } from '../types';
 import { chordByVoice } from './chord-by-voice';
 import { absorbers, chooseDying } from './merge';
-import { untargeted, voiceWithBirths } from './split';
+import { occupying, untargeted, voiceWithBirths } from './split';
 import { IntentKind, type MomentEnv, type MomentPlan, unionRange } from './types';
 
 export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
@@ -98,6 +98,9 @@ function octaveRoom(
  * the free chord tone nearest it (ties: lower), inside the register if one is free there, else in
  * that room; still missing ones take the free chord tones nearest the targets, the same way. A
  * slash bass stays the lowest note. What finds no free pitch stays, and merges.
+ *
+ * `sounding` (untargeted lines) bounds the room; `occupied` (default `sounding`) are the notes
+ * already taken: under parts (revision 9) only the untargeted lines of the targeted lines' parts.
  */
 export function distinctTargets(
   m: ChordMoment,
@@ -108,18 +111,19 @@ export function distinctTargets(
   range: readonly [Pitch, Pitch],
   sounding: readonly Pitch[],
   held: readonly Pitch[],
+  occupied: readonly Pitch[] = sounding,
 ): Pitch[] {
   const slash = m.notes.kind === 'chord' && m.notes.symbol.includes('/');
   const floor = slash && q.length > 0 ? q[0] : -Infinity;
   const { inner, outer } = octaveRoom(m.register, range, sounding, held);
   let out = q.slice();
   if (q.length < k && !perVoice) {
-    out = fillOctaves(q, k, inner[0], inner[1], floor, sounding);
+    out = fillOctaves(q, k, inner[0], inner[1], floor, occupied);
     if (out.length < k && (outer[0] < inner[0] || outer[1] > inner[1])) {
       // Beyond the register: fillOctaves again on the original notes, with those already added
       // counted as sounding; keep only its additions.
       const more = fillOctaves(q, q.length + k - out.length, outer[0], outer[1], floor, [
-        ...sounding,
+        ...occupied,
         ...out,
       ]);
       out = [...out, ...more.filter((p) => !q.includes(p))].sort((a, b) => a - b);
@@ -132,7 +136,7 @@ export function distinctTargets(
   const cands = pitchesWithPcs(pc.pcs, outer[0], outer[1]).filter((p) => p > floor);
   const same = (a: Pitch, b: Pitch): boolean => Math.abs(a - b) < 1e-9;
   const free = (x: Pitch): boolean =>
-    !sounding.some((p) => same(p, x)) && !out.some((p) => same(p, x));
+    !occupied.some((p) => same(p, x)) && !out.some((p) => same(p, x));
   const nearestFree = (x: Pitch): Pitch => {
     let best = NaN;
     let bestIn = false;
@@ -152,7 +156,7 @@ export function distinctTargets(
   if (out.length <= k) {
     for (let j = 0; j < out.length; j++) {
       const x = out[j];
-      if (!sounding.some((p) => same(p, x)) && !out.slice(0, j).some((p) => same(p, x))) continue;
+      if (!occupied.some((p) => same(p, x)) && !out.slice(0, j).some((p) => same(p, x))) continue;
       if (j === 0 && slash) continue;
       const y = nearestFree(x);
       if (y === y) out[j] = y;
@@ -206,6 +210,7 @@ function voiceChord(
         unionRange(env, vs),
         untargeted(env, [...vs, ...dying]),
         p,
+        occupying(env, [...vs, ...dying]),
       );
   const free = m.assign === 'free';
   const f = voiced.perVoice ? p.map((_, i) => i) : free ? assignFree(p, q) : assignOrdered(p, q);
@@ -246,7 +251,7 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
     current: env.active.map((v) => env.dest(v)),
     voices: p,
     octaves: true,
-    sounding: untargeted(env, vs),
+    sounding: occupying(env, vs),
   });
   if (!voiced.ok) {
     env.diag('error', voiced.code, voiced.message);
@@ -265,6 +270,7 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
         unionRange(env, [...vs, ...newborns]),
         untargeted(env, vs),
         p,
+        occupying(env, vs),
       );
   return {
     ordered: !free,

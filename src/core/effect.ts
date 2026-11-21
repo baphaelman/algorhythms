@@ -25,6 +25,7 @@ import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
+import { partOf, selectorPart } from './parts';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
   CompiledScore,
@@ -286,7 +287,9 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   let synth = n;
   for (const b of lines) {
     for (let j = stackAt(score.voices[b], t); j > 1; j--) {
-      const u = free.length > 0 ? free.shift()! : synth++;
+      // A phantom is a dormant voice of the line's part (revision 9; compiler/lines.ts).
+      const k = free.findIndex((v) => partOf(piece.voices[v]) === partOf(piece.voices[b]));
+      const u = k >= 0 ? free.splice(k, 1)[0] : synth++;
       extra.push({ b, u });
     }
   }
@@ -314,8 +317,11 @@ function resolveTarget(
   sel: VoiceSelector | undefined,
   st: StateAt,
   indexOf: (id: string) => number,
+  partAt: (v: number) => string,
 ): number[] {
   const active = st.active;
+  const part = selectorPart(sel);
+  if (part !== null) return active.filter((v) => partAt(v) === part);
   if (sel === undefined || sel === 'all') return active.slice();
   if (typeof sel === 'object' && 'voices' in sel && Array.isArray(sel.voices)) {
     const want = new Set(sel.voices.map(indexOf));
@@ -339,16 +345,22 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
   const ids = score.voices.map((v) => v.id);
   for (let u = ids.length; u < st.dest.length; u++) ids.push(`${ids[st.base[u]]}~${u}`);
   const indexOf = (id: string): number => ids.indexOf(id);
+  const partAt = (v: number): string => partOf(piece.voices[st.base[v]]);
   const targeted =
     m.type === 'pin'
       ? st.active.filter((v) => ids[v] === m.voice)
-      : resolveTarget(m.target, st, indexOf);
+      : resolveTarget(m.target, st, indexOf, partAt);
+  // A `{ part }` target sees that part only (as the compiler's env, revision 9).
+  const scope = selectorPart(m.target);
+  const active = scope === null ? st.active : st.active.filter((v) => partAt(v) === scope);
+  const dormant =
+    scope === null ? st.dormant : st.dormant.filter((v) => partOf(piece.voices[v]) === scope);
   const ctx = (births = 0, deaths = 0): EffectContext => ({
     targeted: targeted.map((v) => st.dest[v]),
-    active: st.active.map((v) => st.dest[v]),
+    active: active.map((v) => st.dest[v]),
     births,
     deaths,
-    dormant: st.dormant.length,
+    dormant: dormant.length,
   });
   switch (m.type) {
     case 'key':
@@ -377,14 +389,15 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     seed,
     glide: mergeGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), m.glide),
     targeted,
-    active: st.active,
+    active,
     dest: (v) => st.dest[v],
     now: (v) =>
       st.dest[v] === st.dest[v] ? (pitchAt(score.voices[st.base[v]], st.t) ?? NaN) : NaN,
     range: (v) => ranges[v] ?? [0, 127],
     id: (v) => ids[v],
+    part: partAt,
     sounding: (v) => st.dest[v] === st.dest[v],
-    dormant: () => st.dormant.slice(),
+    dormant: () => dormant.slice(),
     indexOf,
     diag: (level, code, message) => {
       if ((level === 'error' || code === 'note-not-sounding') && error === null) error = message;

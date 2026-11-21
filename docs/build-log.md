@@ -1385,3 +1385,30 @@ CI (2 vCPU) missed the 50 ms gate on inspector clicks (`clickChord` medians 54�
 ## Fix: TextField keeps a stale draft over undo (2026-11-21)
 
 `TextField` (chord symbol, label, custom intervals) now uses `draftReduce` like NumberField/WeightBox: typing makes a draft, a changed `value` drops it (render-phase `seen` check), blur/Enter commit only a draft. VoicesDrawer's NumberField already dropped drafts on value change; no other text input had the pattern. Tests: number-draft unit case, chord-symbol case in `number-field-undo.spec.ts`.
+## R9-1: parts (core, 2026-11-21)
+PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schema v2 with no version bump (M4.5-27: the 1 → 2 migration needs nothing for an optional field). `core/parts.ts` (`partOf`: a missing or non-string part is the default group `''`; `selectorPart`); `VoiceRun.part`; `MomentEnv.part(v)` (the part of a logical voice's line).
+
+**Merges stay within a part** (every 29a join path):
+- coincidence joins (`onJoin`) only group lines of one part; establishing voices stack only within a part;
+- explicit merge and chord `count` deaths: `absorbers` takes the nearest order neighbour of the dying line's part; with none, it fades where it is (as a merge with no survivors);
+- newborns: `Compiler.partBirths` gives each birth a free voice of its parent line's part; with none it is dropped (`pool-exhausted`, warn). Phantoms (`expand`) and fork carriers (`collapse`) are voices of the line's part; `collapse`'s held notes are keyed per part, so a newborn bound for another part's note is born and does not join it;
+- free octaves: `distinctTargets` takes a separate `occupied` list: the untargeted lines of the targeted lines' parts (`split.ts occupying`, also the `sounding` of split/count-birth voicings). The room beyond the register (`octaveRoom`) is still bounded by every untargeted line, so free octaves don't step past another part's line.
+
+**Decisions (PLAN is silent):**
+- Moments spanning parts (`all`, `rank`, `voices`) are voiced across all their lines as before (one chord over all, its targets still distinct among themselves); only the merge rules above are per part.
+- A `{ part }` moment sees only its part: `env.active` and `env.dormant` are the part's, so `count` on split, merge and chord counts the part's lines, establishing from silence uses the part's voices, and no-effect reasons and the palette (`effect.ts`) read the part.
+- An unknown part: `unknown-part` (warn, registered), targets nothing.
+- `crossing-untargeted` reports only lines of the moved lines' parts (parts cross freely, like a tune).
+- Incremental: a change of a voice's part forces a full compile (`sameSetup`).
+
+**Not in scope (needs the integrator):** `src/app/editor/walk-steps.ts` `targets()` must handle `{ part }` or typecheck fails (`sel.rank` on the new union member). The change, refused to this builder as outside `src/core`/`tests`:
+`if ('part' in sel) return partOf(piece.voices[v]) === sel.part;` after the `'voices'` line, importing `partOf` from `core/parts`. `docs/file-format.md` regenerated (`pnpm docs:schema`).
+
+**Goldens:** unchanged (no example has parts; without parts every path is the old one).
+**Tests:** `tests/unit/core/parts.test.ts` (pin onto another part's pitch, unison across parts, merge/count death into own part, merge with no own-part survivor, newborn part, free octaves ignore another part vs. without parts, `{ part }` target, part counts, unknown part, establish, palette, schema round trip, incremental). Generators: `pieceArb({ parts: true })` (voices in 'A', 'B' or none; `{ part }` targets incl. unknown 'C'). Properties: distinct notes per part, no death/birth across parts, joins within a part (red, with the unit tests, when `onJoin` ignores parts), incremental = full with parts.
+**Merged main** (0a473e7: M4.5-38/39). The only conflict was the build log; both sides are kept.
+**Sweeps:** `PROP_RUNS=1000` over `tests/property/core` with the budget lifted locally only. First set: 3 of 4 runs completed, and the fourth hung in a sync loop (seed unknown, since random seeds aren't printed; not reproduced). Second set, with logged seeds 485958476, 460949692, −320129613, −75233451: 3 green. The failing one (chord-count "spaced pieces" −320129613/300) fails identically on main's core, and so do two earlier crossings seeds (−883975252/819, −440599787/662). None comes from parts; all are left open.
+**Gates:** lint and `pnpm test --maxWorkers=2` (1377/1377) pass, and so does `pnpm test:perf` (5/5, load ~9). Typecheck fails only on `walk-steps.ts`, as above.
+
+**R9-1 app fix:** `walk-steps.ts` `targets()` handles `{ part }` (voices whose `partOf` equals it); test `walkAt with a { part } target` in `tests/unit/app/walk-steps.test.ts`.
+Inspector `targetMode` has no part mode yet (R9-6): a `{ part }` target falls through to the `rank` mode with no range shown. Typecheck is clean.

@@ -10,6 +10,7 @@
  * intervenes.
  */
 
+import { partOf } from '../parts';
 import { evalSegment, evalSegmentVelocity } from '../segment';
 import {
   carriedVelocity,
@@ -335,7 +336,11 @@ export class VoiceRun {
     readonly hash: number,
   ) {
     this.frontier = new Frontier(this.segs);
+    this.part = partOf(def);
   }
+
+  /** Revision 9: its part ('' = the default group); lines merge only within a part. */
+  readonly part: string;
 
   get id(): string {
     return this.def.id;

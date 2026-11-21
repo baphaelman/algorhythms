@@ -24,6 +24,7 @@ import { defaultGlide } from '../defaults';
 import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
+import { selectorPart } from '../parts';
 import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
@@ -319,6 +320,7 @@ export class Compiler {
       this.byId.set(def.id, i);
       this.voices.push(new VoiceRun(i, def, sanitizeRange(def.range), hash32(def.id)));
     }
+    for (const run of this.voices) this.parts.add(run.part);
   }
 
   private initMoments(): void {
@@ -531,7 +533,24 @@ export class Compiler {
       const hi = Math.min(active.length - 1, Math.floor(Math.max(a, b)));
       return lo <= hi ? active.slice(lo, hi + 1) : [];
     }
+    const part = selectorPart(sel);
+    if (part !== null) {
+      if (!this.parts.has(part)) {
+        if (momentId !== null)
+          this.diag('warn', 'unknown-part', `The target names no part '${part}'.`, momentId);
+        return [];
+      }
+      return active.filter((v) => this.lineOf(v, x).part === part);
+    }
     return active.slice();
+  }
+
+  /** Parts of the pool (revision 9; '' when some voice has none). */
+  private parts = new Set<string>();
+
+  /** The line a (logical) voice belongs to. */
+  private lineOf(u: number, x: Expansion | null): VoiceRun {
+    return this.voices[x ? (x.base.get(u) ?? u) : u];
   }
 
   /** Pool voices a split may birth at t: not active, their last life ended (§7.4). */
@@ -659,8 +678,11 @@ export class Compiler {
       this.effAfter = new Float64Array(n);
     }
     const before = this.destsInto(this.effBefore);
-    const activeBefore = this.sortedActive();
-    const dormant = this.dormantAt(this.moments[i].at).length;
+    // A `{ part }` target's reason reads its part (revision 9).
+    const scope = selectorPart(this.moments[i].target);
+    const inScope = (v: number): boolean => scope === null || this.voices[v].part === scope;
+    const activeBefore = this.sortedActive().filter(inScope);
+    const dormant = this.dormantAt(this.moments[i].at).filter(inScope).length;
     // The reason reads what the moment saw: lines for a moment with a count, else the voices
     // the lines stand for (revision 8; owner, 2026-11-21).
     const flat = countsLines(this.moments[i]);
@@ -814,6 +836,7 @@ export class Compiler {
       diag: (level: DiagnosticLevel, code: string, message: string) =>
         this.diag(level, code, message, m.id),
     };
+    this.partBirths(plan, x, free, m.id);
     // Per-voice overrides (§11.3, revision 6): not on a note's return.
     const ov = back ? null : overridesOf(m, this.voices.length);
     if (ov) applyOverridePitches(plan, ov, targeted);
@@ -906,6 +929,46 @@ export class Compiler {
   }
 
   /**
+   * Revision 9: a newborn is a voice of its parent's part (the line it forks from), so a split or
+   * a chord `count` across parts never moves a voice into another part. A birth on a voice of
+   * another part takes the first free voice of the parent's part; with none, it is dropped
+   * (`pool-exhausted`). Without parts every voice is in one group and nothing changes.
+   */
+  private partBirths(plan: MomentPlan, x: Expansion, free: readonly number[], id: string): void {
+    if (this.parts.size < 2) return;
+    const used = new Set<number>();
+    for (const it of plan.intents) if (it.kind === IntentKind.Birth) used.add(it.voice);
+    const drop = new Set<Intent>();
+    for (const it of plan.intents) {
+      if (it.kind !== IntentKind.Birth || (it.parent ?? -1) < 0) continue;
+      const want = this.lineOf(it.parent!, x).part;
+      if (it.voice < x.pool && this.voices[it.voice].part === want) continue;
+      const u = free.find((v) => !used.has(v) && this.voices[v].part === want);
+      if (u === undefined) {
+        drop.add(it);
+        continue;
+      }
+      used.add(u);
+      it.voice = u;
+    }
+    if (drop.size === 0) return;
+    const kept = plan.intents.filter((it) => !drop.has(it));
+    if (plan.notes) {
+      const at = plan.notes.map((n) => kept.indexOf(plan.intents[n.intent]));
+      plan.notes = plan.notes
+        .map((n, j) => ({ intent: at[j], from: n.from }))
+        .filter((n) => n.intent >= 0);
+    }
+    plan.intents = kept;
+    this.diag(
+      'warn',
+      'pool-exhausted',
+      `${drop.size} note(s) found no free voice in their line's part; they were dropped.`,
+      id,
+    );
+  }
+
+  /**
    * A point moment when nothing is sounding (M4.5-27). An establishing one (a chord with notes, a
    * unison) brings its voices in on their notes at its time, with no glide and no fade-in, each
    * holding its note as the moment's segment; voices sent to one pitch stack into one line
@@ -943,7 +1006,10 @@ export class Compiler {
       if (f.folded || f.clampedToRange) folded++;
       it.to = f.p;
       // Voices on one pitch are one line (revision 8): the first one in carries the others.
-      const same = lines.find((r) => Math.abs(r.frontier.heading - f.p) <= SAME_PITCH);
+      // Only within a part (revision 9).
+      const same = lines.find(
+        (r) => r.part === run.part && Math.abs(r.frontier.heading - f.p) <= SAME_PITCH,
+      );
       if (same) {
         same.setCount(T, same.count + 1);
         same.weight++;
@@ -1110,6 +1176,11 @@ export class Compiler {
     const m = this.moments[i];
     const P = x.pool;
     const line = (u: number): VoiceRun => this.voices[x.base.get(u) ?? u];
+    // Revision 9: a moment targeting a part sees that part only (its lines, its dormant voices),
+    // so its counts count the part's lines.
+    const scope = selectorPart(m.target);
+    const active = scope === null ? x.active : x.active.filter((u) => line(u).part === scope);
+    const dormant = scope === null ? free : free.filter((u) => this.voices[u].part === scope);
     return {
       t,
       momentId: m.id,
@@ -1117,13 +1188,14 @@ export class Compiler {
       seed,
       glide: this.glides[i],
       targeted,
-      active: x.active,
+      active,
       dest,
       now: (u) => line(u).frontier.stateAt(t)?.p ?? NaN,
       range: (u) => (u < P ? this.voices[u] : line(u)).range,
       id: (u) => (u < P ? this.voices[u].id : x.synthId[u - P]),
+      part: (u) => line(u).part,
       sounding: (u) => line(u).sounding,
-      dormant: () => free.slice(),
+      dormant: () => dormant.slice(),
       indexOf: (id) => this.byId.get(id) ?? -1,
       diag: (level, code, message) => this.diag(level, code, message, m.id),
       rand: (u, step, purpose) =>
@@ -1232,7 +1304,8 @@ export class Compiler {
    * destination: a later moment already sends both there). The line that was there first
    * survives (the same time: the lower pool index); the other drops its pending moves and fades
    * out over HANDOVER, following it, while the survivor takes its count, weight and members.
-   * Lines that only pass through each other's pitch on the way to different notes stay apart.
+   * Lines that only pass through each other's pitch on the way to different notes stay apart, and
+   * lines of different parts never join (revision 9).
    */
   private onJoin(j: JoinRec): void {
     const a = this.voices[j.voice];
@@ -1242,7 +1315,7 @@ export class Compiler {
     const da = a.dest(() => NaN);
     const group: VoiceRun[] = [a];
     for (const run of this.voices) {
-      if (run === a || !this.holding(run, t)) continue;
+      if (run === a || run.part !== a.part || !this.holding(run, t)) continue;
       if (Math.abs(run.frontier.heading - p) > SAME_PITCH) continue;
       if (Math.abs(run.dest(() => NaN) - da) <= SAME_PITCH) group.push(run);
     }

@@ -173,6 +173,11 @@ export interface VoiceDef {
   /** When any voice is soloed, only soloed voices are heard. */
   solo?: boolean;
   /**
+   * Revision 9: a named group ("Melody", "Chords"). Distinct notes holds within a part: lines in
+   * different parts never merge. Absent (or ''): the default group.
+   */
+  part?: string;
+  /**
    * Per-voice FX send levels (linear 0..1) overriding `mix.sends`. A missing key falls back to
    * the mix default. Extension of §5 for the send-based FX in §8.6.
    */
@@ -186,7 +191,9 @@ export type VoiceSelector =
   /** These voices, if active. */
   | { voices: VoiceId[] }
   /** By pitch order at that time, inclusive; 0 = lowest. Ties break by pool index. */
-  | { rank: [number, number] };
+  | { rank: [number, number] }
+  /** Revision 9: the active voices of that part (`VoiceDef.part`). */
+  | { part: string };
 
 /** A set of notes a moment moves voices to (§5, §7.3). */
 export type NoteSet =
