@@ -1662,3 +1662,25 @@ PLAN §6.2 `pulse`, §12 CC11. Hits were silent after R9-3a.
 - **Needs the integrator (app):** the export dialog's CC11 label still says "life and level"; now also pulse and crossfade weight.
 - **Demo** (`tests/unit/core/pulse-fixtures.ts pulseDemoPiece`, 96 bpm, glass pad gated in eighths, pluck up-down sixteenths over gliding chords, organ bass on 1 and 3): `/private/tmp/claude-501/r9-3b/pulse-demo.wav` (27.8 s, peak −1.8 dBFS, no limiting), `pulse-chord-glass.wav` (the click test's piece).
 - **Gates:** lint, typecheck, `pnpm test --maxWorkers=2` 1631/1631, `test:perf` 5/5 at load ~2 (RTF 19.4× with pulses, no-GC 0 scavenges both runs, compile median 26 ms), e2e:quick `export.spec` 9/9 (chromium-dev).
+
+## Composition rewrite with rev 9 (examples, 2026-11-21)
+docs/composing.md §1. No src change.
+- **Generators:** `scripts/compositions/` — `song.ts` (beat grid, chords with `land`, tunes from `pitch:beats` strings, pulses), one file per song, `build.mjs` writes and prettier-formats `examples/compositions/` (now pretty-printed; dropped from `.prettierignore`). `compare.mjs <old-dir> <out-dir> [song|all] [variant]` renders before/after and prints the numbers below.
+- **Mapping as briefed:** parts Melody/Chords/Bass/Sparkle; one tune per phrase (melody 0.04 s early, bass 0.12/0.1/0.05 s, as the old pins); chords keep their pitches and land on the downbeat; gains, mix, ranges, seeds kept; the walks and Kite's End chord keep their old ids (same steps, same jitter).
+- **Deviations:**
+  - Lead-ins (0.5/0.4/0.3 s) removed: the bar grid has no offset, so Snap to beats needs bar 1 at 0. Everything is that much earlier.
+  - Night Ferry's arpeggio is five `together` pulses, one per voice, with rests: the old order 0 2 3 4 3 1 per 6-step bar exactly (`updown` cycles 8 steps).
+  - Decays fitted to the old level gates by render (pad dry envelope, per-step peaks and troughs): Harbour 0.86, Kite 1.2, Ferry 1.1 s. The briefed ≈ 0.3 s for Ferry is 4 dB quiet in every section. `strike: false` (the old gates had no strikes).
+  - Accents are capped at 1, so the old scales (1.4/1.65, 1.1/1.3, Ferry 0.7–1.15) are Chords level moments. A pulse ends at gain 1, so where the old gate's last value carried on (Harbour coda, Kite outro, Ferry end) a level step sets it.
+  - Kept quirks of the Python that shaped what the owner heard: Kite's G/B bass is G (GB and G_ are one tuple in kite.py); breathes return to the level current when written; Ferry's bar 63–65 arpeggio fade never applied.
+  - Moment ids `hs0001`, `nf0001`, `kd0001`… in time order (6 base62 chars): random ids cost ~500 share-link chars.
+  - Tune glides are one length per tune, so leaps no longer get ×1.6 portamento.
+- **Size:** moments 483/1435/349 → 92/106/64 (Harbour/Ferry/Kite). Share links (site URL, JSON as stored) 3146/3364/2642 chars; with M5-style default stripping (estimate in `compare.ts`) 2838/3051/2338. **The ≤ 2,000 target is not met**: the shell alone (meta, mix, voices) is ~900 chars and the notes, voicings and times are the rest; dropping breathes, merging tunes and moving the chord glide into `defaults` still leaves ~2,100–2,500. Needs an M5 decision (more compact ids/encoding, or a higher limit for the compositions).
+- **Comparison (new vs old, old shifted by its lead-in):**
+  - Pitch every 50 ms, |Δ| > 0.5 st: melody 0.6/0.7/0.3 %, longest run ≤ 0.15 s (inside glides). Bass 2.5/0.4/8.8 %, longest ≤ 0.15 s except Harbour's coda leap (0.55 s: 0.4 s glide vs 0.64 s). Chords land 0.65/0.22/0.55 s earlier by design; against old moved that much: 2.7/0.6/1.4 %, the rest Harbour's coda (1.4 s glide now ends on the beat) and Kite's End chord. Sparkle walks identical (Kite's diverges after its fade to 0, at the walk's last tick).
+  - Loudness > 150 Hz: Δ +0.15/+0.01/−0.01 dB. 4 s windows: 2/1/0 off by > 1 dB (Harbour +1.4/−1.1 at 36–44 s: every part alone is within 0.3 dB there, so it is phase between parts; Ferry +1.1 in 0–4 s: arpeggio voices wait for their first hit at 0.08, not 0.05).
+  - Pulse sections, pad dry: level Δ ≤ 0.23 dB (Ferry intro +1.2, as above); per-step peaks Δ −0.3…+0.2 ± 0.5–1.0 dB, accent correlation 0.88–0.95 (Ferry intro 0.80); troughs ±1.3–2.2 dB (chord arrivals moved by land).
+  - Clicks (`clickScore` worst, full mix): 0.46→0.53, 0.62→0.62, 0.46→0.47; all < 1, i.e. high-frequency content, no clicks.
+- **Pluck:** `nightFerry({ arp: 'pluck' })` (strikes on): pad troughs −8 dB, peaks +1 dB, song −0.15 dB. Rendered for the owner; glass is committed.
+- **Tests:** `compositions.test.ts` adds parts, moment limits and a tempo. `migration-v2.test.ts`: the compositions on disk are no longer pinned to their v1 sound; the v1 Kite Day fixture still migrates and hashes `c89cab9187e3dffb`. `lane-dense.spec.ts` needs a dense piece: it opens the v1 Kite Day fixture as a share link (reloads reopen the link). No golden hashed the compositions otherwise.
+- **Renders** (owner, AAC): `renders/rev9-compositions/{harbour-song,night-ferry,kite-day}-{before,after}.m4a`, `night-ferry-after-arp-pluck.m4a`.

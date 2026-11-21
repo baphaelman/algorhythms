@@ -2,6 +2,7 @@
  * The bundled compositions (examples/compositions, CC0): songs with a melody line over chords.
  * Under "distinct notes" (PLAN rev 8) a melody that lands on another line's pitch merges into it
  * and the rest of the tune is lost, so each song must keep every line alive until its ending.
+ * Rev 9 (docs/composing.md §1): written with parts, tunes and pulses, in few moments.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +23,17 @@ describe('compositions', () => {
   });
 
   for (const f of files) {
+    it(`${f}: every voice has a part; few moments; a tempo`, () => {
+      const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
+      if (!r.ok) throw new Error(r.errors.join('; '));
+      expect(
+        r.piece.voices.every((v) => (v.part ?? '') !== ''),
+        f,
+      ).toBe(true);
+      expect(r.piece.moments.length, f).toBeLessThan(f.startsWith('night-ferry') ? 150 : 100);
+      expect(r.piece.view.gridBpm, f).toBeGreaterThan(0);
+    });
+
     it(`${f}: compiles without warnings and no line dies before the ending`, () => {
       const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
       if (!r.ok) throw new Error(r.errors.join('; '));
