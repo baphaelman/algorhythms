@@ -8,6 +8,7 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **A click on the score never pans the view.** A click on empty score seeks the playhead and holds the view still, as the ruler already did, so a double-click lands where you clicked. Before this, Smooth follow could pan 3 s between the two clicks.
 - **Silent lines (R9-5).**
   - Each line's opacity follows its level and its fade-in and fade-out.
   - In the editor, a selected or hovered line below 25 % opacity shows as a faint dotted trace.
