@@ -1,7 +1,7 @@
 {
   "clockwork-heron.algorhythms.json": {
-    "hash": "90e6dfea68bb8112",
-    "duration": 149.51922053318904,
+    "hash": "65de28db0502a794",
+    "duration": 149.41922053318905,
     "voices": [
       {
         "id": "v1",
@@ -12,55 +12,55 @@
       {
         "id": "v2",
         "lives": 2,
-        "segments": 65,
+        "segments": 63,
         "lastPitch": 47
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 69,
+        "segments": 67,
         "lastPitch": 47
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 51,
+        "segments": 49,
         "lastPitch": 47
       },
       {
         "id": "v5",
         "lives": 2,
-        "segments": 45,
+        "segments": 43,
         "lastPitch": 57
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 37,
+        "segments": 35,
         "lastPitch": 59
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 41,
+        "segments": 39,
         "lastPitch": 59
       },
       {
         "id": "v8",
         "lives": 2,
-        "segments": 33,
+        "segments": 31,
         "lastPitch": 57
       },
       {
         "id": "v9",
         "lives": 2,
-        "segments": 49,
+        "segments": 47,
         "lastPitch": 68
       },
       {
         "id": "v10",
         "lives": 3,
-        "segments": 30,
+        "segments": 27,
         "lastPitch": 68
       }
     ],
@@ -68,8 +68,8 @@
     "spans": 21
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "d98371e337f1f223",
-    "duration": 186.07914339979678,
+    "hash": "4824eb8416420f7e",
+    "duration": 185.97914339979678,
     "voices": [
       {
         "id": "v1",
@@ -80,67 +80,67 @@
       {
         "id": "v2",
         "lives": 1,
-        "segments": 31,
+        "segments": 30,
         "lastPitch": 57
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 59
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 32,
+        "segments": 30,
         "lastPitch": 59
       },
       {
         "id": "v5",
         "lives": 1,
-        "segments": 22,
+        "segments": 21,
         "lastPitch": 57
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 30,
+        "segments": 28,
         "lastPitch": 47
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 18,
+        "segments": 16,
         "lastPitch": 47
       },
       {
         "id": "v8",
         "lives": 2,
-        "segments": 20,
+        "segments": 18,
         "lastPitch": 69
       },
       {
         "id": "v9",
         "lives": 2,
-        "segments": 24,
+        "segments": 22,
         "lastPitch": 47
       },
       {
         "id": "v10",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 69
       },
       {
         "id": "v11",
         "lives": 3,
-        "segments": 24,
+        "segments": 21,
         "lastPitch": 59
       },
       {
         "id": "v12",
         "lives": 1,
-        "segments": 18,
+        "segments": 17,
         "lastPitch": 69
       }
     ],
@@ -148,8 +148,8 @@
     "spans": 25
   },
   "seven-doors-in-fog.algorhythms.json": {
-    "hash": "288ca1263cbe1725",
-    "duration": 152.54460038437662,
+    "hash": "e934e99890f421dc",
+    "duration": 152.44460038437663,
     "voices": [
       {
         "id": "v1",
@@ -160,67 +160,67 @@
       {
         "id": "v2",
         "lives": 2,
-        "segments": 32,
+        "segments": 30,
         "lastPitch": 57
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 18,
+        "segments": 16,
         "lastPitch": 47
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 47
       },
       {
         "id": "v5",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 47
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 20,
+        "segments": 18,
         "lastPitch": 59
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 20,
+        "segments": 18,
         "lastPitch": 59
       },
       {
         "id": "v8",
         "lives": 2,
-        "segments": 14,
+        "segments": 12,
         "lastPitch": 59
       },
       {
         "id": "v9",
         "lives": 2,
-        "segments": 20,
+        "segments": 18,
         "lastPitch": 57
       },
       {
         "id": "v10",
         "lives": 2,
-        "segments": 22,
+        "segments": 20,
         "lastPitch": 67
       },
       {
         "id": "v11",
         "lives": 2,
-        "segments": 30,
+        "segments": 28,
         "lastPitch": 67
       },
       {
         "id": "v12",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 67
       }
     ],
@@ -228,103 +228,103 @@
     "spans": 25
   },
   "the-cartographers-rain.algorhythms.json": {
-    "hash": "5ce0fa9c2f5e5eae",
-    "duration": 176.47596976884665,
+    "hash": "8369f39aaf7b88d2",
+    "duration": 176.37596976884666,
     "voices": [
       {
         "id": "v1",
         "lives": 2,
-        "segments": 21,
+        "segments": 20,
         "lastPitch": 57
       },
       {
         "id": "v2",
         "lives": 3,
-        "segments": 30,
+        "segments": 27,
         "lastPitch": 57
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 14,
+        "segments": 12,
         "lastPitch": 59
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 22,
+        "segments": 20,
         "lastPitch": 59
       },
       {
         "id": "v5",
         "lives": 1,
-        "segments": 41,
+        "segments": 40,
         "lastPitch": 57
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 20,
+        "segments": 18,
         "lastPitch": 59
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 14,
+        "segments": 12,
         "lastPitch": 59
       },
       {
         "id": "v8",
         "lives": 1,
-        "segments": 23,
+        "segments": 22,
         "lastPitch": 59
       },
       {
         "id": "v9",
         "lives": 2,
-        "segments": 14,
+        "segments": 12,
         "lastPitch": 59
       },
       {
         "id": "v10",
         "lives": 1,
-        "segments": 25,
+        "segments": 24,
         "lastPitch": 59
       },
       {
         "id": "v11",
         "lives": 1,
-        "segments": 21,
+        "segments": 20,
         "lastPitch": 59
       },
       {
         "id": "v12",
         "lives": 1,
-        "segments": 18,
+        "segments": 17,
         "lastPitch": 59
       },
       {
         "id": "v13",
         "lives": 2,
-        "segments": 16,
+        "segments": 14,
         "lastPitch": 59
       },
       {
         "id": "v14",
         "lives": 2,
-        "segments": 12,
+        "segments": 10,
         "lastPitch": 79
       },
       {
         "id": "v15",
         "lives": 1,
-        "segments": 8,
+        "segments": 7,
         "lastPitch": 77
       },
       {
         "id": "v16",
         "lives": 1,
-        "segments": 13,
+        "segments": 12,
         "lastPitch": 59
       }
     ],
@@ -332,79 +332,79 @@
     "spans": 21
   },
   "tidewater-hymn.algorhythms.json": {
-    "hash": "cb3e3d32f1f1098a",
+    "hash": "d633b141f66b7b0b",
     "duration": 160.7894776722789,
     "voices": [
       {
         "id": "v1",
         "lives": 2,
-        "segments": 47,
+        "segments": 45,
         "lastPitch": 57
       },
       {
         "id": "v2",
         "lives": 2,
-        "segments": 34,
+        "segments": 32,
         "lastPitch": 48
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 48
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 22,
+        "segments": 20,
         "lastPitch": 48
       },
       {
         "id": "v5",
         "lives": 2,
-        "segments": 26,
+        "segments": 24,
         "lastPitch": 60
       },
       {
         "id": "v6",
         "lives": 2,
-        "segments": 24,
+        "segments": 22,
         "lastPitch": 60
       },
       {
         "id": "v7",
         "lives": 2,
-        "segments": 22,
+        "segments": 20,
         "lastPitch": 60
       },
       {
         "id": "v8",
         "lives": 2,
-        "segments": 16,
+        "segments": 15,
         "lastPitch": 57
       },
       {
         "id": "v9",
         "lives": 2,
-        "segments": 18,
+        "segments": 16,
         "lastPitch": 69
       },
       {
         "id": "v10",
         "lives": 1,
-        "segments": 18,
+        "segments": 17,
         "lastPitch": 57
       },
       {
         "id": "v11",
         "lives": 2,
-        "segments": 24,
+        "segments": 22,
         "lastPitch": 69
       },
       {
         "id": "v12",
         "lives": 2,
-        "segments": 30,
+        "segments": 28,
         "lastPitch": 69
       }
     ],

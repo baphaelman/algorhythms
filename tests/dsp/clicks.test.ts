@@ -227,8 +227,8 @@ describe.each(['sine', 'glass'])('click detector, moment ends, %s', (timbre) => 
  * bloom") must stay under ARRIVAL_STEP. Pluck's crisp strike is the positive control. Level ramps
  * are linear by design (a corner at each end, ~7e-3 for a 0.4 s ramp to half), so their ends are
  * left to the sample test.
- * Known, mid-glide and not at an end: when gliding lines meet in a merge, the unison group gain h
- * (2 ms smoothing) steps by up to 30 % in one block (0.22 here; build log, "Moment-end pop").
+ * Fixed (build log, "Merges and splits crossfade"): when gliding lines met in a merge, the unison
+ * group gain h stepped by up to 30 % in one block; capture now fades in (tests/dsp/crossfade.test.ts).
  */
 const ENVELOPE_CORNER = 0.01;
 const ARRIVAL_STEP = 0.03;

@@ -6,7 +6,8 @@
  * - `birth`: a voice is born off every other sounding voice's pitch (it appears from nowhere),
  *   except a voice an establishing moment brings in from silence (schema v2);
  * - `death`: a dying voice's glide ends off every other sounding voice's pitch (it stops in
- *   mid-air), or the voice it merged into leaves while it is still fading.
+ *   mid-air), or the voice it merged into leaves while it is still fading (a crossfaded merge
+ *   ends on the merged line's pitch, its fade already done).
  */
 import { pitchAt } from '../../../src/core/query';
 import type { CompiledScore, CompiledVoice } from '../../../src/core/types';
@@ -68,16 +69,19 @@ export function lineArtifacts(
       }
       // Deaths (not the closing fade of the piece).
       if (life.died === undefined || life.died >= end - 1e-9) continue;
-      const tg = life.died - (life.fadeOut ?? 0);
+      // A merge's crossfade (2026-11-21) ends where the line meets the merged one: judge it
+      // there, just before its close; it fades on the way, never stranded after.
+      const tg = life.crossOut ? life.died - 1e-7 : life.died - (life.fadeOut ?? 0);
       if (tg < from || tg > to) continue;
       const p = pitchAt(v, tg);
       if (p === null) continue;
       const ps = others(score, v, tg);
       if (ps.length === 0) continue; // nothing left to merge into
-      if (!near(ps, p)) {
+      if (!(life.crossOut ? ps.some((q) => Math.abs(q - p) < 1e-4) : near(ps, p))) {
         out.push({ kind: 'death', voice: v.id, t: tg, detail: `glide ends on ${p} off [${ps}]` });
         continue;
       }
+      if (life.crossOut) continue;
       // While it fades, something keeps sounding its pitch.
       for (let t = tg; t < life.died; t += 0.02) {
         const q = pitchAt(v, t);

@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { compile } from '../../../src/core/compiler/compile';
+import { crossfade } from '../../../src/core/ease';
 import type {
   CompiledScore,
   CompiledVoice,
@@ -25,6 +27,7 @@ import {
   strandsOf,
   widthUnits,
 } from '../../../src/render/strands';
+import { crossfadePiece } from '../core/crossfade-fixtures';
 import { pathCtx } from './path-ctx';
 
 const hold = (t0: number, t1: number, p: number): Segment => ({
@@ -66,18 +69,19 @@ function voice(
 }
 
 /**
- * v1 (from 64) and v2 (from 55) glide 2–5 s onto v0's 60 and merge into it (weight 3, the
- * compiler's 0.1 s hand-over); at 12 s two forks are born on 60 and glide back out by 15 s.
+ * v1 (from 64) and v2 (from 55) glide 2–5 s onto v0's 60 and merge into it (weight 3), crossfading
+ * over the last third of the glide as the compiler writes it; at 12 s two forks are born on 60 and
+ * glide back out by 15 s, crossfading over the first third.
  */
 function mergeSplit(): CompiledScore {
   const strand = (i: number, p: number): CompiledVoice =>
     voice(
       i,
       [
-        { born: 0, fadeIn: 0, died: 5.1, fadeOut: 0.1 },
-        { born: 12, fadeIn: 0.1 },
+        { born: 0, fadeIn: 0, died: 5, fadeOut: 1, crossOut: true },
+        { born: 12, fadeIn: 1, crossIn: true },
       ],
-      [hold(0, 2, p), glide(2, 5, p, 60), hold(5, 5.1, 60), glide(12, 15, 60, p), hold(15, 20, p)],
+      [hold(0, 2, p), glide(2, 5, p, 60), glide(12, 15, 60, p), hold(15, 20, p)],
     );
   return {
     duration: 20,
@@ -87,8 +91,8 @@ function mergeSplit(): CompiledScore {
         [{ born: 0, fadeIn: 0 }],
         [hold(0, 20, 60)],
         [
-          { t: 5, w: 3, over: 0.1 },
-          { t: 12, w: 1, over: 0.1 },
+          { t: 5, w: 3, over: 1, lead: 1, cross: true },
+          { t: 12, w: 1, over: 1, cross: true },
         ],
       ),
       strand(1, 64),
@@ -220,6 +224,61 @@ describe('strand geometry', () => {
       expect(w).toBeGreaterThanOrEqual(last);
       expect(w - last).toBeLessThan(0.05);
       last = w;
+    }
+  });
+});
+
+/**
+ * Merges and splits crossfade (owner 2026-11-21): drawn width follows the function of time the
+ * engine fades the sound by (tests/dsp/crossfade.test.ts: a merging line's power share is
+ * 1 − crossfade(u), a newborn's crossfade(u)), over the window the compiler wrote.
+ */
+describe('drawn width follows the crossfade', () => {
+  const s = compile(crossfadePiece());
+  const f = strandFrame(s, PPS);
+  const lives = s.voices.flatMap((v) => v.lives.map((l) => ({ v, l })));
+
+  it('finds a bundle for every crossfade the compiler wrote', () => {
+    const b = strandsOf(s).bundles;
+    const merges = lives.filter(({ l }) => l.crossOut).length;
+    const splits = lives.filter(({ l }) => l.crossIn).length;
+    expect(merges).toBe(3);
+    expect(splits).toBe(3);
+    let members = 0;
+    for (const x of b) members += x.members.length - 1; // all but the anchor
+    expect(members).toBe(merges + splits);
+  });
+
+  it('a merging strand bundles by crossfade(u) over its fade, to the meeting', () => {
+    let checked = 0;
+    for (const { v, l } of lives) {
+      if (!l.crossOut) continue;
+      const L = l.fadeOut!;
+      const t0 = l.died! - L;
+      for (let k = 1; k < 100; k++) {
+        const t = t0 + (L * k) / 100;
+        const x = crossfade(k / 100);
+        expect(strandMix(f, v, t)).toBeCloseTo(x, 12);
+        // Width: from its own √w to its share of the rope, by the same x (plus the lap, by x²).
+        const slot = strandSlot(f, v, t)!;
+        const nat = widthUnits(naturalWeight(f, v, t));
+        const g = { ...geometryAt(f, v, t) };
+        expect(g.u).toBeCloseTo(nat + (slot.share - nat) * x + slot.lap * x * x, 12);
+        checked++;
+      }
+      expect(strandMix(f, v, t0 - 0.01)).toBe(0);
+    }
+    expect(checked).toBe(3 * 99);
+  });
+
+  it('a split strand peels off by 1 − crossfade(u) over its fade-in', () => {
+    for (const { v, l } of lives) {
+      if (!l.crossIn) continue;
+      for (let k = 1; k < 100; k++) {
+        const t = l.born + (l.fadeIn * k) / 100;
+        expect(strandMix(f, v, t)).toBeCloseTo(1 - crossfade(k / 100), 12);
+      }
+      expect(strandMix(f, v, l.born + l.fadeIn + 0.01)).toBe(0);
     }
   });
 });

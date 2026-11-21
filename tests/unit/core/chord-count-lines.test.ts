@@ -99,8 +99,9 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
     expect(w).toBeCloseTo(6, 9);
   });
 
-  it('a survivor that moves on while a voice fades into it carries that voice along', () => {
-    // The next chord comes during the dying voices' fade (fade = glide length).
+  it('a dying voice crossfades into its survivor before the survivor moves on', () => {
+    // The next chord comes within the old fade (fade = glide length, after the meeting); with
+    // the crossfade (2026-11-21) the dying voices are gone at the meeting, so nothing is carried.
     const s = compile(
       piece({
         start: [48, 55, 60, 64, 67],
@@ -115,11 +116,11 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
     expect(show(lineArtifacts(s))).toEqual([]);
     for (const v of [s.voices[0], s.voices[4]]) {
       const life = v.lives[0];
-      expect(life.died).toBeGreaterThan(5.5);
-      // On a survivor's line all through the fade, including the part after the second chord.
-      for (let t = life.died! - life.fadeOut!; t < life.died!; t += 0.05) {
-        expect(nearestOther(s, v.index, t, pitchAt(v, t)!), `${v.id} @${t}`).toBeLessThan(1e-6);
-      }
+      expect(life.crossOut).toBe(true);
+      expect(life.died).toBeLessThan(5.5);
+      // It ends on a survivor's note, its fade done.
+      const t = life.died! - 1e-7;
+      expect(nearestOther(s, v.index, t, pitchAt(v, t)!), v.id).toBeLessThan(1e-6);
     }
   });
 
@@ -146,7 +147,7 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
     }
   });
 
-  it('under arrive: spread a dying voice fades only once its survivor has arrived', () => {
+  it('under arrive: spread a dying voice meets its survivor where it has arrived', () => {
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const s = compile(
         piece({
@@ -160,7 +161,8 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
       for (const v of s.voices) {
         const life = v.lives[0];
         if (!life || life.died === undefined || life.died >= s.duration) continue;
-        const tg = life.died - life.fadeOut!;
+        // A crossfade ends at the meeting (2026-11-21); a plain fade starts there.
+        const tg = life.crossOut ? life.died - 1e-7 : life.died - life.fadeOut!;
         const gap = nearestOther(s, v.index, tg, pitchAt(v, tg)!);
         expect(gap, `seed ${seed} ${v.id}`).toBeLessThan(1e-6);
       }

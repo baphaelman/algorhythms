@@ -151,6 +151,13 @@ const CAPTURE_PULL = 0.008;
 const CAPTURE_H_FULL = 10;
 const CAPTURE_H_EDGE = 20;
 const INV_CAPTURE_H_SPAN = 1 / (CAPTURE_H_EDGE - CAPTURE_H_FULL);
+/**
+ * Capture fades in (and out) over CAPTURE_RAMP seconds once a voice's warp starts (or ends),
+ * along a smoothstep: the warp starts inside the zone where a pair already beats below
+ * CAPTURE_H_EDGE, so switching capture on at once stepped h by up to 40 % in one block when the
+ * pair was out of phase (merges and splits crossfade, 2026-11-21).
+ */
+const CAPTURE_RAMP = 0.03;
 const INV_TWO_PI = 1 / (2 * Math.PI);
 
 /** Prepared voice data for a score (built in a message handler, applied at a block boundary). */
@@ -226,6 +233,9 @@ export class Graph {
   private readonly gStill = new Float64Array(DSP_MAX_VOICES);
   /** Unison warp running (ctx.gWarp) per voice. */
   private readonly gWg = new Float64Array(DSP_MAX_VOICES);
+  /** Capture gate per voice: ramps 0 → 1 over CAPTURE_RAMP while its warp runs (`gCapW`: eased). */
+  private readonly gCap = new Float64Array(DSP_MAX_VOICES);
+  private readonly gCapW = new Float64Array(DSP_MAX_VOICES);
   /** Predicted phase at the block end and its phasor, for h. */
   private readonly gPred = new Float64Array(DSP_MAX_VOICES);
   private readonly gHx = new Float64Array(DSP_MAX_VOICES);
@@ -244,6 +254,7 @@ export class Graph {
   private readonly centsToHz: number = 0;
   private readonly invBlockSeconds: number = 0;
   private readonly stillCoeff: number = 0;
+  private readonly capStep: number = 0;
 
   /** GraphEvent bits set by the last `process()`. */
   events = 0;
@@ -285,6 +296,7 @@ export class Graph {
     this.centsToHz = (sampleRate * Math.LN2) / 1200;
     this.invBlockSeconds = sampleRate / BLOCK_FRAMES;
     this.stillCoeff = 1 - Math.exp(-blockSeconds / STILL_SETTLE);
+    this.capStep = blockSeconds / CAPTURE_RAMP;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -737,6 +749,8 @@ export class Graph {
     this.gWas.fill(0);
     this.gLamS.fill(0);
     this.gHS.fill(1);
+    this.gCap.fill(0);
+    this.gCapW.fill(0);
     ctx.gOk.fill(0);
     ctx.gLam.fill(0);
     ctx.gCorr.fill(0);
@@ -800,6 +814,7 @@ export class Graph {
     const V = this.gV;
     const ST = this.gStill;
     const WG = this.gWg;
+    const CW = this.gCapW;
     const HX = this.gHx;
     const HY = this.gHy;
     const frameEnd = this.pieceFrame + BLOCK_FRAMES;
@@ -808,6 +823,9 @@ export class Graph {
       const v = this.voices[i];
       part[i] = 0;
       ctx.gSnapPh[i] = NaN;
+      const cap0 = this.gCap[i];
+      this.gCap[i] = 0;
+      this.gCapW[i] = 0;
       if (!v.enabled) continue;
       if (!v.isFresh && ctx.gOk[i] === 1) {
         part[i] = 1;
@@ -841,6 +859,11 @@ export class Graph {
         WG[i] = 0;
         v.publishPhase(ctx);
       } else continue;
+      // Capture gate (CAPTURE_RAMP): towards 1 while the warp runs, towards 0 otherwise.
+      let g = cap0 + (WG[i] > 0 ? this.capStep : -this.capStep);
+      g = g < 0 ? 0 : g > 1 ? 1 : g;
+      this.gCap[i] = g;
+      this.gCapW[i] = g * g * (3 - 2 * g);
       const vi = this.gV[i] < 0 ? -this.gV[i] : this.gV[i];
       const still = 1 / (1 + vi * INV_STILL_SPEED);
       const prev = this.gStill[i];
@@ -950,7 +973,8 @@ export class Graph {
           // Capture: while either voice of a pair runs a unison warp, the pair's phases pull
           // together from CAPTURE_EDGE cents, and it counts for h while it beats slower than
           // CAPTURE_H_EDGE Hz.
-          const cap = wj > 0 || WG[l] > 0;
+          const gc = CW[j] > CW[l] ? CW[j] : CW[l];
+          const cap = gc > 0;
           const inc = INC[j] > INC[l] ? INC[j] : INC[l];
           const hz = dist * inc * this.centsToHz;
           if (cap ? dist >= CAPTURE_EDGE && hz >= CAPTURE_H_EDGE : dist >= LOCK_EDGE) continue;
@@ -967,13 +991,13 @@ export class Graph {
             if (dist < CAPTURE_EDGE && (wj === 1 || WG[l] === 1)) {
               wc = (CAPTURE_EDGE - dist) * INV_CAPTURE_SPAN;
               if (wc > 1) wc = 1;
-              wc = wc * wc * (3 - 2 * wc) * lkk;
+              wc = wc * wc * (3 - 2 * wc) * lkk * gc;
               if (wc > lamC) lamC = wc;
             }
             if (hz < CAPTURE_H_EDGE) {
               wh = (CAPTURE_H_EDGE - hz) * INV_CAPTURE_H_SPAN;
               if (wh > 1) wh = 1;
-              wh = wh * wh * (3 - 2 * wh) * lkk;
+              wh = wh * wh * (3 - 2 * wh) * lkk * gc;
             }
           }
           const we = Math.max(w, wc);

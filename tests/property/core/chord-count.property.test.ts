@@ -247,7 +247,12 @@ describe('chord count regressions', () => {
     const { score, into, parent } = lifeEvents(p);
     checkLives(score, into, parent);
     const [v2, v3] = [score.voices[1], score.voices[2]];
-    for (let t = 11.483; t < 12.2; t += 0.01) expect(pitchAt(v2, t)).toBe(pitchAt(v3, t));
+    // With merges crossfading (2026-11-21) v2 ends where it meets v3, before the unison: while it
+    // still sounds it is on v3.
+    for (let t = 11.483; t < 12.2; t += 0.01) {
+      const p2 = pitchAt(v2, t);
+      if (p2 !== null) expect(p2).toBe(pitchAt(v3, t));
+    }
   });
 
   // Seed 412527772 (path 111): the chord at 1 forks v3 and v4 from v1 at 1.91 while v2, between

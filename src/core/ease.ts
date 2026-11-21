@@ -379,3 +379,33 @@ export function easeDerivRaw(
 export function easeDeriv(code: EaseCode, x: number, bezier: BezierParams = NO_BEZIER): number {
   return easeDerivRaw(code, x, bezier.x1, bezier.y1, bezier.x2, bezier.y2);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Merges and splits crossfade (PLAN.md §11.3, owner 2026-11-21)
+// ---------------------------------------------------------------------------------------------
+
+/** Shortest merge or split crossfade (s): the old hand-over length. */
+export const CROSSFADE_MIN = 0.1;
+/** Otherwise the last (merge) or first (split) part of the glide into or out of the meeting. */
+export const CROSSFADE_GLIDE = 1 / 3;
+
+/** Crossfade length for an approach (or departure) glide of `glide` seconds (0: none). */
+export function crossfadeLength(glide: number): number {
+  const L = glide * CROSSFADE_GLIDE;
+  return L > CROSSFADE_MIN ? L : CROSSFADE_MIN;
+}
+
+/**
+ * The one function of time behind a merge or split: X(u) for u through the crossfade, the
+ * fraction of the moving line's power that has passed over (smootherstep, clamped to [0, 1]).
+ *
+ * - Sound (dsp/voice.ts `computeLife`, `weightValue` below): across a merge, each incoming line
+ *   of weight w sounds at power w·(1 − X) (amplitude √(w·(1 − X))) while the merged line's weight
+ *   rises by w·X; a split runs the same curve the other way (the newborn at w·X, the parent
+ *   losing w·X). Total power is constant because X is point symmetric, X(1 − u) = 1 − X(u) (to a few
+ *   ulps: `easeRaw` evaluates x > ½ as 1 − s(1 − x)), so a fade-out may read X(v), v = 1 − u.
+ * - Drawing (render/strands.ts): X is how far a strand has bundled into its rope.
+ */
+export function crossfade(u: number): number {
+  return easeRaw(EaseCode.Smootherstep, u, 0, 0, 1, 1);
+}

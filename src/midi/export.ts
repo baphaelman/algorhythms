@@ -352,13 +352,28 @@ export function weightVelocity(
 // CC11: life and level gain
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * MIDI keeps the hand-over at the meeting (PLAN.md §11.3, until per-voice CC11 for crossfades,
+ * R9-3b): a merge's or split's crossfade is written as a fade of at most HANDOVER at the meeting.
+ */
+const HANDOVER = 0.1;
+
+function fadeInOf(life: Life): number {
+  return life.crossIn ? Math.min(life.fadeIn, HANDOVER) : life.fadeIn;
+}
+
+function fadeOutOf(life: Life): number {
+  const fo = life.fadeOut ?? 0;
+  return life.crossOut ? Math.min(fo, HANDOVER) : fo;
+}
+
 function lifeWeight(life: Life, t: number): number {
   const end = life.died ?? Infinity;
   if (t < life.born || t >= end) return 0;
   let w = 1;
-  const u = (t - life.born) / Math.max(life.fadeIn, MIN_LIFE_FADE);
+  const u = (t - life.born) / Math.max(fadeInOf(life), MIN_LIFE_FADE);
   if (u < 1) w = smootherstep(u);
-  const v = (end - t) / Math.max(life.fadeOut ?? 0, MIN_LIFE_FADE);
+  const v = (end - t) / Math.max(fadeOutOf(life), MIN_LIFE_FADE);
   if (v < 1) w *= smootherstep(v);
   return w;
 }
@@ -425,9 +440,9 @@ function gainEvents(voice: CompiledVoice, tps: number, peak: number): Ev[] {
   for (const life of voice.lives) {
     const end = lifeEnd(voice, life);
     const a = life.born;
-    spans.push([tk(a), tk(a + Math.max(life.fadeIn, MIN_LIFE_FADE))]);
+    spans.push([tk(a), tk(a + Math.max(fadeInOf(life), MIN_LIFE_FADE))]);
     if (life.died !== undefined) {
-      spans.push([tk(end - Math.max(life.fadeOut ?? 0, MIN_LIFE_FADE)), tk(end)]);
+      spans.push([tk(end - Math.max(fadeOutOf(life), MIN_LIFE_FADE)), tk(end)]);
     }
     for (const l of voice.level) {
       if (l.t + l.over < a || l.t > end) continue;

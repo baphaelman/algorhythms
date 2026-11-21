@@ -10,7 +10,7 @@
  *   at most `maxStep` seconds. Gaps between lives are marked with a [t, NaN] break.
  */
 
-import { evalSegment, evalSegmentMotion } from './segment';
+import { evalSegment, evalSegmentMotion, rampShape } from './segment';
 import type {
   CompiledScore,
   CompiledVoice,
@@ -218,14 +218,19 @@ export function noteAt(
 
 /**
  * A line's weight at t (revision 8 "Distinct notes"): 1 before its first weight change or with no
- * weight timeline; ramps linearly. A line of weight w stands for about w merged voices.
+ * weight timeline. Changes add up, each along its own ramp (`WeightChange`; the sound engine
+ * evaluates the same sum with segment.ts `weightRampValue`). A line of weight w stands for about
+ * w merged voices.
  */
 export function weightAt(voice: CompiledVoice, t: Seconds): number {
   let w = 1;
+  let prev = 1;
   for (const c of voice.weight ?? []) {
-    if (c.t > t) break;
-    const u = c.over > 0 ? (t - c.t) / c.over : 1;
-    w = u >= 1 ? c.w : w + (c.w - w) * u;
+    const d = c.w - prev;
+    prev = c.w;
+    const t0 = c.t - (c.lead ?? 0);
+    if (t0 > t) continue;
+    w += d * rampShape(t0, c.over, c.cross === true, t);
   }
   return w;
 }
@@ -261,6 +266,7 @@ export function linesAt(score: CompiledScore, t: Seconds): number {
     if (
       life?.died !== undefined &&
       life.died < score.duration &&
+      !life.crossOut &&
       t >= life.died - (life.fadeOut ?? 0)
     )
       continue;

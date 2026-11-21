@@ -23,6 +23,9 @@ import {
   LEVEL_STRIDE,
   LEVEL_T,
   LIFE_BORN,
+  LIFE_CROSS,
+  LIFE_CROSS_IN,
+  LIFE_CROSS_OUT,
   LIFE_DIED,
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
@@ -60,12 +63,22 @@ import {
   VOICE_SEND_REVERB,
   VOICE_SOLO,
   VOICE_STRIDE,
+  WEIGHT_CROSS,
+  WEIGHT_LEAD,
   WEIGHT_OVER,
   WEIGHT_STRIDE,
   WEIGHT_T,
   WEIGHT_W,
 } from './segment';
-import type { CompiledScore, CompiledVoice, EaseRef, Life, PulseRecord, Segment } from './types';
+import type {
+  CompiledScore,
+  CompiledVoice,
+  EaseRef,
+  Life,
+  PulseRecord,
+  Segment,
+  WeightChange,
+} from './types';
 
 export {
   LEVEL_GAIN,
@@ -73,6 +86,9 @@ export {
   LEVEL_STRIDE,
   LEVEL_T,
   LIFE_BORN,
+  LIFE_CROSS,
+  LIFE_CROSS_IN,
+  LIFE_CROSS_OUT,
   LIFE_DIED,
   LIFE_FADE_IN,
   LIFE_FADE_OUT,
@@ -110,6 +126,8 @@ export {
   VOICE_SEND_REVERB,
   VOICE_SOLO,
   VOICE_STRIDE,
+  WEIGHT_CROSS,
+  WEIGHT_LEAD,
   WEIGHT_OVER,
   WEIGHT_STRIDE,
   WEIGHT_T,
@@ -122,8 +140,9 @@ export { EaseCode };
  * v2 (M1): segment records gain SEG_CURVE_T1 and SEG_CURVE_P1 (cut segments, §7.5); stride 13.
  * v3 (M4.5-29): per-voice weight records (`FlatVoice.weights`, revision 8).
  * v4 (R9-3a): per-voice pulse records (`FlatVoice.pulses`, revision 9).
+ * v5 (merges and splits crossfade): LIFE_CROSS (stride 5); WEIGHT_LEAD and WEIGHT_CROSS (stride 5).
  */
-export const FLAT_LAYOUT_VERSION = 4;
+export const FLAT_LAYOUT_VERSION = 5;
 
 /** One voice's time-varying data. Every array is sorted by time. */
 export interface FlatVoice {
@@ -211,6 +230,7 @@ function flattenVoice(v: CompiledVoice, timbreIndex: Map<string, number>): FlatV
     lives[o + LIFE_DIED] = l.died ?? Infinity;
     lives[o + LIFE_FADE_IN] = l.fadeIn;
     lives[o + LIFE_FADE_OUT] = l.fadeOut ?? 0;
+    lives[o + LIFE_CROSS] = (l.crossIn ? LIFE_CROSS_IN : 0) | (l.crossOut ? LIFE_CROSS_OUT : 0);
   });
 
   const levels = new Float64Array(v.level.length * LEVEL_STRIDE);
@@ -241,6 +261,8 @@ function flattenVoice(v: CompiledVoice, timbreIndex: Map<string, number>): FlatV
     weights[o + WEIGHT_T] = c.t;
     weights[o + WEIGHT_W] = c.w;
     weights[o + WEIGHT_OVER] = c.over;
+    weights[o + WEIGHT_LEAD] = c.lead ?? 0;
+    weights[o + WEIGHT_CROSS] = c.cross ? 1 : 0;
   });
 
   const pl = v.pulse ?? [];
@@ -356,6 +378,9 @@ export function unflatten(flat: FlatScore): CompiledScore {
         const fadeOut = fv.lives[o + LIFE_FADE_OUT];
         if (Number.isFinite(died)) life.died = died;
         if (fadeOut !== 0) life.fadeOut = fadeOut;
+        const cross = fv.lives[o + LIFE_CROSS];
+        if (cross & LIFE_CROSS_IN) life.crossIn = true;
+        if (cross & LIFE_CROSS_OUT) life.crossOut = true;
         return life;
       }),
       segments: records(fv.segments, SEG_STRIDE, (o): Segment => {
@@ -392,11 +417,16 @@ export function unflatten(flat: FlatScore): CompiledScore {
     };
     const ws = fv.weights ?? new Float64Array(0);
     if (ws.length > 0) {
-      cv.weight = records(ws, WEIGHT_STRIDE, (o) => ({
-        t: ws[o + WEIGHT_T],
-        w: ws[o + WEIGHT_W],
-        over: ws[o + WEIGHT_OVER],
-      }));
+      cv.weight = records(ws, WEIGHT_STRIDE, (o) => {
+        const c: WeightChange = {
+          t: ws[o + WEIGHT_T],
+          w: ws[o + WEIGHT_W],
+          over: ws[o + WEIGHT_OVER],
+        };
+        if (ws[o + WEIGHT_LEAD] !== 0) c.lead = ws[o + WEIGHT_LEAD];
+        if (ws[o + WEIGHT_CROSS] === 1) c.cross = true;
+        return c;
+      });
     }
     const ps = fv.pulses ?? new Float64Array(0);
     if (ps.length > 0) {
