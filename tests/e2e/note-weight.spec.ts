@@ -43,7 +43,7 @@ const weights = async (page: Page): Promise<number[]> =>
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await page.evaluate((id) => (window.__algorhythms as unknown as Hook).editor.select([id]), CHORD);
 });

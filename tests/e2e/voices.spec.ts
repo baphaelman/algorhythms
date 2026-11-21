@@ -85,7 +85,7 @@ test('All notes timbre sets every note at once, undoes in one step, and shows Mi
   page,
 }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto('./');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   await page.getByTestId('voices-toggle').click();
   await expect(page.getByTestId('voices-drawer')).toBeVisible();
