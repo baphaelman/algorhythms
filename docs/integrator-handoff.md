@@ -131,6 +131,7 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 
 ## State (local integrator, 2026-11-21)
 The cloud integrator is done; this local session owns everything. Comment watch on the preview is armed here.
+- **Owner away (from 2026-11-21 evening):** keep the queue moving; message only when a demo (preview republish) is finished; ignore the ~200k compact rule for now. Technical calls are the integrator's; product/sound questions and product-visible calls go in `docs/owner-decisions.md` ("Needs you" / "Decided by the integrator"). Keep it current.
 - **Pushed:** e0604f2 = M4.5-23 (score selection, grouped notes), M4.5-26 (open canvas), e2e spec fixes (lane Escape, view-follow race). CI green on all three engines; Pages deployed; preview artifact already shows this bundle.
 - **Also pushed:** d8b0d0b = M4.5-25 ("notes" wording; owner withdrew the dimming fix) + these docs; preview republished (version 14).
 - **Pushed:** 91d9c86 = M4.5-33 Shift-drag octaves + M4.5-34 all-notes timbre (preview version 18). 2ad5e9b = M4.5-31 shift slider; ab94dbf = M4.5-30 spread at range edges; 7ac4632 = M4.5-29a distinct notes (merged with 30 as d82b0e9) + M4.5-32 arrival tick fix (smooth articulation attack, 12 ms floor; changes pluck 2→12 ms and organ 3→12 ms: owner to listen) + context-moments e2e wording. Preview version 17. Threads 4f2fa9f1 and 05bf32cb: "in the preview" notes posted (owner had already resolved them).
