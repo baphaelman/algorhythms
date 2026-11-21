@@ -303,6 +303,23 @@ export class Projector {
     return p;
   }
 
+  /**
+   * The state newborn `b` starts from: its parent's just before the birth. A parent not born yet
+   * (a newborn of an earlier moment, revision 8 forks) is still where its own parent is, so the
+   * newborn starts there.
+   */
+  birthState(b: Birth): StartState | null {
+    let p = b.parent;
+    for (let k = 0; p >= 0 && k <= this.voices.length; k++) {
+      const st = this.get(p).stateBefore(b.t);
+      if (st) return st;
+      const pb = this.extra(p)?.birth ?? this.voices[p].pendingBirth;
+      if (!pb || !(pb.t >= b.t)) return null;
+      p = pb.parent;
+    }
+    return null;
+  }
+
   private build(v: number): Projection {
     const run = this.voices[v];
     const proj = new Projection();
@@ -345,7 +362,13 @@ export class Projector {
     }
     const out: Segment[] = [];
     const f = fr.clone(out);
-    const birth = ext?.birth ?? run.pendingBirth;
+    let birth = ext?.birth ?? run.pendingBirth;
+    // A newborn of an earlier moment given a later move by this one is born when that move
+    // departs (compile.ts applyPointMoment), not left waiting on its parent's pitch.
+    if (!ext?.birth && birth && ext) {
+      const first = ext.moves.find((m) => !m.death);
+      if (first && first.t0 > birth.t) birth = { ...birth, t: first.t0 };
+    }
     const moves: Move[] = [];
     for (const m of run.pending) if (!m.cancelled) moves.push(m);
     if (ext) for (const m of ext.moves) moves.push(m);
@@ -365,7 +388,7 @@ export class Projector {
         let ps: StartState | null = null;
         if (b.parent >= 0) {
           this.depth++;
-          ps = this.get(b.parent).stateBefore(b.t);
+          ps = this.birthState(b);
           this.depth--;
         }
         const st = ps ?? { p: b.pitch, v: 0, mid: false };
