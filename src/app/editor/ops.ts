@@ -51,7 +51,7 @@ function withMoments(piece: Piece, moments: Moment[]): Piece {
 }
 
 /** A moment shifted by `dt` (a walk's or pulse's `until` moves with it). */
-function shifted(m: Moment, dt: number): Moment {
+export function shifted(m: Moment, dt: number): Moment {
   return m.type === 'walk' || m.type === 'pulse'
     ? { ...m, at: m.at + dt, until: m.until + dt }
     : { ...m, at: m.at + dt };

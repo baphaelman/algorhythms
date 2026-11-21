@@ -33,6 +33,7 @@ import {
 import { composeView } from './compose-view';
 import { live, writeText } from './dom';
 import { useEditor } from './editor/history';
+import { PIANO_WIDTH } from './editor/piano';
 import { hoverPointer } from './hover';
 import { previewState, type PreviewGhost } from './preview';
 import { camera, cameraOf, currentTime, usePlayer } from './store';
@@ -311,6 +312,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           traceVoice: domHead && traceVoice >= 0 ? traceVoice : undefined,
           // The bar grid in the editor layout (the one with the DOM playhead).
           bars: domHead ? { bpm: piece.view.gridBpm, meter: piece.view.meter } : undefined,
+          axisInset: domHead ? PIANO_WIDTH : 0,
           preview: preview ?? undefined,
           reveal,
         };

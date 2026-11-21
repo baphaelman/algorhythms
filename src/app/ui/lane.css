@@ -471,3 +471,20 @@
   right: auto;
   left: -4px;
 }
+
+/* The Shift-drag selection rectangle (M5) and the items it touches. */
+.lane-marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+
+.lane-marquee[hidden] {
+  display: none;
+}
+
+.lane-item[data-marquee] {
+  --c: var(--accent);
+}

@@ -282,7 +282,7 @@ export function ArrivalDots() {
     const id = e.pointerId;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const add = e.shiftKey;
+    const add = e.shiftKey || e.metaKey || e.ctrlKey;
     const key = keyAt(usePlayer.getState().compiled, dot.t);
     const h = hover.current;
     let drag: ReturnType<typeof dragDots> | undefined;

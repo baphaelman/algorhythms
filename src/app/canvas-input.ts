@@ -48,6 +48,7 @@ import {
   editorKey,
   takesText,
 } from './editor/shortcuts';
+import { attachClipboard, onClipboardKey } from './clipboard';
 import { clearHover, setHover } from './hover';
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
@@ -260,7 +261,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (pointers.size === 1) {
       travelled = 0;
       pinching = false;
-      shift = e.shiftKey;
+      shift = e.shiftKey || e.metaKey || e.ctrlKey;
       const { x, y } = local(e);
       press = { x, y, time: performance.now() };
       const prev = lastClick;
@@ -353,7 +354,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       if (editorLayout()) {
         if (press) {
           lastClick = press;
-          clickAt(press.x, press.y, e.shiftKey);
+          clickAt(press.x, press.y, e.shiftKey || e.metaKey || e.ctrlKey);
         }
       } else togglePlay();
     }
@@ -467,6 +468,8 @@ export function attachKeys(): () => void {
       else redo();
       return;
     }
+    // ⌘/Ctrl+C, X, V, A (./clipboard).
+    if (!e.defaultPrevented && onClipboardKey(e)) return;
     // A key another handler already used (e.g. Escape closing a menu) is not an editor key.
     const ek = !e.defaultPrevented && editorLayout() ? editorKey(e) : null;
     if (ek) {
@@ -536,7 +539,9 @@ export function attachKeys(): () => void {
   window.addEventListener('keydown', onSpace, true);
   window.addEventListener('keyup', onSpace, true);
   window.addEventListener('blur', onBlur);
+  const detachClipboard = attachClipboard();
   return () => {
+    detachClipboard();
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('keydown', onSpace, true);
     window.removeEventListener('keyup', onSpace, true);

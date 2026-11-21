@@ -1,0 +1,75 @@
+/* The piano ruler (§11.3, M5): the score's pitch axis as keys, at its left edge. Keys are placed
+   per frame by PianoRuler.tsx (transform and height). */
+.piano-ruler {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-right: 1px solid var(--rule);
+  background: var(--panel);
+}
+
+.piano-key {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 0 2px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-2) 25%, transparent);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: 7px/1 var(--f-mono);
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  /* A scale mark on the right edge (key-aware highlighting). */
+  box-shadow: inset -3px 0 0 transparent;
+}
+
+.piano-key[data-black] {
+  width: 62%;
+  z-index: 1;
+  background: var(--ink-2);
+  border-bottom: 0;
+}
+
+.piano-key[data-role='scale'] {
+  box-shadow: inset -3px 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.piano-key[data-role='tonic'] {
+  box-shadow: inset -3px 0 0 var(--accent);
+}
+
+.piano-key[data-on] {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.piano-key:hover {
+  background: color-mix(in srgb, var(--accent) 30%, var(--paper));
+}
+
+.piano-key[data-black]:hover {
+  background: color-mix(in srgb, var(--accent) 45%, var(--ink-2));
+}
+
+.piano-key[data-on]:hover {
+  background: var(--accent);
+}
+
+.piano-key:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+.piano-c {
+  pointer-events: none;
+  white-space: nowrap;
+}

@@ -79,6 +79,10 @@ vi.mock('../../../src/app/editor/actions', () => ({
   deleteMoments: fns.deleteMoments,
   stepNote: fns.stepNote,
   octaveDots: fns.octaveDots,
+  // ./clipboard (M5): nothing selected to copy.
+  clipOfSelection: () => null,
+  cutMoments: vi.fn(),
+  pasteClipAt: vi.fn(),
 }));
 vi.mock('../../../src/app/editor/palette-effects', () => ({
   playheadEffect: (type: string) => ({ effect: !h.state.noEffect.has(type) }),
