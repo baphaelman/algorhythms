@@ -7,7 +7,8 @@ import { PREVIEW_DELAY_MS, startPreview, stopPreview } from '../preview';
 import './palette.css';
 
 /**
- * The moment palette (PLAN.md §11.3): a click adds that moment at the playhead; dragging a button
+ * The moment palette, "Add" (PLAN.md §11.3): a click adds that moment exactly at the playhead
+ * line (revision 7: no grid snap); dragging a button
  * onto the score or the lane adds it at the drop time (../palette-drop.ts).
  *
  * Revision 6: a type that would change nothing at the playhead is greyed out with the reason as
@@ -40,8 +41,15 @@ export function Palette() {
   };
 
   return (
-    <div className="palette" role="toolbar" aria-label="Add moment" data-testid="palette">
-      <span className="palette-label">Add</span>
+    <div
+      className="palette palette-add"
+      role="toolbar"
+      aria-label="Add moment at playhead"
+      data-testid="palette"
+    >
+      <span className="palette-label" aria-hidden="true">
+        Add <span className="palette-where">at playhead</span>
+      </span>
       {PALETTE.map((e) => {
         const ef = effects?.[e.type];
         const off = ef ? !ef.effect : false;

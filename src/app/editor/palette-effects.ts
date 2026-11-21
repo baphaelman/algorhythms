@@ -4,16 +4,16 @@
  * shortcut are disabled (dragging it elsewhere still works).
  *
  * `watchPaletteEffects` keeps `usePaletteEffects` current: a 200 ms poll recomputes when the
- * (grid-snapped) playhead time or the score changed. During playback it recomputes at most once a
+ * playhead time or the score changed. During playback it recomputes at most once a
  * second, at idle, so it costs no frame time.
  */
 
 import { create } from 'zustand';
 import { momentEffectAt, momentEffectsAt, type MomentEffect } from '../../core/effect';
 import type { CompiledScore, MomentType, Piece, Seconds } from '../../core/types';
-import { currentTime, usePlayer } from '../store';
+import { usePlayer } from '../store';
 import { defaultMoment } from './new-moment';
-import { snapToGrid } from './shortcuts';
+import { playheadTime } from './shortcuts';
 
 /** Id of the throwaway moments built for effect checks and previews. */
 export const PROBE_ID = '__probe';
@@ -27,9 +27,9 @@ export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): 
   );
 }
 
-/** Where a palette click or shortcut adds a moment now: the playhead, snapped to the grid. */
+/** Where a palette click or shortcut adds a moment now: exactly the playhead (revision 7). */
 export function addTime(): Seconds {
-  return snapToGrid(currentTime(), usePlayer.getState().piece.view.gridBpm);
+  return playheadTime();
 }
 
 /** The effect of adding `type` at the playhead now (computed fresh, for clicks and keys). */
@@ -50,7 +50,7 @@ export const usePaletteEffects = create<PaletteEffectsState>()(() => ({ t: NaN, 
 
 let last: { t: Seconds; score: CompiledScore | null } = { t: NaN, score: null };
 
-/** Recomputes the effects if the snapped playhead or the score changed (or `force`). */
+/** Recomputes the effects if the playhead or the score changed (or `force`). */
 export function refreshPaletteEffects(force = false): void {
   const { piece, compiled } = usePlayer.getState();
   const t = addTime();

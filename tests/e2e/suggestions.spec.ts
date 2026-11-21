@@ -1,7 +1,7 @@
 /**
- * M4.5-13 next-move suggestions (PLAN.md §11.3 revision 6): the "Next" strip shows 3–4 moves for
- * the time after the selected moment (or the playhead); a click adds one (one undo entry) and
- * selects it; hovering previews it.
+ * Next-move suggestions (PLAN.md §11.3 revisions 6–7): the "Next" strip shows 3–4 moves for the
+ * end of the piece's last moment, whatever the playhead or selection; a click appends one there
+ * (one undo entry, extending an explicit end), and selects it; hovering previews it.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -63,22 +63,38 @@ const editorOf = (page: Page) =>
     return { selection: s.selection, undoLabel: s.undoLabel };
   });
 
-test('the strip follows the selection; click adds and selects, undo removes', async ({ page }) => {
+/** The strip's time. */
+const stripT = async (page: Page): Promise<number> =>
+  Number(await page.getByTestId('suggestions').getAttribute('data-t'));
+/** Waits for the strip to be at the loaded piece's end: after the unison's glide (2 s + 0.5 s). */
+const atUnisonEnd = async (page: Page): Promise<void> => {
+  await expect
+    .poll(async () => {
+      const t = await stripT(page);
+      return t > 2.4 && t < 5;
+    })
+    .toBe(true);
+};
+
+test('the strip is at the end of the last moment; click appends there; undo removes', async ({
+  page,
+}) => {
   await open(page);
   const strip = page.getByTestId('suggestions');
   await expect(strip).toBeVisible();
+  await expect(strip).toContainText('Next');
+  await expect(strip).toContainText('at end');
 
-  // Nothing selected: at the playhead (1 s, voices apart).
+  // After the unison's glide (at 2 s), not at the playhead or the selection.
+  await atUnisonEnd(page);
+  const t = await stripT(page);
   await seek(page, 1);
-  await expect(strip).toHaveAttribute('data-t', '1');
+  await page.evaluate(() => window.__algorhythms!.actions.select(['spl001']));
+  await page.waitForTimeout(400);
+  expect(await stripT(page)).toBe(t);
   const items = strip.locator('[data-suggestion]');
   await expect.poll(() => items.count()).toBeGreaterThanOrEqual(3);
-
-  // The unison selected: after its end, the suggestions open it into a chord.
-  await page.evaluate(() => window.__algorhythms!.actions.select(['uni001']));
-  await expect.poll(async () => Number(await strip.getAttribute('data-t'))).toBeGreaterThan(2.4);
   await expect(items.first()).toHaveText(/Open to /);
-  const t = Number(await strip.getAttribute('data-t'));
 
   const before = await moments(page);
   await items.first().click();
@@ -87,12 +103,42 @@ test('the strip follows the selection; click adds and selects, undo removes', as
   const added = after.find((m) => !before.some((b) => b.id === m.id))!;
   expect(added.at).toBeCloseTo(t, 3);
   expect((await editorOf(page)).selection).toEqual([added.id]);
-  // The strip moves on to after the new moment.
-  await expect.poll(async () => Number(await strip.getAttribute('data-t'))).toBeGreaterThan(t);
+  // The strip moves on to the new end.
+  await expect.poll(() => stripT(page)).toBeGreaterThan(t);
   expect((await editorOf(page)).undoLabel).toMatch(/^Open to /);
 
   await page.keyboard.press('ControlOrMeta+z');
   expect(await moments(page)).toEqual(before);
+});
+
+test('appending past an explicit end extends the piece', async ({ page }) => {
+  await open(page);
+  await atUnisonEnd(page);
+  const t = await stripT(page);
+  await page.evaluate((end) => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as {
+      end: Record<string, unknown>;
+    };
+    p.end = { ...p.end, at: end };
+    h.actions.loadPiece(p);
+  }, t + 0.5);
+  const first = page.getByTestId('suggestions').locator('[data-suggestion="0"]');
+  await expect(first).toBeVisible();
+  await first.click();
+  const end = await page.evaluate(
+    () =>
+      (window.__algorhythms!.store.getState().piece as unknown as { end: { at: number } }).end.at,
+  );
+  expect(end).toBeGreaterThanOrEqual(t + 4);
+  const diags = await page.evaluate(() =>
+    (
+      window.__algorhythms!.store.getState().compiled as unknown as {
+        diagnostics: { code: string }[];
+      }
+    ).diagnostics.map((d) => d.code),
+  );
+  expect(diags).not.toContain('after-end');
 });
 
 test('hovering a suggestion previews it without touching the piece', async ({ page }) => {
@@ -102,14 +148,15 @@ test('hovering a suggestion previews it without touching the piece', async ({ pa
     .poll(() => page.evaluate(() => window.__algorhythms!.store.getState().transport.audio))
     .toBe('ready');
   const piece = await page.evaluate(() => window.__algorhythms!.store.getState().piece);
-  await expect(page.getByTestId('suggestions')).toHaveAttribute('data-t', '1');
+  await atUnisonEnd(page);
+  const t = await stripT(page);
   const first = page.getByTestId('suggestions').locator('[data-suggestion="0"]');
   await expect(first).toBeVisible();
   const label = await first.getAttribute('data-label');
   await first.hover();
   await expect.poll(async () => (await previewOf(page)).label).toBe(label);
   await expect.poll(async () => (await previewOf(page)).playing).toBe(true);
-  await expect.poll(async () => (await previewOf(page)).from).toBe(1);
+  expect((await previewOf(page)).from).toBeCloseTo(t, 3);
 
   await page.mouse.move(2, 400);
   await expect.poll(async () => (await previewOf(page)).label).toBeNull();
