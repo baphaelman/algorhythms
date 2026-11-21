@@ -5,13 +5,11 @@
  * seconds, inline errors, Enter or blur); the merge's Fade label. Undo and share links. Chromium.
  */
 
-import { mkdirSync } from 'node:fs';
+import { shot } from './shots';
 import { expect, test, type Page } from '@playwright/test';
 import { seek } from './app-hook';
 
 test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough here');
-
-const SHOTS = '/private/tmp/claude-501/r9-8';
 
 interface Note {
   pitch: number;
@@ -137,10 +135,6 @@ async function drag(page: Page, k: number, dx: number, dy: number, alt = false):
   if (alt) await page.keyboard.up('Alt');
 }
 
-test.beforeAll(() => {
-  mkdirSync(SHOTS, { recursive: true });
-});
-
 test('a dot per note at its start; drag: pitch snaps to the key, start to beats, Alt free', async ({
   page,
 }) => {
@@ -150,7 +144,7 @@ test('a dot per note at its start; drag: pitch snaps to the key, start to beats,
   await expect(dots(page).nth(1)).toHaveAttribute('data-pitch', '62');
   await expect(dots(page).nth(2)).toHaveAttribute('aria-label', 'Tune note 3, E4 at 0:06.00');
   const scale = await pps(page);
-  await page.screenshot({ path: `${SHOTS}/tune-dots.png` });
+  await shot(page, 'tune-dots.png');
 
   // Up: a pitch in the key, higher than D4; the lengths stay.
   await drag(page, 1, 0, -40);
@@ -179,7 +173,7 @@ test('a dot per note at its start; drag: pitch snaps to the key, start to beats,
   const m = await tuneOf(page);
   expect(m.at).toBe(3);
   expect(m.notes![0].len).toBe(2);
-  await page.screenshot({ path: `${SHOTS}/tune-dots-dragged.png` });
+  await shot(page, 'tune-dots-dragged.png');
   await H(page).undo();
   await H(page).undo();
   await H(page).undo();
@@ -220,7 +214,7 @@ test('dot and row select each other; arrows on a focused dot', async ({ page }) 
   await expect(dots(page).nth(2)).toHaveAttribute('data-picked', 'true');
   await expect(dots(page).nth(1)).not.toHaveAttribute('data-picked', /.*/);
   await expect(rows(page).nth(2)).toHaveAttribute('data-picked', 'true');
-  await page.screenshot({ path: `${SHOTS}/tune-dot-row.png` });
+  await shot(page, 'tune-dot-row.png');
 });
 
 test('typed notes: beats with a tempo, errors inline, Enter or blur, undo, share link', async ({
@@ -257,7 +251,7 @@ test('typed notes: beats with a tempo, errors inline, Enter or blur, undo, share
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await page.getByTestId('inspector').getByRole('heading').click();
   expect(await tuneOf(page)).toEqual(before);
-  await page.screenshot({ path: `${SHOTS}/tune-typed-error.png` });
+  await shot(page, 'tune-typed-error.png');
 
   // Blur commits valid text.
   await field.fill('A4 1, B4 1, C5 2');
@@ -267,7 +261,7 @@ test('typed notes: beats with a tempo, errors inline, Enter or blur, undo, share
   await H(page).undo();
   expect(await pitches(page)).toEqual([78, 76, 74, 70]);
   await expect(field).toHaveValue('F#5 2, E5 1, D5 1.5, A#4 0.5');
-  await page.getByTestId('inspector').screenshot({ path: `${SHOTS}/tune-typed.png` });
+  await shot(page.getByTestId('inspector'), 'tune-typed.png');
 
   const m = await tuneOf(page);
   const link = await page.evaluate(() => {
