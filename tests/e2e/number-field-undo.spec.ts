@@ -52,3 +52,29 @@ test('an outside undo drops a typed draft; blur does not overwrite it', async ({
   await length.blur();
   expect(await glideLength(page)).toBe(6.5);
 });
+
+test('chord-symbol field: an outside undo drops a typed draft; blur does not overwrite it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto('./?example=tidewater-hymn');
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await page.evaluate((id) => {
+    (window.__algorhythms as unknown as EditorHook).editor.select([id]);
+  }, CHORD);
+
+  await page.getByTestId('inspector').getByTestId('insp-notes-kind').selectOption('chord');
+  const field = page.getByTestId('inspector').getByTestId('insp-chord');
+  await expect(field).toBeVisible();
+  const original = await field.inputValue();
+  await field.fill('Gmaj7');
+  await field.press('Enter');
+  await expect(field).toHaveValue('Gmaj7');
+
+  await field.focus();
+  await field.fill('Dm7');
+  await page.evaluate(() => (window.__algorhythms as unknown as EditorHook).editor.undo());
+  await expect(field).toHaveValue(original);
+  await field.blur();
+  await expect(field).toHaveValue(original);
+});
