@@ -3,8 +3,9 @@
  * works by touch alone"): a touch-only context (`hasTouch`, 1180×820, no mouse or keys used).
  * Palette tap adds at the playhead; tap selects; drag moves (with a finger-sized threshold);
  * a span end drags; the inspector edits by tap; long press opens the menu (Duplicate, Delete,
- * Snap, Ends set stagger, Select more); dots drag; a tap on a line shows its readout; pinch zooms
- * and two fingers pan. Gestures: ./touch (CDP touches on Chromium, synthetic touch pointers
+ * Snap, Ends set stagger, Select more); dots drag and a dot's long press offers Octave up/down;
+ * a tap on a line shows its readout; pinch zooms and two fingers pan, on the score and the lane;
+ * the piano ruler's keys are tapped. Gestures: ./touch (CDP touches on Chromium, synthetic touch pointers
  * elsewhere; WebKit runs on CI).
  */
 
@@ -308,4 +309,136 @@ test("on the score: a long press opens the line's moment menu; a double tap adds
   await expect
     .poll(async () => (await moments(page)).filter((m) => m.type === 'note').length)
     .toBe(1);
+});
+
+test('pinch zooms the time window over the lane; two fingers pan it', async ({ page }) => {
+  await open(page);
+  const box = (await page.locator('.lane-track').boundingBox())!;
+  // Empty lane background, right of the last moment.
+  const y = box.y + 40;
+  const cx = box.x + box.width * 0.8;
+  const w0 = await page.evaluate(() => window.__algorhythms!.frameStats.window);
+  await twoFinger(
+    page,
+    { x: cx - 60, y },
+    { x: cx + 60, y },
+    { x: cx - 160, y },
+    { x: cx + 160, y },
+  );
+  await frames(page);
+  const w1 = await page.evaluate(() => window.__algorhythms!.frameStats.window);
+  expect(w1).toBeLessThan(w0 * 0.6);
+  const s0 = await page.evaluate(() => window.__algorhythms!.frameStats.start);
+  await twoFinger(
+    page,
+    { x: cx - 100, y },
+    { x: cx + 100, y },
+    { x: cx - 300, y },
+    { x: cx - 100, y },
+  );
+  await frames(page);
+  const s1 = await page.evaluate(() => window.__algorhythms!.frameStats.start);
+  // Fingers moved left by 200 px: later time comes into view, and the lane follows the score.
+  expect(s1 - s0).toBeGreaterThan(0.5 * (200 / box.width) * w1);
+  expect(await moments(page)).toHaveLength(3);
+  expect(await selection(page)).toEqual([]);
+  expect(await undoLabel(page)).not.toMatch(/move/i);
+});
+
+test('a pinch that starts on a moment edits nothing', async ({ page }) => {
+  await open(page);
+  const w0 = await page.evaluate(() => window.__algorhythms!.frameStats.window);
+  const a = await marker(page, 'bbbbbb');
+  const before = (await byId(page, 'bbbbbb'))!.at;
+  await twoFinger(
+    page,
+    a,
+    { x: a.x + 80, y: a.y },
+    { x: a.x - 40, y: a.y },
+    { x: a.x + 160, y: a.y },
+  );
+  await frames(page);
+  expect(await page.evaluate(() => window.__algorhythms!.frameStats.window)).toBeLessThan(w0);
+  expect((await byId(page, 'bbbbbb'))!.at).toBe(before);
+  expect(await moments(page)).toHaveLength(3);
+});
+
+test("dots: a long press on a dot offers Octave up and down (Shift+▲/▼'s stand-in)", async ({
+  page,
+}) => {
+  await open(page);
+  await fingerTap(page, await marker(page, 'aaaaaa'));
+  const before = (await byId(page, 'aaaaaa')) as unknown as { notes: unknown };
+  await longPress(page, await centre(page, '[data-testid=chord-dot]:not([hidden])'));
+  const menu = page.getByTestId('touch-menu');
+  await expect(menu).toBeVisible();
+  const picked = page.locator('[data-testid=chord-dot][data-picked=true]');
+  await expect(picked).toHaveCount(1);
+  const pitch0 = Number(await picked.getAttribute('data-pitch'));
+  await menu.getByTestId('touch-octave-up').tap();
+  await expect(page.locator('[data-testid=chord-dot][data-picked=true]')).toHaveAttribute(
+    'data-pitch',
+    String(pitch0 + 12),
+  );
+  expect(await undoLabel(page)).toMatch(/move/i);
+  expect(((await byId(page, 'aaaaaa')) as unknown as { notes: unknown }).notes).not.toEqual(
+    before.notes,
+  );
+  // Back down by the menu on the selected dot (a long press on empty score keeps the dots).
+  const box = (await page.locator('#score').boundingBox())!;
+  await longPress(page, { x: box.x + box.width * 0.9, y: box.y + box.height * 0.1 });
+  await expect(menu).toBeVisible();
+  await menu.getByTestId('touch-octave-down').tap();
+  await expect(page.locator('[data-testid=chord-dot][data-picked=true]')).toHaveAttribute(
+    'data-pitch',
+    String(pitch0),
+  );
+  // Without dots selected the entries are not offered.
+  await fingerTap(page, await marker(page, 'bbbbbb'));
+  await longPress(page, await marker(page, 'bbbbbb'));
+  await expect(menu).toBeVisible();
+  await expect(menu.getByTestId('touch-octave-up')).toHaveCount(0);
+});
+
+test('piano ruler by touch: a chord key toggles a note; a pin key moves the pin', async ({
+  page,
+}) => {
+  await open(page);
+  const ruler = page.getByTestId('piano-ruler');
+  const pressed = async (): Promise<number[]> =>
+    (
+      await ruler
+        .locator('[aria-pressed="true"]')
+        .evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-pitch'))))
+    ).sort((a, b) => a - b);
+  await fingerTap(page, await marker(page, 'aaaaaa'));
+  await expect.poll(async () => (await pressed()).length).toBeGreaterThan(0);
+  const notes = await pressed();
+  // The key just under the chord's lowest note (in view, unlike the axis's far ends).
+  const free = notes[0] - 1;
+  await ruler.locator(`[data-pitch="${free}"]`).tap();
+  await expect.poll(pressed).toEqual([...notes, free].sort((a, b) => a - b));
+  expect(await undoLabel(page)).toBe('Freeze chord and add note');
+  expect((await byId(page, 'aaaaaa'))!.frozenFrom).toBeDefined();
+  await ruler.locator(`[data-pitch="${free}"]`).tap();
+  await expect.poll(pressed).toEqual(notes);
+  expect(await undoLabel(page)).toBe('Remove chord note');
+
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as {
+      voices: { id: string }[];
+      moments: unknown[];
+    };
+    p.moments.push({ id: 'pppppp', type: 'pin', at: 4, voice: p.voices[0].id, pitch: 60 });
+    h.actions.setPiece(p);
+  });
+  await expect(page.locator('.lane-track [data-moment="pppppp"]')).toHaveCount(1);
+  await fingerTap(page, await marker(page, 'pppppp'));
+  await expect.poll(pressed).toEqual([60]);
+  await ruler.locator('[data-pitch="62"]').tap();
+  await expect
+    .poll(async () => ((await byId(page, 'pppppp')) as unknown as { pitch: number }).pitch)
+    .toBe(62);
+  expect(await undoLabel(page)).toBe('Move pin');
 });

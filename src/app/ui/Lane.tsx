@@ -215,6 +215,9 @@ class LaneController {
   /** This press's drag threshold (larger for a finger) and its long-press timer (§11.3b). */
   private slop = DRAG_SLOP;
   private hold: LongPress | null = null;
+  /** Fingers down on the track, and the two-finger pinch/pan they became (§11.3b). */
+  private fingers = new Map<number, { x: number; y: number }>();
+  private pinch: { dist: number; window: number } | null = null;
   /** The Shift-drag selection rectangle (track px), and the items it touches during the drag. */
   marqueeEl: HTMLElement | null = null;
   private marqueeIds: MomentId[] = [];
@@ -587,6 +590,14 @@ class LaneController {
   // ---- pointer ------------------------------------------------------------------------------
 
   onDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') {
+      this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.fingers.size === 2) {
+        this.beginPinch(e);
+        return;
+      }
+      if (this.fingers.size > 2 || this.pinch) return;
+    }
     if (this.drag || this.pan || this.keyPress || (e.pointerType === 'mouse' && e.button !== 0))
       return;
     const target = e.target instanceof Element ? e.target : null;
@@ -647,6 +658,50 @@ class LaneController {
       origAt: new Map(),
     };
   };
+
+  /** The second finger: abandons the first finger's press and starts pinching (zoom) and panning. */
+  private beginPinch(e: PointerEvent): void {
+    this.endHold();
+    this.cancel();
+    const p = this.pan;
+    if (p) {
+      this.pan = null;
+      this.clearMarquee();
+      this.track?.classList.remove('panning');
+      if (this.track?.hasPointerCapture(p.pointerId)) this.track.releasePointerCapture(p.pointerId);
+    }
+    this.keyPress = null;
+    this.track?.setPointerCapture(e.pointerId);
+    this.pinch = { dist: this.fingerDistance(), window: usePlayer.getState().view.window };
+  }
+
+  private fingerDistance(): number {
+    const [a, b] = [...this.fingers.values()];
+    return a && b ? Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) : 1;
+  }
+
+  /** Spreading the fingers zooms in (a shorter window); moving them together pans, as on the score. */
+  private pinchMove(e: PointerEvent): void {
+    const f = this.fingers.get(e.pointerId);
+    const g = this.pinch;
+    if (!f || !g) return;
+    const dx = e.clientX - f.x;
+    f.x = e.clientX;
+    f.y = e.clientY;
+    if (this.fingers.size < 2) return;
+    const view = usePlayer.getState().view;
+    zoomBy((g.window * (g.dist / this.fingerDistance())) / view.window);
+    if (dx !== 0 && this.pps > 0) panBy(-dx / this.fingers.size / this.pps);
+  }
+
+  /** Lifts a finger; the pinch ends with the last one (the rest of the gesture does nothing). */
+  private fingerUp(e: PointerEvent): boolean {
+    if (e.pointerType !== 'touch' || !this.fingers.delete(e.pointerId)) return false;
+    if (this.track?.hasPointerCapture(e.pointerId)) this.track.releasePointerCapture(e.pointerId);
+    if (!this.pinch) return false;
+    if (this.fingers.size === 0) this.pinch = null;
+    return true;
+  }
 
   /**
    * A long press (finger or pen) opens the touch menu on `id` (null: the background), unless the
@@ -758,6 +813,17 @@ class LaneController {
   }
 
   onMove = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch' && this.fingers.has(e.pointerId)) {
+      if (this.pinch) {
+        this.pinchMove(e);
+        return;
+      }
+      const f = this.fingers.get(e.pointerId);
+      if (f) {
+        f.x = e.clientX;
+        f.y = e.clientY;
+      }
+    }
     this.hold?.move(e.clientX, e.clientY);
     const k = this.keyPress;
     if (k && e.pointerId === k.pointerId) {
@@ -874,6 +940,7 @@ class LaneController {
   }
 
   onUp = (e: PointerEvent): void => {
+    if (this.fingerUp(e)) return;
     this.endHold();
     const k = this.keyPress;
     if (k && e.pointerId === k.pointerId) {
