@@ -4,6 +4,7 @@
  * the loop region (revision 6).
  */
 
+import { clearDots } from './dot-selection';
 import type { MomentId, MomentType, Seconds } from '../../core/types';
 import { currentTime } from '../store';
 import { addMoment, deleteMoments } from './actions';
@@ -118,7 +119,8 @@ export function editorKey(e: KeyLike & { target?: unknown }): EditorKey | null {
 
 /** Clears the selection; false if it was already empty. */
 export function clearSelection(): boolean {
-  if (useEditor.getState().selection.length === 0) return false;
+  const dots = clearDots();
+  if (useEditor.getState().selection.length === 0) return dots;
   select([]);
   return true;
 }

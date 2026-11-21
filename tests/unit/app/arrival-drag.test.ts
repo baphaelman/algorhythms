@@ -34,6 +34,7 @@ import {
   clearOverride,
   clearOverrides,
   dragArrival,
+  dragDots,
   stepNote,
 } from '../../../src/app/editor/actions';
 import { momentArrivals, type ArrivalDot } from '../../../src/app/editor/arrival-points';
@@ -165,7 +166,7 @@ describe('dragging arrival dots (revision 6: the dot moves)', () => {
     expect(score().walkSteps.length).toBe(n0);
   });
 
-  it('a note: sets `to` and writes the order preference; sideways sets its arrival', () => {
+  it('a note: sets `to` and writes the order preference; sideways moves its time (rev 7)', () => {
     setKeepOrder(true);
     drag(dotsOf('n')[0], 65);
     expect(byId('n')).toMatchObject({ to: 65, order: true });
@@ -174,7 +175,8 @@ describe('dragging arrival dots (revision 6: the dot moves)', () => {
     stepNote('n', 1);
     expect(byId('n')).toMatchObject({ to: 67 });
     expect((byId('n') as NoteMoment).order).toBeUndefined();
-    // A note that sounds (the walk moved the line `n` names): sideways sets its arrival.
+    // A note that sounds (the walk moved the line `n` names): sideways moves the change's time
+    // (glide kept), no override.
     const v = score().voices[0];
     const add = addPointDrag(30, v.index, pitchAt(v, 30)!);
     add.to(pitchAt(v, 30)! + 2);
@@ -183,10 +185,9 @@ describe('dragging arrival dots (revision 6: the dot moves)', () => {
     const d = dotsOf(id)[0];
     expect(d.voice).toBe(v.index);
     drag(d, [d.pitch, d.t + 1]);
-    expect(byId(id).overrides).toEqual([
-      { voice: v.index, end: Math.round((d.t + 1 - 30) * 1000) / 1000 },
-    ]);
-    expect(dotsOf(id)[0].t).toBeCloseTo(d.t + 1, 2);
+    expect(byId(id).at).toBeCloseTo(31, 9);
+    expect(byId(id).overrides).toBeUndefined();
+    expect(dotsOf(id)[0].t).toBeCloseTo(d.t + 1, 6);
   });
 
   it('revision 7: a pitch past the voice range is clamped to it, never folded by an octave', () => {
@@ -282,5 +283,38 @@ describe('walk insertion helpers', () => {
     } as typeof p;
     expect(walkAt(two, score(), 0, 12)?.id).toBe('w2');
     expect(walkAt(two, score(), 0, 10.5)?.id).toBe('w');
+  });
+});
+
+describe('revision 7: grouped note changes and group drags', () => {
+  it('two note adds at the same time become one Shift moment; one undo each', () => {
+    const at = 25;
+    const [v0, v1] = score().voices;
+    const a = addPointDrag(at, v0.index, pitchAt(v0, at)!);
+    a.to(pitchAt(v0, at)! + 2);
+    a.end();
+    const b = addPointDrag(at, v1.index, pitchAt(v1, at)!);
+    b.to(pitchAt(v1, at)! - 1);
+    b.end();
+    const notes = moments().filter((m) => m.type === 'note' && m.at === at) as NoteMoment[];
+    expect(notes).toHaveLength(1);
+    expect(notes[0].changes).toHaveLength(2);
+    expect(useEditor.getState().undoLabel).toBe('Add note');
+    expect(undo()).toBe(true);
+    const back = moments().filter((m) => m.type === 'note' && m.at === at) as NoteMoment[];
+    expect(back).toHaveLength(1);
+    expect(back[0].changes).toBeUndefined();
+  });
+
+  it('dragDots moves several dots as one undo entry', () => {
+    const sh = dotsOf('sh');
+    const d = dragDots([sh[0], sh[1]], sh[0])!;
+    d.to(sh[0].pitch + 2, sh[0].t, true);
+    const r = d.end()!;
+    expect(r.targets).toHaveLength(2);
+    expect(byId('sh').overrides).toHaveLength(2);
+    expect(useEditor.getState().undoLabel).toBe('Move notes');
+    expect(undo()).toBe(true);
+    expect(byId('sh').overrides).toBeUndefined();
   });
 });
