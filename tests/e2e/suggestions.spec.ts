@@ -71,17 +71,17 @@ const editorOf = (page: Page) =>
 /** The strip's time. */
 const stripT = async (page: Page): Promise<number> =>
   Number(await page.getByTestId('suggestions').getAttribute('data-t'));
-/** Waits for the strip to be at the loaded piece's end: after the unison's glide (2 s + 0.5 s). */
+/** Waits for the strip to be 2 s after the loaded piece's end: the unison's glide (2 s + 0.5 s). */
 const atUnisonEnd = async (page: Page): Promise<void> => {
   await expect
     .poll(async () => {
       const t = await stripT(page);
-      return t > 2.4 && t < 5;
+      return t > 4.4 && t < 7;
     })
     .toBe(true);
 };
 
-test('the strip is at the end of the last moment; click appends there; undo removes', async ({
+test('the strip is a hold after the last moment; click appends there; undo removes', async ({
   page,
 }) => {
   await open(page);
@@ -90,7 +90,7 @@ test('the strip is at the end of the last moment; click appends there; undo remo
   await expect(strip).toContainText('Next');
   await expect(strip).toContainText('at end');
 
-  // After the unison's glide (at 2 s), not at the playhead or the selection.
+  // A hold after the unison's glide (at 2 s), not at the playhead or the selection.
   await atUnisonEnd(page);
   const t = await stripT(page);
   await seek(page, 1);
