@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
+import { crossfadeLength } from '../../../src/core/ease';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { momentEffectAt } from '../../../src/core/effect';
 import { freezeChord } from '../../../src/core/freeze-chord';
@@ -76,7 +77,7 @@ describe('chord count', () => {
     expect(activeAt(s, 10)).toHaveLength(6);
   });
 
-  it('down: the outer voices die into a survivor’s target, fading over the glide length', () => {
+  it('down: the outer voices die into a survivor’s target, crossfading over the approach', () => {
     const p = piece({ start: START, glide: GLIDE, end: { at: 20, fade: 1 }, moments: [chord(3)] });
     const s = compile(p);
     expect(activeAt(s, 12)).toHaveLength(3);
@@ -89,8 +90,11 @@ describe('chord count', () => {
       const g = v.segments.filter((x) => x.momentId === 'c').at(-1)!;
       const to = g.curve ? g.curve.p1 : g.p1;
       expect(survivors).toContain(to);
-      expect(v.lives[0].died).toBeCloseTo(g.t1 + GLIDE.length, 9);
-      expect(v.lives[0].fadeOut).toBeCloseTo(GLIDE.length, 9);
+      // Merges and splits crossfade (2026-11-21): silent where it meets its survivor, after a
+      // fade over the end of the approach.
+      expect(v.lives[0].died).toBeCloseTo(g.t1, 9);
+      expect(v.lives[0].fadeOut).toBeCloseTo(crossfadeLength(g.t1 - g.t0), 9);
+      expect(v.lives[0].crossOut).toBe(true);
     }
   });
 

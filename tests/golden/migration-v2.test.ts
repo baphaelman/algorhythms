@@ -22,11 +22,11 @@ const ROOT = join(import.meta.dirname, '../..');
 const V1 = join(import.meta.dirname, 'v1');
 
 const V1_AUDIBLE: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': 'cadcf349839c3f1a',
-  'lanterns-over-salt-flats.algorhythms.json': 'e8ffbe5a220cec28',
-  'seven-doors-in-fog.algorhythms.json': '8b69e6132327fc04',
-  'the-cartographers-rain.algorhythms.json': '6b0a65973d0d099e',
-  'tidewater-hymn.algorhythms.json': 'bc263dc90a4167a8',
+  'clockwork-heron.algorhythms.json': 'cdbd03aafc4cb9da',
+  'lanterns-over-salt-flats.algorhythms.json': '02bacdc7c4b1ee45',
+  'seven-doors-in-fog.algorhythms.json': '023c9a9b54221223',
+  'the-cartographers-rain.algorhythms.json': 'f7880deb9770c50c',
+  'tidewater-hymn.algorhythms.json': '2dcf9f4ab6ca22a6',
   'harbour-song.algorhythms.json': 'c4917ced2843d5af',
   'kite-day.algorhythms.json': 'c89cab9187e3dffb',
   'night-ferry.algorhythms.json': '577d2608cc392564',

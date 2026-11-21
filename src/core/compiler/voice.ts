@@ -370,14 +370,26 @@ export class VoiceRun {
     else c.push({ t, n });
   }
 
-  /** Appends a weight ramp at t (the current simulation time) to `w`, unless already there. */
-  rampWeight(t: Seconds, w: number, over: Seconds): void {
+  /**
+   * Appends a weight change at t (the current simulation time) to `w`, unless already there. A
+   * crossfade (`cross`) follows core/ease `crossfade`; a merge's starts `lead` before t.
+   */
+  rampWeight(t: Seconds, w: number, over: Seconds, lead = 0, cross = false): void {
     if (w === this.lastWeight) return;
     const last = this.weights[this.weights.length - 1];
+    const c: WeightChange = { t, w, over };
+    if (lead > 0) c.lead = lead;
+    if (cross) c.cross = true;
     // Replace, never mutate: incremental compiles share entries with earlier scores.
-    if (last && last.t === t && last.over === over)
-      this.weights[this.weights.length - 1] = { t, w, over };
-    else this.weights.push({ t, w, over });
+    if (
+      last &&
+      last.t === t &&
+      last.over === over &&
+      (last.lead ?? 0) === lead &&
+      (last.cross === true) === cross
+    )
+      this.weights[this.weights.length - 1] = c;
+    else this.weights.push(c);
   }
 
   /** Sounding (life open) at the current simulation time. */

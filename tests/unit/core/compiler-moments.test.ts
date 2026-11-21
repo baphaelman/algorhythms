@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
-import { motionAt, pitchAt, sample } from '../../../src/core/query';
+import { motionAt, pitchAt, sample, weightAt } from '../../../src/core/query';
 import { scalePcs } from '../../../src/core/scales';
 import { evalSegmentVelocity } from '../../../src/core/segment';
 import type { CompiledScore, CompiledVoice, Moment, Piece } from '../../../src/core/types';
@@ -331,7 +331,7 @@ describe('split (§7.4)', () => {
 });
 
 describe('merge (§7.4)', () => {
-  it('dying voices glide into their nearest survivor, fade, and can be reborn', () => {
+  it('dying voices glide into their nearest survivor, crossfading, and can be reborn', () => {
     const p = tight({
       start: [50, 55, 60, 65],
       moments: [
@@ -349,11 +349,15 @@ describe('merge (§7.4)', () => {
     expect(errors(s)).toEqual([]);
     const v3 = voice(s, 'v3');
     const v4 = voice(s, 'v4');
-    // v3 (60) and v4 (65) die into v2 (55): glide 2 s, then fade 1.5 s.
-    expect(v3.lives[0].died).toBe(1 + 2 + 1.5);
-    expect(v3.lives[0].fadeOut).toBe(1.5);
-    expect(pitchAt(v3, 3)).toBe(55);
-    expect(pitchAt(v4, 3)).toBe(55);
+    // v3 (60) and v4 (65) die into v2 (55): glide 2 s, crossfading over its last third (merges
+    // and splits crossfade, 2026-11-21: `fade` applies only with no survivor), so v2 takes both
+    // weights by the meeting.
+    expect(v3.lives[0].died).toBe(1 + 2);
+    expect(v3.lives[0].fadeOut).toBeCloseTo(2 / 3, 12);
+    expect(v3.lives[0].crossOut).toBe(true);
+    expect(pitchAt(v3, 3 - 1e-9)).toBeCloseTo(55, 6);
+    expect(pitchAt(v4, 3 - 1e-9)).toBeCloseTo(55, 6);
+    expect(weightAt(voice(s, 'v2'), 3)).toBeCloseTo(3, 12);
     expect(pitchAt(v3, 6)).toBeNull();
     expect(v3.lives.length).toBe(2); // reborn by the split
     expect(finalChord(s)).toEqual([48, 52, 58, 62]);
@@ -367,7 +371,7 @@ describe('merge (§7.4)', () => {
           moments: [{ type: 'merge', at: 1, count: 3, which, fade: 1 }],
         }),
       );
-      return s.voices.filter((v) => v.lives[0]?.fadeOut === 1).map((v) => v.id);
+      return s.voices.filter((v) => v.lives[0]?.crossOut).map((v) => v.id);
     };
     expect(run('bottom')).toEqual(['v1', 'v2']);
     expect(run('inner')).toEqual(['v2', 'v3']);

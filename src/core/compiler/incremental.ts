@@ -334,10 +334,11 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     run.tuneUntil = nums[n + 20];
     run.pending = (refs[r] as Move[]).slice();
     run.pendingBirth = refs[r + 1] as Birth | null;
-    // An open life has only `born` and `fadeIn` (closing sets the rest, and drops it).
+    // An open life has only `born`, `fadeIn` and `crossIn` (closing sets the rest, and drops it).
     const open = refs[r + 2] as Life | null;
     if (open) {
       const life: Life = { born: open.born, fadeIn: open.fadeIn };
+      if (open.crossIn) life.crossIn = true;
       run.lives[nums[n + 3] - 1] = life;
       run.life = life;
     } else {

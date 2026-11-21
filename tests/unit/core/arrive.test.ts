@@ -26,12 +26,12 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  * (revision 9: births and deaths take ranked stagger offsets).
  */
 const PRE_REV6: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': '9d98073e330c1969',
+  'clockwork-heron.algorhythms.json': 'f06d6ef849c718fb',
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds.
-  'lanterns-over-salt-flats.algorhythms.json': 'a7dadff1eeb2170a',
-  'seven-doors-in-fog.algorhythms.json': 'c22b91a75f0df000',
-  'the-cartographers-rain.algorhythms.json': '2d3e402461f31d48',
-  'tidewater-hymn.algorhythms.json': '04b09bca4988d167',
+  'lanterns-over-salt-flats.algorhythms.json': '0b9aa063d2fb4ed8',
+  'seven-doors-in-fog.algorhythms.json': 'd32937d1a0f3c64c',
+  'the-cartographers-rain.algorhythms.json': '0b264e117885c818',
+  'tidewater-hymn.algorhythms.json': '0c5d3a62a9e535c8',
 };
 
 function loadExample(file: string): Piece {

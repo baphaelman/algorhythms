@@ -61,9 +61,12 @@ function expectedGain(v: CompiledVoice, t: number, peak: number): number {
     const end = l.died ?? Infinity;
     if (t < l.born || t >= end) continue;
     w = 1;
-    const u = (t - l.born) / Math.max(l.fadeIn, 0.005);
+    // Merges and splits crossfade in sound; MIDI keeps a 0.1 s hand-over at the meeting.
+    const fin = l.crossIn ? Math.min(l.fadeIn, 0.1) : l.fadeIn;
+    const fout = l.crossOut ? Math.min(l.fadeOut ?? 0, 0.1) : (l.fadeOut ?? 0);
+    const u = (t - l.born) / Math.max(fin, 0.005);
     if (u < 1) w = sstep(u);
-    const d = (end - t) / Math.max(l.fadeOut ?? 0, 0.005);
+    const d = (end - t) / Math.max(fout, 0.005);
     if (d < 1) w *= sstep(d);
   }
   let level = 1;

@@ -25,7 +25,7 @@
  * For an uncut segment curveT1 = t1 and curveP1 = p1, which is the formula above unchanged.
  */
 
-import { easeDerivRaw, easeRaw, type EaseCode, easeCodeOf, sinPi } from './ease';
+import { crossfade, easeDerivRaw, easeRaw, type EaseCode, easeCodeOf, sinPi } from './ease';
 import type { Pitch, Seconds, Segment } from './types';
 
 /** Local alias for the hot path: under Vitest's module runner an imported binding is a getter. */
@@ -72,8 +72,12 @@ export const LIFE_DIED = 1;
 export const LIFE_FADE_IN = 2;
 /** Life record: fade-out length, ending at LIFE_DIED (0 if none). */
 export const LIFE_FADE_OUT = 3;
+/** Life record: crossfade flags (`Life.crossIn`/`crossOut`): LIFE_CROSS_IN | LIFE_CROSS_OUT. */
+export const LIFE_CROSS = 4;
+export const LIFE_CROSS_IN = 1;
+export const LIFE_CROSS_OUT = 2;
 /** Doubles per life record. */
-export const LIFE_STRIDE = 4;
+export const LIFE_STRIDE = 5;
 
 /** Level record: ramp start time. */
 export const LEVEL_T = 0;
@@ -84,15 +88,37 @@ export const LEVEL_OVER = 2;
 /** Doubles per level record. */
 export const LEVEL_STRIDE = 3;
 
-// Weight-change record (revision 8): ramp linearly from the weight in effect to W over OVER.
-/** Start of the ramp. */
+// Weight-change record (revision 8; `WeightChange`, sorted by WEIGHT_T): each adds W − (the
+// previous record's W, 1 before the first) over [T − LEAD, T − LEAD + OVER]. `weightRamps`.
+/** When the change is made. */
 export const WEIGHT_T = 0;
 /** Target weight. */
 export const WEIGHT_W = 1;
 /** Ramp length (s). */
 export const WEIGHT_OVER = 2;
+/** How long before T the ramp starts (s). */
+export const WEIGHT_LEAD = 3;
+/** 1: the ramp follows `crossfade` (a merge or split), 0: linear. */
+export const WEIGHT_CROSS = 4;
 /** Doubles per weight record. */
-export const WEIGHT_STRIDE = 3;
+export const WEIGHT_STRIDE = 5;
+
+// Weight ramps (`weightRamps`): the weight records as additive ramps sorted by start, for
+// evaluation (`weightRampValue`). Not part of FlatScore: built where a score is loaded.
+/** Ramp start. */
+export const RAMP_T = 0;
+/** Weight it adds. */
+export const RAMP_DELTA = 1;
+/** Ramp length. */
+export const RAMP_OVER = 2;
+/** 1: crossfade shape. */
+export const RAMP_CROSS = 3;
+/** Weight once every ramp before RAMP_BACK has finished (they all have by this ramp's start). */
+export const RAMP_BASE = 4;
+/** First ramp that may still be running at this ramp's start. */
+export const RAMP_BACK = 5;
+/** Doubles per ramp record. */
+export const RAMP_STRIDE = 6;
 
 /** Timbre record: crossfade start time. */
 export const TIMBRE_T = 0;
@@ -302,4 +328,64 @@ export function evalFlatSegmentMotion(records: Float64Array, offset: number, t: 
     records[offset + SEG_CURVE_T1],
     records[offset + SEG_CURVE_P1],
   );
+}
+
+/**
+ * The weight records `ws` (WEIGHT_STRIDE each, n of them) as ramps sorted by start time
+ * (RAMP_STRIDE each; ties keep record order). Allocates: call it where a score is loaded.
+ */
+export function weightRamps(ws: ArrayLike<number>, n: number): Float64Array<ArrayBuffer> {
+  const order: number[] = [];
+  for (let j = 0; j < n; j++) order.push(j);
+  const start = (j: number): number =>
+    ws[j * WEIGHT_STRIDE + WEIGHT_T] - ws[j * WEIGHT_STRIDE + WEIGHT_LEAD];
+  order.sort((a, b) => start(a) - start(b) || a - b);
+  const r = new Float64Array(n * RAMP_STRIDE);
+  order.forEach((j, k) => {
+    const o = j * WEIGHT_STRIDE;
+    const ro = k * RAMP_STRIDE;
+    r[ro + RAMP_T] = start(j);
+    r[ro + RAMP_DELTA] = ws[o + WEIGHT_W] - (j > 0 ? ws[o - WEIGHT_STRIDE + WEIGHT_W] : 1);
+    r[ro + RAMP_OVER] = ws[o + WEIGHT_OVER];
+    r[ro + RAMP_CROSS] = ws[o + WEIGHT_CROSS] === 1 ? 1 : 0;
+  });
+  for (let k = 0; k < n; k++) {
+    const ro = k * RAMP_STRIDE;
+    const t = r[ro + RAMP_T];
+    let back = k;
+    for (let i = 0; i < k; i++) {
+      if (r[i * RAMP_STRIDE + RAMP_T] + r[i * RAMP_STRIDE + RAMP_OVER] > t) {
+        back = i;
+        break;
+      }
+    }
+    let base = 1;
+    for (let i = 0; i < back; i++) base += r[i * RAMP_STRIDE + RAMP_DELTA];
+    r[ro + RAMP_BASE] = base;
+    r[ro + RAMP_BACK] = back;
+  }
+  return r;
+}
+
+/** How far a ramp of length `over` starting at t0 has gone at t: linear, or `crossfade`. */
+export function rampShape(t0: number, over: number, cross: boolean, t: number): number {
+  const u = over > 0 ? (t - t0) / over : 1;
+  if (u >= 1) return 1;
+  if (u <= 0) return 0;
+  return cross ? crossfade(u) : u;
+}
+
+/**
+ * The weight at t, given k, the last ramp (of `weightRamps` records `r`) starting at or before t
+ * (−1: none, weight 1). Allocation-free (the audio thread calls it per control tick).
+ */
+export function weightRampValue(r: Float64Array, k: number, t: number): number {
+  if (k < 0) return 1;
+  const ro = k * RAMP_STRIDE;
+  let w = r[ro + RAMP_BASE];
+  for (let j = r[ro + RAMP_BACK]; j <= k; j++) {
+    const o = j * RAMP_STRIDE;
+    w += r[o + RAMP_DELTA] * rampShape(r[o + RAMP_T], r[o + RAMP_OVER], r[o + RAMP_CROSS] === 1, t);
+  }
+  return w;
 }
