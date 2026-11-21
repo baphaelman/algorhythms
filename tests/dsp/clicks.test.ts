@@ -19,7 +19,8 @@ import { clickScore, Driver, RATE, render } from './helpers';
 // Slowest test 1.5 s on 1 worker; ~10× so a loaded machine passes (build log: test hardening).
 vi.setConfig({ testTimeout: 30_000 });
 
-const TIMBRES = ['sine', 'organ', 'pluck'] as const;
+// bell: the M6 paths (stretched partials, FM at the non-integer ratio 1.41, noise).
+const TIMBRES = ['sine', 'organ', 'pluck', 'bell'] as const;
 
 /** A driver that records the output frame at which each operation was requested. */
 class Session extends Driver {

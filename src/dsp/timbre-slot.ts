@@ -8,6 +8,48 @@
 
 import type { WavetableSet } from './wavetable';
 
+/**
+ * A timbre's M6 synthesis (FM, breath noise, the additive path), read by voices on the audio
+ * thread. Built when tables are installed; null for timbres that use none of them, so those keep
+ * the plain wavetable paths bit for bit.
+ */
+export class TimbreExt {
+  /** Modulator/carrier ratio, 0 = no FM. */
+  readonly fmRatio: number;
+  /** β at middle C (radians), its pitch tracking, and the top partial multiple for the cap. */
+  readonly fmIndex: number;
+  readonly fmIndexTrack: number;
+  readonly fmTop: number;
+  /** Noise level (0 = none) and relative bandwidth. */
+  readonly noiseLevel: number;
+  readonly noiseBandwidth: number;
+  /** Additive partials (none = wavetable carrier): ratios, per-mip amplitudes and count. */
+  readonly partialRatio: Float64Array;
+  readonly partialAmp: Float64Array;
+  readonly nPartial: number;
+
+  constructor(set: WavetableSet) {
+    const p = set.params;
+    this.fmRatio = p.fmRatio;
+    this.fmIndex = p.fmIndex;
+    this.fmIndexTrack = p.fmIndexTrack;
+    this.fmTop = p.fmTop;
+    this.noiseLevel = p.noiseLevel;
+    this.noiseBandwidth = p.noiseBandwidth;
+    this.partialRatio = set.partialRatio;
+    this.partialAmp = set.partialAmp;
+    this.nPartial = set.partialRatio.length;
+  }
+
+  /** The ext a set needs, or null when it uses only the wavetable path. */
+  static of(set: WavetableSet | null): TimbreExt | null {
+    if (set === null) return null;
+    const p = set.params;
+    if (!(p.fmIndex > 0) && !(p.noiseLevel > 0) && set.partialRatio.length === 0) return null;
+    return new TimbreExt(set);
+  }
+}
+
 export class TimbreSlot {
   /** Timbre name, '' when unused. */
   name = '';
@@ -23,6 +65,9 @@ export class TimbreSlot {
   prevSame: Uint8Array | null = null;
   /** Mip spacing of `prevData`. */
   prevMipsPerOctave = 1;
+  /** M6 synthesis of `data` and of `prevData` (null = plain wavetable). */
+  ext: TimbreExt | null = null;
+  prevExt: TimbreExt | null = null;
   /** Render frame at which the replacement fade started. */
   fadeStart = 0;
   /** Length of the replacement fade in frames (0 = none running). */
@@ -47,6 +92,8 @@ export class TimbreSlot {
     this.prevData = this.data;
     this.prevSame = this.same;
     this.prevMipsPerOctave = this.mipsPerOctave;
+    this.prevExt = this.ext;
+    this.ext = TimbreExt.of(set);
     this.data = set.data;
     this.same = set.sameAsNext;
     this.mipsPerOctave = set.mipsPerOctave;
@@ -81,6 +128,7 @@ export class TimbreSlot {
       this.fadeLen = 0;
       this.prevData = null;
       this.prevSame = null;
+      this.prevExt = null;
     }
   }
 
@@ -91,6 +139,8 @@ export class TimbreSlot {
     this.same = null;
     this.prevData = null;
     this.prevSame = null;
+    this.ext = null;
+    this.prevExt = null;
     this.fadeLen = 0;
   }
 }

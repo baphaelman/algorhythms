@@ -49,8 +49,14 @@ export function mipCountFor(mipsPerOctave: number): number {
   return (MIP_COUNT - 1) * mipsPerOctave + 1;
 }
 
+/** Partials on the additive path (§8.5, "Inharmonic timbres"). */
+export const MAX_PARTIALS = 16;
+/** Stretch range the engine honours (the schema enforces the same). */
+export const STRETCH_MIN = -0.5;
+export const STRETCH_MAX = 1;
+
 /** Pitch at which `brightness.track` has no effect and loudness is normalised (C4). */
-const REFERENCE_HZ = 261.6255653005986;
+export const REFERENCE_HZ = 261.6255653005986;
 /** Tilt change per octave of pitch at track = 1, in dB/octave. */
 const TRACK_DB_PER_OCTAVE = 3;
 /** 20·log10(2): converts dB per octave into a power of the partial number. */
@@ -87,6 +93,23 @@ export interface TimbreParams {
   driftRate: number;
   /** Amplitude drift depth as a fraction (0 = off). */
   driftAmp: number;
+  /** FM (M6): modulator/carrier frequency ratio, or 0 when FM is off. */
+  fmRatio: number;
+  /** FM peak phase deviation at middle C, in radians (the classic index β; 0 = off). */
+  fmIndex: number;
+  /** FM index tracking: β scales by 2^(−indexTrack · octaves above middle C). */
+  fmIndexTrack: number;
+  /**
+   * Highest nonzero partial as a multiple of f (harmonic number, or n^(1+stretch) on the
+   * additive path); the FM aliasing cap needs it.
+   */
+  fmTop: number;
+  /** Breath noise (M6): RMS relative to the tone's (unit-sine RMS at middle C); 0 = off. */
+  noiseLevel: number;
+  /** Breath noise band-pass −3 dB width as a fraction of f (Q = 1 / bandwidth). */
+  noiseBandwidth: number;
+  /** Inharmonicity (M6): nonzero uses the additive path (`WavetableSet.partialRatio`). */
+  stretch: number;
 }
 
 /** Wavetables for one timbre at one sample rate, plus its scalar params. Transferable. */
@@ -101,6 +124,17 @@ export interface WavetableSet {
   sameAsNext: Uint8Array<ArrayBuffer>;
   /** Scalar timbre parameters. */
   params: TimbreParams;
+  /**
+   * Additive path (M6, `stretch` ≠ 0): frequency ratio n^(1+stretch) of each nonzero partial
+   * among the first MAX_PARTIALS, in order. Empty for wavetable timbres.
+   */
+  partialRatio: Float64Array<ArrayBuffer>;
+  /**
+   * Additive path: amplitude of each partial per mip (mip m at `m · partialRatio.length + i`),
+   * normalised like the tables and shaped by tilt, track and formants at the mip's bottom
+   * fundamental. Partials near Nyquist are faded per voice, not here.
+   */
+  partialAmp: Float64Array<ArrayBuffer>;
 }
 
 function finiteOr(x: number, fallback: number): number {
@@ -129,6 +163,41 @@ export function timbreParams(t: Timbre): TimbreParams {
     driftCents: Math.max(0, finiteOr(t.drift?.cents ?? 0, 0)),
     driftRate: Math.max(0, finiteOr(t.drift?.rate ?? 0, 0)),
     driftAmp: Math.min(1, Math.max(0, finiteOr(t.drift?.amp ?? 0, 0))),
+    ...extParams(t),
+  };
+}
+
+/** Effective stretch: clamped, and 0 (the wavetable path) when not finite. */
+function cleanStretch(t: Timbre): number {
+  return Math.min(STRETCH_MAX, Math.max(STRETCH_MIN, finiteOr(t.stretch, 0)));
+}
+
+/** The M6 parameters: FM, noise and stretch, sanitised; all 0 when absent. */
+function extParams(
+  t: Timbre,
+): Pick<
+  TimbreParams,
+  'fmRatio' | 'fmIndex' | 'fmIndexTrack' | 'fmTop' | 'noiseLevel' | 'noiseBandwidth' | 'stretch'
+> {
+  const stretch = cleanStretch(t);
+  const ratio = Math.min(32, Math.max(0, finiteOr(t.fm?.ratio ?? 0, 0)));
+  const index = Math.min(20, Math.max(0, finiteOr(t.fm?.index ?? 0, 0)));
+  const fmOn = ratio > 0 && index > 0;
+  let top = 0;
+  const limit = stretch !== 0 ? MAX_PARTIALS : MAX_HARMONICS;
+  for (let k = 0; k < Math.min(limit, t.harmonics.length); k++) {
+    if (finiteOr(t.harmonics[k], 0) !== 0) top = k + 1;
+  }
+  const level = Math.min(4, Math.max(0, finiteOr(t.noise?.level ?? 0, 0)));
+  return {
+    fmRatio: fmOn ? ratio : 0,
+    fmIndex: fmOn ? index : 0,
+    fmIndexTrack: fmOn ? Math.min(4, Math.max(-4, finiteOr(t.fm?.indexTrack ?? 0, 0))) : 0,
+    fmTop: stretch !== 0 && top > 0 ? Math.pow(top, 1 + stretch) : top,
+    noiseLevel: level,
+    noiseBandwidth:
+      level > 0 ? Math.min(8, Math.max(0.01, finiteOr(t.noise?.bandwidth ?? 1, 1))) : 1,
+    stretch,
   };
 }
 
@@ -239,10 +308,66 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
     }
     prevAmps.set(amps);
   }
-  return { sampleRate, mipsPerOctave, data, sameAsNext, params: timbreParams(timbre) };
+  const params = timbreParams(timbre);
+  const { partialRatio, partialAmp } = buildPartials(
+    timbre,
+    params.stretch,
+    formants,
+    mipsPerOctave,
+  );
+  return { sampleRate, mipsPerOctave, data, sameAsNext, params, partialRatio, partialAmp };
+}
+
+/**
+ * The additive path's partials (§8.5, "Inharmonic timbres"): the nonzero partials n among the
+ * first MAX_PARTIALS at ratio n^(1+stretch), with per-mip amplitudes. Tilt applies per octave of
+ * the ratio, track and formants per mip as for the tables, and the set is normalised to
+ * unit-sine RMS at the reference pitch. Empty when stretch is 0.
+ */
+function buildPartials(
+  t: Timbre,
+  stretch: number,
+  formants: readonly { hz: number; bw: number; gain: number }[],
+  mipsPerOctave: number,
+): { partialRatio: Float64Array<ArrayBuffer>; partialAmp: Float64Array<ArrayBuffer> } {
+  if (stretch === 0) return { partialRatio: new Float64Array(0), partialAmp: new Float64Array(0) };
+  const idx: number[] = [];
+  for (let k = 0; k < Math.min(MAX_PARTIALS, t.harmonics.length); k++) {
+    if (finiteOr(t.harmonics[k], 0) !== 0) idx.push(k);
+  }
+  const P = idx.length;
+  const partialRatio = new Float64Array(P);
+  for (let i = 0; i < P; i++) partialRatio[i] = Math.pow(idx[i] + 1, 1 + stretch);
+  const baseTilt = finiteOr(t.brightness.tilt, 0);
+  const track = finiteOr(t.brightness.track, 0);
+  const amps = (tilt: number, f0: number, out: Float64Array, offset: number): void => {
+    const exponent = tilt * DB_PER_OCTAVE_TO_EXPONENT;
+    for (let i = 0; i < P; i++) {
+      const r = partialRatio[i];
+      let a = finiteOr(t.harmonics[idx[i]], 0) * Math.pow(r, exponent);
+      if (formants.length > 0) a *= formantGain(formants, r * f0);
+      out[offset + i] = a;
+    }
+  };
+  const ref = new Float64Array(P);
+  amps(baseTilt, REFERENCE_HZ, ref, 0);
+  let power = 0;
+  for (let i = 0; i < P; i++) power += ref[i] * ref[i];
+  const scale = power > 0 ? 1 / Math.sqrt(power) : 0;
+  const mipCount = mipCountFor(mipsPerOctave);
+  const partialAmp = new Float64Array(mipCount * P);
+  for (let m = 0; m < mipCount; m++) {
+    const fBottom = MIP_BASE_HZ * Math.pow(2, m / mipsPerOctave);
+    const octaves = Math.min(3, Math.max(-2, Math.log2(fBottom / REFERENCE_HZ)));
+    amps(baseTilt - track * TRACK_DB_PER_OCTAVE * octaves, fBottom, partialAmp, m * P);
+    for (let i = 0; i < P; i++) partialAmp[m * P + i] *= scale;
+  }
+  return { partialRatio, partialAmp };
 }
 
 /** The buffers of a set, for a postMessage transfer list. */
 export function wavetableTransferList(set: WavetableSet): ArrayBuffer[] {
-  return [set.data.buffer, set.sameAsNext.buffer];
+  const list: ArrayBuffer[] = [set.data.buffer, set.sameAsNext.buffer];
+  if (set.partialRatio.byteLength > 0) list.push(set.partialRatio.buffer, set.partialAmp.buffer);
+  return list;
 }

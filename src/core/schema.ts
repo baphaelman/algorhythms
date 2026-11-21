@@ -428,11 +428,35 @@ const T = TIMBRE_DEFAULTS;
 
 export const TimbreSchema = z.looseObject({
   harmonics: z.array(finite).max(32).describe('Amplitudes of partials 1..32.'),
-  stretch: finite.default(T.stretch),
+  stretch: z
+    .number()
+    .min(-0.5)
+    .max(1)
+    .default(T.stretch)
+    .describe('Inharmonicity: partial n at n^(1 + stretch); nonzero renders additively.'),
   fm: z
-    .looseObject({ ratio: z.number().positive(), index: nonNegative, indexTrack: finite })
-    .optional(),
-  noise: z.looseObject({ level: nonNegative, bandwidth: z.number().positive() }).optional(),
+    .looseObject({
+      ratio: z.number().positive().max(32).describe('Modulator/carrier frequency ratio.'),
+      index: nonNegative.max(20).describe('Peak phase deviation β at middle C, radians.'),
+      indexTrack: z
+        .number()
+        .min(-4)
+        .max(4)
+        .describe('β scales by 2^(−indexTrack) per octave above middle C.'),
+    })
+    .optional()
+    .describe('Two-operator phase modulation of the carrier.'),
+  noise: z
+    .looseObject({
+      level: nonNegative.max(4).describe("RMS relative to the tone's."),
+      bandwidth: z
+        .number()
+        .positive()
+        .max(8)
+        .describe('Band-pass width around f, as a fraction of f (Q = 1/bandwidth).'),
+    })
+    .optional()
+    .describe('Breath noise through a band-pass tracking the pitch.'),
   brightness: z
     .looseObject({
       tilt: finite.default(T.brightness.tilt),

@@ -96,7 +96,7 @@ export function fullPiece(): Piece {
     harmonics: [1, 0.5, 0.25],
     stretch: 0.01,
     fm: { ratio: 2, index: 1.5, indexTrack: 0.2 },
-    noise: { level: 0.1, bandwidth: 300 },
+    noise: { level: 0.1, bandwidth: 0.3 },
     brightness: { tilt: -3, track: 0.5 },
     detuneSpread: 2,
     accent: 0.3,

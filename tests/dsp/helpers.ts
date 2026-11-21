@@ -1,6 +1,6 @@
 /** Shared helpers for the DSP tests (PLAN.md §14): rendering, levels and the click detector. */
 
-import type { CompiledScore, MixSettings } from '../../src/core/types';
+import type { CompiledScore, MixSettings, Timbre } from '../../src/core/types';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { Graph } from '../../src/dsp/graph';
 import { createLoadedGraph, renderOffline } from '../../src/audio/offline';
@@ -26,8 +26,13 @@ export class Driver {
   private readonly bl = new Float32Array(BLOCK_FRAMES);
   private readonly br = new Float32Array(BLOCK_FRAMES);
 
-  constructor(score: CompiledScore, mix: MixSettings, sampleRate = RATE) {
-    this.graph = createLoadedGraph({ score, mix, sampleRate });
+  constructor(
+    score: CompiledScore,
+    mix: MixSettings,
+    sampleRate = RATE,
+    timbres?: Record<string, Timbre>,
+  ) {
+    this.graph = createLoadedGraph({ score, mix, sampleRate, timbres });
   }
 
   /** Renders whole blocks covering `seconds`. */

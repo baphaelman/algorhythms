@@ -6,20 +6,30 @@
  * The gate uses this process's CPU time (`process.cpuUsage`), because Vitest runs test files in
  * parallel processes and wall-clock time would include waiting for a core, and it takes the best of
  * five 6 s runs, because a contended process may be parked on a slower (efficiency) core for a
- * while. Wall-clock RTF is reported too.
+ * while. Wall-clock RTF is reported too. The M6 workload gives every voice an M6 path: a third
+ * each bell (additive + FM + noise), FM on a wavetable and breath noise.
  */
 
 import { describe, expect, it } from 'vitest';
 import { createLoadedGraph } from '../../src/audio/offline';
-import { ALL_EASES, denseScore, FIXTURE_MIX, withPulses } from '../../src/audio/fixtures/scores';
+import {
+  ALL_EASES,
+  denseScore,
+  FIXTURE_MIX,
+  M6_WORKLOAD_TIMBRES,
+  withPulses,
+} from '../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 
 const RATE = 48000;
 
-function measure(seconds: number): { cpu: number; wall: number } {
+const M6_TIMBRES = ['bell', 'fmreed', 'breath'];
+
+function measure(seconds: number, m6 = false): { cpu: number; wall: number } {
   const graph = createLoadedGraph({
-    score: withPulses(denseScore(24, 40, 5, ALL_EASES)),
+    score: withPulses(denseScore(24, 40, 5, ALL_EASES, m6 ? M6_TIMBRES : undefined)),
     mix: FIXTURE_MIX,
+    timbres: m6 ? M6_WORKLOAD_TIMBRES : undefined,
     sampleRate: RATE,
   });
   const l = new Float32Array(BLOCK_FRAMES);
@@ -44,6 +54,17 @@ describe('real-time factor', () => {
     const wall = Math.max(...runs.map((r) => r.wall));
     console.info(
       `RTF, 24 voices + reverb + delay + tone + limiter at 48 kHz: ${cpu.toFixed(1)}× (CPU time), ` +
+        `${wall.toFixed(1)}× (wall clock)`,
+    );
+    expect(cpu).toBeGreaterThanOrEqual(10);
+  }, 60_000);
+
+  it('renders 24 M6 voices (bell, FM, noise) + FX at 48 kHz at ≥ 10× real time', () => {
+    const runs = Array.from({ length: 5 }, () => measure(6, true));
+    const cpu = Math.max(...runs.map((r) => r.cpu));
+    const wall = Math.max(...runs.map((r) => r.wall));
+    console.info(
+      `RTF, 24 M6 voices (bell / FM / noise) + FX at 48 kHz: ${cpu.toFixed(1)}× (CPU time), ` +
         `${wall.toFixed(1)}× (wall clock)`,
     );
     expect(cpu).toBeGreaterThanOrEqual(10);

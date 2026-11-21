@@ -20,7 +20,7 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 /** The timer and flag calls around the run allocate ~2 KB; one interpreted seek ~8 KB. */
 const MAX_BYTES = 6000;
 
-function runHarness(mode: 'plain' | 'all' | 'lock'): {
+function runHarness(mode: 'plain' | 'all' | 'lock' | 'm6'): {
   gcLines: string[];
   summary: { ms: number; observedGc: number; newSpaceBytes: number };
 } {
@@ -55,6 +55,16 @@ describe('no GC in process()', () => {
     const { gcLines, summary } = runHarness('lock');
     console.info(
       `no-GC run (unison lock): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
+    );
+    expect(gcLines).toEqual([]);
+    expect(summary.observedGc).toBe(0);
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
+  }, 120_000);
+
+  it('runs 60 s of 24 M6 voices (bell, FM, noise) + FX with no scavenge', () => {
+    const { gcLines, summary } = runHarness('m6');
+    console.info(
+      `no-GC run (M6 timbres): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);

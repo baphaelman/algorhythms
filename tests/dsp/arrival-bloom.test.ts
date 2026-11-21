@@ -93,7 +93,9 @@ describe('arrival bloom: step at arrivals', () => {
       ).join(', '),
   );
 
-  it.each(NAMES.filter((t) => t !== 'pluck'))('%s: under the bar, in a chord and solo', (t) => {
+  // Crisp strikes (pluck, bell) are notes, not blooms.
+  const soft = NAMES.filter((t) => timbreParams(BUILTIN_TIMBRES[t]).artCrisp === 0);
+  it.each(soft)('%s: under the bar, in a chord and solo', (t) => {
     expect(chord[t].voice).toBeLessThanOrEqual(ARRIVAL_STEP);
     expect(chord[t].sum).toBeLessThanOrEqual(ARRIVAL_STEP);
     expect(solo[t].voice).toBeLessThanOrEqual(ARRIVAL_STEP);

@@ -13,6 +13,7 @@ import type {
   LevelChange,
   MixSettings,
   Segment,
+  Timbre,
   TimbreChange,
 } from '../../core/types';
 import { Prng } from '../../dsp/rng';
@@ -344,16 +345,46 @@ export const ALL_EASES: EaseRef[] = [
   { kind: 'bezier', x1: 0.3, y1: 0, x2: 0.2, y2: 1.15 },
 ];
 
+/** The M2 presets, which `denseScore` cycles through by default. */
+export const M2_PRESETS = ['sine', 'glass', 'organ', 'reed', 'choir', 'pluck'];
+
+/**
+ * M6 workload timbres (RTF and no-GC): the bell (additive + FM + noise), FM on a wavetable carrier
+ * at a non-integer ratio, and breath noise over a reed. Pass as the render's piece timbres.
+ */
+export const M6_WORKLOAD_TIMBRES: Record<string, Timbre> = {
+  fmreed: {
+    harmonics: [1, 0.04, 0.62, 0.05, 0.42, 0.05, 0.3],
+    stretch: 0,
+    fm: { ratio: 2.71, index: 1.8, indexTrack: 0.5 },
+    brightness: { tilt: -2, track: 0.5 },
+    detuneSpread: 1,
+    accent: 0.2,
+    articulation: { amount: 0.3, attack: 0.01, decay: 0.4 },
+    vibrato: { rate: 5, depthCents: 6, delay: 0.4, jitter: 0.4 },
+  },
+  breath: {
+    harmonics: [1, 0.3, 0.12, 0.05],
+    stretch: 0,
+    noise: { level: 0.3, bandwidth: 0.8 },
+    brightness: { tilt: -2, track: 0 },
+    detuneSpread: 1,
+    accent: 0.2,
+    articulation: { amount: 0.2, attack: 0.02, decay: 0.3 },
+    vibrato: { rate: 5, depthCents: 5, delay: 0.5 },
+  },
+};
+
 /** `n` voices that glide continuously (a new target every ~0.6–1.4 s): the RTF/GC workload. */
 export function denseScore(
   n = 24,
   seconds = 70,
   seed = 5,
   eases: EaseRef[] = ALL_EASES,
+  timbres: string[] = M2_PRESETS,
 ): CompiledScore {
   const rng = new Prng(seed);
   const specs: VoiceSpec[] = [];
-  const timbres = ['sine', 'glass', 'organ', 'reed', 'choir', 'pluck'];
   for (let v = 0; v < n; v++) {
     const moves: Move[] = [];
     let t = 0.1 + rng.next() * 0.2;
@@ -449,6 +480,7 @@ export const FIXTURE_NAMES = [
   'preset-choir',
   'preset-pluck',
   'preset-wobble',
+  'preset-bell',
   'dense-24',
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];

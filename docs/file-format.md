@@ -4119,21 +4119,32 @@ This is the *input* form: fields with defaults are optional here.
           },
           "stretch": {
             "default": 0,
-            "type": "number"
+            "description": "Inharmonicity: partial n at n^(1 + stretch); nonzero renders additively.",
+            "type": "number",
+            "minimum": -0.5,
+            "maximum": 1
           },
           "fm": {
+            "description": "Two-operator phase modulation of the carrier.",
             "type": "object",
             "properties": {
               "ratio": {
                 "type": "number",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0,
+                "maximum": 32,
+                "description": "Modulator/carrier frequency ratio."
               },
               "index": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Peak phase deviation β at middle C, radians."
               },
               "indexTrack": {
-                "type": "number"
+                "type": "number",
+                "minimum": -4,
+                "maximum": 4,
+                "description": "β scales by 2^(−indexTrack) per octave above middle C."
               }
             },
             "required": [
@@ -4144,15 +4155,20 @@ This is the *input* form: fields with defaults are optional here.
             "additionalProperties": {}
           },
           "noise": {
+            "description": "Breath noise through a band-pass tracking the pitch.",
             "type": "object",
             "properties": {
               "level": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "maximum": 4,
+                "description": "RMS relative to the tone's."
               },
               "bandwidth": {
                 "type": "number",
-                "exclusiveMinimum": 0
+                "exclusiveMinimum": 0,
+                "maximum": 8,
+                "description": "Band-pass width around f, as a fraction of f (Q = 1/bandwidth)."
               }
             },
             "required": [

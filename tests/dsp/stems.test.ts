@@ -7,10 +7,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   FIXTURE_MIX,
   lockStressScore,
+  M6_WORKLOAD_TIMBRES,
   stressScore,
   unisonChordScore,
 } from '../../src/audio/fixtures/scores';
-import type { CompiledScore, MixSettings } from '../../src/core/types';
+import type { CompiledScore, MixSettings, Timbre } from '../../src/core/types';
 import { flatten } from '../../src/core/flat';
 import { renderOffline } from '../../src/audio/offline';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
@@ -27,10 +28,11 @@ function stemSum(
   score: CompiledScore,
   mix: MixSettings,
   seconds: number,
+  timbres?: Record<string, Timbre>,
 ): { worst: number; level: number; minGain: number; stems: Float32Array[] } {
   const flat = flatten(score);
   const frames = Math.ceil((seconds * RATE) / BLOCK_FRAMES) * BLOCK_FRAMES;
-  const input = { score: flat, mix, sampleRate: RATE };
+  const input = { score: flat, mix, timbres, sampleRate: RATE };
   const gain = new Float32Array(frames);
   const full = renderOffline(input, frames, { kind: 'mix', captureGain: gain });
   let minGain = 1;
@@ -92,6 +94,14 @@ describe('stems exact sum', () => {
     expect(dbfs(a.worst)).toBeLessThanOrEqual(-90);
     expect(dbfs(b.worst)).toBeLessThanOrEqual(-90);
   }, 360_000); // 36 s, 1 worker
+
+  it('holds for M6 timbres (bell: additive + FM + noise; FM and noise on wavetables)', () => {
+    const score = stressScore(6, 8, 1, 4, ['bell', 'fmreed', 'breath']);
+    for (const v of score.voices) v.gain = 3;
+    const { worst } = stemSum(score, FIXTURE_MIX, 9, M6_WORKLOAD_TIMBRES);
+    console.info(`stems residual, M6 timbres: ${dbfs(worst).toFixed(1)} dBFS`);
+    expect(dbfs(worst)).toBeLessThanOrEqual(-90);
+  }, 90_000);
 
   it('replaying the recorded g_L reproduces the mix bit for bit', () => {
     const score = stressScore(6, 6, 1, 2);
