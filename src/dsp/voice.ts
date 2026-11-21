@@ -62,7 +62,15 @@ import {
   VOICE_SEND_REVERB,
   VOICE_SOLO,
   VOICE_STRIDE,
+  PULSE_ACCENT,
+  PULSE_DECAY,
+  PULSE_FLOOR,
+  PULSE_HIT,
+  PULSE_STRIDE,
+  PULSE_STRIKE,
+  PULSE_T,
   evalFlatSegment,
+  pulseEnvelope,
   segmentMotion,
   segmentPitch,
   weightRampValue,
@@ -72,9 +80,11 @@ import { crossfade, type EaseCode } from '../core/ease';
 import type { FlatVoice } from '../core/flat';
 import {
   BLOCK_FRAMES,
+  BLOOM_ATTACK,
   COINCIDE_WINDOW,
   CONTROL_PERIOD,
   DSP_MAX_VOICES,
+  MIN_ARTICULATION_ATTACK,
   MIN_LIFE_FADE,
   MUTE_RAMP,
   SWAP_CROSSFADE_SEMITONES,
@@ -194,6 +204,26 @@ export class VoiceData {
    */
   share: Float64Array = EMPTY_F64;
   prevShare: Float64Array = EMPTY_F64;
+  /**
+   * Articulation strikes in time order (`buildStrikes`): the segment arrivals above plus pulse
+   * hits with `strike`. Render reads these, not the per-segment arrays: a strike's time, its
+   * share, and the strike before it (NaN after a gap: the attack then starts from 0).
+   */
+  strikeT: Float64Array = EMPTY_F64;
+  strikeShare: Float64Array = EMPTY_F64;
+  strikePrevT: Float64Array = EMPTY_F64;
+  strikePrevShare: Float64Array = EMPTY_F64;
+  nStrike = 0;
+  /** Pulse records (revision 9; core/segment PULSE_*), PULSE_STRIDE doubles each. */
+  pulses: Float64Array = EMPTY_F64;
+  nPulse = 0;
+  /**
+   * Per pulse record (`preparePulses`): the record its onset rises from (the last with an earlier
+   * time; −1 = gain 1), and its onset attack for a soft and for a crisp timbre (seconds).
+   */
+  pulseFrom: Int32Array = EMPTY_I32;
+  pulseSoft: Float64Array = EMPTY_F64;
+  pulseCrisp: Float64Array = EMPTY_F64;
   /** Start of the hold containing segment i (NaN during glides), for vibrato onset. */
   holdStart: Float64Array = EMPTY_F64;
   /**
@@ -309,6 +339,10 @@ export class VoiceData {
       const start = d.levelStart[i - 1];
       d.levelStart[i] = start + (L[o + LEVEL_GAIN] - start) * (u >= 1 ? 1 : u);
     }
+    d.pulses = fv.pulses ?? EMPTY_F64;
+    d.nPulse = (d.pulses.length / PULSE_STRIDE) | 0;
+    preparePulses(d);
+    buildStrikes(d);
     return d;
   }
 
@@ -395,6 +429,114 @@ export class VoiceData {
 export const EMPTY_VOICE_DATA = new VoiceData();
 
 /**
+ * Pulse onsets (revision 9; build log "R9-3b"). Core's envelope jumps at each record; the voice
+ * instead rises from the envelope it was on (record `pulseFrom`) to the record's level over an
+ * onset attack A, as a smootherstep. A hit then holds its accent at t + A and falls to
+ * floor × accent by t + decay as specified (the cubic, compressed into decay − A), so its onset,
+ * peak and floor land where core puts them. A follows the arrival bloom: crisp timbres take
+ * MIN_ARTICULATION_ATTACK; soft ones at least BLOOM_ATTACK·√Δ, Δ the size of the jump, which
+ * caps the curvature as the bloom does. A never passes the next record (so every onset starts
+ * from a finished one and the gain stays continuous) or half a hit's decay; a record at a birth
+ * applies at once (the life fades in from 0). Allocates; called from `fromFlat`.
+ */
+export function preparePulses(d: VoiceData): void {
+  const n = d.nPulse;
+  const P = d.pulses;
+  d.pulseFrom = new Int32Array(n);
+  d.pulseSoft = new Float64Array(n);
+  d.pulseCrisp = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * PULSE_STRIDE;
+    const t = P[o + PULSE_T];
+    let f = i - 1;
+    while (f >= 0 && P[f * PULSE_STRIDE + PULSE_T] >= t) f--;
+    d.pulseFrom[i] = f;
+    let j = i + 1;
+    while (j < n && P[j * PULSE_STRIDE + PULSE_T] <= t) j++;
+    const gap = j < n ? P[j * PULSE_STRIDE + PULSE_T] - t : Infinity;
+    const accent = P[o + PULSE_ACCENT];
+    const decay = P[o + PULSE_DECAY];
+    const rises = P[o + PULSE_HIT] === 1 && decay > 0;
+    const target = rises ? accent : accent * P[o + PULSE_FLOOR];
+    let from = 1;
+    if (f >= 0) {
+      const q = f * PULSE_STRIDE;
+      from = pulseEnvelope(P[q + PULSE_ACCENT], P[q + PULSE_FLOOR], P[q + PULSE_DECAY], t - P[q]);
+    }
+    let atBirth = false;
+    for (let l = 0; l < d.nLife; l++)
+      if (d.lives[l * LIFE_STRIDE + LIFE_BORN] === t) atBirth = true;
+    const cap = atBirth ? 0 : Math.min(gap, rises ? decay / 2 : Infinity);
+    const soft = Math.max(
+      MIN_ARTICULATION_ATTACK,
+      BLOOM_ATTACK * Math.sqrt(Math.abs(target - from)),
+    );
+    d.pulseSoft[i] = Math.min(soft, cap);
+    d.pulseCrisp[i] = Math.min(MIN_ARTICULATION_ATTACK, cap);
+  }
+}
+
+/**
+ * Merges the segment arrivals (arrive/share per segment) and the pulse hits that strike into
+ * the strike list render reads. A pulse strike has share 1 (never shared). Strikes at one time
+ * collapse into one, at the larger share. Allocates; called from `fromFlat` and again by
+ * `computeStrikeShares` once shares are known.
+ */
+export function buildStrikes(d: VoiceData): void {
+  const P = d.pulses;
+  const cap = d.nSeg + d.nPulse;
+  const T = new Float64Array(cap);
+  const S = new Float64Array(cap);
+  const gapBefore = new Uint8Array(cap);
+  let n = 0;
+  let si = 0;
+  let pi = 0;
+  for (;;) {
+    // Next segment arrival (a new `arrive` value) and next striking pulse hit.
+    while (si < d.nSeg && si > 0 && d.arrive[si] === d.arrive[si - 1]) si++;
+    while (
+      pi < d.nPulse &&
+      !(P[pi * PULSE_STRIDE + PULSE_HIT] === 1 && P[pi * PULSE_STRIDE + PULSE_STRIKE] === 1)
+    )
+      pi++;
+    const ta = si < d.nSeg ? d.arrive[si] : Infinity;
+    const tp = pi < d.nPulse ? P[pi * PULSE_STRIDE + PULSE_T] : Infinity;
+    if (ta === Infinity && tp === Infinity) break;
+    let t: number;
+    let share: number;
+    let gap = 0;
+    if (ta <= tp) {
+      t = ta;
+      share = d.share[si];
+      gap = d.prevArrive[si] === d.prevArrive[si] ? 0 : 1;
+      si++;
+    } else {
+      t = tp;
+      share = 1;
+      pi++;
+    }
+    if (n > 0 && T[n - 1] === t) {
+      if (share > S[n - 1]) S[n - 1] = share;
+      continue;
+    }
+    T[n] = t;
+    S[n] = share;
+    gapBefore[n] = gap;
+    n++;
+  }
+  d.nStrike = n;
+  d.strikeT = T.slice(0, n);
+  d.strikeShare = S.slice(0, n);
+  d.strikePrevT = new Float64Array(n);
+  d.strikePrevShare = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const has = k > 0 && gapBefore[k] === 0;
+    d.strikePrevT[k] = has ? T[k - 1] : NaN;
+    d.strikePrevShare[k] = has ? S[k - 1] : 1;
+  }
+}
+
+/**
  * Unison warp (docs/build-log.md, "Unison lock: steady approach and parting"). Two voices whose
  * pitches converge beat at their frequency difference, and a glide spends a long time in the
  * slow-beat zone because eases approach their target slowly. A glide that arrives at (or leaves)
@@ -468,6 +610,7 @@ export function computeStrikeShares(data: VoiceData[]): void {
       d.share[i] = 1 / Math.sqrt(k);
     }
   }
+  for (const d of data) buildStrikes(d);
 }
 
 /** Score pitch of `d` at time t, or NaN when it is not alive then. Allocates nothing; not hot. */
@@ -741,6 +884,8 @@ export class Voice {
   private levelCur = -1;
   private weightCur = -1;
   private timbreCur = 0;
+  private pulseCur = -1;
+  private strikeCur = -1;
   /** Timbre slot at the last tick. */
   private curSlot = -1;
   /** Re-initialise smoothers and interpolation at the next tick. */
@@ -858,6 +1003,8 @@ export class Voice {
     this.levelCur = lastAtOrBefore(d.levels, d.nLevel, LEVEL_STRIDE, LEVEL_T, t);
     this.weightCur = lastAtOrBefore(d.weights, d.nWeight, RAMP_STRIDE, RAMP_T, t);
     this.timbreCur = Math.max(0, lastAtOrBefore(d.timbres, d.nTimbre, TIMBRE_STRIDE, TIMBRE_T, t));
+    this.pulseCur = lastAtOrBefore(d.pulses, d.nPulse, PULSE_STRIDE, PULSE_T, t);
+    this.strikeCur = lastAtOrBefore(d.strikeT, d.nStrike, 1, 0, t);
     if (fresh) {
       this.fresh = true;
       this.st[S_PREV_AMP] = 0;
@@ -995,6 +1142,8 @@ export class Voice {
     this.levelCur = v.levelCur;
     this.weightCur = v.weightCur;
     this.timbreCur = v.timbreCur;
+    this.pulseCur = v.pulseCur;
+    this.strikeCur = v.strikeCur;
     this.curSlot = v.curSlot;
     this.roleMpo.set(v.roleMpo);
     this.roleMip.set(v.roleMip);
@@ -1313,24 +1462,28 @@ export class Voice {
           // envelope up to the strike's height h, then exponential decay to 1 %. The attack is at
           // least MIN_ARTICULATION_ATTACK, and BLOOM_ATTACK·√amount unless crisp (timbreParams). A
           // soft strike rises to its share of coincident arrivals, a crisp one always to 1. The
-          // held level 1 − amount does not depend on h.
+          // held level 1 − amount does not depend on h. Strikes are the arrivals plus pulse hits
+          // (VoiceData.strikeT).
           let artic = 1;
           const amount = A.artAmount * xa + B.artAmount * x;
+          const crisp = A.artCrisp * xa + B.artCrisp * x;
           if (amount > 0) {
             const attack = A.artAttack * xa + B.artAttack * x;
             const decay = A.artDecay * xa + B.artDecay * x;
-            const crisp = A.artCrisp * xa + B.artCrisp * x;
-            const ta = t - d.arrive[si];
+            let sj = this.strikeCur;
+            while (sj + 1 < d.nStrike && d.strikeT[sj + 1] <= t) sj++;
+            this.strikeCur = sj;
             let env = 0;
-            if (ta >= 0) {
-              const sh = d.share[si];
+            if (sj >= 0) {
+              const ta = t - d.strikeT[sj];
+              const sh = d.strikeShare[sj];
               const h = sh + (1 - sh) * crisp;
               if (ta < attack) {
-                const pa = d.prevArrive[si];
+                const pa = d.strikePrevT[sj];
                 let e0 = 0;
                 if (pa === pa) {
-                  const ps = d.prevShare[si];
-                  const tp = d.arrive[si] - pa;
+                  const ps = d.strikePrevShare[sj];
+                  const tp = d.strikeT[sj] - pa;
                   const v = tp / attack;
                   e0 =
                     (ps + (1 - ps) * crisp) *
@@ -1357,6 +1510,48 @@ export class Voice {
             const over = Lv[lo + LEVEL_OVER];
             const u = over > 0 ? (t - Lv[lo + LEVEL_T]) / over : 1;
             level = u >= 1 ? Lv[lo + LEVEL_GAIN] : start + (Lv[lo + LEVEL_GAIN] - start) * u;
+          }
+
+          // Pulse (revision 9; preparePulses): the record in force and the one its onset rises
+          // from, each by its compressed envelope, blended by a smootherstep over the onset
+          // attack. Written out, not called (render's inlining budget).
+          if (d.nPulse > 0) {
+            const P = d.pulses;
+            let pi = this.pulseCur;
+            while (pi + 1 < d.nPulse && P[(pi + 1) * PULSE_STRIDE + PULSE_T] <= t) pi++;
+            this.pulseCur = pi;
+            if (pi >= 0) {
+              let gNow = 1;
+              let gFrom = 1;
+              let u = 1;
+              for (let e = 0; e < 2; e++) {
+                const r = e === 0 ? pi : d.pulseFrom[pi];
+                if (r < 0 || (e === 1 && !(u < 1))) break;
+                const o = r * PULSE_STRIDE;
+                const soft = d.pulseSoft[r];
+                const att = soft + (d.pulseCrisp[r] - soft) * crisp;
+                const acc = P[o + PULSE_ACCENT];
+                const fl = P[o + PULSE_FLOOR];
+                const dec = P[o + PULSE_DECAY];
+                const dt = t - P[o + PULSE_T];
+                let g = acc * fl;
+                if (dec > 0) {
+                  if (dt < att) g = acc;
+                  else {
+                    const v = (dt - att) / (dec - att);
+                    if (v < 1) {
+                      const w = 1 - v;
+                      g = acc * (fl + (1 - fl) * w * w * w);
+                    }
+                  }
+                }
+                if (e === 0) {
+                  gNow = g;
+                  if (dt < att) u = dt / att;
+                } else gFrom = g;
+              }
+              level *= u < 1 ? gFrom + (gNow - gFrom) * u * u * u * (u * (u * 6 - 15) + 10) : gNow;
+            }
           }
 
           // Swap slew: blend from the frozen pre-swap pitch.

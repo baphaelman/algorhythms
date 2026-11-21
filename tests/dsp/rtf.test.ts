@@ -11,14 +11,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { createLoadedGraph } from '../../src/audio/offline';
-import { ALL_EASES, denseScore, FIXTURE_MIX } from '../../src/audio/fixtures/scores';
+import { ALL_EASES, denseScore, FIXTURE_MIX, withPulses } from '../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 
 const RATE = 48000;
 
 function measure(seconds: number): { cpu: number; wall: number } {
   const graph = createLoadedGraph({
-    score: denseScore(24, 40, 5, ALL_EASES),
+    score: withPulses(denseScore(24, 40, 5, ALL_EASES)),
     mix: FIXTURE_MIX,
     sampleRate: RATE,
   });

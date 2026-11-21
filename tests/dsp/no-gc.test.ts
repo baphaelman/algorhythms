@@ -8,7 +8,8 @@
  * the solver-based expo and bézier. Those two allocate a little per control tick, because V8 cannot
  * inline their solvers into the audio loop (docs/build-log.md, M2); the last test measures how
  * often that makes the young generation collect, and only reports it. The 'lock' run covers the
- * unison lock: unisons, merges, births into held unisons and a seek every 5 s.
+ * unison lock: unisons, merges, births into held unisons and a seek every 5 s. In every run half
+ * the voices pulse (R9-3b `withPulses`).
  */
 
 import { spawnSync } from 'node:child_process';
