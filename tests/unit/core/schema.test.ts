@@ -365,7 +365,7 @@ describe('parsePiece: versions', () => {
   it('opens a newer file with a warning, keeping its version and unknown moments', () => {
     const input = {
       ...MINIMAL,
-      version: 2,
+      version: 3,
       futureTopLevel: { a: 1 },
       moments: [
         { id: 'a', type: 'split', at: 1, count: 2 },
@@ -375,9 +375,9 @@ describe('parsePiece: versions', () => {
     };
     const r = ok(parsePiece(input));
     expect(r.newerVersion).toBe(true);
-    expect(r.warnings[0]).toMatch(/newer AlgoRhythms \(file format 2; this version reads 1\)/);
+    expect(r.warnings[0]).toMatch(/newer AlgoRhythms \(file format 3; this version reads 2\)/);
     expect(r.warnings[1]).toMatch(/1 moment\(s\) of a type this version doesn't know \(mirror\)/);
-    expect(r.piece.version).toBe(2);
+    expect(r.piece.version).toBe(3);
     expect(r.piece.moments.map((m) => m.id)).toEqual(['a', 'b', 'c']);
     expect(r.piece.moments[1]).toEqual({ id: 'b', type: 'mirror', at: 2, axis: 60 });
     expect((r.piece as unknown as Record<string, unknown>).futureTopLevel).toEqual({ a: 1 });
@@ -507,7 +507,7 @@ describe('serializePiece', () => {
     for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(100);
     // Short values stay on one line.
     expect(text).toContain('"range": [38, 84]');
-    expect(text).toContain('{ "voice": "v1", "pitch": 57 }');
+    expect(text).toContain('"pitches": [57, 64.5]');
     expect(text).toContain(
       '{ "id": "aaaab2", "type": "pin", "at": 30, "voice": "v3", "pitch": 72 }'.replace(
         '"id": "aaaab2", "type": "pin"',

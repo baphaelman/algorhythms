@@ -382,12 +382,12 @@ describe('a fork of a line not born yet (chord-count 1987819535/617, sweep)', ()
         ],
       }),
     );
-    const v7 = s.voices[6];
-    const v9 = s.voices[8];
-    // Fresh births (v1, v4, …) appear on their own notes; the fork must appear on v7's.
-    expect(lineArtifacts(s, { noCross: true }).filter((a) => a.voice === 'v9')).toEqual([]);
-    expect(v9.lives[0].born).toBeGreaterThanOrEqual(v7.lives[0].born);
-    expect(pitchAt(v9, v9.lives[0].born + 1e-6)).toBeCloseTo(71, 3);
+    // Schema v2: from silence the first chord establishes (at 7.6, no stagger or fade-in): its 14
+    // voices on the 5 octaves of one pitch class in range, as 5 lines. The second chord's forks
+    // then always find their parents sounding.
+    const est = s.voices.filter((v) => v.lives[0]?.born === 7.6 && v.lives[0].fadeIn === 0);
+    expect(est).toHaveLength(5);
+    expect(lineArtifacts(s, { noCross: true }).filter((a) => a.kind === 'birth')).toEqual([]);
   });
 });
 
@@ -547,7 +547,7 @@ describe('a walk’s span across a checkpoint (incremental −1808251847/498, 12
     expect(inc.stats.mode).toBe('resume');
     expect(inc.stats.from).toBe(1);
     const want = compile(p2);
-    expect(want.momentSpans[0].end).toBe(3.5);
+    expect(want.momentSpans.find((m) => m.id === 'm0')!.end).toBe(3.5);
     expect(structuredClone(got)).toStrictEqual(structuredClone(want));
   });
 });

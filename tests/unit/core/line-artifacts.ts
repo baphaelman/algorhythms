@@ -3,7 +3,8 @@
  * Notes: n never makes lines cross or start or stop in mid-air"):
  * - `cross`: two sounding voices pass through each other (their order flips without resting
  *   together for at least REST seconds);
- * - `birth`: a voice is born off every other sounding voice's pitch (it appears from nowhere);
+ * - `birth`: a voice is born off every other sounding voice's pitch (it appears from nowhere),
+ *   except a voice an establishing moment brings in from silence (schema v2);
  * - `death`: a dying voice's glide ends off every other sounding voice's pitch (it stops in
  *   mid-air), or the voice it merged into leaves while it is still fading.
  */
@@ -57,8 +58,8 @@ export function lineArtifacts(
 
   for (const v of score.voices) {
     for (const life of v.lives) {
-      // Births (not the voices sounding from t = 0).
-      if (life.born > 0 && life.born >= from && life.born <= to) {
+      // Births (not voices an establishing moment brings in from silence: no fade-in, M4.5-27).
+      if (life.fadeIn > 0 && life.born >= from && life.born <= to) {
         const seg = v.segments.find((g) => g.t0 === life.born);
         const p0 = seg ? seg.p0 : NaN;
         if (!near(others(score, v, life.born), p0)) {

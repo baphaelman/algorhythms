@@ -134,7 +134,7 @@ describe('moveDots: grouped note changes', () => {
     const p = base();
     const d = dotsOf(p, 'b')[0];
     const r = moveDots(p, [{ dot: d, pitch: d.pitch, t: d.t - 4 }], env(p));
-    expect(r.piece.moments.map((m) => m.id)).toEqual(['a', 'sh']);
+    expect(r.piece.moments.map((m) => m.id)).toEqual(['start0', 'a', 'sh']);
     expect(noteChanges(noteOf(r.piece, 'a'))).toEqual([
       { from: 60, to: 62 },
       { from: 64, to: 65 },
@@ -179,7 +179,7 @@ describe('moveDots: grouped note changes', () => {
     const r = moveDots(joined, moves, env(joined));
     expect(noteOf(r.piece, 'a').at).toBe(3);
     expect(noteChanges(noteOf(r.piece, 'a'))).toHaveLength(2);
-    expect(r.piece.moments).toHaveLength(2);
+    expect(r.piece.moments).toHaveLength(3); // with the opening
   });
 
   it('overrides on other moments stay overrides; one recipe moves them all', () => {
@@ -203,12 +203,12 @@ describe('moveDots: grouped note changes', () => {
 });
 
 describe('sectionOwner', () => {
-  it('a glide and the hold after it belong to the moment; before any move, none', () => {
+  it('a glide and the hold after it belong to the moment; before any move, the opening', () => {
     const p = base();
     const s = compile(p);
     expect(sectionOwner(s, 2, 2.5)).toBe('a');
     expect(sectionOwner(s, 2, 5)).toBe('a');
-    expect(sectionOwner(s, 2, 1)).toBeNull();
+    expect(sectionOwner(s, 2, 1)).toBe('start0');
     expect(sectionOwner(s, 2, 10.5)).toBe('sh');
   });
 });

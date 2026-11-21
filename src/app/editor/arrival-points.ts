@@ -62,13 +62,26 @@ function addLanding(
   return null;
 }
 
+/**
+ * True for a hold an establishing moment opened (M4.5-27): it starts a life with no fade-in and
+ * carries the moment's id. Its dot is at its start, where the note comes in.
+ */
+function opening(v: CompiledVoice, s: CompiledVoice['segments'][number]): boolean {
+  return (
+    s.momentId !== undefined &&
+    s.p0 === s.p1 &&
+    v.lives.some((l) => l.born === s.t0 && l.fadeIn === 0)
+  );
+}
+
 /** Dots closer than this in time (s) and pitch (st) are one dot. */
 const SAME_T = 1e-3;
 const SAME_P = 0.05;
 
 /**
  * Where moment `id`'s glides land, from the compiled segments: per voice, the end of its latest
- * segment of the moment that moves and wasn't interrupted. A dying voice that glides onto a
+ * segment of the moment that moves and wasn't interrupted, or where an establishing moment
+ * brings the voice in (the start of its opening hold). A dying voice that glides onto a
  * neighbour lands on that neighbour's dot, so duplicates are merged. Sorted by t, then pitch.
  */
 export function segmentArrivals(
@@ -79,7 +92,11 @@ export function segmentArrivals(
   for (const v of score.voices) {
     let best: { t: Seconds; p: Pitch; v: number } | null = null;
     for (const s of v.segments) {
-      if (s.momentId !== id || s.p0 === s.p1) continue;
+      if (s.momentId !== id) continue;
+      if (s.p0 === s.p1) {
+        if (!best && opening(v, s)) best = { t: s.t0, p: s.p0, v: v.index };
+        continue;
+      }
       if (s.curve && s.curve.t1 > s.t1 + 1e-9) continue;
       if (!best || s.t1 >= best.t) best = { t: s.t1, p: s.p1, v: v.index };
     }
@@ -166,7 +183,11 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
     best.clear();
     for (const s of v.segments) {
       const id = s.momentId;
-      if (id === undefined || s.p0 === s.p1) continue;
+      if (id === undefined) continue;
+      if (s.p0 === s.p1) {
+        if (!best.has(id) && opening(v, s)) best.set(id, { t: s.t0, p: s.p0, v: v.index });
+        continue;
+      }
       if (s.curve && s.curve.t1 > s.t1 + 1e-9) continue;
       const b = best.get(id);
       if (!b || s.t1 >= b.t) best.set(id, { t: s.t1, p: s.p1, v: v.index });

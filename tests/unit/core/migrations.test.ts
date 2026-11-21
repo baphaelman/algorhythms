@@ -38,7 +38,7 @@ describe('migratePiece', () => {
 
   it('runs a v0 → v1 step and sets the version', () => {
     const raw = { format: 'algorhythms', version: 0, title: 'Old', pool: [{ id: 'v1' }], keep: 1 };
-    const r = migratePiece(raw, migrationRegistry([V0_TO_V1]));
+    const r = migratePiece(raw, migrationRegistry([V0_TO_V1]), 1);
     expect(r).toEqual({
       ok: true,
       applied: [0],

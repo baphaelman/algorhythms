@@ -11,6 +11,7 @@ import { createIncrementalCompiler } from '../../../src/core/compiler/incrementa
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 import { benchmarkPiece } from './compiler-bench-piece';
+import { withStart } from './compiler-fixtures';
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 
@@ -76,10 +77,14 @@ describe('incremental compile', () => {
     const inc = createIncrementalCompiler();
     const p = benchmarkPiece();
     inc.compile(p);
-    const q = { ...p, start: [{ voice: 'v2', pitch: 60 }] };
+    const q = { ...p, key: { tonic: 'C', scale: 'major' } } as typeof p;
     expect(inc.compile(q)).toStrictEqual(compile(q));
     expect(inc.stats.mode).toBe('full');
-    const r = { ...q, voices: q.voices.map((v, i) => (i === 3 ? { ...v, gain: 0.5 } : v)) };
+    // The opening is a moment now (schema v2): changing it resumes from 0.
+    const o = { ...q, moments: withStart(q, [{ voice: 'v2', pitch: 60 }]) };
+    expect(inc.compile(o)).toStrictEqual(compile(o));
+    expect(inc.stats.mode).toBe('resume');
+    const r = { ...o, voices: o.voices.map((v, i) => (i === 3 ? { ...v, gain: 0.5 } : v)) };
     expect(inc.compile(r)).toStrictEqual(compile(r));
     expect(inc.stats.mode).toBe('resume');
     inc.reset();

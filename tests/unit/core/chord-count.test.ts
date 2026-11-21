@@ -206,7 +206,7 @@ describe('chord count', () => {
     const p = piece({ start: START, pool: 8, moments: [chord(6)] });
     const parsed = parsePiece(JSON.parse(serializePiece(p)));
     if (!parsed.ok) throw new Error(parsed.errors.join('; '));
-    expect((parsed.piece.moments[0] as ChordMoment).count).toBe(6);
+    expect((parsed.piece.moments[1] as ChordMoment).count).toBe(6);
     expect(parsed.warnings).toEqual([]);
     const withCount = (count: unknown) => {
       const j = JSON.parse(serializePiece(p));

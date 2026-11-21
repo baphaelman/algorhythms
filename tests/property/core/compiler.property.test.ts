@@ -6,6 +6,7 @@
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import fc from 'fast-check';
+import { parsePiece } from '../../../src/core/schema';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   compile as compileRaw,
@@ -254,6 +255,7 @@ describe('compiler regressions (pieces that once failed)', () => {
   for (const f of files) {
     it(f, () => {
       const p = JSON.parse(readFileSync(new URL(f, REGRESSIONS), 'utf8')) as Piece;
+      expect(p.version).toBe(2);
       const stats: CrossingStats = { pairsChecked: 0, unresolved: 0 };
       checkCrossings(p, stats);
       checkRanges(p);
@@ -510,6 +512,7 @@ describe('compiler properties (§14)', () => {
             p.seed = seed;
             p.defaults.glide.order = order;
             p.moments = [
+              ...p.moments,
               {
                 id: 'Aaaaaa',
                 type: 'split',
@@ -650,5 +653,8 @@ const basePiece: Piece = (() => {
       view: { window: 20, colors: 'ink', hud: true },
     }),
   ) as Piece;
-  return p;
+  // A version 1 piece: its `start` becomes the opening chord (schema v2).
+  const r = parsePiece(p);
+  if (!r.ok) throw new Error(r.errors.join('; '));
+  return r.piece;
 })();

@@ -271,7 +271,7 @@ describe('frozen walks in the file format', () => {
     const r = parsePiece(serializePiece(withFixed(p, 'w', fixed)));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const got = (r.piece.moments[0] as WalkMoment).fixed!;
+    const got = (r.piece.moments[1] as WalkMoment).fixed!;
     expect(got.map((n) => n.tick)).toEqual([...got.map((n) => n.tick)].sort((a, b) => a - b));
     expect(new Set(got.map((n) => JSON.stringify(n)))).toEqual(
       new Set(fixed.map((n) => JSON.stringify(n))),

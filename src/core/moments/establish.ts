@@ -7,14 +7,14 @@
  *
  * - **Voices.** A `{ voices }` target brings in those voices, in the listed order; any other
  *   target brings in dormant pool voices in pool order.
- * - **How many.** A chord's `count`; else every listed voice of a `{ voices }` target; else one
- *   per note (the pitch list's length, or the chord's pitch classes). A unison: every listed voice,
+ * - **How many.** A chord's `count` (listed voices first, then other free ones); else every
+ *   listed voice of a `{ voices }` target; else one per note (the pitch list's length, or the chord's pitch classes). A unison: every listed voice,
  *   else one (it is one note either way). Too few free voices: truncated (`pool-exhausted`).
  * - **Notes.** A chord with `byVoice` and one pitch per voice gives pitch i to voice i. Otherwise
  *   the chord is voiced as for newborns (its voicing over its register, free octaves before
  *   unisons) and the targets go low to high to the voices in pool order. Without a register it is
- *   voiced in a window of 12 + 3k semitones around the middle of the voices' ranges (k notes), as
- *   the composer does, not over the whole range. A unison sits on
+ *   voiced in a window of 12 + 3k semitones around the middle of the voices' ranges (k notes),
+ *   not over the whole range, and `even` voices `close` there, so every chord tone sounds. A unison sits on
  *   its pitch; `center` is the middle of the first voice's range snapped to the key, `tonic` the
  *   key's tonic nearest that middle.
  *
@@ -25,6 +25,7 @@
 import { pitchClassOf, snapToScale } from '../scales';
 import type { ChordMoment, Moment, Pitch, UnisonMoment } from '../types';
 import { roundTiesDown, voiceNotes, pitchClasses } from '../voicing';
+import { distinctTargets } from './chord';
 import { IntentKind, unionRange, type MomentEnv, type MomentPlan } from './types';
 
 /** True for moments that can start the sound from silence: a chord with notes, and a unison. */
@@ -81,12 +82,14 @@ function establishChord(m: ChordMoment, env: MomentEnv): MomentPlan | null {
   }
   const own = listed(m, env);
   const want =
-    m.count !== undefined
-      ? Math.max(1, Math.floor(m.count))
+    m.count !== undefined ? Math.max(1, Math.floor(m.count)) : own ? own.length : noteCount(m, env);
+  // A count beyond the listed voices brings in other free voices too (count = lines after it).
+  const cands = own
+    ? m.count !== undefined
+      ? [...own, ...env.dormant().filter((v) => !own.includes(v))]
       : own
-        ? own.length
-        : noteCount(m, env);
-  const vs = take(own ?? env.dormant(), want, env);
+    : env.dormant();
+  const vs = take(cands, want, env);
   if (vs.length === 0) return null;
   const ps = m.notes.kind === 'pitches' ? m.notes.pitches : null;
   if (m.byVoice && ps && ps.length === vs.length && ps.every(Number.isFinite)) {
@@ -95,7 +98,8 @@ function establishChord(m: ChordMoment, env: MomentEnv): MomentPlan | null {
   const voiced = voiceNotes({
     notes: m.notes,
     k: vs.length,
-    mode: m.voicing ?? 'even',
+    // Without a register, `even` voices close around the middle, so a triad has all its notes.
+    mode: !m.register && (m.voicing ?? 'even') === 'even' ? 'close' : (m.voicing ?? 'even'),
     register: m.register ?? openingRegister(unionRange(env, vs), vs.length),
     key: env.key,
     current: [],
@@ -106,7 +110,21 @@ function establishChord(m: ChordMoment, env: MomentEnv): MomentPlan | null {
     env.diag('error', voiced.code, voiced.message);
     return null;
   }
-  const q = voiced.targets.slice().sort((a, b) => a - b);
+  // Free octaves before unisons, as any chord (explicit pitch lists stay as written).
+  const q = (
+    m.notes.kind === 'pitches'
+      ? voiced.targets.slice()
+      : distinctTargets(
+          m,
+          env,
+          voiced.targets,
+          vs.length,
+          voiced.perVoice,
+          unionRange(env, vs),
+          [],
+          [],
+        )
+  ).sort((a, b) => a - b);
   if (q.length === 0) return null;
   if (q.length > vs.length) {
     env.diag(

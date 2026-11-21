@@ -62,9 +62,11 @@ describe('suggestNext', () => {
     expect(suggestNext(one, compile(one), 2)[0].label).toMatch(/^Split to \d+ · /);
   });
 
-  it('never suggests a no-effect moment, and returns none when nothing sounds', () => {
+  it('never suggests a no-effect moment; from silence, an opening (M4.5-27)', () => {
     const p = piece({ start: [], moments: [] });
-    expect(suggestNext(p, compile(p), 1)).toEqual([]);
+    const open = suggestNext(p, compile(p), 1);
+    expect(open.map((x) => x.label)).toEqual(['Start on Am', 'Start on A']);
+    for (const x of open) expect(momentEffectAt(p, compile(p), x.moment).effect).toBe(true);
     for (const [, ex] of examples) {
       const s = compile(ex);
       for (let t = 1; t < s.duration; t += s.duration / 9) {

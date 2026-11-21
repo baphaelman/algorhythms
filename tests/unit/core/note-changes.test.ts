@@ -174,11 +174,12 @@ describe('note moment with changes', () => {
     const inc = createIncrementalCompiler();
     expect(inc.compile(p)).toEqual(compile(p));
     const edits: ((q: Piece) => void)[] = [
-      (q) => (q.moments[0] as NoteMoment).changes!.push({ from: 48, to: 47 }),
-      (q) => ((q.moments[0] as NoteMoment).changes![1].to = 71),
-      (q) => ((q.moments[2] as NoteMoment).changes![0].from = 51),
-      (q) => delete (q.moments[0] as NoteMoment).back,
-      (q) => ((q.moments[0] as NoteMoment).order = true),
+      // moments[0] is the opening chord.
+      (q) => (q.moments[1] as NoteMoment).changes!.push({ from: 48, to: 47 }),
+      (q) => ((q.moments[1] as NoteMoment).changes![1].to = 71),
+      (q) => ((q.moments[3] as NoteMoment).changes![0].from = 51),
+      (q) => delete (q.moments[1] as NoteMoment).back,
+      (q) => ((q.moments[1] as NoteMoment).order = true),
     ];
     let q = p;
     for (const e of edits) {
@@ -199,7 +200,7 @@ describe('note moment with changes', () => {
     expect(parsed.ok && parsed.piece.moments).toEqual(p.moments);
     const ok = (f: (m: Record<string, unknown>) => void) => {
       const j = JSON.parse(serializePiece(p));
-      f(j.moments[0]);
+      f(j.moments[1]); // after the opening
       return parsePiece(j).ok;
     };
     expect(ok((m) => (m.changes = []))).toBe(false);

@@ -66,7 +66,7 @@ describe('withNote', () => {
 describe('movedFixed', () => {
   const p = base([walk]);
   const s = compile(p);
-  const w = p.moments[0] as WalkMoment;
+  const w = p.moments[1] as WalkMoment; // after the opening
   const steps = stepsOf(s, 'w');
 
   it('freezes an unfrozen walk and moves only that note', () => {

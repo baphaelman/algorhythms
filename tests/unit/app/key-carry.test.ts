@@ -117,7 +117,7 @@ describe('key carry prompt', () => {
     // G is a fourth down (the shorter way).
     expect(byId('pit001')).toMatchObject({ notes: { pitches: [43, 50, 55, 59] } });
     expect(byId('nam001')).toMatchObject({ notes: { symbol: 'C' } });
-    expect(byId('deg001')).toBe(before.moments[0]);
+    expect(byId('deg001')).toBe(before.moments[1]);
     undo();
     expect(piece()).toBe(before);
   });
@@ -152,7 +152,7 @@ describe('key carry prompt', () => {
   });
 
   it('does not ask when the span has no fixed notes', () => {
-    loadPiece({ ...base(), moments: [base().moments[0]] });
+    loadPiece({ ...base(), moments: base().moments.slice(0, 2) });
     addMoment('key', 2);
     expect(useKeyCarry.getState().prompt).toBeNull();
   });

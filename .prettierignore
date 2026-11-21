@@ -12,3 +12,5 @@ pnpm-lock.yaml
 **/*.md
 # Generated songs (renders/…/generators), stored minified until rev 9 shrinks them.
 examples/compositions/
+# Version 1 files kept byte for byte for the schema v2 migration test (M4.5-27).
+tests/golden/v1/

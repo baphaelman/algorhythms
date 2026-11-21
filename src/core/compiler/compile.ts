@@ -925,7 +925,10 @@ export class Compiler {
     const free = this.dormantAt(T);
     const x = expand(this.voices, [], free, (v) => this.destOf(v), true);
     const plan = isEstablishing(m)
-      ? establishPlan(m, this.env(i, [], T, this.seeds[i], x, (v) => this.destOf(v), free))
+      ? establishPlan(
+          m,
+          this.env(i, [], T, this.seeds[i], x, (v) => this.destOf(v), free),
+        )
       : null;
     this.span(i, T, T);
     if (!plan || plan.intents.length === 0) {

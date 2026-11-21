@@ -136,7 +136,7 @@ describe('snapToGrid', () => {
 
 describe('actions at the playhead', () => {
   beforeEach(() => {
-    loadPiece(newPiece({ seed: 7 }));
+    loadPiece({ ...newPiece({ seed: 7 }), moments: [] }); // no opening: only added moments
   });
 
   it('adds exactly at the playhead, also when the piece has a grid (revision 7)', () => {
@@ -167,7 +167,7 @@ describe('actions at the playhead', () => {
 
 describe('palette effects at the playhead (revision 6)', () => {
   beforeEach(() => {
-    loadPiece(newPiece({ seed: 7 }));
+    loadPiece({ ...newPiece({ seed: 7 }), moments: [] }); // no opening: only added moments
   });
 
   it('greys merge out on a unison, with a reason; chord stays enabled', () => {

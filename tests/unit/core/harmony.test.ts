@@ -41,9 +41,10 @@ const score = compile(
 );
 
 describe('chordAt over a compiled piece', () => {
-  it('is null before the first harmony moment (start pitches are not a moment)', () => {
-    expect(label(0)).toBeNull();
-    expect(label(3.99)).toBeNull();
+  it('names the opening chord from t = 0 (schema v2: the start is a moment)', () => {
+    expect(label(0)).toBe('C');
+    expect(label(3.99)).toBe('C');
+    expect(label(-1)).toBeNull();
   });
 
   it('shows a Roman numeral with its letter chord from the moment time', () => {
@@ -97,11 +98,12 @@ describe('example pieces', () => {
     return compile(r.piece);
   };
 
-  it('every example has a sorted harmony timeline starting after t = 0', () => {
+  it('every example has a sorted harmony timeline starting with its opening at t = 0', () => {
     for (const f of files) {
       const h = compiled(f).harmony!;
       expect(h.length, f).toBeGreaterThan(3);
-      expect(h[0].t, f).toBeGreaterThan(0);
+      expect(h[0], f).toMatchObject({ t: 0, momentId: 'start0' });
+      expect(h[1].t, f).toBeGreaterThan(0);
       for (let i = 1; i < h.length; i++) expect(h[i].t).toBeGreaterThanOrEqual(h[i - 1].t);
       for (const e of h) expect(e.label, f).not.toBe('');
     }
@@ -112,7 +114,7 @@ describe('example pieces', () => {
     expect(label(90, s)).toBe('iv7 · Dm7');
     expect(label(95, s)).toBe('VI/A · F♯/A');
     expect(label(100, s)).toBe('♭VII · G');
-    expect(label(5, s)).toBeNull();
+    expect(label(5, s)).toBe('A (unison)'); // the opening note
   });
 });
 

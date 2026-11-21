@@ -38,7 +38,8 @@ const SEEDS = [
 function pieceSections(piece: Piece): { name: string; retargets: number[]; end: number }[] {
   const [opening, ...rest] = piece.moments;
   expect(opening).toMatchObject({ type: 'chord', at: 0, label: 'Seed' });
-  const n = opening.type === 'chord' && opening.notes.kind === 'pitches' ? opening.notes.pitches : [];
+  const n =
+    opening.type === 'chord' && opening.notes.kind === 'pitches' ? opening.notes.pitches : [];
   const out = [{ name: 'Seed', retargets: [] as number[], end: n.length }];
   let active = n.length;
   const ordered = rest
@@ -274,7 +275,8 @@ describe('generate: options', () => {
       expect(sections.map((s) => s.name)).toEqual([...SECTION_NAMES]);
       expect(sections[1].retargets).toEqual(splitStages(n));
       expect(sections.slice(1).every((s) => s.end === n)).toBe(true);
-      for (const m of p.moments) {
+      for (const m of p.moments.slice(1)) {
+        // (not the one-note opening)
         if (m.type === 'chord' && m.notes.kind === 'pitches')
           expect(m.notes.pitches).toHaveLength(n);
       }

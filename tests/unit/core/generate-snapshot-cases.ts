@@ -6,7 +6,7 @@
 
 import { createHash } from 'node:crypto';
 import type { GenerateMode, GenerateOptions } from '../../../src/core/generate';
-import { serializePiece } from '../../../src/core/schema';
+import { layoutJson, serializePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 
 const MODES: GenerateMode[] = ['dorian', 'aeolian', 'lydian', 'pentatonic'];
@@ -31,4 +31,23 @@ export function snapshotCases(): { key: string; seed: number; opts: GenerateOpti
 
 export function hashPiece(piece: Piece): string {
   return createHash('sha256').update(serializePiece(piece)).digest('hex');
+}
+
+/**
+ * The hash `piece` (schema v2) had as the version 1 file it replaces: the opening chord at 0
+ * (one note) back in `start`, `version: 1`, keys in the version 1 order. Equal to a snapshot
+ * hash, it shows generate() changed only by the start becoming a moment (M4.5-27).
+ */
+export function hashPieceAsV1(piece: Piece): string {
+  const [opening, ...rest] = piece.moments;
+  if (opening.type !== 'chord' || opening.notes.kind !== 'pitches' || opening.at !== 0)
+    throw new Error('no opening chord');
+  const v2 = JSON.parse(serializePiece({ ...piece, moments: rest })) as Record<string, unknown>;
+  const v1: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(v2)) {
+    v1[k] = k === 'version' ? 1 : v;
+    if (k === 'voices')
+      v1.start = opening.notes.pitches.map((pitch, i) => ({ voice: piece.voices[i].id, pitch }));
+  }
+  return createHash('sha256').update(layoutJson(v1)).digest('hex');
 }

@@ -81,7 +81,8 @@ function examplePiece(): Piece {
 }
 
 beforeEach(() => {
-  loadPiece(newPiece({ seed: 7 }));
+  // Without the opening chord, so `moments` holds only what each test adds.
+  loadPiece({ ...newPiece({ seed: 7 }), moments: [] });
 });
 
 /** Runs `action`, then checks that undo restores the piece before it and redo the piece after. */
@@ -313,7 +314,19 @@ describe('default moments', () => {
   it('a chord on the empty piece moves the voice', () => {
     const p = newPiece({ seed: 3 });
     const m = defaultMoment('chord', 1, 'zzzzzz', p, compile(p));
-    const score = compile({ ...p, moments: [m] });
+    const score = compile({ ...p, moments: [...p.moments, m] });
     expect(score.voices[0].segments.some((s) => s.p0 !== s.p1)).toBe(true);
+  });
+
+  it('a chord on a silent piece brings its notes in, with no glide (M4.5-27)', () => {
+    const p = { ...newPiece({ seed: 3 }), moments: [] };
+    const m = defaultMoment('chord', 1, 'zzzzzz', p, compile(p));
+    const score = compile({ ...p, moments: [m] });
+    const sounding = score.voices.filter((v) => v.lives.length > 0);
+    expect(sounding).toHaveLength(3); // the tonic triad
+    for (const v of sounding) {
+      expect(v.lives[0]).toMatchObject({ born: 1, fadeIn: 0 });
+      expect(v.segments.every((s) => s.p0 === s.p1)).toBe(true);
+    }
   });
 });

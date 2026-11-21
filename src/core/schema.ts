@@ -918,6 +918,11 @@ export function serializePiece(piece: Piece): string {
   return `${layout(canonical(piece, PieceSchema), '', 0)}\n`;
 }
 
+/** Any JSON value in `serializePiece`'s layout, keys in their own order (tests compare bytes). */
+export function layoutJson(value: unknown): string {
+  return `${layout(value, '', 0)}\n`;
+}
+
 /**
  * The published JSON Schema of the file format (the *input* form: fields with defaults are
  * optional). docs/file-format.md is generated from it by `pnpm docs:schema`.

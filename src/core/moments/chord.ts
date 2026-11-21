@@ -99,7 +99,7 @@ function octaveRoom(
  * that room; still missing ones take the free chord tones nearest the targets, the same way. A
  * slash bass stays the lowest note. What finds no free pitch stays, and merges.
  */
-function distinctTargets(
+export function distinctTargets(
   m: ChordMoment,
   env: MomentEnv,
   q: readonly Pitch[],

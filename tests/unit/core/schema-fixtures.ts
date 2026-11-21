@@ -17,14 +17,6 @@ export function fullPiece(): Piece {
   p.voices[2] = { ...p.voices[2], timbre: 'mine', range: [40, 70] };
   p.moments = [
     {
-      id: 'start0',
-      type: 'chord',
-      at: 0,
-      notes: { kind: 'pitches', pitches: [57, 64.5] },
-      voicing: 'even',
-      assign: 'ordered',
-    },
-    {
       id: 'aaaaa1',
       type: 'split',
       at: 2,
@@ -90,6 +82,15 @@ export function fullPiece(): Piece {
     { id: 'aaaab5', type: 'level', at: 44, gain: 0.5, over: 3 },
     { id: 'aaaab6', type: 'merge', at: 46, count: 1, which: 'outer', fade: 1.5 },
     { id: 'aaaan1', type: 'note', at: 48, from: 72, to: 74, back: 0.5 },
+    // The opening (v1 at 57, v2 at 64.5); last in the array so the indices above stay put.
+    {
+      id: 'start0',
+      type: 'chord',
+      at: 0,
+      notes: { kind: 'pitches', pitches: [57, 64.5] },
+      voicing: 'even',
+      assign: 'ordered',
+    },
   ];
   p.timbres.mine = {
     harmonics: [1, 0.5, 0.25],
