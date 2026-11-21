@@ -8,6 +8,11 @@ The owner is away from 2026-11-21. Technical calls are the integrator's ("no bac
 - **Starting key.** The piece's own key (`piece.key`) has no control. A key moment at 0:00 does the same job. Do you want a Key control in piece settings, or should it come with M4.5-27 ("the start is a moment")?
 
 ## Decided by the integrator (veto if wrong)
+- **Mouse-only gaps (found by the M4.5 final check; being built).**
+  - Undo and Redo buttons go in the editor, since today undo needs the keyboard.
+  - A chord added while fewer notes sound than the chord has brings in the extra notes, so a chord dropped on a fresh piece sounds as a triad, not "D (unison)". "Notes: n" defaults to the chord's size there.
+  - Dragged loop edges round to the grid, or to the millisecond with Alt, so they no longer store values like 1.9999999.
+  - Loop changes stay out of undo, because the loop is view state.
 - **Compose for me (M4.5-28).**
   - New now offers Empty and Compose for me side by side.
   - The Compose panel takes the inspector's place while it's open, and its inputs are the same as the Generate dialog's.
