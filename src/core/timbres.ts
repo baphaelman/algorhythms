@@ -4,8 +4,8 @@
  * overrides them.
  *
  * Harmonic amplitudes are relative (the wavetable builder normalises each table's peak), index 0
- * is the fundamental, and missing partials are 0. `stretch`, `fm` and `noise` are M6 features,
- * used by `bell` and the M6-c presets (`epiano`, `flute`, `marimba`, `brass`).
+ * is the fundamental, and missing partials are 0. `stretch`, `fm`, `noise` and `strikePartials`
+ * are M6 features, used by `bell` and the M6-c presets (`epiano`, `flute`, `marimba`, `brass`).
  */
 
 import type { Timbre } from './types';
@@ -41,8 +41,26 @@ const PLUCK_HARMONICS = [
   1, 0.48, 0.3, 0.2, 0.06, 0.13, 0.12, 0.09, 0.07, 0.025, 0.05, 0.045, 0.035, 0.03, 0.01, 0.02,
 ];
 
-/** Bell: seven partials falling off gently; stretched, they sit at n^1.12 (2.17, 3.42, ...). */
-const BELL_HARMONICS = [1, 0.6, 0.45, 0.3, 0.2, 0.12, 0.08];
+/** Bell, held: prime, nominal (the octave) and a faint double octave, all harmonic. */
+const BELL_HARMONICS = [1, 0.4, 0, 0.1];
+
+/**
+ * Bell strike: a church bell's partials relative to the prime (hum 0.5, tierce 1.2, quint 1.5,
+ * then the inharmonic upper partials), upper ones dying faster; the hum rings longest.
+ */
+const BELL_STRIKE = [
+  { ratio: 0.5, amp: 0.5, decay: 8 },
+  { ratio: 1.2, amp: 0.35, decay: 1.8 },
+  { ratio: 1.5, amp: 0.15, decay: 1.4 },
+  { ratio: 2.51, amp: 0.2, decay: 0.9 },
+  { ratio: 2.67, amp: 0.2, decay: 0.8 },
+  { ratio: 3, amp: 0.15, decay: 0.8 },
+  { ratio: 3.36, amp: 0.12, decay: 0.6 },
+  { ratio: 4.2, amp: 0.12, decay: 0.45 },
+  { ratio: 5.33, amp: 0.1, decay: 0.3 },
+  { ratio: 6.7, amp: 0.08, decay: 0.2 },
+  { ratio: 8.2, amp: 0.05, decay: 0.12 },
+];
 
 /** Flute: a strong fundamental, a weak octave and little else; the breath comes from `noise`. */
 const FLUTE_HARMONICS = [1, 0.3, 0.1, 0.04, 0.015];
@@ -137,18 +155,17 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
     wobble: 3,
   },
   /**
-   * Bell (M6): stretched partials (additive path), phase-modulated at a non-integer ratio for the
-   * clang, a crisp strike that rings for seconds, and a breath of mallet noise.
+   * Bell (M6, redesigned; build log "Bell redesign"): a crisp strike of inharmonic church-bell
+   * partials that die away, upper ones first, over a harmonic tone that sits under held chords.
    */
   bell: {
     harmonics: BELL_HARMONICS,
-    stretch: 0.12,
-    fm: { ratio: 1.41, index: 0.35, indexTrack: 0.5 },
-    noise: { level: 0.04, bandwidth: 2 },
-    brightness: { tilt: -1.5, track: 0.4 },
+    stretch: 0,
+    strikePartials: BELL_STRIKE,
+    brightness: { tilt: -1, track: 0.4 },
     detuneSpread: 1,
     accent: 0.1,
-    articulation: { amount: 0.75, attack: 0.002, decay: 3, crisp: true },
+    articulation: { amount: 0.45, attack: 0.002, decay: 2.5, crisp: true },
     vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
   },
   /**

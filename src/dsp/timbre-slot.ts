@@ -20,6 +20,8 @@ export class TimbreExt {
   readonly fmIndex: number;
   readonly fmIndexTrack: number;
   readonly fmTop: number;
+  /** Share of β held after a strike rings down (1 = no index envelope). */
+  readonly fmHeld: number;
   /** Noise level (0 = none) and relative bandwidth. */
   readonly noiseLevel: number;
   readonly noiseBandwidth: number;
@@ -27,6 +29,11 @@ export class TimbreExt {
   readonly partialRatio: Float64Array;
   readonly partialAmp: Float64Array;
   readonly nPartial: number;
+  /** Struck partials: ratios, decays (s), per-mip amplitudes and count (0 = none). */
+  readonly strikeRatio: Float64Array;
+  readonly strikeDecay: Float64Array;
+  readonly strikeAmp: Float64Array;
+  readonly nStrike: number;
 
   constructor(set: WavetableSet) {
     const p = set.params;
@@ -39,13 +46,24 @@ export class TimbreExt {
     this.partialRatio = set.partialRatio;
     this.partialAmp = set.partialAmp;
     this.nPartial = set.partialRatio.length;
+    this.fmHeld = p.fmHeld;
+    this.strikeRatio = set.strikeRatio;
+    this.strikeDecay = set.strikeDecay;
+    this.strikeAmp = set.strikeAmp;
+    this.nStrike = set.strikeRatio.length;
   }
 
   /** The ext a set needs, or null when it uses only the wavetable path. */
   static of(set: WavetableSet | null): TimbreExt | null {
     if (set === null) return null;
     const p = set.params;
-    if (!(p.fmIndex > 0) && !(p.noiseLevel > 0) && set.partialRatio.length === 0) return null;
+    if (
+      !(p.fmIndex > 0) &&
+      !(p.noiseLevel > 0) &&
+      set.partialRatio.length === 0 &&
+      set.strikeRatio.length === 0
+    )
+      return null;
     return new TimbreExt(set);
   }
 }
@@ -91,6 +109,7 @@ export class TimbreSlot {
   driftCents = 0;
   driftRate = 0;
   driftAmp = 0;
+  strikeEnv = 0;
 
   /** Installs new tables, fading from the old ones (or from silence) over `fadeFrames`. */
   install(set: WavetableSet, renderFrame: number, fadeFrames: number): void {
@@ -121,6 +140,7 @@ export class TimbreSlot {
     this.driftCents = p.driftCents;
     this.driftRate = p.driftRate;
     this.driftAmp = p.driftAmp;
+    this.strikeEnv = p.strikeEnv;
   }
 
   /** Weight of `data` (vs `prevData`) at a render frame: 1 once any fade is over. Pure. */

@@ -52,6 +52,8 @@ export function mipCountFor(mipsPerOctave: number): number {
 
 /** Partials on the additive path (§8.5, "Inharmonic timbres"). */
 export const MAX_PARTIALS = 16;
+/** Struck partials per timbre (`Timbre.strikePartials`). */
+export const MAX_STRIKE_PARTIALS = 16;
 /** Stretch range the engine honours (the schema enforces the same). */
 export const STRETCH_MIN = -0.5;
 export const STRETCH_MAX = 1;
@@ -125,6 +127,8 @@ export interface TimbreParams {
   fmIndex: number;
   /** FM index tracking: β scales by 2^(−indexTrack · octaves above middle C). */
   fmIndexTrack: number;
+  /** Share of β held once a strike has rung down (1 = no index envelope). */
+  fmHeld: number;
   /**
    * Highest nonzero partial as a multiple of f (harmonic number, or n^(1+stretch) on the
    * additive path); the FM aliasing cap needs it.
@@ -136,6 +140,11 @@ export interface TimbreParams {
   noiseBandwidth: number;
   /** Inharmonicity (M6): nonzero uses the additive path (`WavetableSet.partialRatio`). */
   stretch: number;
+  /**
+   * 1 when the voice must publish its strike envelope to the synthesis (struck partials, or an
+   * FM index envelope), else 0. Blended over the timbre mix like the other params.
+   */
+  strikeEnv: number;
 }
 
 /** Wavetables for one timbre at one sample rate, plus its scalar params. Transferable. */
@@ -161,6 +170,15 @@ export interface WavetableSet {
    * fundamental. Partials near Nyquist are faded per voice, not here.
    */
   partialAmp: Float64Array<ArrayBuffer>;
+  /**
+   * Struck partials (`Timbre.strikePartials`, ratio > 0 and amp > 0 only, at most
+   * MAX_STRIKE_PARTIALS): ratios, decays to 1 % (seconds) and per-mip amplitudes (mip m at
+   * `m · strikeRatio.length + i`: `amp` at middle C, scaled by `brightness.track` like the
+   * tables). Empty when none. Not in `coherence` (they are transient).
+   */
+  strikeRatio: Float64Array<ArrayBuffer>;
+  strikeDecay: Float64Array<ArrayBuffer>;
+  strikeAmp: Float64Array<ArrayBuffer>;
   /**
    * What a voice's output holds by pitch, for the timbre crossfade's gain law (`Voice`'s
    * `balanceRoles`) and the unison lock: COH_ROWS rows of COH_STRIDE doubles (see COH_NOISE).
@@ -209,7 +227,15 @@ function extParams(
   t: Timbre,
 ): Pick<
   TimbreParams,
-  'fmRatio' | 'fmIndex' | 'fmIndexTrack' | 'fmTop' | 'noiseLevel' | 'noiseBandwidth' | 'stretch'
+  | 'fmRatio'
+  | 'fmIndex'
+  | 'fmIndexTrack'
+  | 'fmHeld'
+  | 'fmTop'
+  | 'noiseLevel'
+  | 'noiseBandwidth'
+  | 'stretch'
+  | 'strikeEnv'
 > {
   const stretch = cleanStretch(t);
   const ratio = Math.min(32, Math.max(0, finiteOr(t.fm?.ratio ?? 0, 0)));
@@ -221,16 +247,66 @@ function extParams(
     if (finiteOr(t.harmonics[k], 0) !== 0) top = k + 1;
   }
   const level = Math.min(4, Math.max(0, finiteOr(t.noise?.level ?? 0, 0)));
+  const held = fmOn ? Math.min(1, Math.max(0, finiteOr(t.fm?.held ?? 1, 1))) : 1;
   return {
     fmRatio: fmOn ? ratio : 0,
     fmIndex: fmOn ? index : 0,
     fmIndexTrack: fmOn ? Math.min(4, Math.max(-4, finiteOr(t.fm?.indexTrack ?? 0, 0))) : 0,
+    fmHeld: held,
     fmTop: stretch !== 0 && top > 0 ? pmath.pow(top, 1 + stretch) : top,
     noiseLevel: level,
     noiseBandwidth:
       level > 0 ? Math.min(8, Math.max(0.01, finiteOr(t.noise?.bandwidth ?? 1, 1))) : 1,
     stretch,
+    strikeEnv: held < 1 || cleanStrikePartials(t).length > 0 ? 1 : 0,
   };
+}
+
+/** The usable struck partials of a timbre (finite, ratio in (0, 32], amp in (0, 4], decay > 0). */
+function cleanStrikePartials(t: Timbre): { ratio: number; amp: number; decay: number }[] {
+  const out: { ratio: number; amp: number; decay: number }[] = [];
+  for (const p of t.strikePartials ?? []) {
+    if (out.length >= MAX_STRIKE_PARTIALS) break;
+    const ratio = Math.min(32, finiteOr(p.ratio, 0));
+    const amp = Math.min(4, finiteOr(p.amp, 0));
+    const decay = Math.min(60, Math.max(0.001, finiteOr(p.decay, 0.001)));
+    if (ratio > 0 && amp > 0) out.push({ ratio, amp, decay });
+  }
+  return out;
+}
+
+/**
+ * Struck partials (`WavetableSet.strikeRatio`): `amp` at middle C, and per mip × 2^(track · 3 dB
+ * per octave of the ratio per octave below middle C), as `brightness.track` moves the tables'
+ * tilt (clamped to −2..+3 octaves).
+ */
+function buildStrike(
+  t: Timbre,
+  mipsPerOctave: number,
+): {
+  strikeRatio: Float64Array<ArrayBuffer>;
+  strikeDecay: Float64Array<ArrayBuffer>;
+  strikeAmp: Float64Array<ArrayBuffer>;
+} {
+  const ps = cleanStrikePartials(t);
+  const P = ps.length;
+  const strikeRatio = new Float64Array(P);
+  const strikeDecay = new Float64Array(P);
+  const mipCount = mipCountFor(mipsPerOctave);
+  const strikeAmp = new Float64Array(P > 0 ? mipCount * P : 0);
+  if (P === 0) return { strikeRatio, strikeDecay, strikeAmp };
+  const track = finiteOr(t.brightness.track, 0);
+  for (let i = 0; i < P; i++) {
+    strikeRatio[i] = ps[i].ratio;
+    strikeDecay[i] = ps[i].decay;
+  }
+  for (let m = 0; m < mipCount; m++) {
+    const fBottom = MIP_BASE_HZ * pmath.exp2(m / mipsPerOctave);
+    const octaves = Math.min(3, Math.max(-2, pmath.log2(fBottom / REFERENCE_HZ)));
+    const exponent = -track * TRACK_DB_PER_OCTAVE * octaves * DB_PER_OCTAVE_TO_EXPONENT;
+    for (let i = 0; i < P; i++) strikeAmp[m * P + i] = ps[i].amp * pmath.pow(ps[i].ratio, exponent);
+  }
+  return { strikeRatio, strikeDecay, strikeAmp };
 }
 
 /** The usable formants of a timbre (finite, positive centre and bandwidth, nonzero gain). */
@@ -357,6 +433,7 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
     partialRatio,
     partialAmp,
   );
+  const { strikeRatio, strikeDecay, strikeAmp } = buildStrike(timbre, mipsPerOctave);
   return {
     sampleRate,
     mipsPerOctave,
@@ -365,6 +442,9 @@ export function buildWavetables(timbre: Timbre, sampleRate: number): WavetableSe
     params,
     partialRatio,
     partialAmp,
+    strikeRatio,
+    strikeDecay,
+    strikeAmp,
     coherence,
   };
 }
@@ -440,7 +520,9 @@ function buildCoherence(
         FM_TRACK_MAX_OCT,
         Math.max(FM_TRACK_MIN_OCT, pmath.log2(f / REFERENCE_HZ)),
       );
+      // The held index: coherence describes the sustained sound (an index envelope is transient).
       beta = params.fmIndex * pmath.exp2(-params.fmIndexTrack * oct);
+      if (params.fmHeld < 1) beta *= params.fmHeld;
       const room = (FM_ALIAS_LIMIT * nyq) / f;
       const top = Math.min(params.fmTop, room);
       const cap = ((room - top) / r - FM_SIDEBAND_MARGIN) / top;
@@ -539,6 +621,8 @@ function buildPartials(
 export function wavetableTransferList(set: WavetableSet): ArrayBuffer[] {
   const list: ArrayBuffer[] = [set.data.buffer, set.sameAsNext.buffer];
   if (set.partialRatio.byteLength > 0) list.push(set.partialRatio.buffer, set.partialAmp.buffer);
+  if (set.strikeRatio.byteLength > 0)
+    list.push(set.strikeRatio.buffer, set.strikeDecay.buffer, set.strikeAmp.buffer);
   if (set.coherence) list.push(set.coherence.buffer);
   return list;
 }

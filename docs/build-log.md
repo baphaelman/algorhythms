@@ -1821,3 +1821,35 @@ Owner: "the tune moment should let me pick what note has the melody."
 - **Palette default (product call, for the owner to confirm):** a new tune keeps the 'all' target but with more than one line sounding sets `line: 'high'` and starts its notes from the top line's pitch (melody on top). One line: unchanged.
 - **Tests:** `unit/core/tune.test.ts` (low/high on a 3-line part, voices target, absent = 'low', incremental edits of `line`/target, schema round-trip and bad value); `unit/app/tune-melody.test.ts` (menu, labels, current choice, patches, palette default); `e2e/tune-ui.spec.ts` "Melody on" (pick a note, the compiled line moves, highest, undo ×2).
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=3` 1833/1833 (goldens unchanged). E2E chromium-dev and -prod `--workers=1`: tune-ui, tune-dots, inspector, palette 62/62.
+
+## Bell redesign (dsp + core, 2026-11-21)
+Owner on `renders/m6-b/tidewater-hymn-glass-bell-glass.m4a`: "the bell sounds awful". On d3c26be.
+- **Diagnosis** (4-voice C-major chord held, dry, 2.5–3.9 s after the strike; single C4): the M6-a bell holds its whole spectrum. 34 % of held power is off the harmonic series (stretched partials at 2.17/3.42/4.73× = octave +1.3 st, twelfth +2.3 st; FM sidebands at 0.41/0.76/2.40/3.58×). Strongest beats 14–21 Hz at −12 dB (the roughest beat range). Sethares roughness 3.3 against glass's 0.41; without FM it is 0.42, so FM makes the roughness and stretch the mistuning. The spectrum doesn't change over time (each partial sits at the same level relative to the fundamental at 0.05 s and at 5 s): the strike only makes the whole tone 16 dB louder, and it falls to a held level of 0.25. Held, the bell is 8 dB under glass; −3.9 dB on the chord and −5.8 dB on Tidewater 0–40 s. Its noise (0.04) also sustains as hiss.
+- **DSP, two optional fields** (absent = bit-identical; render goldens unchanged except `fixture:preset-bell` and `fixture:timbre-moments`, the only ones using bell):
+  - `Timbre.strikePartials` (≤ 16 of `{ratio, amp, decay}`: ratio (0, 32], amp ≤ 4 relative to the tone, decay to 1 % in (0, 60] s). Sines that sound only after a strike, each under the articulation envelope's shape (same attack, the same rise from the previous strike's value) with its own decay. Shaped per mip by `brightness.track`, faded near Nyquist like partials, no FM, not in `coherence`. `render` publishes the envelope as A + B·2^(−k·X/D) terms (`S_ENV_*`, only when the mix's `TimbreParams.strikeEnv` > 0). `synthExt` evaluates it per partial and tick with `pmath.exp2R`, and skips a partial below −96 dB.
+  - `fm.held` (0..1, default 1): the index is β·(held + (1 − held)·env), env being the articulation envelope with its decay; `coherence` uses the held index.
+- **Candidates** (`tests/dsp/bell.test.ts` `BELL_CANDIDATES`):
+  - **1-church** (now `bell`): harmonic tone [1, 0.4, 0, 0.1], with a church-bell strike: hum 0.5 (8 s), tierce 1.2 (1.8 s), quint 1.5, upper partials 2.51–8.2 (0.9→0.12 s). Articulation 0.45 over 2.5 s; no noise.
+  - **2-fm-strike**: harmonic tone, FM 3.5:1 with β 2.4 at the strike, ringing down to 0 (`held` 0) over 1.8 s.
+  - **3-glass-bell**: the glass partials and vibrato held; metal-bar strike partials 2, 2.756, 5.404, 8.933, 13.34 (1.6→0.15 s).
+
+  | | held off-harmonic C / F | roughness held (strike) | strike − held | chord / Tidewater vs glass |
+  |---|---|---|---|---|
+  | 0-current | 34.1 / 31.6 % | 3.29 (3.14) | 16.2 dB | −3.9 / −5.8 dB |
+  | 1-church | 0.5 / 1.2 % | 0.20 (0.62) | 11.4 dB | −0.2 / −0.8 dB |
+  | 2-fm-strike | 0.0 / 0.0 % | 0.16 (1.77) | 9.0 dB | −0.9 / −1.3 dB |
+  | 3-glass-bell | 0.6 / 0.8 % | 0.41 (0.40) | 10.2 dB | −0.2 / −0.5 dB |
+  | glass | 0.6 / 0.8 % | 0.41 (0.17) | 7.2 dB | 0 |
+
+  Single C4, off-harmonic share at 0.01–0.35 s → at 2.5 s: church 22.5 → 1.0 %, fm 62.7 → 0.0 %, glass-bell 12.1 → 0.0 %, current 30.5 → 31.8 %. The strongest held beats are now 1.8 Hz at −19 dB (detune between coinciding harmonics).
+- **Tests:** new `bell.test.ts`: defaults are bit-identical; struck partials match amp·e^(−ln100·τ/decay) within 0.001 dB (the output lags piece time by the 5 ms limiter lookahead); a seek mid-ring lands within 0.05 dB; the top of the range has stray power ≤ −57 dB; `held` 0.5 gives J1/J0 at β/2 exactly; offline = block-by-block; the candidate table above.
+  - `M6A_BELL` (fixtures) keeps the old bell where tests need its paths or numbers: the m6 aliasing and params tests, `m6c-presets` (the presets were levelled against it), the every-path timbre switch, `M6_WORKLOAD_TIMBRES.bell`, so the RTF workload costs the same. The new `strikebell` (M6-a plus struck partials and `held` 0.5) is in the no-GC `m6`/`timbre` runs and the stems test.
+  - **Deviation:** the `clicks.test.ts` positive control now asks for median > threshold instead of 1.5 × threshold. Two unrelated stretches of RMS σ meet with a median step of about 0.95σ. With the new bell, `timbre changes` has clean 0.331, and its hard cut scores 0.93 against the old bar of 0.99.
+  - Property arbitraries cover the new fields.
+- **Perf:**
+  - no-GC: all runs 0 GC lines, 1864 B.
+  - RTF: plain 11.4×; M6 6.7× (6.7–6.9× before; the gate fails at base on this box).
+  - Same workload with each bell (vite runner): M6-a 6.3–6.8×, new built-in 6.8–6.9×, `strikebell` 5.6–5.8×.
+- **Renders (owner, AAC 192k, Tidewater mix):** `renders/bell/bell-{0-current,1-church,2-fm-strike,3-glass-bell}-{chord,tidewater}.m4a`.
+  - chord: the chord above with reverb, a glide and re-strike at 4–5.2 s and 8.5–9.3 s, 13 s.
+  - tidewater: Tidewater Hymn 0–40 s, every voice on that bell, 1 s fade at the end.

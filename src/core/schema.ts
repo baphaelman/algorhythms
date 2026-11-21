@@ -456,9 +456,23 @@ export const TimbreSchema = z.looseObject({
         .min(-4)
         .max(4)
         .describe('β scales by 2^(−indexTrack) per octave above middle C.'),
+      held: unitInterval
+        .optional()
+        .describe('Share of β left after a strike rings down (absent: 1, no index envelope).'),
     })
     .optional()
     .describe('Two-operator phase modulation of the carrier.'),
+  strikePartials: z
+    .array(
+      z.looseObject({
+        ratio: z.number().positive().max(32).describe('Frequency as a multiple of f.'),
+        amp: nonNegative.max(4).describe("Peak amplitude relative to the tone's."),
+        decay: z.number().positive().max(60).describe('Seconds to fall to 1 %.'),
+      }),
+    )
+    .max(16)
+    .optional()
+    .describe('Inharmonic partials that sound only after a strike, each decaying on its own.'),
   noise: z
     .looseObject({
       level: nonNegative.max(4).describe("RMS relative to the tone's."),

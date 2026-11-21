@@ -16,6 +16,7 @@ import type {
   Timbre,
   TimbreChange,
 } from '../../core/types';
+import { BUILTIN_TIMBRES } from '../../core/timbres';
 import { Prng } from '../../dsp/rng';
 
 /** One glide: start at `at`, reach `to` after `len` seconds. */
@@ -349,10 +350,34 @@ export const ALL_EASES: EaseRef[] = [
 export const M2_PRESETS = ['sine', 'glass', 'organ', 'reed', 'choir', 'pluck'];
 
 /**
- * M6 workload timbres (RTF and no-GC): the bell (additive + FM + noise), FM on a wavetable carrier
- * at a non-integer ratio, and breath noise over a reed. Pass as the render's piece timbres.
+ * The M6-a bell, replaced by the bell redesign (build log): stretched partials at n^1.12, FM at
+ * 1.41 and noise, all held. For tests that measure against it or need those paths together.
+ */
+export const M6A_BELL: Timbre = {
+  harmonics: [1, 0.6, 0.45, 0.3, 0.2, 0.12, 0.08],
+  stretch: 0.12,
+  fm: { ratio: 1.41, index: 0.35, indexTrack: 0.5 },
+  noise: { level: 0.04, bandwidth: 2 },
+  brightness: { tilt: -1.5, track: 0.4 },
+  detuneSpread: 1,
+  accent: 0.1,
+  articulation: { amount: 0.75, attack: 0.002, decay: 3, crisp: true },
+  vibrato: { rate: 5, depthCents: 0, delay: 0.5 },
+};
+
+/**
+ * M6 workload timbres (RTF, no-GC, stems): the M6-a bell (it overrides the built-in, so the RTF
+ * workload keeps its cost), a bell on every bell path, FM on a wavetable carrier at a non-integer
+ * ratio, and breath noise over a reed. Pass as the render's piece timbres.
  */
 export const M6_WORKLOAD_TIMBRES: Record<string, Timbre> = {
+  bell: M6A_BELL,
+  /** The M6-a bell plus the built-in bell's struck partials and an FM index envelope. */
+  strikebell: {
+    ...M6A_BELL,
+    fm: { ratio: 1.41, index: 0.35, indexTrack: 0.5, held: 0.5 },
+    strikePartials: BUILTIN_TIMBRES.bell.strikePartials,
+  },
   fmreed: {
     harmonics: [1, 0.04, 0.62, 0.05, 0.42, 0.05, 0.3],
     stretch: 0,
@@ -496,7 +521,7 @@ export function withTimbreChanges(
 
 /**
  * Timbre moments (M6-b): a glass chord and a glass unison pair whose voices change timbre at
- * different times, across every synthesis path (wavetable, additive + FM + noise in `bell`, FM in
+ * different times, across every synthesis path (wavetable, struck partials in `bell`, FM in
  * `epiano`, noise in `flute`, formants in `choir`), with fades that overlap (a change arriving
  * mid-fade) and one locked voice changing while its partner keeps glass.
  */
