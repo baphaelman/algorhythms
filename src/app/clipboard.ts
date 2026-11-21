@@ -79,6 +79,21 @@ function pasteNow(text: string | null): boolean {
   return true;
 }
 
+/** Copies the selection (the touch menu, §11.3b); false when nothing is selected. */
+export function copySelection(): boolean {
+  return copyNow(null, false);
+}
+
+/** Pastes the last copied moments at the playhead (the touch menu); false if none. */
+export function pasteHere(): boolean {
+  return pasteNow(null);
+}
+
+/** True when moments were copied in this page (the touch menu's Paste is enabled). */
+export function hasClip(): boolean {
+  return inApp !== null;
+}
+
 /** The clipboard shortcut of a keydown, or null. */
 export function clipboardKey(
   e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>,

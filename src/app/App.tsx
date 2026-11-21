@@ -18,6 +18,7 @@ import { LoopRegion } from './ui/LoopRegion';
 import { Playhead } from './ui/Playhead';
 import { Ruler } from './ui/Ruler';
 import { ScoreView } from './ui/ScoreView';
+import { TouchMenu } from './ui/TouchMenu';
 import { Scrubber, Transport } from './ui/Transport';
 import { UndoRedo } from './ui/UndoRedo';
 import { ViewBar } from './ui/ViewBar';
@@ -81,6 +82,7 @@ export function App() {
         {composing ? <ComposePanel /> : wide && <Inspector />}
       </main>
       {wide && <VoicesDrawer />}
+      {wide && <TouchMenu />}
     </div>
   );
 }

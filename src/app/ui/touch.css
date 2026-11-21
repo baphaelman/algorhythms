@@ -1,0 +1,121 @@
+/* Touch editing (PLAN.md §11.3b): the long-press menu, the latched-modifier chips, larger hit
+   targets for fingers. */
+
+.touch-menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-menu button,
+.touch-mods button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: 14px var(--f-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.touch-menu button:focus-visible,
+.touch-mods button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.touch-menu button:active {
+  background: var(--panel);
+}
+
+.touch-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.touch-check {
+  width: 1em;
+  color: var(--accent);
+}
+
+.touch-mods {
+  position: fixed;
+  z-index: 49;
+  left: 50%;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.touch-mods button {
+  border: 1px solid var(--accent);
+  border-radius: 22px;
+  background: var(--paper);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Fingers: dots get a 44 px hit area, span-end handles a wider one (the lane's rows stay). */
+@media (pointer: coarse) {
+  .walk-dots .walk-dot {
+    overflow: visible;
+  }
+
+  .walk-dots .walk-dot::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .lane-track .lane-item .lane-end {
+    right: -12px;
+    width: 24px;
+  }
+
+  .lane-track .lane-item[data-land] .lane-end {
+    right: auto;
+    left: -12px;
+  }
+
+  .lane-track .lane-item .lane-end::after {
+    left: 11px;
+  }
+}
+
+/* No double-tap zoom delay on controls; no iOS callout on what a long press edits. */
+button,
+input,
+select,
+label {
+  touch-action: manipulation;
+}
+
+.lane-track,
+.stage canvas,
+.walk-dot,
+.palette button {
+  -webkit-touch-callout: none;
+}

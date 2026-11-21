@@ -12,7 +12,10 @@
  *   Follow off);
  * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
  *   pauses on release only when it did not pan);
- * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window;
+ * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window; two fingers also pan;
+ * - touch (§11.3b, ./touch): a larger drag slop and double-tap reach; a tap on a line also shows its
+ *   readout (no hover); in the editor a long press opens the touch menu on the line's moment (or
+ *   the background); the menu's latched Snap off / Select more act as Alt / Shift;
  * - `−` / `=` change the window, ←/→ seek; Space plays and pauses whatever has focus, except in
  *   a text field (space-key.ts; a window capture handler, so focused controls never take it);
  * - ⌘/Ctrl+Z undoes, ⇧⌘/Ctrl+Z and Ctrl+Y redo (outside text fields, which keep their own undo);
@@ -26,7 +29,7 @@
  */
 
 import { keyAt } from '../core/query';
-import type { Key, Pitch, Seconds } from '../core/types';
+import type { Key, MomentId, Pitch, Seconds } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
 import { auditionMoment, holdNote, stopAudition } from './audition';
 import { addPointDrag, octaveDots, stepNote, type PitchDrag } from './editor/actions';
@@ -50,6 +53,15 @@ import {
 } from './editor/shortcuts';
 import { attachClipboard, onClipboardKey } from './clipboard';
 import { clearHover, setHover } from './hover';
+import {
+  DOUBLE_TAP_PX,
+  freeOf,
+  openTouchMenu,
+  slopFor,
+  startLongPress,
+  touchMods,
+  type LongPress,
+} from './touch';
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
@@ -69,7 +81,7 @@ interface PointerInfo {
 }
 
 /** What the current press does once it moves past the slop, or on release. */
-type Mode = 'press' | 'pan' | 'marquee' | 'note';
+type Mode = 'press' | 'pan' | 'marquee' | 'note' | 'menu';
 
 /** Attaches the canvas handlers; returns a function that removes them. */
 export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
@@ -81,6 +93,13 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   let mode: Mode = 'press';
   /** Shift at the press (the marquee extends the selection). */
   let shift = false;
+  /** This press's drag threshold (larger for a finger), and its long-press timer. */
+  let slop = DRAG_SLOP;
+  let hold: LongPress | null = null;
+  const endHold = (): void => {
+    hold?.cancel();
+    hold = null;
+  };
 
   let view: View | null = null;
   const stopFrames = onScoreFrame((v) => {
@@ -203,6 +222,20 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     seekTo(Math.max(0, xToTime(v, x)));
   };
 
+  /** A long press at (x, y): selects the line's moment (keeping a selection that holds it). */
+  const menuOwner = (x: number, y: number): MomentId | null => {
+    const v = view;
+    if (!v) return null;
+    const { compiled } = usePlayer.getState();
+    const hit = nearestLine(compiled, v, x, y, HOVER_RADIUS_PX, true);
+    const owner = hit ? sectionOwner(compiled, hit.voice, hit.t) : null;
+    if (owner && !useEditor.getState().selection.includes(owner)) {
+      clearDots();
+      select([owner]);
+    }
+    return owner;
+  };
+
   /** Ends the marquee: selects the dots inside (`add`: added to the dot selection). */
   const finishMarquee = (): void => {
     const v = view;
@@ -228,10 +261,10 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
 
   /** Shift or Alt pressed or released during a note drag (past the slop) switches live. */
   const noteKeys = (e: KeyboardEvent): void => {
-    if (!note || travelled <= DRAG_SLOP || (e.key !== 'Shift' && e.key !== 'Alt')) return;
-    if (note.shift === e.shiftKey && note.alt === e.altKey) return;
+    if (!note || travelled <= slop || (e.key !== 'Shift' && e.key !== 'Alt')) return;
+    if (note.shift === e.shiftKey && note.alt === freeOf(e)) return;
     note.shift = e.shiftKey;
-    note.alt = e.altKey;
+    note.alt = freeOf(e);
     applyNote();
   };
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -261,7 +294,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (pointers.size === 1) {
       travelled = 0;
       pinching = false;
-      shift = e.shiftKey || e.metaKey || e.ctrlKey;
+      shift = e.shiftKey || e.metaKey || e.ctrlKey || touchMods().add;
+      slop = slopFor(e.pointerType, DRAG_SLOP);
       const { x, y } = local(e);
       press = { x, y, time: performance.now() };
       const prev = lastClick;
@@ -271,12 +305,27 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       if (middle || (editor && space.down)) mode = 'pan';
       else if (
         editor &&
-        (nHeld || (prev !== null && isDoublePress(prev, press))) &&
-        startNote(x, y, e.altKey)
+        (nHeld ||
+          (prev !== null &&
+            isDoublePress(prev, press, e.pointerType === 'touch' ? DOUBLE_TAP_PX : undefined))) &&
+        startNote(x, y, freeOf(e))
       ) {
         mode = 'note';
       }
+      endHold();
+      if (editor && mode === 'press') {
+        const cx = e.clientX;
+        const cy = e.clientY;
+        hold = startLongPress(e, () => {
+          hold = null;
+          if (mode !== 'press' || pointers.size !== 1 || travelled > slop) return;
+          mode = 'menu';
+          lastClick = null;
+          openTouchMenu(cx, cy, menuOwner(x, y));
+        });
+      }
     } else if (pointers.size === 2) {
+      endHold();
       if (note) endNote(true);
       if (marquee.on) endMarquee();
       pinching = true;
@@ -300,19 +349,23 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     p.x = e.clientX;
     p.y = e.clientY;
     if (pointers.size >= 2) {
-      // Spreading the fingers zooms in (a shorter window).
+      // Spreading the fingers zooms in (a shorter window); moving them together pans (§11.3b).
       const s = usePlayer.getState();
       const target = pinchWindow * (pinchStart / Math.max(1, distance()));
       zoomBy(target / s.view.window);
+      const pps = currentPps(canvas);
+      if (pps > 0 && dx !== 0) panBy(-dx / pointers.size / pps);
       return;
     }
     travelled += Math.abs(dx) + Math.abs(dy);
-    if (travelled <= DRAG_SLOP) return;
+    hold?.move(e.clientX, e.clientY);
+    if (mode === 'menu' || travelled <= slop) return;
+    endHold();
     if (mode === 'note') {
       if (!note) return;
       note.y = local(e).y;
       note.shift = e.shiftKey;
-      note.alt = e.altKey;
+      note.alt = freeOf(e);
       applyNote();
       return;
     }
@@ -337,6 +390,12 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   const onUp = (e: PointerEvent): void => {
     if (!pointers.delete(e.pointerId)) return;
     const up = e.type === 'pointerup';
+    endHold();
+    if (mode === 'menu') {
+      if (pointers.size === 0) mode = 'press';
+      press = null;
+      return;
+    }
     if (mode === 'note' && note) {
       endNote(!up);
       press = null;
@@ -350,11 +409,13 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       if (pointers.size === 0) pinching = false;
       return;
     }
-    if (pointers.size === 0 && !pinching && travelled <= DRAG_SLOP && up && mode === 'press') {
+    if (pointers.size === 0 && !pinching && travelled <= slop && up && mode === 'press') {
       if (editorLayout()) {
         if (press) {
           lastClick = press;
-          clickAt(press.x, press.y, e.shiftKey || e.metaKey || e.ctrlKey);
+          clickAt(press.x, press.y, e.shiftKey || e.metaKey || e.ctrlKey || touchMods().add);
+          // No hover on touch: a tap shows the line's voice, note and Hz (§11.3b).
+          if (e.pointerType !== 'mouse') setHover(press.x, press.y);
         }
       } else togglePlay();
     }
@@ -379,12 +440,14 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
 
   // Safari reports trackpad pinch as gesture events instead of ctrl-wheel.
   let gestureWindow = 0;
+  // On iPad, a touch pinch fires these too: the pointers already zoom, so they are ignored then.
   const onGestureStart = (e: Event): void => {
     e.preventDefault();
     gestureWindow = usePlayer.getState().view.window;
   };
   const onGestureChange = (e: Event): void => {
     e.preventDefault();
+    if (pointers.size >= 2) return;
     const scale = (e as Event & { scale?: number }).scale ?? 1;
     const s = usePlayer.getState();
     zoomBy(gestureWindow / Math.max(0.05, scale) / s.view.window);
@@ -393,12 +456,22 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   const onAux = (e: MouseEvent): void => {
     if (e.button === 1) e.preventDefault();
   };
+  // A finger leaving the canvas (after every tap) keeps the tap's readout; a mouse clears it.
+  const onLeave = (e: PointerEvent): void => {
+    if (e.pointerType !== 'touch') clearHover();
+  };
+  // A long press is the touch menu, not the browser's.
+  const onContext = (e: MouseEvent): void => {
+    const pt = (e as MouseEvent & { pointerType?: string }).pointerType;
+    if (hold || mode === 'menu' || (pt !== undefined && pt !== 'mouse')) e.preventDefault();
+  };
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
-  canvas.addEventListener('pointerleave', clearHover);
+  canvas.addEventListener('pointerleave', onLeave);
+  canvas.addEventListener('contextmenu', onContext);
   canvas.addEventListener('auxclick', onAux);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('gesturestart', onGestureStart);
@@ -408,6 +481,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   window.addEventListener('blur', onBlur);
   return () => {
     stopFrames();
+    endHold();
     if (note) endNote(true);
     endMarquee();
     document.removeEventListener('keydown', onKeyDown);
@@ -417,7 +491,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onUp);
-    canvas.removeEventListener('pointerleave', clearHover);
+    canvas.removeEventListener('pointerleave', onLeave);
+    canvas.removeEventListener('contextmenu', onContext);
     canvas.removeEventListener('auxclick', onAux);
     clearHover();
     canvas.removeEventListener('wheel', onWheel);

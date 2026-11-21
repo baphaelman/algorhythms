@@ -21,13 +21,13 @@ export interface Press {
   time: number;
 }
 
-/** True when `b` follows `a` closely enough in time and place to make a double-click. */
-export function isDoublePress(a: Press | null, b: Press): boolean {
+/** True when `b` follows `a` closely enough in time and place (`px`) to make a double-click. */
+export function isDoublePress(a: Press | null, b: Press, px = DOUBLE_PX): boolean {
   return (
     a !== null &&
     b.time - a.time <= DOUBLE_MS &&
     b.time >= a.time &&
-    Math.hypot(b.x - a.x, b.y - a.y) <= DOUBLE_PX
+    Math.hypot(b.x - a.x, b.y - a.y) <= px
   );
 }
 

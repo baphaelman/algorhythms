@@ -22,6 +22,11 @@
  * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter selects, Shift+Enter toggles
  * (Space plays and pauses); on a selected item these act on the whole selection. Focusing an
  * off-screen item pans the paused view to it.
+ *
+ * Touch (§11.3b, ../touch): a finger needs more travel before a drag, a background drag also
+ * scrolls the rows vertically, and a long press opens the touch menu on the item (or the
+ * background). Its latched modifiers stand in for keys: Snap off for Alt, "Ends set stagger" for
+ * Shift on a span end, Select more for Shift-click and the Shift-drag marquee.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -69,6 +74,14 @@ import { beatStep, changePoints, ofMoments, snapTime, type SnapSet } from '../ed
 import { onScoreFrame } from '../loop';
 import { attachPaletteDrop } from '../palette-drop';
 import { panBy, usePlayer, zoomBy } from '../store';
+import {
+  freeOf,
+  openTouchMenu,
+  slopFor,
+  startLongPress,
+  touchMods,
+  type LongPress,
+} from '../touch';
 import { wheelIntent } from '../wheel';
 import './lane.css';
 
@@ -135,6 +148,9 @@ interface Pan {
   x0: number;
   y0: number;
   lastX: number;
+  lastY: number;
+  /** A finger or pen: a vertical drag also scrolls the rows. */
+  touch: boolean;
   shift: boolean;
   /** ⌘/Ctrl at press: the marquee extends the selection. */
   extend: boolean;
@@ -196,6 +212,9 @@ class LaneController {
   private ghostRow = 0;
   private lastGhost: PreviewGhost | null = null;
   private keyPress: KeyPress | null = null;
+  /** This press's drag threshold (larger for a finger) and its long-press timer (§11.3b). */
+  private slop = DRAG_SLOP;
+  private hold: LongPress | null = null;
   /** The Shift-drag selection rectangle (track px), and the items it touches during the drag. */
   marqueeEl: HTMLElement | null = null;
   private marqueeIds: MomentId[] = [];
@@ -571,7 +590,10 @@ class LaneController {
     if (this.drag || this.pan || this.keyPress || (e.pointerType === 'mouse' && e.button !== 0))
       return;
     const target = e.target instanceof Element ? e.target : null;
+    this.slop = slopFor(e.pointerType, DRAG_SLOP);
+    const mods = touchMods();
     if (target?.closest('[data-piece-key]')) {
+      this.startHold(e, PIECE_KEY_ID);
       this.track?.setPointerCapture(e.pointerId);
       this.keyPress = {
         pointerId: e.pointerId,
@@ -583,14 +605,17 @@ class LaneController {
     }
     const itemEl = target?.closest<HTMLElement>('[data-moment]');
     if (!itemEl) {
+      this.startHold(e, null);
       this.track?.setPointerCapture(e.pointerId);
       this.pan = {
         pointerId: e.pointerId,
         x0: e.clientX,
         y0: e.clientY,
         lastX: e.clientX,
-        shift: e.shiftKey,
-        extend: e.metaKey || e.ctrlKey,
+        lastY: e.clientY,
+        touch: e.pointerType !== 'mouse',
+        shift: e.shiftKey || mods.add,
+        extend: e.metaKey || e.ctrlKey || mods.add,
         started: false,
       };
       return;
@@ -599,8 +624,9 @@ class LaneController {
     const onHandle = !!target?.closest('[data-end-handle]');
     const sel = useEditor.getState().selection;
     const wasSelected = sel.includes(id);
-    const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
+    const toggle = e.shiftKey || e.metaKey || e.ctrlKey || mods.add;
     if (!wasSelected && !toggle) select([id]);
+    this.startHold(e, id);
     this.track?.setPointerCapture(e.pointerId);
     this.drag = {
       pointerId: e.pointerId,
@@ -609,24 +635,55 @@ class LaneController {
       x0: e.clientX,
       t0: this.timeAt(e.clientX),
       dup: !onHandle && e.altKey,
-      shift: e.shiftKey,
+      shift: e.shiftKey || (onHandle && mods.stagger),
       toggle,
       started: false,
       ids: [],
       newIds: [],
       dt: 0,
       raw: 0,
-      alt: e.altKey,
+      alt: freeOf(e),
       wasSelected,
       origAt: new Map(),
     };
   };
 
+  /**
+   * A long press (finger or pen) opens the touch menu on `id` (null: the background), unless the
+   * press became a drag first; the press then does nothing more.
+   */
+  private startHold(e: PointerEvent, id: MomentId | null): void {
+    this.endHold();
+    const { clientX: x, clientY: y, pointerId } = e;
+    this.hold = startLongPress(e, () => {
+      this.hold = null;
+      if (this.drag?.started || this.pan?.started || this.keyPress?.moved) return;
+      if (this.drag) this.finish();
+      this.pan = null;
+      this.keyPress = null;
+      if (this.track?.hasPointerCapture(pointerId)) this.track.releasePointerCapture(pointerId);
+      const sel = useEditor.getState().selection;
+      if (id && !sel.includes(id)) select(touchMods().add ? [...sel, id] : [id]);
+      openTouchMenu(x, y, id);
+    });
+  }
+
+  private endHold(): void {
+    this.hold?.cancel();
+    this.hold = null;
+  }
+
+  /** A long press is the touch menu, not the browser's. */
+  onContext = (e: MouseEvent): void => {
+    const pt = (e as MouseEvent & { pointerType?: string }).pointerType;
+    if (this.hold || (pt !== undefined && pt !== 'mouse')) e.preventDefault();
+  };
+
   /** Background drag: the content follows the pointer; with Shift, a marquee. */
   private onPanMove(e: PointerEvent, p: Pan): void {
     if (!p.started) {
-      const dy = p.shift ? e.clientY - p.y0 : 0;
-      if (Math.hypot(e.clientX - p.x0, dy) <= DRAG_SLOP) return;
+      const dy = p.shift || p.touch ? e.clientY - p.y0 : 0;
+      if (Math.hypot(e.clientX - p.x0, dy) <= this.slop) return;
       p.started = true;
       if (!p.shift) this.track?.classList.add('panning');
     }
@@ -637,6 +694,10 @@ class LaneController {
     const dx = e.clientX - p.lastX;
     p.lastX = e.clientX;
     if (dx !== 0 && this.pps > 0) panBy(-dx / this.pps);
+    // A finger scrolls the rows too (the track takes every touch gesture, `touch-action: none`).
+    const dy = e.clientY - p.lastY;
+    p.lastY = e.clientY;
+    if (p.touch && dy !== 0 && this.scroller) this.scroller.scrollTop -= dy;
   }
 
   /** Shows the marquee from the press to (x, y) and marks the items it touches. */
@@ -697,9 +758,10 @@ class LaneController {
   }
 
   onMove = (e: PointerEvent): void => {
+    this.hold?.move(e.clientX, e.clientY);
     const k = this.keyPress;
     if (k && e.pointerId === k.pointerId) {
-      if (Math.abs(e.clientX - k.x0) > DRAG_SLOP) k.moved = true;
+      if (Math.abs(e.clientX - k.x0) > this.slop) k.moved = true;
       return;
     }
     const p = this.pan;
@@ -710,11 +772,12 @@ class LaneController {
     const d = this.drag;
     if (!d || e.pointerId !== d.pointerId) return;
     if (!d.started) {
-      if (Math.abs(e.clientX - d.x0) <= DRAG_SLOP) return;
+      if (Math.abs(e.clientX - d.x0) <= this.slop) return;
+      this.endHold();
       this.start(d);
     }
     d.raw = this.timeAt(e.clientX) - d.t0;
-    d.alt = e.altKey;
+    d.alt = freeOf(e);
     this.preview(d);
     if (!this.raf) {
       this.raf = requestAnimationFrame(() => {
@@ -811,6 +874,7 @@ class LaneController {
   }
 
   onUp = (e: PointerEvent): void => {
+    this.endHold();
     const k = this.keyPress;
     if (k && e.pointerId === k.pointerId) {
       this.keyPress = null;
@@ -903,6 +967,7 @@ class LaneController {
   }
 
   cancel(): void {
+    this.endHold();
     const d = this.drag;
     if (!d) return;
     if (this.raf) {
@@ -965,6 +1030,7 @@ class LaneController {
     track.addEventListener('pointermove', this.onMove);
     track.addEventListener('pointerup', this.onUp);
     track.addEventListener('pointercancel', this.onUp);
+    track.addEventListener('contextmenu', this.onContext);
     const off = onScoreFrame((v) => this.layout(v));
     const offDrop = attachPaletteDrop(track);
     const ro = new ResizeObserver(this.measure);
@@ -989,6 +1055,7 @@ class LaneController {
       track.removeEventListener('pointermove', this.onMove);
       track.removeEventListener('pointerup', this.onUp);
       track.removeEventListener('pointercancel', this.onUp);
+      track.removeEventListener('contextmenu', this.onContext);
       if (divider) {
         divider.removeEventListener('pointerdown', this.onDividerDown);
         divider.removeEventListener('pointermove', this.onDividerMove);
