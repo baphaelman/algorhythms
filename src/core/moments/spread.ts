@@ -147,8 +147,37 @@ function spreadNotes(
   for (let i = 0; i < n; i++) {
     if (h[i] < lo[i] || h[i] > hi[i] || (i > 0 && h[i] <= h[i - 1])) ok = false;
   }
-  if (!ok) for (let i = 0; i < n; i++) h[i] = Math.max(lo[i], Math.min(hi[i], h[i]));
+  if (!ok) inRangeInOrder(h, lo, hi);
   return { pitches: h.map((i) => grid.pitch(i)), ok };
+}
+
+/**
+ * Crowded (some notes coincide): h in each voice's [lo, hi] and non-decreasing (seed
+ * −625473937). Clamped to the bounds every ordered choice has (the highest lo at or below a
+ * voice, the lowest hi at or above), then a running maximum, which stays within them. When the
+ * ranges admit no ordered choice, just clamped to each range.
+ */
+function inRangeInOrder(h: number[], lo: readonly number[], hi: readonly number[]): void {
+  const n = h.length;
+  const u: number[] = new Array<number>(n);
+  for (let i = n - 1; i >= 0; i--) u[i] = i + 1 < n && u[i + 1] < hi[i] ? u[i + 1] : hi[i];
+  let l = -Infinity;
+  let feasible = true;
+  for (let i = 0; i < n; i++) {
+    if (lo[i] > l) l = lo[i];
+    if (l > u[i]) feasible = false;
+  }
+  l = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (!feasible) {
+      h[i] = Math.max(lo[i], Math.min(hi[i], h[i]));
+      continue;
+    }
+    if (lo[i] > l) l = lo[i];
+    let x = Math.max(l, Math.min(u[i], h[i]));
+    if (i > 0 && x < h[i - 1]) x = h[i - 1];
+    h[i] = x;
+  }
 }
 
 /** A pitch grid: step indices, monotone in pitch. */

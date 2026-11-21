@@ -2,6 +2,8 @@
  * Incremental compile (PLAN.md §7.10): after every edit of a random edit sequence, the
  * incremental compiler's result deep-equals a fresh `compile`.
  */
+import { writeFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
@@ -140,17 +142,24 @@ describe('incremental compile', () => {
         (piece, edits) => {
           const inc = createIncrementalCompiler();
           let p = piece;
+          const history: Piece[] = [p];
           let last = inc.compile(p);
           expect(last).toStrictEqual(compile(p));
           for (const e of edits) {
             p = apply(p, e);
+            history.push(p);
             const lastJson = JSON.stringify(last);
             const got = inc.compile(p);
             steps++;
             if (inc.stats.mode === 'resume') resumed++;
             // structuredClone: fast-check builds some objects without a prototype; a resumed score may
             // hold the equal objects of an earlier piece (a JSON clone, say).
-            expect(structuredClone(got)).toStrictEqual(structuredClone(compile(p)));
+            const want = structuredClone(compile(p));
+            // With DUMP_DIR set, the pieces compiled so far go to $DUMP_DIR/incremental.json.
+            const dir = process.env.DUMP_DIR;
+            if (dir && !isDeepStrictEqual(structuredClone(got), want))
+              writeFileSync(`${dir}/incremental.json`, JSON.stringify(history));
+            expect(structuredClone(got)).toStrictEqual(want);
             // Earlier results are never mutated (the app may still be playing them).
             expect(JSON.stringify(last)).toBe(lastJson);
             last = got;

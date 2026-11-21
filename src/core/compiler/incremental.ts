@@ -172,6 +172,11 @@ function sameSetup(a: Piece, b: Piece): boolean {
 function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkpoint {
   const items = c.queue.items;
   const events: QueuedEvent[] = [];
+  const spans: number[] = [];
+  const live = (j: number): void => {
+    for (let q = 0; q < spans.length; q += 3) if (spans[q] === j) return;
+    spans.push(j, c.spanStart[j], c.spanEnd[j]);
+  };
   for (const ev of items) {
     if (
       ev.cls === EventClass.MoveStart ||
@@ -179,14 +184,13 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       (ev.cls === EventClass.Moment && ev.sub === SUB_NOTE_BACK)
     ) {
       events.push(ev);
+    } else if (ev.cls === EventClass.Tick && c.spanEnd[ev.key] === c.spanEnd[ev.key]) {
+      // A walk's first tick (queued by the setup, so not saved) can still extend the span its
+      // moment event already set.
+      live(ev.key);
     }
   }
   const cancelled: boolean[] = [];
-  const spans: number[] = [];
-  const live = (j: number): void => {
-    for (let q = 0; q < spans.length; q += 3) if (spans[q] === j) return;
-    spans.push(j, c.spanStart[j], c.spanEnd[j]);
-  };
   for (const ev of events) {
     let off = false;
     if (ev.cls !== EventClass.MoveStart) {
