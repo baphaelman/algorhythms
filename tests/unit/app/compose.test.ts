@@ -52,6 +52,7 @@ import { composeSteps, generate } from '../../../src/core/generate';
 import { parsePiece } from '../../../src/core/schema';
 import {
   closeCompose,
+  composeAgain,
   finish,
   openCompose,
   setComposeInput,
@@ -62,7 +63,7 @@ import { MAX_PEN_SECONDS, composeTimeline, penAt, stepsAt } from '../../../src/a
 import { composeView } from '../../../src/app/compose-view';
 import { updateMoment } from '../../../src/app/editor/actions';
 import { redo, undo, useEditor } from '../../../src/app/editor/history';
-import { usePlayer } from '../../../src/app/store';
+import { camera, usePlayer } from '../../../src/app/store';
 
 vi.spyOn(performance, 'now').mockImplementation(() => env.clock.now);
 
@@ -109,22 +110,32 @@ describe('compose pace', () => {
     expect(long).toBeLessThan((MAX_PEN_SECONDS + 10) * 1000);
   });
 
-  it('applies steps in order and moves the pen forward through the adds', () => {
+  it('applies steps in order; the pen only moves forward, through the structure then the details', () => {
     const c = composeSteps(8, { mode: 'dorian' });
     const tl = composeTimeline(c);
     expect(tl.beats).toHaveLength(c.steps.length);
     expect(stepsAt(tl, 0)).toBe(1);
     expect(stepsAt(tl, tl.total)).toBe(c.steps.length);
+    const details = tl.beats.filter((b) => b.detail);
+    expect(details.length).toBeGreaterThan(1);
+    expect(tl.beats.findIndex((b) => b.detail)).toBe(tl.beats.length - details.length);
     let k = 0;
     let pen = 0;
-    for (let ms = 0; ms < tl.total; ms += 50) {
+    let detail = false;
+    for (let ms = 0; ms < tl.total; ms += 20) {
       const now = stepsAt(tl, ms);
       expect(now).toBeGreaterThanOrEqual(k);
       k = now;
       const p = penAt(tl, ms);
+      // One restart, into the detail sweep.
+      if (!detail && tl.beats[k - 1].detail) {
+        detail = true;
+        pen = -Infinity;
+      }
       expect(p).toBeGreaterThanOrEqual(pen - 1e-9);
       pen = p;
     }
+    expect(detail).toBe(true);
     expect(penAt(tl, tl.total)).toBe(Infinity);
   });
 });
@@ -208,28 +219,95 @@ describe('Compose for me', () => {
     expect(useEditor.getState().canUndo).toBe(false);
   });
 
-  it('an input change after it finished rebuilds, still one undo entry', () => {
+  it('the camera follows the pen forward, then holds on the whole piece for the details', () => {
+    open('4242');
+    let start = camera.start;
+    let flashed = 0;
+    let fitted = NaN;
+    while (ui().status === 'building') {
+      run(16);
+      if (ui().status !== 'building') break;
+      if (!composeView.detail) {
+        expect(camera.start).toBeGreaterThanOrEqual(start - 1e-9);
+        start = camera.start;
+      } else {
+        if (Number.isNaN(fitted)) fitted = camera.start;
+        expect(camera.start).toBe(fitted);
+        expect(usePlayer.getState().view.window).toBeGreaterThan(140);
+        if (composeView.flash) flashed++;
+      }
+    }
+    expect(start).toBeGreaterThan(60);
+    expect(fitted).toBe(0);
+    expect(flashed).toBeGreaterThan(0);
+  });
+
+  it('after it finishes, input changes do not recompose; Compose again does, as one entry', () => {
     open('5');
     finish();
+    const done = piece();
     setComposeInput({ voices: 6 });
+    expect(ui().status).toBe('done');
+    run(3000);
+    expect(piece()).toBe(done);
+    expect(ui().open).toBe(true);
+
+    composeAgain();
     expect(ui().status).toBe('building');
     finish();
     expect(piece().voices).toHaveLength(6);
     expect(piece().moments).toEqual(
       generate(5, { mode: 'dorian', length: 150, voices: 6 }).moments,
     );
+    expect(ui().open).toBe(true);
     undo();
     expect(piece().moments).toHaveLength(1);
     expect(useEditor.getState().canUndo).toBe(false);
   });
 
-  it('an edit from outside stops the build where it is', () => {
+  it('after Stop, input changes wait for Compose again', () => {
+    open('6');
+    run(3000);
+    stopCompose();
+    const kept = piece();
+    setComposeInput({ seed: '7' });
+    run(2000);
+    expect(piece()).toBe(kept);
+    composeAgain();
+    finish();
+    expect(piece().moments).toEqual(generate(7, { mode: 'dorian', length: 150 }).moments);
+    undo();
+    expect(piece().moments).toHaveLength(1);
+  });
+
+  it('the user editing the piece after the build closes the panel', () => {
+    open('8');
+    finish();
+    expect(ui().open).toBe(true);
+    updateMoment(piece().moments[1].id, { muted: true });
+    expect(ui().open).toBe(false);
+    // Undo of the edit, then of the whole compose (one entry).
+    undo();
+    undo();
+    expect(piece().moments).toHaveLength(1);
+    expect(useEditor.getState().canUndo).toBe(false);
+  });
+
+  it('undoing the compose closes the panel', () => {
+    open('12');
+    finish();
+    undo();
+    expect(ui().open).toBe(false);
+  });
+
+  it('an edit from outside stops the build where it is and closes the panel', () => {
     open('9');
     run(4000);
     const id = piece().moments[1].id;
     updateMoment(id, { muted: true });
     run(200);
     expect(ui().status).toBe('stopped');
+    expect(ui().open).toBe(false);
     const n = piece().moments.length;
     run(4000);
     expect(piece().moments.length).toBe(n);

@@ -1,13 +1,16 @@
 /**
- * Compose for me (PLAN.md §11.3 "Compose in New piece", M4.5-28): New opens an empty piece and a
- * side panel with Generate's inputs, and the composer builds the piece on screen, step by step
- * (`composeSteps`), at the pace of ./compose-pace.ts. The camera follows the pen and the lines draw
- * in up to it (`composeView`); an adjustment pass highlights the moment it edits.
+ * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order"; M4.5-28,
+ * M4.5-38): New opens an empty piece and a side panel with Generate's inputs, and the composer
+ * builds the piece on screen, step by step (`composeSteps`), at the pace of ./compose-pace.ts.
+ * The structure comes in play order: the camera follows the pen forward and the lines draw in up
+ * to it (`composeView`). Then the whole piece is fitted in view and the detail sweep highlights
+ * each detail as it is placed, left to right.
  *
  * The whole compose is one undo entry back to the empty piece: the build runs as one editor
- * gesture, closed when it finishes (or Skip, Stop). Changing an input restarts the build; after it
- * finished, the restart first undoes that entry when it is still the newest, so it stays one entry.
- * An edit, undo, drag or load from outside while it builds stops the build where it is.
+ * gesture, closed when it finishes (or Skip, Stop). Changing an input restarts the build only
+ * while it builds; afterwards "Compose again" rebuilds, first undoing the last build's entry when
+ * it is still the newest, so it stays one entry. The user's own edit (any history change not made
+ * here: an edit, undo, drag) stops a build and closes the panel; so does loading another piece.
  *
  * Playback is not driven: the transport stays where it is, and playing while it builds plays the
  * piece as it grows (each step is hot-swapped like any edit); the camera then follows the playhead.
@@ -25,6 +28,7 @@ import {
   lastEntry,
   undo,
   updateGesture,
+  useEditor,
 } from './editor/history';
 import {
   DEFAULT_FORM,
@@ -47,7 +51,7 @@ export interface ComposeUi {
   /** Steps placed so far, and the total. */
   step: number;
   total: number;
-  /** What the composer is doing: "Placing: Drift", "Adjusting: register". */
+  /** What the composer is doing: "Placing: Drift", "Adding details". */
   activity: string;
 }
 
@@ -77,9 +81,20 @@ const run = {
   result: null as Piece | null,
   /** True while Compose itself loads the empty piece. */
   loading: false,
+  /** True while Compose itself changes the history (not the user's edit). */
+  self: false,
 };
 
-const PASS_NAMES = { register: 'register', fit: 'fit to length' } as const;
+/** Runs `f` as Compose's own history change. */
+function ours(f: () => void): void {
+  const was = run.self;
+  run.self = true;
+  try {
+    f();
+  } finally {
+    run.self = was;
+  }
+}
 
 function cancelFrame(): void {
   if (run.raf) cancelAnimationFrame(run.raf);
@@ -89,6 +104,8 @@ function cancelFrame(): void {
 function clearView(): void {
   composeView.reveal = undefined;
   composeView.flash = null;
+  composeView.pen = NaN;
+  composeView.detail = false;
 }
 
 /** Shows the first `k` steps. False (and the build stops) if its gesture was taken over. */
@@ -100,27 +117,30 @@ function show(k: number): boolean {
   }
   run.applied = k;
   const piece = composedPiece(comp, k);
-  updateGesture(() => piece);
+  ours(() => updateGesture(() => piece));
   const step = comp.steps[k - 1];
-  composeView.flash = step?.kind === 'edit' ? step.moment.id : null;
+  composeView.flash = step?.phase === 'detail' ? step.moment.id : null;
   useCompose.setState({
     step: k,
     activity: !step
       ? 'Starting'
-      : step.kind === 'add'
+      : step.kind === 'add' && step.phase === 'structure'
         ? `Placing: ${step.section}`
-        : `Adjusting: ${PASS_NAMES[step.pass]}`,
+        : 'Adding details',
   });
   return true;
 }
 
-/** The build lost its gesture (an edit, undo or drag from outside): it stops where it is. */
+/**
+ * The build lost its gesture (the user's edit, undo or drag): it stops where it is, and the panel
+ * closes, since the user is composing by hand now.
+ */
 function interrupted(): void {
   cancelFrame();
   clearView();
   run.gesture = null;
   run.entry = run.result = null;
-  useCompose.setState({ status: 'stopped' });
+  useCompose.setState({ status: 'stopped', open: false });
 }
 
 /** Ends the build: one undo entry for it, the lines all drawn. */
@@ -128,7 +148,7 @@ function settle(status: ComposeStatus): void {
   cancelFrame();
   clearView();
   if (run.gesture !== null && currentGesture() === run.gesture) {
-    endGesture();
+    ours(endGesture);
     run.entry = lastEntry();
     run.result = usePlayer.getState().piece;
   }
@@ -160,19 +180,29 @@ function frame(now: number): void {
   }
   const k = stepsAt(tl, ms);
   if (k !== run.applied && !show(k)) return;
-  const pen = penAt(tl, ms);
-  composeView.reveal = pen;
-  const { window: win } = cameraOf();
-  const step = comp.steps[k - 1];
-  // Follow the pen; during a pass, the moment being edited.
-  steer(step?.kind === 'edit' ? step.moment.at - win * 0.4 : pen - win * 0.65);
+  const beat = tl.beats[k - 1];
+  if (beat?.detail) {
+    // The detail sweep: every line drawn, the whole piece in view (the camera holds still).
+    if (!composeView.detail) {
+      composeView.detail = true;
+      composeView.reveal = undefined;
+      if (usePlayer.getState().transport.status !== 'playing') fitWindow();
+    }
+    composeView.pen = beat.penFrom;
+  } else {
+    // The structure: the camera follows the pen forward.
+    const pen = penAt(tl, ms);
+    composeView.reveal = composeView.pen = pen;
+    steer(pen - cameraOf().window * 0.65);
+  }
   run.raf = requestAnimationFrame(frame);
 }
 
 /**
- * (Re)starts the build from the panel's inputs. Mid-build it just starts over (same gesture);
- * after a finished build whose entry is still the newest and untouched, that entry is undone
- * first, so the compose stays one undo entry. Invalid inputs stop it and show the errors.
+ * (Re)starts the build from the panel's inputs ("Compose again"). Mid-build it just starts over
+ * (same gesture); after a finished or stopped build whose entry is still the newest and untouched,
+ * that entry is undone first, so the compose stays one undo entry. Invalid inputs stop it and
+ * show the errors.
  */
 export function restartCompose(): void {
   const { form } = useCompose.getState();
@@ -186,21 +216,24 @@ export function restartCompose(): void {
   run.comp = composeSteps(check.request.seed, check.request.options);
   run.timeline = composeTimeline(run.comp);
   if (run.gesture === null || currentGesture() !== run.gesture) {
-    if (
-      run.entry !== null &&
-      lastEntry() === run.entry &&
-      usePlayer.getState().piece === run.result
-    )
-      undo();
-    run.entry = run.result = null;
-    beginGesture('Compose');
+    ours(() => {
+      if (
+        run.entry !== null &&
+        lastEntry() === run.entry &&
+        usePlayer.getState().piece === run.result
+      )
+        undo();
+      run.entry = run.result = null;
+      beginGesture('Compose');
+    });
     run.gesture = currentGesture();
   }
+  clearView();
   useCompose.setState({ errors: {}, status: 'building', total: run.comp.steps.length });
   run.t0 = performance.now();
   camera.start = 0;
   if (!show(0)) return;
-  composeView.reveal = 0;
+  composeView.reveal = composeView.pen = 0;
   run.raf = requestAnimationFrame(frame);
 }
 
@@ -225,7 +258,7 @@ export function openCompose(): void {
   run.gesture = run.entry = run.result = null;
   run.loading = true;
   try {
-    newPieceNow();
+    ours(newPieceNow);
   } finally {
     run.loading = false;
   }
@@ -243,11 +276,29 @@ export function closeCompose(): void {
   useCompose.setState({ open: false });
 }
 
-/** Changes inputs and restarts the build from them (live). */
+/** "Compose again": a new build from the current inputs. */
+export const composeAgain = restartCompose;
+
+/**
+ * Changes inputs. While it builds, the build restarts from them (live); afterwards they wait for
+ * "Compose again" (only their errors show).
+ */
 export function setComposeInput(patch: Partial<GenerateForm>): void {
   useCompose.setState((s) => ({ form: { ...s.form, ...patch } }));
-  restartCompose();
+  if (useCompose.getState().status === 'building') {
+    restartCompose();
+    return;
+  }
+  const check = checkForm(useCompose.getState().form, new Date().toISOString());
+  useCompose.setState({ errors: check.ok ? {} : check.errors });
 }
+
+// The user's own history change after a build (an edit, undo or redo) closes the panel.
+useEditor.subscribe(() => {
+  const { open, status } = useCompose.getState();
+  if (run.self || run.loading || !open || status === 'building') return;
+  if (lastEntry() !== run.entry) closeCompose();
+});
 
 // Opening another piece ends the compose session.
 onLoadPiece(() => {

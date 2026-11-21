@@ -63,7 +63,9 @@ describe('generate: length', () => {
     for (const mode of MODES)
       for (const seed of SEEDS)
         for (const length of [30, 45, 60, 80, 99]) {
-          const piece = generate(seed, { mode, length });
+          const full = generate(seed, { mode, length });
+          // The detail notes are ornaments inside a hold (checked in compose-steps.test).
+          const piece = { ...full, moments: full.moments.filter((m) => m.type !== 'note') };
           const ats = piece.moments.map((m) => m.at);
           for (let i = 1; i < ats.length; i++)
             expect(ats[i] - ats[i - 1], `${mode} ${seed} ${length}`).toBeGreaterThanOrEqual(
@@ -108,7 +110,9 @@ describe('generate: length', () => {
     expect(cases.length).toBe(Object.keys(snapshot).length);
     for (const c of cases) {
       // Revision 6 added `arrive: 'together'` to the default glide; the snapshot predates it.
-      const piece = generate(c.seed, c.opts);
+      // M4.5-38 added the detail notes; the rest is unchanged.
+      const full = generate(c.seed, c.opts);
+      const piece = { ...full, moments: full.moments.filter((m) => m.type !== 'note') };
       expect(piece.defaults.glide.arrive).toBe('together');
       delete piece.defaults.glide.arrive;
       // Schema v2 (M4.5-27): compared as the version 1 file (the opening back in `start`).

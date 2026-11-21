@@ -15,10 +15,11 @@
  *   Thin    the voices collapse onto three-note chords       2 × chord (explicit pitches)
  *   Home    everyone back to the root                        unison
  *
- * `composeSteps` gives the composition as steps in composition order (Compose for me, M4.5-28):
- * each moment is added as it is composed, and two adjustment passes edit moments already placed
- * (`register` voices the Drift chords; `fit` scales a short form to its length). `generate`
- * replays them.
+ *   Detail  neighbour notes on the full split and each Thin  note (up a scale tone and back)
+ *
+ * `composeSteps` gives the composition as steps (Compose for me, M4.5-28/38): the structural
+ * moments in play order, each in its final form, then the detail notes in one left-to-right
+ * sweep. `generate` replays them.
  *
  * Randomness comes from counter-based draws keyed by the seed (core/rng), never Math.random, so
  * the same seed and options always give the same piece. The keys do not include the mode, so
@@ -280,20 +281,18 @@ function shortPlan(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * An adjustment pass over moments already placed:
- * - `register`: once the Drift chords are placed (harmony and timing), each gets its wandering
- *   register;
- * - `fit` (short form only): the piece is laid out at its natural pace, then every moment's time
- *   and glide is scaled so it ends exactly at the target length.
+ * `structure`: the sections' moments, in play order, each final when placed. `detail`: the
+ * refinements a person would add last (note changes; in principle also pins, per-voice overrides
+ * and frozen-note edits), in one left-to-right sweep after every structural step.
  */
-export type ComposePass = 'register' | 'fit';
+export type ComposePhase = 'structure' | 'detail';
 
 /** One step of a composition, in composition order. */
 export type ComposeStep =
-  /** Appends `moment` to the piece's moments. */
-  | { kind: 'add'; moment: Moment; section: SectionName }
-  /** Replaces the placed moment with `moment.id` by `moment`. */
-  | { kind: 'edit'; moment: Moment; pass: ComposePass };
+  /** Inserts `moment` into the piece's moments, which stay in time order. */
+  | { kind: 'add'; moment: Moment; section: SectionName; phase: ComposePhase }
+  /** Replaces the placed moment with `moment.id` by `moment` (a detail edit). */
+  | { kind: 'edit'; moment: Moment; phase: 'detail' };
 
 /** A composition: the piece without moments, and the steps that place and adjust them. */
 export interface Composition {
@@ -311,21 +310,25 @@ export interface Composition {
 export function composedPiece(c: Composition, count: number = c.steps.length): Piece {
   const k = Math.max(0, Math.min(c.steps.length, Math.floor(count)));
   const moments: Moment[] = [];
-  const at = new Map<string, number>();
   for (let i = 0; i < k; i++) {
-    const step = c.steps[i];
-    const j = step.kind === 'add' ? moments.length : at.get(step.moment.id);
-    if (j === undefined) continue;
-    at.set(step.moment.id, j);
-    moments[j] = step.moment;
+    const { kind, moment } = c.steps[i];
+    if (kind === 'add') {
+      // In time order: after every moment at or before it (structural adds simply append).
+      let j = moments.length;
+      while (j > 0 && moments[j - 1].at > moment.at) j--;
+      moments.splice(j, 0, moment);
+    } else {
+      const j = moments.findIndex((m) => m.id === moment.id);
+      if (j >= 0) moments[j] = moment;
+    }
   }
   const end = k === c.steps.length ? c.base.end : { fade: c.base.end.fade };
   return { ...c.base, moments, end };
 }
 
 /**
- * The composer (§11.3 "Generate"), as its steps: each moment is added when it is composed, and
- * the adjustment passes edit moments already placed. `composedPiece` replays them.
+ * The composer (§11.3 "Generate"), as its steps: the structural moments in play order, then the
+ * detail sweep. `composedPiece` replays them.
  */
 export function composeSteps(
   seed: number,
@@ -405,10 +408,8 @@ export function composeSteps(
     }
   };
 
-  // Moments, with deterministic, unique 6-character ids. `moments` holds each one as it ends;
-  // `laid` as it was laid out before `fit` (the same objects in the full form).
+  // Moments, with deterministic, unique 6-character ids.
   const moments: Moment[] = [];
-  const laid: Moment[] = [];
   const composed: ComposeStep[] = [];
   let opening = 0;
   const usedIds = new Set<string>();
@@ -432,33 +433,29 @@ export function composeSteps(
   };
   /**
    * Places a moment (an add step); the first one of a section is labelled with the section's
-   * name. `natural` is its timing before `fit` (short form): time, glide and walk end at the
-   * natural pace. Returns its index.
+   * name.
    */
-  const add = (m: NewMoment, natural: Partial<NewMoment> = {}, key?: number): number => {
+  const add = (m: NewMoment, key?: number, phase: ComposePhase = 'structure'): void => {
     const moment = { id: nextId(key), ...m } as Moment;
     moment.at = round3(moment.at);
     if (pendingLabel !== null) {
       moment.label = pendingLabel;
       pendingLabel = null;
     }
-    const first = short ? ({ ...moment, ...natural } as Moment) : moment;
-    first.at = round3(first.at);
     moments.push(moment);
-    laid.push(first);
-    composed.push({ kind: 'add', moment: first, section });
-    return moments.length - 1;
+    composed.push({ kind: 'add', moment, section, phase });
   };
-  /** Edits moment `i` by `patch`, in both its laid-out and final forms (an edit step). */
-  const adjust = (i: number, patch: Partial<NewMoment>, pass: ComposePass): void => {
-    moments[i] = { ...moments[i], ...patch } as Moment;
-    laid[i] = short ? ({ ...laid[i], ...patch } as Moment) : moments[i];
-    composed.push({ kind: 'edit', moment: laid[i], pass });
+  /**
+   * Detail candidates, collected as the sections are placed: a held chord whose top note gets an
+   * upper neighbour (a scale tone up and back) in the detail sweep, at `at`, once its lines have
+   * arrived.
+   */
+  const ornaments: { at: Seconds; top: Pitch; section: SectionName }[] = [];
+  const ornament = (at: Seconds, pitches: Pitch[]): void => {
+    ornaments.push({ at, top: Math.max(...pitches), section });
   };
 
   let c = 0;
-  /** The natural-pace clock (the short form's layout before `fit`); equals t in the full form. */
-  let tn = 8 + draw('seed', 0, Purpose.GenTiming) * 2;
 
   // Seed: the piece opens on one note, an establishing chord at 0 (schema v2).
   mark('Seed', 0);
@@ -470,112 +467,90 @@ export function composeSteps(
       voicing: 'even',
       assign: 'ordered',
     },
-    {},
     OPENING_KEY,
   );
   opening = 1;
   let t = (8 + draw('seed', 0, Purpose.GenTiming) * 2) * s;
 
   mark('Split', t);
+  const lastSplit = plan.splits[plan.splits.length - 1];
   for (const j of plan.splits) {
     const k = stages[j];
-    add(
-      {
-        type: 'split',
-        at: t,
-        count: k,
-        notes: { kind: 'pitches', pitches: voicing(c, k, CENTER) },
-        voicing: 'even',
-        glide: glide(0.5, 2.6, 3.8),
-      },
-      { at: tn, glide: glideOf(0.5, 2.6, 3.8) },
-    );
+    const pitches = voicing(c, k, CENTER);
+    add({
+      type: 'split',
+      at: t,
+      count: k,
+      notes: { kind: 'pitches', pitches },
+      voicing: 'even',
+      glide: glide(0.5, 2.6, 3.8),
+    });
+    // The full split holds 7–8.5 s: its lines have arrived by 4.5 s.
+    if (j === lastSplit) ornament(t + 4.5 * s, pitches);
     const gap = 7 + draw('split', j, Purpose.GenTiming) * 1.5;
     t += gap * s;
-    tn += gap;
     c = nextChord(c);
   }
 
-  // Drift: the chord changes are placed first (harmony and timing), then the register pass
-  // voices each one around a wandering centre.
+  // Drift: chord changes, each voiced around a wandering centre.
   if (drifts > 0) mark('Drift', t);
-  const drifted: { index: number; c: number }[] = [];
   for (let i = 0; i < drifts; i++) {
-    const index = add(
-      {
-        type: 'chord',
-        at: t,
-        notes: { kind: 'degrees', degrees: chordDegrees(c) },
-        voicing: 'even',
-        assign: 'ordered',
-        glide: glide(1.4, 2.2, 4),
-      },
-      { at: tn, glide: glideOf(1.4, 2.2, 4) },
-    );
-    drifted.push({ index, c });
+    const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
+    add({
+      type: 'chord',
+      at: t,
+      notes: { kind: 'degrees', degrees: chordDegrees(c) },
+      voicing: 'even',
+      assign: 'ordered',
+      glide: glide(1.4, 2.2, 4),
+      register: registerFor(c, n, center),
+    });
     const gap = 5.8 + draw('drift', i, Purpose.GenTiming) * 2.2;
     t += gap * s;
-    tn += gap;
     c = nextChord(c);
   }
-  drifted.forEach(({ index, c: chord }, i) => {
-    const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
-    adjust(index, { register: registerFor(chord, n, center) }, 'register');
-  });
 
   if (plan.development) {
     mark('Gather', t);
-    add(
-      {
-        type: 'unison',
-        at: t,
-        pitch: nearestIn(chordPool(c), CENTER),
-        octaves: false,
-        glide: glide(0.9, 3.6, 5),
-      },
-      { at: tn, glide: glideOf(0.9, 3.6, 5) },
-    );
+    add({
+      type: 'unison',
+      at: t,
+      pitch: nearestIn(chordPool(c), CENTER),
+      octaves: false,
+      glide: glide(0.9, 3.6, 5),
+    });
     t += 9.5 * s;
-    tn += 9.5;
 
     // Burst out to a bass note plus n − 1 upper voices, leaving the bass room to leap.
     mark('Burst', t);
     c = nextChord(c);
     const bass = tones.find((p) => deg(p) === c) ?? tones[0];
-    add(
-      {
-        type: 'chord',
-        at: t,
-        notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
-        voicing: 'even',
-        assign: 'ordered',
-        glide: glide(0.25, 1.1, 1.9),
-      },
-      { at: tn, glide: glideOf(0.25, 1.1, 1.9) },
-    );
+    add({
+      type: 'chord',
+      at: t,
+      notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
+      voicing: 'even',
+      assign: 'ordered',
+      glide: glide(0.25, 1.1, 1.9),
+    });
     t += 7 * s;
-    tn += 7;
 
     // Each tick a random subset of voices steps one or two scale tones, never touching or
     // crossing; the lowest voice leaps 5–12 semitones instead. Steps last 0.22–0.32 s and start
     // up to 0.1 s into the tick. The walk's own timing is never scaled.
     mark('Walk', t);
-    add(
-      {
-        type: 'walk',
-        at: t,
-        until: round3(t + ticks * WALK_GRID),
-        grid: WALK_GRID,
-        density,
-        steps: [-2, -1, 1, 2],
-        stepGlide: 0.27,
-        bass: { leap: [5, 12] },
-        glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
-      },
-      { at: tn, until: round3(tn + ticks * WALK_GRID) },
-    );
+    add({
+      type: 'walk',
+      at: t,
+      until: round3(t + ticks * WALK_GRID),
+      grid: WALK_GRID,
+      density,
+      steps: [-2, -1, 1, 2],
+      stepGlide: 0.27,
+      bass: { leap: [5, 12] },
+      glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
+    });
     t += ticks * WALK_GRID + 1.5 * s;
-    tn += ticks * WALK_GRID + 1.5;
   }
 
   // Three-note chords, the voices split into three equal groups (low, middle, high).
@@ -588,38 +563,42 @@ export function composeSteps(
       nearestIn(pool, CENTER),
       nearestIn(pool, CENTER + 10),
     ];
-    add(
-      {
-        type: 'chord',
-        at: t,
-        notes: {
-          kind: 'pitches',
-          pitches: Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]),
-        },
-        voicing: 'even',
-        assign: 'ordered',
-        glide: glide(1.3, 3, 5),
-      },
-      { at: tn, glide: glideOf(1.3, 3, 5) },
-    );
+    const pitches = Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]);
+    add({
+      type: 'chord',
+      at: t,
+      notes: { kind: 'pitches', pitches },
+      voicing: 'even',
+      assign: 'ordered',
+      glide: glide(1.3, 3, 5),
+    });
+    // A Thin chord holds 9 s: its lines have arrived by 6.5 s.
+    ornament(t + 6.5 * s, pitches);
     t += 9 * s;
-    tn += 9;
   }
 
   mark('Home', t);
-  add(
-    { type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) },
-    { at: tn, glide: glideOf(1, 4, 6.5) },
-  );
+  add({ type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) });
   t += 13.5 * s;
 
-  // Fit (short form): every moment laid out at the natural pace moves to its scaled time.
-  if (short) {
-    for (let i = 0; i < moments.length; i++) {
-      if (JSON.stringify(laid[i]) === JSON.stringify(moments[i])) continue;
-      laid[i] = moments[i];
-      composed.push({ kind: 'edit', moment: moments[i], pass: 'fit' });
-    }
+  // Detail: one left-to-right sweep after the structure. Each ornament moves a held chord's top
+  // note up a scale tone and back (an upper neighbour), inside the chord's hold.
+  for (const o of ornaments) {
+    const up = tones.find((p) => p > o.top);
+    if (up === undefined) continue;
+    section = o.section;
+    add(
+      {
+        type: 'note',
+        at: o.at,
+        from: o.top,
+        to: up,
+        back: round3(0.9 * s),
+        glide: { length: round3(0.6 * s), stagger: 0, jitter: 0 },
+      },
+      undefined,
+      'detail',
+    );
   }
 
   const voices = defaultVoices(n);

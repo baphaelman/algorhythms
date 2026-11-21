@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import {
   closeCompose,
+  composeAgain,
   finish,
-  restartCompose,
   setComposeInput,
   stopCompose,
   useCompose,
@@ -12,9 +12,10 @@ import { GenerateFields } from './GenerateFields';
 import './compose.css';
 
 /**
- * The Compose for me side panel (PLAN.md §11.3 "Compose in New piece"): Generate's inputs, live
- * (a change restarts the build), the build's progress, Skip and Stop. It takes the inspector's
- * column while open; in the player layout it sits under the score.
+ * The Compose for me side panel (PLAN.md §11.3 "Compose in New piece", "Compose builds in play
+ * order"): Generate's inputs (live while it builds; afterwards "Compose again" uses them), the
+ * build's progress, Skip and Stop. It takes the inspector's column while open (it closes on the
+ * user's own edit); in the player layout it sits under the score.
  */
 export function ComposePanel() {
   const id = useId();
@@ -57,8 +58,8 @@ export function ComposePanel() {
           </>
         ) : (
           <>
-            <button type="button" data-testid="compose-again" onClick={restartCompose}>
-              Build again
+            <button type="button" data-testid="compose-again" onClick={composeAgain}>
+              Compose again
             </button>
             <button
               type="button"
@@ -71,7 +72,11 @@ export function ComposePanel() {
           </>
         )}
       </div>
-      <p className="compose-note">Change anything below and the composer starts over from it.</p>
+      <p className="compose-note">
+        {building
+          ? 'Change anything below and the composer starts over from it.'
+          : 'Change anything below, then Compose again. Or edit the piece yourself.'}
+      </p>
       <GenerateFields
         id={id}
         form={form}
