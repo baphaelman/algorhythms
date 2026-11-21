@@ -19,6 +19,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **No knot where lines split (v37).** Future strands at merges and splits no longer darken where they overlap.
 
 ## Answered
+- 2026-11-21 (v37): "the bell sounds awful" (heard in the Tidewater timbre-change render). Being redesigned: candidates rendered for the owner to pick.
 - 2026-11-21 (back): "ship the compositions" (the rev 9 rewrite); organ's 17 ms bloom "sounds fine". Reported: artifacts in front of the playhead where lines split (a knot where translucent future strands overlap); a render fix is in progress.
 - 2026-11-21 (night): the compact lane rows are rejected ("I would prefer scrolling through the old one"); try something else (PLAN "Dense lanes"). A light pop at the end of every moment in version 29 is being bisected.
 - 2026-11-21 (night): thickness for loudness is good in the editor (an option for video export later). Merging lines should bundle into the thick line, with no swell after arrival, and merges and splits crossfade their sound across the approach.
