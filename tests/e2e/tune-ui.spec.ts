@@ -323,15 +323,24 @@ test('Melody on: pick a sounding note, the tune moves to its line; highest; undo
   await open(page, null);
   await hook(page).select(['tune1']);
   const menu = inspector(page).getByTestId('insp-melody-on');
-  await expect(menu).toHaveValue('line:low');
-  await expect(menu.locator('option')).toHaveText([
-    'Highest note',
-    'G4',
-    'E4',
-    'G3',
-    'C3',
-    'Lowest note',
-  ]);
+  const options = inspector(page).getByTestId('insp-melody-option');
+  await expect(menu).toHaveAttribute('data-value', 'line:low');
+  await expect(menu).toHaveText(/Lowest note/);
+  await menu.click();
+  await expect(options).toHaveText(['Highest note', 'G4', 'E4', 'G3', 'C3', 'Lowest note']);
+  await page.keyboard.press('Escape');
+  await expect(options).toHaveCount(0);
+  await expect(menu).toBeFocused();
+  // Escape closed the menu only: the tune is still selected.
+  await expect(menu).toBeVisible();
+  const pick = async (text: string): Promise<string> => {
+    await menu.click();
+    const o = options.filter({ hasText: text }).first();
+    const v = (await o.getAttribute('data-value'))!;
+    await o.click();
+    await expect(options).toHaveCount(0);
+    return v;
+  };
   /** The voice index playing the tune (its compiled segments). */
   const line = () =>
     page.evaluate(() => {
@@ -349,25 +358,85 @@ test('Melody on: pick a sounding note, the tune moves to its line; highest; undo
   const field = async (k: string): Promise<unknown> =>
     ((await tuneOf(page)) as unknown as Record<string, unknown>)[k];
   const before = await line();
-  const e4 = (await menu.locator('option', { hasText: 'E4' }).getAttribute('value'))!;
-  await menu.selectOption(e4);
+  // On C3 the tune is C4 D4 E4 (an octave above the line). Picking E4 moves it 9 scale steps.
+  expect(await pitches(page)).toEqual([60, 62, 64]);
+  const e4 = await pick('E4');
   expect(await field('target')).toEqual({ voices: [e4.slice('voice:'.length)] });
   expect(await hook(page).undoLabel()).toBe('Change melody line');
-  await expect(menu).toHaveValue(e4);
+  await expect(menu).toHaveAttribute('data-value', e4);
+  expect(await pitches(page)).toEqual([76, 77, 79]);
   await expect.poll(line).not.toBe(before);
   const onE4 = await line();
 
-  await menu.selectOption('line:high');
+  // Highest (G4, two steps up), by keyboard.
+  await menu.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(inspector(page).getByTestId('insp-melody-list')).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(options.first()).toHaveClass(/active/);
+  await page.keyboard.press('Enter');
   expect(await field('line')).toBe('high');
   expect(await field('target')).toBeUndefined();
+  expect(await pitches(page)).toEqual([79, 81, 83]);
   await expect.poll(line).not.toBe(onE4);
 
   await hook(page).undo();
-  await expect(menu).toHaveValue(e4);
+  await expect(menu).toHaveAttribute('data-value', e4);
+  expect(await pitches(page)).toEqual([76, 77, 79]);
   await expect.poll(line).toBe(onE4);
   await hook(page).undo();
-  await expect(menu).toHaveValue('line:low');
+  await expect(menu).toHaveAttribute('data-value', 'line:low');
   expect(await field('target')).toBeUndefined();
   expect(await field('line')).toBeUndefined();
+  expect(await pitches(page)).toEqual([60, 62, 64]);
   await expect.poll(line).toBe(before);
+});
+
+test('Melody on: an option under the pointer or the arrows highlights its line', async ({
+  page,
+}) => {
+  await open(page, null);
+  await hook(page).select(['tune1']);
+  const menu = inspector(page).getByTestId('insp-melody-on');
+  const list = inspector(page).getByTestId('insp-melody-list');
+  const options = inspector(page).getByTestId('insp-melody-option');
+  /** The whole line the score last drew highlighted (-1: none). */
+  const lit = () => page.evaluate(() => window.__algorhythms!.frameStats.highlightVoice);
+  /** A voice's pool index by id. */
+  const indexOf = (id: string) =>
+    page.evaluate(
+      (v) =>
+        (
+          window.__algorhythms as unknown as {
+            store: { getState(): { piece: { voices: { id: string }[] } } };
+          }
+        ).store
+          .getState()
+          .piece.voices.findIndex((x) => x.id === v),
+      id,
+    );
+  const voiceOf = async (text: string): Promise<number> =>
+    indexOf((await options.filter({ hasText: text }).first().getAttribute('data-value'))!.slice(6));
+  await expect.poll(lit).toBe(-1);
+  await menu.click();
+  // Opening points at the current choice (Lowest: the C3 line).
+  const c3 = await voiceOf('C3');
+  await expect.poll(lit).toBe(c3);
+  const g3 = await voiceOf('G3');
+  await options.filter({ hasText: 'G3' }).hover();
+  await expect.poll(lit).toBe(g3);
+  await options.filter({ hasText: 'Highest' }).hover();
+  await expect.poll(lit).toBe(await voiceOf('G4'));
+  // Leaving the list clears it; the arrows point again.
+  await page.mouse.move(5, 5);
+  await expect.poll(lit).toBe(-1);
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(1)).toHaveClass(/active/);
+  await expect.poll(lit).toBe(await voiceOf('G4'));
+  await expect(list).toHaveAttribute('aria-activedescendant', /.+/);
+  // Closing clears it and changes nothing.
+  await page.keyboard.press('Escape');
+  await expect(options).toHaveCount(0);
+  await expect.poll(lit).toBe(-1);
+  expect(await pitches(page)).toEqual([60, 62, 64]);
 });

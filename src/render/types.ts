@@ -113,6 +113,11 @@ export interface ScoreStyle {
    */
   highlight?: ReadonlySet<MomentId>;
   /**
+   * Whole lines to highlight (pool indices) like `highlight`'s segments, e.g. the line a tune's
+   * "Melody on" option points at (owner, 2026-11-21). Empty or absent: none.
+   */
+  highlightVoices?: ReadonlySet<number>;
+  /**
    * Bar grid to draw behind the lines (§11.3 revision 7; the editor passes the piece's tempo and
    * meter, defaults in ./bars). Absent: none.
    */

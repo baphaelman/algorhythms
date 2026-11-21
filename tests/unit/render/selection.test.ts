@@ -166,6 +166,22 @@ describe('selection highlight', () => {
     expect(thick.map((c) => c.alpha)).toEqual([1, 0.6]);
   });
 
+  it('highlightVoices: a whole line thick on top, the others dimmed', () => {
+    const { ctx, calls } = fakeCtx();
+    drawScore(ctx, SCORE, CAM, style({ highlightVoices: new Set([1]) }), 20, SIZE, 1);
+    const red = strokes(calls, RED);
+    expect(red.length).toBeGreaterThan(0);
+    expect(red.every((c) => c.alpha === DIM_ALPHA && c.width === 1.5)).toBe(true);
+    // Blue's one run (0..40) split at the playhead.
+    const thick = strokes(calls, BLUE).filter((c) => c.width === HIGHLIGHT_WIDTH);
+    expect(thick.map((c) => c.alpha)).toEqual([1, 1]);
+    const empty = fakeCtx();
+    const none = fakeCtx();
+    drawScore(empty.ctx, SCORE, CAM, style({ highlightVoices: new Set() }), 20, SIZE, 1);
+    drawScore(none.ctx, SCORE, CAM, style(), 20, SIZE, 1);
+    expect(empty.calls.map((c) => c.op)).toEqual(none.calls.map((c) => c.op));
+  });
+
   it('returns the view it drew', () => {
     const { ctx } = fakeCtx();
     const view = drawScore(ctx, SCORE, CAM, style(), 20, SIZE, 1);

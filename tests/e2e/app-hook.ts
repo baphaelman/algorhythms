@@ -28,6 +28,8 @@ export interface Hook {
     ghost: number;
     /** Start time of the preview ghost in the last drawn frame; NaN: none. */
     preview: number;
+    /** The whole line highlighted in the last drawn frame (Melody on hover); -1: none. */
+    highlightVoice: number;
     reset(): void;
   };
   actions: {
