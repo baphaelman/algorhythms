@@ -178,6 +178,19 @@ export function timbreOptions(piece: Piece, current?: string): string[] {
   return names;
 }
 
+/** Sets one timbre on every voice (one recipe, so one undo entry when passed to `edit`). */
+export function setAllTimbres(piece: Piece, timbre: string): Piece {
+  let out = piece;
+  for (const v of piece.voices) out = patchVoice(out, v.id, { timbre });
+  return out;
+}
+
+/** The timbre every voice shares, or undefined when they differ. */
+export function commonTimbre(voices: readonly VoiceDef[]): string | undefined {
+  const t = voices[0]?.timbre;
+  return voices.every((v) => v.timbre === t) ? t : undefined;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Mute and solo
 // ---------------------------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import {
 import {
   anySolo,
   clearSolo,
+  commonTimbre,
   heardVoices,
   normalizeRange,
   patchVoice,
@@ -27,6 +28,7 @@ import {
   PITCH_MIN,
   poolShrinkEffects,
   resizePool,
+  setAllTimbres,
   setStartCount,
   setStartPitch,
   setStarts,
@@ -395,6 +397,8 @@ function resize(size: number): void {
   }
 }
 
+const MIXED = '\u0000mixed';
+
 /** The drawer itself; renders nothing while closed. Mount it in the wide layout only. */
 export function VoicesDrawer() {
   const open = useVoicesDrawer((s) => s.open);
@@ -403,6 +407,7 @@ export function VoicesDrawer() {
   const voices = piece.voices;
   const heard = heardVoices(voices);
   const soloed = anySolo(voices);
+  const allTimbre = commonTimbre(voices);
   return (
     <section
       id="voices-drawer"
@@ -441,6 +446,29 @@ export function VoicesDrawer() {
             testId="start-count"
             onCommit={(n) => edit((p) => setStartCount(p, n), 'Notes at start')}
           />
+        </label>
+        <label className="ctl">
+          <span>All notes</span>
+          <select
+            aria-label="Timbre of all notes"
+            data-testid="timbre-all"
+            value={allTimbre ?? MIXED}
+            onChange={(e) => {
+              const timbre = e.target.value;
+              if (timbre !== MIXED) edit((p) => setAllTimbres(p, timbre), 'All notes timbre');
+            }}
+          >
+            {allTimbre === undefined && (
+              <option value={MIXED} disabled>
+                Mixed
+              </option>
+            )}
+            {timbreOptions(piece, allTimbre).map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </label>
         <button type="button" disabled={!soloed} onClick={() => edit(clearSolo, 'Clear solo')}>
           Clear solo
