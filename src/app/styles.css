@@ -378,6 +378,12 @@ input[type='range'] {
   background-image: linear-gradient(to right, var(--rule) 1px, transparent 1px);
 }
 
+.ruler-bars {
+  height: 11px;
+  background-image: linear-gradient(to right, var(--ink2) 1px, transparent 1px);
+  opacity: 0.55;
+}
+
 .ruler-grid[hidden] {
   display: none;
 }

@@ -189,6 +189,21 @@ describe('dragging arrival dots (revision 6: the dot moves)', () => {
     expect(dotsOf(id)[0].t).toBeCloseTo(d.t + 1, 2);
   });
 
+  it('revision 7: a pitch past the voice range is clamped to it, never folded by an octave', () => {
+    // Voices span 36..96 (fixture).
+    drag(dotsOf('n')[0], 120);
+    expect(byId('n')).toMatchObject({ to: 96 });
+    const w = dotsOf('w')[0];
+    drag(w, 10);
+    const f = (byId('w') as WalkMoment).fixed!;
+    expect(f.find((x) => x.tick === w.step!.tick && x.voice === w.step!.voice)?.pitch).toBe(36);
+    const sh = dotsOf('sh')[0];
+    drag(sh, 20);
+    expect(byId('sh').overrides).toEqual([{ voice: sh.voice, pitch: 36 }]);
+    const moved = dotsOf('sh').find((d) => d.voice === sh.voice)!;
+    expect(moved.pitch).toBe(36);
+  });
+
   it('clearOverride / clearOverrides remove them (one undo entry each)', () => {
     const [a, b] = dotsOf('sh');
     drag(a, 52);

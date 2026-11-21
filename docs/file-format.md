@@ -3703,6 +3703,12 @@ This is the *input* form: fields with defaults are optional here.
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "meter": {
+          "description": "Beats per bar.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
         "futureOpacity": {
           "type": "number",
           "minimum": 0,

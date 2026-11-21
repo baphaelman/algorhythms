@@ -1,11 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { xToTime, type View } from '../../render';
+import { barGrid, xToTime, type View } from '../../render';
 import { onScoreFrame } from '../loop';
 import { snapToGrid } from '../editor/shortcuts';
 import {
   LOOP_BAND_PX,
   LOOP_DRAG_PX,
-  beatPx,
   dragLoopEdge,
   loopEdgeAt,
   loopFromDrag,
@@ -17,24 +16,36 @@ import {
 import { camera, loopDraft, loopRegion, scrubEnd, scrubTo, setLoop, usePlayer } from '../store';
 
 /**
- * The time ruler above the score (PLAN.md §11.2 "Time" row): labelled ticks, and the BPM grid when
- * the piece has one, on the shared axis (§10). Click or drag seeks (silent while dragging, like the
+ * The time ruler above the score (PLAN.md §11.2 "Time" row): labelled ticks, and the bar grid
+ * (beats faint, bars stronger; §11.3 revision 7), on the shared axis (§10). Click or drag seeks (silent while dragging, like the
  * player's scrubber); the view holds still during the drag. Its top strip is the loop band
  * (§11.3 revision 6): drag there, or Shift-drag anywhere, to set the loop region; drag a region
  * edge to move it; double-click the band to clear it (Alt skips grid snapping). Placed every frame from the loop's
  * camera (`onScoreFrame`) by direct DOM writes; its content box lines up with the score canvas.
  */
+/** Draws lines every `step` s as a repeating gradient on `el` (hidden when `step` is 0). */
+function stripe(el: HTMLElement, step: number, v: View): void {
+  el.hidden = !(step > 0);
+  if (el.hidden) return;
+  const px = step * v.pps;
+  el.style.backgroundSize = `${px}px 100%`;
+  el.style.backgroundPositionX = `${-((v.start % step) * v.pps)}px`;
+  el.dataset.step = String(step);
+}
+
 export function Ruler() {
   const root = useRef<HTMLDivElement>(null);
   const ticks = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
+  const barsEl = useRef<HTMLDivElement>(null);
   const duration = usePlayer((s) => s.compiled.duration);
 
   useEffect(() => {
     const el = root.current;
     const box = ticks.current;
     const beats = grid.current;
-    if (!el || !box || !beats) return;
+    const bars = barsEl.current;
+    if (!el || !box || !beats || !bars) return;
     const pool: HTMLSpanElement[] = [];
     let view: View | null = null;
     let lastKey = '';
@@ -67,18 +78,15 @@ export function Ruler() {
           s.dataset.t = String(t);
           s.style.transform = `translateX(${(t - v.start) * v.pps}px)`;
         }
-        const bpm = usePlayer.getState().piece.view.gridBpm;
-        const px = beatPx(bpm, v.pps);
-        const offset = px === null || !bpm ? 0 : -((v.start % (60 / bpm)) * v.pps);
-        const beat = px === null ? '' : `${px}|${offset}`;
-        if (beat !== lastBeat) {
-          lastBeat = beat;
-          beats.hidden = px === null;
-          if (px !== null) {
-            beats.style.backgroundSize = `${px}px 100%`;
-            beats.style.backgroundPositionX = `${offset}px`;
-          }
-        }
+      }
+      // The bar grid also follows the piece's tempo and meter.
+      const pv = usePlayer.getState().piece.view;
+      const { beat: bt, bar } = barGrid(pv.gridBpm, pv.meter, v.pps);
+      const beat = `${bt}|${bar}|${v.start}|${v.pps}`;
+      if (beat !== lastBeat) {
+        lastBeat = beat;
+        stripe(beats, bt, v);
+        stripe(bars, bar, v);
       }
       const now = Math.round(v.t);
       if (now !== lastNow) {
@@ -200,7 +208,8 @@ export function Ruler() {
         className="ruler-band"
         title="Loop: drag here to set a region, drag its edges, double-click to clear"
       />
-      <div ref={grid} className="ruler-grid" hidden />
+      <div ref={grid} className="ruler-grid" data-testid="ruler-beats" hidden />
+      <div ref={barsEl} className="ruler-grid ruler-bars" data-testid="ruler-bars" hidden />
       <div ref={ticks} className="ruler-ticks" />
     </div>
   );

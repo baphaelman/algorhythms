@@ -20,9 +20,11 @@
 
 import { keyAt } from '../core/query';
 import type { Key, Pitch } from '../core/types';
-import { HOVER_RADIUS_PX, nearestLine, xToTime, yToPitch, type View } from '../render';
+import { HOVER_RADIUS_PX, nearestLine, xToTime, type View } from '../render';
 import { addPointDrag, stepNote, type PitchDrag } from './editor/actions';
 import { dragPitch } from './editor/chord-notes';
+import { edgePitch, inRange } from './editor/drag-edge';
+import { changePoints, snapTime } from './editor/snap';
 import { redo, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
@@ -31,12 +33,12 @@ import {
   clearSelection,
   deleteSelection,
   editorKey,
-  snapToGrid,
   takesText,
 } from './editor/shortcuts';
 import { clearHover, setHover } from './hover';
 import { currentPps, onScoreFrame } from './loop';
 import {
+  camera,
   currentTime,
   panBy,
   seekBy,
@@ -73,7 +75,13 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   /** This press, and the last press that ended as a click (with the transport before it). */
   let press: Press | null = null;
   let lastClick: { press: Press; status: TransportStatus; t: number } | null = null;
-  let note: { drag: PitchDrag; key: Key; last: Pitch } | null = null;
+  let note: { drag: PitchDrag; key: Key; last: Pitch; range?: [Pitch, Pitch] } | null = null;
+  /** Ends the note drag (and releases the held pitch range). */
+  const endNote = (cancel: boolean): void => {
+    note?.drag.end(cancel);
+    note = null;
+    camera.pitch = null;
+  };
 
   const local = (e: PointerEvent): { x: number; y: number } => {
     const r = canvas.getBoundingClientRect();
@@ -87,11 +95,18 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     const { compiled, piece } = usePlayer.getState();
     const hit = nearestLine(compiled, v, x, y, HOVER_RADIUS_PX, true);
     if (!hit) return false;
+    // Revision 7: snapped to a nearby note change (not the bar grid); Alt: exact.
     const t = xToTime(v, x);
-    const at = exact ? Math.max(0, t) : snapToGrid(t, piece.view.gridBpm);
+    const at = snapTime(t, { points: changePoints(compiled, piece) }, v.pps, exact);
     const from = noteFrom(compiled, hit.voice, at, hit.pitch);
     if (from === null) return false;
-    note = { drag: addPointDrag(at, hit.voice, from), key: keyAt(compiled, at), last: from };
+    note = {
+      drag: addPointDrag(at, hit.voice, from),
+      key: keyAt(compiled, at),
+      last: from,
+      range: piece.voices[hit.voice]?.range,
+    };
+    camera.pitch = [v.pLo, v.pHi];
     return true;
   };
 
@@ -134,10 +149,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
         if (double && prev) restoreTransport(prev);
       }
     } else if (pointers.size === 2) {
-      if (note) {
-        note.drag.end(true);
-        note = null;
-      }
+      if (note) endNote(true);
       pinching = true;
       pinchStart = Math.max(1, distance());
       pinchWindow = usePlayer.getState().view.window;
@@ -169,7 +181,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (travelled <= DRAG_SLOP) return;
     if (note) {
       if (!view) return;
-      const q = dragPitch(yToPitch(view, local(e).y), note.key, e.shiftKey);
+      const q = inRange(dragPitch(edgePitch(view, local(e).y), note.key, e.shiftKey), note.range);
       if (q !== note.last) {
         note.last = q;
         note.drag.to(q);
@@ -184,8 +196,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   const onUp = (e: PointerEvent): void => {
     if (!pointers.delete(e.pointerId)) return;
     if (note) {
-      note.drag.end(e.type !== 'pointerup');
-      note = null;
+      endNote(e.type !== 'pointerup');
       press = null;
       return;
     }
@@ -238,8 +249,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   window.addEventListener('blur', onBlur);
   return () => {
     stopFrames();
-    if (note) note.drag.end(true);
-    note = null;
+    if (note) endNote(true);
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', onBlur);

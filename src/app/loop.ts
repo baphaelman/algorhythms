@@ -135,6 +135,7 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let hoverVersion = -1;
   let lastTip = '';
   let domHead = false;
+  let lastPitch: [number, number] | null = null;
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -246,6 +247,11 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     }
 
     const cam: CameraState = { start: camera.start, window: win };
+    if (camera.pitch) cam.pitchRange = camera.pitch;
+    if (camera.pitch !== lastPitch) {
+      lastPitch = camera.pitch;
+      dirty = true;
+    }
     if (frameListeners.size > 0 && width > 0 && height > 0) {
       const v = cameraAt(cameraScore(compiled), cam, t, { width, height }, view.hud);
       for (const fn of frameListeners) fn(v, compiled);
@@ -274,6 +280,8 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           markerTimes,
           highlight,
           playhead: !domHead,
+          // The bar grid in the editor layout (the one with the DOM playhead).
+          bars: domHead ? { bpm: piece.view.gridBpm, meter: piece.view.meter } : undefined,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
         frameStats.drawn++;

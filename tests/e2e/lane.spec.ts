@@ -111,15 +111,19 @@ test('click selects, Shift-click extends, empty click clears', async ({ page }) 
   await expect(page.locator('[data-moment][aria-pressed="true"]')).toHaveCount(0);
 });
 
-test('drag moves a moment on the grid; undo restores it in one step', async ({ page }) => {
+test('drag moves a moment (free: no bar-grid snap); undo restores it in one step', async ({
+  page,
+}) => {
   const k = await pps(page);
   await drag(page, await markerAt(page, 'aaaaaa'), 1.8 * k);
-  await expect.poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at).toBe(4);
+  await expect
+    .poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at)
+    .toBeCloseTo(3.8, 1);
   // The item follows its new time.
   const a = await markerAt(page, 'aaaaaa');
   const b = await markerAt(page, 'bbbbbb');
   expect((b.x - a.x) / k).toBeCloseTo(2, 0);
-  await expect(page.getByTestId('lane-live')).toContainText('Moved chord to 4 s');
+  await expect(page.getByTestId('lane-live')).toContainText(/Moved chord to 3\.\d+ s/);
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await moments(page)).find((m) => m.id === 'aaaaaa')!.at).toBe(2);
 });

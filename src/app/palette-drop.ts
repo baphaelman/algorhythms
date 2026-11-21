@@ -1,13 +1,15 @@
 /**
  * Drag from the moment palette (PLAN.md §11.3 "click or drag"): palette buttons are HTML5 drag
  * sources; the score canvas and the moment lane are drop targets. A drop adds that moment at the
- * time under the pointer, snapped like other adds (one undo entry, the new moment selected).
+ * time under the pointer, snapped to a nearby note change (revision 7; one undo entry, the new
+ * moment selected).
  */
 
 import type { MomentType, Seconds } from '../core/types';
 import { xToTime, type View } from '../render';
 import { addMoment } from './editor/actions';
-import { PALETTE, snapToGrid } from './editor/shortcuts';
+import { PALETTE } from './editor/shortcuts';
+import { changePoints, snapTime, type SnapSet } from './editor/snap';
 import { onScoreFrame } from './loop';
 import { usePlayer } from './store';
 
@@ -22,8 +24,8 @@ export function droppedType(data: string): MomentType | null {
 }
 
 /** Drop time for `x` px from the target's left edge (aligned with the canvas), snapped. */
-export function dropTime(view: View, x: number, gridBpm?: number): Seconds {
-  return snapToGrid(xToTime(view, x), gridBpm);
+export function dropTime(view: View, x: number, snaps: SnapSet): Seconds {
+  return snapTime(xToTime(view, x), snaps, view.pps);
 }
 
 /** Starts a palette drag of `type` (call from the button's dragstart). */
@@ -64,7 +66,8 @@ export function attachPaletteDrop(el: HTMLElement): () => void {
     if (!type || !view) return;
     const r = el.getBoundingClientRect();
     const x = e.clientX - r.left - el.clientLeft;
-    addMoment(type, dropTime(view, x, usePlayer.getState().piece.view.gridBpm));
+    const { compiled, piece } = usePlayer.getState();
+    addMoment(type, dropTime(view, x, { points: changePoints(compiled, piece) }));
   };
   el.addEventListener('dragenter', onOver);
   el.addEventListener('dragover', onOver);

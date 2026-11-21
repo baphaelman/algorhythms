@@ -112,7 +112,7 @@ test('double-click a line and drag adds a note point; undo removes it', async ({
   const ns = await notes(page);
   expect(ns).toHaveLength(1);
   const n = ns[0];
-  expect(n.at).toBeCloseTo(10, 6); // snapped to the grid
+  expect(n.at).toBeCloseTo(10.2, 1); // free: no note change nearby (the bar grid isn't a target)
   expect(n.from).toBeCloseTo(60, 6);
   expect(n.to).toBeGreaterThan(60);
   expect(Number.isInteger(n.to)).toBe(true);

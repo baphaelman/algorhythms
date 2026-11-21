@@ -26,6 +26,7 @@ export {
   type Axis,
   type CameraScore,
 } from './camera';
+export { BAR_MIN_PX, BEAT_MIN_PX, DEFAULT_BPM, DEFAULT_METER, barGrid, type BarGrid } from './bars';
 export {
   DEFAULT_MONO,
   DIM_ALPHA,

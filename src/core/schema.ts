@@ -433,6 +433,7 @@ export const ViewSchema = z.looseObject({
   colors: z.enum(['ink', 'pitch', 'custom']).default(V.colors),
   hud: z.boolean().default(V.hud),
   gridBpm: z.number().positive().optional(),
+  meter: z.number().int().min(1).max(32).optional().describe('Beats per bar.'),
   futureOpacity: unitInterval.optional(),
   playheadX: unitInterval.optional(),
   follow: z.enum(['smooth', 'page', 'off']).optional(),

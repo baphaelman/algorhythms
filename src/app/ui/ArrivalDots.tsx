@@ -5,8 +5,10 @@
  * - Hover: with the mouse near another moment's arrival, that moment's dots (a walk: the near
  *   steps), from a fixed pool of buttons written per frame, so no React render on pointer moves.
  * Dragging a dot moves it (`dragArrival`, revision 6): vertically its pitch (snapped to the key,
- * Shift = chromatic), horizontally its arrival (snapped to the grid, Alt = free; only once the
- * pointer has moved sideways past the slop), one undo entry; the dot follows the pointer. A click
+ * Shift = chromatic; clamped at the view's edge, which holds still during the drag), horizontally
+ * its arrival (snapped to note changes within 8 px, a walk step first to its walk's other steps,
+ * Alt = free; only once the pointer has moved sideways past the slop), one undo entry; the dot
+ * follows the pointer. A click
  * without a drag selects the walk step, or the hovered moment.
  * DOM buttons positioned per score frame; the inspector is the keyboard path, so not tab stops.
  */
@@ -14,17 +16,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { keyAt } from '../../core/query';
 import type { CompiledScore, Piece } from '../../core/types';
-import { pitchToY, timeToX, xToTime, yToPitch, type View } from '../../render';
+import { pitchToY, timeToX, xToTime, type View } from '../../render';
 import { dragArrival } from '../editor/actions';
 import { allArrivals, hoverPick, momentArrivals, type ArrivalDot } from '../editor/arrival-points';
 import { dragPitch } from '../editor/chord-notes';
 import { select, useEditor } from '../editor/history';
-import { snapToGrid } from '../editor/shortcuts';
+import { edgePitch } from '../editor/drag-edge';
+import { dotSnaps, snapTime, type SnapSet } from '../editor/snap';
 import { selectStep, useStepSelection } from '../editor/step-selection';
 import { sameStep } from '../editor/walk-steps';
 import { hoverPointer } from '../hover';
 import { onScoreFrame } from '../loop';
-import { usePlayer } from '../store';
+import { camera, usePlayer } from '../store';
 import { useChordNotes } from './inspector/ChordNotes';
 import './walk-dots.css';
 
@@ -168,24 +171,26 @@ export function ArrivalDots() {
     let last = dot.pitch;
     let lastT = dot.t;
     let sideways = false;
+    let snaps: SnapSet | null = null;
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return;
       if (drag === undefined) {
         if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) <= SLOP) return;
         h.dragging = true;
         drag = dragArrival(dot);
+        const v0 = view.current;
+        if (v0 && drag) camera.pitch = [v0.pLo, v0.pHi];
+        const st = usePlayer.getState();
+        snaps = dotSnaps(st.compiled, st.piece, dot);
       }
       const v = view.current;
       const rect = box.current?.getBoundingClientRect();
       if (!drag || !v || !rect) return;
-      const p = dragPitch(yToPitch(v, ev.clientY - rect.top), key, ev.shiftKey);
+      const p = dragPitch(edgePitch(v, ev.clientY - rect.top), key, ev.shiftKey);
       if (Math.abs(ev.clientX - x0) > SLOP) sideways = true;
       let t = dot.t;
-      if (sideways) {
-        const raw = xToTime(v, ev.clientX - rect.left);
-        const bpm = usePlayer.getState().piece.view.gridBpm;
-        t = ev.altKey || !bpm ? Math.max(0, Math.round(raw * 1000) / 1000) : snapToGrid(raw, bpm);
-      }
+      if (sideways && snaps)
+        t = snapTime(xToTime(v, ev.clientX - rect.left), snaps, v.pps, ev.altKey);
       follow.current = { ...dot, t, pitch: p };
       if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
       if (ghost.current) place(ghost.current, v, follow.current);
@@ -200,6 +205,7 @@ export function ArrivalDots() {
       window.removeEventListener('pointerup', done);
       window.removeEventListener('pointercancel', done);
       h.dragging = false;
+      if (drag) camera.pitch = null;
       h.held = false;
       h.key = '';
       follow.current = null;

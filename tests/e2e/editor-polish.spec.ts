@@ -62,8 +62,9 @@ for (const target of ['lane', 'score'] as const) {
     const before = await moments(page);
     const a = await markerX(page, 'aaaaaa');
     const pps = ((await markerX(page, 'bbbbbb')) - a) / 4;
-    // Drop at about 10.3 s: snaps to 10.
-    const x = a + 8.3 * pps;
+    // Drop at about 6.1 s, a few px from the unison at 6: snaps to it (revision 7: note
+    // changes, not the bar grid).
+    const x = a + 4.1 * pps;
     const el = target === 'lane' ? page.locator('.lane-track') : page.locator('#score');
     const box = (await el.boundingBox())!;
     await page
@@ -75,7 +76,7 @@ for (const target of ['lane', 'score'] as const) {
     const added = after.filter((m) => !before.some((b) => b.id === m.id));
     expect(added).toHaveLength(1);
     expect(added[0].type).toBe('walk');
-    expect(added[0].at).toBeCloseTo(10, 6);
+    expect(added[0].at).toBeCloseTo(6, 6);
     await expect(item(page, added[0].id)).toHaveAttribute('aria-pressed', 'true');
 
     // One undo entry.

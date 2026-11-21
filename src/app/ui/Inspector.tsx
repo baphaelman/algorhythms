@@ -6,10 +6,18 @@
 
 import type { Moment, MomentId, Piece } from '../../core/types';
 import { deleteMoments, updateMoment } from '../editor/actions';
-import { edit, useEditor } from '../editor/history';
+import {
+  beginGesture,
+  cancelGesture,
+  edit,
+  endGesture,
+  updateGesture,
+  useEditor,
+} from '../editor/history';
+import { DEFAULT_BPM, DEFAULT_METER } from '../../render';
 import { patchMoment } from '../editor/ops';
 import { usePlayer } from '../store';
-import { NumberField, TextField, fieldSetter } from './inspector/controls';
+import { NumberField, TextField, fieldSetter, type Setter } from './inspector/controls';
 import { GlideFields, SeedField, TargetField } from './inspector/CommonFields';
 import { formatTime, keyAt } from './inspector/fields';
 import { TypeFields } from './inspector/TypeFields';
@@ -59,6 +67,62 @@ export function Inspector() {
   );
 }
 
+/** True while a view-field drag is open (module-level: setters are rebuilt per render). */
+let open = false;
+
+/** A setter for a piece view field (one undo entry per commit or drag). */
+function viewSetter(field: 'gridBpm' | 'meter', label: string): Setter<number> {
+  const patch = (p: Piece, v: number): Piece =>
+    p.view[field] === v ? p : { ...p, view: { ...p.view, [field]: v } };
+  return {
+    commit: (v) => void edit((p) => patch(p, v), label),
+    begin() {
+      open = true;
+      beginGesture(label);
+    },
+    drag(v) {
+      if (!open) this.begin();
+      updateGesture((p) => patch(p, v));
+    },
+    end(cancel = false) {
+      if (!open) return;
+      open = false;
+      if (cancel) cancelGesture();
+      else endGesture();
+    },
+  };
+}
+
+/** Tempo and meter of the drawn bar grid (§11.3 revision 7; drawn, not snapped to). */
+function BarFields() {
+  const view = usePlayer((s) => s.piece.view);
+  return (
+    <fieldset className="insp-group" data-testid="insp-bars">
+      <legend>Bars</legend>
+      <NumberField
+        label="Tempo"
+        value={view.gridBpm ?? DEFAULT_BPM}
+        set={viewSetter('gridBpm', 'Change tempo')}
+        min={20}
+        max={300}
+        step={1}
+        unit="bpm"
+        testId="insp-bpm"
+      />
+      <NumberField
+        label="Beats per bar"
+        value={view.meter ?? DEFAULT_METER}
+        set={viewSetter('meter', 'Change meter')}
+        min={1}
+        max={32}
+        step={1}
+        integer
+        testId="insp-meter"
+      />
+    </fieldset>
+  );
+}
+
 function Empty() {
   return (
     <div className="insp-empty">
@@ -69,6 +133,7 @@ function Empty() {
         <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>I</kbd> pin, <kbd>K</kbd>{' '}
         key, <kbd>L</kbd> level.
       </p>
+      <BarFields />
     </div>
   );
 }

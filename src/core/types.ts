@@ -566,8 +566,13 @@ export interface ViewSettings {
   colors: LineColors;
   /** Show the heads-up display. */
   hud: boolean;
-  /** Snapping grid in beats per minute; absent means no grid. Snapping only (D9). */
+  /**
+   * Tempo of the drawn bar grid, beats per minute (D9). Revision 7: drawn only, not a default snap
+   * target; absent draws bars at 60 bpm.
+   */
   gridBpm?: number;
+  /** Beats per bar of the drawn bar grid (revision 7). @default 4 */
+  meter?: number;
   /** 0..1 opacity of the future (not yet played) lines. @default 0.35 (revision 5; was 0) */
   futureOpacity?: number;
   /** Unused since revision 5 (Smooth follow holds the playhead at 35 %); kept so files load. */
