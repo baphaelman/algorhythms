@@ -10,6 +10,7 @@
  */
 
 import { compileWithTrace } from './compiler/compile';
+import { pieceDecisionTime } from './compiler/glide';
 import type { ChordMoment, CompiledScore, MomentId, Piece, Pitch } from './types';
 
 /**
@@ -27,8 +28,15 @@ export function freezeChord(
   const m = piece.moments[index];
   if (m.type !== 'chord' || m.muted) return null;
   if (!score.momentSpans.some((s) => s.id === momentId)) return null;
-  // Only events before the chord shape its state: drop the moments that come after it.
-  const before = piece.moments.filter((x, j) => x.at < m.at || (x.at === m.at && j <= index));
+  // Only events before the chord shape its state: drop the moments decided after it (a land
+  // moment decides at its lead-in start, revision 9), but keep the keys before its `at`, which
+  // it reads.
+  const t = pieceDecisionTime(piece, m);
+  const before = piece.moments.filter((x, j) => {
+    const d = pieceDecisionTime(piece, x);
+    if (d < t || (d === t && j <= index)) return true;
+    return x.type === 'key' && (x.at < m.at || (x.at === m.at && j < index));
+  });
   const { trace } = compileWithTrace({ ...piece, moments: before });
   const tr = trace.moments.find((x) => x.id === momentId);
   const intents = tr?.logical ?? tr?.intents;
