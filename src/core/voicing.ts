@@ -10,6 +10,10 @@
  *   - `nearest`: each voice takes the candidate nearest its committed destination (may double).
  *   A slash bass (`C/E`) puts the bass's pitch class in the lowest voice.
  *
+ * With `octaves` (split and chord `count` births, PLAN §11.3 rev 7 "Octaves before unisons"),
+ * targets the voicing could not supply (fewer distinct notes than voices) are filled with free
+ * octaves of the targets inside the register (`fillOctaves`) before the caller doubles any.
+ *
  * Integer pitches only (12-TET candidates). Ties go downward, as everywhere in §7.8.
  */
 
@@ -43,6 +47,10 @@ export interface VoicingInput {
    * length may be below k (a split's newborns have no destination yet).
    */
   voices: readonly Pitch[];
+  /** Fill missing targets with octaves before unisons (split, chord `count` births). */
+  octaves?: boolean;
+  /** Pitches of voices not being voiced that keep sounding; octave fills avoid them. */
+  sounding?: readonly Pitch[];
 }
 
 /** Nearest integer, ties down. */
@@ -135,6 +143,93 @@ function pitchClasses(
 
 /** Voices a NoteSet into target pitches (§7.3). */
 export function voiceNotes(input: VoicingInput): VoicingResult {
+  const r = voiceNotesRaw(input);
+  if (!r.ok) return r;
+  if (!input.octaves || r.targets.length >= input.k || r.targets.length === 0) {
+    return { ok: true, targets: r.targets, perVoice: r.perVoice };
+  }
+  const lo = input.register[0] < input.register[1] ? input.register[0] : input.register[1];
+  const hi = input.register[0] < input.register[1] ? input.register[1] : input.register[0];
+  // A slash bass stays the lowest note: octaves go above it.
+  const floor = r.bass ?? -Infinity;
+  const targets = fillOctaves(r.targets, input.k, lo, hi, floor, input.sounding ?? []);
+  return { ok: true, targets, perVoice: false };
+}
+
+const SAME = 1e-9;
+
+function taken(list: readonly Pitch[], x: Pitch): boolean {
+  for (const p of list) if (Math.abs(p - x) < SAME) return true;
+  return false;
+}
+
+/** x folded by octaves into [lo, hi] (x itself if the range is narrower than an octave). */
+function foldInto(x: Pitch, lo: Pitch, hi: Pitch): Pitch {
+  if (x >= lo && x <= hi) return x;
+  const y = x < lo ? x + 12 * Math.ceil((lo - x) / 12) : x - 12 * Math.ceil((x - hi) / 12);
+  return y >= lo && y <= hi ? y : x;
+}
+
+/**
+ * Octaves before unisons (PLAN §11.3 rev 7): grows sorted `targets` towards k entries with
+ * octaves of its notes inside [lo, hi] (above `floor`) that no target or `sounding` pitch holds.
+ * Extra voice j prefers the note the old doubling would have taken (`evenIndices`, or cyclic
+ * when the extras outnumber the notes). It takes, among every free octave of every target, the
+ * one with: the fewest octaves from its note, then its note nearest the preferred one (by
+ * index), then nearest the preferred note's pitch, then the lower. Stops when no free octave is
+ * left (the caller then doubles), so the count of distinct targets is the most the range allows.
+ * Returns the sorted targets.
+ */
+export function fillOctaves(
+  targets: readonly Pitch[],
+  k: number,
+  lo: Pitch,
+  hi: Pitch,
+  floor: Pitch,
+  sounding: readonly Pitch[],
+): Pitch[] {
+  const b = targets.length;
+  const extra = k - b;
+  const out = targets.slice();
+  if (b === 0 || extra <= 0) return out;
+  const occupied: Pitch[] = [...sounding];
+  for (const p of targets) occupied.push(p, foldInto(p, lo, hi));
+  const prefer =
+    b >= extra ? evenIndices(b, extra) : Array.from({ length: extra }, (_, j) => j % b);
+  for (let j = 0; j < extra; j++) {
+    const s = prefer[j];
+    let best = NaN;
+    let bn = Infinity;
+    let bi = Infinity;
+    let bd = Infinity;
+    for (let i = 0; i < b; i++) {
+      const x = targets[i];
+      const di = Math.abs(i - s);
+      for (let n = Math.ceil((lo - x) / 12); x + 12 * n <= hi; n++) {
+        if (n === 0) continue;
+        const c = x + 12 * n;
+        if (c <= floor || taken(occupied, c)) continue;
+        const an = Math.abs(n);
+        const dc = Math.abs(c - targets[s]);
+        if (
+          an < bn ||
+          (an === bn && (di < bi || (di === bi && (dc < bd || (dc === bd && c < best)))))
+        ) {
+          best = c;
+          bn = an;
+          bi = di;
+          bd = dc;
+        }
+      }
+    }
+    if (Number.isNaN(best)) break;
+    out.push(best);
+    occupied.push(best);
+  }
+  return out.sort((a, b2) => a - b2);
+}
+
+function voiceNotesRaw(input: VoicingInput): VoicingResult & { bass?: Pitch } {
   const { notes, k, mode, register, key } = input;
   const lo = register[0] < register[1] ? register[0] : register[1];
   const hi = register[0] < register[1] ? register[1] : register[0];
@@ -204,6 +299,7 @@ export function voiceNotes(input: VoicingInput): VoicingResult {
   const targets = [bass, ...upper].sort((a, b) => a - b);
   return {
     ok: true,
+    bass,
     targets,
     perVoice: mode === 'nearest' && targets.length === k && input.voices.length === k,
   };

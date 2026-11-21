@@ -4,8 +4,9 @@
  * The targeted voices and the newborns are voiced together (`notes`, default `current`). The
  * targeted voices take an order-preserving injective subset of the targets (§7.2, the prototype's
  * `retarget`); the targets left over go to the newborns, lowest pool index first, in ascending
- * order. Each newborn's parent is the nearer (by committed destination; ties: the lower) of the
- * sounding targeted voices whose targets are next below and above its own, so no line crosses
+ * order. With fewer distinct notes than voices, the extras take free octaves of the notes before
+ * any unison (`octaves`, PLAN §11.3 rev 7). Each newborn's parent is the nearer (by committed
+ * destination; ties: the lower) of the sounding targeted voices whose targets are next below and above its own, so no line crosses
  * (M4.5-17); the compiler starts it on the parent's pitch at the parent's departure (§7.4). With
  * too few dormant voices the split is truncated (`pool-exhausted`).
  */
@@ -55,12 +56,21 @@ export function splitMoment(m: SplitMoment, env: MomentEnv): MomentPlan | null {
     key: env.key,
     current: env.active.map((v) => env.dest(v)),
     voices: p,
+    octaves: true,
+    sounding: untargeted(env, vs),
   });
   if (!voiced.ok) {
     env.diag('error', voiced.code, voiced.message);
     return null;
   }
   return { ordered: true, intents: voiceWithBirths(env, vs, p, newborns, voiced, false) };
+}
+
+/** Committed destinations of the active voices outside `vs` (they keep sounding). */
+export function untargeted(env: MomentEnv, vs: readonly number[]): Pitch[] {
+  const out: Pitch[] = [];
+  for (const v of env.active) if (!vs.includes(v)) out.push(env.dest(v));
+  return out;
 }
 
 /**
