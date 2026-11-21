@@ -15,6 +15,7 @@ import type {
   Moment,
   NoteSet,
   Piece,
+  VoiceOverride,
   VoiceSelector,
 } from '../../../src/core/types';
 
@@ -99,12 +100,34 @@ function selectorArb(ids: string[]): fc.Arbitrary<VoiceSelector | undefined> {
 
 export type Draft = Omit<Moment, 'id'>;
 
+/** Per-voice overrides (§11.3, revision 6): mostly none, else up to three hand edits. */
+function overridesArb(pool: number): fc.Arbitrary<VoiceOverride[] | undefined> {
+  return fc.oneof(
+    { weight: 6, arbitrary: fc.constant(undefined) },
+    {
+      weight: 1,
+      arbitrary: fc.array(
+        fc.record(
+          {
+            voice: fc.integer({ min: 0, max: Math.max(0, pool - 1) }),
+            pitch: fc.oneof(fc.integer({ min: 30, max: 100 }), tenths(40, 80)),
+            end: tenths(0, 6),
+          },
+          { requiredKeys: ['voice'] },
+        ),
+        { minLength: 1, maxLength: 3 },
+      ),
+    },
+  );
+}
+
 export function momentArb(ids: string[], maxT: number): fc.Arbitrary<Draft> {
   const at = tenths(0, maxT);
   const base = {
     at,
     target: selectorArb(ids),
     glide: fc.option(partialGlideArb, { nil: undefined }),
+    overrides: overridesArb(ids.length),
   };
   return fc
     .oneof(

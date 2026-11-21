@@ -24,7 +24,7 @@ import { hash32, momentSeed, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
 import { noteMoment } from '../moments/note';
-import type { Intent, MomentEnv, MomentPlan } from '../moments/types';
+import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
   MAX_VOICES,
@@ -122,8 +122,19 @@ export interface MomentTrace {
   subset: boolean;
   /** Planner output; null if the moment was not applied (or has no moves of its own). */
   plan: PlanTrace | null;
-  /** The moment function's intents with folded targets (§7.8); null if not applied. */
-  intents: { voice: number; to: Pitch; kind: 'move' | 'birth' | 'death' }[] | null;
+  /**
+   * The moment function's intents with folded targets (§7.8); null if not applied. Births carry
+   * their parent, deaths the voice they merge into (−1: none).
+   */
+  intents:
+    | {
+        voice: number;
+        to: Pitch;
+        kind: 'move' | 'birth' | 'death';
+        parent?: number;
+        into?: number;
+      }[]
+    | null;
 }
 
 /** Options of `compile` (not part of the Piece or the file format). */
@@ -151,6 +162,15 @@ interface CloseRec {
   voice: number;
   died: Seconds;
   fade: Seconds;
+}
+
+/** When a voice reaches its committed destination: the end of its last scheduled or running move. */
+function arrivalOf(run: VoiceRun): Seconds {
+  let end = -Infinity;
+  for (const m of run.pending) if (!m.cancelled && m.t0 + m.dur > end) end = m.t0 + m.dur;
+  const tail = run.frontier.tail;
+  if (tail && !run.frontier.open && tail.t1 > end) end = tail.t1;
+  return end;
 }
 
 /** The simulation. Exported for incremental.ts only; use `compile`. */
@@ -516,11 +536,13 @@ export class Compiler {
           if (ev.sub === SUB_NOTE_BACK) {
             this.touch();
             this.onPointMoment(ev.ref, ev.obj as NoteBack);
+            this.reaim(ev.t, ev.ref);
             break;
           }
           if (this.onMomentEvent) this.onMomentEvent(ev.t, ev.ref);
           this.touch();
           this.onMoment(ev.ref);
+          this.reaim(ev.t, ev.ref);
           break;
         case EventClass.MoveStart: {
           const sub = Math.floor(ev.key / SUB_STRIDE);
@@ -844,10 +866,23 @@ export class Compiler {
   private startMove(mv: Move): boolean {
     const run = this.voices[mv.voice];
     if (!run.frontier.alive) return false;
+    let to = mv.to;
+    let arrive = -Infinity;
+    if (mv.death && mv.death.into >= 0) {
+      // Glide to where the survivor is going now (a later moment may have moved it before this
+      // glide started), and fade once it is there too (M4.5-17).
+      // Read fresh, not from the per-epoch cache: follows change dying voices between moments.
+      const a = this.voices[mv.death.into];
+      const h = a.pendingBirth ? NaN : a.dest(() => NaN);
+      if (h === h && h >= run.range[0] && h <= run.range[1]) {
+        to = h;
+        arrive = arrivalOf(a);
+      }
+    }
     const seg = run.frontier.start(
       mv.t0,
       mv.dur,
-      mv.to,
+      to,
       mv.ease,
       mv.limits,
       mv.crossScale,
@@ -858,20 +893,103 @@ export class Compiler {
     this.span(mv.momentIndex, mv.t0, seg.t1);
     this.activity(seg.t1);
     if (mv.death) {
-      const died = seg.t1 + mv.death.fade;
-      run.diedAt = died;
-      this.activity(died);
-      const rec: CloseRec = { voice: mv.voice, died, fade: mv.death.fade };
-      this.queue.push({
-        t: died,
-        cls: EventClass.MoveStart,
-        key: SUB_CLOSE * SUB_STRIDE + mv.voice,
-        sub: 0,
-        ref: 0,
-        obj: rec,
-      });
+      run.into = mv.death.into;
+      run.deathFade = mv.death.fade;
+      this.scheduleClose(run, (arrive > seg.t1 ? arrive : seg.t1) + mv.death.fade);
     }
+    this.follow(run, mv, to, mv.death ? mv.death.into : null, 0);
     return true;
+  }
+
+  /** (Re)schedules a dying voice's close; an earlier close event becomes stale (onClose). */
+  private scheduleClose(run: VoiceRun, died: Seconds): void {
+    run.diedAt = died;
+    this.activity(died);
+    const rec: CloseRec = { voice: run.index, died, fade: run.deathFade };
+    this.queue.push({
+      t: died,
+      cls: EventClass.MoveStart,
+      key: SUB_CLOSE * SUB_STRIDE + run.index,
+      sub: 0,
+      ref: 0,
+      obj: rec,
+    });
+  }
+
+  /**
+   * Dying voices merged into `a` follow its move `mv` (§7.4 "glides into its neighbour, then
+   * fades"; M4.5-17), so a survivor that moves on never leaves one hanging where it was. A voice
+   * still in its death glide (its fade not started) also waits for the survivor to arrive: its
+   * fade then starts when this move ends. `chain`: `a` itself dies into this voice, which its
+   * followers follow from then on.
+   */
+  private follow(a: VoiceRun, mv: Move, to: Pitch, chain: number | null, depth: number): void {
+    if (depth > this.voices.length) return;
+    for (const d of this.voices) {
+      if (d.into !== a.index || d.status !== Status.Dying) continue;
+      if (chain !== null) d.into = chain;
+      if (!d.frontier.alive || d.pending.length > 0 || !(d.diedAt > mv.t0)) continue;
+      if (to < d.range[0] || to > d.range[1]) continue;
+      // A voice already gliding there in this moment (its own glide, maybe with its own `end`
+      // override) keeps that glide and only waits for the survivor.
+      let end = mv.t0 + mv.dur;
+      const tail = d.frontier.tail!;
+      const own = !d.frontier.open && tail.momentId === mv.momentId && tail.t1 > mv.t0;
+      if (d.frontier.heading !== to || !(own || (!d.frontier.open && tail.t1 === end))) {
+        // Replacing a glide that starts now drops it: keep its C⁰ flag on the replacement.
+        const wasClamped = tail.t0 === mv.t0 && tail.clamped === true;
+        const seg = d.frontier.start(
+          mv.t0,
+          mv.dur,
+          to,
+          mv.ease,
+          mv.limits,
+          1, // the leader's crossing scale is for its own neighbours
+          d.range,
+          mv.momentId,
+        );
+        if (wasClamped) seg.clamped = true;
+        end = seg.t1;
+        this.activity(end);
+      }
+      const fadeStart = d.diedAt - d.deathFade;
+      if (mv.t0 < fadeStart && end > fadeStart) this.scheduleClose(d, end + d.deathFade);
+      this.follow(d, mv, to, null, depth + 1);
+    }
+  }
+
+  /**
+   * After moment i at t: a dying voice whose survivor will no longer reach the pitch it is
+   * gliding to (the moment cancelled the survivor's move and left it where it is) glides to
+   * where the survivor now is, arriving with it (M4.5-17). A survivor given a new move is
+   * followed when that move starts (`follow`).
+   */
+  private reaim(t: Seconds, i: number): void {
+    for (const d of this.voices) {
+      if (d.status !== Status.Dying || d.into < 0 || d.pending.length > 0) continue;
+      if (!d.frontier.alive || !(d.diedAt > t)) continue;
+      const a = this.voices[d.into];
+      if (a.pending.length > 0 || !a.frontier.alive) continue;
+      const h = a.frontier.heading;
+      if (h === d.frontier.heading || h < d.range[0] || h > d.range[1]) continue;
+      const tail = d.frontier.tail!;
+      let end = arrivalOf(a);
+      if (!d.frontier.open && tail.t1 > end) end = tail.t1;
+      const dur = end - t > MIN_GLIDE ? end - t : this.glides[i].length;
+      const seg = d.frontier.start(
+        t,
+        dur,
+        h,
+        this.glides[i].ease,
+        { up: 0, down: 0 },
+        1,
+        d.range,
+        this.moments[i].id,
+      );
+      this.activity(seg.t1);
+      const fadeStart = d.diedAt - d.deathFade;
+      if (t < fadeStart && seg.t1 > fadeStart) this.scheduleClose(d, seg.t1 + d.deathFade);
+    }
   }
 
   private onMove(mv: Move): void {
@@ -884,6 +1002,7 @@ export class Compiler {
 
   private onClose(rec: CloseRec): void {
     const run = this.voices[rec.voice];
+    if (rec.died !== run.diedAt) return; // rescheduled by `follow`
     run.frontier.close(rec.died);
     if (run.life) {
       run.life.died = rec.died;
@@ -891,6 +1010,7 @@ export class Compiler {
       run.life = null;
     }
     if (run.status === Status.Dying) run.status = Status.Dormant;
+    run.into = -1;
   }
 
   private onTick(wi: number, k: number): void {
@@ -1075,8 +1195,19 @@ export class Compiler {
       run.frontier.alive &&
       !run.pendingBirth &&
       run.pending.length === 0 &&
-      !run.frontier.busyAt(t)
+      !run.frontier.busyAt(t) &&
+      !this.parentOfPending(v)
     );
+  }
+
+  /**
+   * A newborn not yet born forks from v (§7.4): v holds for it, so that it starts on the pitch
+   * its moment planned (a walk step would move the fork, M4.5-17).
+   */
+  private parentOfPending(v: number): boolean {
+    for (const run of this.voices)
+      if (run.pendingBirth && run.pendingBirth.parent === v) return true;
+    return false;
   }
 
   private traceMoment(
@@ -1099,7 +1230,16 @@ export class Compiler {
       subset,
       plan,
       intents: intents
-        ? intents.map((it) => ({ voice: it.voice, to: it.to, kind: kinds[it.kind] }))
+        ? intents.map((it) => {
+            const r: NonNullable<MomentTrace['intents']>[number] = {
+              voice: it.voice,
+              to: it.to,
+              kind: kinds[it.kind],
+            };
+            if (it.kind === IntentKind.Birth) r.parent = it.parent ?? -1;
+            if (it.kind === IntentKind.Death) r.into = it.into ?? -1;
+            return r;
+          })
         : null,
     });
   }

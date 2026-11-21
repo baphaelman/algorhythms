@@ -7,16 +7,17 @@
  *   the targeted voices plus the newborns, which take the targets the others leave and fork from
  *   the nearest sounding targeted voice. Too few dormant voices: truncated (`pool-exhausted`).
  * - fewer: the outermost targeted voices die as in a merge (`which: 'outer'`); the chord is voiced
- *   for the survivors, and each dying voice glides to the target of its nearest survivor (by
- *   committed destination, ties low; an untargeted survivor's target is where it is heading), then
- *   fades over the glide length. At least one targeted voice survives (`count-limited`).
+ *   for the survivors, and each dying voice glides to the target of its nearest surviving order
+ *   neighbour (`absorbers`; an untargeted survivor's target is where it is heading), then fades
+ *   over the glide length, following that survivor's later moves. At least one targeted voice
+ *   survives (`count-limited`).
  */
 
 import { assignFree, assignOrdered } from '../voice-leading';
 import { voiceNotes } from '../voicing';
 import type { ChordMoment, Pitch } from '../types';
 import { chordByVoice } from './chord-by-voice';
-import { chooseDying } from './merge';
+import { absorbers, chooseDying } from './merge';
 import { voiceWithBirths } from './split';
 import { IntentKind, type MomentEnv, type MomentPlan, unionRange } from './types';
 
@@ -125,21 +126,13 @@ function withDeaths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
   if (!plan) return null;
   const target = new Map<number, Pitch>();
   for (const it of plan.intents) target.set(it.voice, it.to);
-  const survivors = env.active.filter((v) => !dying.has(v));
   const fade = env.glide.length;
+  const into = absorbers(env, dying);
   for (const v of vs) {
     if (!dying.has(v)) continue;
-    const d = env.dest(v);
-    let to = d;
-    let best = Infinity;
-    for (const s of survivors) {
-      const dist = Math.abs(env.dest(s) - d);
-      if (dist < best) {
-        best = dist;
-        to = target.get(s) ?? env.dest(s);
-      }
-    }
-    plan.intents.push({ voice: v, to, kind: IntentKind.Death, fade });
+    const s = into.get(v) ?? -1;
+    const to = s >= 0 ? (target.get(s) ?? env.dest(s)) : env.dest(v);
+    plan.intents.push({ voice: v, to, kind: IntentKind.Death, fade, into: s });
   }
   return plan;
 }

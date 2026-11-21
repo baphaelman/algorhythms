@@ -47,8 +47,11 @@ export interface Move {
   limits: OvershootLimits;
   /** Extra m₀ scale from crossing enforcement (§7.2); 1 normally. */
   crossScale: number;
-  /** A death glide (merge): never cancelled; the life closes `fade` seconds after it ends. */
-  death?: { fade: Seconds };
+  /**
+   * A death glide (merge): never cancelled; the life closes `fade` seconds after it ends. `into`:
+   * the survivor it merges into (−1: none), whose later moves it follows (§7.4, M4.5-17).
+   */
+  death?: { fade: Seconds; into: number };
   cancelled: boolean;
   /** Index of the moment that scheduled it, for diagnostics and spans. */
   momentIndex: number;
@@ -276,6 +279,9 @@ export class VoiceRun {
   status: Status = Status.Dormant;
   /** End of the last life's fade-out (−∞ if never alive, +∞ while dying with a pending glide). */
   diedAt = -Infinity;
+  /** While dying: the voice it merges into and follows (−1: none), and its fade length. */
+  into = -1;
+  deathFade = 0;
   /** Moves scheduled but not started, in start order. */
   pending: Move[] = [];
   /** A birth not yet happened (never cancelled). */

@@ -16,13 +16,17 @@ import { piece } from './compiler-fixtures';
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 
-/** Golden hashes before revision 6 (every move ended at its own start + jittered length). */
+/**
+ * Golden hashes before revision 6 (every move ended at its own start + jittered length). Three
+ * changed with M4.5-17: newborns that forked out of order with a sibling or parent (a small
+ * crossing) now take its timing.
+ */
 const PRE_REV6: Record<string, string> = {
   'clockwork-heron.algorhythms.json': '3c2665b69df22274',
   'lanterns-over-salt-flats.algorhythms.json': 'c4db88c56394475b',
-  'seven-doors-in-fog.algorhythms.json': '8bfcabb32d5a6ba2',
-  'the-cartographers-rain.algorhythms.json': 'fa23faa06bd13149',
-  'tidewater-hymn.algorhythms.json': 'fe278f2c72eff05f',
+  'seven-doors-in-fog.algorhythms.json': '50a8e70bf243bbad',
+  'the-cartographers-rain.algorhythms.json': '06989b08c5eeffbf',
+  'tidewater-hymn.algorhythms.json': '8eb0e9e43d43919f',
 };
 
 function loadExample(file: string): Piece {

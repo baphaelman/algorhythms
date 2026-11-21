@@ -7,7 +7,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { patchMoment, type MomentPatch } from '../../../src/app/editor/ops';
-import { compile } from '../../../src/core/compiler/compile';
+import { compile, compileWithTrace } from '../../../src/core/compiler/compile';
 import { MIN_GLIDE } from '../../../src/core/compiler/glide';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import type { Piece, VoiceOverride } from '../../../src/core/types';
@@ -62,9 +62,20 @@ describe('overrides (property)', () => {
     let checked = 0;
     fc.assert(
       fc.property(withOverrides, ({ piece }) => {
-        const s = compile(piece);
+        const { score: s, trace } = compileWithTrace(piece);
+        // A dying voice, after its death glide, follows the survivor it merges into.
+        const follows = (v: number, t: number): boolean =>
+          trace.moments.some((d) => {
+            if (d.t > t || !(d.intents ?? []).some((x) => x.kind === 'death' && x.voice === v)) {
+              return false;
+            }
+            const voice = s.voices[v];
+            const glide = voice.segments.find((x) => x.momentId === d.id && x.t0 >= d.t);
+            const died = voice.lives.find((l) => l.born <= d.t && (l.died ?? Infinity) > d.t)?.died;
+            return !!glide && t > glide.t0 && t < (died ?? Infinity);
+          });
         for (const m of piece.moments) {
-          if (!m.overrides || m.muted) continue;
+          if (!m.overrides || m.muted || !POINT.has(m.type)) continue;
           const last = new Map<number, VoiceOverride>();
           for (const o of m.overrides) {
             const prev = last.get(o.voice);
@@ -79,6 +90,7 @@ describe('overrides (property)', () => {
             const [lo, hi] = piece.voices[o.voice].range;
             for (const g of v.segments) {
               if (g.momentId !== m.id || g.p0 === g.p1 || g.t0 < m.at - 1e-9) continue;
+              if (follows(o.voice, g.t0)) continue; // a copy of its survivor's move (M4.5-17)
               const cut = g.curve !== undefined && g.curve.t1 > g.t1 + 1e-9;
               const p1 = g.curve ? g.curve.p1 : g.p1;
               expect(p1).toBeGreaterThanOrEqual(lo);
