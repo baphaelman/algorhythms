@@ -1878,3 +1878,22 @@ PLAN §8.6, §11.3, §15 M6. On bd801d6.
 - **Trap (render perf, not fixed):** on Kite Day / Harbour Song with the score squeezed to ~80 px tall, one redraw takes 1.1–1.7 s in headless Chromium (profile: `easeRaw`, `query.subdivide`, `tracePiece`, `outlineFrame`); at 143 px (Notes drawer open) 108 ms, 358 px 69 ms.
 - **Tests:** unit `mix-edit.test.ts` (ranges inside `MixSchema` at both ends, log curves, clean numbers, defaults inside sliders, reset per section, delay snap/Alt/no tempo/slow tempo, per-note sends, a drag = one entry coalesced per frame and each update sent to `mixAudio`, undo too); `timbre-edit.test.ts` (strike partials add/edit/remove, bounds, `fm.held` fallback). e2e `sound-fx.spec.ts` (reverb decay drag + undo, Reset, delay beats + snap + Alt + Reset on Kite Day, strike partial add/edit/undo).
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=3` 1868 passed + 4 expected fail (goldens unchanged); e2e:quick sound-fx timbre-editor voices chromium-dev/prod `--workers=1` 12/12.
+## Fix: slow redraw of a short score (render, 2026-11-21)
+On cb794d9. Fixes the "render perf" trap above.
+- **Cause:** `cameraAt` pads are ≥ 28 px top and ≥ 54 px bottom (HUD), so below ~82 px the plot height is ≤ 0. `drawLines`/`drawPreview` set the glide tolerance to `0.35 / pxPerSemitone`, which went negative, so `sample()` subdivided every glide to the depth limit (minStep = maxStep/4096): 7.7–22.5 M path points per frame. At 82 px it was +∞ (fine); above, it shrinks with height, as intended.
+- **Fix:** `chordTolerance(view)` (draw.ts, exported): `0.35 / |px per semitone|`, floored at 1e-3 semitone (also guards pHi = pLo). Normal heights unchanged: PNGs at 400 px (3 pieces × ghost frame + HUD shot × 3 times) pixel-identical.
+- **Chromium draw+flush median, ms (1400 px wide, 12 s window):**
+
+  | px | 800 | 400 | 358 | 143 | 100 | 80 | 60 |
+  |---|---|---|---|---|---|---|---|
+  | Kite Day before | 4.9 | 4.7 | 7.2 | 3.3 | 3.8 | 1730 | 1942 |
+  | Kite Day after | 5.1 | 4.0 | 5.0 | 3.4 | 3.6 | 3.2 | 3.3 |
+  | Harbour Song before | 5.2 | 4.6 | 4.4 | 6.7 | 3.7 | 1455 | 1525 |
+  | Harbour Song after | 4.9 | 4.5 | 4.3 | 4.2 | 4.1 | 3.7 | 4.1 |
+  | Tidewater Hymn before | 4.4 | 3.7 | 3.3 | 4.9 | 2.6 | 5664 | 5878 |
+  | Tidewater Hymn after | 4.9 | 3.7 | 4.6 | 2.8 | 2.2 | 2.3 | 2.5 |
+
+  The 143 px / 358 px gap (108 vs 69 ms) reported from the app did not reproduce in the renderer alone.
+- **Open (layout, not changed):** below ~82 px the plot is mirrored (negative height between the pads), so lines draw inverted over the HUD. Shrinking the pads at small heights would fix it, but changes the score at heights the app reaches; owner/integrator call.
+- **Tests:** unit `render/short-score.test.ts` (tolerance > 0 at 20–4000 px; path points at 143/82/80/60 px ≤ 400 px on all three pieces).
+- **Status:** lint, typecheck, `pnpm test --maxWorkers=3` 1872 passed + 4 expected fail; e2e:quick render thickness silent-lines lane-dense chromium-dev/prod `--workers=1` 29 passed, 1 skipped.

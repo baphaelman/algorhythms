@@ -33,6 +33,7 @@ export {
   DEFAULT_MONO,
   DIM_ALPHA,
   GLIDE_STEP_PX,
+  chordTolerance,
   HIGHLIGHT_WIDTH,
   LINE_WIDTH,
   TRACE_ALPHA,

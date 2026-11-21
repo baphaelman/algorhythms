@@ -56,6 +56,18 @@ export const DEFAULT_MONO = '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Co
 
 /** Pixel spacing of glide samples. */
 export const GLIDE_STEP_PX = 2;
+
+/**
+ * Chord error (semitones) allowed when sampling glides: under a third of a pixel. When the
+ * paddings leave no plot (score ≲ 82 px with the HUD) px-per-semitone is ≤ 0; a negative
+ * tolerance made every glide subdivide to the depth limit (≈ 4096 points per step, seconds per
+ * frame). Taken on |px/semitone| (the plot is drawn mirrored then), and never below 1e-3.
+ */
+export function chordTolerance(view: View): number {
+  const pxPerSemitone = Math.abs((view.height - view.padT - view.padB) / (view.pHi - view.pLo));
+  const tol = 0.35 / pxPerSemitone;
+  return tol > 1e-3 ? tol : 1e-3;
+}
 /** Pitches of the labelled grid lines: the A of each octave (A0 .. A7). */
 const A_PITCHES = [21, 33, 45, 57, 69, 81, 93, 105];
 /** Head dot and motion ring radii, px. */
@@ -635,9 +647,8 @@ function drawLines(
   dpr: number,
 ): void {
   const { t, tL, tR, pps } = view;
-  const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
   const maxStep = GLIDE_STEP_PX / pps;
-  const tolerance = 0.35 / pxPerSemitone; // under a third of a pixel of chord error
+  const tolerance = chordTolerance(view);
   const ghost = style.futureOpacity > 0.01;
   g.lineWidth = LINE_WIDTH;
   g.lineJoin = 'round';
@@ -761,9 +772,8 @@ function drawPreview(
 ): void {
   const a = Math.max(from, view.tL);
   if (!(a < view.tR)) return;
-  const pxPerSemitone = (view.height - view.padT - view.padB) / (view.pHi - view.pLo);
   const maxStep = GLIDE_STEP_PX / view.pps;
-  const tolerance = 0.35 / pxPerSemitone;
+  const tolerance = chordTolerance(view);
   const gradient = pitchGradient(g, style, view);
   g.save();
   g.setLineDash(PREVIEW_DASH);
