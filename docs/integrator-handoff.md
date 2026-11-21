@@ -75,7 +75,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 | M2 sound | Built and verified. Known gap: expo and bezier glides allocate on the audio thread (fix in M6: precompute those segments on a 128-frame grid). |
 | M3 | Feature-complete and live: renderer, MIDI, stems, player, Generate (30–900 s), Export dialog, by-pitch colours, HUD chord, unison lock + `wobble` preset. PLAN rev 3 records the lock. Left: announce the first public release (the iPhone check is not a blocker). Next milestone: M4 editor. |
 | M4 | Done (2026-11-20). M4a–M4k merged and pushed: compiler speed-up, editor API, persistence, lane, inspector, palette + shortcuts + drag from palette, voices drawer, selection highlight, incremental compile (M4j), polish (M4k). All §15 acceptance checks pass (build log "M4 acceptance checks"; edit → swap 12–43 ms). |
-| M4.5 editor view | Approved 2026-11-20; PLAN rev 6 adds owner notes. Merged + pushed: 1 frozen walks, 2 camera, 3 ruler/playhead, 4 rows, 5 chord picker, 6 inspector controls, 7 walk steps, 8 Generate confirm, 9 arrive together + no-effect, 10 chord count + freezeChord, 12 context palette + hover preview. In flight (worktree builders): 11 chord Notes n/per-note editor/Arrive toggle/Advanced fold, 13 next-move suggestions, 14 `note` moment core, 16 loop region. Queue: 15 note point UI (after 11+14), then a full e2e run on the merged tree, then M4.5 acceptance checks. |
+| M4.5 editor view | Approved 2026-11-20; PLAN rev 6 + rev 7 (owner notes 11-21, many via preview-artifact comments). Merged + pushed: 1–22, 24 (octaves before unisons). In flight: 23 score selection + grouped note changes (`note.changes`, "Shift"); 26 open-ended canvas; 24 follow-up `glide.splitStacked` (stacked voices move as one). Queue: 25 future always dimmed in editor + doubled-voice marks + UI says "notes" (after 23); 27 the start is a moment, schema v2 (after 23 + 24 follow-up); 28 Compose for me in New (after 27); then full e2e (chromium + firefox here) and M4.5 acceptance. Open owner question: should plain chords (no count) also prefer octaves? |
 | M5–M7 | Not started. |
 
 ## Running in the cloud (owner, 2026-11-20)
@@ -125,3 +125,6 @@ Last pushed: M4 done (merge `086f094` + docs), verified in a clean worktree (871
 - **Generate:** length 30–900 s, slider default 2:30, "natural length" optional and off by default (2026-11-20).
 - **Export:** closing the dialog mid-export cancels it (2026-11-20).
 - **MIDI:** per-voice tracks skip channel 10 (integrator call).
+
+## Owner feedback via preview comments
+- The owner comments on the preview artifact. Each comment wakes this session (a webhook notification). Read it with ArtifactComments `read` + `thread_id`, reply on the thread, then put the change in PLAN and give it to a builder. Comments carry text and the `#score` anchor only, with no image or position.
