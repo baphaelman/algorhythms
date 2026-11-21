@@ -14,7 +14,7 @@
  * its voices arrive at `at` (under 'together' exactly; under 'spread' the last one about then).
  */
 
-import { defaultGlide } from '../defaults';
+import { defaultGlide, TUNE_GLIDE } from '../defaults';
 import { hash32, Purpose, randHashed } from '../rng';
 import type { EaseRef, Glide, GlideArrive, GlideOrder, Moment, Piece, Seconds } from '../types';
 
@@ -78,6 +78,14 @@ export function sanitizeGlide(g: Partial<Glide> | undefined, fallback: Glide): G
 /** §7.1 step 1: a moment's glide merged over the piece defaults. */
 export function mergeGlide(defaults: Glide, own: Partial<Glide> | undefined): Glide {
   return sanitizeGlide(own, defaults);
+}
+
+/**
+ * Moment `m`'s glide: `mergeGlide`, except that a tune (revision 9) puts its own defaults
+ * (`TUNE_GLIDE`: length 0.1 s, no stagger or jitter) between the piece's and its own.
+ */
+export function momentGlide(defaults: Glide, m: Pick<Moment, 'type' | 'glide'>): Glide {
+  return sanitizeGlide(m.glide, m.type === 'tune' ? { ...defaults, ...TUNE_GLIDE } : defaults);
 }
 
 /** A voice taking part in a moment's timing draw. */
@@ -180,16 +188,17 @@ export interface Landing {
 }
 
 /**
- * `glide.land` (revision 9): the glide starts length + stagger before `at`. A start before 0 is
- * clamped to 0, and length and stagger shrink in proportion so the arrival stays at `at`.
+ * `glide.land` (revision 9): the glide starts length + stagger before `at`. A start before
+ * `floor` (0; a tune note's: the previous note's start) is clamped to it, and length and stagger
+ * shrink in proportion so the arrival stays at `at`.
  */
-export function landing(at: Seconds, glide: Glide): Landing {
+export function landing(at: Seconds, glide: Glide, floor: Seconds = 0): Landing {
   const lead = glide.length + glide.stagger;
-  if (at >= lead) return { start: at - lead, end: at, glide };
-  const k = lead > 0 ? at / lead : 0;
+  if (at - floor >= lead) return { start: at - lead, end: at, glide };
+  const k = lead > 0 ? Math.max(0, at - floor) / lead : 0;
   const length = glide.length * k;
   return {
-    start: 0,
+    start: at - floor >= 0 ? floor : at,
     end: at,
     glide: {
       ...glide,
@@ -210,7 +219,7 @@ export function lands(m: Pick<Moment, 'type' | 'at'>, glide: Glide): boolean {
  */
 export function decisionTime(m: Moment, defaults: Glide): Seconds {
   if (!glides(m)) return m.at;
-  const g = mergeGlide(defaults, m.glide);
+  const g = momentGlide(defaults, m);
   return g.land === true ? landing(m.at, g).start : m.at;
 }
 

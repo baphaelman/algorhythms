@@ -18,7 +18,7 @@
 import { defaultGlide } from './defaults';
 import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
-import { decisionTime, mergeGlide, sanitizeGlide } from './compiler/glide';
+import { decisionTime, momentGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
 import { establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
@@ -42,8 +42,8 @@ import type {
 export const EFFECT_EPS = 1e-6;
 
 /**
- * The palette's moment types, in palette order. `pulse` (revision 9) is not listed until the
- * editor can make one (R9-7); `momentEffectAt` handles it already.
+ * The palette's moment types, in palette order. `pulse` and `tune` (revision 9) are not listed
+ * until the editor can make them (R9-7); `momentEffectAt` handles them already.
  */
 export const EFFECT_MOMENT_TYPES: readonly MomentType[] = [
   'chord',
@@ -123,6 +123,7 @@ export interface EffectContext {
 
 /** Why a moment with no effect has none, for the `no-effect` message and the palette. */
 export function noEffectReason(m: Moment, c: EffectContext): string {
+  if (m.type === 'tune' && m.notes.length === 0) return 'the tune has no notes';
   const n = c.active.length;
   if (n === 0 && m.type !== 'key') {
     // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
@@ -175,6 +176,8 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
       return 'no note is sounding';
     case 'pulse':
       return 'it targets no sounding note';
+    case 'tune':
+      return 'the line already plays every note of the tune';
   }
 }
 
@@ -236,7 +239,10 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   };
   const scheduled = (id: string | undefined): boolean => {
     const m = id === undefined ? undefined : byId.get(id);
-    return !!m && m.type !== 'walk' && isDecided(m);
+    // Walk steps and tune notes are decided where their moves start, so later ones are not
+    // scheduled yet at t.
+    if (!m || !isDecided(m)) return false;
+    return m.type !== 'walk' && m.type !== 'tune';
   };
   const n = score.voices.length;
   const dest = new Float64Array(n).fill(NaN);
@@ -395,13 +401,24 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     const own = piece.voices[u];
     return sanitizeRange((u < piece.voices.length ? own : def)?.range ?? [0, 127]);
   });
+  if (m.type === 'tune') {
+    // The tune's line: the first of the target in pitch order. It has an effect if some note
+    // (folded into its range) is not where the line is heading.
+    if (m.notes.length === 0 || targeted.length === 0) return no(noEffectReason(m, ctx()));
+    const v = targeted[0];
+    const r = ranges[v] ?? [0, 127];
+    const moves = m.notes.some(
+      (x) => Number.isFinite(x.pitch) && !same(foldIntoRange(x.pitch, r[0], r[1]).p, st.dest[v]),
+    );
+    return moves ? { effect: true } : no(noEffectReason(m, ctx()));
+  }
   let error: string | null = null;
   const env: MomentEnv = {
     t: st.t,
     momentId: m.id,
     key: st.key,
     seed,
-    glide: mergeGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), m.glide),
+    glide: momentGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), m),
     targeted,
     active,
     dest: (v) => st.dest[v],

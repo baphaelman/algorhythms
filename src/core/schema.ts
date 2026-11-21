@@ -361,6 +361,24 @@ const MOMENT_SCHEMAS = {
       .optional()
       .describe("Each hit re-strikes the timbre's articulation (absent: true)."),
   }),
+  tune: z.looseObject({
+    type: z.literal('tune'),
+    ...momentBase,
+    notes: z
+      .array(
+        z.looseObject({
+          pitch,
+          len: z
+            .number()
+            .positive()
+            .describe('Seconds the note lasts; the next one starts after it.'),
+        }),
+      )
+      .default(() => [])
+      .describe(
+        'The melody, in order: from `at` the targeted line moves to each note in turn (glide default length 0.1 s, no stagger or jitter).',
+      ),
+  }),
 } satisfies Record<MomentType, z.ZodType>;
 
 /** The moment types this build understands. */
@@ -379,6 +397,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.key,
   MOMENT_SCHEMAS.level,
   MOMENT_SCHEMAS.pulse,
+  MOMENT_SCHEMAS.tune,
 ]);
 
 // ---------------------------------------------------------------------------------------------

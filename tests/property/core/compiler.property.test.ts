@@ -261,6 +261,37 @@ function checkRanges(p: Piece): void {
   }
 }
 
+/**
+ * Revision 9 `tune`: each traced note targets one line, unordered, and moves it at the note (at
+ * its birth when not born yet) to the note's folded pitch. Returns the notes checked.
+ */
+function checkTuneNotes(p: Piece): number {
+  const { score, trace } = compileWithTrace(p);
+  let played = 0;
+  trace.moments.forEach((m, mi) => {
+    if (m.type !== 'tune' || !m.plan) return;
+    expect(m.targeted).toHaveLength(1);
+    expect(m.plan.ordered).toBe(false);
+    const v = m.targeted[0];
+    const it = (m.intents ?? []).find((x) => x.voice === v);
+    expect(it?.kind).toBe('move');
+    if (!m.plan.movers.includes(v)) return;
+    // Its move starts where the note is decided (one line: no stagger offset), unless a moment
+    // at the same time cancelled it before it started (then none is found).
+    const next = trace.moments.slice(mi + 1).find((o) => o.id === m.id);
+    const g = score.voices[v].segments.find(
+      (x) => x.momentId === m.id && x.t0 >= m.t && x.t0 < (next ? next.t : Infinity),
+    );
+    if (!g) return;
+    // A line not born yet (a staggered newborn, heading lowest; seed 2611/112) moves from its birth.
+    const born = lifeAt(score.voices[v], g.t0)?.born ?? m.t;
+    expect(g.t0).toBeCloseTo(Math.max(m.t, born), 9);
+    expect(plannedEnd(g).p1).toBeCloseTo(it!.to, 6);
+    played++;
+  });
+  return played;
+}
+
 /** Pieces that once failed a property (or hung); each must now pass every check. */
 const REGRESSIONS = new URL('./regressions/', import.meta.url);
 
@@ -277,6 +308,7 @@ describe('compiler regressions (pieces that once failed)', () => {
       checkCrossings(p, stats);
       checkRanges(p);
       checkWalkCuts(p);
+      checkTuneNotes(p);
       const s = compile(p);
       for (const v of s.voices) {
         for (const g of v.segments) {
@@ -658,6 +690,18 @@ describe('compiler properties (§14)', () => {
       RUNS,
     );
     expect(pulsed).toBeGreaterThan(5);
+  });
+
+  it('tune notes: one line each, unordered, moving at the note to its (folded) pitch', () => {
+    let played = 0;
+    check(
+      'tune',
+      fc.property(pieceArb(), (p) => {
+        played += checkTuneNotes(p);
+      }),
+      RUNS,
+    );
+    expect(played).toBeGreaterThan(20);
   });
 
   it('every diagnostic has a stable kebab-case code and no generated piece errors out', () => {

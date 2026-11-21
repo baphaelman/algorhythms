@@ -6,7 +6,8 @@
  * regions with point moments inside them, splits and merges back to back, subset selectors, pins,
  * note points (with and without returns, some with grouped `changes`; `from` often a start pitch,
  * so it sounds), out-of-range
- * pitches (folding), key changes and every ease (béziers with finite start slopes).
+ * pitches (folding), key changes, pulses, tunes (revision 9) and every ease (béziers with finite
+ * start slopes).
  */
 import fc from 'fast-check';
 import { newPiece } from '../../../src/core/defaults';
@@ -366,6 +367,26 @@ export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitr
             { requiredKeys: ['at', 'type', 'len', 'step', 'pattern', 'decay', 'floor', 'mode'] },
           )
           .map(({ len, ...m }) => ({ ...m, until: m.at + len }) as Draft),
+      },
+      {
+        // Revision 9: a melody on one line (it may cross others; joins within its part).
+        weight: 2,
+        arbitrary: fc.record(
+          {
+            at,
+            target: base.target,
+            glide: base.glide,
+            type: fc.constant('tune' as const),
+            notes: fc.array(
+              fc.record({
+                pitch: fc.oneof(fc.integer({ min: 30, max: 100 }), tenths(40, 80)),
+                len: fc.constantFrom(0.05, 0.1, 0.25, 0.5, 1, 2),
+              }),
+              { minLength: 0, maxLength: 8 },
+            ),
+          },
+          { requiredKeys: ['at', 'type', 'notes'] },
+        ),
       },
     )
     .map((m) => m as Draft);

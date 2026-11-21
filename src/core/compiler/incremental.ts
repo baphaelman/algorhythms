@@ -13,7 +13,9 @@
  * A checkpoint holds what the simulation mutates (compile.ts, voice.ts): per voice the status,
  * pending moves and birth, the frontier tail with the fields `finishAt` mutates by value, the open
  * Life, and the lengths of the append-only arrays (segments, lives, level, pulse); the queued move
- * starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable) and note returns with each move's `cancelled` flag (a move's `memo` is a pure cache, left as is);
+ * starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable), note returns
+ * and tunes' next notes (a `TuneStep`, immutable) with each move's `cancelled` flag (a move's
+ * `memo` is a pure cache, left as is);
  * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
@@ -45,6 +47,7 @@ import {
   SUB_MOVE,
   SUB_NOTE_BACK,
   SUB_STRIDE,
+  SUB_TUNE,
   type CompileOptions,
 } from './compile';
 import { decisionTime, sanitizeGlide } from './glide';
@@ -62,11 +65,11 @@ const STRIDE = 2;
  * Per-voice state in two flat arrays (checkpoints are many; few objects keep GC cheap).
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
  * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
- * length, handed, counts length, pulse length, pulse owner. References, REFS per voice: pending moves (a copy), pending birth,
+ * length, handed, counts length, pulse length, pulse owner, tune end. References, REFS per voice: pending moves (a copy), pending birth,
  * open life, tail, tail curve, members (a copy), the last weight and stack entries (`rampWeight` and
  * `setCount` may replace them in the shared arrays after the checkpoint).
  */
-const NUMS = 20;
+const NUMS = 21;
 const REFS = 8;
 const NO_MOVES: readonly Move[] = [];
 
@@ -192,7 +195,8 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
     if (
       ev.cls === EventClass.MoveStart ||
       (ev.cls === EventClass.Tick && ev.ref > 0) ||
-      (ev.cls === EventClass.Moment && (ev.sub === SUB_NOTE_BACK || ev.sub === SUB_LANDED))
+      (ev.cls === EventClass.Moment &&
+        (ev.sub === SUB_NOTE_BACK || ev.sub === SUB_LANDED || ev.sub === SUB_TUNE))
     ) {
       events.push(ev);
     } else if (ev.cls === EventClass.Tick && c.spanEnd[ev.key] === c.spanEnd[ev.key]) {
@@ -205,7 +209,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
   for (const ev of events) {
     let off = false;
     if (ev.cls !== EventClass.MoveStart) {
-      live(ev.key); // a walk tick, a note return or a land moment waiting for its marker
+      live(ev.key); // a walk tick, a note return, a tune's next note or a land moment waiting
     } else if (Math.floor(ev.key / SUB_STRIDE) === SUB_MOVE) {
       const mv = ev.obj as Move;
       off = mv.cancelled;
@@ -239,6 +243,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.counts.length,
       run.pulse.length,
       run.pulseOwner,
+      run.tuneUntil,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -326,6 +331,7 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     run.pulse.length = 0;
     pushPrefix(run.pulse, prev.pulse[v], nums[n + 18]);
     run.pulseOwner = nums[n + 19];
+    run.tuneUntil = nums[n + 20];
     run.pending = (refs[r] as Move[]).slice();
     run.pendingBirth = refs[r + 1] as Birth | null;
     // An open life has only `born` and `fadeIn` (closing sets the rest, and drops it).

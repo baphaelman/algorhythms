@@ -69,6 +69,7 @@ const TYPES: MomentType[] = [
   'pin',
   'key',
   'level',
+  'tune',
 ];
 
 const piece = (): Piece => usePlayer.getState().piece;
@@ -311,6 +312,20 @@ describe('default moments', () => {
       });
     }
   }
+
+  it('a new tune walks up and back down the scale from the lowest note, a beat a note', () => {
+    const p = examplePiece();
+    const s = compile(p);
+    const m = defaultMoment('tune', 30, 'zzzzzz', p, s);
+    expect(m.notes).toHaveLength(4);
+    const bpm = p.view?.gridBpm;
+    const len = typeof bpm === 'number' && bpm > 0 ? 60 / bpm : 0.5;
+    for (const n of m.notes) expect(n.len).toBeCloseTo(len, 12);
+    const ps = m.notes.map((n) => n.pitch);
+    expect(ps[1]).toBeGreaterThan(ps[0]);
+    expect(ps[2]).toBeGreaterThan(ps[1]);
+    expect(ps[3]).toBe(ps[1]);
+  });
 
   it('a chord on the empty piece moves the voice', () => {
     const p = newPiece({ seed: 3 });

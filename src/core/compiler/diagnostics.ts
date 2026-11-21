@@ -39,6 +39,10 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'error',
     meaning: 'A pulse needs step > 0, until > at and a non-empty pattern of numbers.',
   },
+  'tune-invalid': {
+    level: 'error',
+    meaning: 'A tune needs a list of notes, each with a numeric pitch and a length > 0.',
+  },
   'after-end': { level: 'info', meaning: 'The moment is at or after the end of the piece.' },
   // Targets and notes
   'no-targets': { level: 'info', meaning: 'The moment targets no active voice.' },
@@ -67,6 +71,11 @@ export const DIAGNOSTIC_CODES: Readonly<
   'note-back-skipped': {
     level: 'info',
     meaning: "A note moment's return was skipped: a later moment moved the note away.",
+  },
+  'tune-lost': {
+    level: 'info',
+    meaning:
+      "A tune's line stopped sounding and its target has no other; the remaining notes are skipped.",
   },
   // Births and deaths
   'pool-exhausted': {
