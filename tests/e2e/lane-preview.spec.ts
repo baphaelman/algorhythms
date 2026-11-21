@@ -117,12 +117,16 @@ test('dragging over the score and the lane moves the ghost to the drop time; Esc
   const x2 = lane.x + lane.width * 0.7;
   await page.mouse.move(x2, lane.y + lane.height / 2, { steps: 6 });
   await expect.poll(() => ghostAt(page)).toBeGreaterThan(t1 + 1);
+  // Poll the difference (both sides live): the preview may still be catching up with the
+  // last mouse move when the first poll passes.
   await expect
-    .poll(async () => Number(await ghost.getAttribute('data-at')))
-    .toBeCloseTo(await ghostAt(page), 6);
-  expect(
-    Math.abs((await markerX(page, '[data-testid="lane-ghost"] .lane-marker')) - x2),
-  ).toBeLessThan(10);
+    .poll(async () => Number(await ghost.getAttribute('data-at')) - (await ghostAt(page)))
+    .toBeCloseTo(0, 6);
+  await expect
+    .poll(async () =>
+      Math.abs((await markerX(page, '[data-testid="lane-ghost"] .lane-marker')) - x2),
+    )
+    .toBeLessThan(10);
 
   await escape(page);
   await expect(ghost).toBeHidden();
