@@ -6,6 +6,7 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 - Nothing open.
 
 ## Answered
+- 2026-11-21 (night): thickness for loudness is good in the editor (an option for video export later). Merging lines should bundle into the thick line, with no swell after arrival, and merges and splits crossfade their sound across the approach.
 - 2026-11-21 (later): M4.5 looks good (done); M2 sound is fine (done); no vetoes on the calls below. Generate doesn't warn before replacing a piece, but an edited, unnamed piece gets a popup offering to name it before the next piece opens (PLAN §11.4, being built). Roman numerals stay read against the major scale. No M3 release announcement.
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
