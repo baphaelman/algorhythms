@@ -132,6 +132,29 @@ describe('distinct notes regressions', () => {
     expect(leavesAsKnownAt(p, 9.25, 0, 2)).toBe(true);
     checkDistinct(p);
   });
+
+  // Seed 1382238733 ("with parts", shrunk): v1 and v2 reach 42 together (unison) with the
+  // chord's staggered moves to 36 and 48 pending, so they rightly don't join. The merge at 2.6
+  // has nothing to merge (merge-nothing) but cancelled those moves anyway, leaving both on 42
+  // and the chord's newborn v6 stranded mid-glide at 44.6.
+  it('a merge with nothing to merge leaves pending moves alone', () => {
+    const p = JSON.parse(
+      readFileSync(
+        new URL('./regressions/distinct-noop-merge-seed1382238733.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Piece;
+    const s = compile(p);
+    const at = (id: string, t: number) =>
+      pitchAt(
+        s.voices.find((v) => v.id === id)!,
+        t,
+      );
+    expect([at('v1', 7), at('v2', 7), at('v3', 7), at('v6', 7)]).toEqual([36, 48, 60, 72]);
+    const merge = s.diagnostics.filter((d) => d.momentId === 'm00002').map((d) => d.code);
+    expect(merge).toEqual(['merge-nothing', 'no-effect']);
+    checkDistinct(p);
+  });
 });
 
 describe('distinct notes (property)', () => {

@@ -249,6 +249,30 @@ describe('chord count regressions', () => {
     const [v2, v3] = [score.voices[1], score.voices[2]];
     for (let t = 11.483; t < 12.2; t += 0.01) expect(pitchAt(v2, t)).toBe(pitchAt(v3, t));
   });
+
+  // Seed 412527772 (path 111): the chord at 1 forks v3 and v4 from v1 at 1.91 while v2, between
+  // v1 and them, is unborn (2.48). The planner checked adjacent pairs only, so no pair saw v3/v4
+  // fall under v1 (still gliding up on its steep expo) and cross back at 2.38.
+  it('newborns stay above their parent while a sibling between them is unborn', () => {
+    const p = JSON.parse(
+      readFileSync(
+        new URL('./regressions/count-unborn-sibling-seed412527772.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Piece;
+    const { score, into, parent } = lifeEvents(p);
+    checkLives(score, into, parent);
+    expect(lineArtifacts(score).filter((a) => a.kind === 'cross')).toEqual([]);
+    const [v1, v2, v3, v4] = score.voices;
+    expect(lifeAt(v2, 2.3)).toBeNull();
+    for (let t = 1; t < 3.2; t += 0.01) {
+      const below = pitchAt(v1, t)!;
+      for (const v of [v3, v4]) {
+        const q = pitchAt(v, t);
+        if (q !== null) expect(q, `${v.id} at ${t}`).toBeGreaterThanOrEqual(below - 1e-9);
+      }
+    }
+  });
 });
 
 describe('chord count keeps lines whole (M4.5-17)', () => {
