@@ -156,10 +156,15 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-type', 'tune');
   expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(10, 3);
-  // Four notes, a beat each: four dashes over a 4 s bar.
-  await expect(ghost.locator('.lane-art.lane-tune > span')).toHaveCount(4);
+  // A random melody over two bars (8 s at 60 bpm in 4/4): a dash per note.
+  const meter = await page.evaluate(
+    () =>
+      (window.__algorhythms!.store.getState().piece as unknown as { view: { meter?: number } }).view
+        .meter ?? 4,
+  );
+  expect(await ghost.locator('.lane-art.lane-tune > span').count()).toBeGreaterThan(2);
   const { pps } = await axis(page);
-  expect((await ghost.locator('.lane-bar').boundingBox())!.width).toBeCloseTo(4 * pps, -1);
+  expect((await ghost.locator('.lane-bar').boundingBox())!.width).toBeCloseTo(2 * meter * pps, -1);
   await page.mouse.move(5, 5);
   await expect(ghost).toBeHidden();
 
@@ -167,7 +172,9 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   await page.keyboard.press('e');
   const added = (await hook(page).moments()).find((m) => m.type === 'tune' && m.id !== 'tune1')!;
   expect(added.at).toBeCloseTo(10, 3);
-  expect(added.notes).toHaveLength(4);
+  expect(added.notes!.length).toBeGreaterThan(2);
+  expect(added.notes!.reduce((a, n) => a + n.len, 0)).toBeCloseTo(2 * meter, 5);
+  for (const n of added.notes!) expect([0, 2, 4, 5, 7, 9, 11]).toContain(n.pitch % 12);
   await expect(inspector(page).getByRole('heading')).toContainText('Tune');
 });
 
@@ -268,6 +275,34 @@ test('inspector: notes in beats with a tempo; ▲/▼, lengths, add, remove, gli
   await fresh.goto(link);
   await expect(fresh.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   expect(await tuneOf(fresh)).toEqual(m);
+});
+
+test('Random melody: new notes as long as the tune, in key; one undo entry', async ({ page }) => {
+  await open(page, 60);
+  await hook(page).select(['tune1']);
+  const insp = inspector(page);
+  const auditions = () =>
+    page.evaluate(
+      () => (window.__algorhythms as unknown as { audition: { count: number } }).audition.count,
+    );
+  const before = await auditions();
+  await insp.getByTestId('tune-random').click();
+  const a = (await tuneOf(page)).notes!;
+  expect(a.map((n) => n.pitch)).not.toEqual([60, 62, 64]);
+  expect(a.reduce((s, n) => s + n.len, 0)).toBeCloseTo(4, 6);
+  for (const n of a) expect([0, 2, 4, 5, 7, 9, 11]).toContain(n.pitch % 12);
+  // Beats at 60 bpm: 1/8, 1/4, dotted 1/4 or 1/2 (the last may be longer).
+  for (const n of a.slice(0, -1)) expect([0.5, 1, 1.5, 2]).toContain(n.len);
+  expect(await hook(page).undoLabel()).toBe('Random melody');
+  await expect(insp.getByTestId('tune-note')).toHaveCount(a.length);
+  await expect.poll(auditions).toBeGreaterThan(before);
+  // Each press rolls again.
+  await insp.getByTestId('tune-random').click();
+  expect((await tuneOf(page)).notes).not.toEqual(a);
+  await hook(page).undo();
+  expect((await tuneOf(page)).notes).toEqual(a);
+  await hook(page).undo();
+  expect(await pitches(page)).toEqual([60, 62, 64]);
 });
 
 test('without a tempo, lengths are in seconds', async ({ page }) => {

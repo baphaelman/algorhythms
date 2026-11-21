@@ -4,15 +4,20 @@
  * scale step and remove; "Add note" appends one. Each edit is one undo entry. R9-8: a text field
  * takes the notes typed ("F#5 2, E5 1, D5 1"), committed on Enter or blur once valid; a row and
  * the score's tune dot share the dot selection (picking a row selects its dot, and the other way
- * round).
+ * round). "Random melody" replaces the notes with a fresh roll (owner, 2026-11-21).
  */
 
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { activeAt, pitchAt } from '../../../core/query';
 import type { Piece, TuneMoment, TuneNote } from '../../../core/types';
 import { noteLabel } from '../../../render';
-import { auditionPointsAfterEdit, auditionTuneAfterEdit } from '../../audition';
+import {
+  auditionMelodyAfterEdit,
+  auditionPointsAfterEdit,
+  auditionTuneAfterEdit,
+} from '../../audition';
 import { updateMoment } from '../../editor/actions';
+import { randomU32 } from '../../editor/ops';
 import { clearDots, selectDots, useDotSelection } from '../../editor/dot-selection';
 import {
   MIN_TUNE_LEN,
@@ -23,6 +28,7 @@ import {
   lenShown,
   melodyOptions,
   melodyPatch,
+  randomMelody,
   removeTuneNote,
   setTuneLen,
   stepTuneNote,
@@ -233,6 +239,21 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
           }}
         >
           + Add note
+        </button>
+        <button
+          type="button"
+          data-testid="tune-random"
+          title="Replace the notes with a new random melody, as long as the tune"
+          onClick={() => {
+            // A new seed each press; a roll equal to the current notes is rolled again.
+            const same = JSON.stringify(m.notes);
+            let notes = randomMelody(piece, compiled, m, randomU32());
+            for (let i = 0; i < 4 && JSON.stringify(notes) === same; i++)
+              notes = randomMelody(piece, compiled, m, randomU32());
+            if (write(notes, 'Random melody')) auditionMelodyAfterEdit(m.id, notes, m.at);
+          }}
+        >
+          Random melody
         </button>
       </div>
     </fieldset>

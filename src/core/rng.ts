@@ -49,6 +49,8 @@ export const enum Purpose {
   Suggest = 15,
   /** Pulse with `mode: 'random'`: which voice a step hits. */
   PulsePick = 16,
+  /** Random tune melody (core/tune-gen.ts): rhythm cells and steps. */
+  TuneGen = 17,
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -8,6 +8,9 @@
  *   and dragging vertically sets its `to` (§11.3 Note points; one undo entry; snapped to the key,
  *   Shift: whole octaves from `from`, Alt: chromatic); on a line a walk drives there it inserts a
  *   walk step instead (freezing the walk);
+ * - editor layout, a tune selected (owner, 2026-11-21): a double-click (double-tap) anywhere on the
+ *   score adds a note to that tune at its time and pitch instead (key-snapped, Alt chromatic and
+ *   free in time; beats with Snap to beats): it splits the note there, or appends or prepends;
  * - player layout: a click or tap plays or pauses; dragging pans (during playback this turns
  *   Follow off);
  * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
@@ -31,8 +34,8 @@
 import { keyAt } from '../core/query';
 import type { Key, MomentId, Pitch, Seconds } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
-import { auditionMoment, holdNote, stopAudition } from './audition';
-import { addPointDrag, octaveDots, stepNote, type PitchDrag } from './editor/actions';
+import { auditionMoment, auditionTuneAfterEdit, holdNote, stopAudition } from './audition';
+import { addPointDrag, octaveDots, stepNote, updateMoment, type PitchDrag } from './editor/actions';
 import { cachedArrivals } from './editor/arrival-points';
 import { dragPitch } from './editor/chord-notes';
 import { clearDots, currentDots, selectDots } from './editor/dot-selection';
@@ -43,6 +46,7 @@ import { beatStep, changePoints, snapTime } from './editor/snap';
 import { redo, select, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
+import { insertTuneNote, tuneBeat, tuneNoteStarts } from './editor/tune';
 import { sectionOwner } from './editor/section';
 import {
   addAtPlayhead,
@@ -81,7 +85,7 @@ interface PointerInfo {
 }
 
 /** What the current press does once it moves past the slop, or on release. */
-type Mode = 'press' | 'pan' | 'marquee' | 'note' | 'menu';
+type Mode = 'press' | 'pan' | 'marquee' | 'note' | 'menu' | 'done';
 
 /** Attaches the canvas handlers; returns a function that removes them. */
 export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
@@ -109,6 +113,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   /** This press, and the last press that ended as a click (for double-clicks). */
   let press: Press | null = null;
   let lastClick: Press | null = null;
+  /** The tune selected when `lastClick` was pressed (its double-click adds a note to it). */
+  let lastClickTune: MomentId | null = null;
   let note: {
     drag: PitchDrag;
     /** The pool voice of the line (its timbre and level are auditioned). */
@@ -195,6 +201,37 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       alt: false,
     };
     camera.pitch = [v.pLo, v.pHi];
+    return true;
+  };
+
+  /** The selected moment when it is the only one and a tune, else null. */
+  const selectedTune = (): MomentId | null => {
+    const sel = useEditor.getState().selection;
+    if (sel.length !== 1) return null;
+    const m = usePlayer.getState().piece.moments.find((x) => x.id === sel[0]);
+    return m?.type === 'tune' ? m.id : null;
+  };
+
+  /**
+   * A double-click with tune `id` selected: a note at (x, y) inserted into it (`insertTuneNote`;
+   * pitch snapped to the key, time to beats with Snap to beats; `exact`: chromatic and free),
+   * one undo entry, sounded. The tune stays selected. False if nothing was added.
+   */
+  const addTuneNoteAt = (id: MomentId, x: number, y: number, exact: boolean): boolean => {
+    const v = view;
+    if (!v) return false;
+    const { compiled, piece } = usePlayer.getState();
+    const m = piece.moments.find((q) => q.id === id);
+    if (m?.type !== 'tune') return false;
+    const t = snapTime(xToTime(v, x), { points: [], grid: beatStep(piece.view) }, v.pps, exact);
+    const pitch = dragPitch(edgePitch(v, y), keyAt(compiled, t), exact);
+    const r = insertTuneNote(m, t, pitch, tuneBeat(piece.view) ?? 0.5);
+    if (!r) return false;
+    clearDots();
+    select([id]);
+    if (!updateMoment(id, { at: r.at, notes: r.notes }, 'Add tune note')) return false;
+    const start = tuneNoteStarts(r)[r.index];
+    auditionTuneAfterEdit(id, pitch, start + r.notes[r.index].len / 2);
     return true;
   };
 
@@ -299,17 +336,18 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       const { x, y } = local(e);
       press = { x, y, time: performance.now() };
       const prev = lastClick;
+      const prevTune = lastClickTune;
       lastClick = null;
+      lastClickTune = null;
       const editor = editorLayout();
+      const double =
+        prev !== null &&
+        isDoublePress(prev, press, e.pointerType === 'touch' ? DOUBLE_TAP_PX : undefined);
       mode = 'press';
       if (middle || (editor && space.down)) mode = 'pan';
-      else if (
-        editor &&
-        (nHeld ||
-          (prev !== null &&
-            isDoublePress(prev, press, e.pointerType === 'touch' ? DOUBLE_TAP_PX : undefined))) &&
-        startNote(x, y, freeOf(e))
-      ) {
+      else if (editor && double && prevTune !== null && addTuneNoteAt(prevTune, x, y, freeOf(e))) {
+        mode = 'done';
+      } else if (editor && (nHeld || double) && startNote(x, y, freeOf(e))) {
         mode = 'note';
       }
       endHold();
@@ -359,7 +397,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     }
     travelled += Math.abs(dx) + Math.abs(dy);
     hold?.move(e.clientX, e.clientY);
-    if (mode === 'menu' || travelled <= slop) return;
+    if (mode === 'menu' || mode === 'done' || travelled <= slop) return;
     endHold();
     if (mode === 'note') {
       if (!note) return;
@@ -391,7 +429,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (!pointers.delete(e.pointerId)) return;
     const up = e.type === 'pointerup';
     endHold();
-    if (mode === 'menu') {
+    if (mode === 'menu' || mode === 'done') {
       if (pointers.size === 0) mode = 'press';
       press = null;
       return;
@@ -413,6 +451,7 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
       if (editorLayout()) {
         if (press) {
           lastClick = press;
+          lastClickTune = selectedTune();
           clickAt(press.x, press.y, e.shiftKey || e.metaKey || e.ctrlKey || touchMods().add);
           // No hover on touch: a tap shows the line's voice, note and Hz (§11.3b).
           if (e.pointerType !== 'mouse') setHover(press.x, press.y);

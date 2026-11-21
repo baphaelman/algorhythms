@@ -90,6 +90,7 @@ export function auditionScore(
   notes: readonly AuditionNote[],
   t: Seconds,
   seconds: Seconds,
+  melody?: readonly { pitch: Pitch; len: Seconds }[],
 ): CompiledScore {
   const pitchOf = new Map<number, Pitch>();
   for (const n of notes) if (!pitchOf.has(n.voice)) pitchOf.set(n.voice, n.pitch);
@@ -110,11 +111,15 @@ export function auditionScore(
       sends: { ...v.sends },
     };
     if (p === undefined) return base;
-    const seg: Segment = { t0: 0, t1: seconds, p0: p, p1: p, ease: 'linear' };
+    // The first note's voice plays `melody` (if given) instead of holding its pitch.
+    const segments =
+      melody && melody.length > 0 && v.index === notes[0].voice
+        ? melodySegments(melody, seconds)
+        : [{ t0: 0, t1: seconds, p0: p, p1: p, ease: 'linear' } as Segment];
     return {
       ...base,
       lives: [{ born: 0, died: seconds, fadeIn: 0.01, fadeOut }],
-      segments: [seg],
+      segments,
       level: [{ t: 0, gain: levelAt(v, t), over: 0 }],
       weight: [{ t: 0, w: weightAt(v, t), over: 0 }],
       stack: [{ t: 0, n: stackAt(v, t) }],
@@ -131,6 +136,36 @@ export function auditionScore(
     seed: score.seed,
   };
 }
+
+/** Glide between melody notes in an audition, seconds. */
+const MELODY_GLIDE = 0.04;
+
+/** A melody as contiguous segments from 0: each note held, then a short glide to the next. */
+function melodySegments(
+  melody: readonly { pitch: Pitch; len: Seconds }[],
+  seconds: Seconds,
+): Segment[] {
+  const out: Segment[] = [];
+  let t = 0;
+  for (let i = 0; i < melody.length && t < seconds; i++) {
+    const { pitch, len } = melody[i];
+    const next = melody[i + 1];
+    const end = Math.min(seconds, t + len);
+    const g = next ? Math.min(MELODY_GLIDE, len / 3) : 0;
+    const hold = Math.max(t, end - g);
+    out.push({ t0: t, t1: hold, p0: pitch, p1: pitch, ease: 'linear' });
+    if (next && end > hold)
+      out.push({ t0: hold, t1: end, p0: pitch, p1: next.pitch, ease: 'linear' });
+    t = end;
+  }
+  const last = out.at(-1);
+  if (last && last.t1 < seconds)
+    out.push({ t0: last.t1, t1: seconds, p0: last.p1, p1: last.p1, ease: 'linear' });
+  return out;
+}
+
+/** Longest melody audition, seconds. */
+const MELODY_SECONDS = 8;
 
 /**
  * The notes a moment lands on, by voice: each voice's destination from the moment's own segments,
@@ -173,7 +208,16 @@ function busy(): boolean {
 export function audition(
   notes: readonly AuditionNote[],
   t: Seconds,
-  { held = false, seconds = AUDITION_SECONDS }: { held?: boolean; seconds?: Seconds } = {},
+  {
+    held = false,
+    seconds = AUDITION_SECONDS,
+    melody,
+  }: {
+    held?: boolean;
+    seconds?: Seconds;
+    /** The first note's voice plays these notes in turn (a tune's melody). */
+    melody?: readonly { pitch: Pitch; len: Seconds }[];
+  } = {},
 ): boolean {
   if (busy()) {
     auditionState.suppressed++;
@@ -182,7 +226,7 @@ export function audition(
   if (notes.length === 0) return false;
   const { compiled, piece } = usePlayer.getState();
   const length = held ? HOLD_SECONDS : seconds;
-  const score = auditionScore(compiled, notes, t, length);
+  const score = auditionScore(compiled, notes, t, length, melody);
   const my = ++token;
   auditionState.count++;
   auditionState.active = true;
@@ -244,6 +288,26 @@ export function auditionTuneAfterEdit(id: MomentId, pitch: Pitch, t: Seconds): v
     const score = usePlayer.getState().compiled;
     const v = score.voices.find((x) => x.segments.some((s) => s.momentId === id));
     if (v) audition([{ voice: v.index, pitch }], t);
+  });
+}
+
+/**
+ * A tune's new melody (Random melody): once the edit has compiled, its notes in turn on the line
+ * that plays tune `id`, from `at` (at most MELODY_SECONDS).
+ */
+export function auditionMelodyAfterEdit(
+  id: MomentId,
+  notes: readonly { pitch: Pitch; len: Seconds }[],
+  at: Seconds,
+): void {
+  if (notes.length === 0) return;
+  afterEdit(() => {
+    const score = usePlayer.getState().compiled;
+    const v = score.voices.find((x) => x.segments.some((s) => s.momentId === id));
+    if (!v) return;
+    const total = notes.reduce((a, n) => a + n.len, 0);
+    const seconds = Math.min(MELODY_SECONDS, total + FADE_OUT);
+    audition([{ voice: v.index, pitch: notes[0].pitch }], at, { seconds, melody: notes });
   });
 }
 
