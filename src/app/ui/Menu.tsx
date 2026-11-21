@@ -6,6 +6,7 @@ import { openExample, openFile, usePlayer } from '../store';
 import { openCompose } from '../compose';
 import { openExport } from './ExportDialog';
 import { openGenerate } from './GeneratePanel';
+import { MOD_KEY } from '../platform';
 
 /** The examples menu, in two groups (owner, 2026-11-20). */
 const EXAMPLE_GROUPS = [
@@ -13,9 +14,7 @@ const EXAMPLE_GROUPS = [
   { heading: 'Compositions', items: COMPOSITIONS },
 ] as const;
 
-/** The undo modifier as shown in Help: ⌘ on Apple platforms, Ctrl elsewhere. */
-const MOD =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+const MOD = MOD_KEY;
 
 /** The ⋯ menu: examples, pieces (New, My pieces, files), Generate, Export, and help. */
 export function Menu() {

@@ -6,7 +6,7 @@
  * walks back through them and redo forward again. Then, playing, edit → swap latency of inspector
  * clicks (the `edit-latency.spec` hooks). Chromium only.
  *
- * The app has no Undo button, so undo and redo are the only keys pressed (⌘/Ctrl+Z, ⇧⌘/Ctrl+Z).
+ * No key is pressed: undo and redo use the transport's Undo and Redo buttons.
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,7 +26,20 @@ interface M {
   at: number;
   notes?: { kind: string; degrees?: number[]; symbol?: string; pitches?: number[] };
   overrides?: unknown[];
+  count?: number;
 }
+
+/** How many lines sound at `t` in the compiled score. */
+const linesAt = (page: Page, t: number): Promise<number> =>
+  page.evaluate(
+    (t) =>
+      (
+        window.__algorhythms!.store.getState().compiled as unknown as {
+          voices: { lives: { born: number; died?: number }[] }[];
+        }
+      ).voices.filter((v) => v.lives.some((l) => l.born <= t && (l.died ?? Infinity) > t)).length,
+    t,
+  );
 
 const moments = (page: Page): Promise<M[]> =>
   page.evaluate(() => window.__algorhythms!.store.getState().piece.moments as unknown as M[]);
@@ -43,6 +56,9 @@ const loop = (page: Page) =>
         }
       ).view.loop ?? null,
   );
+/** The undo modifier the tooltips show. */
+const modKey = (page: Page): Promise<string> =>
+  page.evaluate(() => (/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'));
 const canUndo = (page: Page) =>
   page.evaluate(() => window.__algorhythms!.editor.state.getState().canUndo);
 
@@ -144,6 +160,12 @@ test('a piece by mouse alone: New → Empty, palette, inspector, dots, loop, pla
   await expect
     .poll(() => page.evaluate(() => window.__algorhythms!.editor.state.getState().selection))
     .toEqual([chord.id]);
+  // On the one-note opening it brings in its extra notes: a triad, three lines, a chord name.
+  expect(chord.count).toBe(3);
+  await expect.poll(() => linesAt(page, chord.at + 4)).toBe(3);
+  const label = page.getByTestId('lane').locator(`[data-moment="${chord.id}"] .lane-label`);
+  await expect(label).toHaveText(/^[A-G]/);
+  await expect(label).not.toContainText('unison');
   await step();
 
   // 3. Change its chord in the inspector by clicking a chord from the key.
@@ -200,6 +222,9 @@ test('a piece by mouse alone: New → Empty, palette, inspector, dots, loop, pla
   const region = (await loop(page))!;
   expect(region.start).toBeCloseTo(2, 0);
   expect(region.end).toBeCloseTo(12, 0);
+  // No grid here: both edges are rounded to the millisecond.
+  for (const t of [region.start, region.end]) expect(Math.round(t * 1000) / 1000).toBe(t);
+  expect(await canUndo(page)).toBe(true); // the edits before; the loop added no entry
   await expect(page.getByTestId('loop-toggle')).toBeEnabled();
 
   // 8. Play: time runs, and stays in the loop region.
@@ -233,17 +258,33 @@ test('a piece by mouse alone: New → Empty, palette, inspector, dots, loop, pla
   await page.getByRole('dialog', { name: 'Export' }).getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
 
-  // 10. Undo walks back through every step to the empty piece; redo comes forward again.
+  // 10. The Undo button walks back through every step to the empty piece; Redo comes forward
+  // again. Each tooltip names its entry; a button is disabled when its history is empty. The
+  // loop region is view state: undo leaves it alone.
+  const undoBtn = page.getByTestId('undo');
+  const redoBtn = page.getByTestId('redo');
   expect(await scoreJson(page)).toBe(states.at(-1));
+  await expect(redoBtn).toBeDisabled();
+  await expect(redoBtn).toHaveAttribute('title', 'Nothing to redo');
   for (let i = states.length - 2; i >= 0; i--) {
-    await page.keyboard.press('ControlOrMeta+z');
+    const label = await page.evaluate(
+      () => window.__algorhythms!.editor.state.getState().undoLabel,
+    );
+    expect(label).not.toBe('');
+    await expect(undoBtn).toHaveAttribute('title', `Undo ${label} (${await modKey(page)}Z)`);
+    await undoBtn.click();
     await expect.poll(() => scoreJson(page), `undo to step ${i + 1}`).toBe(states[i]);
   }
   expect(await canUndo(page)).toBe(false);
+  await expect(undoBtn).toBeDisabled();
+  await expect(undoBtn).toHaveAttribute('title', 'Nothing to undo');
+  expect(await loop(page)).toEqual(region);
   for (let i = 1; i < states.length; i++) {
-    await page.keyboard.press('ControlOrMeta+Shift+z');
+    await expect(redoBtn).toHaveAttribute('title', /^Redo \S/);
+    await redoBtn.click();
     await expect.poll(() => scoreJson(page), `redo to step ${i + 1}`).toBe(states[i]);
   }
+  await expect(redoBtn).toBeDisabled();
   const loopAfter = await loop(page);
 
   // 11. Playing, inspector clicks reach the worklet fast (edit-latency.spec's hooks).

@@ -11,6 +11,7 @@ import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core
 import { usePlayer } from '../store';
 import { edit, select } from './history';
 import { extendEnd } from './end';
+import { withChordFill } from './new-moment';
 import { insertMoments, newMomentIds } from './ops';
 
 const round3 = (t: Seconds): Seconds => Math.round(t * 1000) / 1000;
@@ -43,7 +44,11 @@ function shifted(m: Moment, dt: Seconds): Moment {
 export function suggestionsAt(piece: Piece, score: CompiledScore, t: Seconds): Suggestion[] {
   const endAt = piece.end.at;
   const read = endAt !== undefined && endAt - 0.01 < t ? Math.max(0, round3(endAt - 0.01)) : t;
-  const out = suggestNext(piece, score, read);
+  // A suggested chord brings in its extra notes, as a palette chord does (./new-moment).
+  const out = suggestNext(piece, score, read).map((s) => {
+    const moment = withChordFill(s.moment, piece, score, read);
+    return moment === s.moment ? s : { ...s, moment };
+  });
   return read === t ? out : out.map((s) => ({ ...s, moment: shifted(s.moment, t - read) }));
 }
 

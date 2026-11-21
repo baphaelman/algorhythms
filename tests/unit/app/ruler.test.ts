@@ -6,6 +6,7 @@ import {
   dragLoopEdge,
   loopEdgeAt,
   loopFromDrag,
+  loopTime,
   rulerLabel,
   rulerStep,
   tickTimes,
@@ -85,5 +86,17 @@ describe('loop region math', () => {
     expect(loopEdgeAt(null, 10, 10, 6)).toBeNull();
     // Edges closer than the tolerance: the nearer one wins.
     expect(loopEdgeAt({ start: 10, end: 10.5 }, 10.4, 10, 6)).toBe('end');
+  });
+
+  it('rounds loop drag times: to the grid with one, else (or with Alt) to the millisecond', () => {
+    expect(loopTime(1.9999999, undefined, false)).toBe(2);
+    expect(loopTime(3.14159, undefined, false)).toBe(3.142);
+    expect(loopTime(-1, undefined, false)).toBe(0);
+    // 90 bpm: beats of 2/3 s, kept to 1 µs.
+    expect(loopTime(1.9, 90, false)).toBe(2);
+    expect(loopTime(1.5, 90, false)).toBe(1.333333);
+    // Alt: free placement, still to the millisecond.
+    expect(loopTime(1.9004321, 90, true)).toBe(1.9);
+    expect(loopTime(1.9999999, 120, true)).toBe(2);
   });
 });

@@ -57,6 +57,18 @@ export interface LoopSpan {
 
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 
+/**
+ * A loop drag time (owner, "Mouse-only gaps"): on the beat grid of `bpm` when there is one (to
+ * 1 µs, so float noise never shows), else, or when `free` (Alt), rounded to the millisecond.
+ * Never below 0. The loop is view state, outside undo.
+ */
+export function loopTime(t: Seconds, bpm: number | undefined, free: boolean): Seconds {
+  const s = Math.max(0, t);
+  if (free || !bpm || !(bpm > 0)) return Math.round(s * 1000) / 1000;
+  const beat = 60 / bpm;
+  return Math.round(Math.round(s / beat) * beat * 1e6) / 1e6;
+}
+
 /** The span between two drag times, within [0, duration]; null when shorter than `min`. */
 export function loopFromDrag(
   a: Seconds,
