@@ -15,6 +15,11 @@
  *   Thin    the voices collapse onto three-note chords       2 × chord (explicit pitches)
  *   Home    everyone back to the root                        unison
  *
+ * `composeSteps` gives the composition as steps in composition order (Compose for me, M4.5-28):
+ * each moment is added as it is composed, and two adjustment passes edit moments already placed
+ * (`register` voices the Drift chords; `fit` scales a short form to its length). `generate`
+ * replays them.
+ *
  * Randomness comes from counter-based draws keyed by the seed (core/rng), never Math.random, so
  * the same seed and options always give the same piece. The keys do not include the mode, so
  * switching mode keeps the timing and chord-degree sequence of a 7-note mode, as in the prototype.
@@ -270,11 +275,62 @@ function shortPlan(
   return plan;
 }
 
-/** `generate`, also returning where each section starts (for tests and the Generate panel). */
-export function generateWithSections(
+// ---------------------------------------------------------------------------------------------
+// Composition steps (M4.5-28: Compose for me)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * An adjustment pass over moments already placed:
+ * - `register`: once the Drift chords are placed (harmony and timing), each gets its wandering
+ *   register;
+ * - `fit` (short form only): the piece is laid out at its natural pace, then every moment's time
+ *   and glide is scaled so it ends exactly at the target length.
+ */
+export type ComposePass = 'register' | 'fit';
+
+/** One step of a composition, in composition order. */
+export type ComposeStep =
+  /** Appends `moment` to the piece's moments. */
+  | { kind: 'add'; moment: Moment; section: SectionName }
+  /** Replaces the placed moment with `moment.id` by `moment`. */
+  | { kind: 'edit'; moment: Moment; pass: ComposePass };
+
+/** A composition: the piece without moments, and the steps that place and adjust them. */
+export interface Composition {
+  /** The finished piece's settings (voices, key, timbres, title, end) with no moments. */
+  base: Piece;
+  steps: ComposeStep[];
+  /** Where each section starts in the finished piece. */
+  sections: GeneratedSection[];
+}
+
+/**
+ * The piece after the first `count` steps (all by default). The finished piece is `generate()`'s.
+ * A partial one has an automatic end (4 s after the last activity), so it is an ordinary piece.
+ */
+export function composedPiece(c: Composition, count: number = c.steps.length): Piece {
+  const k = Math.max(0, Math.min(c.steps.length, Math.floor(count)));
+  const moments: Moment[] = [];
+  const at = new Map<string, number>();
+  for (let i = 0; i < k; i++) {
+    const step = c.steps[i];
+    const j = step.kind === 'add' ? moments.length : at.get(step.moment.id);
+    if (j === undefined) continue;
+    at.set(step.moment.id, j);
+    moments[j] = step.moment;
+  }
+  const end = k === c.steps.length ? c.base.end : { fade: c.base.end.fade };
+  return { ...c.base, moments, end };
+}
+
+/**
+ * The composer (§11.3 "Generate"), as its steps: each moment is added when it is composed, and
+ * the adjustment passes edit moments already placed. `composedPiece` replays them.
+ */
+export function composeSteps(
   seed: number,
   opts: GenerateOptions = { mode: 'dorian' },
-): { piece: Piece; sections: GeneratedSection[] } {
+): Composition {
   const pieceSeed = Math.trunc(Number.isFinite(seed) ? seed : 0) >>> 0;
   const mode: GenerateMode = opts.mode in MODE_SCALE ? opts.mode : 'dorian';
   const n = Math.max(2, Math.min(MAX_VOICES, Math.round(opts.voices ?? PROTOTYPE_VOICES)));
@@ -349,8 +405,11 @@ export function generateWithSections(
     }
   };
 
-  // Moments, with deterministic, unique 6-character ids.
+  // Moments, with deterministic, unique 6-character ids. `moments` holds each one as it ends;
+  // `laid` as it was laid out before `fit` (the same objects in the full form).
   const moments: Moment[] = [];
+  const laid: Moment[] = [];
+  const composed: ComposeStep[] = [];
   let opening = 0;
   const usedIds = new Set<string>();
   // The opening chord (M4.5-27) is keyed apart, so the later moments keep their ids and seeds.
@@ -364,23 +423,42 @@ export function generateWithSections(
     }
   };
   const sections: GeneratedSection[] = [];
+  let section: SectionName = 'Seed';
   let pendingLabel: SectionName | null = null;
   const mark = (name: SectionName, at: Seconds): void => {
     sections.push({ name, at: round3(at) });
+    section = name;
     pendingLabel = name;
   };
-  /** Adds a moment; the first one of a section is labelled with the section's name. */
-  const add = (m: NewMoment, key?: number): void => {
+  /**
+   * Places a moment (an add step); the first one of a section is labelled with the section's
+   * name. `natural` is its timing before `fit` (short form): time, glide and walk end at the
+   * natural pace. Returns its index.
+   */
+  const add = (m: NewMoment, natural: Partial<NewMoment> = {}, key?: number): number => {
     const moment = { id: nextId(key), ...m } as Moment;
     moment.at = round3(moment.at);
     if (pendingLabel !== null) {
       moment.label = pendingLabel;
       pendingLabel = null;
     }
+    const first = short ? ({ ...moment, ...natural } as Moment) : moment;
+    first.at = round3(first.at);
     moments.push(moment);
+    laid.push(first);
+    composed.push({ kind: 'add', moment: first, section });
+    return moments.length - 1;
+  };
+  /** Edits moment `i` by `patch`, in both its laid-out and final forms (an edit step). */
+  const adjust = (i: number, patch: Partial<NewMoment>, pass: ComposePass): void => {
+    moments[i] = { ...moments[i], ...patch } as Moment;
+    laid[i] = short ? ({ ...laid[i], ...patch } as Moment) : moments[i];
+    composed.push({ kind: 'edit', moment: laid[i], pass });
   };
 
   let c = 0;
+  /** The natural-pace clock (the short form's layout before `fit`); equals t in the full form. */
+  let tn = 8 + draw('seed', 0, Purpose.GenTiming) * 2;
 
   // Seed: the piece opens on one note, an establishing chord at 0 (schema v2).
   mark('Seed', 0);
@@ -392,6 +470,7 @@ export function generateWithSections(
       voicing: 'even',
       assign: 'ordered',
     },
+    {},
     OPENING_KEY,
   );
   opening = 1;
@@ -400,75 +479,103 @@ export function generateWithSections(
   mark('Split', t);
   for (const j of plan.splits) {
     const k = stages[j];
-    add({
-      type: 'split',
-      at: t,
-      count: k,
-      notes: { kind: 'pitches', pitches: voicing(c, k, CENTER) },
-      voicing: 'even',
-      glide: glide(0.5, 2.6, 3.8),
-    });
-    t += (7 + draw('split', j, Purpose.GenTiming) * 1.5) * s;
+    add(
+      {
+        type: 'split',
+        at: t,
+        count: k,
+        notes: { kind: 'pitches', pitches: voicing(c, k, CENTER) },
+        voicing: 'even',
+        glide: glide(0.5, 2.6, 3.8),
+      },
+      { at: tn, glide: glideOf(0.5, 2.6, 3.8) },
+    );
+    const gap = 7 + draw('split', j, Purpose.GenTiming) * 1.5;
+    t += gap * s;
+    tn += gap;
     c = nextChord(c);
   }
 
+  // Drift: the chord changes are placed first (harmony and timing), then the register pass
+  // voices each one around a wandering centre.
   if (drifts > 0) mark('Drift', t);
+  const drifted: { index: number; c: number }[] = [];
   for (let i = 0; i < drifts; i++) {
-    const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
-    add({
-      type: 'chord',
-      at: t,
-      notes: { kind: 'degrees', degrees: chordDegrees(c) },
-      voicing: 'even',
-      register: registerFor(c, n, center),
-      assign: 'ordered',
-      glide: glide(1.4, 2.2, 4),
-    });
-    t += (5.8 + draw('drift', i, Purpose.GenTiming) * 2.2) * s;
+    const index = add(
+      {
+        type: 'chord',
+        at: t,
+        notes: { kind: 'degrees', degrees: chordDegrees(c) },
+        voicing: 'even',
+        assign: 'ordered',
+        glide: glide(1.4, 2.2, 4),
+      },
+      { at: tn, glide: glideOf(1.4, 2.2, 4) },
+    );
+    drifted.push({ index, c });
+    const gap = 5.8 + draw('drift', i, Purpose.GenTiming) * 2.2;
+    t += gap * s;
+    tn += gap;
     c = nextChord(c);
   }
+  drifted.forEach(({ index, c: chord }, i) => {
+    const center = CENTER + Math.round((draw('drift', i, Purpose.GenRegister) - 0.5) * 6);
+    adjust(index, { register: registerFor(chord, n, center) }, 'register');
+  });
 
   if (plan.development) {
     mark('Gather', t);
-    add({
-      type: 'unison',
-      at: t,
-      pitch: nearestIn(chordPool(c), CENTER),
-      octaves: false,
-      glide: glide(0.9, 3.6, 5),
-    });
+    add(
+      {
+        type: 'unison',
+        at: t,
+        pitch: nearestIn(chordPool(c), CENTER),
+        octaves: false,
+        glide: glide(0.9, 3.6, 5),
+      },
+      { at: tn, glide: glideOf(0.9, 3.6, 5) },
+    );
     t += 9.5 * s;
+    tn += 9.5;
 
     // Burst out to a bass note plus n − 1 upper voices, leaving the bass room to leap.
     mark('Burst', t);
     c = nextChord(c);
     const bass = tones.find((p) => deg(p) === c) ?? tones[0];
-    add({
-      type: 'chord',
-      at: t,
-      notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
-      voicing: 'even',
-      assign: 'ordered',
-      glide: glide(0.25, 1.1, 1.9),
-    });
+    add(
+      {
+        type: 'chord',
+        at: t,
+        notes: { kind: 'pitches', pitches: [bass, ...voicing(c, n - 1, CENTER + 6, -10)] },
+        voicing: 'even',
+        assign: 'ordered',
+        glide: glide(0.25, 1.1, 1.9),
+      },
+      { at: tn, glide: glideOf(0.25, 1.1, 1.9) },
+    );
     t += 7 * s;
+    tn += 7;
 
     // Each tick a random subset of voices steps one or two scale tones, never touching or
     // crossing; the lowest voice leaps 5–12 semitones instead. Steps last 0.22–0.32 s and start
     // up to 0.1 s into the tick. The walk's own timing is never scaled.
     mark('Walk', t);
-    add({
-      type: 'walk',
-      at: t,
-      until: round3(t + ticks * WALK_GRID),
-      grid: WALK_GRID,
-      density,
-      steps: [-2, -1, 1, 2],
-      stepGlide: 0.27,
-      bass: { leap: [5, 12] },
-      glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
-    });
+    add(
+      {
+        type: 'walk',
+        at: t,
+        until: round3(t + ticks * WALK_GRID),
+        grid: WALK_GRID,
+        density,
+        steps: [-2, -1, 1, 2],
+        stepGlide: 0.27,
+        bass: { leap: [5, 12] },
+        glide: { stagger: 0.1, jitter: round3(0.05 / 0.27) },
+      },
+      { at: tn, until: round3(tn + ticks * WALK_GRID) },
+    );
     t += ticks * WALK_GRID + 1.5 * s;
+    tn += ticks * WALK_GRID + 1.5;
   }
 
   // Three-note chords, the voices split into three equal groups (low, middle, high).
@@ -481,28 +588,44 @@ export function generateWithSections(
       nearestIn(pool, CENTER),
       nearestIn(pool, CENTER + 10),
     ];
-    add({
-      type: 'chord',
-      at: t,
-      notes: {
-        kind: 'pitches',
-        pitches: Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]),
+    add(
+      {
+        type: 'chord',
+        at: t,
+        notes: {
+          kind: 'pitches',
+          pitches: Array.from({ length: n }, (_, j) => tri[Math.min(2, Math.floor((j * 3) / n))]),
+        },
+        voicing: 'even',
+        assign: 'ordered',
+        glide: glide(1.3, 3, 5),
       },
-      voicing: 'even',
-      assign: 'ordered',
-      glide: glide(1.3, 3, 5),
-    });
+      { at: tn, glide: glideOf(1.3, 3, 5) },
+    );
     t += 9 * s;
+    tn += 9;
   }
 
   mark('Home', t);
-  add({ type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) });
+  add(
+    { type: 'unison', at: t, pitch: ROOT, octaves: false, glide: glide(1, 4, 6.5) },
+    { at: tn, glide: glideOf(1, 4, 6.5) },
+  );
   t += 13.5 * s;
+
+  // Fit (short form): every moment laid out at the natural pace moves to its scaled time.
+  if (short) {
+    for (let i = 0; i < moments.length; i++) {
+      if (JSON.stringify(laid[i]) === JSON.stringify(moments[i])) continue;
+      laid[i] = moments[i];
+      composed.push({ kind: 'edit', moment: moments[i], pass: 'fit' });
+    }
+  }
 
   const voices = defaultVoices(n);
   for (const v of voices) v.range = [LOW, HIGH];
   const now = opts.now ?? DEFAULT_TIMESTAMP;
-  const piece: Piece = {
+  const base: Piece = {
     format: PIECE_FORMAT,
     version: PIECE_VERSION,
     meta: { title: `${MODE_TITLE[mode]} ${pieceSeed}`, created: now, modified: now },
@@ -511,19 +634,28 @@ export function generateWithSections(
     key: { tonic: 'A', scale: MODE_SCALE[mode] },
     defaults: { glide: defaultGlide() },
     voices,
-    moments,
+    moments: [],
     timbres: builtinTimbresFor(voices),
     mix: defaultMix(),
     end: { at: round3(t), fade: DEFAULT_END_FADE },
     view: defaultView(),
   };
-  return { piece, sections };
+  return { base, steps: composed, sections };
+}
+
+/** `generate`, also returning where each section starts (for tests and the Generate panel). */
+export function generateWithSections(
+  seed: number,
+  opts: GenerateOptions = { mode: 'dorian' },
+): { piece: Piece; sections: GeneratedSection[] } {
+  const c = composeSteps(seed, opts);
+  return { piece: composedPiece(c), sections: c.sections };
 }
 
 /**
  * Generates a piece made of moments from a seed (§11.3): the prototype composer's eight
  * sections. Deterministic: the same seed and options give the same piece. The seed is taken
- * modulo 2³² and becomes the piece seed.
+ * modulo 2³² and becomes the piece seed. It replays `composeSteps`.
  */
 export function generate(seed: number, opts: GenerateOptions = { mode: 'dorian' }): Piece {
   return generateWithSections(seed, opts).piece;

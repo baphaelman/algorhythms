@@ -120,6 +120,11 @@ export function inGesture(): boolean {
   return gesture !== null;
 }
 
+/** An opaque handle on the open gesture (null when none): a long-lived gesture checks it is still its own. */
+export function currentGesture(): object | null {
+  return gesture;
+}
+
 /**
  * Applies `recipe` to the piece as it was at `beginGesture` (so it receives the gesture's
  * cumulative change, e.g. the total drag offset) and shows the result. No history entry. Call it

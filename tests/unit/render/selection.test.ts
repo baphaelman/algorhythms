@@ -173,6 +173,30 @@ describe('selection highlight', () => {
   });
 });
 
+describe('reveal (Compose for me)', () => {
+  it('clips the lines at the reveal time; absent or infinite: no clip', () => {
+    const plain = fakeCtx();
+    drawScore(plain.ctx, SCORE, CAM, style(), 0, SIZE, 1);
+    expect(plain.calls.some((c) => c.op === 'clip')).toBe(false);
+    const all = fakeCtx();
+    drawScore(all.ctx, SCORE, CAM, style({ reveal: Infinity }), 0, SIZE, 1);
+    expect(all.calls.some((c) => c.op === 'clip')).toBe(false);
+
+    const { ctx, calls } = fakeCtx();
+    drawScore(ctx, SCORE, CAM, style({ reveal: 10 }), 0, SIZE, 1);
+    const view = cameraAt(cameraScore(SCORE), CAM, 0, SIZE, false);
+    const clip = calls.findIndex((c) => c.op === 'clip');
+    expect(clip).toBeGreaterThan(-1);
+    const rect = calls.slice(0, clip).findLast((c) => c.op === 'rect');
+    expect(rect?.args).toEqual([0, 0, timeToX(view, 10), SIZE.height]);
+    const restore = calls.findIndex((c, i) => i > clip && c.op === 'restore');
+    // Every line stroke lies between the clip and its restore.
+    const red = calls.flatMap((c, i) => (c.op === 'stroke' && c.stroke === RED ? [i] : []));
+    expect(red.length).toBeGreaterThan(0);
+    expect(red.every((i) => i > clip && i < restore)).toBe(true);
+  });
+});
+
 describe('nearestLine', () => {
   const view = cameraAt(cameraScore(SCORE), CAM, 40, SIZE, false);
 

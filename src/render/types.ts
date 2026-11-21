@@ -131,4 +131,9 @@ export interface ScoreStyle {
   traces?: boolean;
   /** Pool index of the line under the pointer, for its dotted trace (with `traces`). */
   traceVoice?: number;
+  /**
+   * Compose for me (M4.5-28): lines are drawn only up to this time (the composer's pen), so a
+   * moment's lines draw in as it is placed. Absent: the whole score.
+   */
+  reveal?: Seconds;
 }
