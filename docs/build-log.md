@@ -1291,3 +1291,19 @@ Regressions in `tests/unit/core/property-seeds-29.test.ts` (the three for compil
 - **Tests:** `chord-octaves.test.ts` "free octaves stay inside the chord's register": CrChd2-like full register (merge), room between register and neighbour (55, not 52), no room (merge), untargeted line inside the register bounds the room, with count. All five fail on main.
 
 **Gates:** lint, typecheck, `pnpm test --maxWorkers=2` 1265/1265 (load ~6). `pnpm test:perf` green: compile median 24.9 ms (min 20.6, max 30.7; budget 100), RTF 17.2× CPU / 17.0× wall, no-GC 0 / 0, expo/bézier 18 scavenges per 60 s (known, M6). `CompiledVoice`/flat untouched.
+## M4.5 acceptance test gaps (2026-11-21)
+Closes audit gaps 2, 3, 5, 7, 8, 9 and 10 (`docs/m4.5-acceptance.md`). Tests only, plus one wording fix.
+- **Edit latency** (new `e2e/edit-latency.spec.ts`): generated 24-note piece, playing at 60 s; times each edit to the worklet `swap` post (patched `node.port.postMessage`). Chord pick and walk density via `setPiece` (12 each), chord picks and walk step chips via inspector clicks (8 each, from the click's `timeStamp`). Gate: median ≤ 50 ms per path. Measured (load ~4): medians 12–15 ms (`setPiece`), 13–20 ms (clicks); max 26 ms, once 53 ms for a click on dev at load 4.5. Excludes the worklet quantum (≤ 3 ms) and device output latency.
+- **score-select:** marquee `toBeHidden()`, and the other one-shot reads after pointer input (overrides, undo label, selection, split count) poll. 100/100 at `--repeat-each=10` on chromium-dev and -prod.
+- **inspector:** new "walk: grid, step glide and bass leap…" (grid and leap change `walkSteps`; step glide changes the compiled segments in the walk region; each undoes). The fields are blurred after Enter: a focused NumberField keeps its typed text through an external undo, and its blur would re-commit it. Not reachable by mouse (clicking Undo blurs first) and Cmd+Z in a text field is the field's own; noted, not changed. Unfreeze now equals the generated steps; the per-note ▲ test checks the other chords' notes, `frozenFrom` and harmony.
+- **app-perf:** asserts Follow is Smooth and the camera start advances > 5 s (measured 8.0 s).
+- **Unit:** `core/wobble-ignored.test.ts`; `app/notes-wording.test.ts` (TypeScript-AST sweep of `src/app`: JSX text, UI attributes, strings with a space; empty allowlist). It found `key-carry.ts`'s fold notice ("into its voice’s range"), now "into its range" / "their ranges".
+- **Found, not fixed (core, out of scope):** `wobble-ignored` is not in `DIAGNOSTIC_CODES` (`compiler/diagnostics.ts`).
+- **audition:** "dragging out of the score cancels the drag preview".
+- **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 1269/1269. E2E chromium-dev and -prod (`--workers=1`): inspector, audition, app-perf, edit-latency, key-carry 50/50; score-select 100/100 repeated.
+
+## Fix: number field keeps a stale draft over undo (2026-11-21)
+A focused NumberField (and WeightBox) kept its typed text through an outside undo, and its blur then re-committed it over the undone value.
+- `draftReduce` (`inspector/fields.ts`): typing makes a draft; a changed underlying value drops it and shows the new value; blur commits only a draft. NumberField and WeightBox use it via `useReducer`. The Voices/Notes drawer `NumberField` clears its draft when `value` changes.
+- Tests: `tests/unit/app/number-draft.test.ts`; `tests/e2e/number-field-undo.spec.ts` (type, undo via the editor hook, blur: undone value stays; an undisturbed draft still commits). The app has no Undo button, and a real click would blur first, so the hook stands in.
+- The inspector.spec workaround (blur after Enter) is no longer needed but left alone. TextField (chord symbol) has the same pattern; not changed (not a number field).

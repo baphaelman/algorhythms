@@ -4,7 +4,7 @@
  * gesture each, so a whole drag is one undo entry.
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Moment, MomentId, Piece } from '../../../core/types';
 import { updateMoment } from '../../editor/actions';
 import { beginGesture, cancelGesture, endGesture, updateGesture } from '../../editor/history';
@@ -12,6 +12,7 @@ import { patchMoment, type MomentPatch } from '../../editor/ops';
 import { usePlayer } from '../../store';
 import {
   SHIFT_OCTAVES,
+  draftReduce,
   formatNum,
   formatShift,
   formatSigned,
@@ -135,13 +136,15 @@ export function NumberField(props: NumberFieldProps) {
   } = props;
   const format = props.format ?? ((v: number) => formatNum(v));
   const id = useId();
-  const [text, setText] = useState(format(value));
-  const [error, setError] = useState<string | null>(null);
-  const focused = useRef(false);
   const shown = format(value);
+  const [draft, dispatch] = useReducer(draftReduce, { text: shown, dirty: false });
+  const text = draft.text;
+  const setText = (t: string): void => dispatch({ type: 'set', text: t });
+  const [error, setError] = useState<string | null>(null);
 
+  // An outside change (undo, another edit) drops a typed draft: blur must not commit it.
   useEffect(() => {
-    if (!focused.current) setText(shown);
+    dispatch({ type: 'external', shown });
   }, [shown]);
 
   const clamp = (v: number): number => {
@@ -246,16 +249,19 @@ export function NumberField(props: NumberFieldProps) {
           data-testid={props.testId}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-err` : undefined}
-          onFocus={() => (focused.current = true)}
           onBlur={() => {
-            focused.current = false;
+            if (!draft.dirty) {
+              setText(shown);
+              setError(null);
+              return;
+            }
             submit();
             if (parse(text) === null) {
               setText(shown);
               setError(null);
             }
           }}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => dispatch({ type: 'type', text: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -640,16 +646,16 @@ export function WeightBox({
 }) {
   const id = useId();
   const shown = formatNum(value, 2);
-  const [text, setText] = useState(shown);
-  // Typed but not committed: only then does a value change (undo) leave the text alone.
-  const dirty = useRef(false);
+  const [draft, dispatch] = useReducer(draftReduce, { text: shown, dirty: false });
+  const text = draft.text;
+  const setText = (t: string): void => dispatch({ type: 'set', text: t });
+  // An outside change (undo) drops a typed draft.
   useEffect(() => {
-    if (!dirty.current) setText(shown);
+    dispatch({ type: 'external', shown });
   }, [shown]);
   const clamp = (v: number): number => Math.min(max, Math.max(min, Math.round(v * 100) / 100));
   const submit = (): void => {
-    if (!dirty.current) return;
-    dirty.current = false;
+    if (!draft.dirty) return;
     const v = parseNum(text, min, max);
     if (v === null) {
       setText(shown);
@@ -705,21 +711,18 @@ export function WeightBox({
         data-testid={testId}
         onBlur={submit}
         onChange={(e) => {
-          dirty.current = true;
-          setText(e.target.value);
+          dispatch({ type: 'type', text: e.target.value });
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
             submit();
           } else if (e.key === 'Escape') {
-            dirty.current = false;
             setText(shown);
           } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const base = parseNum(text, min, max) ?? value;
             const v = clamp(base + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 0.25));
-            dirty.current = false;
             setText(formatNum(v, 2));
             if (Math.abs(v - value) > 1e-9) set.commit(v);
           }

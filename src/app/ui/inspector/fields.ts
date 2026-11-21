@@ -304,3 +304,23 @@ export function formatShift(v: number, octave: number): string {
   const k = v / octave;
   return `${s} (${k > 0 ? '+' : '−'}${Math.abs(k)} oct)`;
 }
+
+/** A number field's text: `dirty` once the user has typed something not yet committed. */
+export interface DraftState {
+  text: string;
+  dirty: boolean;
+}
+
+export type DraftAction =
+  | { type: 'type'; text: string }
+  /** The text is set by the field itself (a step, a commit, Escape): no longer a draft. */
+  | { type: 'set'; text: string }
+  /** The underlying value changed (undo, another edit): any draft is dropped. */
+  | { type: 'external'; shown: string };
+
+/** The draft rule: typing makes a draft; an external value change replaces it, never commits it. */
+export function draftReduce(s: DraftState, a: DraftAction): DraftState {
+  if (a.type === 'type') return { text: a.text, dirty: true };
+  if (a.type === 'set') return { text: a.text, dirty: false };
+  return s.text === a.shown && !s.dirty ? s : { text: a.shown, dirty: false };
+}

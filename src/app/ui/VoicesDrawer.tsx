@@ -80,6 +80,12 @@ function NumberField(props: {
 }) {
   const { value, min, max, label, onCommit, testId, className } = props;
   const [draft, setDraft] = useState<string | null>(null);
+  // An outside change (undo, another edit) drops a typed draft: blur must not commit it.
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    setDraft(null);
+  }
   const commit = (text: string): void => {
     setDraft(null);
     const n = Number(text);
