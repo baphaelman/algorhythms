@@ -45,6 +45,7 @@ import { MixState, type ParamValue } from './mix';
 import { SINE, SINE_TABLE_SIZE } from './sine';
 import { TimbreSlot } from './timbre-slot';
 import {
+  computeStrikeShares,
   computeUnisonWarps,
   EMPTY_VOICE_DATA,
   LOUDNESS_PITCH,
@@ -612,6 +613,7 @@ export class Graph {
     }
     const referenceHz = score.referenceHz > 0 ? score.referenceHz : 440;
     computeUnisonWarps(data, referenceHz);
+    computeStrikeShares(data);
     return {
       data,
       voiceIds: score.voiceIds.slice(0, n),

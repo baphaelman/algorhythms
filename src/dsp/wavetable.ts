@@ -26,7 +26,7 @@
  */
 
 import type { Timbre } from '../core/types';
-import { MIN_ARTICULATION_ATTACK } from './constants';
+import { BLOOM_ATTACK, CRISP_AMOUNT, MIN_ARTICULATION_ATTACK } from './constants';
 
 /** Points in one table cycle (a guard point follows, so reads never wrap). */
 export const WAVETABLE_SIZE = 2048;
@@ -64,8 +64,13 @@ export interface TimbreParams {
   accent: number;
   /** Articulation depth 0..1. */
   artAmount: number;
-  /** Articulation attack, seconds (≥ MIN_ARTICULATION_ATTACK). */
+  /**
+   * Effective articulation attack, seconds: ≥ MIN_ARTICULATION_ATTACK, and for soft strikes
+   * ≥ BLOOM_ATTACK·√amount.
+   */
   artAttack: number;
+  /** 1 when strikes are crisp (keep their attack, never shared by coincident arrivals), else 0. */
+  artCrisp: number;
   /** Articulation decay to about 1 % (−40 dB), seconds (≥ 1 ms). */
   artDecay: number;
   /** Vibrato rate in Hz. */
@@ -104,11 +109,18 @@ function finiteOr(x: number, fallback: number): number {
 
 /** Extracts and sanitises the scalar parameters of a timbre. */
 export function timbreParams(t: Timbre): TimbreParams {
+  const artAmount = Math.min(1, Math.max(0, finiteOr(t.articulation.amount, 0)));
+  const crisp = t.articulation.crisp ?? artAmount >= CRISP_AMOUNT;
   return {
     detuneSpread: finiteOr(t.detuneSpread, 0),
     accent: Math.max(0, finiteOr(t.accent, 0)),
-    artAmount: Math.min(1, Math.max(0, finiteOr(t.articulation.amount, 0))),
-    artAttack: Math.max(MIN_ARTICULATION_ATTACK, finiteOr(t.articulation.attack, 0.01)),
+    artAmount,
+    artAttack: Math.max(
+      MIN_ARTICULATION_ATTACK,
+      crisp ? 0 : BLOOM_ATTACK * Math.sqrt(artAmount),
+      finiteOr(t.articulation.attack, 0.01),
+    ),
+    artCrisp: crisp ? 1 : 0,
     artDecay: Math.max(0.001, finiteOr(t.articulation.decay, 0.2)),
     vibRate: Math.max(0, finiteOr(t.vibrato.rate, 0)),
     vibDepthCents: Math.max(0, finiteOr(t.vibrato.depthCents, 0)),

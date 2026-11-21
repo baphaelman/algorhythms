@@ -36,6 +36,23 @@ export const MIN_LIFE_FADE = 0.005;
  */
 export const MIN_ARTICULATION_ATTACK = 0.012;
 
+/**
+ * Arrival bloom (build log, "Arrival bloom"). A soft strike (not `crisp`) lasts at least
+ * BLOOM_ATTACK · √amount: its curvature, ∝ amount ÷ attack², then stays near 1.5 % of the level per
+ * 2.7 ms block whatever the amount, so it swells instead of popping (glass 30 ms, organ 17 ms).
+ */
+export const BLOOM_ATTACK = 0.05;
+
+/** Without an explicit `crisp`, strikes of at least this amount are crisp (pluck: the note). */
+export const CRISP_AMOUNT = 0.5;
+
+/**
+ * Soft strikes that land together share one bloom: each rises to 1/√k of its amount, k the
+ * number of voices arriving within COINCIDE_WINDOW (raised-cosine weighted), so a chord swells
+ * like √k strikes, not k. The held level (1 − amount) does not change.
+ */
+export const COINCIDE_WINDOW = 0.04;
+
 /** Crossfade length for seek, loop wrap, play and pause (§8.7), in seconds. */
 export const SEEK_FADE = 0.005;
 

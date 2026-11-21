@@ -426,6 +426,10 @@ export const TimbreSchema = z.looseObject({
       amount: finite.default(T.articulation.amount),
       attack: nonNegative.default(T.articulation.attack),
       decay: nonNegative.default(T.articulation.decay),
+      crisp: z
+        .boolean()
+        .optional()
+        .describe('Keep the attack crisp and unshared (absent: amount ≥ 0.5).'),
     })
     .prefault({}),
   vibrato: z
