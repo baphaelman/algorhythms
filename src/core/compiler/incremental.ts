@@ -20,10 +20,11 @@
  * returned scores stay intact). Restored tails and lives are fresh copies.
  *
  * Full compile: no previous state, or a different setup (seed, key, end, glide defaults,
- * voice ids or ranges). Voice fields that only reach the output (gain, pan, timbre, …) are read
+ * voice ids, ranges or parts). Voice fields that only reach the output (gain, pan, timbre, …) are read
  * fresh by `finish`, so they resume like any other edit.
  */
 
+import { partOf } from '../parts';
 import type {
   CompiledScore,
   Diagnostic,
@@ -164,6 +165,7 @@ function sameSetup(a: Piece, b: Piece): boolean {
   for (let i = 0; i < va.length; i++) {
     if (va[i] === vb[i]) continue;
     if (va[i].id !== vb[i].id || !same(va[i].range, vb[i].range)) return false;
+    if (partOf(va[i]) !== partOf(vb[i])) return false; // revision 9: parts decide merges
   }
   return true;
 }

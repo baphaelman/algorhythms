@@ -790,14 +790,16 @@ export function planMoment(
     return { up, down };
   }
 
-  // 5. Moves through untargeted voices (§7.2 scope): info only.
+  // 5. Moves through untargeted voices (§7.2 scope): info only. Lines of another part may cross
+  // freely (revision 9).
   if (ordered && enforceCrossings && subset) {
     const inPlan = new Set(parts.map((p) => p.voice));
+    const ownParts = new Set(parts.map((p) => voices[p.voice].part));
     const others: number[] = [];
     for (let v = 0; v < voices.length; v++) {
       if (inPlan.has(v)) continue;
       const run = voices[v];
-      if (run.sounding || run.pendingBirth) others.push(v);
+      if ((run.sounding || run.pendingBirth) && ownParts.has(run.part)) others.push(v);
     }
     if (others.length > 0) {
       const crossed = new Set<string>();

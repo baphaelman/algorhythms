@@ -68,6 +68,8 @@ export interface MomentEnv {
   now(v: number): Pitch;
   range(v: number): readonly [Pitch, Pitch];
   id(v: number): string;
+  /** Revision 9: the part of a voice's line ('' = the default group). Lines merge within one. */
+  part(v: number): string;
   /** True if the voice's life is open at t (it can be a birth parent). */
   sounding(v: number): boolean;
   /** Pool voices a split may birth at t, in pool order (§7.4). */

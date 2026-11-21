@@ -1338,3 +1338,25 @@ CI (2 vCPU) missed the 50 ms gate on inspector clicks (`clickChord` medians 54�
 - **Tests:** `core/establish.test.ts` (template, pitch lists, chord symbols + count, byVoice, unison, stacking, incremental, no-effect per transitional type, walk over silence, palette); `golden/migration-v2.test.ts`; schema/migration tests for v1 → v2; `e2e/start-moment.spec.ts` (New: one dot at 0:00, Delete → silence and greyed Shift/split/merge/walk/note, chord → sound, no glide). Test pieces use `withStart` (compiler-fixtures) or an opening chord; e2e specs that set `start` now unshift one. `line-artifacts` exempts establishing births (no fade-in).
 - **Known nit (not fixed):** the opening's lane item falls back to `estimateSpan` (its compiled span is zero-length), so its box reserves a glide-sized width and can push a moment a few seconds later onto a new sub-row. `lane-rows` "overlapping moments stack" loads that case without an opening. Using the zero span for chord/unison (`laneItems`) did not change the count there and broke a lane unit test; left for the lane owner.
 - **Gates:** lint, typecheck; `pnpm test --maxWorkers=2` 1317/1317; `pnpm test:perf` green (bench piece now 201 moments: 200 plus its opening). E2E (`--workers=1`, chromium-dev and -prod): audition, dots, note-points, octave-drag, score-select, silent-lines, snap, start-moment, app, generate, my-pieces, voices, export green after fixes; full chromium-dev suite run once, its 7 failures (specs that replaced `moments` and dropped the opening: context-moments, editor-polish, lane-rows, suggestions) fixed and green on dev and prod. Main (d14231c and later, to 72a9f74) merged before the gates.
+
+## R9-1: parts (core, 2026-11-21)
+PLAN rev 9 "Parts": `VoiceDef.part?: string` and the `{ part }` target, in schema v2 with no version bump (M4.5-27: the 1 → 2 migration needs nothing for an optional field). `core/parts.ts` (`partOf`: a missing or non-string part is the default group `''`; `selectorPart`); `VoiceRun.part`; `MomentEnv.part(v)` (the part of a logical voice's line).
+
+**Merges stay within a part** (every 29a join path):
+- coincidence joins (`onJoin`) only group lines of one part; establishing voices stack only within a part;
+- explicit merge and chord `count` deaths: `absorbers` takes the nearest order neighbour of the dying line's part; with none, it fades where it is (as a merge with no survivors);
+- newborns: `Compiler.partBirths` gives each birth a free voice of its parent line's part; with none it is dropped (`pool-exhausted`, warn). Phantoms (`expand`) and fork carriers (`collapse`) are voices of the line's part; `collapse`'s held notes are keyed per part, so a newborn bound for another part's note is born and does not join it;
+- free octaves: `distinctTargets` takes a separate `occupied` list: the untargeted lines of the targeted lines' parts (`split.ts occupying`, also the `sounding` of split/count-birth voicings). The room beyond the register (`octaveRoom`) is still bounded by every untargeted line, so free octaves don't step past another part's line.
+
+**Decisions (PLAN is silent):**
+- Moments spanning parts (`all`, `rank`, `voices`) are voiced across all their lines as before (one chord over all, its targets still distinct among themselves); only the merge rules above are per part.
+- A `{ part }` moment sees only its part: `env.active` and `env.dormant` are the part's, so `count` on split, merge and chord counts the part's lines, establishing from silence uses the part's voices, and no-effect reasons and the palette (`effect.ts`) read the part.
+- An unknown part: `unknown-part` (warn, registered), targets nothing.
+- `crossing-untargeted` reports only lines of the moved lines' parts (parts cross freely, like a tune).
+- Incremental: a change of a voice's part forces a full compile (`sameSetup`).
+
+**Not in scope (needs the integrator):** `src/app/editor/walk-steps.ts` `targets()` must handle `{ part }` or typecheck fails (`sel.rank` on the new union member). The change, refused to this builder as outside `src/core`/`tests`:
+`if ('part' in sel) return partOf(piece.voices[v]) === sel.part;` after the `'voices'` line, importing `partOf` from `core/parts`. `docs/file-format.md` regenerated (`pnpm docs:schema`).
+
+**Goldens:** unchanged (no example has parts; without parts every path is the old one).
+**Tests:** `tests/unit/core/parts.test.ts` (pin onto another part's pitch, unison across parts, merge/count death into own part, merge with no own-part survivor, newborn part, free octaves ignore another part vs. without parts, `{ part }` target, part counts, unknown part, establish, palette, schema round trip, incremental). Generators: `pieceArb({ parts: true })` (voices in 'A', 'B' or none; `{ part }` targets incl. unknown 'C'). Properties: distinct notes per part, no death/birth across parts, joins within a part (red, with the unit tests, when `onJoin` ignores parts), incremental = full with parts.

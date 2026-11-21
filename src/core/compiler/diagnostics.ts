@@ -19,6 +19,7 @@ export const DIAGNOSTIC_CODES: Readonly<
     meaning: 'Two moments share an id, so they share random draws.',
   },
   'unknown-voice': { level: 'warn', meaning: 'A voice id that is not in the pool.' },
+  'unknown-part': { level: 'warn', meaning: 'A `{ part }` target names no part of the pool.' },
   // Retired with schema v1's `start` (M4.5-27); kept so the codes are never reused.
   'start-duplicate': { level: 'warn', meaning: 'Retired (v1): a voice listed twice in `start`.' },
   'start-out-of-range': { level: 'info', meaning: 'Retired (v1): a start pitch was folded.' },

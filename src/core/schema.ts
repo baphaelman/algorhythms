@@ -153,6 +153,7 @@ export const VoiceSelectorSchema = z.union([
   z.literal('all'),
   z.looseObject({ voices: z.array(id) }),
   z.looseObject({ rank: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }),
+  z.looseObject({ part: z.string() }),
 ]);
 
 export const NoteSetSchema = z.discriminatedUnion('kind', [
@@ -361,6 +362,10 @@ export const VoiceSchema = z.looseObject({
   range: pitchRange.default((): [number, number] => [DEFAULT_RANGE[0], DEFAULT_RANGE[1]]),
   mute: z.boolean().optional(),
   solo: z.boolean().optional(),
+  part: z
+    .string()
+    .optional()
+    .describe('Revision 9: a named group; lines in different parts never merge.'),
   sends: z
     .looseObject({ reverb: nonNegative.optional(), delay: nonNegative.optional() })
     .optional(),
