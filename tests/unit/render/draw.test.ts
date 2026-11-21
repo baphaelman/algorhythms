@@ -287,7 +287,7 @@ describe('lines', () => {
 });
 
 describe('heads', () => {
-  it('draws a dot per active voice and merges equal pitches as ×N', () => {
+  it('draws a dot per active voice and merges equal pitches into one label', () => {
     const { ctx, calls } = fakeCtx();
     const a = voice(0, [hold(0, 100, 60)]);
     const b = voice(1, [hold(0, 100, 60)]);
@@ -297,7 +297,8 @@ describe('heads', () => {
     const dots = calls.filter((x) => x.op === 'arc' && x.args[2] === 2.6);
     expect(dots).toHaveLength(3);
     const labels = calls.filter((x) => x.op === 'fillText').map((x) => x.args[0] as string);
-    expect(labels).toContain('261.63 Hz ×2');
+    expect(labels.filter((l) => l === '261.63 Hz')).toHaveLength(1);
+    expect(labels.some((l) => l.includes('×'))).toBe(false);
     expect(labels).toContain('392.00 Hz');
     expect(labels.some((l) => /^notes +3 \/ 4$/.test(l))).toBe(true);
   });
