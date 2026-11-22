@@ -21,7 +21,7 @@ import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
 import { decisionTime, momentGlide, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
-import { establishPlan, isEstablishing } from './moments/establish';
+import { bringsIn, establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
@@ -128,6 +128,14 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
   // Silent voices count for a timbre change; the compiler raises `no-targets` when it has none.
   if (m.type === 'timbre') return 'the notes already have this timbre';
   const n = c.active.length;
+  // A silent part (composing.md §3 #4): a chord, unison or tune brings it in.
+  const part = selectorPart(m.target);
+  if (n === 0 && part !== null && m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse') {
+    const name = part === '' ? 'the unassigned part' : `the part '${part}'`;
+    return c.dormant === 0 && bringsIn(m)
+      ? `${name} is silent here and has no free voice`
+      : `${name} is silent here; bring it in with a chord, a unison or a tune`;
+  }
   if (n === 0 && m.type !== 'key') {
     // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
     return isEstablishing(m) || m.type === 'level' || m.type === 'pulse'
@@ -435,9 +443,6 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
       return targeted.length > 0 ? { effect: true } : no(noEffectReason(m, ctx()));
     default:
   }
-  const seed = momentSeed(piece.seed, m.id, m.seed);
-  const emptyHash = hash32('');
-  const hashes = ids.map((id) => hash32(id));
   const ranges = ids.map((_, u) => {
     const def = piece.voices[st.base[u] === u ? u : st.base[u]];
     const own = piece.voices[u];
@@ -446,7 +451,16 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
   if (m.type === 'tune') {
     // The tune's line: the lowest (or with line 'high' the highest) of the target in pitch order.
     // It has an effect if some note (folded into its range) is not where the line is heading.
-    if (m.notes.length === 0 || targeted.length === 0) return no(noEffectReason(m, ctx()));
+    if (m.notes.length === 0) return no(noEffectReason(m, ctx()));
+    if (targeted.length === 0) {
+      // On a silent part its first note brings a line in (composing.md §3 #4).
+      const enters =
+        scope !== null &&
+        active.length === 0 &&
+        establishPlan(m, envFor(piece, score, st, m, targeted, active, dormant, ids, ranges)) !==
+          null;
+      return enters ? { effect: true } : no(noEffectReason(m, ctx()));
+    }
     const v = m.line === 'high' ? targeted[targeted.length - 1] : targeted[0];
     const r = ranges[v] ?? [0, 127];
     const moves = m.notes.some(
@@ -454,37 +468,22 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     );
     return moves ? { effect: true } : no(noEffectReason(m, ctx()));
   }
-  let error: string | null = null;
-  const env: MomentEnv = {
-    t: st.t,
-    momentId: m.id,
-    key: st.key,
-    seed,
-    glide: momentGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), m),
-    targeted,
-    active,
-    dest: (v) => st.dest[v],
-    now: (v) =>
-      st.dest[v] === st.dest[v] ? (pitchAt(score.voices[st.base[v]], st.t) ?? NaN) : NaN,
-    range: (v) => ranges[v] ?? [0, 127],
-    id: (v) => ids[v],
-    part: partAt,
-    sounding: (v) => st.dest[v] === st.dest[v],
-    dormant: () => dormant.slice(),
-    indexOf,
-    diag: (level, code, message) => {
-      if ((level === 'error' || code === 'note-not-sounding') && error === null) error = message;
-    },
-    rand: (v, step, purpose) => randHashed(seed, v >= 0 ? hashes[v] : emptyHash, step, purpose),
-  };
-  // From silence only an establishing moment acts (M4.5-27).
+  const errors: string[] = [];
+  const env = envFor(piece, score, st, m, targeted, active, dormant, ids, ranges, errors);
+  // From silence only an establishing moment acts (M4.5-27); later one brings a silent part in
+  // (composing.md §3 #4; a chord with `count` births by itself).
+  const enters =
+    scope !== null &&
+    active.length === 0 &&
+    isEstablishing(m) &&
+    !(m.type === 'chord' && m.count !== undefined);
   const plan =
-    st.active.length > 0
+    st.active.length > 0 && !enters
       ? pointMomentPlan(m, env)
       : isEstablishing(m)
         ? establishPlan(m, env)
         : null;
-  if (error !== null) return no(error);
+  if (errors.length > 0) return no(errors[0]);
   if (!plan) return no(noEffectReason(m, ctx()));
   const after = Float64Array.from(st.dest);
   const deaths: { voice: number; to: Pitch }[] = [];
@@ -503,6 +502,46 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
   return changesPitch({ before: st.dest, after, deaths, births })
     ? { effect: true }
     : no(noEffectReason(m, ctx(births.length, deaths.length)));
+}
+
+/** The moment env of `m` on state `st` (as the compiler's); errors and `note-not-sounding` go to `errors`. */
+function envFor(
+  piece: Piece,
+  score: CompiledScore,
+  st: StateAt,
+  m: Moment,
+  targeted: readonly number[],
+  active: readonly number[],
+  dormant: readonly number[],
+  ids: readonly string[],
+  ranges: readonly (readonly [Pitch, Pitch])[],
+  errors: string[] = [],
+): MomentEnv {
+  const seed = momentSeed(piece.seed, m.id, m.seed);
+  const emptyHash = hash32('');
+  const hashes = ids.map((id) => hash32(id));
+  return {
+    t: st.t,
+    momentId: m.id,
+    key: st.key,
+    seed,
+    glide: momentGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), m),
+    targeted,
+    active,
+    dest: (v) => st.dest[v],
+    now: (v) =>
+      st.dest[v] === st.dest[v] ? (pitchAt(score.voices[st.base[v]], st.t) ?? NaN) : NaN,
+    range: (v) => ranges[v] ?? [0, 127],
+    id: (v) => ids[v],
+    part: (v) => partOf(piece.voices[st.base[v]]),
+    sounding: (v) => st.dest[v] === st.dest[v],
+    dormant: () => dormant.slice(),
+    indexOf: (id) => ids.indexOf(id),
+    diag: (level, code, message) => {
+      if (level === 'error' || code === 'note-not-sounding') errors.push(message);
+    },
+    rand: (v, step, purpose) => randHashed(seed, v >= 0 ? hashes[v] : emptyHash, step, purpose),
+  };
 }
 
 /**

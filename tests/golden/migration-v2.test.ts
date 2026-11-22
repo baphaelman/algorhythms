@@ -11,7 +11,9 @@
  * pulse, land), so they are no longer checked against their version 1 sound; the v1 Kite Day
  * fixture still is (canonical hash, as M5 pinned it). The full golden hashes changed
  * only by what is not heard: the opening's moment span, its harmony entry (the HUD now names the
- * opening chord) and the opening holds' `momentId`.
+ * opening chord) and the opening holds' `momentId`. Fold apart (2026-11-22, composing.md §3 #6)
+ * re-pinned clockwork-heron (CkPin1) and lanterns (LnSft2): a line folded onto a part-mate now
+ * takes a free note instead of merging.
  *
  * tests/golden/v1/ keeps two files as they were in version 1: one original (a plain start) and
  * one composition (a start out of pitch order: `byVoice`).
@@ -27,8 +29,8 @@ const ROOT = join(import.meta.dirname, '../..');
 const V1 = join(import.meta.dirname, 'v1');
 
 const V1_AUDIBLE: Record<string, string> = {
-  'clockwork-heron.algorhythms.json': 'cdbd03aafc4cb9da',
-  'lanterns-over-salt-flats.algorhythms.json': '35610f0decadcda5',
+  'clockwork-heron.algorhythms.json': '893034832fd82739',
+  'lanterns-over-salt-flats.algorhythms.json': 'a94fd502394b6b80',
   'seven-doors-in-fog.algorhythms.json': 'ab5b1b312ff8a477',
   'the-cartographers-rain.algorhythms.json': 'f7880deb9770c50c',
   'tidewater-hymn.algorhythms.json': '2dcf9f4ab6ca22a6',

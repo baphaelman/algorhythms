@@ -2,8 +2,9 @@
  * Establishing moments (PLAN.md §11.3 "The start is a moment", revision 7; schema v2, M4.5-27).
  *
  * There is no starting state: a `chord` (with notes other than `current`) or a `unison` that comes
- * when nothing is sounding brings its voices in directly on their notes, with no glide. Every
- * other point moment, walk and level has nothing to act on there (`no-effect`).
+ * when nothing is sounding brings its voices in directly on their notes, with no glide (so does a
+ * `tune` on a `{ part }` target, below). Every other point moment, walk and level has nothing to
+ * act on there (`no-effect`).
  *
  * - **Voices.** A `{ voices }` target brings in those voices, in the listed order; any other
  *   target brings in dormant pool voices in pool order.
@@ -18,12 +19,19 @@
  *   its pitch; `center` is the middle of the first voice's range snapped to the key, `tonic` the
  *   key's tonic nearest that middle.
  *
+ * - **Tunes** (composing.md §3 #4; only on a `{ part }` target, `bringsIn`): one voice (the first
+ *   free one of the part) on the tune's first note; the compiler plays the rest on it.
+ *
  * The plan's intents are births with no parent (−1), in the order the compiler brings the voices
  * in; voices sent to one pitch become one line (distinct notes, revision 8).
+ *
+ * The same plans bring a silent part in later in the piece (`{ part }` target, nothing of the part
+ * sounding, other lines sounding): compile.ts `entersSilent`. Those births fade in on their notes
+ * as a chord `count`'s parentless births do (no glide).
  */
 
 import { pitchClassOf, snapToScale } from '../scales';
-import type { ChordMoment, Moment, Pitch, UnisonMoment } from '../types';
+import type { ChordMoment, Moment, Pitch, TuneMoment, UnisonMoment } from '../types';
 import { roundTiesDown, voiceNotes, pitchClasses } from '../voicing';
 import { distinctTargets } from './chord';
 import { IntentKind, unionRange, type MomentEnv, type MomentPlan } from './types';
@@ -31,6 +39,14 @@ import { IntentKind, unionRange, type MomentEnv, type MomentPlan } from './types
 /** True for moments that can start the sound from silence: a chord with notes, and a unison. */
 export function isEstablishing(m: Moment): m is ChordMoment | UnisonMoment {
   return (m.type === 'chord' && m.notes?.kind !== 'current') || m.type === 'unison';
+}
+
+/**
+ * True for moments that can bring a silent part in (composing.md §3 #4, 2026-11-22): the
+ * establishing ones, and a tune with notes.
+ */
+export function bringsIn(m: Moment): m is ChordMoment | UnisonMoment | TuneMoment {
+  return isEstablishing(m) || (m.type === 'tune' && Array.isArray(m.notes) && m.notes.length > 0);
 }
 
 /** The voices a `{ voices }` target lists (known, dormant, first mention), or null for others. */
@@ -71,6 +87,7 @@ function take(cands: readonly number[], want: number, env: MomentEnv): number[] 
 export function establishPlan(m: Moment, env: MomentEnv): MomentPlan | null {
   if (m.type === 'chord') return establishChord(m, env);
   if (m.type === 'unison') return establishUnison(m, env);
+  if (m.type === 'tune') return establishTune(m, env);
   return null;
 }
 
@@ -171,6 +188,19 @@ function establishUnison(m: UnisonMoment, env: MomentEnv): MomentPlan | null {
     return null;
   }
   return { ordered: true, intents: vs.map((voice) => birth(voice, pitch)) };
+}
+
+/** A tune: one line (the first listed voice, else the first free one) on its first note. */
+function establishTune(m: TuneMoment, env: MomentEnv): MomentPlan | null {
+  const first = Array.isArray(m.notes) ? m.notes[0] : undefined;
+  if (!first || !Number.isFinite(first.pitch)) return null;
+  const own = listed(m, env);
+  const vs = own ?? env.dormant();
+  if (vs.length === 0) {
+    if (!own) take([], 1, env);
+    return null;
+  }
+  return { ordered: true, intents: [birth(vs[0], first.pitch)] };
 }
 
 const birth = (voice: number, to: Pitch) => ({

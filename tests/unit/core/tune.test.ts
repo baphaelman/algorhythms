@@ -222,12 +222,24 @@ describe('tune: targeting', () => {
     );
   });
 
-  it('from silence: no-effect', () => {
+  it('from silence: no-effect (a warning)', () => {
     const p = make([tune({ at: 2 })]);
     p.moments = p.moments.filter((m) => m.type === 'tune');
     const s = compile(p);
     expect(codes(s)).toContain('no-effect');
+    expect(s.diagnostics.find((d) => d.code === 'no-effect')!.level).toBe('warn');
     expect(s.voices.every((v) => v.lives.length === 0)).toBe(true);
+  });
+
+  it('from silence on a part: brings one line in on its first note (composing.md §3 #4)', () => {
+    const p = make([tune({ at: 2, target: { part: 'Melody' } })]);
+    p.moments = p.moments.filter((m) => m.type === 'tune');
+    p.voices.forEach((v) => (v.part = 'Melody'));
+    const s = compile(p);
+    expect(codes(s)).toEqual([]);
+    expect(s.voices.filter((v) => v.lives.length > 0).map((v) => v.id)).toEqual(['v1']);
+    expect(s.voices[0].lives[0]).toMatchObject({ born: 2, fadeIn: 0 });
+    expect([2.5, 3.5, 4.5].map((t) => pitchAt(s.voices[0], t))).toEqual([50, 64, 62]);
   });
 });
 
