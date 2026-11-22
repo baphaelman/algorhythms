@@ -15,6 +15,13 @@ import { currentTime, pause, reloadAudio, usePlayer } from './store';
 /** The live instrument. */
 export const live = new LiveEngine();
 
+// Mix edits while live (the Sound drawer's Master tab) reach the live engine at once; the playback
+// engine's queued `mixAudio` job applies them after leaving. `setMix` also follows a `normalise`
+// change with each voice's gain (live-setup `liveGains`).
+usePlayer.subscribe((s, prev) => {
+  if (s.piece.mix !== prev.piece.mix && live.active) live.setMix(s.piece.mix);
+});
+
 /** Enter and exit run one after another. */
 let busy: Promise<void> = Promise.resolve();
 

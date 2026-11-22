@@ -29,7 +29,7 @@ import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { LIVE_SEG_CAP, type LiveTracks } from '../../src/dsp/live';
 import { LiveRig, liveSetupOf } from '../../src/audio/fixtures/live-rig';
 import { DRY_MIX, makeScore } from '../../src/audio/fixtures/scores';
-import { liveSetupFrom } from '../../src/audio/live-setup';
+import { liveGains, liveSetupFrom } from '../../src/audio/live-setup';
 import { newPiece } from '../../src/core/defaults';
 import { Prng } from '../../src/dsp/rng';
 import { clickScore, Driver, RATE, rms } from './helpers';
@@ -284,6 +284,33 @@ describe("live under mix.normalise 'part' (the default)", () => {
       }
     });
   }
+
+  it('a normalise change while live follows the piece (liveGains, M7-b)', () => {
+    const { score, piece } = partsPiece('part');
+    const setup = liveSetupFrom(piece, score, 5);
+    const rig = new LiveRig(setup);
+    rig.record = false;
+    rig.run(0.05);
+    rig.post({ moves: [], level: { gain: 1, over: 0 } });
+    rig.run(0.5);
+    for (const normalise of ['all', 'part'] as const) {
+      const mix: MixSettings = { ...DRY_MIX, normalise };
+      const d = new Driver(score, mix);
+      d.graph.play(0);
+      d.run(5);
+      const gains = liveGains(setup, mix);
+      if (normalise === 'all') expect(gains.some((g, k) => g !== setup.voices[k].gain)).toBe(true);
+      // What LiveEngine.setMix posts.
+      rig.graph.setMix(mix);
+      gains.forEach((g, k) => rig.graph.setParam(`voices.${k}.gain`, g));
+      rig.run(2);
+      setup.voices.forEach((v, k) => {
+        const i = score.voices.findIndex((c) => c.id === v.id);
+        const ratio = rig.graph.voiceAmplitude(k) / d.graph.voiceAmplitude(i);
+        expect(Math.abs(ratio - 1), `${normalise} ${v.id}`).toBeLessThan(0.02);
+      });
+    }
+  });
 
   it('silence as a shared level of 0 keeps the normalisation constant', () => {
     const { score, piece } = partsPiece('part');

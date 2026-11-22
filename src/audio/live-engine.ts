@@ -32,7 +32,7 @@ import type { MixSettings, Pitch, Seconds } from '../core/types';
 import type { LiveTracks } from '../dsp/live';
 import { AudioEngine } from './engine';
 import { encodeMoves, liveView, mirrorTracks } from './live-mirror';
-import { liveScore, type LiveSetup, type LiveVoiceSetup } from './live-setup';
+import { liveGains, liveScore, type LiveSetup, type LiveVoiceSetup } from './live-setup';
 
 /** When a live message took effect. */
 export interface LiveStamp {
@@ -114,6 +114,9 @@ export class LiveEngine {
   private engineValue: AudioEngine | null = null;
   private settingsValue: LiveSettings = mergeLiveSettings(DEFAULT_LIVE_SETTINGS, {});
   private voices: LiveVoiceSetup[] = [];
+  private setup: LiveSetup | null = null;
+  /** Static gain per live voice as last sent (`setMix` re-sends those a new mix changes). */
+  private gains: number[] = [];
   private readonly keys = new LiveKeys();
   private confirmed: LiveTracks | null = null;
   private predicted: LiveTracks | null = null;
@@ -175,6 +178,8 @@ export class LiveEngine {
         throw e;
       }
       this.voices = setup.voices;
+      this.setup = setup;
+      this.gains = setup.voices.map((v) => v.gain);
       this.seed = setup.seed >>> 0;
       this.confirmed = mirrorTracks(setup);
       this.predicted = this.confirmed.clone();
@@ -258,9 +263,29 @@ export class LiveEngine {
     this.notify();
   }
 
-  /** Replaces the master mix while live. */
+  /**
+   * Replaces the master mix while live. A `normalise` change also re-sends each voice's static
+   * gain: the per-part correction `liveSetupFrom` applied depends on it (`liveGains`).
+   */
   setMix(mix: MixSettings): void {
-    this.engineValue?.setMix(mix);
+    const engine = this.engineValue;
+    if (!engine || !this.setup) return;
+    engine.setMix(mix);
+    const gains = liveGains(this.setup, mix);
+    for (let i = 0; i < gains.length; i++) {
+      if (gains[i] !== this.gains[i]) engine.param(`voices.${i}.gain`, gains[i]);
+    }
+    this.gains = gains;
+  }
+
+  /** The live voices' ids, in live voice order. */
+  get voiceIds(): string[] {
+    return this.voices.map((v) => v.id);
+  }
+
+  /** The current pitch bend (semitones). */
+  get bendSemitones(): number {
+    return this.bendValue;
   }
 
   /** Calls `fn` with a snapshot after every change; returns the unsubscribe function. */

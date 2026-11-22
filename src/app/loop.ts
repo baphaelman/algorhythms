@@ -15,6 +15,7 @@ import {
   cameraAt,
   cameraScore,
   clampStart,
+  drawLiveLines,
   clampWindow,
   drawScore,
   followStart,
@@ -36,6 +37,8 @@ import { useEditor } from './editor/history';
 import { PIANO_WIDTH } from './editor/piano';
 import { hoverPointer } from './hover';
 import { lineHighlight } from './line-highlight';
+import { live as liveEngine } from './live';
+import { LiveTrailBuffer } from './live-trail';
 import { previewState, type PreviewGhost } from './preview';
 import { camera, cameraOf, currentTime, usePlayer } from './store';
 
@@ -61,6 +64,8 @@ export const frameStats = {
   preview: NaN,
   /** The whole line highlighted in the last drawn frame (`lineHighlight`; -1: none). */
   highlightVoice: -1,
+  /** Live samples drawn in the last drawn frame (0: no live lines). */
+  liveSamples: 0,
   /** The view of the last drawn frame (pitch ↔ y for e2e pixel checks). */
   view: null as View | null,
   reset(): void {
@@ -153,6 +158,9 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
   let lastPreview: PreviewGhost | null = null;
   /** The editor's hovered line, for its dotted trace when silent (revision 9). */
   let traceVoice = -1;
+  /** Live mode's lines (§9): sampled every frame while live, drawn over the veiled score. */
+  const trail = new LiveTrailBuffer();
+  let wasLive = false;
 
   const resize = (): void => {
     const rect = canvas.getBoundingClientRect();
@@ -301,6 +309,26 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       dirty = true;
     }
 
+    // Live: a new trail per session; while live every frame samples and redraws.
+    const liveOn = liveEngine.active;
+    if (liveOn !== wasLive) {
+      wasLive = liveOn;
+      if (liveOn) {
+        const ids = liveEngine.voiceIds;
+        trail.reset(
+          ids.length,
+          ids.map((id) =>
+            Math.max(
+              0,
+              piece.voices.findIndex((v) => v.id === id),
+            ),
+          ),
+        );
+      }
+      dirty = true;
+    }
+    if (liveOn && trail.sample(liveEngine)) dirty = true;
+
     let drew = false;
     if (transport.status === 'playing' || ghosting || dirty) {
       dirty = false;
@@ -329,6 +357,8 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           reveal,
         };
         lastView = drawScore(g, compiled, cam, style, t, { width, height }, dpr);
+        if (liveOn) drawLiveLines(g, lastView, trail, style);
+        frameStats.liveSamples = liveOn ? trail.count : 0;
         frameStats.view = lastView;
         frameStats.drawn++;
         frameStats.highlightVoice = lastLine;

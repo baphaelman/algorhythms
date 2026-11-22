@@ -7,7 +7,10 @@
  *   the note count follows); with one pin selected, a click moves the pin there. One undo entry
  *   each; the result sounds once (stopped transport only, §11.3 auditioning).
  * - Otherwise a click sounds the key's pitch on the line nearest the playhead (stopped transport
- *   only; live mode, M7, will play it).
+ *   only).
+ * - In live mode (§9, the Live drawer open) the ruler is an input instead: pressing a key plays it
+ *   until release, dragging across keys glides from key to key (legato: the next key is pressed
+ *   before the last is released), Enter plays while held. Keys held by any live input are marked.
  * Keys are laid out per score frame by direct style writes (React renders only when the semitone
  * range, the selection or the key changes). One tab stop: ↑/↓ move between keys, Enter presses
  * (Space stays play and pause).
@@ -22,6 +25,7 @@ import { audition } from '../audition';
 import { pianoKeyEdit } from '../editor/actions';
 import { chordNotes } from '../editor/chord-notes';
 import { useEditor } from '../editor/history';
+import { liveInputs, useLive } from '../live-ui';
 import { PIANO_WIDTH, isBlackKey, keyRole, pianoKeys } from '../editor/piano';
 import { onScoreFrame } from '../loop';
 import { currentTime, usePlayer } from '../store';
@@ -48,6 +52,9 @@ export function PianoRuler() {
   const els = useRef(new Map<Pitch, HTMLButtonElement>());
   const lastView = useRef<View | null>(null);
   const layoutSig = useRef('');
+  const liveOn = useLive((s) => s.open);
+  /** The key the pointer holds in live mode. */
+  const held = useRef<Pitch | null>(null);
 
   const on = useMemo(() => {
     if (!target) return new Set<Pitch>();
@@ -89,15 +96,51 @@ export function PianoRuler() {
     [],
   );
 
+  /** Marks the keys live inputs hold (direct writes; also after a re-render). */
+  const markHeld = (): void => {
+    for (const [p, el] of els.current) {
+      const on = liveInputs.holds(p);
+      if (on !== el.hasAttribute('data-held')) el.toggleAttribute('data-held', on);
+    }
+  };
+  useEffect(() => liveInputs.subscribe(markHeld), []);
+
   useLayoutEffect(() => {
     if (lastView.current) layout(lastView.current, true);
+    markHeld();
   });
+
+  /** Live: the key under a pointer, if it is on this ruler. */
+  const keyAtPoint = (x: number, y: number): Pitch | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('.piano-key[data-pitch]');
+    return el && els.current.get(Number(el.dataset.pitch)) === el ? Number(el.dataset.pitch) : null;
+  };
+  const liveMove = (p: Pitch | null): void => {
+    const was = held.current;
+    if (p === was || p === null) return;
+    held.current = p;
+    liveInputs.down('ruler', p);
+    if (was !== null) liveInputs.up('ruler', was);
+  };
+  const liveEnd = (): void => {
+    held.current = null;
+    liveInputs.release('ruler');
+  };
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!liveOn || e.button !== 0) return;
+    const p = keyAtPoint(e.clientX, e.clientY);
+    if (p === null) return;
+    e.preventDefault(); // no focus move or text selection while playing
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    liveMove(p);
+  };
 
   const keys = useMemo(() => pianoKeys(range[0], range[1]).reverse(), [range]);
   const tab =
     focusP !== null && keys.includes(focusP) ? focusP : (keys[Math.floor(keys.length / 2)] ?? null);
 
   const press = (p: Pitch): void => {
+    if (useLive.getState().open) return; // live: pointer and Enter play (above)
     const name = noteLabel(p, key);
     if (target) {
       const r = pianoKeyEdit(target.id, p);
@@ -124,7 +167,8 @@ export function PianoRuler() {
     e.preventDefault();
     e.stopPropagation();
     if (e.key === 'Enter') {
-      press(p);
+      if (!liveOn) press(p);
+      else if (!e.repeat) liveInputs.down('ruler', p);
       return;
     }
     const next = p + (e.key === 'ArrowUp' ? 1 : -1);
@@ -135,11 +179,13 @@ export function PianoRuler() {
     }
   };
 
-  const what = target
-    ? target.type === 'chord'
-      ? 'click a key to add or remove that note in the selected chord'
-      : 'click a key to move the selected pin there'
-    : 'select a chord or pin to edit its notes; a click sounds the key';
+  const what = liveOn
+    ? 'press a key to play it live, drag across keys to glide'
+    : target
+      ? target.type === 'chord'
+        ? 'click a key to add or remove that note in the selected chord'
+        : 'click a key to move the selected pin there'
+      : 'select a chord or pin to edit its notes; a click sounds the key';
 
   return (
     <div
@@ -149,6 +195,14 @@ export function PianoRuler() {
       aria-label={`Piano ruler: ${what}`}
       style={{ width: PIANO_WIDTH }}
       data-target={target?.type}
+      data-live={liveOn || undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={(e) => {
+        if (held.current !== null) liveMove(keyAtPoint(e.clientX, e.clientY));
+      }}
+      onPointerUp={liveEnd}
+      onPointerCancel={liveEnd}
+      onLostPointerCapture={liveEnd}
     >
       {keys.map((p) => {
         const name = noteLabel(p, key);
@@ -174,6 +228,10 @@ export function PianoRuler() {
             onFocus={() => setFocusP(p)}
             onClick={() => press(p)}
             onKeyDown={(e) => onKeyDown(e, p)}
+            onKeyUp={(e) => {
+              if (e.key === 'Enter') liveInputs.up('ruler', p);
+            }}
+            onBlur={() => liveInputs.up('ruler', p)}
           >
             {p % 12 === 0 && <span className="piano-c">{name}</span>}
           </button>
