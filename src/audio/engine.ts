@@ -95,8 +95,13 @@ export class AudioEngine {
   private workletNames: readonly string[] = [];
   private realNames: readonly string[] = [];
   private anchors: Anchor[] = [];
-  /** Piece time to show until the worklet confirms a command with an anchor. */
-  private optimistic: { time: number; playing: boolean } | null = null;
+  /**
+   * Piece time to show until the worklet confirms the transport command that set it: an anchor
+   * whose `seq` is at least `seq` (older anchors answer overtaken commands and leave it).
+   */
+  private optimistic: { time: number; playing: boolean; seq: number } | null = null;
+  /** `seq` of the newest transport command posted. */
+  private seq = 0;
   private loopRange: { start: number; end: number } | null = null;
   private durationValue = 0;
   private playingValue = false;
@@ -179,11 +184,11 @@ export class AudioEngine {
     this.auditioning = false;
     this.durationValue = score.duration;
     this.anchors = [];
-    this.optimistic = { time: 0, playing: false };
+    const seq = this.expect(0, false);
     this.playingValue = false;
     this.loopRange = null;
     this.workletNames = flat.timbreNames;
-    this.post({ type: 'load', score: flat, mix: structuredClone(mix) }, transferList(flat));
+    this.post({ type: 'load', seq, score: flat, mix: structuredClone(mix) }, transferList(flat));
     this.postTables(sets);
   }
 
@@ -231,8 +236,7 @@ export class AudioEngine {
     const ctx = this.context;
     if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
     this.postSwap(flat);
-    this.post({ type: 'play', from: 0 });
-    this.optimistic = { time: 0, playing: true };
+    this.post({ type: 'play', seq: this.expect(0, true), from: 0 });
     return true;
   }
 
@@ -245,8 +249,7 @@ export class AudioEngine {
   endAudition(): void {
     if (!this.auditioning) return;
     this.auditioning = false;
-    this.optimistic = { time: 0, playing: false };
-    this.post({ type: 'pause' });
+    this.post({ type: 'pause', seq: this.expect(0, false) });
     if (this.real) this.postSwap(flatten(this.real));
     this.post({ type: 'loop', range: this.loopRange });
   }
@@ -258,23 +261,23 @@ export class AudioEngine {
     if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
     let start = from;
     if (start === undefined && this.currentTime() >= this.durationValue - 1e-3) start = 0;
-    this.optimistic = { time: start ?? this.currentTime(), playing: true };
-    this.post({ type: 'play', from: start });
+    // Already playing: the worklet would post no anchor, so nothing would confirm the command.
+    if (start === undefined && this.isPlaying) return;
+    const seq = this.expect(start ?? this.currentTime(), true);
+    this.post({ type: 'play', seq, from: start });
   }
 
   /** Pauses; the FX tail keeps ringing. */
   pause(): void {
     this.endAudition();
-    this.optimistic = { time: this.currentTime(), playing: false };
-    this.post({ type: 'pause' });
+    this.post({ type: 'pause', seq: this.expect(this.currentTime(), false) });
   }
 
   /** Moves the playhead (crossfading if playing). */
   seek(to: number): void {
     this.endAudition();
     const t = Math.max(0, to);
-    this.optimistic = { time: t, playing: this.isPlaying };
-    this.post({ type: 'seek', to: t });
+    this.post({ type: 'seek', seq: this.expect(t, this.isPlaying), to: t });
   }
 
   /** Loops [start, end) seconds, or stops looping with null. */
@@ -333,6 +336,13 @@ export class AudioEngine {
 
   // -------------------------------------------------------------------------------------------
 
+  /** Shows `time`/`playing` until the worklet confirms the next transport command; its seq. */
+  private expect(time: number, playing: boolean): number {
+    const seq = ++this.seq;
+    this.optimistic = { time, playing, seq };
+    return seq;
+  }
+
   private post(msg: EngineInMessage, transfer: Transferable[] = []): void {
     this.node.port.postMessage(msg, transfer);
   }
@@ -364,14 +374,20 @@ export class AudioEngine {
   private receive(msg: EngineOutMessage): void {
     switch (msg.type) {
       case 'anchor': {
-        const a: Anchor = { ...msg };
+        const a: Anchor = {
+          contextTime: msg.contextTime,
+          pieceTime: msg.pieceTime,
+          playing: msg.playing,
+          reason: msg.reason,
+        };
         this.playingValue = msg.playing;
-        if (msg.reason === 'loop') {
+        const confirms = this.optimistic !== null && msg.seq >= this.optimistic.seq;
+        if (msg.reason === 'loop' && !confirms) {
           // Heard only after the output latency: keep the current anchor until then.
           this.anchors.push(a);
         } else {
           this.anchors = [a];
-          this.optimistic = null;
+          if (confirms) this.optimistic = null;
         }
         break;
       }

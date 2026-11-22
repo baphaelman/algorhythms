@@ -2026,3 +2026,9 @@ CI's `pnpm test:perf` was red since 3ba6f0c. On bcfcf3a. Linux cloud box (4-core
 - **Unexplained:** native profiles put 6–7 % of plain self time on the `v.render(...)` call line in `Graph.process`, with `LoadIC`/`KeyedLoadIC` ticks under it; all Voice/slot maps are uniform and fast. Not chased.
 - **Headroom left for M6 (slow CI runner ≈ 0.84× this box: ~11×):** log2R/exp2R per tick in synthExt (~6 % of M6), per-sample bus writes (4 RMW per voice), partial table reads. Further gains need small output changes (≤ −120 dBFS; re-pin) or design changes.
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=2` pass; `pnpm test:perf` 3/3 runs pass (RTF above; no-GC 1864–2088 B in every mode but `all`, which reports 17–18 scavenges as before).
+## Stale transport confirmations (audio, 2026-11-22)
+Bug: play, then a ruler click before the worklet's play anchor arrived; that late anchor cleared the seek's optimistic state and the view jumped back.
+- **Fix:** `load`/`play`/`pause`/`seek` carry an increasing `seq`; every anchor echoes the newest seq the graph has applied (`Graph.transportPending` holds it back while a seek waits for its fade-out). `AudioEngine` keeps its optimistic time/playing until an anchor with `seq ≥` the pending command's; older anchors still replace the stored anchor. A loop anchor that confirms the command replaces the anchors instead of queueing.
+- `play()` with no `from` while already playing now returns without posting: the graph posts no anchor for it, so nothing would confirm it.
+- Export/stems run `Graph` in workers and don't use this protocol; preloaded renders use seq 0. `process()` still allocation-free (one number field on the preallocated anchor).
+- Tests: `tests/unit/audio/engine-seq.test.ts`. lint, typecheck, `pnpm test`, `pnpm test:perf`, e2e `ruler` + `app` (chromium-dev) pass.

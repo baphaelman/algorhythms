@@ -24,6 +24,9 @@ class EngineProcessor extends AudioWorkletProcessor {
   private sincePos = 0;
   private failed = false;
   private wasPlaying = false;
+  /** `seq` of the newest transport command received, and of the newest one the graph applied. */
+  private seqReceived = 0;
+  private seqApplied = 0;
   // Preallocated outgoing messages (mutated, then posted).
   private readonly anchorMsg = {
     type: 'anchor' as const,
@@ -31,6 +34,7 @@ class EngineProcessor extends AudioWorkletProcessor {
     pieceTime: 0,
     playing: false,
     reason: ANCHOR_REASONS[0],
+    seq: 0,
   };
   private readonly meterMsg = { type: 'meter' as const, peakL: 0, peakR: 0, rms: 0 };
   private readonly posMsg = { type: 'pos' as const, frame: 0, time: 0 };
@@ -44,9 +48,9 @@ class EngineProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event: MessageEvent) => this.handle(event.data as EngineInMessage);
     const pre = o.preload;
     if (pre) {
-      this.handle({ type: 'load', score: pre.score, mix: pre.mix });
+      this.handle({ type: 'load', seq: 0, score: pre.score, mix: pre.mix });
       for (const t of pre.tables) this.handle({ type: 'tables', timbre: t.timbre, mips: t.mips });
-      if (pre.playFrom !== undefined) this.handle({ type: 'play', from: pre.playFrom });
+      if (pre.playFrom !== undefined) this.handle({ type: 'play', seq: 0, from: pre.playFrom });
     }
   }
 
@@ -59,6 +63,7 @@ class EngineProcessor extends AudioWorkletProcessor {
       const g = this.graph;
       switch (msg.type) {
         case 'load':
+          this.seqReceived = msg.seq;
           g.load(msg.score, msg.mix);
           this.failed = false;
           this.postAnchor(currentTime);
@@ -70,12 +75,15 @@ class EngineProcessor extends AudioWorkletProcessor {
           g.forget(msg.timbres);
           break;
         case 'play':
+          this.seqReceived = msg.seq;
           g.play(msg.from);
           break;
         case 'pause':
+          this.seqReceived = msg.seq;
           g.pause();
           break;
         case 'seek':
+          this.seqReceived = msg.seq;
           g.seek(msg.to);
           break;
         case 'loop':
@@ -106,6 +114,9 @@ class EngineProcessor extends AudioWorkletProcessor {
     a.pieceTime = g.anchorPieceTime;
     a.playing = g.anchorPlaying;
     a.reason = ANCHOR_REASONS[g.anchorReason] ?? 'seek';
+    // A transport command still pending (e.g. a seek waiting for its fade-out) is not reflected.
+    if (!g.transportPending) this.seqApplied = this.seqReceived;
+    a.seq = this.seqApplied;
     this.port.postMessage(a);
   }
 

@@ -26,18 +26,22 @@ export const ANCHOR_REASONS: readonly AnchorReason[] = [
   'end',
 ];
 
-/** Main thread → worklet. */
+/**
+ * Main thread → worklet. Transport commands (`load`, `play`, `pause`, `seek`) carry an increasing
+ * `seq`; each anchor echoes the newest one it reflects, so the bridge can ignore confirmations of
+ * commands a newer one has overtaken.
+ */
 export type EngineInMessage =
   /** Replace the score and mix; stops the transport at 0 and clears FX state. */
-  | { type: 'load'; score: FlatScore; mix: MixSettings }
+  | { type: 'load'; seq: number; score: FlatScore; mix: MixSettings }
   /** Wavetables for a timbre name (built in a worker, §8.11). */
   | { type: 'tables'; timbre: string; mips: WavetableSet }
   /** Free these timbres' slots (the bridge evicts least-recently-used names; Graph.forget). */
   | { type: 'forget'; timbres: string[] }
   /** Start playing, from `from` seconds if given. */
-  | { type: 'play'; from?: number }
-  | { type: 'pause' }
-  | { type: 'seek'; to: number }
+  | { type: 'play'; seq: number; from?: number }
+  | { type: 'pause'; seq: number }
+  | { type: 'seek'; seq: number; to: number }
   /** Loop [start, end) seconds, or stop looping. */
   | { type: 'loop'; range: { start: number; end: number } | null }
   /** Hot-swap after an edit (§8.7). */
@@ -56,6 +60,8 @@ export type EngineOutMessage =
       pieceTime: number;
       playing: boolean;
       reason: AnchorReason;
+      /** `seq` of the newest transport command applied when this anchor was taken. */
+      seq: number;
     }
   /** Drift correction only: the piece time at context frame `frame`. */
   | { type: 'pos'; frame: number; time: number }
