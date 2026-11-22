@@ -924,7 +924,11 @@ class LaneController {
       const it = this.items.find((x) => x.id === d.id);
       let raw = d.raw;
       // A region's end (walk, pulse, tune) snaps like a moment (beats, note changes; Alt: free).
-      if (d.orig && it && (it.endEdit === 'until' || it.endEdit === 'notes')) {
+      if (
+        d.orig &&
+        it &&
+        (it.endEdit === 'until' || it.endEdit === 'notes' || it.endEdit === 'chords')
+      ) {
         const st = usePlayer.getState();
         d.snaps ??= {
           points: changePoints(st.compiled, st.piece),
@@ -1049,6 +1053,9 @@ class LaneController {
     } else if (m.type === 'tune') {
       const last = m.notes.at(-1);
       if (last) this.announce(`${name} last note ${spokenTime(last.len)}`);
+    } else if (m.type === 'progression') {
+      const last = m.chords.at(-1);
+      if (last) this.announce(`${name} last chord ${spokenTime(last.len)}`);
     } else if (m.type === 'level') {
       this.announce(`${name} ramp ${spokenTime(m.over)}`);
     } else if (m.type === 'timbre') {
@@ -1184,6 +1191,7 @@ class LaneController {
 function endLabel(edit: LaneItem['endEdit'] | undefined, shift: boolean): string {
   if (edit === 'until') return 'Change region';
   if (edit === 'notes') return 'Change last note length';
+  if (edit === 'chords') return 'Change last chord length';
   if (edit === 'over') return 'Change ramp';
   if (edit === 'fade') return 'Change fade';
   return shift ? 'Change stagger' : 'Change glide length';
@@ -1216,6 +1224,21 @@ function BarArt({ art }: { art: LaneItem['art'] }) {
       />
     );
   }
+  if (art.kind === 'progression') {
+    return (
+      <span className="lane-art lane-progression" aria-hidden="true">
+        {art.chords.map((c, i) => (
+          <span
+            key={i}
+            data-testid="lane-prog-chord"
+            style={{ left: `${c.left}%`, width: `${c.width}%` }}
+          >
+            {c.name}
+          </span>
+        ))}
+      </span>
+    );
+  }
   return (
     <span className="lane-art lane-tune" aria-hidden="true">
       {art.notes.map((n, i) => (
@@ -1235,6 +1258,14 @@ function paintArt(el: HTMLElement, art: LaneItem['art']): void {
     const { url, size } = pulseMask(art);
     st.maskImage = st.webkitMaskImage = url;
     st.maskSize = st.webkitMaskSize = size;
+  } else if (art?.kind === 'progression') {
+    for (const c of art.chords) {
+      const d = document.createElement('span');
+      d.style.left = `${c.left}%`;
+      d.style.width = `${c.width}%`;
+      d.textContent = c.name;
+      el.append(d);
+    }
   } else if (art?.kind === 'tune') {
     for (const n of art.notes) {
       const d = document.createElement('span');
@@ -1248,6 +1279,8 @@ function paintArt(el: HTMLElement, art: LaneItem['art']): void {
 
 /** A span's length as shown on its bar. */
 function barText(it: LaneItem): string {
+  // A progression's bar carries its chord names instead.
+  if (it.art?.kind === 'progression') return '';
   const len = it.end - it.start;
   return len > 1e-3 ? `${len.toFixed(1)} s` : '';
 }
@@ -1308,7 +1341,12 @@ function itemLabel(it: LaneItem): string {
       : it.land
         ? `, ${spokenTime(long)} glide, arriving at the marker`
         : `, ${spokenTime(long)} long`;
-  const notes = it.art?.kind === 'tune' ? `, ${it.art.notes.length} notes` : '';
+  const notes =
+    it.art?.kind === 'tune'
+      ? `, ${it.art.notes.length} notes`
+      : it.art?.kind === 'progression'
+        ? `, chords ${it.art.chords.map((c) => c.name).join(', ')}`
+        : '';
   return `${kind} at ${spokenTime(it.at)}${span}${notes}${it.muted ? ', muted' : ''}`;
 }
 
@@ -1327,6 +1365,7 @@ export function Lane() {
         sourceAt.get(compiled),
         compiled.harmony,
         compiled.voices,
+        compiled.keys,
       ),
     [piece, compiled],
   );

@@ -11,6 +11,8 @@ import type {
   CompiledVoice,
   Glide,
   HarmonyChange,
+  Key,
+  KeyChange,
   Moment,
   MomentId,
   MomentSpan,
@@ -22,6 +24,8 @@ import { keyName } from '../../render/draw';
 import type { MomentPatch } from './ops';
 import { cycleShare, patternSvg } from './pulse';
 import { tuneEnd, tuneEndDrag } from './tune';
+import { progressionEnd, progressionStarts } from '../../core/moments/progression';
+import { progressionChordNames, progressionEndDrag } from './progression';
 
 /** Nudge step without a grid, seconds. */
 export const NUDGE_NO_GRID: Seconds = 0.1;
@@ -34,6 +38,8 @@ export type EndEdit =
   | 'until'
   /** A tune's last note length. */
   | 'notes'
+  /** A progression's last chord length (revision 10). */
+  | 'chords'
   /** A level ramp's `over`. */
   | 'over'
   /** A timbre change's `fade` (M6). */
@@ -69,7 +75,8 @@ export interface LaneItem {
  */
 export type LaneArt =
   | { kind: 'pulse'; svg: string; share: number }
-  | { kind: 'tune'; notes: { left: number; width: number; top: number }[] };
+  | { kind: 'tune'; notes: { left: number; width: number; top: number }[] }
+  | { kind: 'progression'; chords: { left: number; width: number; name: string }[] };
 
 /** Grid step in seconds for a BPM grid, or null when there is none. */
 export function gridStep(bpm: number | undefined): Seconds | null {
@@ -117,6 +124,7 @@ export function nudgeDt(at: Seconds, dir: 1 | -1, step: Seconds | null): Seconds
 export function endEditOf(type: MomentType): EndEdit {
   if (type === 'walk' || type === 'pulse') return 'until';
   if (type === 'tune') return 'notes';
+  if (type === 'progression') return 'chords';
   if (type === 'timbre') return 'fade';
   return type === 'level' ? 'over' : type === 'key' ? 'none' : 'glide';
 }
@@ -131,7 +139,7 @@ export function effectiveGlide(m: Moment, defaults: Glide): Glide {
  * pulse moves no pitch and a tune's bar is its region (land applies per note), so neither does.
  */
 export function landsAtMarker(m: Pick<Moment, 'type' | 'glide'>, defaults: Glide): boolean {
-  if (m.type === 'pulse' || m.type === 'tune') return false;
+  if (m.type === 'pulse' || m.type === 'tune' || m.type === 'progression') return false;
   return glides(m) && effectiveGlide(m as Moment, defaults).land === true;
 }
 
@@ -147,6 +155,12 @@ export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
     const g = momentGlide(defaults, m);
     const start = g.land === true ? landing(m.at, g).start : m.at;
     return [start, Math.max(m.at, tuneEnd(m))];
+  }
+  if (m.type === 'progression') {
+    // Its chords' span; with land the first chord's glide leads in before `at`.
+    const g = momentGlide(defaults, m);
+    const start = g.land === true ? landing(m.at, g).start : m.at;
+    return [start, Math.max(m.at, progressionEnd(m))];
   }
   if (m.type === 'level') return [m.at, m.at + Math.max(0, m.over)];
   if (m.type === 'timbre') return [m.at, m.at + Math.max(0, m.fade)];
@@ -218,7 +232,8 @@ export function establishedIds(
  * with) and the span is not empty (a moment that moves nothing still shows its intended glide);
  * otherwise they are estimated from the glide. A chord or unison that establishes notes from
  * silence (`voices`, the compiled lines, show it) is a point: its box is its label alone.
- * `harmony` (the compiled timeline) names chords.
+ * `harmony` (the compiled timeline) names chords; with `keys`, a progression's chords that have
+ * no harmony entry are named in the key at their time.
  */
 export function laneItems(
   piece: Piece,
@@ -226,11 +241,18 @@ export function laneItems(
   compiledAt?: ReadonlyMap<MomentId, Seconds>,
   harmony?: readonly HarmonyChange[],
   voices?: readonly Pick<CompiledVoice, 'lives' | 'segments'>[],
+  keys?: readonly KeyChange[],
 ): LaneItem[] {
   const byId = new Map<MomentId, MomentSpan>();
   for (const s of spans) byId.set(s.id, s);
   const chordName = new Map<MomentId, string>();
   for (const h of harmony ?? []) chordName.set(h.momentId, h.label);
+  // A progression's chords are named in the key at each chord's time (`keys` timeline).
+  const keyOf = (t: Seconds): Key => {
+    let k = piece.key;
+    for (const e of keys ?? []) if (e.t <= t) k = e.key;
+    return k;
+  };
   const established = voices ? establishedIds(voices) : new Set<MomentId>();
   const defaults = piece.defaults.glide;
   return piece.moments.map((m) => {
@@ -256,9 +278,32 @@ export function laneItems(
       muted: !!m.muted,
       endEdit: endEditOf(m.type),
       land: landsAtMarker(m, defaults),
-      art: laneArt(m, start, end),
+      art:
+        m.type === 'progression'
+          ? progressionArt(m, start, end, progressionChordNames(m, harmony, keyOf))
+          : laneArt(m, start, end),
     };
   });
+}
+
+/** A progression's chords over its bar [start, end]: each chord's name across its span. */
+export function progressionArt(
+  m: Extract<Moment, { type: 'progression' }>,
+  start: Seconds,
+  end: Seconds,
+  names: readonly string[],
+): LaneArt | undefined {
+  const len = end - start;
+  if (!(len > 1e-6) || m.chords.length === 0) return undefined;
+  const starts = progressionStarts(m);
+  return {
+    kind: 'progression',
+    chords: m.chords.map((c, k) => ({
+      left: ((starts[k] - start) / len) * 100,
+      width: (Math.max(0, c.len) / len) * 100,
+      name: names[k] ?? c.notes,
+    })),
+  };
 }
 
 /** A pulse's or tune's bar drawing over its bar [start, end] (see `LaneArt`); else undefined. */
@@ -318,6 +363,10 @@ export function endDragPatch(
   if (m.type === 'tune') {
     const notes = tuneEndDrag(m, dt);
     return notes ? { notes } : null;
+  }
+  if (m.type === 'progression') {
+    const chords = progressionEndDrag(m, dt);
+    return chords ? { chords } : null;
   }
   if (m.type === 'level') {
     const over = roundMs(Math.max(0, m.over + dt));

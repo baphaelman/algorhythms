@@ -21,6 +21,9 @@
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
  * returned scores stay intact). Restored tails and lives are fresh copies.
  *
+ * Progressions (revision 10) are compared as the chord moments the compiler expands them into, so
+ * moment indices are the compiler's (`Compiler.moments`).
+ *
  * Full compile: no previous state, or a different setup (seed, key, end, glide defaults,
  * voice ids, ranges or parts, or the names of the piece's own timbres, which decide whether a
  * timbre moment is valid). Voice fields that only reach the output (gain, pan, timbre, …) are read
@@ -37,6 +40,7 @@ import type {
   Key,
   KeyChange,
   Life,
+  Moment,
   Piece,
   Seconds,
   Segment,
@@ -110,6 +114,8 @@ interface Checkpoint {
 /** What the previous compile left. */
 interface State {
   piece: Piece;
+  /** The compiler's moments (progressions expanded): checkpoint indices refer to them. */
+  moments: readonly Moment[];
   checkpoints: Checkpoint[];
   segs: Segment[][];
   lives: Life[][];
@@ -416,10 +422,12 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
  * on (a land moment's lead-in start, revision 9; the glide defaults are equal, `sameSetup`).
  * Resume before event (t, i) in event order (moment events at one time run in index order).
  */
-function firstChange(a: Piece, b: Piece): { k: number; t: Seconds; i: number } {
+function firstChange(
+  b: Piece,
+  ma: readonly Moment[],
+  mb: readonly Moment[],
+): { k: number; t: Seconds; i: number } {
   const defaults = sanitizeGlide(b.defaults?.glide, defaultGlide());
-  const ma = a.moments;
-  const mb = b.moments;
   const n = Math.min(ma.length, mb.length);
   let k = 0;
   while (k < n && (ma[k] === mb[k] || same(ma[k], mb[k]))) k++;
@@ -479,7 +487,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       Array.isArray(prev.piece.moments) &&
       sameSetup(prev.piece, piece)
     ) {
-      const { k, t, i } = firstChange(prev.piece, piece);
+      const { k, t, i } = firstChange(piece, prev.moments, c.moments);
       const cps = prev.checkpoints;
       let ci = cps.length - 1;
       while (ci >= 0 && !(cps[ci].t < t || (cps[ci].t === t && cps[ci].i <= i))) ci--;
@@ -503,6 +511,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
     c.onMomentEvent = null;
     state = {
       piece,
+      moments: c.moments,
       checkpoints,
       segs: c.voices.map((r) => r.segs),
       lives: c.voices.map((r) => r.lives),

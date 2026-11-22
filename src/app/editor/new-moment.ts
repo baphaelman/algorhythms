@@ -18,6 +18,7 @@ import {
 import { pitchClasses } from '../../core/voicing';
 import { momentSeed } from '../../core/rng';
 import { randomMelody, writtenInAt } from './tune';
+import { newProgressionChords } from './progression';
 import { timbreOptions } from './voices';
 import type {
   ChordMoment,
@@ -188,6 +189,21 @@ export function defaultMoment<T extends MomentType>(
       m = tune;
       break;
     }
+    case 'progression': {
+      // I vi IV V, a bar each with a tempo, else 2 s each (revision 10).
+      const meter = piece.view?.meter;
+      m = {
+        ...base,
+        type: 'progression',
+        chords: newProgressionChords(
+          beatOf(piece),
+          typeof meter === 'number' && meter > 0 ? meter : 4,
+        ),
+        voicing: 'even',
+        assign: 'ordered',
+      };
+      break;
+    }
     case 'timbre':
       m = {
         ...base,
@@ -233,7 +249,7 @@ export function chordSize(m: ChordMoment, key: Key): number {
 }
 
 /**
- * A new chord brings in its extra notes (owner, "Mouse-only gaps"): when fewer lines sound at `at`
+ * A new chord (or progression, by its largest chord) brings in its extra notes (owner, "Mouse-only gaps"): when fewer lines sound at `at`
  * than the chord has notes, `count` becomes its size (at most the pool), so it sounds as a chord.
  * Otherwise, or with a count or a voice target already set, `m` is returned as is. From silence
  * the chord establishes one voice per note anyway (core/moments/establish), so nothing is added.
@@ -244,6 +260,21 @@ export function withChordFill<M extends Moment>(
   score: CompiledScore,
   at: Seconds,
 ): M {
+  if (m.type === 'progression') {
+    if (m.count !== undefined || (m.target && typeof m.target === 'object')) return m;
+    const read = Math.min(at, Math.max(0, score.duration - 0.01));
+    const n = activeAt(score, read).length;
+    if (n === 0) return m;
+    // Its largest chord, each read in the key at `at`.
+    const key = keyAt(score, read);
+    let size = 0;
+    for (const c of m.chords) {
+      const pc = pitchClasses({ kind: 'chord', symbol: c.notes }, key, []);
+      if (pc.ok) size = Math.max(size, pc.pcs.length);
+    }
+    const want = Math.min(piece.voices.length, size);
+    return want > n ? { ...m, count: want } : m;
+  }
   if (m.type !== 'chord' || m.count !== undefined || m.byVoice) return m;
   if (m.target && typeof m.target === 'object') return m;
   const read = Math.min(at, Math.max(0, score.duration - 0.01));

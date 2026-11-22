@@ -52,6 +52,8 @@ import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
 import { PulseFields } from './PulseFields';
+import { ProgressionFields } from './ProgressionFields';
+import { AssignField, RegisterFields } from './ChordSettings';
 import { MelodyOn, TuneNotes, TuneOptions } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
@@ -114,18 +116,14 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
           <TuneNotes m={m} piece={ctx.piece} />
         </>
       );
+    case 'progression':
+      return <ProgressionFields m={m} piece={ctx.piece} />;
     case 'timbre':
       return <TimbreFields m={m} piece={ctx.piece} />;
   }
 }
 
 function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
-  const low = fieldSetter<number>(m.id, 'Edit register', (x, v) => ({
-    register: [v, (x as ChordMoment).register?.[1] ?? Math.max(v, 84)],
-  }));
-  const high = fieldSetter<number>(m.id, 'Edit register', (x, v) => ({
-    register: [(x as ChordMoment).register?.[0] ?? Math.min(v, 48), v],
-  }));
   return (
     <>
       <NoteSetField
@@ -152,40 +150,8 @@ function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
         onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
       />
       <ChordNotes m={m} piece={ctx.piece} />
-      <SelectField
-        label="Assign"
-        value={m.assign}
-        options={[
-          ['ordered', 'Ordered (no crossing)'],
-          ['free', 'Free'],
-        ]}
-        onChange={(assign) => updateMoment(m.id, { assign }, 'Change assignment')}
-      />
-      <CheckField
-        label="Automatic register (note ranges)"
-        checked={!m.register}
-        onChange={(auto) =>
-          updateMoment(m.id, { register: auto ? undefined : [48, 84] }, 'Change register')
-        }
-      />
-      {m.register && (
-        <>
-          <NumberField
-            label="Register low"
-            value={m.register[0]}
-            set={low}
-            {...pitchProps}
-            check={(v) => (v > m.register![1] ? 'Low must not exceed high.' : null)}
-          />
-          <NumberField
-            label="Register high"
-            value={m.register[1]}
-            set={high}
-            {...pitchProps}
-            check={(v) => (v < m.register![0] ? 'High must not be below low.' : null)}
-          />
-        </>
-      )}
+      <AssignField m={m} />
+      <RegisterFields m={m} />
     </>
   );
 }

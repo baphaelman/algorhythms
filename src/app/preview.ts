@@ -81,7 +81,7 @@ export function startMomentPreview(
     return false;
   }
   const lane =
-    laneItems(built, score.momentSpans, undefined, score.harmony, score.voices).find(
+    laneItems(built, score.momentSpans, undefined, score.harmony, score.voices, score.keys).find(
       (it) => it.id === PROBE_ID,
     ) ?? null;
   previewState.type = moment.type;

@@ -38,6 +38,12 @@ import { pointMomentPlan } from '../moments/dispatch';
 import { bringsIn, establishPlan } from '../moments/establish';
 import { noteMoment } from '../moments/note';
 import {
+  expandProgressions,
+  progressionEnd,
+  progressionProblem,
+  type ProgressionOrigin,
+} from '../moments/progression';
+import {
   firstPitched,
   isRest,
   tuneNotePlan,
@@ -346,7 +352,12 @@ export class Compiler {
   readonly queue = new EventQueue();
   /** Time of the event being handled. */
   clock: Seconds = 0;
+  /** The piece's moments with each progression expanded into its chords (moments/progression.ts). */
   readonly moments: readonly Moment[];
+  /** Per moment of `moments`: the progression chord it is, or null; null without progressions. */
+  readonly origins: readonly (ProgressionOrigin | null)[] | null;
+  /** The moment whose event or tick is being handled (−1: none), for `diag`'s chord prefix. */
+  private current = -1;
   readonly valid: boolean[] = [];
   readonly seeds: number[] = [];
   readonly glides: Glide[] = [];
@@ -399,7 +410,9 @@ export class Compiler {
       typeof endAt === 'number' && Number.isFinite(endAt) && endAt >= 0 ? endAt : Infinity;
     const fade = piece.end?.fade;
     this.endFade = typeof fade === 'number' && Number.isFinite(fade) && fade > 0 ? fade : 0;
-    this.moments = Array.isArray(piece.moments) ? piece.moments : [];
+    const ex = expandProgressions(Array.isArray(piece.moments) ? piece.moments : [], piece.seed);
+    this.moments = ex.moments as Moment[];
+    this.origins = ex.origins;
     this.initVoices();
     this.destEpoch = new Int32Array(this.voices.length);
     this.destVal = new Float64Array(this.voices.length);
@@ -471,11 +484,22 @@ export class Compiler {
         this.diag('error', 'invalid-moment', `Moment ${i} is not an object.`);
         return;
       }
-      if (ids.has(m.id)) {
+      const origin = this.origins?.[i];
+      if (ids.has(m.id) && !(origin && origin.k > 0)) {
         this.diag('warn', 'duplicate-moment-id', `Moment id '${m.id}' is used twice.`, m.id);
       }
       ids.add(m.id);
       if (m.muted) return;
+      if (m.type === 'progression') {
+        // Valid progressions with chords were expanded; this one is empty or invalid.
+        const why = progressionProblem(m);
+        if (why !== null) this.diag('error', 'progression-invalid', why, m.id);
+        else if (Array.isArray(m.chords) && m.chords.length === 0)
+          this.diag('info', 'no-effect', 'No effect: the progression has no chords.', m.id);
+        else if (!(typeof m.at === 'number' && Number.isFinite(m.at) && m.at >= 0))
+          this.diag('error', 'invalid-time', `The moment time must be a number ≥ 0.`, m.id);
+        return;
+      }
       if (!MOMENT_TYPES.has(m.type)) {
         this.diag('info', 'unknown-moment-type', `Unknown moment type '${String(m.type)}'.`, m.id);
         return;
@@ -607,9 +631,40 @@ export class Compiler {
   // -------------------------------------------------------------------------------------------
 
   diag(level: DiagnosticLevel, code: string, message: string, momentId?: string): void {
+    // A progression's chord names itself by position (revision 10).
+    const o = this.current >= 0 ? this.origins?.[this.current] : null;
+    const chord = o && momentId !== undefined && this.moments[this.current].id === momentId;
+    if (chord) message = `Chord ${o.k + 1} (${o.symbol}): ${message}`;
     const d: Diagnostic = { level, code, message };
+    if (chord && code === 'no-effect') CHORD_NO_EFFECT.set(d, o);
     if (momentId !== undefined) d.momentId = momentId;
     this.diags.push(d);
+  }
+
+  /**
+   * The diagnostics with a progression's per-chord `no-effect`s kept (the first one) only when
+   * every chord of it had none: holding a chord on is normal in a progression.
+   */
+  private progressionDiags(): Diagnostic[] {
+    const none = new Map<number, Set<number>>();
+    for (const d of this.diags) {
+      const o = CHORD_NO_EFFECT.get(d);
+      if (!o) continue;
+      let ks = none.get(o.index);
+      if (!ks) none.set(o.index, (ks = new Set()));
+      ks.add(o.k);
+    }
+    if (none.size === 0) return this.diags;
+    const kept = new Set<number>();
+    return this.diags.filter((d) => {
+      const o = CHORD_NO_EFFECT.get(d);
+      if (!o) return true;
+      const p = this.piece.moments[o.index];
+      const all = p.type === 'progression' && none.get(o.index)!.size === p.chords.length;
+      if (!all || kept.has(o.index)) return false;
+      kept.add(o.index);
+      return true;
+    });
   }
 
   private touch(): void {
@@ -777,6 +832,8 @@ export class Compiler {
       if (!ev || ev.t >= this.endAt) break;
       this.queue.pop();
       this.clock = ev.t;
+      this.current =
+        ev.cls === EventClass.Moment ? ev.ref : ev.cls === EventClass.Tick ? ev.key : -1;
       // Move starts, births and closes never change a committed destination or the active set
       // (a started move's target was already the destination), so only moments and walk ticks
       // invalidate the caches.
@@ -830,6 +887,7 @@ export class Compiler {
           break;
       }
     }
+    this.current = -1;
     return this.finish();
   }
 
@@ -838,6 +896,10 @@ export class Compiler {
     const m = this.moments[i];
     const T = late ? m.at : this.eventT[i];
     this.activity(T);
+    // A progression's chord lasts its length (the progression ends after the last one).
+    const o = this.origins?.[i];
+    const p = o ? this.piece.moments[o.index] : null;
+    if (p?.type === 'progression') this.activity(m.at + p.chords[o!.k].len);
     switch (m.type) {
       case 'key':
         if (sameKey(m.key, this.key)) this.noEffect(m, [], []);
@@ -2454,7 +2516,8 @@ export class Compiler {
   /**
    * Pitch classes of the latest chord at or before t, whatever its target (§6.2 walk `over`,
    * revision 10), or null before any chord. Static (read from the piece, built on first use), so
-   * the incremental compile's causality covers it. The progression moment adds its chords here.
+   * the incremental compile's causality covers it. A progression's chords are chord moments of
+   * `this.moments` (expanded, order = their index), so each is added at its own time.
    */
   chordPitchClassesAt(t: Seconds): readonly number[] | null {
     if (!this.chordTrack) {
@@ -2811,22 +2874,38 @@ export class Compiler {
     for (const v of voices)
       for (const l of v.lives) if ((l.died ?? E) > duration) duration = l.died ?? E;
     const momentSpans: MomentSpan[] = [];
+    // A progression's chords make one span, from its first move to its end or its last move.
+    let prog: { index: number; span: MomentSpan } | null = null;
     this.moments.forEach((m, i) => {
       if (!this.valid[i]) return;
       const s = this.spanStart[i];
       const e = this.spanEnd[i];
-      momentSpans.push({
+      const span: MomentSpan = {
         id: m.id,
         start: Number.isNaN(s) ? m.at : s,
         end: Number.isNaN(e) ? m.at : e,
-      });
+      };
+      const o = this.origins?.[i];
+      if (!o) {
+        momentSpans.push(span);
+        return;
+      }
+      if (prog && prog.index === o.index) {
+        if (span.start < prog.span.start) prog.span.start = span.start;
+        if (span.end > prog.span.end) prog.span.end = span.end;
+        return;
+      }
+      const p = this.piece.moments[o.index];
+      if (p.type === 'progression') span.end = Math.max(span.end, progressionEnd(p));
+      prog = { index: o.index, span };
+      momentSpans.push(span);
     });
     return {
       duration,
       voices,
       momentSpans,
       walkSteps: this.walkSteps,
-      diagnostics: this.diags,
+      diagnostics: this.origins ? this.progressionDiags() : this.diags,
       keys: this.keys,
       harmony: this.harmony,
       referenceHz:
@@ -2835,6 +2914,12 @@ export class Compiler {
     };
   }
 }
+
+/**
+ * The progression chord a `no-effect` diagnostic is about (diagnostics are immutable, and
+ * incremental compiles reuse a prefix of them, so the tag rides on the object).
+ */
+const CHORD_NO_EFFECT = new WeakMap<Diagnostic, ProgressionOrigin>();
 
 /**
  * A voice's timbre timeline (§7.9): `initial` at 0, then its timbre moments' changes. A change to

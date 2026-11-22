@@ -419,6 +419,37 @@ const MOMENT_SCHEMAS = {
         'The tonic the notes are written in: the tune sounds moved by the smallest interval (−6…+5, a tritone down) to the tonic at `at` (absent: absolute pitches).',
       ),
   }),
+  progression: z.looseObject({
+    type: z.literal('progression'),
+    ...momentBase,
+    chords: z
+      .array(
+        z.looseObject({
+          notes: z
+            .string()
+            .describe(
+              'A chord symbol or Roman numeral, as a chord moment\'s `{ kind: "chord" }` notes.',
+            ),
+          len: z
+            .number()
+            .positive()
+            .describe('Seconds the chord lasts; the next one starts after it.'),
+        }),
+      )
+      .default(() => [])
+      .describe(
+        'Revision 10: the chord sequence. From `at`, each chord is applied in turn, as a chord moment with these settings would be.',
+      ),
+    voicing: voicing.default(D.progression.voicing),
+    register: pitchRange.optional(),
+    assign: z.enum(['ordered', 'free']).default(D.progression.assign),
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Active voice count from the first chord on (1..pool size); absent: unchanged.'),
+  }),
   timbre: z.looseObject({
     type: z.literal('timbre'),
     ...momentBase,
@@ -444,6 +475,7 @@ export const MomentSchema = z.discriminatedUnion('type', [
   MOMENT_SCHEMAS.level,
   MOMENT_SCHEMAS.pulse,
   MOMENT_SCHEMAS.tune,
+  MOMENT_SCHEMAS.progression,
   MOMENT_SCHEMAS.timbre,
 ]);
 
@@ -676,11 +708,15 @@ function checkPiece(
       });
     }
     momentIds.add(m.id);
-    if (m.type === 'chord' && typeof m.count === 'number' && m.count > p.voices.length) {
+    if (
+      (m.type === 'chord' || m.type === 'progression') &&
+      typeof m.count === 'number' &&
+      m.count > p.voices.length
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['moments', i, 'count'],
-        message: `The chord count ${m.count} exceeds the pool of ${p.voices.length} voices.`,
+        message: `The ${m.type} count ${m.count} exceeds the pool of ${p.voices.length} voices.`,
       });
     }
     if (m.type === 'pulse' && m.mode === 'order' && m.order === undefined) {

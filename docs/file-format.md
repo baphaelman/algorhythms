@@ -34,6 +34,7 @@ A moment's `glide` is partial: missing fields come from `defaults.glide`, whose 
 | `level` | `over`: `1` |
 | `pulse` | `step`: `0.5`, `pattern`: `[1]`, `decay`: `0.3`, `floor`: `0`, `mode`: `"together"` |
 | `tune` | `notes`: `[]` |
+| `progression` | `chords`: `[]`, `voicing`: `"even"`, `assign`: `"ordered"` |
 | `timbre` | `fade`: `2` |
 
 ## Timbre preset files
@@ -4587,6 +4588,320 @@ This is the *input* form: fields with defaults are optional here.
                   "Bb",
                   "B"
                 ]
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "at"
+            ],
+            "additionalProperties": {}
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "progression"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable id (6 base62 characters); seeds the moment."
+              },
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Seconds from the start of the piece."
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "voices": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": [
+                      "voices"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "rank": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        ],
+                        "items": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    },
+                    "required": [
+                      "rank"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "part": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              },
+              "glide": {
+                "type": "object",
+                "properties": {
+                  "length": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "jitter": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "stagger": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "arrive": {
+                    "type": "string",
+                    "enum": [
+                      "together",
+                      "spread"
+                    ]
+                  },
+                  "land": {
+                    "type": "boolean"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "random",
+                      "low-first",
+                      "high-first",
+                      "center-out",
+                      "outside-in"
+                    ]
+                  },
+                  "ease": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "smootherstep",
+                          "smoothstep",
+                          "cosine",
+                          "linear",
+                          "expo"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bezier"
+                          },
+                          "x1": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y1": {
+                            "type": "number"
+                          },
+                          "x2": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y2": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "x1",
+                          "y1",
+                          "x2",
+                          "y2"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "label": {
+                "type": "string"
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "overrides": {
+                "description": "Per-voice hand edits of a point moment (dot drags); its lines may cross.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "voice": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Pool index."
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "description": "Fractional MIDI note number; 69 = A4."
+                    },
+                    "end": {
+                      "description": "The voice's arrival, seconds after `at`.",
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "weight": {
+                      "description": "Revision 8: the weight (loudness) of the note this voice ends on.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 64
+                    }
+                  },
+                  "required": [
+                    "voice"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "chords": {
+                "default": [],
+                "description": "Revision 10: the chord sequence. From `at`, each chord is applied in turn, as a chord moment with these settings would be.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "notes": {
+                      "type": "string",
+                      "description": "A chord symbol or Roman numeral, as a chord moment's `{ kind: \"chord\" }` notes."
+                    },
+                    "len": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Seconds the chord lasts; the next one starts after it."
+                    }
+                  },
+                  "required": [
+                    "notes",
+                    "len"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "voicing": {
+                "default": "even",
+                "type": "string",
+                "enum": [
+                  "even",
+                  "close",
+                  "nearest"
+                ]
+              },
+              "register": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "description": "Fractional MIDI note number; 69 = A4."
+                  },
+                  {
+                    "type": "number",
+                    "description": "Fractional MIDI note number; 69 = A4."
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "assign": {
+                "default": "ordered",
+                "type": "string",
+                "enum": [
+                  "ordered",
+                  "free"
+                ]
+              },
+              "count": {
+                "description": "Active voice count from the first chord on (1..pool size); absent: unchanged.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               }
             },
             "required": [
