@@ -153,6 +153,36 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
     expect(parsed(unpackPiece(JSON.parse(JSON.stringify(packed))))).toEqual(piece);
   });
 
+  it('round-trips tune rests, strike and writtenIn (revision 10); absent fields stay absent', async () => {
+    const piece = withOpening(newPiece({ seed: 9 }));
+    piece.moments.push(
+      {
+        id: 'tn1',
+        type: 'tune',
+        at: 2,
+        notes: [
+          { pitch: 60, len: 0.5 },
+          { rest: true, len: 0.25 },
+          { pitch: 62, len: 1 },
+        ],
+        strike: false,
+        writtenIn: 'Eb',
+      },
+      { id: 'tn2', type: 'tune', at: 5, notes: [{ pitch: 64, len: 1 }] },
+    );
+    const p = parsed(piece);
+    const packed = packPiece(p) as { moments: Record<string, unknown>[] };
+    const [a, b] = packed.moments.slice(-2);
+    expect(a.notes).toEqual([60, 0.5, null, 0.25, 62, 1]);
+    expect(a.strike).toBe(false);
+    expect(a.writtenIn).toBe('Eb');
+    expect(b).not.toHaveProperty('strike');
+    expect(b).not.toHaveProperty('writtenIn');
+    const link = await encodeShareLink(p, BASE);
+    expect(link).toContain('#p=2.');
+    expect(await open(link)).toEqual(p);
+  });
+
   it('nextId counts up within the same width', () => {
     expect(nextId('kd0041')).toBe('kd0042');
     expect(nextId('m00009')).toBe('m00010');

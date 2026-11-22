@@ -92,6 +92,15 @@ export interface SegmentMemo {
   carried: CarriedVelocity;
 }
 
+/** A finished tune rest (revision 10): silent from `from` (after its fade) until `to`. */
+export interface RestSpan {
+  from: Seconds;
+  /** When the line comes back; Infinity if it never does (closed or ended silent). */
+  to: Seconds;
+  /** The comeback's fade-in. */
+  fadeIn: Seconds;
+}
+
 /** A birth (§7.4): never cancelled. */
 export interface Birth {
   voice: number;
@@ -284,6 +293,17 @@ export class Frontier {
     return seg;
   }
 
+  /**
+   * Revision 10: a resting line comes back at t on p (no glide): the tail is finished at t and an
+   * open hold at p, owned by `momentId`, starts there.
+   */
+  jump(t: Seconds, p: Pitch, momentId: string): void {
+    const s = this.tail!;
+    this.finishAt(t, this.open ? s.p0 : t < s.t1 ? segAt(s, t) : s.p1);
+    this.tail = { t0: t, t1: t, p0: p, p1: p, ease: HOLD_EASE, momentId };
+    this.open = true;
+  }
+
   /** Ends the life at t: the tail is finished there and the voice falls silent. */
   close(t: Seconds): void {
     if (!this.tail) return;
@@ -349,6 +369,14 @@ export class VoiceRun {
   pulseOwner = -1;
   /** Revision 9: the end of the latest tune playing on this line; walks leave it alone until then. */
   tuneUntil = -Infinity;
+  /**
+   * Revision 10: start of the tune rest the line is in (NaN: not resting). A resting line stays
+   * active and holds its pitch in the simulation, but never joins and walks leave it alone; its
+   * next move brings it back (`compile.ts startMove`). `finish` cuts its lives (`cutRests`).
+   */
+  restFrom = NaN;
+  /** Finished rests, in order (append-only). */
+  readonly rests: RestSpan[] = [];
 
   constructor(
     readonly index: number,
@@ -359,6 +387,18 @@ export class VoiceRun {
   ) {
     this.frontier = new Frontier(this.segs);
     this.part = partOf(def);
+  }
+
+  /** In a tune rest (revision 10). */
+  get resting(): boolean {
+    return this.restFrom === this.restFrom;
+  }
+
+  /** Ends the rest at t; the line comes back fading in over `fadeIn` (Infinity: it never does). */
+  endRest(t: Seconds, fadeIn: Seconds): void {
+    if (!this.resting) return;
+    this.rests.push({ from: this.restFrom, to: t, fadeIn });
+    this.restFrom = NaN;
   }
 
   /** Revision 9: its part ('' = the default group); lines merge only within a part. */

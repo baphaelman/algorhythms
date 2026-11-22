@@ -46,7 +46,7 @@ import { beatStep, changePoints, snapTime } from './editor/snap';
 import { redo, select, undo, useEditor } from './editor/history';
 import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
-import { insertTuneNote, tuneBeat, tuneNoteStarts } from './editor/tune';
+import { insertTuneNote, tuneBeat, tuneNoteStarts, tuneShiftIn } from './editor/tune';
 import { sectionOwner } from './editor/section';
 import {
   addAtPlayhead,
@@ -225,7 +225,8 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     if (m?.type !== 'tune') return false;
     const t = snapTime(xToTime(v, x), { points: [], grid: beatStep(piece.view) }, v.pps, exact);
     const pitch = dragPitch(edgePitch(v, y), keyAt(compiled, t), exact);
-    const r = insertTuneNote(m, t, pitch, tuneBeat(piece.view) ?? 0.5);
+    // The score shows sounding pitches (revision 10): insert the un-transposed one.
+    const r = insertTuneNote(m, t, pitch - tuneShiftIn(compiled, m), tuneBeat(piece.view) ?? 0.5);
     if (!r) return false;
     clearDots();
     select([id]);

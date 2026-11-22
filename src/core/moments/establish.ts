@@ -31,6 +31,7 @@
  */
 
 import { pitchClassOf, snapToScale } from '../scales';
+import { isRest, tuneShift } from './tune';
 import type { ChordMoment, Moment, Pitch, TuneMoment, UnisonMoment } from '../types';
 import { roundTiesDown, voiceNotes, pitchClasses } from '../voicing';
 import { distinctTargets } from './chord';
@@ -192,15 +193,19 @@ function establishUnison(m: UnisonMoment, env: MomentEnv): MomentPlan | null {
 
 /** A tune: one line (the first listed voice, else the first free one) on its first note. */
 function establishTune(m: TuneMoment, env: MomentEnv): MomentPlan | null {
+  // The first note: a leading rest (revision 10) waits, the compiler brings the line in later.
   const first = Array.isArray(m.notes) ? m.notes[0] : undefined;
-  if (!first || !Number.isFinite(first.pitch)) return null;
+  if (!first || isRest(first) || !Number.isFinite(first.pitch)) return null;
   const own = listed(m, env);
   const vs = own ?? env.dormant();
   if (vs.length === 0) {
     if (!own) take([], 1, env);
     return null;
   }
-  return { ordered: true, intents: [birth(vs[0], first.pitch)] };
+  return {
+    ordered: true,
+    intents: [birth(vs[0], first.pitch + tuneShift(m.writtenIn, env.key))],
+  };
 }
 
 const birth = (voice: number, to: Pitch) => ({

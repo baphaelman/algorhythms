@@ -37,7 +37,15 @@ import { freezeWalk } from '../../core/moments/walk';
 import { NOTE_MATCH, noteChanges, withNoteChanges } from '../../core/moments/note';
 import { withoutOverride } from './overrides';
 import { selectStep } from './step-selection';
-import { moveTuneStarts, setTunePitch, stepTuneNote, tuneBeat, tuneNoteStarts } from './tune';
+import {
+  moveTuneStarts,
+  setTunePitch,
+  shiftTuneNotes,
+  stepTuneNote,
+  tuneBeat,
+  tuneNoteStarts,
+  tuneShiftIn,
+} from './tune';
 import { movedFixed, scaleNeighbour, walkInsertAt, withNote, type StepRef } from './walk-steps';
 import { dotAction, type ArrivalDot } from './arrival-points';
 import {
@@ -516,13 +524,21 @@ export function octaveDots(dots: readonly ArrivalDot[], dir: 1 | -1): ArrivalDot
 export function stepTuneDot(id: MomentId, k: number, dir: 1 | -1, chromatic = false): boolean {
   const piece = usePlayer.getState().piece;
   const m = piece.moments.find((x) => x.id === id);
-  if (m?.type !== 'tune' || !m.notes[k]) return false;
+  const note = m?.type === 'tune' ? m.notes[k] : undefined;
+  if (m?.type !== 'tune' || !note || note.rest) return false;
   const start = tuneNoteStarts(m)[k];
-  const notes = chromatic
-    ? setTunePitch(m.notes, k, m.notes[k].pitch + dir)
-    : stepTuneNote(m.notes, k, dir, keyAt(scoreOf(piece), start));
-  if (!notes || !updateMoment(id, { notes }, 'Move tune note')) return false;
-  auditionPointsAfterEdit([{ pitch: notes[k].pitch, t: start + notes[k].len / 2 }]);
+  // Sounding pitches (revision 10): stepped in the key, written back un-transposed.
+  const score = scoreOf(piece);
+  const shift = tuneShiftIn(score, m);
+  const sounding = shiftTuneNotes(m.notes, shift);
+  const stepped = chromatic
+    ? setTunePitch(sounding, k, note.pitch + shift + dir)
+    : stepTuneNote(sounding, k, dir, keyAt(score, start));
+  if (!stepped) return false;
+  const notes = shiftTuneNotes(stepped, -shift);
+  if (!updateMoment(id, { notes }, 'Move tune note')) return false;
+  const pitch = stepped[k].pitch ?? note.pitch + shift;
+  auditionPointsAfterEdit([{ pitch, t: start + note.len / 2 }]);
   return true;
 }
 

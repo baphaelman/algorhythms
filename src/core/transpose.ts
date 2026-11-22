@@ -21,6 +21,7 @@ import { createIncrementalCompiler } from './compiler/incremental';
 import { sanitizeRange, foldIntoRange } from './compiler/range';
 import { sameKey } from './effect';
 import { NOTE_MATCH } from './moments/note';
+import { isRest } from './moments/tune';
 import { lifeAt, segmentIndexAt } from './query';
 import { evalSegment } from './segment';
 import { spellPc } from './harmony';
@@ -172,7 +173,8 @@ export function hasFixedNotes(m: Moment): boolean {
     case 'walk':
       return (m.fixed?.length ?? 0) > 0;
     case 'tune':
-      return m.notes.length > 0;
+      // Revision 10: a tune with `writtenIn` follows the key by itself.
+      return m.writtenIn === undefined && m.notes.some((x) => !isRest(x));
     default:
       return false;
   }
@@ -340,7 +342,9 @@ export function remapMoment(
     case 'tune':
       // Not tied to one voice: the line is chosen at compile time, so no fold here.
       out =
-        m.notes.length > 0 ? { ...m, notes: m.notes.map((x) => ({ ...x, pitch: r(x.pitch) })) } : m;
+        m.notes.length > 0
+          ? { ...m, notes: m.notes.map((x) => (isRest(x) ? x : { ...x, pitch: r(x.pitch) })) }
+          : m;
       break;
     default:
       break;

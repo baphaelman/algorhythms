@@ -366,16 +366,13 @@ describe('tune: pitches and problems', () => {
   });
 
   it('a tune whose notes are all where the line is has no effect', () => {
-    const s = compile(
-      make([
-        tune({
-          notes: [
-            { pitch: 48, len: 1 },
-            { pitch: 48, len: 1 },
-          ],
-        }),
-      ]),
-    );
+    const same = [
+      { pitch: 48, len: 1 },
+      { pitch: 48, len: 1 },
+    ];
+    // Revision 10: the repeat re-strikes (an effect) unless `strike` is false.
+    expect(codes(compile(make([tune({ notes: same })])))).toEqual([]);
+    const s = compile(make([tune({ notes: same, strike: false })]));
     expect(codes(s)).toEqual(['no-effect']);
     // One moving note is enough.
     const t = compile(

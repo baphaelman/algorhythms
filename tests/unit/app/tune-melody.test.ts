@@ -121,7 +121,7 @@ describe('tune: palette default', () => {
     const m = defaultMoment('tune', 8, 'zzzzzz', p, compile(p));
     expect(m.line).toBe('high');
     // A random melody from the top line's note (within a 3rd of E4).
-    expect(Math.abs(m.notes[0].pitch - 64)).toBeLessThanOrEqual(4);
+    expect(Math.abs(m.notes[0].pitch! - 64)).toBeLessThanOrEqual(4);
     const q: Piece = { ...p, moments: [...p.moments, m as Moment] };
     expect(tuneDots(compile(q), m)[0].voice).toBe(2);
 
@@ -129,14 +129,14 @@ describe('tune: palette default', () => {
     one.moments = withStart(one, [60], []);
     const m1 = defaultMoment('tune', 2, 'zzzzzz', one, compile(one));
     expect(m1).not.toHaveProperty('line');
-    expect(Math.abs(m1.notes[0].pitch - 60)).toBeLessThanOrEqual(4);
+    expect(Math.abs(m1.notes[0].pitch! - 60)).toBeLessThanOrEqual(4);
   });
 });
 
 describe('tune: Melody on moves the notes (owner, 2026-11-21)', () => {
   const C: Key = { tonic: 'C', scale: 'major' };
   const ns = (...p: number[]): TuneNote[] => p.map((pitch) => ({ pitch, len: 1 }));
-  const pitches = (n: readonly TuneNote[]): number[] => n.map((x) => x.pitch);
+  const pitches = (n: readonly TuneNote[]): number[] => n.map((x) => x.pitch ?? NaN);
 
   it('shifts by scale steps of the key', () => {
     // A3 → E4 is 4 steps: D4 F4 G4 → A4 C5 D5.

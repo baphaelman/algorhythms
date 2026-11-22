@@ -367,13 +367,21 @@ const MOMENT_SCHEMAS = {
     ...momentBase,
     notes: z
       .array(
-        z.looseObject({
-          pitch,
-          len: z
-            .number()
-            .positive()
-            .describe('Seconds the note lasts; the next one starts after it.'),
-        }),
+        z.union([
+          z.looseObject({
+            pitch,
+            len: z
+              .number()
+              .positive()
+              .describe('Seconds the note lasts; the next one starts after it.'),
+          }),
+          z
+            .looseObject({
+              rest: z.literal(true),
+              len: z.number().positive().describe('Seconds the rest lasts.'),
+            })
+            .describe('A rest (revision 10): the line fades out and stays silent for `len`.'),
+        ]),
       )
       .default(() => [])
       .describe(
@@ -384,6 +392,16 @@ const MOMENT_SCHEMAS = {
       .optional()
       .describe(
         "Which line of the target, in pitch order at `at`, carries the tune (absent: 'low').",
+      ),
+    strike: z
+      .boolean()
+      .optional()
+      .describe('A note at the pitch of the one before it re-strikes (absent: true).'),
+    writtenIn: z
+      .enum(PITCH_CLASSES)
+      .optional()
+      .describe(
+        'The tonic the notes are written in: the tune sounds moved by the smallest interval (−5…+6) to the tonic at `at` (absent: absolute pitches).',
       ),
   }),
   timbre: z.looseObject({

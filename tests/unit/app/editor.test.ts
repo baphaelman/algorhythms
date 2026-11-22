@@ -329,7 +329,7 @@ describe('default moments', () => {
     const total = typeof bpm === 'number' && bpm > 0 ? (2 * meter * 60) / bpm : 4;
     expect(m.notes.reduce((a, n) => a + n.len, 0)).toBeCloseTo(total, 5);
     const key = keyAt(s, 30);
-    for (const n of m.notes) expect(isScaleTone(n.pitch, key)).toBe(true);
+    for (const n of m.notes) expect(isScaleTone(n.pitch!, key)).toBe(true);
     expect(defaultMoment('tune', 30, 'zzzzzz', p, s).notes).toEqual(m.notes);
     expect(defaultMoment('tune', 30, 'yyyyyy', p, s).notes).not.toEqual(m.notes);
   });

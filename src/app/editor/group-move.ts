@@ -202,7 +202,9 @@ function tunePatch(m: TuneMoment, ms: readonly DotMove[]): MomentPatch | null {
   for (const { dot, pitch, t } of ms) {
     const k = dot.note;
     if (k === undefined) continue;
-    if (pitch !== dot.pitch) notes = setTunePitch(notes, k, pitch) ?? notes;
+    // Dots show sounding pitches (revision 10): write back the un-transposed one.
+    const shift = dot.pitch - (m.notes[k]?.pitch ?? dot.pitch);
+    if (pitch !== dot.pitch) notes = setTunePitch(notes, k, pitch - shift) ?? notes;
     if (t !== dot.t) starts.set(k, t);
   }
   const moved = starts.size > 0 ? moveTuneStarts({ at: m.at, notes }, starts) : null;
