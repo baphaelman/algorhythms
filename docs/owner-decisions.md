@@ -3,6 +3,7 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
+- **Watch a video export (M8, live in v57).** Menu → Export → Video (MP4). Does a Chrome export (H.264 + Opus sound) play in QuickTime and on your iPhone? Is 9:16 readable on a phone? Are the defaults right (16:9 1080p30, Follow at your zoom, current theme, HUD and thickness on)? Details: `docs/m8-acceptance.md` "Owner steps".
 ### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
 Try these in the newest preview; the integrator adds to this list as work lands:
 - **Line weights fixed (v53, from the line-weights session).** Merges followed by splits could pile weight onto a few lines, and a level moment at the same time as a merge could inflate it further. Two compositions were balanced with that bug in place and now sound different: **Cartographers' Rain from 94 s** (the two loud lines drop 5.7 dB, the other 14 rise 2.1 dB, so all 16 are even) and **Tide Pools from 70 s** (Pad +5.4 dB, Mallets v4/v6 +5.4 dB and v3/v5 −2.8 dB; mix about +1 dB, peak +4.3 dB near 101 s). Listen and say if either needs its levels re-set.
