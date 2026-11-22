@@ -330,6 +330,27 @@ export class AudioEngine {
     this.post({ type: 'liveBend', semitones });
   }
 
+  /**
+   * Live mode: timbre definitions (`timbres`) and live voices' timbre changes. Tables of new or
+   * redefined names are built and posted first (a redefinition crossfades its slot, as in
+   * playback), then each voice crossfades to its new name over `fade` s (dsp/live.ts `setTimbre`).
+   */
+  async liveTimbres(
+    changes: readonly { voice: number; timbre: string }[],
+    names: readonly string[],
+    timbres: Record<string, Timbre> | undefined,
+    fade: number,
+  ): Promise<void> {
+    this.timbresValue = timbres;
+    const all = [...new Set([...this.workletNames, ...names])];
+    const sets = await this.buildTables(this.namesToBuild(all, timbres, false));
+    this.workletNames = this.realNames = all;
+    this.postTables(sets);
+    for (const c of changes) {
+      this.post({ type: 'liveTimbre', voice: c.voice, timbre: c.timbre, fade });
+    }
+  }
+
   /** Replaces the whole mix. */
   setMix(mix: MixSettings): void {
     this.post({ type: 'mix', mix: structuredClone(mix) });
@@ -354,13 +375,16 @@ export class AudioEngine {
     return Math.min(t, Math.max(this.durationValue, loop ? loop.end : 0));
   }
 
-  /** Disconnects and closes; the engine cannot be used afterwards. */
-  async dispose(): Promise<void> {
+  /**
+   * Disconnects and closes; the engine cannot be used afterwards. `closeContext` false keeps the
+   * context open (live mode re-entering on the same context).
+   */
+  async dispose(closeContext = true): Promise<void> {
     this.tables.dispose();
     this.node.port.onmessage = null;
     this.node.disconnect();
     const ctx = this.context;
-    if (ctx instanceof AudioContext && ctx.state !== 'closed') await ctx.close();
+    if (closeContext && ctx instanceof AudioContext && ctx.state !== 'closed') await ctx.close();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -470,10 +494,18 @@ export class AudioEngine {
     timbres: Record<string, Timbre> | undefined,
     all: boolean,
   ): { name: string; timbre: Timbre }[] {
-    this.makeRoom(flat.timbreNames);
+    return this.namesToBuild(flat.timbreNames, timbres, all);
+  }
+
+  private namesToBuild(
+    names: readonly string[],
+    timbres: Record<string, Timbre> | undefined,
+    all: boolean,
+  ): { name: string; timbre: Timbre }[] {
+    this.makeRoom(names);
     const rate = this.context.sampleRate;
     const out: { name: string; timbre: Timbre }[] = [];
-    for (const name of flat.timbreNames) {
+    for (const name of names) {
       const timbre = resolveTimbre(name, timbres);
       const key = timbreKey(timbre, rate);
       const had = this.sent.get(name);

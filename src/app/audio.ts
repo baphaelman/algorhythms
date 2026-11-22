@@ -59,10 +59,24 @@ export function primeAudio(): Promise<AudioEngine> {
   return creating;
 }
 
+/** A context made in a gesture while live, for the playback engine that follows (`preparePlayback`). */
+let nextContext: AudioContext | null = null;
+
+/**
+ * While live: creates the 'playback' context now (call in a click that leaves live mode to play),
+ * so it starts inside the gesture (Safari); the engine created after live mode adopts it.
+ */
+export function preparePlayback(): void {
+  if (!liveGate || nextContext) return;
+  requestPlaybackSession(navigator);
+  nextContext = new AudioContext({ latencyHint: 'playback' });
+}
+
 /** A 'playback' context and its engine (adopted unless live mode took over meanwhile). */
 function createPlayback(): Promise<AudioEngine> {
   requestPlaybackSession(navigator);
-  const ctx = new AudioContext({ latencyHint: 'playback' });
+  const ctx = nextContext ?? new AudioContext({ latencyHint: 'playback' });
+  nextContext = null;
   context = ctx;
   return AudioEngine.create({ context: ctx }).then((e) => {
     if (context === ctx) {

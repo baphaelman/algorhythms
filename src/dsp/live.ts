@@ -43,6 +43,10 @@ import {
   SEG_STRIDE,
   SEG_T0,
   SEG_T1,
+  TIMBRE_FADE,
+  TIMBRE_PRESET,
+  TIMBRE_STRIDE,
+  TIMBRE_T,
 } from '../core/segment';
 import { EaseCode, easeDerivRaw, easeRaw, easeSlope0Raw } from '../core/ease';
 import { BLOCK_FRAMES, DSP_MAX_VOICES } from './constants';
@@ -89,6 +93,8 @@ export const LIVE_SEG_CAP = 256;
 /** Strike and level records per voice (compacted the same way). */
 export const LIVE_STRIKE_CAP = 128;
 export const LIVE_LEVEL_CAP = 32;
+/** Timbre records per voice (a Notes-drawer timbre change while live appends one). */
+export const LIVE_TIMBRE_CAP = 16;
 /** Messages that can wait for one block. */
 export const LIVE_QUEUE = 32;
 /** Applied messages remembered for re-planned presses (a press spans a few messages). */
@@ -110,9 +116,12 @@ export function liveVoiceData(src: VoiceData): VoiceData {
   d.hash = src.hash;
   d.lives = src.lives;
   d.nLife = src.nLife;
-  d.timbres = src.timbres;
-  d.nTimbre = src.nTimbre;
-  d.timbreSlot = src.timbreSlot;
+  const nt = Math.min(src.nTimbre, LIVE_TIMBRE_CAP);
+  d.timbres = new Float64Array(LIVE_TIMBRE_CAP * TIMBRE_STRIDE);
+  d.timbres.set(src.timbres.subarray(0, nt * TIMBRE_STRIDE));
+  d.timbreSlot = new Int32Array(LIVE_TIMBRE_CAP).fill(-1);
+  d.timbreSlot.set(src.timbreSlot.subarray(0, nt));
+  d.nTimbre = nt;
   const n = Math.min(src.nSeg, LIVE_SEG_CAP);
   d.segs = new Float64Array(LIVE_SEG_CAP * SEG_STRIDE);
   d.segs.set(src.segs.subarray(0, n * SEG_STRIDE));
@@ -530,6 +539,39 @@ export class LiveTracks {
     return 1;
   }
 
+  /**
+   * Voice i changes to timbre slot `slot` at `t`, crossfading over `fade` s from the mix sounding
+   * then (the timbre-moment path, voice.ts `timbreMix`). Records after `t` are dropped. When full,
+   * records before the last one fully faded in by `t` are dropped. Returns true if the records
+   * were shifted (the voice's cursors must be repositioned). Message handlers only.
+   */
+  timbre(i: number, t: number, slot: number, fade: number): boolean {
+    const d = this.data[i];
+    if (d === undefined) return false;
+    const T = d.timbres;
+    const before = d.nTimbre;
+    let n = before;
+    while (n > 1 && T[(n - 1) * TIMBRE_STRIDE + TIMBRE_T] > t) n--;
+    let shifted = false;
+    if (n >= LIVE_TIMBRE_CAP) {
+      let k = n - 1;
+      while (k > 0 && !(T[k * TIMBRE_STRIDE + TIMBRE_T] + T[k * TIMBRE_STRIDE + TIMBRE_FADE] <= t))
+        k--;
+      if (k === 0) k = 1; // every record still fading: the oldest goes
+      T.copyWithin(0, k * TIMBRE_STRIDE, n * TIMBRE_STRIDE);
+      d.timbreSlot.copyWithin(0, k, n);
+      n -= k;
+      shifted = true;
+    }
+    const o = n * TIMBRE_STRIDE;
+    T[o + TIMBRE_T] = t;
+    T[o + TIMBRE_PRESET] = -1;
+    T[o + TIMBRE_FADE] = fade > 0 ? fade : 0;
+    d.timbreSlot[n] = slot;
+    d.nTimbre = n + 1;
+    return shifted || n + 1 < before;
+  }
+
   // -------------------------------------------------------------------------------------------
   // Queries (main thread: the mirror; tests)
   // -------------------------------------------------------------------------------------------
@@ -881,6 +923,19 @@ export class LiveInput {
     for (let i = 0; i < this.tracks.data.length; i++)
       if (touched[i] === 1) g.voiceAt(i).jump(pf, false);
     this.appliedTime = tA;
+  }
+
+  /**
+   * Live voice `voice` changes to timbre slot `slot` from the coming block, crossfading over
+   * `fade` s (a Notes-drawer timbre edit while live). Message handlers only.
+   */
+  setTimbre(voice: number, slot: number, fade: number): void {
+    if (voice < 0 || voice >= this.tracks.data.length) return;
+    const g = this.graph;
+    const t = g.position;
+    if (this.tracks.timbre(voice, t, slot, fade)) {
+      g.voiceAt(voice).jump(Math.round(t * this.rate), false);
+    }
   }
 
   /** Target bend in semitones (smoothed over BEND_SMOOTHING). */

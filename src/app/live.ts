@@ -14,6 +14,13 @@
  * to reach 4 (`takeVoices`). Pause, Space, Escape, closing
  * the drawer and leaving live mode all stop and keep the take; a take with no notes changes
  * nothing. Opening another piece drops it.
+ *
+ * Edits while live (docs/build-log.md "M7 leftovers"): each compile of the piece re-derives the
+ * session's setup (`derive`); the same live voices → `live.update` (timbres crossfade, gains,
+ * mute etc. re-sent, held notes sound on); other voices → live mode re-enters on the piece at the
+ * playhead, held notes released (a take is stopped and kept first). Opening another piece
+ * re-enters on it (a take is dropped). Re-entering keeps the context (`reuse`), so it needs no
+ * gesture.
  */
 
 import { create } from 'zustand';
@@ -28,12 +35,13 @@ import {
   type TakeChange,
   type TakeVoice,
 } from '../core/live-take';
-import type { Moment, MomentId, Piece, Seconds, VoiceDef } from '../core/types';
+import type { CompiledScore, Moment, MomentId, Piece, Seconds, VoiceDef } from '../core/types';
 import { beginLiveAudio, endLiveAudio, isLiveAudio } from './audio';
 import { edit } from './editor/history';
 import { newMomentIds } from './editor/ops';
 import {
   currentTime,
+  loadInfo,
   onLoadPiece,
   pause,
   reloadAudio,
@@ -55,6 +63,77 @@ usePlayer.subscribe((s, prev) => {
 /** Enter, exit and recording run one after another. */
 let busy: Promise<void> = Promise.resolve();
 
+/** How the running session's setup comes from a piece (entry: at its playhead; a take: its base). */
+let derive: ((piece: Piece, compiled: CompiledScore) => LiveSetup) | null = null;
+
+/** Live setup from `piece` at `at`. */
+function setupAt(at: Seconds): (piece: Piece, compiled: CompiledScore) => LiveSetup {
+  return (piece, compiled) => liveSetupFrom(piece, compiled, at);
+}
+
+/** A re-enter is queued or running (edits meanwhile are picked up by it). */
+let reentering = false;
+/** `loadInfo().count` the load listener last saw (a compile from a load is not an edit). */
+let seenLoads = loadInfo().count;
+
+const reenterListeners: ((failed: unknown) => void)[] = [];
+
+/**
+ * Calls `fn(undefined)` right before live mode re-enters (live-ui releases the held inputs), and
+ * `fn(error)` if re-entering failed (live mode has ended then; playback is back).
+ */
+export function onReenter(fn: (failed: unknown) => void): void {
+  reenterListeners.push(fn);
+}
+
+// Edits while live (Notes drawer, undo/redo): the same live voices are updated in place, other
+// voices re-enter live mode.
+usePlayer.subscribe((s, prev) => {
+  if (s.compiled === prev.compiled || !live.active || !derive || reentering) return;
+  if (loadInfo().count !== seenLoads) return;
+  if (useRecord.getState().status === 'starting') return;
+  if (live.update(derive(s.piece, s.compiled))) return;
+  if (isRecording()) void stopRecord();
+  void reenterLive();
+});
+
+/**
+ * Re-enters live mode on the current piece at the playhead, on the same context (no gesture
+ * needed); held inputs are released. Settings are kept.
+ */
+export function reenterLive(): Promise<void> {
+  reentering = true;
+  const run = busy.then(async () => {
+    try {
+      if (!live.active || !isLiveAudio()) return;
+      for (const fn of reenterListeners) fn(undefined);
+      const make = setupAt(currentTime());
+      const { piece, compiled } = usePlayer.getState();
+      derive = make;
+      try {
+        await live.enter({ setup: make(piece, compiled), reuse: true });
+      } catch (e) {
+        derive = null;
+        if (isLiveAudio()) {
+          void endLiveAudio();
+          reloadAudio();
+        }
+        for (const fn of reenterListeners) fn(e);
+        return;
+      }
+      // Edits compiled while it started.
+      const now = usePlayer.getState();
+      if (now.compiled !== compiled && !live.update(make(now.piece, now.compiled))) {
+        queueMicrotask(() => void reenterLive());
+      }
+    } finally {
+      reentering = false;
+    }
+  });
+  busy = run.catch(() => undefined);
+  return run;
+}
+
 /** True while live mode is on (or being entered). */
 export function isLive(): boolean {
   return isLiveAudio();
@@ -69,7 +148,9 @@ export function enterLive(settings?: Partial<LiveSettings>): Promise<void> {
   const context = new AudioContext({ latencyHint: 'interactive' });
   pause();
   const { piece, compiled } = usePlayer.getState();
-  const setup = liveSetupFrom(piece, compiled, currentTime());
+  const make = setupAt(currentTime());
+  const setup = make(piece, compiled);
+  derive = make;
   const run = busy.then(async () => {
     await beginLiveAudio();
     try {
@@ -90,6 +171,7 @@ export function exitLive(): Promise<void> {
   void stopRecord();
   const run = busy.then(async () => {
     if (!isLiveAudio()) return;
+    derive = null;
     await live.exit();
     void endLiveAudio();
     reloadAudio();
@@ -174,6 +256,11 @@ export function armRecord(): Promise<void> {
       const cut = takeBase(piece, T0, idMaker(piece));
       silentFrom = cut.silentFrom;
       setup = liveSetupFrom(cut.piece, compile(cut.piece), silentFrom);
+      // Edits from now on compare against the take's base.
+      derive = (p) => {
+        const c = takeBase(p, T0, idMaker(p));
+        return liveSetupFrom(c.piece, compile(c.piece), c.silentFrom);
+      };
       await live.enter({ context, setup });
     } catch (e) {
       if (useRecord.getState().status === 'starting') useRecord.setState({ status: 'off' });
@@ -284,9 +371,13 @@ function writeTake(t: Take, stopLive: Seconds, stopAt: Seconds): void {
   }, 'Record take');
 }
 
-// Opening another piece drops a take being recorded (store.loadPiece stops its clock).
+// Opening another piece drops a take being recorded (store.loadPiece stops its clock) and
+// re-enters live mode on it.
 onLoadPiece(() => {
-  if (useRecord.getState().status === 'off') return;
-  take = null;
-  useRecord.setState({ status: 'off' });
+  seenLoads = loadInfo().count;
+  if (useRecord.getState().status !== 'off') {
+    take = null;
+    useRecord.setState({ status: 'off' });
+  }
+  if (isLiveAudio()) void reenterLive();
 });

@@ -40,7 +40,15 @@ import type { MixSettings, Pitch, Seconds } from '../core/types';
 import type { LiveTracks } from '../dsp/live';
 import { AudioEngine } from './engine';
 import { decideLive, encodeMoves, mirrorTracks, type LivePress } from './live-mirror';
-import { liveGains, liveScore, type LiveSetup, type LiveVoiceSetup } from './live-setup';
+import {
+  LIVE_REENTER_FADE,
+  LIVE_TIMBRE_FADE,
+  liveGains,
+  liveScore,
+  liveSetupChange,
+  type LiveSetup,
+  type LiveVoiceSetup,
+} from './live-setup';
 
 /** Changes the warm-up at `enter` decides and applies on a scratch mirror (`warmUp`). */
 const WARM_UP_CHANGES = 120;
@@ -122,6 +130,11 @@ export interface LiveEnterOptions {
   setup: LiveSetup;
   /** An 'interactive' context made by the caller; by default one is created here. */
   context?: AudioContext;
+  /**
+   * Re-enter on the current context (no gesture needed): the old live voices fade out over
+   * LIVE_REENTER_FADE while the new ones start. Ignored when not live.
+   */
+  reuse?: boolean;
   settings?: Partial<LiveSettings>;
 }
 
@@ -161,6 +174,10 @@ export class LiveEngine {
   readonly changes: LiveChange[] = [];
 
   private engineValue: AudioEngine | null = null;
+  /** The engine's output gain (node → out → destination), faded when re-entering. */
+  private out: GainNode | null = null;
+  /** Timbre table builds and changes, in order. */
+  private timbreJob: Promise<void> = Promise.resolve();
   private settingsValue: LiveSettings = mergeLiveSettings(DEFAULT_LIVE_SETTINGS, {});
   private voices: LiveVoiceSetup[] = [];
   private setup: LiveSetup | null = null;
@@ -217,10 +234,11 @@ export class LiveEngine {
    * if already live. Resolves once the worklet runs the live score.
    */
   async enter(opts: LiveEnterOptions): Promise<void> {
-    const context = opts.context ?? new AudioContext({ latencyHint: 'interactive' });
+    const reuse = opts.reuse === true ? this.context : null;
+    const context = reuse ?? opts.context ?? new AudioContext({ latencyHint: 'interactive' });
     if (context.state !== 'running') void context.resume();
     {
-      await this.exit();
+      await this.exit(reuse !== null);
       this.settingsValue = mergeLiveSettings(this.settingsValue, {
         key: opts.setup.key,
         ...opts.settings,
@@ -229,12 +247,17 @@ export class LiveEngine {
       const score = liveScore(setup);
       let engine: AudioEngine;
       try {
-        engine = await AudioEngine.create({ context });
+        engine = await AudioEngine.create({ context, connect: false });
         await engine.load(score, setup.mix, setup.timbres);
       } catch (e) {
         if (context.state !== 'closed') await context.close();
         throw e;
       }
+      const out = context.createGain();
+      engine.node.connect(out);
+      out.connect(context.destination);
+      this.out = out;
+      this.timbreJob = Promise.resolve();
       this.voices = setup.voices;
       this.setup = setup;
       this.gains = setup.voices.map((v) => v.gain);
@@ -344,11 +367,16 @@ export class LiveEngine {
     for (const w of waiters) w();
   }
 
-  /** Leaves live mode: releases everything and closes the interactive context. */
-  async exit(): Promise<void> {
+  /**
+   * Leaves live mode: releases everything and closes the interactive context. `keepContext`:
+   * the context stays open and the old engine fades out (re-entering, `enter` with `reuse`).
+   */
+  async exit(keepContext = false): Promise<void> {
     const engine = this.engineValue;
     if (!engine) return;
     this.engineValue = null;
+    const out = this.out;
+    this.out = null;
     engine.onLiveApplied = null;
     for (const resolve of this.waiting.values()) resolve(null);
     this.waiting.clear();
@@ -358,8 +386,45 @@ export class LiveEngine {
     this.releaseSettled();
     this.keys.allOff();
     this.endGrace();
-    await engine.dispose();
+    if (keepContext && out) {
+      const t = engine.context.currentTime;
+      out.gain.setValueAtTime(1, t);
+      out.gain.linearRampToValueAtTime(0, t + LIVE_REENTER_FADE);
+      const ms = LIVE_REENTER_FADE * 1000 + 50;
+      setTimeout(() => {
+        out.disconnect();
+        void engine.dispose(false);
+      }, ms);
+    } else await engine.dispose();
     this.notify();
+  }
+
+  /**
+   * Applies a new setup for the same live voices in place (§9; a Notes-drawer edit while live):
+   * timbres crossfade over LIVE_TIMBRE_FADE (tables built first), gains, pan, mute, solo and sends
+   * are re-sent; held notes keep sounding. False (nothing changed) when the voices differ
+   * (`liveSetupChange`): the caller re-enters live mode instead.
+   */
+  update(setup: LiveSetup): boolean {
+    const engine = this.engineValue;
+    const old = this.setup;
+    if (!engine || !old) return false;
+    const change = liveSetupChange(old, setup, this.gains);
+    if (!change) return false;
+    this.setup = setup;
+    this.voices = setup.voices;
+    this.gains = change.gains;
+    for (const p of change.params) engine.param(p.path, p.value);
+    if (change.timbres.length > 0 || setup.timbres !== old.timbres) {
+      const names = setup.voices.map((v) => v.timbre);
+      this.timbreJob = this.timbreJob
+        .then(() => engine.liveTimbres(change.timbres, names, setup.timbres, LIVE_TIMBRE_FADE))
+        .catch(() => undefined);
+    }
+    if (JSON.stringify(setup.key) !== JSON.stringify(old.key)) {
+      this.settingsValue = mergeLiveSettings(this.settingsValue, { key: setup.key });
+    }
+    return true;
   }
 
   /** Key down (MIDI pitch; velocity 0..1 is recorded, not yet voiced). Never delayed. */
@@ -449,6 +514,11 @@ export class LiveEngine {
       if (gains[i] !== this.gains[i]) engine.param(`voices.${i}.gain`, gains[i]);
     }
     this.gains = gains;
+  }
+
+  /** The live voices as set up (`enter`, `update`), in live voice order. */
+  get liveVoices(): readonly LiveVoiceSetup[] {
+    return this.voices;
   }
 
   /** The live voices' ids, in live voice order. */
