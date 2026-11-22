@@ -846,7 +846,7 @@ Tablets such as iPads are wider than 900 px, so they get the editor. Touch rules
 | **MIDI (MPE)** | M3 | Option, for one polyphonic MPE synth. Details below. |
 | **MIDI (notes only)** | M3 | Each arrival becomes a note; glides are dropped. Intended for notation and non-MPE synths. |
 | **Piece JSON** | M4 | `.algorhythms.json` |
-| Poster PNG/SVG | Later | The same renderer with the overview camera at 4K. |
+| **Poster PNG/SVG** | M9 | The same renderer with the whole-piece camera at 4K-class sizes; SVG through a recording 2D context. Details below (revision 12). |
 | **Video (MP4)** | M8 | WebCodecs `VideoEncoder` and `AudioEncoder` with a small in-house MP4 muxer, rendering frames offline for exact sync, in 16:9, 9:16 and 1:1. Details below (revision 11). |
 
 ### MIDI details
@@ -881,6 +881,16 @@ The voice stems plus the FX return then sum to the mix up to floating-point erro
 - Elsewhere, use a Blob built from parts. Offer mono stems and 16-bit as smaller options, and warn when the estimated size is above about 1 GB.
 - **Formats:** 24-bit PCM or 32-bit float.
 - **ZIP64:** 32 float stereo stems over 10 minutes pass 4 GB. Check in M3 whether fflate writes ZIP64. If it doesn't, write a small in-house store-mode ZIP64 writer (store mode needs no compression code, so it is a few hundred lines), or split the export into several zips under 4 GB each.
+
+### Poster export (revision 12, owner chose it next 2026-11-22)
+- **One renderer.** The poster is `drawScore` with the whole-piece camera (§10, the video's Whole), drawn as if the piece had finished: every line at full opacity (no future ghost), no playhead, no heads or Hz labels, no editor overlays. Section labels as the player shows them. Thickness on (option off), like video.
+- **PNG:** drawn on an OffscreenCanvas at the chosen size, encoded with `convertToBlob`. **SVG:** the same `drawScore` call on a small in-house recording context (`Ctx2D`-compatible: paths, strokes, fills, text, alpha, line styles, transforms, linear gradients) that writes SVG elements; text stays text (system mono font stack). No dependency.
+- **Options (integrator defaults, owner may veto):**
+  - size 16:9 3840×2160 (default), 1:1 2160×2160, portrait A-series 2480×3508 (A4 at 300 dpi; time stays horizontal);
+  - theme (current, light, dark), and a transparent background option for PNG and SVG;
+  - a title block (default on): the piece's name, its length and key, and a small "AlgoRhythms" credit, in the HUD's type; off draws only the score;
+  - thickness on.
+- **Speed and size:** a 3-minute piece renders in under 2 s at 4K on a desktop; the SVG stays under about 10 MB for bundled compositions (simplify sampled glides to the 2 px rule at the poster's scale).
 
 ### Video export (revision 11, owner chose it next 2026-11-22)
 - **Pipeline (offline, never real time):** audio = the WAV export's offline render of the mix (§12 WAV, same samples); frame k = `drawScore` at t = k / fps on an `OffscreenCanvas` (a worker where the browser allows it), wrapped in a `VideoFrame` with timestamp k / fps. Both go through WebCodecs encoders into an in-house MP4 muxer (`moov` at the front or fragmented; no dependency, like the WAV and SMF writers). Progress and cancel as the other exports; closing the dialog cancels.
@@ -1083,8 +1093,14 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - a 1080p30 export of a 3-minute piece finishes faster than real time on a desktop, and cancel stops it within 1 s;
   - the muxer's output passes a box-structure check (and `ffprobe` where available in CI).
 
+**M9. Poster export (S)** (revision 12)
+- §12 "Poster export": PNG and SVG from the one renderer, sizes, theme, transparent background, title block, in the Export dialog.
+- *Accept when:*
+  - the PNG equals a direct `drawScore` render with the same camera and style (pixel-identical in the same browser);
+  - the SVG, rasterised by the browser at the same size, matches the PNG within an anti-aliasing tolerance in Chromium, Firefox and WebKit, and is well-formed XML with text as `<text>`;
+  - a 3-minute piece renders in under 2 s at 4K (PNG) on a desktop, and its SVG is under 10 MB.
+
 **Later, in no order:**
-- poster PNG/SVG;
 - camera moments;
 - mirror, arpeggio and drift moments;
 - Scala tunings;
@@ -1149,6 +1165,9 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 12 (2026-11-22): poster export next (owner)
+- **Poster export (§12, §15 M9):** moved from Later to M9. Whole-piece render as PNG or SVG (recording context), 4K-class sizes, theme, transparent background, title block; integrator defaults.
 
 ### Revision 11 (2026-11-22): video export next (owner)
 - **Video export (§12, §15 M8):** moved from Later to M8. Offline WebCodecs pipeline, in-house MP4 muxer, 16:9 / 9:16 / 1:1, Follow or Whole-piece camera; integrator defaults for sizes, fps, codecs and options.

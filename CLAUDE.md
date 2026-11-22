@@ -84,3 +84,4 @@ The integrator continues the work with a fresh agent.
 | M6 Timbre depth | **feature-complete** 2026-11-22: all §15 acceptance lines pass (`docs/m6-acceptance.md`); FM, noise, additive, redesigned bell, presets, Sound drawer (timbre editor + master FX), `timbre` moment. Owner picked the church bell (2026-11-22) |
 | M7 Live instrument | **done** 2026-11-22: all §15 acceptance lines pass (`docs/m7-acceptance.md`); latency ≤ 10 ms on all three engines in CI; owner played it ("its good"). Pushed in v50–v54 |
 | M8 Video export | **feature-complete** 2026-11-22: all §15 acceptance lines pass (`docs/m8-acceptance.md`); live in v57 (Chromium, Firefox, Safari). Waiting for the owner to watch exports (QuickTime/iPhone playback of Chrome's H.264 + Opus, 9:16 legibility, defaults) |
+| M9 Poster export | **in progress** 2026-11-22 (PLAN rev 12; owner picked it next): SVG context + poster renderer running |
