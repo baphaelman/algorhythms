@@ -19,6 +19,9 @@
  *   decided again on the state the first one saw and posted with `press` = that change's seq. The
  *   worklet rewinds to where the first one applied and plays the press from there as one change
  *   (dsp/live.ts `rewind`), so a chord pressed key by key glides as the one chord a take records.
+ * - Staggered release (core/live.ts ReleaseGrace): a release that leaves keys down posts nothing
+ *   for RELEASE_GRACE; all keys up within it is one release of the chord as held, otherwise a
+ *   timer (or the next change of H) re-targets to the keys still down at the grace's expiry.
  * - `changes` logs every posted change since `enter` (held set, settings, seed, update, stamp):
  *   recording reads it (src/app/live.ts, core/live-take.ts).
  */
@@ -29,6 +32,7 @@ import {
   glideFromModWheel,
   LiveKeys,
   mergeLiveSettings,
+  ReleaseGrace,
   type LiveSettings,
   type LiveUpdate,
 } from '../core/live';
@@ -157,6 +161,8 @@ export class LiveEngine {
   /** Static gain per live voice as last sent (`setMix` re-sends those a new mix changes). */
   private gains: number[] = [];
   private readonly keys = new LiveKeys();
+  private readonly grace = new ReleaseGrace();
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private confirmed: LiveTracks | null = null;
   private predicted: LiveTracks | null = null;
   private pending: Pending[] = [];
@@ -235,6 +241,7 @@ export class LiveEngine {
       this.seq = 0;
       this.bendValue = 0;
       this.keys.allOff();
+      this.endGrace();
       this.events.length = 0;
       this.changes.length = 0;
       this.press = null;
@@ -274,34 +281,55 @@ export class LiveEngine {
     this.pending = [];
     this.releaseSettled();
     this.keys.allOff();
+    this.endGrace();
     await engine.dispose();
     this.notify();
   }
 
-  /** Key down (MIDI pitch; velocity 0..1 is recorded, not yet voiced). */
+  /** Key down (MIDI pitch; velocity 0..1 is recorded, not yet voiced). Never delayed. */
   noteOn(pitch: Pitch, velocity = 1): LiveNoteEvent {
     const ev = this.event('on', pitch, velocity);
-    if (this.active && this.keys.noteOn(pitch)) this.post(this.change(ev.at), ev);
-    else this.settle(ev);
+    this.flushGrace(ev.at);
+    if (this.active && this.keys.noteOn(pitch)) {
+      this.endGrace();
+      this.post(this.change(ev.at), ev);
+    } else this.settle(ev);
     return ev;
   }
 
-  /** Key up. */
+  /** Key up. One that leaves keys down waits for the release grace (`seq` −1). */
   noteOff(pitch: Pitch): LiveNoteEvent {
     const ev = this.event('off', pitch, 0);
-    if (this.active && this.keys.noteOff(pitch)) this.post(this.change(ev.at), ev);
-    else this.settle(ev);
+    this.flushGrace(ev.at);
+    if (!this.active || !this.keys.noteOff(pitch)) this.settle(ev);
+    else if (this.grace.release(ev.at / 1000, this.keys.held)) {
+      this.settle(ev);
+      this.armGrace();
+    } else {
+      this.endGrace();
+      this.post(this.change(ev.at), ev);
+    }
     return ev;
   }
 
   /** Releases every key and the pedal (the release setting applies). */
   allNotesOff(): void {
-    if (this.keys.allOff() && this.active) this.post(this.change(performance.now()), null);
+    const at = performance.now();
+    this.flushGrace(at);
+    if (this.keys.allOff() && this.active) {
+      this.endGrace();
+      this.post(this.change(at), null);
+    }
   }
 
   /** Sustain pedal (CC64): released keys stay held while it is down. */
   sustain(on: boolean): void {
-    if (this.keys.setSustain(on) && this.active) this.post(this.change(performance.now()), null);
+    const at = performance.now();
+    this.flushGrace(at);
+    if (this.keys.setSustain(on) && this.active) {
+      this.endGrace();
+      this.post(this.change(at), null);
+    }
   }
 
   /** Pitch bend in semitones, clamped to ±bendRange, applied to every voice continuously. */
@@ -457,6 +485,32 @@ export class LiveEngine {
     );
     this.press = d.next;
     return { update: d.update, t: d.t, press: d.press, seed: d.seed, at };
+  }
+
+  /** A grace that ran out by `at` (performance.now()) re-targets to the keys still down. */
+  private flushGrace(at: number): void {
+    if (!this.grace.due(at / 1000)) return;
+    this.endGrace();
+    if (this.active) this.post(this.change(at), null);
+  }
+
+  /** Times the grace's expiry (it is also checked at the next change of H). */
+  private armGrace(): void {
+    if (this.graceTimer !== null) return;
+    const fire = (): void => {
+      this.graceTimer = null;
+      if (!this.grace.waiting) return;
+      const at = performance.now();
+      if (this.grace.due(at / 1000)) this.flushGrace(at);
+      else this.graceTimer = setTimeout(fire, Math.max(1, this.grace.until * 1000 - at + 0.5));
+    };
+    this.graceTimer = setTimeout(fire, this.grace.until * 1000 - performance.now() + 0.5);
+  }
+
+  private endGrace(): void {
+    this.grace.end();
+    if (this.graceTimer !== null) clearTimeout(this.graceTimer);
+    this.graceTimer = null;
   }
 
   /** Live time message `seq` applies at: its stamp, else its estimate. */

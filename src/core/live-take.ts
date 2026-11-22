@@ -20,6 +20,9 @@
  *   `tonic` a `unison` on 'tonic'. A key from silence after a completed fade first merges the
  *   silent lines away (`merge` to 0 where the fade ended), so it establishes again.
  * - Bend and note velocity are not recorded (no moment holds them).
+ * - **Voices.** Live voices added to reach 4 (audio/live-setup `fill`) are written into the piece
+ *   with the timbre, part, mute and solo they played with, new ones appended to the pool
+ *   (`takeVoices`), so the take plays back on them.
  */
 
 import { compile } from './compiler/compile';
@@ -36,7 +39,10 @@ import type {
   Piece,
   Pitch,
   Seconds,
+  TimbreMoment,
   UnisonMoment,
+  VoiceDef,
+  VoiceId,
 } from './types';
 
 /** Fade of the lines a take cuts off at its start (s). */
@@ -263,4 +269,72 @@ export function takeBase(
     if (life?.died !== undefined) silent = Math.max(silent, life.died);
   }
   return { piece: out, silentFrom: silent + CLOSE_GAP };
+}
+
+/** A live voice as a take writes it (src/audio/live-setup.ts LiveVoiceSetup). */
+export interface TakeVoice {
+  id: VoiceId;
+  timbre: string;
+  part: string;
+  mute: boolean;
+  solo: boolean;
+  /** Added by live mode to reach 4 voices ('new': `added` has its definition). */
+  fill?: 'pool' | 'new';
+}
+
+/**
+ * `piece` with the voices a take starting at T was played on: each `fill` voice gets the timbre,
+ * part, mute and solo it played with, and `added` voices are appended to the pool. A pool voice
+ * whose timbre in force at T still differs (a timbre moment before T) also gets a `timbre` moment
+ * at T. Unchanged when no voice was added.
+ */
+export function takeVoices(
+  piece: Piece,
+  voices: readonly TakeVoice[],
+  added: readonly VoiceDef[],
+  T: Seconds,
+  newId: () => MomentId,
+): Piece {
+  const fills = voices.filter((v) => v.fill !== undefined);
+  if (fills.length === 0) return piece;
+  const known = new Set(piece.voices.map((v) => v.id));
+  const pool: VoiceDef[] = piece.voices.map((def) => {
+    const v = fills.find((x) => x.id === def.id);
+    if (!v) return def;
+    const out: VoiceDef = { ...def, timbre: v.timbre };
+    if (v.part !== '') out.part = v.part;
+    else delete out.part;
+    if (v.mute) out.mute = true;
+    else delete out.mute;
+    if (v.solo) out.solo = true;
+    else delete out.solo;
+    return out;
+  });
+  for (const def of added) if (!known.has(def.id)) pool.push({ ...def, range: [...def.range] });
+  const out: Piece = { ...piece, voices: pool };
+  // A timbre moment before T may set a pool voice's timbre there.
+  const score = compile({ ...out, end: { ...out.end, at: T + 1 } });
+  const byPreset = new Map<string, VoiceId[]>();
+  for (const v of fills) {
+    const cv = score.voices.find((x) => x.id === v.id);
+    if (!cv) continue;
+    let preset = cv.timbre[0]?.preset;
+    for (const c of cv.timbre) if (c.t <= T) preset = c.preset;
+    if (preset === v.timbre) continue;
+    byPreset.set(v.timbre, [...(byPreset.get(v.timbre) ?? []), v.id]);
+  }
+  if (byPreset.size === 0) return out;
+  const moments = [...out.moments];
+  for (const [preset, ids] of byPreset) {
+    const m: TimbreMoment = {
+      id: newId(),
+      type: 'timbre',
+      at: T,
+      target: { voices: ids },
+      preset,
+      fade: 0,
+    };
+    moments.push(m);
+  }
+  return { ...out, moments };
 }

@@ -18,6 +18,8 @@ import {
   mergeLiveSettings,
   MOD_GLIDE_MAX,
   MOD_GLIDE_MIN,
+  RELEASE_GRACE,
+  ReleaseGrace,
   type LiveMove,
   type LiveSettings,
   type LiveVoiceView,
@@ -294,6 +296,41 @@ describe('held set: sustain, all off', () => {
     expect(k.allOff()).toBe(true);
     expect(k.sustain).toBe(false);
     expect(k.held).toEqual([]);
+  });
+});
+
+describe('staggered release grace (ReleaseGrace)', () => {
+  it('a release leaving keys down waits; all up by 59 ms is one release', () => {
+    expect(RELEASE_GRACE).toBe(0.06);
+    const g = new ReleaseGrace();
+    expect(g.release(1, [60, 64])).toBe(true); // first release: wait
+    expect(g.waiting).toBe(true);
+    expect(g.until).toBeCloseTo(1.06, 12);
+    expect(g.release(1.02, [64])).toBe(true); // still keys down: keep waiting, same start
+    expect(g.until).toBeCloseTo(1.06, 12);
+    expect(g.due(1.059)).toBe(false);
+    expect(g.release(1.059, [])).toBe(false); // last key: decide now (all-keys release)
+    expect(g.waiting).toBe(false);
+  });
+
+  it('at exactly 60 ms still one release; at 61 ms the grace has run out first', () => {
+    const g = new ReleaseGrace();
+    g.release(0, [60]);
+    expect(g.due(RELEASE_GRACE)).toBe(false);
+    expect(g.due(0.061)).toBe(true); // the caller re-targets to the keys down, then ends it
+    g.end();
+    expect(g.due(0.061)).toBe(false);
+    expect(g.release(0.061, [])).toBe(false);
+  });
+
+  it('a press ends it; a later release starts a new one', () => {
+    const g = new ReleaseGrace();
+    g.release(0, [60]);
+    g.end(); // what a press (or the pedal, or all notes off) does
+    expect(g.waiting).toBe(false);
+    expect(g.until).toBe(Infinity);
+    expect(g.release(0.05, [60, 67])).toBe(true);
+    expect(g.until).toBeCloseTo(0.11, 12);
   });
 });
 

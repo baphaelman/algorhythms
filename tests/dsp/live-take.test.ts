@@ -169,6 +169,76 @@ describe('recorded take plays back as played (§15 M7)', () => {
   });
 });
 
+// Staggered releases (core/live.ts ReleaseGrace): keys lifted one by one within 60 ms are one
+// release of the chord as held, in each release mode; a partial release re-targets at the
+// grace's expiry, so the take records it where it was heard.
+describe('staggered chord releases record as heard', () => {
+  /** Lifts `keys` `gap` s apart (whole blocks). */
+  const lift = (rig: LiveRig, keys: number[], gap: number): void => {
+    keys.forEach((k, i) => {
+      if (i > 0) wait(rig, gap);
+      rig.noteOff(k);
+    });
+  };
+  const script = (rig: LiveRig): void => {
+    wait(rig, 0.1);
+    press(rig, [60, 64, 67]);
+    wait(rig, 0.5);
+    lift(rig, [67, 60, 64], 0.02); // one release
+    wait(rig, 0.6);
+    press(rig, [62, 65, 69]);
+    wait(rig, 0.5);
+    lift(rig, [62, 69, 65], 0.025); // one release, mid-glide of nothing: settled
+    wait(rig, 0.6);
+    press(rig, [57, 60, 64]);
+    wait(rig, 0.1);
+    lift(rig, [64, 57, 60], 0.015); // mid-glide
+    wait(rig, 0.6);
+  };
+  for (const release of ['hold', 'fade', 'tonic'] as const) {
+    it(`release ${release}`, () => {
+      const take = record(script, { release, releaseFade: 0.3 });
+      const m = compare(take);
+      if (process.env.EXPLAIN) explain(take, m);
+      report(`staggered ${release}`, m);
+      // No re-target to the last key: each release is the chord as held.
+      expect(take.moments.filter((x) => x.type === 'unison' && x.pitch !== 'tonic')).toEqual([]);
+      expect(m.misses.slice(0, 5)).toEqual([]);
+      expect(m.cents0).toBeLessThanOrEqual(1);
+      expect(m.frames).toBeLessThanOrEqual(BLOCK_FRAMES);
+    });
+  }
+
+  it('partial release: re-targets at the grace expiry, then a staggered release', () => {
+    const take = record((rig) => {
+      wait(rig, 0.1);
+      press(rig, [60, 64, 67, 71], 0.002); // one block apart: one press
+      wait(rig, 0.5);
+      rig.noteOff(71); // leaves C E G down: re-targets after 60 ms
+      wait(rig, 0.4);
+      rig.noteOff(67);
+      wait(rig, 0.03);
+      rig.noteOn(65); // a press during the grace: at once, without 67
+      wait(rig, 0.5);
+      lift(rig, [60, 64, 65], 0.02);
+      wait(rig, 0.5);
+    });
+    const chords = take.moments.filter((x) => x.type === 'chord' && !x.byVoice);
+    expect(
+      chords.map((c) => (c.type === 'chord' && c.notes.kind === 'pitches' ? c.notes.pitches : [])),
+    ).toEqual([
+      [60, 64, 67],
+      [60, 64, 65],
+    ]);
+    const m = compare(take);
+    if (process.env.EXPLAIN) explain(take, m);
+    report('partial release', m);
+    expect(m.misses.slice(0, 5)).toEqual([]);
+    expect(m.cents0).toBeLessThanOrEqual(1);
+    expect(m.frames).toBeLessThanOrEqual(BLOCK_FRAMES);
+  });
+});
+
 describe('takeBase', () => {
   it('a take into a sounding piece: every line has died by silentFrom, shortly after T', () => {
     const raw: unknown = JSON.parse(
@@ -182,8 +252,11 @@ describe('takeBase', () => {
       expect(silentFrom).toBeLessThan(T + 0.07);
       const score = compile(piece);
       for (const v of score.voices) expect(lifeAt(v, silentFrom)).toBeNull();
-      // The live pool: every voice that sounded before T (1 at 6 s, 8 at 30 s).
-      expect(liveSetupFrom(piece, score, silentFrom).voices.length).toBe(T === 6 ? 1 : 8);
+      // The live pool: every voice that sounded before T (1 at 6 s, filled from the pool to 4;
+      // 8 at 30 s).
+      const live = liveSetupFrom(piece, score, silentFrom).voices;
+      expect(live.length).toBe(T === 6 ? 4 : 8);
+      expect(live.filter((v) => v.fill === undefined).length).toBe(T === 6 ? 1 : 8);
     }
   });
 });

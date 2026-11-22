@@ -148,7 +148,7 @@ test('record a take: moments, one undo, playback matches live', async ({ page })
     e.noteOn(67);
   });
   await page.waitForTimeout(900);
-  // All at once: H = ∅ holds (lifting key by key would re-target to the keys still down).
+  // All at once: H = ∅ holds.
   await page.evaluate(() => (window as unknown as W).__algorhythms.live.engine().allNotesOff());
   await page.waitForTimeout(150);
   const headMoved = await page.evaluate(() =>
@@ -301,4 +301,105 @@ test('Escape, Space and closing the drawer stop and keep the take', async ({ pag
   await expect
     .poll(() => page.evaluate(() => (window as unknown as W).__algorhythms.live.engine().active))
     .toBe(false);
+});
+
+test('a chord lifted key by key 20 ms apart holds the chord; on 1 voice filled to 4; plays back', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openEditor(page);
+  const T0 = 6; // one line has sounded by here: live fills to 4 voices from the pool
+  await page.evaluate((t) => (window as unknown as W).__algorhythms.actions.seek(t), T0);
+  await openLive(page);
+  const settings = await page.evaluate(
+    () => (window as unknown as W).__algorhythms.live.engine().settings,
+  );
+  expect(settings.release).toBe('hold');
+  await arm(page);
+  const { liveAt } = await page.evaluate(() =>
+    (window as unknown as W).__algorhythms.live.record.state.getState(),
+  );
+  // A note from silence, then C E G (one press) and its keys lifted 20 ms apart (spun, so the
+  // gaps are exact: 40 ms in all, inside the 60 ms grace).
+  await page.evaluate(() => (window as unknown as W).__algorhythms.live.engine().noteOn(57));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const e = (window as unknown as W).__algorhythms.live.engine();
+    e.noteOff(57);
+    e.noteOn(60);
+    e.noteOn(64);
+    e.noteOn(67);
+  });
+  await page.waitForTimeout(700);
+  const released = await page.evaluate(() => {
+    const e = (window as unknown as W).__algorhythms.live.engine();
+    const spin = (ms: number) => {
+      const end = performance.now() + ms;
+      while (performance.now() < end);
+    };
+    e.noteOff(67);
+    spin(20);
+    e.noteOff(60);
+    spin(20);
+    e.noteOff(64);
+    return e.now();
+  });
+  await page.waitForTimeout(500);
+  const changes = await page.evaluate(
+    () => (window as unknown as W).__algorhythms.live.engine().changes,
+  );
+  // No re-target to the keys still down: nothing with keys held is posted after C E G.
+  const chordAt = changes.findIndex((c) => c.held.length === 3);
+  expect(chordAt).toBeGreaterThan(0);
+  expect(changes.slice(chordAt + 1).filter((c) => c.held.length > 0)).toEqual([]);
+  const times = [released + 0.1, released + 0.4];
+  const live = await livePitches(page, times);
+  expect(live).toEqual([
+    [60, 64, 67],
+    [60, 64, 67],
+  ]);
+
+  await page.getByTestId('live-record').click();
+  await expect.poll(() => recordStatus(page)).toBe('off');
+  const take = (await moments(page)).filter((m) => m.at >= T0);
+  expect(take.map((m) => m.type)).toEqual(['merge', 'chord', 'chord']);
+  expect(take[2].notes).toEqual({ kind: 'pitches', pitches: [60, 64, 67] });
+  // The establishing chord plays on all four live voices, written into the piece.
+  const establish = take[1] as MomentShape & { target?: { voices: string[] } };
+  expect(establish.target?.voices).toHaveLength(4);
+  const compiled = await compiledPitches(
+    page,
+    times.map((t) => T0 + (t - liveAt)),
+  );
+  compiled.forEach((ps, k) => {
+    expect(ps.length).toBe(live[k].length);
+    ps.forEach((p, j) => expect(Math.abs(p - live[k][j])).toBeLessThan(0.01));
+  });
+
+  // Leave live mode; Play from T0 plays the take.
+  await page.getByLabel('Close live drawer').click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as W).__algorhythms.live.engine().active))
+    .toBe(false);
+  await page.evaluate((t) => (window as unknown as W).__algorhythms.actions.seek(t), T0);
+  await page.getByTestId('play').click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const s = (window as unknown as W).__algorhythms.store.getState().transport;
+        return `${s.status}/${s.audio}`;
+      }),
+    )
+    .toBe('playing/ready');
+  const rms = await page.evaluate(async () => {
+    const an = (window as unknown as W).__algorhythms.analyser();
+    if (!an) return 0;
+    await new Promise((r) => setTimeout(r, 900));
+    const buf = new Float32Array(an.fftSize);
+    an.getFloatTimeDomainData(buf);
+    let s = 0;
+    for (const x of buf) s += x * x;
+    return Math.sqrt(s / buf.length);
+  });
+  expect(rms).toBeGreaterThan(1e-4);
 });

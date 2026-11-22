@@ -2,7 +2,7 @@
 
 import { compile, compileWithTrace } from '../../src/core/compiler/compile';
 import { newPiece } from '../../src/core/defaults';
-import { takeBase, takeMoments } from '../../src/core/live-take';
+import { takeBase, takeMoments, takeVoices } from '../../src/core/live-take';
 import type { LiveSettings } from '../../src/core/live';
 import { lifeAt, pitchAt } from '../../src/core/query';
 import type { CompiledVoice, Moment, Piece } from '../../src/core/types';
@@ -45,6 +45,8 @@ export interface Take {
   moments: Moment[];
   liveAt: number;
   T0: number;
+  /** When the take may sound (before: the piece's lines cut at T0 fading out, not compared). */
+  silentFrom: number;
   /** Live-time spans of key-by-key presses from silence (first to last change). */
   silentPresses: [number, number][];
   /** Live-time spans of every key-by-key press (first to last change). */
@@ -53,16 +55,19 @@ export interface Take {
   heard: Map<number, number[]>;
 }
 
-/** Plays `script` from the arm time into an Empty piece at T0 and records it. */
-export function record(script: (rig: LiveRig) => void, settings: Partial<LiveSettings> = {}): Take {
+/**
+ * Plays `script` from the arm time into `into` (default: an Empty piece of 6 sine voices) at T0
+ * and records it, as app/live.ts does (voices live mode added written in by `takeVoices`).
+ */
+export function record(
+  script: (rig: LiveRig) => void,
+  settings: Partial<LiveSettings> = {},
+  into: Piece = newPiece({ poolSize: 6, timbre: 'sine', seed: 1 }),
+): Take {
   const T0 = 2;
   let n = 0;
   const newId = () => `rec${n++}`;
-  const { piece: base, silentFrom } = takeBase(
-    newPiece({ poolSize: 6, timbre: 'sine', seed: 1 }),
-    T0,
-    newId,
-  );
+  const { piece: base, silentFrom } = takeBase(into, T0, newId);
   const setup = liveSetupFrom(base, compile(base), silentFrom);
   const rig = new LiveRig(setup, { glide: 0.3, ...settings });
   rig.run(0.05);
@@ -101,12 +106,14 @@ export function record(script: (rig: LiveRig) => void, settings: Partial<LiveSet
       else list.push([first.time, end]);
     }
   }
+  const voiced = takeVoices(base, setup.voices, setup.added ?? [], T0, newId);
   return {
     rig,
-    piece: { ...base, moments: [...base.moments, ...moments] },
+    piece: { ...voiced, moments: [...voiced.moments, ...moments] },
     moments,
     liveAt,
     T0,
+    silentFrom,
     silentPresses,
     presses,
     heard,
@@ -161,7 +168,7 @@ export function compare(take: Take): Match {
   };
   const out: Match = { cents0: 0, frames: 0, misses: [], blocks: 0, inPress: 0, heardInPress: 0 };
   const end = rig.time - 0.01;
-  for (let tl = liveAt; tl < end; tl += block) {
+  for (let tl = liveAt + (take.silentFrom - T0); tl < end; tl += block) {
     const tp = T0 + (tl - liveAt);
     const inPress = take.silentPresses.some(([a, b]) => tl >= a - 1e-9 && tl < b + block);
     out.blocks++;
