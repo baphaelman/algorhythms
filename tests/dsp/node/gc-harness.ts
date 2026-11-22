@@ -188,6 +188,13 @@ process.stdout.write(
  * beforehand because they allocate, replayed block by block. So the measured span holds only what
  * the worklet does: queueing a message's copy, applying it, the bend, rendering.
  */
+/** `xs` with tagged (boxed) elements: an array that once held a non-number never unboxes. */
+function tagged(xs: number[]): number[] {
+  const out: unknown[] = [null, ...xs];
+  out.shift();
+  return out as number[];
+}
+
 function buildLive(): { graph: Graph; step(): void; measured(): number } {
   const file = JSON.parse(readFileSync(process.argv[3], 'utf8')) as {
     score: Parameters<typeof createLoadedGraph>[0]['score'];
@@ -210,16 +217,19 @@ function buildLive(): { graph: Graph; step(): void; measured(): number } {
   g.play(0);
   const msgs = file.messages;
   const nMsg = msgs.length;
-  // Typed arrays and preallocated records, read without allocating.
+  // Preallocated records, read without allocating. The scalars passed to the worklet's methods
+  // are boxed numbers in tagged arrays, as a port message's fields are: from a Float64Array, a call
+  // V8 does not inline (setBend, sometimes queue) boxed each one, ~1.4 KB per run that depended on
+  // inlining decisions, i.e. on JIT timing.
   const B = Int32Array.from(msgs, (m) => m.block);
-  const Q = Float64Array.from(msgs, (m) => m.seq);
+  const Q = tagged(msgs.map((m) => m.seq));
   const N = Int32Array.from(msgs, (m) => m.n);
-  const G = Float64Array.from(msgs, (m) => (m.gain === null ? NaN : m.gain));
-  const O = Float64Array.from(msgs, (m) => m.over);
-  const P = Float64Array.from(msgs, (m) => m.press);
+  const G = tagged(msgs.map((m) => (m.gain === null ? NaN : m.gain)));
+  const O = tagged(msgs.map((m) => m.over));
+  const P = tagged(msgs.map((m) => m.press));
   const M = msgs.map((m) => Float64Array.from(m.moves));
   const BB = Int32Array.from(file.bends, (x) => x.block);
-  const BV = Float64Array.from(file.bends, (x) => x.semitones);
+  const BV = tagged(file.bends.map((x) => x.semitones));
   let k = 0;
   let kb = 0;
   let b = 0;
