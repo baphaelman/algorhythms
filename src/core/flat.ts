@@ -181,6 +181,50 @@ export interface FlatScore {
   timbreNames: string[];
   /** Per-voice arrays in pool order. */
   voices: FlatVoice[];
+  /** CompiledVoice.part per voice in pool order, '' for none (revision 10). */
+  voiceParts: string[];
+  /**
+   * Per part name ('' = voices with no part): the most of its lines sounding at once, at least 1
+   * (`partLines`). Sets each part's share under `mix.normalise: 'part'` (§8.4 revision 10).
+   */
+  partLines: Record<string, number>;
+}
+
+/**
+ * Per part ('' = voices with no part): the most of its voices sounding at once, at least 1. A
+ * life counts from the middle of its fade-in to the middle of its fade-out, so a crossfade, merge
+ * or split counts once. Line weights are left out: some pieces carry weights above their voice
+ * count (docs/build-log.md, "Per-part normalisation"), which would skew the shares.
+ */
+export function partLines(score: CompiledScore): Record<string, number> {
+  const names: string[] = [];
+  const groups = new Map<string, number>();
+  // Events (t, group, ±1), ends before starts at equal times.
+  const ev: { t: number; g: number; d: number }[] = [];
+  for (const v of score.voices) {
+    const name = v.part ?? '';
+    let g = groups.get(name);
+    if (g === undefined) {
+      g = groups.size;
+      groups.set(name, g);
+      names.push(name);
+    }
+    for (const l of v.lives) {
+      const a = l.born + l.fadeIn / 2;
+      const b = l.died === undefined ? Infinity : l.died - (l.fadeOut ?? 0) / 2;
+      if (b > a) ev.push({ t: a, g, d: 1 }, { t: b, g, d: -1 });
+    }
+  }
+  ev.sort((x, y) => x.t - y.t || x.d - y.d);
+  const live = new Int32Array(groups.size);
+  const most = new Int32Array(groups.size).fill(1);
+  for (const e of ev) {
+    live[e.g] += e.d;
+    if (live[e.g] > most[e.g]) most[e.g] = live[e.g];
+  }
+  const lines: Record<string, number> = {};
+  names.forEach((n, g) => (lines[n] = most[g]));
+  return lines;
 }
 
 /** FNV-1a 32-bit hash of a string (integer ops only, so identical on every engine). */
@@ -307,6 +351,8 @@ export function flatten(score: CompiledScore): FlatScore {
     voiceParams,
     timbreNames: [...timbreIndex.keys()],
     voices,
+    voiceParts: score.voices.map((v) => v.part ?? ''),
+    partLines: partLines(score),
   };
 }
 
@@ -442,6 +488,8 @@ export function unflatten(flat: FlatScore): CompiledScore {
         return r;
       });
     }
+    const part = flat.voiceParts[i] ?? '';
+    if (part !== '') cv.part = part;
     return cv;
   });
   return {

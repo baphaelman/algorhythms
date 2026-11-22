@@ -165,12 +165,22 @@ const INV_CAPTURE_H_SPAN = 1 / (CAPTURE_H_EDGE - CAPTURE_H_FULL);
 const CAPTURE_RAMP = 0.03;
 const INV_TWO_PI = 1 / (2 * Math.PI);
 
+/** One g_n row per normalisation group in VoiceContext.gn. */
+const GN_ROW = TICKS_PER_BLOCK + 1;
+
 /** Prepared voice data for a score (built in a message handler, applied at a block boundary). */
 interface PreparedScore {
   data: VoiceData[];
   voiceIds: string[];
   duration: number;
   referenceHz: number;
+  /** Normalisation group per voice (Graph.partGroups) and how many distinct. */
+  groups: Int32Array;
+  distinctGroups: number;
+  /** Per group: √(its peak lines / Σ peak lines), see Graph.partShare. */
+  partShare: Float64Array;
+  /** partGroups was rebuilt: every group's g_n restarts at 1. */
+  groupsReset: boolean;
 }
 
 export class Graph {
@@ -211,8 +221,29 @@ export class Graph {
   private pendingPlay = -1;
   private pendingPos = -1;
   private pendingSwap: PreparedScore | null = null;
-  private gnValue = 1;
+  /** Smoothed g_n per normalisation group (index 0: every voice when not per part). */
+  private readonly gnVal = new Float64Array(DSP_MAX_VOICES).fill(1);
   private readonly gnScratch = new Float64Array(1);
+  /**
+   * Per-part normalisation (§8.4 revision 10): on when mix.normalise is 'part' and the score has
+   * more than one group. Groups are numbered by part name in `partGroups`, kept across swaps so a
+   * hot-swap keeps each part's g_n.
+   */
+  private normPart = false;
+  private readonly partGroups = new Map<string, number>();
+  private readonly voiceGroup = new Int32Array(DSP_MAX_VOICES);
+  private distinctGroups = 1;
+  /**
+   * Static trim per group: √(N_p / Σ N), N_p = FlatScore.partLines (the part's peak lines), so
+   * with every part at its peak the levels are those of 'all', and fewer parts never lower any.
+   */
+  private readonly partShare = new Float64Array(DSP_MAX_VOICES);
+  private readonly groupSum = new Float64Array(DSP_MAX_VOICES);
+  /**
+   * 1 while a group has not sounded since load (or since a score without it): its g_n takes its
+   * target at once instead of gliding there from a stale value.
+   */
+  private readonly groupQuiet = new Uint8Array(DSP_MAX_VOICES).fill(1);
   private readonly normCoeff: number = 0;
   private readonly seekFadeFrames: number = 0;
   private readonly swapFadeFrames: number = 0;
@@ -316,6 +347,7 @@ export class Graph {
 
   /** Loads a score and mix: stops the transport, clears FX state, position 0. Allocates. */
   load(score: FlatScore, mix: MixSettings): void {
+    this.partGroups.clear();
     const prepared = this.prepare(score);
     this.playing = false;
     this.pendingPlay = -1;
@@ -340,7 +372,8 @@ export class Graph {
     this.limiter.reset();
     this.pieceFrame = 0;
     this.prevPieceFrame = 0;
-    this.gnValue = 1;
+    this.gnVal.fill(1);
+    this.groupQuiet.fill(1);
     this.resetGroups();
     this.loopStart = -1;
     this.loopEnd = -1;
@@ -682,11 +715,39 @@ export class Graph {
     const referenceHz = score.referenceHz > 0 ? score.referenceHz : 440;
     computeUnisonWarps(data, referenceHz);
     computeStrikeShares(data);
+    const names = (score.voiceParts ?? []).slice(0, n);
+    while (names.length < n) names.push('');
+    let groupsReset = false;
+    const fresh = names.filter((x) => !this.partGroups.has(x));
+    if (this.partGroups.size + new Set(fresh).size > DSP_MAX_VOICES) {
+      this.partGroups.clear();
+      groupsReset = true;
+    }
+    const groups = new Int32Array(n);
+    names.forEach((name, i) => {
+      let g = this.partGroups.get(name);
+      if (g === undefined) {
+        g = this.partGroups.size;
+        this.partGroups.set(name, g);
+      }
+      groups[i] = g;
+    });
+    const lines = score.partLines ?? {};
+    const used = [...new Set(names)];
+    const peakOf = (name: string) => Math.max(1, lines[name] ?? 1);
+    let total = 0;
+    for (const name of used) total += peakOf(name);
+    const share = new Float64Array(DSP_MAX_VOICES);
+    for (const name of used) share[groups[names.indexOf(name)]] = Math.sqrt(peakOf(name) / total);
     return {
       data,
       voiceIds: score.voiceIds.slice(0, n),
       duration: Number.isFinite(score.duration) ? Math.max(0, score.duration) : 0,
       referenceHz,
+      groups,
+      distinctGroups: used.length,
+      partShare: share,
+      groupsReset,
     };
   }
 
@@ -697,6 +758,29 @@ export class Graph {
     this.durationFrames = Math.round(p.duration * this.sampleRate);
     this.ctx.refOct = pmath.log2(p.referenceHz / MIP_BASE_HZ);
     this.updateSolo(p.data);
+    if (p.groupsReset) this.groupQuiet.fill(1);
+    // Groups this score does not use start afresh if a later score brings them back.
+    for (let g = 0; g < DSP_MAX_VOICES; g++) if (p.partShare[g] === 0) this.groupQuiet[g] = 1;
+    this.voiceGroup.fill(0);
+    this.voiceGroup.set(p.groups);
+    this.distinctGroups = p.distinctGroups;
+    this.partShare.set(p.partShare);
+    this.updateNormMode();
+  }
+
+  /**
+   * Points each voice at its g_n row: its group's when normalising per part, else row 0. Turning
+   * per-part on starts every group from the shared g_n; turning it off keeps group 0's.
+   */
+  private updateNormMode(): void {
+    const on = this.mix.normPart && this.distinctGroups > 1;
+    if (on && !this.normPart) {
+      for (let g = 1; g < DSP_MAX_VOICES; g++) this.gnVal[g] = this.gnVal[0];
+      this.groupQuiet.fill(0);
+    }
+    this.normPart = on;
+    for (let i = 0; i < DSP_MAX_VOICES; i++)
+      this.voices[i].gnOff = on ? this.voiceGroup[i] * GN_ROW : 0;
   }
 
   private updateSolo(data: VoiceData[]): void {
@@ -725,6 +809,7 @@ export class Graph {
     this.ctx.sendReverb = Math.max(0, m.sendReverb);
     this.ctx.sendDelay = Math.max(0, m.sendDelay);
     this.ctx.panByPitch = m.panByPitch;
+    this.updateNormMode();
     if (immediate) {
       this.retRev = m.reverbReturn;
       this.retDly = m.delayReturn;
@@ -776,18 +861,43 @@ export class Graph {
 
   /** Re-initialises g_n to 1/√(Σ life × line weights) at the current position (after a jump). */
   private resetNorm(): void {
+    if (this.normPart) {
+      this.sumGroups(this.pieceFrame, 0);
+      const nG = this.partGroups.size;
+      for (let g = 0; g < nG; g++) {
+        const sum = this.groupSum[g];
+        this.gnVal[g] = this.partShare[g] / Math.sqrt(sum > 1 ? sum : 1);
+      }
+      return;
+    }
     let sum = 0;
     for (let i = 0; i < this.voiceCount; i++) {
       const v = this.voices[i];
       v.computeLife(this.pieceFrame, 0);
       sum += v.powTick[0];
     }
-    this.gnValue = 1 / Math.sqrt(sum > 1 ? sum : 1);
+    this.gnVal[0] = 1 / Math.sqrt(sum > 1 ? sum : 1);
+  }
+
+  /** Σ life × line weights per normalisation group at `frame` into groupSum (powTick[slot]). */
+  private sumGroups(frame: number, slot: number): void {
+    const sums = this.groupSum;
+    sums.fill(0);
+    for (let i = 0; i < this.voiceCount; i++) {
+      const v = this.voices[i];
+      v.computeLife(frame, slot);
+      sums[this.voiceGroup[i]] += v.powTick[slot];
+    }
   }
 
   private computeNorm(): void {
     const gn = this.ctx.gn;
-    gn[0] = this.gnValue;
+    if (this.normPart) {
+      this.computePartNorm();
+      return;
+    }
+    let gv = this.gnVal[0];
+    gn[0] = gv;
     for (let k = 1; k <= TICKS_PER_BLOCK; k++) {
       if (this.playing) {
         const frame = this.pieceFrame + k * CONTROL_PERIOD;
@@ -798,9 +908,38 @@ export class Graph {
           sum += v.powTick[k];
         }
         const target = 1 / Math.sqrt(sum > 1 ? sum : 1);
-        this.gnValue += (target - this.gnValue) * this.normCoeff;
+        gv += (target - gv) * this.normCoeff;
       }
-      gn[k] = this.gnValue;
+      gn[k] = gv;
+    }
+    this.gnVal[0] = gv;
+  }
+
+  /**
+   * Per-part g_n (§8.4 revision 10): each group's lines by 1/√(its own Σ life × line weights),
+   * times its static share (partShare), each smoothed like g_n.
+   */
+  private computePartNorm(): void {
+    const gn = this.ctx.gn;
+    const val = this.gnVal;
+    const share = this.partShare;
+    const sums = this.groupSum;
+    const nG = this.partGroups.size;
+    for (let g = 0; g < nG; g++) gn[g * GN_ROW] = val[g];
+    for (let k = 1; k <= TICKS_PER_BLOCK; k++) {
+      if (this.playing) {
+        this.sumGroups(this.pieceFrame + k * CONTROL_PERIOD, k);
+        for (let g = 0; g < nG; g++) {
+          const sum = sums[g];
+          const target = share[g] / Math.sqrt(sum > 1 ? sum : 1);
+          if (this.groupQuiet[g] === 1) {
+            // A part new to this graph (load or hot-swap) starts at its own level.
+            val[g] = target;
+            if (sum > 0) this.groupQuiet[g] = 0;
+          } else val[g] += (target - val[g]) * this.normCoeff;
+        }
+      }
+      for (let g = 0; g < nG; g++) gn[g * GN_ROW + k] = val[g];
     }
   }
 
@@ -1295,7 +1434,7 @@ export class Graph {
     if (g === null) return false;
     g.copyFrom(v);
     g.frame = this.pieceFrame;
-    this.gnScratch[0] = this.gnValue;
+    this.gnScratch[0] = this.gnVal[(v.gnOff / GN_ROW) | 0];
     g.freezeGn(this.gnScratch, 0);
     g.fadeOut(frames);
     return true;
