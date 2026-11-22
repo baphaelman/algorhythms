@@ -4,7 +4,8 @@
  * (core `liveUpdate` on a mirror). Messages are queued as the worklet's port would deliver them:
  * between blocks, applied at the next one. The mirror applies each message when the rig reads its
  * stamp, at the stamped time, as LiveEngine does. Presses (§9 merge window) are timed by the rig's
- * live time (`decideLive`); `changes` logs every posted change for recording tests.
+ * live time (`decideLive`), and so is the staggered-release grace (checked at each block and change);
+ * `changes` logs every posted change for recording tests.
  */
 
 import {
@@ -12,6 +13,7 @@ import {
   DEFAULT_LIVE_SETTINGS,
   LiveKeys,
   mergeLiveSettings,
+  ReleaseGrace,
   type LiveSettings,
   type LiveUpdate,
 } from '../../core/live';
@@ -72,6 +74,8 @@ export class LiveRig {
   /** The main thread's mirror (moves applied at their stamps). */
   readonly mirror: LiveTracks;
   readonly keys = new LiveKeys();
+  /** The staggered-release grace (core/live.ts), timed by the rig's live time. */
+  readonly grace = new ReleaseGrace();
   settings: LiveSettings;
   /** Stamps read so far: seq → { frame (rendered frames), time }. */
   readonly stamps = new Map<number, { frame: number; time: number }>();
@@ -165,20 +169,40 @@ export class LiveRig {
     return seq;
   }
 
-  noteOn(p: Pitch): number {
-    return this.keys.noteOn(p) ? this.change() : -1;
+  /** A grace that has run out re-targets to the keys still down (core/live.ts ReleaseGrace). */
+  private flush(): void {
+    if (!this.grace.due(this.time)) return;
+    this.grace.end();
+    this.change();
   }
 
+  noteOn(p: Pitch): number {
+    this.flush();
+    if (!this.keys.noteOn(p)) return -1;
+    this.grace.end();
+    return this.change();
+  }
+
+  /** −1 also when the release waits for the grace. */
   noteOff(p: Pitch): number {
-    return this.keys.noteOff(p) ? this.change() : -1;
+    this.flush();
+    if (!this.keys.noteOff(p)) return -1;
+    if (this.grace.release(this.time, this.keys.held)) return -1;
+    return this.change();
   }
 
   sustain(on: boolean): number {
-    return this.keys.setSustain(on) ? this.change() : -1;
+    this.flush();
+    if (!this.keys.setSustain(on)) return -1;
+    this.grace.end();
+    return this.change();
   }
 
   allOff(): number {
-    return this.keys.allOff() ? this.change() : -1;
+    this.flush();
+    if (!this.keys.allOff()) return -1;
+    this.grace.end();
+    return this.change();
   }
 
   /** Changes settings (from the next change of H). */
@@ -192,6 +216,7 @@ export class LiveRig {
 
   /** Renders one block (applying queued messages first, as the worklet does). */
   block(): void {
+    this.flush();
     this.input.beforeBlock(this.frames);
     this.graph.process(this.bl, this.br);
     if (this.record) {

@@ -2311,3 +2311,28 @@ On 62fc85a (`main-7glpov`), branch `m7-live-match`. Fix 1 of 3 done (mostly); fi
   - `pnpm test:perf` (the audio thread changed, so the no-GC live run is needed); e2e.
   - The gating random test covers seeds 1–12 only. The rest wait for the unborn-fork fix.
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 2363 passed (+2 skipped; compiler goldens unchanged). test:perf and e2e not run.
+
+## M7: staggered-release grace and voice fill (core, audio, app; 2026-11-22)
+On 99cddd2, branch `live-grace-fill`. Fixes 2 and 3 of M7-d. `core/live-plan.ts` and `dsp/live.ts` untouched.
+- **Grace (`core/live.ts` `ReleaseGrace`, `RELEASE_GRACE` = 60 ms, by call time; used by `LiveEngine` and `LiveRig`).**
+  - A release that leaves keys down posts nothing: the chord as held keeps sounding.
+  - Every key up within 60 ms of the first release (inclusive) is one all-keys release, decided at the last key-up, so hold / fade / tonic act on the chord as held.
+  - Keys still down after 60 ms: re-target to them at the grace's expiry (LiveEngine: a `setTimeout`, also checked at the next change of H; the rig: each block start).
+  - **Why expiry, not the first release:** during the grace the held chord has already been heard. A re-target timed at the first release would put the take’s moment 60 ms before it sounded, or need a rewind replacing 60 ms already heard (presses rewind at most 15 ms). At expiry, the posted change is stamped where it sounded and the take records it there. Cost: a deliberate partial release re-targets 60 ms late.
+  - A press, the pedal or all notes off ends the grace and is decided at once on the current H (released keys gone). Presses are never delayed. Under the pedal a key-up doesn't change H, so no grace starts; lifting the pedal re-targets at once, as before.
+- **Fill (`audio/live-setup.ts` `fill`, `LIVE_MIN_VOICES` = 4).**
+  - With fewer than 4 picked voices (sounding at the playhead; recording: those that sounded before T₀), the pool's other voices are added, nearest by pool index first (ties: the lower index). If the pool is too small, new default voices follow (`LiveSetup.added`, ids `v<n>` unused in the piece, default range).
+  - Each added voice takes the timbre, part, mute and solo of the nearest picked voice by index. It keeps its own range, gain, pan and sends. Marked `fill: 'pool' | 'new'`. Order: pool order, new voices last.
+  - Added voices are ordinary live voices: alive throughout, silent at level 0, so g_n stays constant. Each voice sounds at the normalisation of n live lines (as 4 voices that all sound there, tested). Under 'part', the part's share still follows the piece's peak lines.
+  - Recording: `core/live-take.ts takeVoices` writes the fill voices' timbre, part, mute and solo into their VoiceDefs and appends the new ones. If a timbre moment before T₀ still sets a pool voice's timbre there, it also adds a `timbre` moment at T₀. `app/live.ts writeTake` applies it only to takes with moments. The take-test helper `record` does the same and compares from `silentFrom`.
+- **Rules the owner will notice.** A chord lifted unevenly (within 60 ms) holds, fades or returns to the tonic as a chord; lifting only some keys moves to the rest 60 ms later. Tidewater at 6 s now plays 4 voices (1 sounding + 3 from the pool, on its timbre); a 2-voice piece gets 2 new voices, which a take adds to the pool.
+- **Tests.**
+  - Unit: `core/live.test.ts` (ReleaseGrace: 59 ms, exactly 60, 61 ms, end, restart).
+  - `dsp/live-grace.test.ts` (rig): hold at 20 ms gaps; 22 vs 23 blocks; fade and tonic on the chord as held; partial release timed at expiry; a press during the grace; sustain.
+  - `dsp/live-fill.test.ts`: 0 (pool 2 → 2 new), 1, 3 and 5 sounding; inheritance; normalisation equal to 4 sounding voices and constant across a fade; `takeVoices` with a timbre moment; take = live on 1-of-6 and on a pool of 2.
+  - `live-take.test.ts`: staggered releases in hold / fade / tonic, and a partial release with a press during the grace. All match at 0.0000 cents, 0 frames, 0 misses. The Tidewater 6 s pool is now 4 (1 picked).
+  - e2e `live-record.spec.ts`: at 6 s (filled to 4), C E G lifted 20 ms apart under Hold keeps the chord with no re-target posted; the take (merge, establishing chord on 4 voices, chord) compiles equal to live, and Play plays it.
+- **Status.**
+  - Lint, typecheck: pass. `pnpm test --maxWorkers=2`: 2383 passed (+2 skipped).
+  - e2e:quick live, live-drawer, live-record and musical-typing: 16/16 on chromium-dev + chromium-prod. Firefox is not installed here.
+  - `pnpm test:perf`: 10/11. The live no-GC run fails: 50.6 KB allocated against a 6 KB limit, 0 GC. It fails identically at 99cddd2, so it comes from M7-d's `dsp/live.ts` changes, which were never run under the harness. Left to that work.

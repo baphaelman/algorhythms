@@ -218,6 +218,64 @@ export class LiveKeys {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Staggered chord release
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A key release that leaves keys down waits this long (s, by call time) before re-targeting, so
+ * a chord lifted key by key, slightly unevenly, is one release (integrator, M7).
+ */
+export const RELEASE_GRACE: Seconds = 0.06;
+
+/**
+ * The staggered-release rule. A release that leaves keys down starts a grace and posts nothing:
+ * the chord as held keeps sounding.
+ * - Every key up within RELEASE_GRACE of the first release (inclusive): one all-keys release,
+ *   decided then, so the release setting acts on the chord as held.
+ * - Keys still down after it (`due`): the caller re-targets to them then (at grace expiry: what
+ *   was heard until then is the held chord, so a take records the re-target where it sounded).
+ * - Any other change of H (a press, the pedal, all notes off) ends the grace and is decided at
+ *   once with the released keys gone (`end`). Presses are never delayed. The sustain pedal is
+ *   unaffected: a key released under it does not change H.
+ * Callers check `due` before each change of H and on a timer (LiveEngine) or each block (rigs).
+ */
+export class ReleaseGrace {
+  private from: number | null = null;
+
+  /** A grace is running. */
+  get waiting(): boolean {
+    return this.from !== null;
+  }
+
+  /** When it runs out (s, the callers' clock), or Infinity. */
+  get until(): number {
+    return this.from === null ? Infinity : this.from + RELEASE_GRACE;
+  }
+
+  /** True when a grace is running and `at` is past it: re-target to the keys down, then `end`. */
+  due(at: number): boolean {
+    return this.from !== null && at - this.from > RELEASE_GRACE;
+  }
+
+  /**
+   * A key release at `at` left H = `held`: true to wait (post nothing), false to decide now (H is
+   * empty: one all-keys release, ending any grace).
+   */
+  release(at: number, held: readonly Pitch[]): boolean {
+    if (held.length === 0) {
+      this.from = null;
+      return false;
+    }
+    if (this.from === null) this.from = at;
+    return true;
+  }
+
+  end(): void {
+    this.from = null;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Targets
 // ---------------------------------------------------------------------------------------------
 

@@ -10,18 +10,25 @@
  * re-enters live mode on it, so the take starts in silence with the voices playback will use.
  * The transport then runs on the live clock (playhead = T₀ + live time since arming; only the
  * live voices sound). `stopRecord` waits for the last change's stamp, turns the changes into
- * moments (`takeMoments`) and writes base + take as one undo step. Pause, Space, Escape, closing
+ * moments (`takeMoments`) and writes base + take as one undo step, with the voices live mode added
+ * to reach 4 (`takeVoices`). Pause, Space, Escape, closing
  * the drawer and leaving live mode all stop and keep the take; a take with no notes changes
  * nothing. Opening another piece drops it.
  */
 
 import { create } from 'zustand';
 import { LiveEngine } from '../audio/live-engine';
-import { liveSetupFrom } from '../audio/live-setup';
+import { liveSetupFrom, type LiveSetup } from '../audio/live-setup';
 import { compile } from '../core/compiler/compile';
 import type { LiveSettings } from '../core/live';
-import { takeBase, takeMoments, type TakeChange } from '../core/live-take';
-import type { Moment, MomentId, Piece, Seconds } from '../core/types';
+import {
+  takeBase,
+  takeMoments,
+  takeVoices,
+  type TakeChange,
+  type TakeVoice,
+} from '../core/live-take';
+import type { Moment, MomentId, Piece, Seconds, VoiceDef } from '../core/types';
 import { beginLiveAudio, endLiveAudio, isLiveAudio } from './audio';
 import { edit } from './editor/history';
 import { newMomentIds } from './editor/ops';
@@ -114,6 +121,9 @@ interface Take {
   silentFrom: Seconds;
   /** Live voice ids, in live voice order. */
   voices: string[];
+  /** The live voices as the piece gets them (voices added to reach 4 included), and new ones. */
+  played: TakeVoice[];
+  added: VoiceDef[];
   /** The take's slice of `live.changes`: from, and to (set at stop). */
   from: number;
   to: number;
@@ -155,6 +165,7 @@ export function armRecord(): Promise<void> {
   useRecord.setState({ status: 'starting', at: T0 });
   const run = busy.then(async () => {
     let silentFrom: Seconds;
+    let setup: LiveSetup;
     try {
       if (!isLiveAudio() || useRecord.getState().status !== 'starting') {
         throw new Error('Recording was cancelled');
@@ -162,10 +173,8 @@ export function armRecord(): Promise<void> {
       const { piece } = usePlayer.getState();
       const cut = takeBase(piece, T0, idMaker(piece));
       silentFrom = cut.silentFrom;
-      await live.enter({
-        context,
-        setup: liveSetupFrom(cut.piece, compile(cut.piece), silentFrom),
-      });
+      setup = liveSetupFrom(cut.piece, compile(cut.piece), silentFrom);
+      await live.enter({ context, setup });
     } catch (e) {
       if (useRecord.getState().status === 'starting') useRecord.setState({ status: 'off' });
       if (context.state !== 'closed') await context.close();
@@ -182,6 +191,15 @@ export function armRecord(): Promise<void> {
       liveAt: live.now(),
       silentFrom,
       voices: live.voiceIds,
+      played: setup.voices.map((v) => ({
+        id: v.id,
+        timbre: v.timbre,
+        part: v.part,
+        mute: v.mute,
+        solo: v.solo,
+        ...(v.fill ? { fill: v.fill } : {}),
+      })),
+      added: setup.added ?? [],
       from: live.changes.length,
       to: -1,
     };
@@ -255,7 +273,9 @@ function writeTake(t: Take, stopLive: Seconds, stopAt: Seconds): void {
       newId,
     });
     if (moments.length === 0) return piece;
-    const out: Piece = { ...base, moments: [...base.moments, ...moments] };
+    // Voices live mode added (fewer than 4 sounding) play the take back.
+    const voiced = takeVoices(base, t.played, t.added, t.T0, newId);
+    const out: Piece = { ...voiced, moments: [...voiced.moments, ...moments] };
     // Still sounding at the stop: the piece lasts at least until then.
     if (sounding && compile(out).duration < stopAt) {
       out.end = { ...out.end, at: Math.round(stopAt * 1000) / 1000 };
