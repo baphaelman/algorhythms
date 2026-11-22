@@ -7,7 +7,14 @@
 import { useEffect, useId, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Moment, MomentId, Piece } from '../../../core/types';
 import { updateMoment } from '../../editor/actions';
-import { beginGesture, cancelGesture, endGesture, updateGesture } from '../../editor/history';
+import {
+  beginGesture,
+  cancelGesture,
+  endGesture,
+  inGesture,
+  updateGesture,
+  type Recipe,
+} from '../../editor/history';
 import { patchMoment, type MomentPatch } from '../../editor/ops';
 import { usePlayer } from '../../store';
 import {
@@ -19,6 +26,7 @@ import {
   parseNum,
   shiftAtPosition,
   shiftPosition,
+  sliderPlan,
 } from './fields';
 
 /** Builds a patch from the moment as it is when the change applies. */
@@ -45,6 +53,25 @@ export interface Setter<V> {
 /** True while an inspector drag gesture is open (there is only one pointer). */
 let dragging = false;
 
+/** The latest drag frame, applied once per animation frame (as timbre sliders). */
+let pending: Recipe | null = null;
+let frameQueued = false;
+
+function flushDrag(): void {
+  frameQueued = false;
+  const r = pending;
+  pending = null;
+  if (r && inGesture()) updateGesture(r);
+}
+
+function queueDrag(r: Recipe): void {
+  pending = r;
+  if (frameQueued) return;
+  frameQueued = true;
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flushDrag);
+  else flushDrag();
+}
+
 /**
  * A `Setter` for moment `id` whose patch comes from `patch(moment, value)`. Stateless apart from
  * the module's one open drag, so a fresh setter per render is fine.
@@ -60,7 +87,8 @@ export function fieldSetter<V>(id: MomentId, label: string, patch: Patcher<V>): 
     drag(v) {
       if (!dragging) s.begin();
       // The recipe gets the piece at gesture start, so each frame patches from the same base.
-      updateGesture((p) => {
+      // Input events are coalesced to one piece update (one recompile) per animation frame.
+      queueDrag((p) => {
         const m = find(p, id);
         return m ? patchMoment(p, id, patch(m, v)) : p;
       });
@@ -68,8 +96,13 @@ export function fieldSetter<V>(id: MomentId, label: string, patch: Patcher<V>): 
     end(cancel = false) {
       if (!dragging) return;
       dragging = false;
-      if (cancel) cancelGesture();
-      else endGesture();
+      if (cancel) {
+        pending = null;
+        cancelGesture();
+      } else {
+        if (pending) flushDrag();
+        endGesture();
+      }
     },
   };
   return s;
@@ -113,14 +146,18 @@ interface NumberFieldProps {
   /** Extra validation; returns an error message or null. */
   check?: (v: number) => string | null;
   testId?: string;
-  /** Adds a range slider over [min, max] (may be narrower than the typed range). */
-  slider?: { min: number; max: number; step?: number };
+  /**
+   * A range slider over [min, max] (may be narrower than the typed range); `false`: box only.
+   * Absent, a bounded field gets one over its typed range (`sliderPlan`).
+   */
+  slider?: { min: number; max: number; step?: number } | false;
 }
 
 /**
  * A number field. Type and press Enter (or leave the field) to commit; ↑/↓ step by `step`
- * (Shift ×10). Drag the label sideways to scrub: one undo entry per drag, Escape cancels. With
- * `slider`, a range slider sits before the text box; each slider drag is one undo entry too.
+ * (Shift ×10). Drag the label sideways to scrub: one undo entry per drag, Escape cancels. A
+ * bounded field (`sliderPlan`) has a range slider before the text box; each slider drag is one
+ * undo entry too. A small integer count shows the slider and its value, without a text box.
  * Disabled with its enclosing `<fieldset disabled>`.
  */
 export function NumberField(props: NumberFieldProps) {
@@ -136,6 +173,7 @@ export function NumberField(props: NumberFieldProps) {
   } = props;
   const format = props.format ?? ((v: number) => formatNum(v));
   const id = useId();
+  const plan = sliderPlan({ min, max, step, integer, slider: props.slider });
   const shown = format(value);
   const [draft, dispatch] = useReducer(draftReduce, { text: shown, dirty: false });
   const text = draft.text;
@@ -226,61 +264,79 @@ export function NumberField(props: NumberFieldProps) {
       >
         {label}
       </label>
-      <div className={props.slider ? 'insp-ctl with-slider' : 'insp-ctl'}>
-        {props.slider && (
+      <div className={plan ? 'insp-ctl with-slider' : 'insp-ctl'}>
+        {plan && (
           <RangeInput
+            id={plan.box ? undefined : id}
             label={label}
             value={value}
             set={set}
-            min={props.slider.min}
-            max={props.slider.max}
-            step={props.slider.step ?? step}
+            min={plan.min}
+            max={plan.max}
+            step={plan.step}
+            ticks={plan.ticks}
+            valueText={`${format(value)}${unit ? ` ${unit}` : ''}`}
             filter={(v) => (props.check?.(v) ? null : v)}
             testId={props.testId ? `${props.testId}-slider` : undefined}
           />
         )}
-        <input
-          id={id}
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          spellCheck={false}
-          value={text}
-          data-testid={props.testId}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-err` : undefined}
-          onBlur={() => {
-            if (!draft.dirty) {
-              setText(shown);
-              setError(null);
-              return;
-            }
-            submit();
-            if (parse(text) === null) {
-              setText(shown);
-              setError(null);
-            }
-          }}
-          onChange={(e) => dispatch({ type: 'type', text: e.target.value })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              submit();
-            } else if (e.key === 'Escape') {
-              setText(shown);
-              setError(null);
-            } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-              e.preventDefault();
-              const base = parse(text) ?? value;
-              const v = clamp(base + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1));
-              if (props.check?.(v)) return;
-              setError(null);
-              setText(format(v));
-              if (v !== value) set.commit(v);
-            }
-          }}
-        />
-        {unit && <span className="unit">{unit}</span>}
+        {plan && !plan.box ? (
+          <output
+            htmlFor={id}
+            className="unit count-value"
+            data-testid={props.testId ? `${props.testId}-value` : undefined}
+          >
+            {format(value)}
+            {unit && ` ${unit}`}
+          </output>
+        ) : (
+          <>
+            <input
+              id={id}
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              spellCheck={false}
+              value={text}
+              data-testid={props.testId}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? `${id}-err` : undefined}
+              onBlur={() => {
+                if (!draft.dirty) {
+                  setText(shown);
+                  setError(null);
+                  return;
+                }
+                submit();
+                if (parse(text) === null) {
+                  setText(shown);
+                  setError(null);
+                }
+              }}
+              onChange={(e) => dispatch({ type: 'type', text: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submit();
+                } else if (e.key === 'Escape') {
+                  setText(shown);
+                  setError(null);
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  const base = parse(text) ?? value;
+                  const v = clamp(
+                    base + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1),
+                  );
+                  if (props.check?.(v)) return;
+                  setError(null);
+                  setText(format(v));
+                  if (v !== value) set.commit(v);
+                }
+              }}
+            />
+            {unit && <span className="unit">{unit}</span>}
+          </>
+        )}
       </div>
       {error && (
         <small id={`${id}-err`} className="field-error" role="alert">
@@ -315,6 +371,8 @@ function RangeInput({
   max,
   step,
   filter,
+  ticks,
+  valueText,
   testId,
 }: {
   id?: string;
@@ -325,29 +383,45 @@ function RangeInput({
   max: number;
   step: number;
   filter?: (v: number) => number | null;
+  ticks?: readonly number[];
+  valueText?: string;
   testId?: string;
 }) {
   const end = (): void => set.end();
+  const listId = useId();
+  const marks = ticks && ticks.length > 1 ? ticks : null;
   return (
-    <input
-      id={id}
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={Math.min(max, Math.max(min, value))}
-      aria-label={id ? undefined : label}
-      data-testid={testId}
-      onPointerDown={() => set.begin()}
-      onChange={(e) => {
-        const v = filter ? filter(Number(e.target.value)) : Number(e.target.value);
-        if (v !== null) set.drag(v);
-      }}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onKeyUp={end}
-      onBlur={end}
-    />
+    <>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={Math.min(max, Math.max(min, value))}
+        disabled={max <= min ? true : undefined}
+        list={marks ? listId : undefined}
+        aria-label={id ? undefined : label}
+        aria-valuetext={valueText}
+        data-testid={testId}
+        onPointerDown={() => set.begin()}
+        onChange={(e) => {
+          const v = filter ? filter(Number(e.target.value)) : Number(e.target.value);
+          if (v !== null) set.drag(v);
+        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onKeyUp={end}
+        onBlur={end}
+      />
+      {marks && (
+        <datalist id={listId}>
+          {marks.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      )}
+    </>
   );
 }
 

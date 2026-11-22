@@ -13,7 +13,7 @@ import {
   pitchOfDegreeIndex,
   scaleIntervals,
 } from '../../../core/scales';
-import { segmentAt } from '../../../core/query';
+import { activeAt, segmentAt } from '../../../core/query';
 import type {
   CompiledScore,
   EaseRef,
@@ -413,4 +413,84 @@ export function draftReduce(s: DraftState, a: DraftAction): DraftState {
   if (a.type === 'type') return { text: a.text, dirty: true };
   if (a.type === 'set') return { text: a.text, dirty: false };
   return s.text === a.shown && !s.dirty ? s : { text: a.shown, dirty: false };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bounded number fields: when a slider is shown (owner 2026-11-21)
+// ---------------------------------------------------------------------------------------------
+
+/** Most values an automatic integer slider spans (0–100 % fits; pitches 0–127 do not). */
+export const SLIDER_MAX_INTS = 101;
+/** Most steps an automatic continuous slider spans. */
+export const SLIDER_MAX_STEPS = 1000;
+/** Integer sliders with at most this many values show no text box, only the value. */
+export const COUNT_MAX_VALUES = 32;
+/** Integer sliders with at most this many values show a tick per value. */
+export const TICKS_MAX_VALUES = 16;
+
+export interface SliderPlan {
+  min: number;
+  max: number;
+  step: number;
+  /** One tick per value (small integer ranges), else empty. */
+  ticks: number[];
+  /** Keep the text box beside the slider (false: a small count, shown as a value label). */
+  box: boolean;
+}
+
+/**
+ * Whether a number field gets a slider, and how. `slider` is an explicit range (may be narrower
+ * than the typed one) or `false` (box only); absent, the typed range decides: a finite range of
+ * at most SLIDER_MAX_INTS integers or SLIDER_MAX_STEPS steps gets one. An integer slider over the
+ * whole typed range with at most COUNT_MAX_VALUES values drops the text box.
+ */
+export function sliderPlan(o: {
+  min: number;
+  max: number;
+  step: number;
+  integer: boolean;
+  slider?: { min: number; max: number; step?: number } | false;
+}): SliderPlan | null {
+  if (o.slider === false) return null;
+  const lo = o.slider ? o.slider.min : o.min;
+  const hi = o.slider ? o.slider.max : o.max;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return null;
+  const step = o.slider?.step ?? (o.integer ? Math.max(1, Math.round(o.step)) : o.step);
+  if (!(step > 0)) return null;
+  const values = Math.floor((hi - lo) / step + 1e-9) + 1;
+  if (!o.slider) {
+    if (o.integer ? values > SLIDER_MAX_INTS : values - 1 > SLIDER_MAX_STEPS) return null;
+    if (!o.integer && hi === lo) return null;
+  }
+  const whole = lo <= o.min && hi >= o.max;
+  const count = o.integer && step === 1 && whole && values <= COUNT_MAX_VALUES;
+  const ticks: number[] = [];
+  if (o.integer && values <= TICKS_MAX_VALUES)
+    for (let i = 0; i < values; i++) ticks.push(lo + i * step);
+  return { min: lo, max: hi, step, ticks, box: !count };
+}
+
+/**
+ * The live range of a split's "Notes after" (its `count`, the lines heard after it): from the
+ * lines sounding before it (no births) to the pool size, so births ≤ pool − sounding. Widened to
+ * hold the stored count.
+ */
+export function splitCountBounds(
+  sounding: number,
+  pool: number,
+  count: number,
+): { min: number; max: number } {
+  const max = Math.max(1, pool);
+  const min = Math.min(max, Math.max(1, sounding));
+  return { min: Math.max(1, Math.min(min, count)), max: Math.max(max, count) };
+}
+
+/** The live range of a merge's "Notes after": 1 to the lines sounding before it (no deaths). */
+export function mergeCountBounds(sounding: number, count: number): { min: number; max: number } {
+  return { min: 1, max: Math.max(1, sounding, count) };
+}
+
+/** How many lines sound just before `at` (lines born at `at` are not counted). */
+export function soundingBefore(score: CompiledScore, at: Seconds): number {
+  return activeAt(score, at - 1e-6).length;
 }

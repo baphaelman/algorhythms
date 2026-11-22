@@ -280,8 +280,7 @@
 
 .insp-bezier {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 8px;
+  grid-template-columns: 1fr;
 }
 
 .insp-bezier .insp-row {
@@ -456,6 +455,14 @@
 
 .insp-ctl.with-slider .unit {
   min-width: 1.6em;
+}
+
+/* A small count's value, in place of a text box: fits "32" or "24 st" without the track moving. */
+.insp-ctl.with-slider .unit.count-value {
+  min-width: 3.5ch;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink);
 }
 
 .insp-gen {

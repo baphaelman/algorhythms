@@ -37,12 +37,16 @@ import {
   formatIntList,
   formatNum,
   formatPitch,
+  mergeCountBounds,
   parseIntList,
   parsePitch,
   shiftOctave,
+  soundingBefore,
+  splitCountBounds,
   stepChips,
   toggleStep,
 } from './fields';
+import { usePlayer } from '../../store';
 import { ChordNotes } from './ChordNotes';
 import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
@@ -66,7 +70,15 @@ function field<V>(id: string, field: string, label: string): Setter<V> {
   return fieldSetter<V>(id, label, (_m, v) => ({ [field]: v }) as MomentPatch);
 }
 
-const pitchProps = { format: formatPitch, parse: parsePitch, step: 1, min: 0, max: 127 } as const;
+/** Pitches are typed (note names), not slid: 128 values are too fine for a slider. */
+const pitchProps = {
+  format: formatPitch,
+  parse: parsePitch,
+  step: 1,
+  min: 0,
+  max: 127,
+  slider: false,
+} as const;
 
 export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
   switch (m.type) {
@@ -77,7 +89,7 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
     case 'split':
       return <SplitFields m={m} ctx={ctx} />;
     case 'merge':
-      return <MergeFields m={m} ctx={ctx} />;
+      return <MergeFields m={m} />;
     case 'shift':
       return <ShiftFields m={m} ctx={ctx} />;
     case 'spread':
@@ -208,6 +220,8 @@ function UnisonFields({ m }: { m: UnisonMoment }) {
 
 function SplitFields({ m, ctx }: { m: SplitMoment; ctx: Ctx }) {
   const count = field<number>(m.id, 'count', 'Edit count');
+  const compiled = usePlayer((s) => s.compiled);
+  const bounds = splitCountBounds(soundingBefore(compiled, m.at), ctx.piece.voices.length, m.count);
   return (
     <>
       <NumberField
@@ -216,8 +230,8 @@ function SplitFields({ m, ctx }: { m: SplitMoment; ctx: Ctx }) {
         set={count}
         integer
         step={1}
-        min={1}
-        max={ctx.piece.voices.length}
+        {...bounds}
+        testId="insp-split-count"
       />
       <NoteSetField
         value={m.notes ?? { kind: 'current' }}
@@ -241,9 +255,11 @@ const WHICH: readonly (readonly [MergeWhich, string])[] = [
   ['random', 'Random'],
 ];
 
-function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
+function MergeFields({ m }: { m: MergeMoment }) {
   const count = field<number>(m.id, 'count', 'Edit count');
   const fade = field<number>(m.id, 'fade', 'Edit fade');
+  const compiled = usePlayer((s) => s.compiled);
+  const bounds = mergeCountBounds(soundingBefore(compiled, m.at), m.count);
   return (
     <>
       <NumberField
@@ -252,8 +268,8 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
         set={count}
         integer
         step={1}
-        min={1}
-        max={ctx.piece.voices.length}
+        {...bounds}
+        testId="insp-merge-count"
       />
       <SelectField
         label="Which die"
@@ -270,6 +286,7 @@ function MergeFields({ m, ctx }: { m: MergeMoment; ctx: Ctx }) {
         min={0}
         max={60}
         step={0.1}
+        slider={{ min: 0, max: 10 }}
         testId="insp-merge-fade"
       />
     </>
@@ -314,6 +331,7 @@ function SpreadFields({ m }: { m: SpreadMoment }) {
         min={0}
         max={8}
         step={0.05}
+        testId="insp-spread-factor"
       />
       <SelectField
         label="Around"

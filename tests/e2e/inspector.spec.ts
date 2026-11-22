@@ -345,7 +345,11 @@ test('walk: grid, step glide and bass leap change the score; each undoes', async
   await expect.poll(() => walkSegments(page)).toBe(segs0);
 
   // Bass leap [5, 12] -> [12, 12]: the bass always leaps an octave.
-  await set(insp.getByRole('textbox', { name: 'Leap min' }), '12');
+  // Leap min is a 0–24 slider without a text box: click its middle (one entry).
+  const leap = insp.getByRole('slider', { name: 'Leap min' });
+  await expect(insp.getByRole('textbox', { name: 'Leap min' })).toHaveCount(0);
+  await leap.click();
+  await leap.blur();
   expect((await walk(page))?.bass?.leap).toEqual([12, 12]);
   await expect.poll(() => walkSteps(page)).not.toBe(steps0);
   expect(await undoLabel(page)).toBe('Edit bass leap');
@@ -525,17 +529,18 @@ test('chord Notes: n changes how many notes sound', async ({ page }) => {
   const rows = insp.getByTestId('chord-note');
   await expect(rows.first()).toBeVisible();
   const n0 = await rows.count();
-  const count = insp.getByTestId('insp-chord-count');
+  // A slider with the value as a label (no text box).
+  const count = insp.getByTestId('insp-chord-count-slider');
   await expect(count).toHaveValue(String(n0));
+  await expect(insp.getByTestId('insp-chord-count-value')).toHaveText(String(n0));
 
   // The featured chord already sounds the whole pool: go down, then up.
   expect(n0).toBeGreaterThan(4);
-  await count.fill(String(n0 - 3));
-  await count.press('Enter');
+  await count.focus();
+  for (let i = 0; i < 3; i++) await count.press('ArrowLeft');
   expect((await chordM(page))?.count).toBe(n0 - 3);
   await expect(rows).toHaveCount(n0 - 3);
 
-  await count.focus();
   await count.press('ArrowUp');
   expect((await chordM(page))?.count).toBe(n0 - 2);
   await expect(rows).toHaveCount(n0 - 2);
@@ -558,7 +563,7 @@ test('a per-note ▲ freezes the chord and changes one note; undo; Unfreeze', as
   expect(m?.frozenFrom?.notes.kind).toBe('degrees');
   expect(await undoLabel(page)).toBe('Freeze chord and move note');
   await expect(insp.getByTestId('insp-chord-frozen')).toBeVisible();
-  await expect(insp.getByTestId('insp-chord-count')).toBeDisabled();
+  await expect(insp.getByTestId('insp-chord-count-slider')).toBeDisabled();
   await expect.poll(() => notePitches(page)).not.toEqual(before);
   const after = await notePitches(page);
   expect(after).toHaveLength(before.length);
