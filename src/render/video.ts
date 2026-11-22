@@ -11,7 +11,8 @@
 import type { CompiledScore, LineColors, MomentId, Piece, Seconds } from '../core/types';
 import { DEFAULT_FUTURE_OPACITY, MIN_WINDOW, followStart, pitchExtent } from './camera';
 import { drawScore, type Ctx2D } from './draw';
-import { tokensOf } from './palettes';
+import { DEFAULT_HUD } from './hud';
+import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 
 export type VideoAspect = '16:9' | '9:16' | '1:1';
@@ -80,6 +81,11 @@ export function videoCamera(
 }
 
 export interface VideoStyleOptions {
+  /**
+   * The export Look (§12 "Export look"); replaces theme, hud, thickness, colors and
+   * futureOpacity below. `transparent` is ignored (video has no alpha).
+   */
+  look?: Look;
   theme: 'light' | 'dark';
   /** @default true */
   hud?: boolean;
@@ -96,6 +102,10 @@ export interface VideoStyleOptions {
   labels?: MomentLabels;
   markerTimes?: MomentTimes;
   fontMono?: string;
+  /** With a Look: the piece's tempo and meter (beats) and name (the `title` readout). */
+  bpm?: number;
+  meter?: number;
+  pieceName?: string;
 }
 
 /** The player's section labels (labelled moments) and marker times (`moment.at`) of a piece. */
@@ -112,25 +122,31 @@ export function videoMarkers(piece: Pick<Piece, 'moments'>): {
   return { labels, markerTimes };
 }
 
-/** The video's ScoreStyle: heads and the canvas playhead on, no editor overlays. */
+/**
+ * The video's ScoreStyle: a Look (default: the player's, from the options' theme, hud,
+ * thickness, colors and futureOpacity), heads and the canvas playhead on, no editor overlays.
+ */
 export function videoStyle(o: VideoStyleOptions): ScoreStyle {
-  const dark = o.theme === 'dark';
-  const style: ScoreStyle = {
-    tokens: tokensOf(o.theme),
-    dark,
-    colors: o.colors ?? 'pitch',
+  const look: Look = o.look
+    ? { ...o.look, transparent: false }
+    : {
+        ...PLAYER_LOOK,
+        theme: o.theme,
+        hud: o.hud === false ? [] : DEFAULT_HUD,
+        thickness: o.thickness ?? true,
+        colors: o.colors ?? 'pitch',
+        futureOpacity: o.futureOpacity ?? DEFAULT_FUTURE_OPACITY,
+      };
+  return lookStyle(look, {
     oklch: o.oklch ?? true,
-    futureOpacity: o.futureOpacity ?? DEFAULT_FUTURE_OPACITY,
-    hud: o.hud ?? true,
-    heads: true,
-    playhead: true,
-    thickness: o.thickness ?? true,
-  };
-  if (o.customColors) style.customColors = o.customColors;
-  if (o.labels) style.labels = o.labels;
-  if (o.markerTimes) style.markerTimes = o.markerTimes;
-  if (o.fontMono) style.fontMono = o.fontMono;
-  return style;
+    ...(o.customColors ? { customColors: o.customColors } : {}),
+    ...(o.labels ? { labels: o.labels } : {}),
+    ...(o.markerTimes ? { markerTimes: o.markerTimes } : {}),
+    ...(o.fontMono ? { fontMono: o.fontMono } : {}),
+    ...(o.bpm !== undefined ? { bpm: o.bpm } : {}),
+    ...(o.meter !== undefined ? { meter: o.meter } : {}),
+    ...(o.pieceName !== undefined ? { pieceName: o.pieceName } : {}),
+  });
 }
 
 /**

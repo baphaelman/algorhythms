@@ -6,6 +6,7 @@
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece } from '../core/types';
 import { drawScore } from '../render/draw';
+import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import {
   drawPoster,
@@ -34,6 +35,8 @@ export interface PosterOptions {
   colors?: LineColors;
   /** Voice colours by pool index, for `colors: 'custom'`. */
   customColors?: readonly (string | undefined)[];
+  /** The export Look (§12); replaces theme, transparent, thickness and colors when given. */
+  look?: Look;
 }
 
 /**
@@ -54,6 +57,7 @@ export function posterDrawOptions(
     oklch,
     ...(opts.customColors ? { customColors: opts.customColors } : {}),
     ...videoMarkers(piece),
+    ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
   });
   return { size: opts.size, style, title: opts.title };
 }

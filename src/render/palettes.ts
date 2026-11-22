@@ -116,6 +116,8 @@ export interface PaletteInput {
   oklch: boolean;
   colors: LineColors;
   customColors?: readonly (string | undefined)[];
+  /** Replaces the theme ink as the line colour ('ink', and 'custom' fallback). */
+  lineInk?: string;
 }
 
 /**
@@ -125,6 +127,7 @@ export interface PaletteInput {
  */
 export function lineColor(p: PaletteInput, index: number): string | null {
   if (p.colors === 'pitch') return null;
-  if (p.colors === 'custom') return p.customColors?.[index] || p.tokens.ink;
-  return p.tokens.ink;
+  const ink = p.lineInk ?? p.tokens.ink;
+  if (p.colors === 'custom') return p.customColors?.[index] || ink;
+  return ink;
 }

@@ -10,20 +10,20 @@
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
-import { activeAt, chordAt, lifeAt, keyAt, motionAt, pitchAt, segmentIndexAt } from '../core/query';
+import { activeAt, lifeAt, motionAt, pitchAt, segmentIndexAt } from '../core/query';
 import { hzOf } from '../core/tuning';
 import type {
   CompiledScore,
   CompiledVoice,
-  Key,
   Life,
   MomentId,
   MomentSpan,
   Seconds,
 } from '../core/types';
 import { barGrid } from './bars';
-import { cameraAt, cameraScore, hudLines, pitchToY, timeToX } from './camera';
+import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { drawGhost, ghostOf, type Reach } from './ghost';
+import { drawHud, hudItems, hudRows } from './hud';
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
@@ -75,18 +75,13 @@ const TRACE_STEP_PX = 24;
 const TRACE_STEPS_MAX = 16;
 const RING_R = 6.5;
 
-/** `mm:ss.s` */
-export function formatTime(t: Seconds): string {
-  const s = Math.max(0, t);
-  const m = Math.floor(s / 60);
-  return String(m).padStart(2, '0') + ':' + (s - m * 60).toFixed(1).padStart(4, '0');
-}
+export { formatTime, keyName } from './hud';
 
-/** Display name of a key, e.g. "D dorian". */
-export function keyName(key: Key): string {
-  const scale = typeof key.scale === 'string' ? key.scale : (key.scale.name ?? 'custom');
-  return `${key.tonic} ${scale.replace(/-/g, ' ')}`;
-}
+/**
+ * Per-frame switches read deep in the line painters (set at the top of drawScore, which is
+ * synchronous): opacity by audible level, and the line widths scaled by `ScoreStyle.lineScale`.
+ */
+const F = { level: true, lw: LINE_WIDTH, hw: HIGHLIGHT_WIDTH, hitW: 1.75 };
 
 interface Marker {
   id: MomentId;
@@ -130,14 +125,23 @@ export function drawScore(
   const { width: W, height: H } = size;
   const C = style.tokens;
   const MONO = style.fontMono ?? DEFAULT_MONO;
+  const items = hudItems(style);
+  const rows = hudRows(items);
+  const extra = style.hudExtra ?? 0;
   const view = cameraAt(
     cameraScore(compiled),
     camera,
     t,
     size,
-    style.hud || style.reserveHud === true,
+    rows > 0 ? rows : style.reserveHud === true,
+    extra,
   );
-  const { padT, padB, padL, padR } = view;
+  const { padT, padB } = view;
+  const scale = style.lineScale ?? 1;
+  F.level = style.levelOpacity !== false;
+  F.lw = LINE_WIDTH * scale;
+  F.hw = HIGHLIGHT_WIDTH * scale;
+  F.hitW = HIT_WIDTH * scale;
 
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.globalAlpha = 1;
@@ -151,7 +155,8 @@ export function drawScore(
   g.font = `10px ${MONO}`;
   g.textBaseline = 'alphabetic';
   g.textAlign = 'left';
-  for (const n of A_PITCHES) {
+  const guideLabels = style.guideLabels !== false;
+  for (const n of style.guides === false ? NO_PITCHES : A_PITCHES) {
     if (n < view.pLo || n > view.pHi) continue;
     const y = Math.round(pitchToY(view, n)) + 0.5;
     g.strokeStyle = C.rule;
@@ -159,6 +164,7 @@ export function drawScore(
     g.moveTo(0, y);
     g.lineTo(W, y);
     g.stroke();
+    if (!guideLabels) continue;
     g.fillStyle = C.ink2;
     g.globalAlpha = 0.75;
     g.fillText(
@@ -169,7 +175,7 @@ export function drawScore(
     g.globalAlpha = 1;
   }
 
-  if (style.bars) drawBars(g, style.bars, view, C);
+  if (style.bars) drawBars(g, style.bars, view, C, style.aheadHidden === true);
 
   // 3. moment and section markers
   drawMarkers(g, compiled, style, view, MONO);
@@ -188,7 +194,11 @@ export function drawScore(
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
 
   // 5. heads
-  const headA = style.heads === false ? 0 : 1;
+  const headA =
+    style.heads === false ||
+    (style.dots === false && style.rings === false && style.hzLabels === false)
+      ? 0
+      : 1;
   const xH = view.xHead;
   if (headA > 0.02 && xH > -RING_R && xH < W + RING_R) {
     drawHeads(g, compiled, style, view, headA, MONO, sf);
@@ -205,7 +215,7 @@ export function drawScore(
   }
 
   // 7. HUD
-  if (style.hud) drawHud(g, compiled, style, view, MONO, padL, padR);
+  if (rows > 0) drawHud(g, compiled, style, view, MONO, items);
   return view;
 }
 
@@ -215,9 +225,11 @@ function drawBars(
   bars: { bpm?: number; meter?: number },
   view: View,
   C: ScoreStyle['tokens'],
+  aheadHidden: boolean,
 ): void {
   const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps);
-  const { tL, tR, padT, padB, height: H } = view;
+  const { tL, padT, padB, height: H } = view;
+  const tR = aheadHidden ? Math.min(view.tR, view.t) : view.tR;
   const y0 = padT - 6;
   const y1 = H - padB + 6;
   g.lineWidth = 1;
@@ -249,7 +261,10 @@ function drawMarkers(
   MONO: string,
 ): void {
   const spans = compiled.momentSpans;
-  if (spans.length === 0) return;
+  const ticks = style.markers !== false;
+  const sections = style.sections !== false;
+  if (spans.length === 0 || !(ticks || sections)) return;
+  const tMax = style.aheadHidden === true ? view.t : Infinity;
   const C = style.tokens;
   const { padT, padB, width: W, height: H } = view;
   const labels = style.labels;
@@ -262,10 +277,12 @@ function drawMarkers(
   g.fillStyle = C.ink2;
   let lastEnd = -1e9;
   for (const s of markersByTime(spans, style.markerTimes)) {
+    if (s.t > tMax) break;
     const x = Math.round(timeToX(view, s.t)) + 0.5;
     if (x > W + 1) break;
     if (x < -1) continue;
     const label = labels?.[s.id];
+    if (label ? !sections : !ticks) continue;
     g.beginPath();
     if (label) {
       g.moveTo(x, labelY - 8);
@@ -373,7 +390,7 @@ function traceWeighted(
   const weighted = v.weight !== undefined && v.weight.length > 0 && !sf.flat;
   const strands = hasStrands(sf, v);
   const lives = drawnLives(sf, v);
-  const O = breaksIn(v, lives);
+  const O = F.level ? breaksIn(v, lives) : null;
   if (!weighted && !strands && !O) {
     g.globalAlpha = alpha;
     g.lineWidth = base;
@@ -611,6 +628,8 @@ function traceSilent(
   g.setLineDash(NO_DASH);
 }
 const NO_DASH: number[] = [];
+const NO_VOICES: readonly CompiledVoice[] = [];
+const NO_PITCHES: readonly number[] = [];
 
 /** True when v is alive at t but drawn below TRACE_BELOW. */
 function lifeSilent(v: CompiledVoice, lives: readonly Life[], t: Seconds): boolean {
@@ -671,7 +690,9 @@ function drawLines(
   const tolerance = chordTolerance(view);
   stableScale(maxStep, tolerance);
   const ghost = style.futureOpacity > 0.01;
-  g.lineWidth = LINE_WIDTH;
+  const LW = F.lw;
+  const HW = F.hw;
+  g.lineWidth = LW;
   g.lineJoin = 'round';
   g.lineCap = 'round';
 
@@ -686,20 +707,20 @@ function drawLines(
   const dim = hl ? DIM_ALPHA : 1;
   const voices = compiled.voices;
   // A translucent future where strands overlap goes through the ghost layer.
+  // (No layer for a hidden future, unless a highlight shows it.)
   const gh =
-    t < tR && style.futureOpacity < 1
-      ? ghostOf(g, voices, view, sf, hl ? HIGHLIGHT_WIDTH : LINE_WIDTH, dpr)
+    t < tR && style.futureOpacity < 1 && (ghost || hl)
+      ? ghostOf(g, voices, view, sf, hl ? HW : LW, dpr)
       : null;
   const ghGradient = gh ? pitchGradient(gh.layer.g, style, view) : null;
   const futureA = style.futureOpacity * dim;
   for (const v of voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-    if (past)
-      traceWeighted(g, view, v, tL, Math.min(t, tR), LINE_WIDTH, dim, maxStep, tolerance, sf);
+    if (past) traceWeighted(g, view, v, tL, Math.min(t, tR), LW, dim, maxStep, tolerance, sf);
     if (future && !gh) {
       const a = Math.max(t, tL);
-      traceWeighted(g, view, v, a, tR, LINE_WIDTH, futureA, maxStep, tolerance, sf);
+      traceWeighted(g, view, v, a, tR, LW, futureA, maxStep, tolerance, sf);
     }
   }
   if (future && gh) {
@@ -717,9 +738,9 @@ function drawLines(
       (ctx, v, al, lo, hi) => {
         const a = Math.max(a0, lo);
         const b = Math.min(tR, hi);
-        if (b > a) traceWeighted(ctx, view, v, a, b, LINE_WIDTH, al, maxStep, tolerance, sf);
+        if (b > a) traceWeighted(ctx, view, v, a, b, LW, al, maxStep, tolerance, sf);
       },
-      reachOf(view, LINE_WIDTH, maxStep, tolerance),
+      reachOf(view, LW, maxStep, tolerance),
     );
   }
   if (hl) {
@@ -731,21 +752,10 @@ function drawLines(
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) {
-          traceWeighted(g, view, v, a, Math.min(t, b), HIGHLIGHT_WIDTH, 1, maxStep, tolerance, sf);
+          traceWeighted(g, view, v, a, Math.min(t, b), HW, 1, maxStep, tolerance, sf);
         }
         if (b > t && !hg) {
-          traceWeighted(
-            g,
-            view,
-            v,
-            Math.max(t, a),
-            b,
-            HIGHLIGHT_WIDTH,
-            hlA,
-            maxStep,
-            tolerance,
-            sf,
-          );
+          traceWeighted(g, view, v, Math.max(t, a), b, HW, hlA, maxStep, tolerance, sf);
         }
       });
     }
@@ -764,15 +774,14 @@ function drawLines(
           forHighlighted(v, hl, tL, tR, (a, b) => {
             const a1 = Math.max(t, a, lo);
             const b1 = Math.min(b, hi);
-            if (b1 > a1)
-              traceWeighted(ctx, view, v, a1, b1, HIGHLIGHT_WIDTH, al, maxStep, tolerance, sf);
+            if (b1 > a1) traceWeighted(ctx, view, v, a1, b1, HW, al, maxStep, tolerance, sf);
           }),
-        reachOf(view, HIGHLIGHT_WIDTH, maxStep, tolerance),
+        reachOf(view, HW, maxStep, tolerance),
       );
     }
   }
   // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
-  for (const v of voices) {
+  for (const v of style.pulseMarks === false ? NO_VOICES : voices) {
     if (v.segments.length === 0 || !v.pulse) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
     if (past) drawHits(g, view, v, tL, Math.min(t, tR), dim, sf);
@@ -837,7 +846,7 @@ function drawHits(
   if (lo >= n || H[lo * 2] >= b) return;
   const lives = drawnLives(sf, v);
   const shaped = (v.weight !== undefined && v.weight.length > 0 && !sf.flat) || hasStrands(sf, v);
-  g.lineWidth = HIT_WIDTH;
+  g.lineWidth = F.hitW;
   g.lineCap = 'butt';
   let lastX = -Infinity;
   let pathA = -1;
@@ -846,7 +855,7 @@ function drawHits(
     if (t >= b) break;
     const x = timeToX(view, t);
     if (x - lastX < HIT_MIN_PX) continue;
-    const base = baseOpacityIn(v, lives, t);
+    const base = F.level ? baseOpacityIn(v, lives, t) : 1;
     const acc = H[i * 2 + 1];
     const al = alpha * base * (HIT_ALPHA_LO + (1 - HIT_ALPHA_LO) * acc);
     if (al < OPACITY_EPS) continue;
@@ -856,10 +865,10 @@ function drawHits(
     let u = 1;
     if (shaped) {
       const q = geometryAt(sf, v, t, 1);
-      y += q.off * LINE_WIDTH;
+      y += q.off * F.lw;
       u = q.u;
     }
-    const h = HIT_HALF_PX * (0.6 + 0.4 * acc) + (u - 1) * LINE_WIDTH * 0.5;
+    const h = HIT_HALF_PX * (0.6 + 0.4 * acc) + (u - 1) * F.lw * 0.5;
     const qa = Math.round(al * 32) / 32;
     if (qa !== pathA) {
       if (pathA >= 0) g.stroke();
@@ -997,7 +1006,7 @@ function trace(
     }
     const x = timeToX(view, pts.t[i]);
     let y = pitchToY(view, p);
-    if (shift) y += geometryAt(sf, v, pts.t[i]).off * LINE_WIDTH;
+    if (shift) y += geometryAt(sf, v, pts.t[i]).off * F.lw;
     if (pen) g.lineTo(x, y);
     else g.moveTo(x, y);
     pen = true;
@@ -1017,15 +1026,17 @@ function drawHeads(
   const { t, xHead: x } = view;
   const stops = style.colors === 'pitch' ? pitchStops(style.dark, style.oklch) : null;
   const groups = new Map<number, { p: number; y: number }>();
+  const dots = style.dots !== false;
+  const rings = style.rings !== false;
   for (const i of activeAt(compiled, t)) {
     const v = compiled.voices[i];
     const p = pitchAt(v, t);
     if (p === null) continue;
     const lives = drawnLives(sf, v);
-    const op = breaksIn(v, lives) ? opacityIn(v, lives, t) : 1;
+    const op = F.level && breaksIn(v, lives) ? opacityIn(v, lives, t) : 1;
     if (op < OPACITY_EPS) continue;
     let y = pitchToY(view, p);
-    if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * LINE_WIDTH;
+    if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * F.lw;
     const mv = motionAt(v, t);
     let color = lineColor(style, i);
     if (color === null && stops) {
@@ -1033,7 +1044,7 @@ function drawHeads(
       color = stops[Math.round(f * (stops.length - 1))].color;
     }
     color ??= style.tokens.ink;
-    if (mv > 0.03) {
+    if (rings && mv > 0.03) {
       g.globalAlpha = headA * mv * op;
       g.strokeStyle = style.colors === 'ink' ? style.tokens.accent : color;
       g.lineWidth = 1.2;
@@ -1041,13 +1052,19 @@ function drawHeads(
       g.arc(x, y, RING_R, 0, Math.PI * 2);
       g.stroke();
     }
-    g.globalAlpha = headA * op;
-    g.fillStyle = color;
-    g.beginPath();
-    g.arc(x, y, DOT_R, 0, Math.PI * 2);
-    g.fill();
+    if (dots) {
+      g.globalAlpha = headA * op;
+      g.fillStyle = color;
+      g.beginPath();
+      g.arc(x, y, DOT_R, 0, Math.PI * 2);
+      g.fill();
+    }
     const key = Math.round(p * 20);
     if (!groups.has(key)) groups.set(key, { p, y });
+  }
+  if (style.hzLabels === false) {
+    g.globalAlpha = 1;
+    return;
   }
   g.font = `10px ${MONO}`;
   g.fillStyle = style.tokens.ink2;
@@ -1061,81 +1078,4 @@ function drawHeads(
     lastY = gr.y;
   }
   g.globalAlpha = 1;
-}
-
-/** Width of the last chord label drawn, re-measured only when the label or font changes. */
-let measured = { label: '', font: '', width: 0 };
-function chordWidth(g: CanvasRenderingContext2D, label: string, font: string): number {
-  if (label !== measured.label || font !== measured.font) {
-    measured = { label, font, width: g.measureText(label).width };
-  }
-  return measured.width;
-}
-
-function drawHud(
-  g: CanvasRenderingContext2D,
-  compiled: CompiledScore,
-  style: ScoreStyle,
-  view: View,
-  MONO: string,
-  padL: number,
-  padR: number,
-): void {
-  const C = style.tokens;
-  const { t, width: W, height: H, padB } = view;
-  // Three lines from H − padB + 22; a short canvas keeps the first that fit, bottom-anchored.
-  const lines = hudLines(padB);
-  if (lines === 0) return;
-  const hy = Math.min(H - padB + 22, H - 4 - 14 * (lines - 1));
-  const active = activeAt(compiled, t);
-  const pool = compiled.voices.length;
-  g.globalAlpha = 1;
-
-  // The chord (top right): label precomputed at compile time, width measured once per label.
-  const chord = chordAt(compiled, t);
-  let chordW = 0;
-  if (chord) {
-    g.font = `500 12px ${MONO}`;
-    chordW = chordWidth(g, chord.label, MONO);
-  }
-
-  g.font = `10.5px ${MONO}`;
-  g.fillStyle = C.ink2;
-  g.textAlign = 'left';
-  const formula = `f(n) = ${Math.round(compiled.referenceHz * 100) / 100}·2^((n−69)/12)`;
-  // On narrow screens a long chord takes the formula's place.
-  if (!chord || padL + formula.length * 6.4 + 16 + chordW < W - padR) {
-    g.fillText(formula, padL, hy);
-  }
-  if (lines > 1) {
-    g.fillText(`notes   ${String(active.length).padStart(2, ' ')} / ${pool}`, padL, hy + 14);
-  }
-  if (lines > 2)
-    g.fillText(`t       ${formatTime(t)} / ${formatTime(view.duration)}`, padL, hy + 28);
-
-  g.textAlign = 'right';
-  if (chord) {
-    g.fillStyle = C.ink;
-    g.font = `500 12px ${MONO}`;
-    g.fillText(chord.label, W - padR, hy);
-  }
-  g.fillStyle = C.ink2;
-  g.font = `10.5px ${MONO}`;
-  const mode = view.window >= view.duration ? 'whole piece' : 'following';
-  if (lines > 1) {
-    g.fillText(`${keyName(keyAt(compiled, t)).toLowerCase()} · ${mode}`, W - padR, hy + 14);
-  }
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const i of active) {
-    const p = pitchAt(compiled.voices[i], t);
-    if (p === null) continue;
-    if (p < lo) lo = p;
-    if (p > hi) hi = p;
-  }
-  if (lines > 2 && hi >= lo) {
-    const f = (p: number): string => hzOf(p, compiled.referenceHz).toFixed(1);
-    g.fillText(`${f(lo)}–${f(hi)} Hz`, W - padR, hy + 28);
-  }
-  g.textAlign = 'left';
 }

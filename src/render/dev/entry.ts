@@ -17,6 +17,7 @@ import {
   type VideoFrameOptions,
   type VideoSize,
 } from '../video';
+import { EXPORT_LOOK, pieceLook, type Look } from '../look';
 
 function compileExample(json: unknown): { score: CompiledScore; piece: Piece } {
   const parsed = parsePiece(json);
@@ -163,6 +164,8 @@ interface VideoOptions {
   fps: number;
   /** Stress the pool to this many voices (0: as written). */
   voices?: number;
+  /** Draw with EXPORT_LOOK and these changes (theme and thickness from above). */
+  exportLook?: Partial<Look>;
 }
 
 function videoSetup(json: unknown, o: VideoOptions) {
@@ -178,6 +181,17 @@ function videoSetup(json: unknown, o: VideoOptions) {
     oklch: supportsOklch(),
     customColors: piece.voices.map((v) => v.color),
     ...videoMarkers(piece),
+    ...(o.exportLook
+      ? {
+          look: {
+            ...EXPORT_LOOK,
+            theme: o.dark ? ('dark' as const) : ('light' as const),
+            thickness: o.thickness,
+            ...o.exportLook,
+          },
+          ...pieceLook(piece),
+        }
+      : {}),
   });
   const opts: VideoFrameOptions = {
     aspect: o.aspect,

@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type * as Poster from '../../src/app/poster-export';
+import { EXPORT_LOOK, HUD_ITEMS } from '../../src/render';
 
 const ROOT = join(import.meta.dirname, '../..');
 const OUT = process.env.POSTER_OUT_DIR;
@@ -137,6 +138,12 @@ test('PNG equals a direct drawScore render (pixel-identical)', async ({ page, br
     ['tide-pools', BASE],
     ['kite-day', { ...BASE, size: 'a4', theme: 'dark' }],
     ['night-ferry', { ...BASE, size: '1:1', thickness: false }],
+    // The export Look (§12), with every HUD readout.
+    ['kite-day', { ...BASE, look: EXPORT_LOOK }],
+    [
+      'harbour-song',
+      { ...BASE, size: 'a4', look: { ...EXPORT_LOOK, theme: 'dark', hud: HUD_ITEMS } },
+    ],
   ];
   for (const [name, opts] of cases) {
     const r = await pngVsReference(page, name, opts);
@@ -173,11 +180,19 @@ interface SvgResult {
 test('SVG is well-formed and matches the PNG when rasterised', async ({ page, browserName }) => {
   test.setTimeout(180_000);
   const results: Record<string, SvgResult> = {};
-  for (const [name, theme] of [
-    ['tide-pools', 'light'],
-    ['harbour-song', 'dark'],
+  for (const [name, theme, look] of [
+    ['tide-pools', 'light', false],
+    ['harbour-song', 'dark', false],
+    ['kite-day', 'light', true],
   ] as const) {
-    const opts: Poster.PosterOptions = { ...BASE, title: true, theme };
+    const opts: Poster.PosterOptions = {
+      ...BASE,
+      title: true,
+      theme,
+      // No HUD: its five rows of text add canvas-vs-SVG text residue (35.9 dB on Chromium with
+      // the default list); the PNG test covers the HUD.
+      ...(look ? { look: { ...EXPORT_LOOK, theme, hud: [] } } : {}),
+    };
     const r = await page.evaluate(
       async ({ j, opts }): Promise<SvgResult> => {
         const h = (window as unknown as HookWindow).__algorhythms;
@@ -211,6 +226,9 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
           await m.renderPosterPng(piece, {
             ...opts,
             theme: opts.theme === 'dark' ? 'light' : 'dark',
+            ...(opts.look
+              ? { look: { ...opts.look, theme: opts.look.theme === 'dark' ? 'light' : 'dark' } }
+              : {}),
           }),
         );
         // PSNR over RGB; `dx` compares a with b moved right by dx pixels.
@@ -249,7 +267,7 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
       },
       { j: json(name), opts },
     );
-    results[`${name}-${theme}`] = r;
+    results[`${name}-${theme}${look ? '-look' : ''}`] = r;
     const { texts, ...summary } = r;
     console.log(
       `[${browserName}] SVG ${name} ${theme}: ${JSON.stringify(summary)} texts ${texts.length}`,
@@ -257,9 +275,10 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
     expect(r.parseError).toBeNull();
     expect(r.root).toBe('svg');
     expect(r.attrs).toEqual({ width: '3840', height: '2160', viewBox: '0 0 3840 2160' });
-    expect(texts.length).toBeGreaterThan(3);
+    expect(texts.length).toBeGreaterThan(look ? 2 : 3);
     expect(texts).toContain('AlgoRhythms');
-    expect(texts.some((t) => / Hz$/.test(t))).toBe(true);
+    // The octave guides' labels: on in the player look, off in the export look.
+    expect(texts.some((t) => /^A\d \d+ Hz$/.test(t))).toBe(!look);
     expect(r.psnr, `${name} PSNR`).toBeGreaterThanOrEqual(MIN_PSNR);
     expect(r.control, `${name} 1 px shift control`).toBeLessThanOrEqual(r.psnr - MIN_MARGIN);
     expect(r.theme).toBeLessThan(r.control);
@@ -363,5 +382,45 @@ test('speed at 4K and SVG size of every bundled piece', async ({ page, browserNa
     writeFileSync(join(OUT, 'kite-day-16x9-light.png'), Buffer.from(save.a, 'base64'));
     writeFileSync(join(OUT, 'night-ferry-a4-dark.png'), Buffer.from(save.b, 'base64'));
     writeFileSync(join(OUT, 'harbour-song-16x9-dark.svg'), save.svg);
+  }
+});
+
+test('EXPORT_LOOK poster: differs from the default one; saved for review', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  const r = await page.evaluate(
+    async ({ j, look }) => {
+      const h = (window as unknown as HookWindow).__algorhythms;
+      const m = await h.poster();
+      const piece = h.parsePiece(j).piece;
+      const base = {
+        size: '16:9',
+        theme: 'light',
+        transparent: false,
+        title: true,
+        thickness: true,
+      } as const;
+      const b64 = async (b: Blob) => {
+        const bytes = new Uint8Array(await b.arrayBuffer());
+        let s = '';
+        for (let i = 0; i < bytes.length; i += 0x8000)
+          s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return btoa(s);
+      };
+      return {
+        look: await b64(await m.renderPosterPng(piece, { ...base, look })),
+        plain: await b64(await m.renderPosterPng(piece, base)),
+      };
+    },
+    { j: json('kite-day'), look: EXPORT_LOOK },
+  );
+  expect(r.look.length).toBeGreaterThan(10_000);
+  expect(r.look).not.toBe(r.plain);
+  const dir = process.env.LOOK_OUT_DIR;
+  if (dir && browserName === 'chromium') {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'look-poster.png'), Buffer.from(r.look, 'base64'));
   }
 });

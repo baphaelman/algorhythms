@@ -76,6 +76,25 @@ export type MomentLabels = Readonly<Record<MomentId, string>>;
 /** A time per moment id. */
 export type MomentTimes = Readonly<Record<MomentId, Seconds>>;
 
+/**
+ * A HUD readout (PLAN.md §12 "Export look"): formula, notes sounding / pool, time / length, chord,
+ * key + follow mode, Hz range, spread (lowest → highest sounding line as an interval), lowest and
+ * highest note names, the sounding notes by name, the gaps between neighbouring lines, the piece's
+ * name.
+ */
+export type HudItem =
+  | 'formula'
+  | 'notes'
+  | 'time'
+  | 'chord'
+  | 'key'
+  | 'hz'
+  | 'spread'
+  | 'range'
+  | 'names'
+  | 'gaps'
+  | 'title';
+
 /** How to paint one frame. Pure data; the app builds it from the piece's view settings and theme. */
 export interface ScoreStyle {
   /** Resolved colour tokens of the current theme. */
@@ -90,8 +109,15 @@ export interface ScoreStyle {
   customColors?: readonly (string | undefined)[];
   /** Opacity 0..1 of the future lines (the ghost); the app's default is 0.35. */
   futureOpacity: number;
-  /** Draw the heads-up display. */
-  hud: boolean;
+  /**
+   * The heads-up display: true = today's readouts (`DEFAULT_HUD`), false = none, or the readouts
+   * in order (left column first, then right; as many rows as needed, the bottom band grows).
+   */
+  hud: boolean | readonly HudItem[];
+  /** The piece's name, for the `title` readout. */
+  pieceName?: string;
+  /** Extra px in the bottom band below the HUD rows (the poster's title block). @default 0 */
+  hudExtra?: number;
   /**
    * Keep the HUD's bottom padding with `hud` false: the poster's title block goes there (§12
    * "Poster export"). @default false
@@ -99,6 +125,33 @@ export interface ScoreStyle {
   reserveHud?: boolean;
   /** Draw heads (dots, rings, Hz labels) and the playhead emphasis. @default true */
   heads?: boolean;
+  /** With heads: the dot per sounding line. @default true */
+  dots?: boolean;
+  /** With heads: the ring round a moving line. @default true */
+  rings?: boolean;
+  /** With heads: the Hz labels beside them. @default true */
+  hzLabels?: boolean;
+  /** The octave guides (A lines). @default true */
+  guides?: boolean;
+  /** The guides' Hz labels (with `guides`). @default true */
+  guideLabels?: boolean;
+  /** Short ticks of unlabelled moments. @default true */
+  markers?: boolean;
+  /** Labelled moments' full-height lines and labels (sections). @default true */
+  sections?: boolean;
+  /**
+   * Nothing ahead of the playhead: markers, section labels and bar lines past `t` are not drawn
+   * (lines and pulse marks follow `futureOpacity`, which should then be 0). @default false
+   */
+  aheadHidden?: boolean;
+  /** Line opacity by audible level ("louder voices brighter", §10 revision 9). @default true */
+  levelOpacity?: boolean;
+  /** Pulse hit marks (§10 revision 10). @default true */
+  pulseMarks?: boolean;
+  /** Line width factor (thin / normal / bold). @default 1 */
+  lineScale?: number;
+  /** Colour of 'ink' lines and the fallback of 'custom' ones. @default tokens.ink */
+  lineInk?: string;
   /**
    * Moment labels by id. A labelled moment gets a full-height marker with its label (a "section");
    * an unlabelled one gets a short tick. Positions come from `CompiledScore.momentSpans`.

@@ -4,7 +4,7 @@
  * the same pixels, whatever was drawn between), and one PNG per aspect attached for review.
  * Frame cost at 1080p with 24 voices is reported (annotation and log), not gated.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { build } from 'vite';
@@ -44,6 +44,8 @@ interface VideoOptions {
   thickness: boolean;
   fps: number;
   voices?: number;
+  /** EXPORT_LOOK with these changes. */
+  exportLook?: Record<string, unknown>;
 }
 interface FramesResult {
   frames: { k: number; hash: string; inked: number }[];
@@ -137,6 +139,51 @@ test.describe('video frames', () => {
     const off = await run({ ...base, thickness: false });
     expect(off.frames[0].inked).toBeGreaterThan(5000);
     expect(off.frames[0].hash).not.toBe(on.frames[0].hash);
+  });
+
+  // The export Look (§12 "Export look"): EXPORT_LOOK with a HUD of chord, key, time, spread,
+  // note names and gaps. $LOOK_OUT_DIR gets look-video.png for review.
+  test('EXPORT_LOOK: non-empty, deterministic frames, unlike the player look', async ({
+    page,
+    browserName,
+  }, info) => {
+    test.setTimeout(60_000);
+    const json = JSON.parse(readFileSync(PIECE, 'utf8')) as unknown;
+    const base: VideoOptions = {
+      aspect: '16:9',
+      size: '1080',
+      camera: 'follow',
+      window: 24,
+      dark: false,
+      thickness: true,
+      fps: FPS,
+    };
+    const look: VideoOptions = {
+      ...base,
+      exportLook: { hud: ['time', 'chord', 'key', 'spread', 'names', 'gaps'] },
+    };
+    const run = (o: VideoOptions, ks: number[], png: number) =>
+      page.evaluate(
+        ({ json, o, ks, png }) =>
+          (globalThis as unknown as { __render: Hook }).__render.videoFrames(json, o, ks, png),
+        { json, o, ks, png },
+      );
+    const r = await run(look, [1500, 30, 3000, 1500], 1500);
+    for (const f of r.frames) expect(f.inked, `frame ${f.k}`).toBeGreaterThan(5000);
+    expect(r.frames[3].hash).toBe(r.frames[0].hash);
+    expect(r.frames[1].hash).not.toBe(r.frames[0].hash);
+    const player = await run(base, [1500], -1);
+    expect(player.frames[0].hash).not.toBe(r.frames[0].hash);
+    // Nothing ahead of the playhead: fewer inked pixels than the player's dimmed future.
+    expect(r.frames[0].inked).toBeLessThan(player.frames[0].inked);
+    const png = Buffer.from(r.png.slice('data:image/png;base64,'.length), 'base64');
+    await info.attach(`look-video-${browserName}.png`, { body: png, contentType: 'image/png' });
+    writeFileSync(info.outputPath(`look-video-${browserName}.png`), png);
+    const dir = process.env.LOOK_OUT_DIR;
+    if (dir && browserName === 'chromium') {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'look-video.png'), png);
+    }
   });
 
   test('frame cost at 1080p, 24 voices (reported)', async ({ page, browserName }, info) => {

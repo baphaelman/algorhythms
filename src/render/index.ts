@@ -14,7 +14,9 @@ export {
   clampStart,
   clampWindow,
   followStart,
+  HUD_ROW,
   hudLines,
+  hudPad,
   MIN_PLOT_SHARE,
   pitchExtent,
   pitchToY,
@@ -76,8 +78,34 @@ export {
   tokensOf,
   type PaletteInput,
 } from './palettes';
+export {
+  DEFAULT_HUD,
+  HUD_ITEMS,
+  drawHud,
+  gapsText,
+  hudItems,
+  hudRows,
+  hudText,
+  hudTop,
+  nearestNote,
+  noteNamesText,
+  soundingPitches,
+} from './hud';
+export {
+  EXPORT_LOOK,
+  LINE_SCALE,
+  PLAYER_LOOK,
+  lookFutureOpacity,
+  lookStyle,
+  pieceLook,
+  type Look,
+  type LookContext,
+  type LookFuture,
+  type LookLineWidth,
+} from './look';
 export type {
   CameraState,
+  HudItem,
   MomentLabels,
   MomentTimes,
   ScoreStyle,
@@ -105,6 +133,7 @@ export {
 export {
   POSTER_CREDIT,
   POSTER_DPR,
+  TITLE_EXTRA,
   drawPoster,
   drawTitleBlock,
   posterCamera,

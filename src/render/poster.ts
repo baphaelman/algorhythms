@@ -13,8 +13,10 @@
 
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
+import { HUD_ROW, hudLines } from './camera';
 import { DEFAULT_MONO, drawScore, keyName, type Ctx2D } from './draw';
-import { tokensOf } from './palettes';
+import { hudItems, hudRows, hudTop } from './hud';
+import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 import { videoCamera } from './video';
 
@@ -48,6 +50,12 @@ export function posterCamera(compiled: CompiledScore, pitchRange?: [number, numb
 }
 
 export interface PosterStyleOptions {
+  /**
+   * The export Look (§12 "Export look"); replaces theme, thickness, transparent and colors
+   * below. Its future, playhead and heads are ignored (the finished piece); its HUD is drawn as
+   * at the piece's end, above the title block.
+   */
+  look?: Look;
   theme: 'light' | 'dark';
   /** Weight as thickness, strands and ropes. @default true */
   thickness?: boolean;
@@ -64,28 +72,55 @@ export interface PosterStyleOptions {
   labels?: MomentLabels;
   markerTimes?: MomentTimes;
   fontMono?: string;
+  /** With a Look: the piece's tempo and meter (beats) and name (the `title` readout). */
+  bpm?: number;
+  meter?: number;
+  pieceName?: string;
 }
 
-/** The poster's ScoreStyle: finished (no ghost, heads, playhead or HUD), section labels on. */
+/** Room below the HUD rows for the title block when both are on, layout px. */
+export const TITLE_EXTRA = 48;
+
+/**
+ * The poster's ScoreStyle: finished (no ghost, heads or playhead), section labels on. Without a
+ * Look: the player's drawing with no HUD.
+ */
 export function posterStyle(o: PosterStyleOptions): ScoreStyle {
-  const base = tokensOf(o.theme);
-  const style: ScoreStyle = {
-    tokens: o.transparent ? { ...base, paper: 'transparent' } : base,
-    dark: o.theme === 'dark',
-    colors: o.colors ?? 'pitch',
-    oklch: o.oklch ?? true,
-    futureOpacity: 1,
-    hud: false,
-    heads: false,
-    playhead: false,
+  const look: Look = o.look ?? {
+    ...PLAYER_LOOK,
+    theme: o.theme,
+    transparent: o.transparent ?? false,
     thickness: o.thickness ?? true,
+    colors: o.colors ?? 'pitch',
+    hud: [],
   };
-  if (o.title) style.reserveHud = true;
-  if (o.customColors) style.customColors = o.customColors;
-  if (o.labels) style.labels = o.labels;
-  if (o.markerTimes) style.markerTimes = o.markerTimes;
-  if (o.fontMono) style.fontMono = o.fontMono;
-  return style;
+  const style = lookStyle(look, {
+    oklch: o.oklch ?? true,
+    ...(o.customColors ? { customColors: o.customColors } : {}),
+    ...(o.labels ? { labels: o.labels } : {}),
+    ...(o.markerTimes ? { markerTimes: o.markerTimes } : {}),
+    ...(o.fontMono ? { fontMono: o.fontMono } : {}),
+    ...(o.bpm !== undefined ? { bpm: o.bpm } : {}),
+    ...(o.meter !== undefined ? { meter: o.meter } : {}),
+    ...(o.pieceName !== undefined ? { pieceName: o.pieceName } : {}),
+  });
+  style.futureOpacity = 1;
+  style.heads = false;
+  style.playhead = false;
+  delete style.aheadHidden;
+  return withTitle(style, o.title === true);
+}
+
+/** `style` with the bottom band for the title block (or without it), copied only if it changes. */
+function withTitle(style: ScoreStyle, title: boolean): ScoreStyle {
+  const extra = title && hudRows(hudItems(style)) > 0 ? TITLE_EXTRA : undefined;
+  if ((style.reserveHud === true) === title && style.hudExtra === extra) return style;
+  const out: ScoreStyle = { ...style };
+  if (title) out.reserveHud = true;
+  else delete out.reserveHud;
+  if (extra !== undefined) out.hudExtra = extra;
+  else delete out.hudExtra;
+  return out;
 }
 
 /** What the title block shows besides the score. */
@@ -152,10 +187,7 @@ export function drawPoster(
   const px = posterSize(opts.size);
   resetContext(ctx);
   ctx.clearRect(0, 0, px.width, px.height);
-  const style =
-    (opts.style.reserveHud === true) === opts.title
-      ? opts.style
-      : { ...opts.style, reserveHud: opts.title };
+  const style = withTitle(opts.style, opts.title);
   const cam = posterCamera(compiled, opts.pitchRange);
   const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);
   if (opts.title) drawTitleBlock(ctx, compiled, info, style, view);
@@ -180,8 +212,14 @@ export function drawTitleBlock(
   const MONO = style.fontMono ?? DEFAULT_MONO;
   const C = style.tokens;
   const { width: W, height: H, padB, padL, padR } = view;
-  // The band starts below the section markers (they end 6 px under the plot).
-  const top = H - padB + 6;
+  // The band starts below the section markers (they end 6 px under the plot), or below the HUD.
+  let top = H - padB + 6;
+  const rows = hudRows(hudItems(style));
+  if (rows > 0) {
+    const extra = style.hudExtra ?? 0;
+    const lines = hudLines(padB - extra, rows);
+    if (lines > 0) top = hudTop(view, lines, extra) + HUD_ROW * (lines - 1) + 8;
+  }
   const block = NAME_PX + META_GAP;
   const y1 = top + Math.max(4, (H - top - block) / 2) + NAME_PX * 0.75;
   const y2 = y1 + META_GAP;

@@ -205,44 +205,64 @@ export function cameraScore(score: CompiledScore): CameraScore {
 /** The plot keeps at least this share of the canvas height when the paddings would crowd it. */
 export const MIN_PLOT_SHARE = 0.4;
 
+/** HUD row spacing and type size, px (rows are 14 px apart, 10.5 px type). */
+export const HUD_ROW = 14;
+
+/** Bottom padding (px) that holds `rows` HUD rows and `extra` px below them. */
+export function hudPad(rows: number, extra = 0): number {
+  return 26 + HUD_ROW * (Math.max(1, rows) - 1) + extra;
+}
+
 /**
  * Top and bottom paddings (px) of a canvas `H` tall: ≥ 28 / ≥ 54 with the HUD (≥ 16 without), shrunk
  * proportionally on a short canvas so the plot keeps MIN_PLOT_SHARE of it (from ~137 px with the
- * HUD down): the plot height is always > 0 for H > 0.
+ * HUD down): the plot height is always > 0 for H > 0. `hud` may be a row count (true = 3): more
+ * than 3 rows, or `extra` px below them, grow the bottom band to fit.
  */
-export function scorePads(H: number, hud = true): { padT: number; padB: number } {
+export function scorePads(
+  H: number,
+  hud: boolean | number = true,
+  extra = 0,
+): { padT: number; padB: number } {
   const h = H > 0 ? H : 0;
+  const rows = hud === true ? 3 : hud === false ? 0 : hud;
   const padT = Math.max(28, h * 0.08);
-  const padB = hud ? Math.max(54, h * 0.15) : Math.max(16, h * 0.05);
+  const padB =
+    rows > 0 ? Math.max(54, h * 0.15, hudPad(rows, extra)) : Math.max(16, h * 0.05, extra);
   const room = h * (1 - MIN_PLOT_SHARE);
   if (padT + padB <= room) return { padT, padB };
   const k = room / (padT + padB);
   return { padT: padT * k, padB: padB * k };
 }
 
-/** HUD text lines (14 px apart, 10.5 px type) that fit in a bottom padding `padB` px tall (0–3). */
-export function hudLines(padB: number): number {
+/**
+ * HUD text lines (14 px apart, 10.5 px type) that fit in a bottom padding `padB` px tall, at most
+ * `rows` (today's HUD: 3).
+ */
+export function hudLines(padB: number, rows = 3): number {
   if (!(padB >= 16)) return 0;
-  return Math.min(3, Math.floor((padB - 16) / 14) + 1);
+  return Math.min(rows, Math.floor((padB - 16) / HUD_ROW) + 1);
 }
 
 /**
  * Resolves camera `cam` (window and start clamped to the piece) on a canvas of `size` CSS px, with
- * the playhead at time `t`. `hud` reserves room for the heads-up display at the bottom.
+ * the playhead at time `t`. `hud` reserves room for the heads-up display at the bottom (a row
+ * count, or true = 3), `extra` px more below it (`scorePads`).
  */
 export function cameraAt(
   score: CameraScore,
   cam: CameraState,
   t: Seconds,
   size: { width: number; height: number },
-  hud = true,
+  hud: boolean | number = true,
+  extra = 0,
 ): View {
   const { width: W, height: H } = size;
   const D = Math.max(score.duration, 1e-6);
   const window = clampWindow(cam.window, D);
   const start = clampStart(cam.start, window, D);
   const pps = W / window;
-  const { padT, padB } = scorePads(H, hud);
+  const { padT, padB } = scorePads(H, hud, extra);
   const padL = Math.max(16, W * 0.025);
   const [pLo, pHi] = cam.pitchRange ?? score.pitchRange;
   return {

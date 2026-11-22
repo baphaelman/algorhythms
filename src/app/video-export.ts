@@ -17,6 +17,7 @@ import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
+import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import {
   drawVideoFrame,
@@ -47,6 +48,8 @@ export interface VideoOptions {
   colors?: LineColors;
   /** Voice colours by pool index, for `colors: 'custom'`. */
   customColors?: readonly (string | undefined)[];
+  /** The export Look (§12); replaces theme, hud, thickness and colors when given. */
+  look?: Look;
 }
 
 /** Where the MP4 goes. `positioned`: the sink takes positioned writes (streaming layout). */
@@ -375,6 +378,7 @@ export function frameOptions(piece: Piece, opts: VideoOptions): VideoFrameOption
     customColors: opts.customColors,
     oklch: supportsOklch(),
     ...videoMarkers(piece),
+    ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
   });
   const o: VideoFrameOptions = { aspect: opts.aspect, size: opts.size, camera: opts.camera, style };
   if (opts.window !== undefined) o.window = opts.window;
