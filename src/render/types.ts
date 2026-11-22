@@ -177,9 +177,9 @@ export interface ScoreStyle {
   highlightVoices?: ReadonlySet<number>;
   /**
    * Bar grid to draw behind the lines (§11.3 revision 7; the editor passes the piece's tempo and
-   * meter, defaults in ./bars). Absent: none.
+   * meter, defaults in ./bars). Absent: none. `every`: every beat and bar, never thinned by zoom.
    */
-  bars?: { bpm?: number; meter?: number };
+  bars?: { bpm?: number; meter?: number; every?: boolean };
   /**
    * Width (px) covered at the left by the editor's piano ruler (§11.3): the pitch axis labels
    * start after it. @default 0

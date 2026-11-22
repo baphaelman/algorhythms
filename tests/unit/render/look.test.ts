@@ -143,13 +143,13 @@ describe('lookStyle', () => {
     expect(videoStyle({ theme: 'light', ...MARKS })).toEqual(today);
   });
 
-  it('EXPORT_LOOK: guides and beats off, future hidden; markers, labels and the rest as the player', () => {
+  it('EXPORT_LOOK: guides and beats off, future hidden; section labels without ticks, the rest as the player', () => {
     expect(EXPORT_LOOK).toEqual({
       ...PLAYER_LOOK,
       guides: false,
       guideLabels: false,
-      beats: false,
-      markers: true,
+      beats: 'off',
+      markers: false,
       sections: true,
       future: 'hidden',
     });
@@ -159,8 +159,8 @@ describe('lookStyle', () => {
       aheadHidden: true,
       guides: false,
       hud: true,
+      markers: false,
     });
-    expect(s).not.toHaveProperty('markers');
     expect(s).not.toHaveProperty('sections');
     expect(s).not.toHaveProperty('bars');
   });
@@ -171,7 +171,7 @@ describe('lookStyle', () => {
     expect(look({ lineWidth: 'bold' }).lineScale).toBeGreaterThan(1);
     expect(look({ lineWidth: 'thin' }).lineScale).toBeLessThan(1);
     expect(look({ transparent: true }).tokens.paper).toBe('transparent');
-    expect(look({ beats: true }).bars).toEqual(
+    expect(look({ beats: 'auto' }).bars).toEqual(
       PIECE.view.gridBpm !== undefined ? expect.objectContaining({ bpm: PIECE.view.gridBpm }) : {},
     );
     expect(look({ hud: [] }).hud).toBe(false);
@@ -199,7 +199,30 @@ describe('Look switches (drawing calls absent / present)', () => {
   it('beat and bar lines', () => {
     const n = (s: ScoreStyle): number =>
       draw(s).calls.filter((c) => c.op === 'stroke' && c.alpha < 1 && c.width === 1).length;
-    expect(n(look({ beats: true }))).toBeGreaterThan(n(player()));
+    expect(n(look({ beats: 'auto' }))).toBeGreaterThan(n(player()));
+  });
+
+  it('every beat: one full-height line per beat over the view, where auto thins them', () => {
+    const whole = { start: 0, window: SCORE.duration };
+    const moves = (s: ScoreStyle) => {
+      const { calls, view } = draw(s, T, whole);
+      return { n: calls.filter((c) => c.op === 'moveTo').length, view };
+    };
+    const off = moves(look({ future: 'full' }));
+    const auto = moves(look({ future: 'full', beats: 'auto' }));
+    const every = moves(look({ future: 'full', beats: 'every' }));
+    const { view } = every;
+    const beat = 60 / (PIECE.view.gridBpm ?? 60);
+    // Auto thins at this zoom (beats closer than 8 px).
+    expect(beat * view.pps).toBeLessThan(8);
+    const k0 = Math.ceil(view.tL / beat - 1e-9);
+    const k1 = Math.floor(view.tR / beat + 1e-9);
+    expect(every.n - off.n).toBe(k1 - k0 + 1);
+    expect(auto.n - off.n).toBeLessThan(every.n - off.n);
+    expect(look({ beats: 'every' }).bars).toMatchObject({ every: true });
+    expect(look({ beats: 'auto' }).bars).not.toHaveProperty('every');
+    // Old stored booleans: true draws as 'auto'.
+    expect(look({ beats: true as unknown as 'auto' }).bars).toEqual(look({ beats: 'auto' }).bars);
   });
 
   it('section labels and moment ticks', () => {
@@ -222,7 +245,7 @@ describe('Look switches (drawing calls absent / present)', () => {
 
   it('future hidden: no lines, pulse marks, markers or labels ahead of the playhead', () => {
     const whole = { start: 0, window: SCORE.duration };
-    const { calls, view } = draw(look({ future: 'hidden', beats: true }), T, whole);
+    const { calls, view } = draw(look({ future: 'hidden', beats: 'auto' }), T, whole);
     const xs = calls
       .filter((c) => ['moveTo', 'lineTo'].includes(c.op) && c.stroke !== rule)
       .map((c) => c.args[0] as number);

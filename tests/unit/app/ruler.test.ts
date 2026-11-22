@@ -40,6 +40,11 @@ describe('ruler', () => {
     expect(barGrid(120, 4, 10).bar).toBe(4); // 20 px bars → every 2nd
     expect(barGrid(60, 4, 1).bar).toBe(32);
     expect(barGrid(-5, 0.5, 100)).toEqual({ beat: 1, bar: 4 });
+    // every: no thinning at any zoom; the default is unchanged.
+    expect(barGrid(120, 4, 10, true)).toEqual({ beat: 0.5, bar: 2 });
+    expect(barGrid(60, 4, 1, true)).toEqual({ beat: 1, bar: 4 });
+    expect(barGrid(60, 1, 1, true)).toEqual({ beat: 0, bar: 1 });
+    expect(barGrid(120, 4, 10, false)).toEqual(barGrid(120, 4, 10));
   });
 });
 

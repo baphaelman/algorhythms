@@ -217,8 +217,8 @@ describe('look', () => {
     expect(DEFAULT_LOOK_FORM).toEqual({ ...rest, theme: 'current', colors: 'app', lineInk: null });
     expect(DEFAULT_LOOK_FORM).toMatchObject({
       guides: false,
-      beats: false,
-      markers: true,
+      beats: 'off',
+      markers: false,
       sections: true,
       future: 'hidden',
     });
@@ -480,8 +480,17 @@ describe('remembered choices', () => {
       videoFps: 60,
       videoFollowAt: 90,
       videoHud: ['chord'],
-      look: { ...DEFAULT_LOOK_FORM, beats: true, lineWidth: 'bold' },
+      look: { ...DEFAULT_LOOK_FORM, beats: 'auto', lineWidth: 'bold' },
     });
+    // Stored beats: the old booleans load as off / auto; the names as themselves.
+    for (const [v, want] of [
+      [false, 'off'],
+      [true, 'auto'],
+      ['every', 'every'],
+      ['nope', 'off'],
+    ] as const) {
+      expect(parsePrefs({ look: { beats: v } }).look!.beats).toBe(want);
+    }
     expect(parsePrefs(null)).toEqual({});
     expect(parsePrefs(3)).toEqual({});
   });

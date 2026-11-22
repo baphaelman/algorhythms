@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { expect, test, type Download, type Page } from '@playwright/test';
+import { clickExportForDownload } from './export-diag';
 import { parseWavHeader } from '../../src/audio/wav';
 import './app-hook';
 
@@ -54,10 +55,7 @@ async function generateMany(page: Page, voices: number): Promise<void> {
 }
 
 async function exportAndDownload(page: Page): Promise<{ name: string; bytes: Uint8Array }> {
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.getByTestId('export-run').click(),
-  ]);
+  const download = await clickExportForDownload(page);
   return read(download);
 }
 

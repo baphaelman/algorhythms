@@ -1,6 +1,6 @@
 /**
  * The Export dialog's compact Look (PLAN.md §12 "Export look", preview and layout): each
- * dropdown as a pure mapping between the form and one `<select>` value. A dropdown sets exactly
+ * dropdown or switch (`toggle`, two-way choices) as a pure mapping between the form and one `<select>` value. A dropdown sets exactly
  * the fields its checkboxes or radios set before, so the Look, the video and poster options and
  * the remembered prefs keep their meaning. A form state no option names (an older stored
  * combination) gets an extra option of its own, so the select never shows something else.
@@ -26,9 +26,11 @@ export interface LookChoice {
 }
 
 export interface LookControl {
-  /** The select's test id (`look-<id>`). */
+  /** The control's test id (`look-<id>`). */
   id: string;
   label: string;
+  /** A two-way choice, shown as a switch: values 'on' / 'off', `label` names the 'on' state. */
+  toggle?: true;
   /** The formats that show it. */
   kinds: readonly LookKind[];
   /** The options, including one for the current value when no listed option names it. */
@@ -74,25 +76,24 @@ function fixed(
   };
 }
 
-/** On / Off for one flag. */
+/** A switch for one flag; `label` says what On means. */
 function onOff(
   id: string,
   label: string,
   key: keyof LookForm,
   kinds: readonly LookKind[],
-  on = 'On',
-  off = 'Off',
 ): LookControl {
-  return fixed(
+  const c = fixed(
     id,
     label,
     kinds,
     [
-      { value: 'on', label: on, set: { [key]: true } },
-      { value: 'off', label: off, set: { [key]: false } },
+      { value: 'on', label: 'On', set: { [key]: true } },
+      { value: 'off', label: 'Off', set: { [key]: false } },
     ],
     (l) => (l[key] ? 'on' : 'off'),
   );
+  return { ...c, toggle: true };
 }
 
 /** Dimmed opacities offered, %. */
@@ -179,7 +180,17 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     ],
     (l) => (!l.guides ? 'off' : l.guideLabels ? 'labels' : 'lines'),
   ),
-  onOff('beats', 'Beat lines', 'beats', BOTH),
+  fixed(
+    'beats',
+    'Beat lines',
+    BOTH,
+    [
+      { value: 'off', label: 'Off', set: { beats: 'off' } },
+      { value: 'auto', label: 'Bars and beats', set: { beats: 'auto' } },
+      { value: 'every', label: 'Every beat', set: { beats: 'every' } },
+    ],
+    (l) => l.beats,
+  ),
   fixed(
     'moments',
     'Moments',
@@ -195,8 +206,8 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
   futureControl,
   followAtControl,
   onOff('playhead', 'Playhead line', 'playhead', VIDEO),
-  onOff('level', 'Loudness', 'levelOpacity', BOTH, 'Louder brighter', 'Even'),
-  onOff('thickness', 'Line thickness', 'thickness', BOTH, 'Merged and weighted thicker', 'Even'),
+  onOff('level', 'Louder lines brighter', 'levelOpacity', BOTH),
+  onOff('thickness', 'Thicker when merged or weighted', 'thickness', BOTH),
   onOff('pulse', 'Pulse marks', 'pulseMarks', BOTH),
   fixed('heads', 'Heads', VIDEO, HEADS, headsValue, headsLabel),
   fixed(
@@ -213,7 +224,7 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     LOOK_WIDTHS.map((w) => ({ value: w.id, label: w.label, set: { lineWidth: w.id } })),
     (l) => l.lineWidth,
   ),
-  onOff('background', 'Background', 'transparent', POSTER, 'Transparent', 'Theme'),
+  onOff('background', 'Transparent background', 'transparent', POSTER),
 ];
 
 /** The controls a format shows. */

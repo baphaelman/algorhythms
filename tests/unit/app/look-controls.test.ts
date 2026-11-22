@@ -30,7 +30,7 @@ describe('look-controls', () => {
     expect(values).toEqual({
       guides: 'off',
       beats: 'off',
-      moments: 'all',
+      moments: 'labels',
       future: 'hidden',
       'follow-at': '80',
       playhead: 'on',
@@ -42,6 +42,16 @@ describe('look-controls', () => {
       width: 'normal',
       background: 'off',
     });
+  });
+
+  it('two-way choices are switches (on / off); the rest stay dropdowns', () => {
+    const toggles = LOOK_CONTROLS.filter((c) => c.toggle).map((c) => c.id);
+    expect(toggles).toEqual(['playhead', 'level', 'thickness', 'pulse', 'background']);
+    for (const c of LOOK_CONTROLS) {
+      const values = c.choices(DEFAULT_EXPORT_FORM).map((o) => o.value);
+      if (c.toggle) expect(values, c.id).toEqual(['on', 'off']);
+      else expect(values.length, c.id).toBeGreaterThan(2);
+    }
   });
 
   it('every option round-trips: applying it selects it, and touches only its fields', () => {
@@ -93,7 +103,8 @@ describe('look-controls', () => {
     expect(apply(f0, 'thickness', 'off').look.thickness).toBe(false);
     expect(apply(f0, 'pulse', 'off').look.pulseMarks).toBe(false);
     expect(apply(f0, 'playhead', 'off').look.playhead).toBe(false);
-    expect(apply(f0, 'beats', 'on').look.beats).toBe(true);
+    expect(apply(f0, 'beats', 'auto').look.beats).toBe('auto');
+    expect(apply(f0, 'beats', 'every').look.beats).toBe('every');
     expect(apply(f0, 'background', 'on').look.transparent).toBe(true);
     expect(apply(f0, 'colors', 'custom').look.colors).toBe('custom');
     expect(apply(f0, 'width', 'bold').look.lineWidth).toBe('bold');

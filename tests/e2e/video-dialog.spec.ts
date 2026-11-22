@@ -12,6 +12,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { clickExportForDownload, expectUncovered } from './export-diag';
 import { formatBytes } from '../../src/app/export-options';
 import { DEFAULT_HUD, HUD_ITEMS } from '../../src/render/hud';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -35,6 +36,8 @@ const dialog = (page: Page) => page.getByTestId('export-dialog');
 const SAMPLES = process.env.VIDEO_SAMPLES_DIR;
 /** Owner review images of the Look (dialog, default frame). */
 const LOOK_SAMPLES = process.env.LOOK_SAMPLES_DIR;
+/** Review screenshots: HUD open (1280×800), phone Look (375×640). */
+const PREVIEW_DIR = process.env.EXPORT_PREVIEW_DIR;
 
 async function openExport(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
@@ -80,6 +83,21 @@ async function setZoom(page: Page, seconds: number): Promise<void> {
     h.store.setState((s) => ({ view: { ...s.view, window: w } }));
   }, seconds);
 }
+
+/** Look selects whose chosen option's text does not fit (text + padding + arrow > width). */
+const clippedSelects = (page: Page) =>
+  dialog(page).evaluate((d) => {
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    return [...d.querySelectorAll<HTMLSelectElement>('.look select')]
+      .filter((s) => {
+        const cs = getComputedStyle(s);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const text = ctx.measureText(s.selectedOptions[0]?.text ?? '').width;
+        const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        return text + pad + 18 > s.clientWidth;
+      })
+      .map((s) => `${s.dataset.testid}: ${s.selectedOptions[0]?.text}`);
+  });
 
 const lastRequest = (page: Page) =>
   page.evaluate(async () =>
@@ -129,7 +147,7 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
   await openLook(page);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).toBeChecked();
-  await expect(page.getByTestId('look-thickness')).toHaveValue('on');
+  await expect(page.getByTestId('look-thickness')).toBeChecked();
   await expect(page.getByTestId('export-depth')).toHaveCount(0);
   await expect(page.getByTestId('export-codec')).toHaveText(/^(H\.264|VP9) \+ (AAC|Opus)$/);
   const big = Number(
@@ -155,10 +173,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await openHud(page);
   await dialog(page).getByTestId('hud-none').click();
   await page.keyboard.press('Escape');
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.getByTestId('export-run').click(),
-  ]);
+  const download = await clickExportForDownload(page);
   expect(download.suggestedFilename()).toBe('Tidewater-Hymn.mp4');
   await expect(page.getByTestId('export-message')).toContainText(
     /^Saved Tidewater-Hymn\.mp4 \(.+\) to your downloads\./,
@@ -185,10 +200,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await choose(page, 'export-camera', 'Whole piece');
   await choose(page, 'export-vtheme', 'Light');
   await choose(page, 'export-fps', '60 fps');
-  await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.getByTestId('export-run').click(),
-  ]);
+  await clickExportForDownload(page);
   const whole = (await lastRequest(page))!.options;
   expect(whole).toMatchObject({ camera: 'whole', theme: 'light', fps: 60 });
   expect('window' in whole).toBe(false);
@@ -344,7 +356,7 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await openHud(page);
   await dialog(page).getByTestId('hud-none').click();
   await page.keyboard.press('Escape');
-  await pick(page, 'look-thickness', 'off');
+  await page.getByTestId('look-thickness').uncheck();
   await page.getByTestId('export-close').click();
   await expect(dialog(page)).toBeHidden();
   await openExport(page);
@@ -358,7 +370,7 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).not.toBeChecked();
-  await expect(page.getByTestId('look-thickness')).toHaveValue('off');
+  await expect(page.getByTestId('look-thickness')).not.toBeChecked();
 });
 
 test('fits a phone screen with Video selected, in both themes', async ({ page }) => {
@@ -407,20 +419,27 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   const defaults: Record<string, string> = {
     'look-guides': 'off',
     'look-beats': 'off',
-    'look-moments': 'all',
+    'look-moments': 'labels',
     'look-future': 'hidden',
     'look-follow-at': '80',
-    'look-playhead': 'on',
-    'look-level': 'on',
-    'look-thickness': 'on',
-    'look-pulse': 'on',
     'look-heads': 'all',
     'look-colors': 'app',
     'look-width': 'normal',
   };
+  /** Two-way choices: switches. */
+  const switches: Record<string, boolean> = {
+    'look-playhead': true,
+    'look-level': true,
+    'look-thickness': true,
+    'look-pulse': true,
+  };
   const expectDefaults = async () => {
     for (const [t, v] of Object.entries(defaults)) {
       await expect(page.getByTestId(t), t).toHaveValue(v);
+    }
+    for (const [t, on] of Object.entries(switches)) {
+      await expect(page.getByTestId(t), t).toHaveAttribute('role', 'switch');
+      await expect(page.getByTestId(t), t).toBeChecked({ checked: on });
     }
     await expect(page.getByTestId('look-hud-button')).toHaveText(/6 readouts/);
     await openHud(page);
@@ -438,10 +457,7 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await page.keyboard.press('Escape');
 
   const exportNow = async () => {
-    await Promise.all([
-      page.waitForEvent('download', { timeout: 60_000 }),
-      page.getByTestId('export-run').click(),
-    ]);
+    await clickExportForDownload(page);
     return (await lastRequest(page))!.options;
   };
   const def = await exportNow();
@@ -454,8 +470,16 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await pick(page, 'look-future', 'dimmed:50');
   await pick(page, 'look-guides', 'labels');
   await pick(page, 'look-width', 'bold');
-  await pick(page, 'look-moments', 'labels');
+  await pick(page, 'look-moments', 'all');
   await pick(page, 'look-heads', 'dots');
+  // Switches: a click toggles; so does Space.
+  await page.getByTestId('look-playhead').click();
+  await expect(page.getByTestId('look-playhead')).not.toBeChecked();
+  await pick(page, 'look-beats', 'every');
+  await page.getByTestId('look-pulse').focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('look-pulse')).not.toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Pulse marks' })).not.toBeChecked();
   await openHud(page);
   await page.getByTestId('hud-none').click();
   await page.getByTestId('hud-spread').check();
@@ -469,8 +493,11 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   expect(opts.look).toMatchObject({
     guides: true,
     guideLabels: true,
-    markers: false,
+    markers: true,
     sections: true,
+    beats: 'every',
+    playhead: false,
+    pulseMarks: false,
     dots: true,
     rings: false,
     hzLabels: false,
@@ -491,6 +518,9 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await expect(page.getByTestId('look-width')).toHaveValue('bold');
   await expect(page.getByTestId('look-future')).toHaveValue('dimmed:50');
   await expect(page.getByTestId('look-follow-at')).toHaveValue('65');
+  await expect(page.getByTestId('look-beats')).toHaveValue('every');
+  await expect(page.getByTestId('look-playhead')).not.toBeChecked();
+  await expect(page.getByTestId('look-pulse')).not.toBeChecked();
   await expect(page.getByTestId('look-hud-button')).toHaveText(/2 readouts/);
   await openHud(page);
   await expect(page.getByTestId('hud-spread')).toBeChecked();
@@ -521,10 +551,7 @@ test('line colours follow the app by default; By pitch overrides it', async ({ p
   await expect(page.getByTestId('look-colors')).toHaveValue('app');
   await expect(page.getByTestId('look-ink')).toHaveCount(0);
   const exportNow = async () => {
-    await Promise.all([
-      page.waitForEvent('download', { timeout: 60_000 }),
-      page.getByTestId('export-run').click(),
-    ]);
+    await clickExportForDownload(page);
     return (await lastRequest(page))!.options;
   };
   const app = await exportNow();
@@ -679,12 +706,7 @@ test('the preview stays in view while the options scroll (desktop and phone)', a
       await expect(canvasOf(page), `${w}: ${t}`).toBeInViewport({ ratio: 1 });
       await expect(page.getByTestId('preview-time')).toBeInViewport();
       // The control is not under the preview: it gets the clicks.
-      const hit = await page.getByTestId(t).evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return at === el || el.contains(at);
-      });
-      expect(hit, `${w}: ${t} usable`).toBe(true);
+      await expectUncovered(page, t, `${w}: ${t} usable`);
     }
     if (w === 375) {
       // Small enough to leave the options most of the screen.
@@ -696,8 +718,67 @@ test('the preview stays in view while the options scroll (desktop and phone)', a
   }
 });
 
+test('the open HUD checklist never covers the Export button (desktop and phone)', async ({
+  page,
+}) => {
+  for (const [w, h] of [
+    [1280, 800],
+    [375, 640],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await openExport(page);
+    await pickVideo(page);
+    await openHud(page);
+    for (const t of ['look-hud', 'look-reset', 'export-run']) {
+      await page.getByTestId(t).scrollIntoViewIfNeeded();
+      await expectUncovered(page, t, `${w}: ${t} not covered`);
+    }
+    if (PREVIEW_DIR && w === 1280) {
+      await page.getByTestId('look-hud').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(PREVIEW_DIR, 'hud-open.png') });
+    }
+    // Escape still closes only the checklist and refocuses its button.
+    await page.getByTestId('hud-none').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('look-hud')).toHaveCount(0);
+    await expect(page.getByTestId('look-hud-button')).toBeFocused();
+    // Also with nothing focused (macOS WebKit does not focus a clicked button or checkbox).
+    await openHud(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('look-hud')).toHaveCount(0);
+    await expect(dialog(page)).toBeVisible();
+    await expect(page.getByTestId('look-hud-button')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
+  }
+});
+
+test('phone: every Look dropdown shows its chosen option in full', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 640 });
+  await openExport(page);
+  await pickVideo(page);
+  await openLook(page);
+  expect(await clippedSelects(page)).toEqual([]);
+  // The longest options too.
+  for (const [t, v] of [
+    ['look-heads', 'all'],
+    ['look-guides', 'labels'],
+    ['look-moments', 'all'],
+    ['look-future', 'dimmed:35'],
+  ] as const) {
+    await pick(page, t, v);
+  }
+  expect(await clippedSelects(page)).toEqual([]);
+  if (PREVIEW_DIR) {
+    await page.getByTestId('look-level').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: join(PREVIEW_DIR, 'phone2.png') });
+  }
+});
+
 test('HUD picker: opens, Escape closes it (not the dialog), choices reach the export', async ({
   page,
+  browserName,
 }) => {
   test.setTimeout(90_000);
   await loadShortPiece(page, 2);
@@ -717,10 +798,12 @@ test('HUD picker: opens, Escape closes it (not the dialog), choices reach the ex
   await expect(dialog(page)).toBeVisible();
   await expect(button).toBeFocused();
 
-  // Keyboard: Enter opens, Tab reaches the checklist.
+  // Keyboard: Enter opens, Tab reaches the checklist (macOS WebKit tabs to buttons with Alt).
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('look-hud')).toBeVisible();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(
+    browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab',
+  );
   await expect(page.getByTestId('hud-none')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(button).toHaveText(/None/);
@@ -730,10 +813,7 @@ test('HUD picker: opens, Escape closes it (not the dialog), choices reach the ex
   // A click elsewhere closes it.
   await dialog(page).locator('h2').click();
   await expect(page.getByTestId('look-hud')).toHaveCount(0);
-  await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.getByTestId('export-run').click(),
-  ]);
+  await clickExportForDownload(page);
   const opts = (await lastRequest(page))!.options;
   expect(opts.look!.hud).toEqual(['chord', 'names']);
   expect(opts.hud).toBe(true);
@@ -823,10 +903,7 @@ test('owner samples: Little Round at 16:9 and 9:16, 720p30 Follow', async ({
   await dialog(page).screenshot({ path: join(SAMPLES!, 'dialog.png') });
   for (const aspect of ['16:9', '9:16'] as const) {
     await choose(page, 'export-aspect', aspect);
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 590_000 }),
-      page.getByTestId('export-run').click(),
-    ]);
+    const download = await clickExportForDownload(page, 590_000);
     await download.saveAs(join(SAMPLES!, `little-round-${aspect.replace(':', 'x')}-720p30.mp4`));
   }
 });
