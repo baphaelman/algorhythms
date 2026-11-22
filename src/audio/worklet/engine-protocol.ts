@@ -84,9 +84,19 @@ export type EngineOutMessage =
   | { type: 'error'; message: string }
   /**
    * Live message `seq` was applied at the block starting at context frame `frame`, live (piece)
-   * time `time`: its glides start there (§9 "the worklet stamps the actual frame").
+   * time `time`: its glides start there (§9 "the worklet stamps the actual frame"). For the
+   * latency check: `received` is the first frame of the next block when the newest live message
+   * arrived (equal to `frame`: applied at the first block after it arrived); `callback` the device
+   * callback period in frames: the median of the last 15 runs of blocks rendered back to back.
    */
-  | { type: 'liveApplied'; seq: number; frame: number; time: number };
+  | {
+      type: 'liveApplied';
+      seq: number;
+      frame: number;
+      time: number;
+      received: number;
+      callback: number;
+    };
 
 /**
  * Everything needed to start sounding, handed over in `processorOptions` so it is applied in the

@@ -43,6 +43,10 @@ export interface LiveStamp {
   contextTime: number;
   /** Live time there (seconds since live mode started). */
   liveTime: number;
+  /** First frame of the worklet's next block when the message arrived (= `frame`: no wait). */
+  receivedFrame: number;
+  /** The device callback period in frames, as the worklet measured it (blocks per callback). */
+  callbackFrames: number;
 }
 
 /** A key event, stamped for the latency test and for recording. */
@@ -191,7 +195,8 @@ export class LiveEngine {
       this.keys.allOff();
       this.events.length = 0;
       const started = new Promise<void>((resolve) => this.waiting.set(0, () => resolve()));
-      engine.onLiveApplied = (seq, frame, time) => this.onApplied(seq, frame, time);
+      engine.onLiveApplied = (seq, frame, time, received, callback) =>
+        this.onApplied(seq, frame, time, received, callback);
       this.engineValue = engine;
       engine.startLive(setup.voices.length);
       await started;
@@ -421,7 +426,13 @@ export class LiveEngine {
     this.notify();
   }
 
-  private onApplied(seq: number, frame: number, time: number): void {
+  private onApplied(
+    seq: number,
+    frame: number,
+    time: number,
+    received: number,
+    callback: number,
+  ): void {
     const engine = this.engineValue;
     if (!engine) return;
     const rate = engine.context.sampleRate;
@@ -439,7 +450,14 @@ export class LiveEngine {
     }
     const resolve = this.waiting.get(seq);
     this.waiting.delete(seq);
-    resolve?.({ seq, frame, contextTime: frame / rate, liveTime: time });
+    resolve?.({
+      seq,
+      frame,
+      contextTime: frame / rate,
+      liveTime: time,
+      receivedFrame: received,
+      callbackFrames: callback,
+    });
     if (seq > 0) this.notify();
   }
 
