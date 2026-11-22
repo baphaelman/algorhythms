@@ -19,6 +19,7 @@ import {
   videoOptions,
   wavOptions,
   type ExportForm,
+  type LookAppContext,
   type VideoContext,
 } from './export-options';
 import {
@@ -212,7 +213,7 @@ const aborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
 export async function runPoster(
   src: ExportSource,
   form: ExportForm,
-  ctx: Pick<VideoContext, 'dark'>,
+  ctx: LookAppContext,
   hooks: RunHooks & { target?: VideoFileHandle } = {},
 ): Promise<ExportOutput> {
   const options = posterOptions(form, src.piece, ctx);

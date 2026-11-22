@@ -193,7 +193,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await expect(page.getByTestId('hud-title')).toBeChecked();
 
   await page.getByTestId('look-reset').click();
-  for (const l of ['Current', 'Normal', 'By pitch']) {
+  for (const l of ['Current', 'Normal', 'As in the app']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
   await expect(page.getByTestId('look-guides')).not.toBeChecked();

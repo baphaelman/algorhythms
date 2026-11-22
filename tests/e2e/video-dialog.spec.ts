@@ -408,7 +408,7 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
       else await expect(page.getByTestId(t), t).not.toBeChecked();
     }
     await expect(page.getByTestId('look-guide-labels')).toBeDisabled();
-    for (const l of ['Hidden', 'By pitch', 'Normal']) {
+    for (const l of ['Hidden', 'As in the app', 'Normal']) {
       await expect(d.getByLabel(l, { exact: true })).toBeChecked();
     }
     await expect(page.getByTestId('look-follow-at-value')).toHaveText('80 %');
@@ -476,6 +476,35 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await pickVideo(page);
   await openLook(page);
   await expectDefaults();
+});
+
+test('line colours follow the app by default; By pitch overrides it', async ({ page }) => {
+  test.setTimeout(90_000);
+  await loadShortPiece(page, 2);
+  await page.getByTestId('view-options').click();
+  await page.getByRole('button', { name: 'Ink', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await openExport(page);
+  await pickVideo(page);
+  await choose(page, 'export-vsize', '720p');
+  await openLook(page);
+  await expect(dialog(page).getByLabel('As in the app', { exact: true })).toBeChecked();
+  await expect(page.getByTestId('look-ink')).toHaveCount(0);
+  const exportNow = async () => {
+    await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByTestId('export-run').click(),
+    ]);
+    return (await lastRequest(page))!.options;
+  };
+  const app = await exportNow();
+  expect(app.colors).toBe('ink');
+  expect(app.look!.colors).toBe('ink');
+  expect(app.look!.lineInk).toBeUndefined();
+  await choose(page, 'look-colors', 'By pitch');
+  const pitch = await exportNow();
+  expect(pitch.colors).toBe('pitch');
+  expect(pitch.look!.colors).toBe('pitch');
 });
 
 test('renders without storage (localStorage throws)', async ({ page }) => {

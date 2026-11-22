@@ -94,9 +94,9 @@ function appDark(): boolean {
   );
 }
 
-/** What the video and poster take from the app now: the editor's zoom and the theme. */
+/** What the video and poster take from the app now: the editor's zoom, theme and line colours. */
 function videoContext(): VideoContext {
-  return { window: cameraOf().window, dark: appDark() };
+  return { window: cameraOf().window, dark: appDark(), colors: usePlayer.getState().view.colors };
 }
 
 let controller: AbortController | null = null;
@@ -490,7 +490,7 @@ function LookPanel({
           testId="look-colors"
           onChange={(colors) => patchLook({ colors })}
         />
-        {look.colors !== 'pitch' && (
+        {(look.colors === 'ink' || look.colors === 'custom') && (
           <div className="field">
             <label htmlFor={`${id}-ink`}>
               {look.colors === 'ink' ? 'Line colour' : 'Lines without their own colour'}

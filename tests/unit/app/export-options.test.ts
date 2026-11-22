@@ -3,6 +3,7 @@ import {
   DEFAULT_EXPORT_FORM,
   DEFAULT_LOOK_FORM,
   EXPORT_PREFS_KEY,
+  EXPORT_PREFS_VERSION,
   HUD_CHOICES,
   codecLabel,
   exportFileName,
@@ -145,7 +146,7 @@ describe('formatBytes', () => {
 });
 
 describe('video', () => {
-  const ctx = { window: 12, dark: true };
+  const ctx = { window: 12, dark: true, colors: 'pitch' as const };
   it('maps the defaults: 16:9 1080p30 Follow at the editor window, current theme, EXPORT_LOOK', () => {
     const p = piece('Clip');
     expect(DEFAULT_EXPORT_FORM).toMatchObject({
@@ -210,9 +211,10 @@ describe('video', () => {
 });
 
 describe('look', () => {
+  const light = { dark: false, colors: 'pitch' as const };
   it('defaults to EXPORT_LOOK with the current theme; video HUD today, poster none', () => {
-    const { hud: _h, theme: _t, ...rest } = EXPORT_LOOK;
-    expect(DEFAULT_LOOK_FORM).toEqual({ ...rest, theme: 'current', lineInk: null });
+    const { hud: _h, theme: _t, colors: _c, ...rest } = EXPORT_LOOK;
+    expect(DEFAULT_LOOK_FORM).toEqual({ ...rest, theme: 'current', colors: 'app', lineInk: null });
     expect(DEFAULT_LOOK_FORM).toMatchObject({
       guides: false,
       beats: false,
@@ -220,8 +222,37 @@ describe('look', () => {
       sections: true,
       future: 'hidden',
     });
-    expect(lookOf(form(), 'video', false)).toEqual({ ...EXPORT_LOOK, theme: 'light' });
-    expect(lookOf(form(), 'poster', true)).toEqual({ ...EXPORT_LOOK, theme: 'dark', hud: [] });
+    expect(lookOf(form(), 'video', light)).toEqual({ ...EXPORT_LOOK, theme: 'light' });
+    expect(lookOf(form(), 'poster', { dark: true, colors: 'pitch' })).toEqual({
+      ...EXPORT_LOOK,
+      theme: 'dark',
+      hud: [],
+    });
+  });
+
+  it('line colours follow the app by default; an explicit choice overrides it', () => {
+    const p = piece('Clip');
+    p.voices[0]!.color = '#ff00aa';
+    const inkApp = { window: 10, dark: false, colors: 'ink' as const };
+    const v = videoOptions(form(), p, inkApp);
+    expect(v.colors).toBe('ink');
+    expect(v.look!.colors).toBe('ink');
+    expect('lineInk' in v.look!).toBe(false); // the theme's ink, as the app draws
+    const c = posterOptions(form(), p, { dark: true, colors: 'custom' });
+    expect(c.look!.colors).toBe('custom');
+    expect(c.customColors).toEqual(p.voices.map((x) => x.color));
+    expect(c.customColors![0]).toBe('#ff00aa');
+    // A stored ink colour does not apply to 'app'.
+    const appInk = { ...DEFAULT_LOOK_FORM, lineInk: '#00ff00' };
+    expect('lineInk' in lookOf(form({ look: appInk }), 'video', inkApp)).toBe(false);
+    // Overrides win over the app's mode.
+    const pitch = form({ look: { ...DEFAULT_LOOK_FORM, colors: 'pitch' } });
+    expect(videoOptions(pitch, p, inkApp).look!.colors).toBe('pitch');
+    const ink = form({ look: { ...DEFAULT_LOOK_FORM, colors: 'ink', lineInk: '#00ff00' } });
+    expect(posterOptions(ink, p, { dark: false, colors: 'custom' }).look).toMatchObject({
+      colors: 'ink',
+      lineInk: '#00ff00',
+    });
   });
 
   it('maps each control', () => {
@@ -240,7 +271,7 @@ describe('look', () => {
         dots: false,
       },
     });
-    const v = lookOf(f, 'video', false);
+    const v = lookOf(f, 'video', light);
     expect(v).toMatchObject({
       theme: 'dark',
       guides: true,
@@ -253,8 +284,8 @@ describe('look', () => {
       transparent: false, // video has no alpha
       hud: ['formula', 'chord', 'spread'], // fixed order, no repeats
     });
-    expect(lookOf(f, 'poster', false).transparent).toBe(true);
-    expect('lineInk' in lookOf(form(), 'video', false)).toBe(false);
+    expect(lookOf(f, 'poster', light).transparent).toBe(true);
+    expect('lineInk' in lookOf(form(), 'video', light)).toBe(false);
   });
 
   it('playhead at: 80 % with the future hidden, 35 % shown, the user’s value clamped', () => {
@@ -267,7 +298,11 @@ describe('look', () => {
     expect(followAtOf(form({ look: hidden, videoFollowAt: 5 }))).toBe(10);
     expect(followAtOf(form({ look: hidden, videoFollowAt: 99 }))).toBe(90);
     expect(
-      videoOptions(form({ videoFollowAt: 60 }), piece('x'), { window: 9, dark: false }),
+      videoOptions(form({ videoFollowAt: 60 }), piece('x'), {
+        window: 9,
+        dark: false,
+        colors: 'pitch',
+      }),
     ).toMatchObject({ followAt: 0.6, window: 9 });
   });
 
@@ -278,9 +313,16 @@ describe('look', () => {
       videoHud: ['gaps'],
       posterHud: ['title'],
       videoAspect: '1:1',
-      look: { ...DEFAULT_LOOK_FORM, guides: true, theme: 'dark', lineWidth: 'thin' },
+      look: {
+        ...DEFAULT_LOOK_FORM,
+        guides: true,
+        theme: 'dark',
+        lineWidth: 'thin',
+        colors: 'pitch',
+      },
     });
     const r = resetLook(changed);
+    expect(r.look.colors).toBe('app');
     expect(r).toMatchObject({
       look: DEFAULT_LOOK_FORM,
       videoFollowAt: null,
@@ -310,7 +352,7 @@ describe('poster', () => {
       posterTitle: true,
       posterHud: [],
     });
-    expect(posterOptions(form({ format: 'poster' }), p, { dark: true })).toEqual({
+    expect(posterOptions(form({ format: 'poster' }), p, { dark: true, colors: 'pitch' })).toEqual({
       size: '16:9',
       theme: 'dark',
       transparent: false,
@@ -340,7 +382,7 @@ describe('poster', () => {
         look: { ...DEFAULT_LOOK_FORM, transparent: true, theme: 'light' },
       }),
       piece('x'),
-      { dark: true },
+      { dark: true, colors: 'pitch' },
     );
     expect(o).toMatchObject({ size: 'a4', title: false, transparent: true, theme: 'light' });
     expect(o.look!.hud).toEqual(['key', 'title']);
@@ -396,6 +438,22 @@ describe('remembered choices', () => {
     expect(EXPORT_PREFS_KEY).toBe('algorhythms.export');
     const back = { ...DEFAULT_EXPORT_FORM, ...loadExportPrefs(st) };
     expect(back).toEqual({ ...f, format: 'wav', bitDepth: 32 }); // WAV/MIDI choices not kept
+  });
+
+  it('saves a version; a record from before it loads line colours as in the app', () => {
+    const st = new Mem();
+    saveExportPrefs(form({ look: { ...DEFAULT_LOOK_FORM, colors: 'pitch' } }), st);
+    expect(JSON.parse(st.data.get(EXPORT_PREFS_KEY)!).v).toBe(EXPORT_PREFS_VERSION);
+    expect(loadExportPrefs(st).look!.colors).toBe('pitch'); // a choice made now is kept
+    // No version: 'pitch' was the old unchosen default; ink and custom were real choices.
+    expect(parsePrefs({ look: { colors: 'pitch', guides: true } }).look).toEqual({
+      ...DEFAULT_LOOK_FORM,
+      guides: true,
+      colors: 'app',
+    });
+    expect(parsePrefs({ look: { colors: 'ink' } }).look!.colors).toBe('ink');
+    expect(parsePrefs({ look: { colors: 'custom' } }).look!.colors).toBe('custom');
+    expect(parsePrefs({ v: 2, look: { colors: 'app' } }).look!.colors).toBe('app');
   });
 
   it('works without storage, or with storage that throws', () => {

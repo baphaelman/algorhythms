@@ -134,17 +134,22 @@ export interface ExportForm {
 
 export type PosterFormat = 'png' | 'svg';
 
+/** Line colours in the dialog: the app's mode and voice colours ('app'), or an override. */
+export type LookColors = 'app' | LineColors;
+
 /** The dialog's Look: `Look` with a 'current' theme, no HUD (per format) and no unset ink. */
-export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'lineInk'> {
+export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'lineInk' | 'colors'> {
   theme: ExportVideoTheme;
+  /** 'app' = as the app draws now (owner, 2026-11-22). */
+  colors: LookColors;
   /** Colour of 'ink' lines and the 'custom' fallback (#rrggbb); null = the theme's ink. */
   lineInk: string | null;
 }
 
-/** EXPORT_LOOK as the dialog holds it (theme: current). */
+/** EXPORT_LOOK as the dialog holds it (theme: current, line colours as in the app). */
 export const DEFAULT_LOOK_FORM: LookForm = (() => {
-  const { hud: _h, lineInk: _i, theme: _t, ...rest } = EXPORT_LOOK;
-  return { ...rest, theme: 'current', lineInk: null };
+  const { hud: _h, lineInk: _i, theme: _t, colors: _c, ...rest } = EXPORT_LOOK;
+  return { ...rest, theme: 'current', colors: 'app', lineInk: null };
 })();
 
 export const POSTER_FORMATS: readonly { id: PosterFormat; label: string }[] = [
@@ -164,7 +169,8 @@ export const LOOK_FUTURES: readonly { id: LookFuture; label: string }[] = [
   { id: 'full', label: 'Full' },
 ];
 
-export const LOOK_COLORS: readonly { id: LineColors; label: string }[] = [
+export const LOOK_COLORS: readonly { id: LookColors; label: string }[] = [
+  { id: 'app', label: 'As in the app' },
   { id: 'pitch', label: 'By pitch' },
   { id: 'ink', label: 'Ink' },
   { id: 'custom', label: 'Custom' },
@@ -330,11 +336,9 @@ export function midiOptions(form: ExportForm, piece: Piece): MidiRequest {
 }
 
 /** What the video and poster exports take from the app beyond the form. */
-export interface VideoContext {
+export interface VideoContext extends LookAppContext {
   /** The editor's zoom window now (s); Follow uses it. */
   window: Seconds;
-  /** The app's theme now (for 'current'). */
-  dark: boolean;
 }
 
 /** The Follow camera's playhead place, %: the user's, else by the future setting. */
@@ -351,21 +355,32 @@ export function hudInOrder(items: readonly unknown[]): HudItem[] {
   return HUD_ITEMS.filter((it) => items.includes(it));
 }
 
-/** The renderer's Look for a video or poster export of this form. */
-export function lookOf(form: ExportForm, kind: 'video' | 'poster', dark: boolean): Look {
-  const { theme, lineInk, ...rest } = form.look;
+/** What a Look takes from the app now: its theme and line-colour mode. */
+export interface LookAppContext {
+  dark: boolean;
+  /** The app's line colours now (`view.colors`), for 'app'. */
+  colors: LineColors;
+}
+
+/**
+ * The renderer's Look for a video or poster export of this form. 'app' line colours resolve to
+ * the app's mode with the theme's ink, as the app draws them (voice colours come from the piece).
+ */
+export function lookOf(form: ExportForm, kind: 'video' | 'poster', app: LookAppContext): Look {
+  const { theme, lineInk, colors, ...rest } = form.look;
   const look: Look = {
     ...rest,
-    theme: theme === 'current' ? (dark ? 'dark' : 'light') : theme,
+    theme: theme === 'current' ? (app.dark ? 'dark' : 'light') : theme,
     transparent: kind === 'poster' && form.look.transparent,
+    colors: colors === 'app' ? app.colors : colors,
     hud: hudInOrder(kind === 'poster' ? form.posterHud : form.videoHud),
   };
-  if (lineInk) look.lineInk = lineInk;
+  if (lineInk && colors !== 'app') look.lineInk = lineInk;
   return look;
 }
 
 export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
-  const look = lookOf(form, 'video', ctx.dark);
+  const look = lookOf(form, 'video', ctx);
   const o: VideoOptions = {
     aspect: form.videoAspect,
     size: form.videoSize,
@@ -385,12 +400,8 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
   return o;
 }
 
-export function posterOptions(
-  form: ExportForm,
-  piece: Piece,
-  ctx: Pick<VideoContext, 'dark'>,
-): PosterOptions {
-  const look = lookOf(form, 'poster', ctx.dark);
+export function posterOptions(form: ExportForm, piece: Piece, ctx: LookAppContext): PosterOptions {
+  const look = lookOf(form, 'poster', ctx);
   return {
     size: form.posterSize,
     theme: look.theme,
@@ -415,6 +426,11 @@ export function posterPixels(size: PosterSize): string {
 
 /** localStorage key of the remembered Look and video/poster choices. */
 export const EXPORT_PREFS_KEY = 'algorhythms.export';
+/**
+ * Version of the stored prefs. 2: line colours gained 'app' (the default). A record without it
+ * predates that: its 'pitch' was the old default, not a choice, so it loads as 'app'.
+ */
+export const EXPORT_PREFS_VERSION = 2;
 
 /** The form fields remembered per viewer. */
 const REMEMBERED = [
@@ -446,7 +462,7 @@ export function saveExportPrefs(form: ExportForm, storage?: PrefsStorage | null)
   try {
     const st = storageOf(storage);
     if (!st) return false;
-    const o: Record<string, unknown> = {};
+    const o: Record<string, unknown> = { v: EXPORT_PREFS_VERSION };
     for (const k of REMEMBERED) o[k] = form[k];
     st.setItem(EXPORT_PREFS_KEY, JSON.stringify(o));
     return true;
@@ -490,7 +506,11 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (oneOf(POSTER_SIZES, r.posterSize)) p.posterSize = r.posterSize;
   if (isBool(r.posterTitle)) p.posterTitle = r.posterTitle;
   if (Array.isArray(r.posterHud)) p.posterHud = hudInOrder(r.posterHud);
-  if (r.look && typeof r.look === 'object') p.look = parseLook(r.look as Record<string, unknown>);
+  if (r.look && typeof r.look === 'object') {
+    p.look = parseLook(r.look as Record<string, unknown>);
+    // Before v2 'pitch' was the unchosen default (ink and custom were real choices).
+    if (!(typeof r.v === 'number' && r.v >= 2) && p.look.colors === 'pitch') p.look.colors = 'app';
+  }
   return p;
 }
 
