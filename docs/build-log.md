@@ -2524,3 +2524,7 @@ On 3099519. PLAN §12 "Export look (revision 13)", "Poster export (revision 12)"
 ## Export line colours follow the app (app; 2026-11-22)
 - Look's Line colours gain **As in the app** (`LookForm.colors: 'app'`, the default and Reset value): `lookOf` resolves it to the app's `view.colors` (now in `VideoContext`/`LookAppContext`) with the theme's ink (stored `lineInk` ignored) and the voices' `VoiceDef.color`; By pitch / Ink / Custom override. `EXPORT_LOOK` unchanged (render keeps no app state).
 - Prefs now carry `v: 2`; a stored record without it loads `colors: 'pitch'` as 'app' (pitch was the old default; ink/custom kept). Tests: export-options unit (mapping, override, migration, reset); video-dialog e2e (app Ink → request ink; By pitch → pitch). e2e:quick video-dialog+poster-dialog: chromium 32 passed (6 skipped), firefox 28 passed (10 skipped); lint, typecheck, unit app+render 879 passed.
+
+## CI: sharded e2e (2026-11-22)
+- v57 functional e2e took 8.6 (chromium), 9.6 (firefox), 9.4 min (WebKit) per job, so each browser now runs 3 `--shard`s (~1 min servers + ~3 min tests + setup ≈ 4–5 min) plus one `timing` job (@perf/@latency, `--workers=1`, unsharded, alone on its runner). 12 e2e jobs (4 on macOS); deploy `needs` the whole matrices, so every entry must pass. Shards split per test (fullyParallel); chromium 1/3–3/3 list 215/215/214 = the full 644, disjoint.
+- Expected wall time ≈ 5 min (check job 4.9, chromium timing 4.2 + setup), was 13.8.

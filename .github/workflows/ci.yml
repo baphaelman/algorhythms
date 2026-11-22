@@ -59,13 +59,17 @@ jobs:
         with:
           path: dist
 
+  # One E2E job per (browser, part). `timing` runs the @perf/@latency gates alone on a quiet runner
+  # (one worker, not sharded); parts 1-3 split the rest with --shard (per test: fullyParallel).
+  # Every part runs on every push, and deploy needs them all.
   e2e-linux:
-    name: E2E (${{ matrix.browser }})
+    name: E2E (${{ matrix.browser }}, ${{ matrix.part == 'timing' && 'timing gates' || format('shard {0}/3', matrix.part) }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox]
+        part: [timing, '1', '2', '3']
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -92,27 +96,29 @@ jobs:
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=ci_null
           pactl set-default-sink ci_null
-      # Timing gates alone first, so other specs' load doesn't skew them; then the rest.
-      # Own output dir: each run empties its output dir, which would drop the first run's traces.
       - name: E2E timing gates (@perf, @latency), one worker
-        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep '@perf|@latency' --workers=1 --output=test-results-timing
-      - name: E2E functional specs
-        if: success() || failure()
-        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep-invert '@perf|@latency'
+        if: matrix.part == 'timing'
+        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep '@perf|@latency' --workers=1
+      - name: E2E functional specs, shard ${{ matrix.part }}/3
+        if: matrix.part != 'timing'
+        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep-invert '@perf|@latency' --shard=${{ matrix.part }}/3
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report-${{ matrix.browser }}
+          name: playwright-report-${{ matrix.browser }}-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/
-            test-results-timing/
           retention-days: 7
 
   e2e-webkit:
-    name: E2E (WebKit on macOS)
+    name: E2E (WebKit on macOS, ${{ matrix.part == 'timing' && 'timing gates' || format('shard {0}/3', matrix.part) }})
     # Playwright's WebKit on Linux is not Safari and may lack working audio (PLAN.md §14).
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [timing, '1', '2', '3']
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -127,26 +133,25 @@ jobs:
           path: ~/Library/Caches/ms-playwright
           key: pw-${{ runner.os }}-webkit-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install webkit
-      # Timing gates alone first, so other specs' load doesn't skew them; then the rest.
-      # Own output dir: each run empties its output dir, which would drop the first run's traces.
       - name: E2E timing gates (@perf, @latency), one worker
-        run: pnpm e2e --project='webkit-*' --grep '@perf|@latency' --workers=1 --output=test-results-timing
-      - name: E2E functional specs
-        if: success() || failure()
-        run: pnpm e2e --project='webkit-*' --grep-invert '@perf|@latency'
+        if: matrix.part == 'timing'
+        run: pnpm e2e --project='webkit-*' --grep '@perf|@latency' --workers=1
+      - name: E2E functional specs, shard ${{ matrix.part }}/3
+        if: matrix.part != 'timing'
+        run: pnpm e2e --project='webkit-*' --grep-invert '@perf|@latency' --shard=${{ matrix.part }}/3
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report-webkit
+          name: playwright-report-webkit-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/
-            test-results-timing/
           retention-days: 7
 
   deploy:
     name: Deploy to GitHub Pages
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A matrix job in `needs` requires every one of its entries to succeed.
     needs: [check, e2e-linux, e2e-webkit]
     runs-on: ubuntu-latest
     # Requires Settings → Pages → Source: "GitHub Actions".
