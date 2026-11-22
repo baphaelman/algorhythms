@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { create } from 'zustand';
 import { formatTime } from '../../render/hud';
 import { tokensOf } from '../../render/palettes';
@@ -40,7 +49,10 @@ import {
   hudSummary,
   lookControls,
   type LookControl,
+  type LookFlags,
   type LookKind,
+  type LookSegments,
+  type LookSlider,
 } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { cameraOf, currentTime, pushNotice, usePlayer } from '../store';
@@ -63,7 +75,7 @@ interface ExportUi {
   runtime: Runtime | null;
   /** The browser's video codecs for `key` (aspect, size, fps); null while being checked. */
   video: { key: string; support: VideoSupport | null };
-  /** The HUD checklist is open. */
+  /** The HUD's readout list is expanded. */
   hudOpen: boolean;
   /** The video preview's score time (s); set when the dialog opens. */
   previewT: number;
@@ -297,36 +309,167 @@ function Radios<T extends string | number>({
   );
 }
 
-/** A labelled checkbox. */
-function Check({
+/** A yes/no choice as a switch (checkbox role="switch": Space toggles, aria-checked), label left. */
+function Switch({
   checked,
   disabled,
   testId,
   label,
+  className,
   onChange,
+  children,
 }: {
   checked: boolean;
   disabled?: boolean;
   testId: string;
   label: string;
+  className?: string;
   onChange: (v: boolean) => void;
+  children?: ReactNode;
 }) {
   return (
-    <label className="check">
+    <label className={className ? `look-switch ${className}` : 'look-switch'}>
+      <span className="switch-text">
+        <span>{label}</span>
+        {children}
+      </span>
       <input
         type="checkbox"
+        role="switch"
         checked={checked}
         disabled={disabled}
         data-testid={testId}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span>{label}</span>
     </label>
   );
 }
 
-/** One Look dropdown: a label and a select in the Look grid. */
-function LookSelect({
+/** Segmented buttons in the Look grid: a label, then a radio group drawn as one bar. */
+function LookSegmentsRow({
+  control,
+  form,
+  disabled,
+}: {
+  control: LookSegments;
+  form: ExportForm;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const value = control.value(form);
+  return (
+    <>
+      <span className="look-label" id={`${id}-label`}>
+        {control.label}
+      </span>
+      <div
+        className="seg radios look-seg"
+        role="radiogroup"
+        aria-labelledby={`${id}-label`}
+        data-testid={`look-${control.id}`}
+        data-value={value}
+      >
+        {control.choices.map((c) => (
+          <label key={c.value} className={value === c.value ? 'on' : undefined}>
+            <input
+              type="radio"
+              name={`${id}-r`}
+              value={c.value}
+              checked={value === c.value}
+              disabled={disabled}
+              onChange={() => patch(control.apply(useExportUi.getState().form, c.value))}
+            />
+            <span>{c.label}</span>
+          </label>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** Independent flags drawn as segments, each lit when on (checkboxes, so Space toggles). */
+function LookFlagsRow({
+  control,
+  form,
+  disabled,
+}: {
+  control: LookFlags;
+  form: ExportForm;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <>
+      <span className="look-label" id={`${id}-label`}>
+        {control.label}
+      </span>
+      <div
+        className="seg radios look-seg"
+        role="group"
+        aria-labelledby={`${id}-label`}
+        data-testid={`look-${control.id}`}
+      >
+        {control.flags.map((f) => {
+          const on = form.look[f.key];
+          return (
+            <label key={f.id} className={on ? 'on' : undefined}>
+              <input
+                type="checkbox"
+                checked={on}
+                disabled={disabled}
+                data-testid={`look-${control.id}-${f.id}`}
+                onChange={(e) => patchLook({ [f.key]: e.target.checked })}
+              />
+              <span>{f.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** A slider in the Look grid, its value shown beside it. */
+function LookSliderRow({
+  control,
+  form,
+  disabled,
+}: {
+  control: LookSlider;
+  form: ExportForm;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const value = control.value(form);
+  const text = control.text(value);
+  return (
+    <>
+      <label htmlFor={id}>{control.label}</label>
+      <div className="field-row look-range">
+        <input
+          id={id}
+          type="range"
+          min={control.min}
+          max={control.max}
+          step={control.step}
+          value={value}
+          disabled={disabled}
+          aria-valuetext={text}
+          data-testid={`look-${control.id}`}
+          onChange={(e) =>
+            patch(control.apply(useExportUi.getState().form, Number(e.target.value)))
+          }
+        />
+        <output htmlFor={id} data-testid={`look-${control.id}-value`}>
+          {text}
+        </output>
+      </div>
+    </>
+  );
+}
+
+/** One Look control: a switch row, segments or a slider. */
+function LookRow({
   control,
   form,
   disabled,
@@ -335,117 +478,69 @@ function LookSelect({
   form: ExportForm;
   disabled?: boolean;
 }) {
-  const id = useId();
-  if (control.toggle) {
-    // A two-way choice: a switch (checkbox role="switch": Space toggles, aria-checked).
-    return (
-      <label className="look-switch">
-        <span>{control.label}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          checked={control.value(form) === 'on'}
+  switch (control.type) {
+    case 'toggle':
+      return (
+        <Switch
+          label={control.label}
+          checked={control.value(form)}
           disabled={disabled}
-          data-testid={`look-${control.id}`}
-          onChange={(e) =>
-            patch(control.apply(useExportUi.getState().form, e.target.checked ? 'on' : 'off'))
-          }
+          testId={`look-${control.id}`}
+          onChange={(on) => patch(control.apply(useExportUi.getState().form, on))}
         />
-      </label>
-    );
+      );
+    case 'segments':
+      return <LookSegmentsRow control={control} form={form} disabled={disabled} />;
+    case 'flags':
+      return <LookFlagsRow control={control} form={form} disabled={disabled} />;
+    case 'slider':
+      return <LookSliderRow control={control} form={form} disabled={disabled} />;
   }
-  return (
-    <>
-      <label htmlFor={id}>{control.label}</label>
-      <select
-        id={id}
-        value={control.value(form)}
-        disabled={disabled}
-        data-testid={`look-${control.id}`}
-        onChange={(e) => patch(control.apply(useExportUi.getState().form, e.target.value))}
-      >
-        {control.choices(form).map((c) => (
-          <option key={c.value} value={c.value}>
-            {c.label}
-          </option>
-        ))}
-      </select>
-    </>
-  );
 }
 
 /**
- * The HUD control: a button with the readout count that opens a checklist (None / Default and
- * one checkbox per readout, with a sample). Not modal: Tab leaves it, Escape or a click outside
- * closes it and Escape returns focus to the button. Opens in place (pushes the rows below down),
- * so it never covers the Export button. Escape is caught on the document while open: WebKit on
- * macOS does not focus a clicked checkbox, so focus may be outside the picker.
+ * The HUD: a disclosure row ("HUD · 6 readouts") that expands in place with a height animation
+ * (none under prefers-reduced-motion), one switch per readout with its sample, and None /
+ * Default. No popup and no document listeners: it stays open until its row is pressed again.
+ * Collapsed, the list stays in the DOM (so it can animate) but is inert and hidden.
  */
-function HudPicker({ form, kind, labelId }: { form: ExportForm; kind: LookKind; labelId: string }) {
+function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
   const open = useExportUi((s) => s.hudOpen);
   const pieceName = usePlayer((s) => s.piece.meta.title);
   const id = useId();
-  const wrap = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const video = kind === 'video';
   const hud = video ? form.videoHud : form.posterHud;
   const setHud = (items: readonly HudItem[]) =>
     patch(video ? { videoHud: hudInOrder(items) } : { posterHud: hudInOrder(items) });
 
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) {
-        useExportUi.setState({ hudOpen: false });
-      }
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Close the checklist, not the dialog.
-      e.preventDefault();
-      e.stopPropagation();
-      useExportUi.setState({ hudOpen: false });
-      button.current?.focus();
-    };
-    document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', esc, true);
-    return () => {
-      document.removeEventListener('pointerdown', away);
-      document.removeEventListener('keydown', esc, true);
-    };
+  useLayoutEffect(() => {
+    if (panel.current) panel.current.inert = !open;
   }, [open]);
 
   return (
-    <div
-      className="hud-picker"
-      ref={wrap}
-      onBlur={(e) => {
-        const next = e.relatedTarget as Node | null;
-        if (open && next && wrap.current && !wrap.current.contains(next)) {
-          useExportUi.setState({ hudOpen: false });
-        }
-      }}
-    >
+    <div className="hud-section">
       <button
         type="button"
-        ref={button}
+        className="hud-row"
         id={`${id}-button`}
-        aria-labelledby={`${labelId} ${id}-button`}
         aria-expanded={open}
         aria-controls={`${id}-list`}
         data-testid="look-hud-button"
         onClick={() => useExportUi.setState({ hudOpen: !open })}
       >
-        {hudSummary(hud)} <span aria-hidden="true">▾</span>
+        <span>HUD · {hudSummary(hud)}</span>
+        <span className="hud-chevron" aria-hidden="true" />
       </button>
-      {open && (
-        <div
-          className="hud-pop"
-          id={`${id}-list`}
-          role="group"
-          aria-label="HUD readouts"
-          data-testid="look-hud"
-        >
+      <div
+        ref={panel}
+        className={open ? 'hud-panel open' : 'hud-panel'}
+        id={`${id}-list`}
+        role="group"
+        aria-label="HUD readouts"
+        data-testid="look-hud"
+      >
+        <div className="hud-inner">
           <div className="hud-quick">
             <button type="button" data-testid="hud-none" onClick={() => setHud([])}>
               None
@@ -459,30 +554,28 @@ function HudPicker({ form, kind, labelId }: { form: ExportForm; kind: LookKind; 
             </button>
           </div>
           {HUD_CHOICES.map((c) => (
-            <label key={c.id} className="check">
-              <input
-                type="checkbox"
-                checked={hud.includes(c.id)}
-                data-testid={`hud-${c.id}`}
-                onChange={(e) =>
-                  setHud(e.target.checked ? [...hud, c.id] : hud.filter((h) => h !== c.id))
-                }
-              />
-              <span>{c.label}</span>
+            <Switch
+              key={c.id}
+              className="hud-item"
+              label={c.label}
+              checked={hud.includes(c.id)}
+              testId={`hud-${c.id}`}
+              onChange={(on) => setHud(on ? [...hud, c.id] : hud.filter((h) => h !== c.id))}
+            >
               <small className="hud-sample">
                 {c.id === 'title' ? pieceName || 'Untitled' : c.sample}
               </small>
-            </label>
+            </Switch>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 /**
- * The Look section (PLAN.md §12 "Export look"), shared by video and poster: compact dropdowns
- * in a label / control grid, the HUD picker and Reset.
+ * The Look section (PLAN.md §12 "Export look"), shared by video and poster: sliders, switches
+ * and segments in a label / control grid, the HUD and Reset.
  */
 function LookPanel({
   form,
@@ -505,7 +598,7 @@ function LookPanel({
       <div className="look-grid">
         {lookControls(kind).map((c) => (
           <Fragment key={c.id}>
-            <LookSelect control={c} form={form} disabled={c.id === 'follow-at' && !follow} />
+            <LookRow control={c} form={form} disabled={c.id === 'follow-at' && !follow} />
             {c.id === 'follow-at' && (
               <small className="look-note" data-testid="look-follow-at-hint">
                 {followAtHint(form)}
@@ -538,10 +631,7 @@ function LookPanel({
             )}
           </Fragment>
         ))}
-        <span className="look-label" id={`${id}-hud`}>
-          HUD
-        </span>
-        <HudPicker form={form} kind={kind} labelId={`${id}-hud`} />
+        <HudSection form={form} kind={kind} />
       </div>
       <button
         type="button"
@@ -564,6 +654,9 @@ function exportPixels(form: ExportForm, kind: LookKind): { width: number; height
     ? posterSize(form.posterSize)
     : videoSize(form.videoAspect, form.videoSize);
 }
+
+/** Counters of the preview's measure and scroll-padding callbacks and draws (debug hook). */
+export const previewStats = { measures: 0, pads: 0, draws: 0 };
 
 /** Wide screens show the preview beside the options (styles.css uses the same width). */
 const WIDE = '(min-width: 900px)';
@@ -600,13 +693,16 @@ function ExportPreview({
   const frame = useRef(0);
   const id = useId();
 
-  // The space the preview may take: the column's width, a share of the screen's height.
+  // The space the preview may take: the column's width, a share of the screen's height. State
+  // changes only when a number does, so a re-render the size causes cannot loop back here.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     const measure = () => {
-      const wide = matchMedia(WIDE).matches;
-      setAvail({ w: el.clientWidth, h: previewMaxHeight(wide) });
+      previewStats.measures++;
+      const w = el.clientWidth;
+      const h = previewMaxHeight(matchMedia(WIDE).matches);
+      setAvail((a) => (a.w === w && a.h === h ? a : { w, h }));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -619,13 +715,16 @@ function ExportPreview({
   }, []);
 
   // Narrow screens: the sticky preview sits over the scrolling options, so keep scrolled-to
-  // controls (focus, scrollIntoView) clear of it.
+  // controls (focus, scrollIntoView) clear of it. Only the dialog's scroll padding is written
+  // (nothing observed changes size), and only when it differs.
   useLayoutEffect(() => {
     const el = wrap.current;
     const dlg = el?.closest('dialog');
     if (!el || !dlg) return;
     const pad = () => {
-      dlg.style.scrollPaddingTop = matchMedia(WIDE).matches ? '' : `${el.offsetHeight}px`;
+      previewStats.pads++;
+      const v = matchMedia(WIDE).matches ? '' : `${el.offsetHeight}px`;
+      if (dlg.style.scrollPaddingTop !== v) dlg.style.scrollPaddingTop = v;
     };
     pad();
     const ro = new ResizeObserver(pad);
@@ -661,6 +760,7 @@ function ExportPreview({
       if (kind === 'video') runtime.previewVideo(g, src, form, videoContext(), time, scale);
       else runtime.previewPosterOf(g, src, form, videoContext(), scale);
       draws.current++;
+      previewStats.draws++;
       c.dataset.draws = String(draws.current);
     });
     return () => cancelAnimationFrame(frame.current);
@@ -992,7 +1092,7 @@ export function ExportDialog() {
                     />
                   </div>
                   <div className="field">
-                    <Check
+                    <Switch
                       checked={form.posterTitle}
                       disabled={running}
                       testId="export-ptitle"

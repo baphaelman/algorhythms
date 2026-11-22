@@ -4,6 +4,8 @@
  * and transparent background, Look and HUD choices reaching the export, Reset, remembered
  * choices and the phone layout; the live preview (matches a direct render, checkerboard).
  *
+ * Interactions go through export-diag's guards (a hang logs the page's state).
+ *
  * Owner samples: with LOOK_SAMPLES_DIR set, Chromium saves dialog-poster.png and
  * poster-default.png (the dialog's default poster of Little Round) there.
  */
@@ -11,7 +13,16 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { clickExportForDownload, expectUncovered } from './export-diag';
+import {
+  chooseSegment,
+  clickExportForDownload,
+  expectUncovered,
+  guarded,
+  setHudOpen,
+  setRange,
+  setSwitch,
+  tap,
+} from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -26,6 +37,8 @@ interface HookWindow {
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
 const SAMPLES = process.env.LOOK_SAMPLES_DIR;
+/** Review screenshot: poster.png (Little Round, light, 1280×800). */
+const PREVIEW_DIR = process.env.EXPORT_PREVIEW_DIR;
 
 async function openExport(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
@@ -34,8 +47,11 @@ async function openExport(page: Page): Promise<void> {
   await expect(page.getByTestId('export-run')).toBeEnabled();
 }
 
+/** Picks a radio by its label: a guarded click (not `check()`), then its state. */
 async function choose(page: Page, testId: string, label: string): Promise<void> {
-  await dialog(page).getByTestId(testId).getByLabel(label, { exact: true }).check();
+  const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
+  await guarded(page, `choose ${testId} ${label}`, () => input.click());
+  await expect(input).toBeChecked();
 }
 
 const pickPoster = (page: Page) => choose(page, 'export-format', 'Poster');
@@ -45,29 +61,25 @@ async function openLook(page: Page): Promise<void> {
   await expect(page.getByTestId('look-reset')).toBeAttached();
 }
 
-/** Opens the HUD checklist. */
-async function openHud(page: Page): Promise<void> {
-  const b = page.getByTestId('look-hud-button');
-  if ((await b.getAttribute('aria-expanded')) !== 'true') await b.click();
-  await expect(page.getByTestId('look-hud')).toBeVisible();
-}
+/** Expands the HUD's readout list. */
+const openHud = (page: Page) => setHudOpen(page, true);
 
-const pick = (page: Page, testId: string, value: string) =>
-  page.getByTestId(testId).selectOption(value);
-
-/** Look selects whose chosen option's text does not fit (text + padding + arrow > width). */
-const clippedSelects = (page: Page) =>
+/** Look segments wider than their box or the dialog, or with an option's text wrapped or cut. */
+const badSegments = (page: Page) =>
   dialog(page).evaluate((d) => {
-    const ctx = document.createElement('canvas').getContext('2d')!;
-    return [...d.querySelectorAll<HTMLSelectElement>('.look select')]
-      .filter((s) => {
-        const cs = getComputedStyle(s);
-        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        const text = ctx.measureText(s.selectedOptions[0]?.text ?? '').width;
-        const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        return text + pad + 18 > s.clientWidth;
-      })
-      .map((s) => `${s.dataset.testid}: ${s.selectedOptions[0]?.text}`);
+    const bad: string[] = [];
+    if (d.querySelector('.look select')) bad.push('a select');
+    const right = d.getBoundingClientRect().right;
+    for (const g of d.querySelectorAll<HTMLElement>('.look-seg')) {
+      const r = g.getBoundingClientRect();
+      if (g.scrollWidth > g.clientWidth + 1 || r.right > right + 0.5) bad.push(g.dataset.testid!);
+      for (const l of g.querySelectorAll<HTMLElement>('label > span')) {
+        if (l.getClientRects().length > 1 || l.scrollWidth > l.clientWidth + 1) {
+          bad.push(`${g.dataset.testid}: ${l.textContent}`);
+        }
+      }
+    }
+    return bad;
   });
 
 const lastRequest = (page: Page) =>
@@ -135,8 +147,12 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
     await expect(page.getByTestId(t)).toHaveCount(0);
   }
   await expect(page.getByTestId('look-background')).not.toBeChecked();
-  await expect(page.getByTestId('look-guides')).toHaveValue('off');
-  await expect(page.getByTestId('look-moments')).toHaveValue('labels');
+  await expect(page.getByTestId('look-background')).toHaveAttribute('role', 'switch');
+  await expect(page.getByTestId('export-ptitle')).toHaveAttribute('role', 'switch');
+  await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'off');
+  await expect(page.getByTestId('look-moments')).toHaveAttribute('data-value', 'labels');
+  await expect(page.getByTestId('look-width')).toHaveValue('1');
+  await expect(dialog(page).locator('.look select')).toHaveCount(0);
   // A poster's HUD is off by default (it would show end-of-piece values).
   await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
   await openHud(page);
@@ -165,7 +181,7 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 
   // Transparent 1:1: an empty corner has alpha 0.
   await choose(page, 'export-psize', '1:1');
-  await page.getByTestId('look-background').check();
+  await setSwitch(page, 'look-background', true);
   const clear = await decodePng(page, (await download(page)).bytes);
   expect(clear).toMatchObject({ width: 2160, height: 2160, cornerAlpha: 0 });
   expect(clear.inked).toBeGreaterThan(100);
@@ -185,19 +201,18 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await openExport(page);
   await pickPoster(page);
   await choose(page, 'export-psize', '1:1');
-  await page.getByTestId('export-ptitle').uncheck();
+  await setSwitch(page, 'export-ptitle', false);
   await choose(page, 'export-vtheme', 'Dark');
   await openLook(page);
-  await pick(page, 'look-guides', 'labels');
-  await pick(page, 'look-width', 'bold');
-  await pick(page, 'look-colors', 'ink');
+  await chooseSegment(page, 'look-guides', 'Lines + labels');
+  await setRange(page, 'look-width', 1.75);
+  await expect(page.getByTestId('look-width-value')).toHaveText('1.75×');
+  await chooseSegment(page, 'look-colors', 'Ink');
   await page.getByTestId('look-ink').fill('#336699');
   await openHud(page);
-  await page.getByTestId('hud-title').check();
-  await page.getByTestId('hud-key').check();
-  await page.keyboard.press('Escape');
-  // Closed, and Export gets the click (CI v61 WebKit: the open checklist covered it).
-  await expect(page.getByTestId('look-hud')).toHaveCount(0);
+  await setSwitch(page, 'hud-title', true);
+  await setSwitch(page, 'hud-key', true);
+  // Expanded, and Export still gets the click (CI v61 WebKit: the old checklist covered it).
   await page.getByTestId('export-run').scrollIntoViewIfNeeded();
   await expectUncovered(page, 'export-run');
   await download(page);
@@ -206,7 +221,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   expect(req.options.look).toMatchObject({
     theme: 'dark',
     guides: true,
-    lineWidth: 'bold',
+    lineWidth: 1.75,
     colors: 'ink',
     lineInk: '#336699',
     hud: ['key', 'title'],
@@ -221,25 +236,25 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   for (const l of ['1:1', 'Dark']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
-  await expect(page.getByTestId('look-width')).toHaveValue('bold');
-  await expect(page.getByTestId('look-colors')).toHaveValue('ink');
+  await expect(page.getByTestId('look-width')).toHaveValue('1.75');
+  await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'ink');
   await expect(page.getByTestId('export-ptitle')).not.toBeChecked();
   await expect(page.getByTestId('look-ink')).toHaveValue('#336699');
   await openHud(page);
   await expect(page.getByTestId('hud-title')).toBeChecked();
-  await page.keyboard.press('Escape');
+  await setHudOpen(page, false);
 
-  await page.getByTestId('look-reset').click();
+  await tap(page, 'look-reset');
   await expect(d.getByLabel('Current', { exact: true })).toBeChecked();
-  await expect(page.getByTestId('look-width')).toHaveValue('normal');
-  await expect(page.getByTestId('look-colors')).toHaveValue('app');
-  await expect(page.getByTestId('look-guides')).toHaveValue('off');
+  await expect(page.getByTestId('look-width')).toHaveValue('1');
+  await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'app');
+  await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'off');
   await expect(page.getByTestId('look-ink')).toHaveCount(0);
   await openHud(page);
   await expect(page.getByTestId('hud-title')).not.toBeChecked();
   // Default / None quick buttons: a poster's default HUD is none.
-  await page.getByTestId('hud-chord').check();
-  await page.getByTestId('hud-default').click();
+  await setSwitch(page, 'hud-chord', true);
+  await tap(page, 'hud-default');
   await expect(page.getByTestId('hud-chord')).not.toBeChecked();
   // Reset left the poster's other choices alone.
   await expect(d.getByLabel('1:1', { exact: true })).toBeChecked();
@@ -379,12 +394,12 @@ test('Beat lines: Every beat draws more than Bars and beats; reaches the poster'
   await openExport(page);
   await pickPoster(page);
   let n = await drawn(page);
-  await expect(page.getByTestId('look-beats')).toHaveValue('off');
+  await expect(page.getByTestId('look-beats')).toHaveAttribute('data-value', 'off');
   const off = await previewHash(page);
-  await pick(page, 'look-beats', 'auto');
+  await chooseSegment(page, 'look-beats', 'Bars and beats');
   n = await drawn(page, n);
   const auto = await previewHash(page);
-  await pick(page, 'look-beats', 'every');
+  await chooseSegment(page, 'look-beats', 'Every beat');
   await drawn(page, n);
   const every = await previewHash(page);
   expect(new Set([off, auto, every]).size).toBe(3);
@@ -407,7 +422,7 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   expect(first).toMatchObject({ cornerAlpha: 255, title: true });
   expect(first.width / first.height).toBeCloseTo(16 / 9, 1);
 
-  await page.getByTestId('look-background').check();
+  await setSwitch(page, 'look-background', true);
   n = await drawn(page, n);
   const clear = await comparePreview(page);
   expect(clear.cornerAlpha).toBe(0);
@@ -423,53 +438,52 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   expect(a4.bad / a4.total).toBeLessThan(0.002);
 });
 
-test('the open HUD checklist never covers the Export button (desktop and phone)', async ({
-  page,
-}) => {
+test('the expanded HUD never covers the Export button (desktop and phone)', async ({ page }) => {
   for (const [w, h] of [
     [1280, 800],
     [375, 640],
   ] as const) {
     await page.setViewportSize({ width: w, height: h });
-    await openExport(page);
-    await pickPoster(page);
+    if (PREVIEW_DIR && w === 1280) {
+      await page.goto('./?example=little-round');
+      await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+      await openExport(page);
+      await pickPoster(page);
+      await drawn(page);
+      await page.screenshot({ path: join(PREVIEW_DIR, 'poster.png') });
+    } else {
+      await openExport(page);
+      await pickPoster(page);
+    }
     await openHud(page);
-    for (const t of ['look-hud', 'look-reset', 'export-run']) {
+    for (const t of ['look-hud', 'hud-title', 'look-reset', 'export-run']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
       await expectUncovered(page, t, `${w}: ${t} not covered`);
     }
-    // Escape still closes only the checklist and refocuses its button.
-    await page.getByTestId('hud-none').focus();
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('look-hud')).toHaveCount(0);
-    await expect(page.getByTestId('look-hud-button')).toBeFocused();
-    // Also with nothing focused (macOS WebKit does not focus a clicked button or checkbox).
-    await openHud(page);
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('look-hud')).toHaveCount(0);
-    await expect(dialog(page)).toBeVisible();
-    await expect(page.getByTestId('look-hud-button')).toBeFocused();
+    // The row collapses it again; Escape closes the dialog (no popup to close first).
+    await setHudOpen(page, false);
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
   }
 });
 
-test('phone: every Look dropdown shows its chosen option in full', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 640 });
-  await openExport(page);
-  await pickPoster(page);
-  await openLook(page);
-  expect(await clippedSelects(page)).toEqual([]);
-  // The longest options too.
-  for (const [t, v] of [
-    ['look-guides', 'labels'],
-    ['look-moments', 'all'],
-    ['look-colors', 'pitch'],
+test('the Look segments fit, one line each, at 375 and 1280 px; no dropdowns', async ({ page }) => {
+  for (const [w, h] of [
+    [375, 640],
+    [1280, 800],
   ] as const) {
-    await pick(page, t, v);
+    await page.setViewportSize({ width: w, height: h });
+    await openExport(page);
+    await pickPoster(page);
+    await openLook(page);
+    expect(await badSegments(page), `${w}`).toEqual([]);
+    await chooseSegment(page, 'look-guides', 'Lines + labels');
+    await chooseSegment(page, 'look-moments', 'Both');
+    await chooseSegment(page, 'look-colors', 'Custom');
+    expect(await badSegments(page), `${w}`).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
   }
-  expect(await clippedSelects(page)).toEqual([]);
 });
 
 test('owner samples: the Poster dialog and the default poster', async ({ page, browserName }) => {
