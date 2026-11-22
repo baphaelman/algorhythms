@@ -32,15 +32,18 @@ import {
   type MelodyOption,
   randomMelody,
   removeTuneNote,
+  followKeyPatch,
   setTuneLen,
+  shiftTuneNotes,
   stepTuneNote,
   tuneBeat,
   tuneDots,
   tuneNoteStarts,
+  tuneShiftIn,
 } from '../../editor/tune';
 import { setLineHighlight } from '../../line-highlight';
 import { usePlayer } from '../../store';
-import { CompactNumber, Row, TextField, fieldSetter } from './controls';
+import { CheckField, CompactNumber, Row, TextField, fieldSetter } from './controls';
 import { keyAt } from './fields';
 
 /** m:ss.ss (notes can be closer than the inspector's usual tenths). */
@@ -111,8 +114,17 @@ export function MelodyOn({ m, piece }: { m: TuneMoment; piece: Piece }) {
     if (!o || o.value === current) return;
     const patch = melodyMove(piece, compiled, m, o.choice);
     if (!updateMoment(m.id, patch, 'Change melody line')) return;
-    const first = (patch.notes ?? m.notes)[0];
-    if (first) auditionTuneAfterEdit(m.id, first.pitch, m.at + first.len / 2);
+    const notes = patch.notes ?? m.notes;
+    const k = notes.findIndex((n) => !n.rest);
+    const first = notes[k];
+    if (first?.pitch !== undefined) {
+      const shift = tuneShiftIn(compiled, m);
+      auditionTuneAfterEdit(
+        m.id,
+        first.pitch + shift,
+        tuneNoteStarts({ at: m.at, notes })[k] + first.len / 2,
+      );
+    }
   };
   const label = options.find((o) => o.value === current)?.label ?? '';
   return (
@@ -201,13 +213,47 @@ export function MelodyOn({ m, piece }: { m: TuneMoment; piece: Piece }) {
   );
 }
 
+/**
+ * Revision 10: "Follow key" (on: `writtenIn` is the tonic at `at`, so the tune moves with later key
+ * edits) and "Re-strike repeats" (`strike`). Turning Follow key on or off keeps the sound.
+ */
+export function TuneOptions({ m }: { m: TuneMoment }) {
+  const compiled = usePlayer((s) => s.compiled);
+  return (
+    <Row label="Options">
+      <CheckField
+        label="Follow key"
+        checked={m.writtenIn !== undefined}
+        testId="tune-follow-key"
+        title="Move the tune with the key in effect at its start"
+        onChange={(on) => {
+          const patch = followKeyPatch(compiled, m, on);
+          if (patch) updateMoment(m.id, patch, on ? 'Follow key' : 'Stop following key');
+        }}
+      />
+      <CheckField
+        label="Re-strike repeats"
+        checked={m.strike !== false}
+        testId="tune-strike"
+        title="A note at the pitch of the one before it strikes again (off: held as one note)"
+        onChange={(on) =>
+          updateMoment(m.id, { strike: on ? undefined : false }, 'Re-strike repeated notes')
+        }
+      />
+    </Row>
+  );
+}
+
 export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
   const compiled = usePlayer((s) => s.compiled);
   const beat = tuneBeat(piece.view);
   const starts = tuneNoteStarts(m);
   const unit = beat ? 'beats' : 'seconds';
+  // Revision 10: the list shows and edits sounding pitches; edits write back the written ones.
+  const shift = tuneShiftIn(compiled, m);
+  const sounding = shiftTuneNotes(m.notes, shift);
   const write = (notes: TuneNote[] | null, label: string): boolean =>
-    notes !== null && updateMoment(m.id, { notes }, label);
+    notes !== null && updateMoment(m.id, { notes: shiftTuneNotes(notes, -shift) }, label);
   const sel = useDotSelection((s) => s.dots);
   /** Notes whose score dot is selected. */
   const picked = useMemo(() => {
@@ -226,10 +272,12 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
       clearDots();
       return;
     }
-    const d = tuneDots(compiled, m)[k];
+    const d = tuneDots(compiled, m).find((x) => x.note === k);
     if (d) selectDots([d]);
   };
-  const text = formatTuneText(m, beat, (t) => keyAt(compiled, t, piece.key));
+  const text = formatTuneText({ at: m.at, notes: sounding }, beat, (t) =>
+    keyAt(compiled, t, piece.key),
+  );
   const lenSetter = (k: number) =>
     fieldSetter<number>(m.id, 'Edit note length', (x, v) => {
       const notes = (x as TuneMoment).notes;
@@ -245,13 +293,13 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
       <TextField
         label="Type"
         value={text}
-        placeholder={beat ? 'F#5 2, E5 1, D5 1' : 'F#5 1, E5 0.5, D5 0.5'}
+        placeholder={beat ? 'F#5 2, r 1, D5 1' : 'F#5 1, r 0.5, D5 0.5'}
         parse={(t) => {
-          const r = parseTuneText(t, beat, m.notes);
+          const r = parseTuneText(t, beat, sounding);
           return r.ok ? { ok: true } : r;
         }}
         onCommit={(t) => {
-          const r = parseTuneText(t, beat, m.notes);
+          const r = parseTuneText(t, beat, sounding);
           if (r.ok) write(r.notes, 'Type tune notes');
         }}
         testId="tune-text"
@@ -260,21 +308,24 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
         <p className="insp-note">No notes yet.</p>
       ) : (
         <ol ref={list}>
-          {m.notes.map((n, k) => {
+          {sounding.map((n, k) => {
             const key = keyAt(compiled, starts[k], piece.key);
-            const name = noteLabel(n.pitch, key);
+            const name = n.rest ? 'rest' : noteLabel(n.pitch, key);
             const desc = `note ${k + 1}, ${name} at ${noteTime(starts[k])}`;
             const step = (dir: 1 | -1): void => {
-              const notes = stepTuneNote(m.notes, k, dir, key);
+              const notes = stepTuneNote(sounding, k, dir, key);
               if (!write(notes, 'Move tune note') || !notes) return;
               // Sounds the note at its new pitch once the edit has compiled (§11.3 auditioning).
-              auditionPointsAfterEdit([{ pitch: notes[k].pitch, t: starts[k] + n.len / 2 }]);
+              const pitch = notes[k].pitch;
+              if (pitch !== undefined)
+                auditionPointsAfterEdit([{ pitch, t: starts[k] + n.len / 2 }]);
             };
             return (
               <li
                 key={k}
                 data-testid="tune-note"
                 data-index={k}
+                data-rest={n.rest ? 'true' : undefined}
                 className={picked.has(k) ? 'on' : undefined}
                 data-picked={picked.has(k) ? 'true' : undefined}
               >
@@ -309,6 +360,7 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
                   type="button"
                   className="step-move"
                   data-testid="tune-note-up"
+                  disabled={n.rest}
                   aria-label={`Up a scale step: ${desc}`}
                   onClick={() => step(1)}
                 >
@@ -318,6 +370,7 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
                   type="button"
                   className="step-move"
                   data-testid="tune-note-down"
+                  disabled={n.rest}
                   aria-label={`Down a scale step: ${desc}`}
                   onClick={() => step(-1)}
                 >
@@ -329,7 +382,7 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
                   data-testid="tune-note-remove"
                   aria-label={`Remove ${desc}`}
                   title="Remove this note"
-                  onClick={() => write(removeTuneNote(m.notes, k), 'Remove tune note')}
+                  onClick={() => write(removeTuneNote(sounding, k), 'Remove tune note')}
                 >
                   ×
                 </button>
@@ -350,7 +403,7 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
               ...activeAt(compiled, m.at).map((v) => pitchAt(compiled.voices[v], m.at) ?? 60),
             );
             write(
-              addTuneNote(m.notes, key, Number.isFinite(low) ? low : 60, beat),
+              addTuneNote(sounding, key, Number.isFinite(low) ? low : 60, beat),
               'Add tune note',
             );
           }}
@@ -367,7 +420,11 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
             let notes = randomMelody(piece, compiled, m, randomU32());
             for (let i = 0; i < 4 && JSON.stringify(notes) === same; i++)
               notes = randomMelody(piece, compiled, m, randomU32());
-            if (write(notes, 'Random melody')) auditionMelodyAfterEdit(m.id, notes, m.at);
+            if (!write(shiftTuneNotes(notes, shift), 'Random melody')) return;
+            const melody = notes.flatMap((n) =>
+              n.rest ? [] : [{ pitch: n.pitch + shift, len: n.len }],
+            );
+            auditionMelodyAfterEdit(m.id, melody, m.at);
           }}
         >
           Random melody

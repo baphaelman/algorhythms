@@ -6,7 +6,7 @@
  * - **v2** (`2.` + base64url): the piece with its defaults stripped (`stripDefaults`), unchanged
  *   built-in timbres written as `1`, moment ids that just count up from the previous one omitted,
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
- *   `[pitch, len, …]` lists; then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
+ *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
@@ -148,12 +148,15 @@ function builtin(name: string): unknown {
   return parsedBuiltins.get(name);
 }
 
-/** A tune note that packs into a `[pitch, len]` pair (no other fields). */
-function plainNote(n: unknown): n is { pitch: number; len: number } {
+/**
+ * A tune note that packs into a `[pitch, len]` pair (no other fields); a rest (revision 10) into
+ * `[null, len]`.
+ */
+function plainNote(n: unknown): n is { pitch: number; len: number } | { rest: true; len: number } {
   return (
     isRec(n) &&
     Object.keys(n).length === 2 &&
-    typeof n.pitch === 'number' &&
+    (typeof n.pitch === 'number' || n.rest === true) &&
     typeof n.len === 'number'
   );
 }
@@ -190,7 +193,7 @@ export function packPiece(piece: Piece): Rec | null {
         if (k === 'id' && typeof prevId === 'string' && v === nextId(prevId)) continue;
         if (k === 'at') m.at = ms - prevMs;
         else if (k === 'notes' && raw.type === 'tune' && Array.isArray(v) && v.every(plainNote))
-          m.notes = v.flatMap((n) => [n.pitch, n.len]);
+          m.notes = v.flatMap((n) => ['pitch' in n ? n.pitch : null, n.len]);
         else m[k] = v;
       }
       if (typeof raw.id !== 'string') return null;
@@ -238,10 +241,13 @@ export function unpackPiece(packed: unknown): unknown {
           k === 'notes' &&
           raw.type === 'tune' &&
           Array.isArray(v) &&
-          v.every((x) => typeof x === 'number')
+          v.every((x, i) => typeof x === 'number' || (x === null && i % 2 === 0))
         ) {
           const notes: Rec[] = [];
-          for (let i = 0; i + 1 < v.length; i += 2) notes.push({ pitch: v[i], len: v[i + 1] });
+          for (let i = 0; i + 1 < v.length; i += 2)
+            notes.push(
+              v[i] === null ? { rest: true, len: v[i + 1] } : { pitch: v[i], len: v[i + 1] },
+            );
           m.notes = notes;
         } else m[k] = v;
       }

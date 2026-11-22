@@ -37,7 +37,16 @@ import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
 import { bringsIn, establishPlan } from '../moments/establish';
 import { noteMoment } from '../moments/note';
-import { tuneNotePlan, tuneProblem, tuneStarts } from '../moments/tune';
+import {
+  firstPitched,
+  isRest,
+  tuneNotePlan,
+  tunePitch,
+  tuneProblem,
+  tuneRestrikes,
+  tuneShift,
+  tuneStarts,
+} from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
 import {
@@ -77,6 +86,7 @@ import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
 import { foldApart, type FoldNote } from './fold-apart';
 import { foldIntoRange, sanitizeRange } from './range';
+import { cutRests, REST_ATTACK, REST_RETURN_MIN } from './rests';
 import { collapse, countsLines, expand, type Collapsed, type Expansion } from './lines';
 import { Status, VoiceRun, type Birth, type Move, type TimbreEntry } from './voice';
 
@@ -142,9 +152,11 @@ export interface TuneStep {
   k: number;
   voice: number;
   moved: boolean;
+  /** Revision 10: semitones the notes sound shifted by (`writtenIn` → the key at `at`). */
+  shift: number;
 }
 
-const TUNE_START: TuneStep = Object.freeze({ k: 0, voice: -1, moved: false });
+const TUNE_START: TuneStep = Object.freeze({ k: 0, voice: -1, moved: false, shift: 0 });
 
 /** A tune's first note bringing its line in (no parent: it fades in on the note). */
 const entry = (voice: number, to: Pitch): Intent => ({
@@ -167,6 +179,8 @@ interface TuneNoteRun {
   land: Seconds | undefined;
   /** The first note brings `voice` in: its part was silent (composing.md §3 #4). */
   enter?: boolean;
+  /** Revision 10: semitones added to the written pitch. */
+  shift: number;
 }
 
 /**
@@ -1157,8 +1171,11 @@ export class Compiler {
       plan =
         tune && m.type === 'tune'
           ? tune.enter
-            ? { ordered: false, intents: [entry(tune.voice, m.notes[0].pitch)] }
-            : tuneNotePlan(m, tune.k, tune.voice)
+            ? {
+                ordered: false,
+                intents: [entry(tune.voice, tunePitch(m, tune.k, tune.shift))],
+              }
+            : tuneNotePlan(m, tune.k, tune.voice, tune.shift)
           : !back && this.entersSilent(m)
             ? establishPlan(m, env)
             : pointMomentPlan(m, env);
@@ -1566,6 +1583,11 @@ export class Compiler {
    * move of the whole line (it may cross other lines; joins stay within its part, `onJoin`).
    * `no-effect` when the tune has no notes, targets nothing, or no note moved its line (raised
    * at the last note).
+   *
+   * Revision 10: notes sound `st.shift` semitones from their written pitch (`writtenIn`, fixed at
+   * the first note from the key at `at`). A rest silences the line (`VoiceRun.restFrom`); the
+   * note after it decides at its start and brings the line back on its pitch (`startMove`, or
+   * `comeBack` when the line is already there). A repeated note re-strikes (a pulse hit at 1).
    */
   private onTune(i: number, st: TuneStep, late: boolean): void {
     const m = this.moments[i] as TuneMoment;
@@ -1580,35 +1602,53 @@ export class Compiler {
       this.span(i, late ? m.at : this.eventT[i], starts[n]);
       this.activity(starts[n]);
     }
-    let v = k > 0 ? this.tuneLine(st.voice) : -1;
+    const shift = k === 0 ? tuneShift(m.writtenIn, this.keyFor(i)) : st.shift;
+    const fp = firstPitched(m);
+    const queueNext = (voice: number, moved: boolean): void => {
+      const next: TuneStep = { k: k + 1, voice, moved, shift };
+      const t = this.tuneNoteTime(m, k + 1, g0, starts);
+      this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_TUNE, ref: i, obj: next });
+    };
+    let v = this.tuneLine(st.voice);
     if (v < 0 && n > 0) {
       const ts = this.resolveTarget(m.target, k === 0 ? m.id : null);
       v = ts.length === 0 ? -1 : m.line === 'high' ? ts[ts.length - 1] : ts[0];
+    }
+    if (n > 0 && isRest(m.notes[k])) {
+      // A rest: the line falls silent at its start and keeps its voice.
+      let moved = st.moved;
+      if (v >= 0) {
+        const line = this.voices[v];
+        if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
+        line.cancelPending();
+        this.touch();
+        if (line.frontier.alive && !line.pendingBirth && !line.resting) {
+          line.restFrom = starts[k];
+          moved = true;
+        }
+      }
+      if (k + 1 < n) queueNext(v, moved);
+      else if (!moved) this.noEffect(m, v >= 0 ? [v] : [], activeInScope());
+      return;
     }
     // A silent part (composing.md §3 #4): the first note brings one line in. At the opening it
     // establishes (no glide, no fade); while others sound it is born there, fading in.
     let enter = false;
     let traced = false;
-    if (v < 0 && k === 0 && n > 0) {
-      const T = late ? m.at : this.eventT[i];
-      if (this.entersSilent(m) && (this.sortedActive().length === 0 || this.opensWith(m, T))) {
+    const T0 = k === 0 ? (late ? m.at : this.eventT[i]) : starts[k];
+    if (v < 0 && k === fp) {
+      const T = T0;
+      if (
+        k === 0 &&
+        this.entersSilent(m) &&
+        (this.sortedActive().length === 0 || this.opensWith(m, T))
+      ) {
         const u = this.establish(i).opened[0] ?? -1;
         traced = true;
         if (u >= 0) {
           const line = this.voices[u];
           if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
-          if (n > 1) {
-            const next: TuneStep = { k: 1, voice: u, moved: true };
-            const t = g0.land === true ? landing(starts[1], g0, starts[0]).start : starts[1];
-            this.queue.push({
-              t,
-              cls: EventClass.Moment,
-              key: i,
-              sub: SUB_TUNE,
-              ref: i,
-              obj: next,
-            });
-          }
+          if (n > 1) queueNext(u, true);
           return;
         }
       } else if (this.entersSilent(m)) {
@@ -1626,9 +1666,9 @@ export class Compiler {
       }
     }
     if (v < 0) {
-      if (k === 0) {
+      if (k <= Math.max(fp, 0)) {
         const scoped = activeInScope();
-        const dormant = this.dormantAt(late ? m.at : this.eventT[i]).filter(
+        const dormant = this.dormantAt(T0).filter(
           (u) => scope === null || this.voices[u].part === scope,
         ).length;
         this.noEffect(m, [], scoped, n > 0 ? 'warn' : 'info', dormant);
@@ -1646,29 +1686,71 @@ export class Compiler {
     }
     const g = g0;
     let run: TuneNoteRun;
-    if (g.land === true && !(late && k === 0)) {
+    if (g.land === true && !(late && k === 0) && !this.tuneStartsAt(m, k)) {
       // Each note arrives on its start; its glide starts no earlier than the previous note.
       const l = landing(starts[k], g, k === 0 ? 0 : starts[k - 1]);
-      run = { k, voice: v, T: l.start, rest: starts[k], glide: l.glide, land: l.end, enter };
+      run = { k, voice: v, T: l.start, rest: starts[k], glide: l.glide, land: l.end, enter, shift };
     } else {
       // The portamento never outlasts the note.
       const len = m.notes[k].len;
       const glide = g.length > len ? { ...g, length: len } : g;
-      run = { k, voice: v, T: starts[k], rest: starts[k], glide, land: undefined, enter };
+      const T = k === 0 ? T0 : starts[k];
+      run = { k, voice: v, T, rest: starts[k], glide, land: undefined, enter, shift };
     }
     // Walks leave the line alone until the tune ends (it holds its notes).
     const line = this.voices[v];
     if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
     const { res } = this.applyPointMoment(i, null, late && k === 0, run);
-    const moved =
+    let moved =
       st.moved || (res !== null && (res.moves.length > 0 || (enter && res.births.length > 0)));
-    if (k + 1 < n) {
-      const next: TuneStep = { k: k + 1, voice: v, moved };
-      const t = g.land === true ? landing(starts[k + 1], g, starts[k]).start : starts[k + 1];
-      this.queue.push({ t, cls: EventClass.Moment, key: i, sub: SUB_TUNE, ref: i, obj: next });
-    } else if (!moved) {
-      this.noEffect(m, [v], activeInScope());
+    // After a rest: a line already on the note comes back now (no move will start).
+    if (line.resting && !(res && res.moves.some((mv) => mv.voice === v))) {
+      this.comeBack(line, starts[k], line.frontier.heading, m.id, REST_ATTACK);
+      moved = true;
     }
+    if (
+      tuneRestrikes(m, k) &&
+      line.status === Status.Active &&
+      line.frontier.alive &&
+      !line.resting &&
+      line.pulseOwner < 0
+    ) {
+      line.pulse.push({
+        t: starts[k],
+        accent: 1,
+        decay: 0,
+        floor: 1,
+        strike: true,
+        hit: true,
+        restrike: true,
+      });
+      moved = true;
+    }
+    if (k + 1 < n) queueNext(v, moved);
+    else if (!moved) this.noEffect(m, [v], activeInScope());
+  }
+
+  /**
+   * Revision 10: note k decides at its own start (no lead-in under `land`): after a rest (it comes
+   * in on its pitch), on a rest, and on a repeated note (nothing to glide).
+   */
+  private tuneStartsAt(m: TuneMoment, k: number): boolean {
+    if (k === 0) return isRest(m.notes[0]);
+    return isRest(m.notes[k]) || isRest(m.notes[k - 1]) || tuneRestrikes(m, k);
+  }
+
+  /** When tune note k's event runs: its start, or under `land` its lead-in start. */
+  private tuneNoteTime(m: TuneMoment, k: number, g: Glide, starts: readonly Seconds[]): Seconds {
+    if (g.land !== true || this.tuneStartsAt(m, k)) return starts[k];
+    return landing(starts[k], g, starts[k - 1]).start;
+  }
+
+  /** Revision 10: resting `run` comes back at t on p (a jump), fading in over `fadeIn`. */
+  private comeBack(run: VoiceRun, t: Seconds, p: Pitch, momentId: string, fadeIn: Seconds): void {
+    run.frontier.jump(t, p, momentId);
+    run.endRest(t, fadeIn);
+    this.activity(t);
+    this.queueJoin(run.index, t);
   }
 
   /**
@@ -1878,7 +1960,9 @@ export class Compiler {
     const targets = this.resolveTarget(p.target, null);
     const members: number[] = [];
     for (const v of targets) {
-      if (this.pulseClaim(pi, v, t) && this.voices[v].frontier.alive) members.push(v);
+      // A line in a tune rest (revision 10) is silent: not hit.
+      const run = this.voices[v];
+      if (this.pulseClaim(pi, v, t) && run.frontier.alive && !run.resting) members.push(v);
     }
     const accent = unit(p.pattern[k % p.pattern.length], 0);
     let next: PulseState = st;
@@ -1932,6 +2016,15 @@ export class Compiler {
   private startMove(mv: Move): boolean {
     const run = this.voices[mv.voice];
     if (!run.frontier.alive) return false;
+    if (run.resting && !mv.death) {
+      // Revision 10: a resting line comes back on the move's note, without a glide: a tune's
+      // next note strikes, another moment fades it in as a silent part coming in.
+      const tune = this.moments[mv.momentIndex]?.type === 'tune';
+      const fadeIn = tune ? REST_ATTACK : Math.max(REST_RETURN_MIN, mv.dur / 2);
+      this.comeBack(run, mv.t0, mv.to, mv.momentId, fadeIn);
+      this.span(mv.momentIndex, mv.t0, mv.t0);
+      return true;
+    }
     let to = mv.to;
     let arrive = -Infinity;
     if (mv.death && mv.death.into >= 0) {
@@ -1984,7 +2077,8 @@ export class Compiler {
 
   /** Active and holding at t: no glide running, or one that keeps its pitch (revision 8 joins). */
   private holding(run: VoiceRun, t: Seconds): boolean {
-    if (run.status !== Status.Active || !run.frontier.alive || run.pendingBirth) return false;
+    if (run.status !== Status.Active || !run.frontier.alive || run.pendingBirth || run.resting)
+      return false;
     if (!run.frontier.busyAt(t)) return true;
     const g = run.frontier.tail!;
     return g.p0 === g.p1 && !g.curve && !g.m0;
@@ -2292,6 +2386,7 @@ export class Compiler {
       }
     }
     run.handed = false;
+    run.endRest(rec.died, Infinity);
     run.frontier.close(rec.died);
     if (run.life) {
       run.life.died = rec.died;
@@ -2529,6 +2624,7 @@ export class Compiler {
       run.status === Status.Active &&
       run.frontier.alive &&
       !run.pendingBirth &&
+      !run.resting &&
       run.pending.length === 0 &&
       !run.frontier.busyAt(t) &&
       !this.parentOfPending(v)
@@ -2648,7 +2744,17 @@ export class Compiler {
     }
     const voices: CompiledVoice[] = this.voices.map((run) => {
       const def = run.def;
-      const lives: Life[] = run.lives.filter((l) => l.died === undefined || l.died > l.born);
+      let lives: Life[] = run.lives.filter((l) => l.died === undefined || l.died > l.born);
+      let segments = run.segs;
+      if (run.rests.length > 0 || run.resting) {
+        // Revision 10: tune rests cut the lives (the simulation kept the line holding).
+        const rests = run.resting
+          ? [...run.rests, { from: run.restFrom, to: Infinity, fadeIn: 0 }]
+          : run.rests;
+        const cut = cutRests(lives, run.segs, rests);
+        lives = cut.lives.filter((l) => l.died === undefined || l.died > l.born);
+        segments = cut.segments;
+      }
       const sends: CompiledVoice['sends'] = {};
       if (def.sends && typeof def.sends.reverb === 'number') sends.reverb = def.sends.reverb;
       if (def.sends && typeof def.sends.delay === 'number') sends.delay = def.sends.delay;
@@ -2656,7 +2762,7 @@ export class Compiler {
         id: def.id,
         index: run.index,
         lives,
-        segments: run.segs,
+        segments,
         timbre: timbres[run.index],
         level: run.level,
         gain: typeof def.gain === 'number' && Number.isFinite(def.gain) ? def.gain : 1,

@@ -132,11 +132,11 @@ describe('randomMelody', () => {
       const notes = randomMelody(p, s, tuneOf(p), seed);
       expect(notes.reduce((a, n) => a + n.len, 0)).toBeCloseTo(2.5, 6);
       for (const n of notes) {
-        expect(isScaleTone(n.pitch, p.key)).toBe(true);
+        expect(isScaleTone(n.pitch!, p.key)).toBe(true);
         expect(n.pitch).toBeGreaterThanOrEqual(55);
         expect(n.pitch).toBeLessThanOrEqual(79);
       }
-      expect(Math.abs(notes[0].pitch - 64)).toBeLessThanOrEqual(4);
+      expect(Math.abs(notes[0].pitch! - 64)).toBeLessThanOrEqual(4);
       expect(randomMelody(p, s, tuneOf(p), seed)).toEqual(notes);
     }
   });

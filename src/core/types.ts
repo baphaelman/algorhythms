@@ -507,11 +507,25 @@ export interface PulseMoment extends MomentBase {
   strike?: boolean;
 }
 
-/** One note of a tune (revision 9): its pitch, held for `len` seconds. */
-export interface TuneNote {
+/** One note of a tune (revision 9): its pitch, held for `len` seconds; or a rest (revision 10). */
+export type TuneNote = TunePitchNote | TuneRest;
+
+/** A sounding tune note. */
+export interface TunePitchNote {
   pitch: Pitch;
   /** How long the note lasts (> 0); the next note starts `len` after this one. */
   len: Seconds;
+  rest?: undefined;
+}
+
+/**
+ * A rest (revision 10): the line fades out at its start and stays silent for `len`, keeping its
+ * voice; the next note comes in on its own pitch, with no glide, and strikes.
+ */
+export interface TuneRest {
+  rest: true;
+  len: Seconds;
+  pitch?: undefined;
 }
 
 /**
@@ -527,6 +541,17 @@ export interface TuneMoment extends MomentBase {
   notes: TuneNote[];
   /** Which line of the target, in pitch order at `at`, carries the tune. Absent means 'low'. */
   line?: TuneLine;
+  /**
+   * Revision 10: a note at the pitch of the note before it (no rest between) re-strikes the
+   * articulation at its start, level unchanged. Absent means true; false holds repeats.
+   */
+  strike?: boolean;
+  /**
+   * Revision 10: the tonic the notes are written in. When set, the tune sounds transposed by the
+   * smallest interval (−5…+6 semitones) from it to the tonic of the key in effect at `at`. Absent:
+   * the pitches are absolute.
+   */
+  writtenIn?: PitchClass;
 }
 
 /** The line of a tune's target that carries it: its lowest or highest in pitch order. */
@@ -884,6 +909,11 @@ export interface PulseRecord {
   strike: boolean;
   /** A step's hit; absent on a boundary. */
   hit?: true;
+  /**
+   * Revision 10: a tune's re-struck repeated note (a hit at accent 1, floor 1, decay 0). MIDI
+   * starts a new note there. Not in the flat layout (the DSP plays it as any striking hit).
+   */
+  restrike?: true;
 }
 
 /**

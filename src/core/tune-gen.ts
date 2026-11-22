@@ -15,7 +15,7 @@
 import { clamp, mod } from './math';
 import { Purpose, rand } from './rng';
 import { degreesToPcs, pitchOfDegreeIndex, scaleDegreeIndex, scalePcs } from './scales';
-import type { Key, Pitch, Seconds, TuneNote } from './types';
+import type { Key, Pitch, Seconds, TunePitchNote } from './types';
 
 export interface TuneGenInput {
   seed: number;
@@ -100,7 +100,7 @@ function degreeRange(lo: Pitch, hi: Pitch, key: Key): [number, number] | null {
 }
 
 /** A random melody for a tune; [] when `total` ≤ 0. */
-export function randomTune(input: TuneGenInput): TuneNote[] {
+export function randomTune(input: TuneGenInput): TunePitchNote[] {
   const { seed, key, beat } = input;
   const total = roundUs(Math.max(0, input.total));
   if (!(total > 0)) return [];
@@ -169,7 +169,7 @@ export function randomTune(input: TuneGenInput): TuneNote[] {
     deg.push(best);
   }
 
-  const out: TuneNote[] = [];
+  const out: TunePitchNote[] = [];
   let sum = 0;
   for (let i = 0; i < n; i++) {
     const pitch = clamp(pitchOfDegreeIndex(deg[i], key), 0, 127);

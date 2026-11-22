@@ -26,6 +26,7 @@ import { noteIsNoop } from './moments/note';
 import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
+import { isRest, tuneRestrikes, tuneShift } from './moments/tune';
 import { partOf, selectorPart } from './parts';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
@@ -463,8 +464,14 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     }
     const v = m.line === 'high' ? targeted[targeted.length - 1] : targeted[0];
     const r = ranges[v] ?? [0, 127];
+    // Revision 10: a rest silences the line, a repeated note re-strikes; notes sound shifted.
+    const shift = tuneShift(m.writtenIn, st.key);
     const moves = m.notes.some(
-      (x) => Number.isFinite(x.pitch) && !same(foldIntoRange(x.pitch, r[0], r[1]).p, st.dest[v]),
+      (x, k) =>
+        isRest(x) ||
+        tuneRestrikes(m, k) ||
+        (Number.isFinite(x.pitch) &&
+          !same(foldIntoRange(x.pitch + shift, r[0], r[1]).p, st.dest[v])),
     );
     return moves ? { effect: true } : no(noEffectReason(m, ctx()));
   }

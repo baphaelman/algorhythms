@@ -52,7 +52,7 @@ import { NoteFields } from './NoteFields';
 import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
 import { PulseFields } from './PulseFields';
-import { MelodyOn, TuneNotes } from './TuneFields';
+import { MelodyOn, TuneNotes, TuneOptions } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
 import { isCustom, isModified } from '../../editor/timbre-edit';
@@ -110,6 +110,7 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
       return (
         <>
           <MelodyOn m={m} piece={ctx.piece} />
+          <TuneOptions m={m} />
           <TuneNotes m={m} piece={ctx.piece} />
         </>
       );

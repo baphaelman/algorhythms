@@ -17,7 +17,7 @@ import {
 } from '../../core/scales';
 import { pitchClasses } from '../../core/voicing';
 import { momentSeed } from '../../core/rng';
-import { randomMelody } from './tune';
+import { randomMelody, writtenInAt } from './tune';
 import { timbreOptions } from './voices';
 import type {
   ChordMoment,
@@ -181,6 +181,8 @@ export function defaultMoment<T extends MomentType>(
         type: 'tune',
         notes: [],
         ...(high ? { line: 'high' as const } : {}),
+        // Revision 10: new tunes follow the key (inspector "Follow key").
+        writtenIn: writtenInAt(score, base.at),
       };
       tune.notes = randomMelody(piece, score, tune, momentSeed(piece.seed, id));
       m = tune;

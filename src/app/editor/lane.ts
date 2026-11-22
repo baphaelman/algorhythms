@@ -274,7 +274,8 @@ export function laneArt(m: Moment, start: Seconds, end: Seconds): LaneArt | unde
     };
   }
   if (m.type === 'tune') {
-    const ps = m.notes.map((n) => n.pitch).filter((p) => Number.isFinite(p));
+    // A rest (revision 10) is a gap in the bar.
+    const ps = m.notes.map((n) => n.pitch ?? NaN).filter((p) => Number.isFinite(p));
     if (ps.length === 0) return undefined;
     const hi = Math.max(...ps);
     const range = Math.max(1, hi - Math.min(...ps));
@@ -282,7 +283,7 @@ export function laneArt(m: Moment, start: Seconds, end: Seconds): LaneArt | unde
     let t = m.at;
     for (const n of m.notes) {
       const l = Math.max(0, n.len);
-      if (Number.isFinite(n.pitch)) {
+      if (n.pitch !== undefined && Number.isFinite(n.pitch)) {
         notes.push({
           left: ((t - start) / len) * 100,
           width: (l / len) * 100,

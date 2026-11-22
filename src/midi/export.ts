@@ -155,6 +155,11 @@ interface PitchCtx {
   restrike: boolean;
 }
 
+/** Times of a voice's re-struck tune notes (revision 10): each starts a new note. */
+function restrikes(voice: CompiledVoice): number[] {
+  return (voice.pulse ?? []).filter((r) => r.restrike).map((r) => r.t);
+}
+
 /** Notes and bends for one voice, in tick order. */
 function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
   const ev: Ev[] = [];
@@ -247,6 +252,9 @@ function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
     link(a, b, pb);
   };
 
+  const strikes = restrikes(voice).map(tk);
+  let si = 0;
+  let resort = false;
   for (const life of voice.lives) {
     const end = lifeEnd(voice, life);
     const t0 = tk(life.born);
@@ -258,9 +266,20 @@ function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
     lifeStop = end;
     lastSeg = segs[segs.length - 1];
     startNote(t0, pitchAtTick(t0));
+    while (si < strikes.length && strikes[si] <= t0) si++;
+    /** Re-struck notes (revision 10) at ticks up to `until`: the note ends and strikes again. */
+    const strikeUpTo = (until: number): void => {
+      for (; si < strikes.length && strikes[si] <= until && strikes[si] < t1; si++) {
+        const tick = strikes[si];
+        if (ev.length > 0 && ev[ev.length - 1].tick > tick) resort = true;
+        endNote(tick);
+        startNote(tick, pitchAtTick(tick));
+      }
+    };
     for (let i = 0; i < segs.length; i++) {
       const s = segs[i];
       const ta = Math.min(t1, Math.max(t0, tk(s.t0)));
+      strikeUpTo(ta);
       const tb = Math.min(t1, Math.max(ta, tk(s.t1)));
       // A tick that is a segment's own boundary reads the exact boundary pitch, so holds are exact
       // and a glide's end never lands a fraction of a tick short of its target.
@@ -276,8 +295,11 @@ function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
         startNote(tb, pb);
       }
     }
+    strikeUpTo(t1 - 1);
     endNote(t1);
   }
+  // A strike inside a glide's bends (another moment moving the line) lands out of order.
+  if (resort) ev.sort((a, b) => a.tick - b.tick);
   return ev;
 }
 
@@ -289,6 +311,7 @@ function pitchEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
 function noteOnlyEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
   const ev: Ev[] = [];
   const tk = (t: number): number => Math.round(t * c.tps);
+  const strikes = restrikes(voice).map(tk);
   for (const life of voice.lives) {
     const end = lifeEnd(voice, life);
     const tEnd = tk(end);
@@ -316,8 +339,13 @@ function noteOnlyEvents(voice: CompiledVoice, c: PitchCtx): Ev[] {
       const off = Math.min(tk(last.t1), tEnd);
       if (off <= on) continue;
       const n = clampNote(Math.round(first.p0));
-      ev.push({ tick: on, kind: ON, a: n, b: c.velocity(voice, first.t0) });
-      ev.push({ tick: off, kind: OFF, a: n, b: 0 });
+      // Re-struck tune notes (revision 10) split the arrival.
+      const cuts = [on, ...strikes.filter((x) => x > on && x < off), off];
+      for (let j = 0; j + 1 < cuts.length; j++) {
+        const t = j === 0 ? first.t0 : cuts[j] / c.tps;
+        ev.push({ tick: cuts[j], kind: ON, a: n, b: c.velocity(voice, t) });
+        ev.push({ tick: cuts[j + 1], kind: OFF, a: n, b: 0 });
+      }
     }
   }
   return ev;

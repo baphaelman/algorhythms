@@ -4086,23 +4086,47 @@ This is the *input* form: fields with defaults are optional here.
                 "description": "The melody, in order: from `at` the targeted line moves to each note in turn (glide default length 0.1 s, no stagger or jitter).",
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "pitch": {
-                      "type": "number",
-                      "description": "Fractional MIDI note number; 69 = A4."
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pitch": {
+                          "type": "number",
+                          "description": "Fractional MIDI note number; 69 = A4."
+                        },
+                        "len": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "description": "Seconds the note lasts; the next one starts after it."
+                        }
+                      },
+                      "required": [
+                        "pitch",
+                        "len"
+                      ],
+                      "additionalProperties": {}
                     },
-                    "len": {
-                      "type": "number",
-                      "exclusiveMinimum": 0,
-                      "description": "Seconds the note lasts; the next one starts after it."
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rest": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "len": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "description": "Seconds the rest lasts."
+                        }
+                      },
+                      "required": [
+                        "rest",
+                        "len"
+                      ],
+                      "additionalProperties": {},
+                      "description": "A rest (revision 10): the line fades out and stays silent for `len`."
                     }
-                  },
-                  "required": [
-                    "pitch",
-                    "len"
-                  ],
-                  "additionalProperties": {}
+                  ]
                 }
               },
               "line": {
@@ -4111,6 +4135,33 @@ This is the *input* form: fields with defaults are optional here.
                 "enum": [
                   "low",
                   "high"
+                ]
+              },
+              "strike": {
+                "description": "A note at the pitch of the one before it re-strikes (absent: true).",
+                "type": "boolean"
+              },
+              "writtenIn": {
+                "description": "The tonic the notes are written in: the tune sounds moved by the smallest interval (−5…+6) to the tonic at `at` (absent: absolute pitches).",
+                "type": "string",
+                "enum": [
+                  "C",
+                  "C#",
+                  "Db",
+                  "D",
+                  "D#",
+                  "Eb",
+                  "E",
+                  "F",
+                  "F#",
+                  "Gb",
+                  "G",
+                  "G#",
+                  "Ab",
+                  "A",
+                  "A#",
+                  "Bb",
+                  "B"
                 ]
               }
             },

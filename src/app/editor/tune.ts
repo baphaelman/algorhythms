@@ -16,12 +16,14 @@ import {
   snapToScale,
   stepByScale,
 } from '../../core/scales';
+import { isRest, tuneShift } from '../../core/moments/tune';
 import { randomTune } from '../../core/tune-gen';
 import type {
   CompiledScore,
   Key,
   Piece,
   Pitch,
+  PitchClass,
   Seconds,
   TuneLine,
   TuneMoment,
@@ -72,8 +74,47 @@ export function lenFromShown(v: number, beat: Seconds | null): Seconds {
 }
 
 /** `notes` with note k replaced by `patch` (a new array; unchanged if k is out of range). */
-function withNote(notes: readonly TuneNote[], k: number, patch: Partial<TuneNote>): TuneNote[] {
-  return notes.map((n, i) => (i === k ? { ...n, ...patch } : n));
+function withNote(
+  notes: readonly TuneNote[],
+  k: number,
+  patch: { pitch?: Pitch; len?: Seconds },
+): TuneNote[] {
+  return notes.map((n, i) => (i === k ? ({ ...n, ...patch } as TuneNote) : n));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Revision 10: sounding pitches (`writtenIn`) and rests
+// ---------------------------------------------------------------------------------------------
+
+/** Semitones tune `m` sounds shifted by in the compiled score (`writtenIn` → the key at `at`). */
+export function tuneShiftIn(score: CompiledScore, m: Pick<TuneMoment, 'at' | 'writtenIn'>): number {
+  return m.writtenIn === undefined ? 0 : tuneShift(m.writtenIn, keyAt(score, m.at));
+}
+
+/** Notes moved by `shift` semitones (rests unchanged); the same array for 0. */
+export function shiftTuneNotes(notes: readonly TuneNote[], shift: number): TuneNote[] {
+  if (shift === 0) return notes as TuneNote[];
+  return notes.map((n) => (isRest(n) ? n : { ...n, pitch: n.pitch + shift }));
+}
+
+/** The tonic a new tune at `at` is written in (revision 10: new tunes follow the key). */
+export function writtenInAt(score: CompiledScore, at: Seconds): PitchClass {
+  return keyAt(score, at).tonic;
+}
+
+/**
+ * Follow key on or off (inspector): `writtenIn` set to the tonic at `at`, or dropped. The notes
+ * are rewritten so the tune sounds the same now: on, the shift is 0; off, the sounding pitches
+ * become the written ones.
+ */
+export function followKeyPatch(
+  score: CompiledScore,
+  m: TuneMoment,
+  on: boolean,
+): { writtenIn: PitchClass | undefined; notes: TuneNote[] } | null {
+  if (on === (m.writtenIn !== undefined)) return null;
+  const notes = shiftTuneNotes(m.notes, tuneShiftIn(score, m));
+  return { writtenIn: on ? writtenInAt(score, m.at) : undefined, notes };
 }
 
 /** Note k moved one scale step up or down in `key` (off-scale notes go to the nearest step). */
@@ -84,7 +125,7 @@ export function stepTuneNote(
   key: Key,
 ): TuneNote[] | null {
   const n = notes[k];
-  if (!n) return null;
+  if (!n || isRest(n)) return null;
   const pitch = clampPitch(scaleNeighbour(n.pitch, dir, key));
   return pitch === n.pitch ? null : withNote(notes, k, { pitch });
 }
@@ -107,9 +148,9 @@ export function addTuneNote(
   fallback: Pitch,
   beat: Seconds | null,
 ): TuneNote[] {
-  const last = notes.at(-1);
+  const last = notes.findLast((n) => !isRest(n));
   const note: TuneNote = last
-    ? { pitch: clampPitch(stepByScale(last.pitch, 1, key)), len: last.len }
+    ? { pitch: clampPitch(stepByScale(last.pitch, 1, key)), len: notes.at(-1)!.len }
     : { pitch: clampPitch(Math.round(fallback)), len: beat ?? 0.5 };
   return [...notes, note];
 }
@@ -135,11 +176,13 @@ function clampPitch(p: Pitch): Pitch {
 }
 
 /**
- * The tune's score dots (R9-8): one per note, at its start and stored pitch, with `note` = its
- * index. The voice is the line the compiler moved for that note (a segment of the tune within the
- * note), else the previous note's.
+ * The tune's score dots (R9-8): one per note, at its start and sounding pitch (revision 10: the
+ * written pitch + `tuneShiftIn`), with `note` = its index; none for a rest. The voice is the line
+ * the compiler moved for that note (a segment of the tune within the note), else the previous
+ * note's.
  */
 export function tuneDots(score: CompiledScore, m: TuneMoment): ArrivalDot[] {
+  const shift = tuneShiftIn(score, m);
   const S = tuneNoteStarts(m);
   const segs: { t0: Seconds; t1: Seconds; v: number }[] = [];
   for (const v of score.voices) {
@@ -148,16 +191,25 @@ export function tuneDots(score: CompiledScore, m: TuneMoment): ArrivalDot[] {
     }
   }
   let voice: number | undefined = segs[0]?.v;
-  return m.notes.map((n, k) => {
+  const out: ArrivalDot[] = [];
+  m.notes.forEach((n, k) => {
     const lo = S[k] - 1e-6;
     const hi = S[k + 1] - 1e-6;
     const hit =
       segs.find((s) => s.t0 >= lo && s.t0 < hi) ?? segs.find((s) => s.t0 < hi && s.t1 > lo);
     if (hit) voice = hit.v;
-    const d: ArrivalDot = { momentId: m.id, type: 'tune', t: S[k], pitch: n.pitch, note: k };
+    if (isRest(n)) return;
+    const d: ArrivalDot = {
+      momentId: m.id,
+      type: 'tune',
+      t: S[k],
+      pitch: n.pitch + shift,
+      note: k,
+    };
     if (voice !== undefined) d.voice = voice;
-    return d;
+    out.push(d);
   });
+  return out;
 }
 
 /**
@@ -206,7 +258,7 @@ export function setTunePitch(
   pitch: Pitch,
 ): TuneNote[] | null {
   const n = notes[k];
-  if (!n || !Number.isFinite(pitch)) return null;
+  if (!n || isRest(n) || !Number.isFinite(pitch)) return null;
   const p = clampPitch(pitch);
   return p === n.pitch ? null : withNote(notes, k, { pitch: p });
 }
@@ -238,7 +290,7 @@ export function formatTunePitch(p: Pitch, key?: Key): string {
 
 /**
  * The notes as typed text, "F#5 2, E5 1, D5 1": each note's name (spelled in the key at its
- * start, `keyAt`) and length (beats with a tempo, else seconds).
+ * start, `keyAt`) and length (beats with a tempo, else seconds); a rest is "r 1".
  */
 export function formatTuneText(
   m: Pick<TuneMoment, 'at' | 'notes'>,
@@ -247,14 +299,18 @@ export function formatTuneText(
 ): string {
   const starts = tuneNoteStarts(m);
   return m.notes
-    .map((n, k) => `${formatTunePitch(n.pitch, keyAt?.(starts[k]))} ${formatTuneLen(n.len, beat)}`)
+    .map(
+      (n, k) =>
+        `${isRest(n) ? 'r' : formatTunePitch(n.pitch, keyAt?.(starts[k]))} ${formatTuneLen(n.len, beat)}`,
+    )
     .join(', ');
 }
 
 export type TuneParse = { ok: true; notes: TuneNote[] } | { ok: false; error: string };
 
 /**
- * Parses typed notes: comma-separated items "<pitch> <length>". A pitch is a note name with
+ * Parses typed notes: comma-separated items "<pitch> <length>", or "r <length>" / "rest <length>"
+ * for a rest (revision 10). A pitch is a note name with
  * octave (sharps, flats, cents: "F#5", "Bb4", "C4+25"), not a MIDI number; a length is beats (with
  * a tempo, `beat` s each) or seconds, decimals allowed; a missing length repeats the previous one
  * (the first: one beat, or 0.5 s). Empty text is an empty tune. With `prev` (the current notes),
@@ -281,9 +337,10 @@ export function parseTuneText(
     if (parts.length > 2) {
       return { ok: false, error: `${at}: “${it}” should be a note and a length, like “E5 1”` };
     }
+    const rest = /^(r|rest)$/i.test(parts[0]);
     // Names only: a bare number is more likely a misplaced length than a MIDI note.
-    const pitch = /^[A-Ga-g]/.test(parts[0]) ? parsePitch(parts[0]) : null;
-    if (pitch === null) {
+    const pitch = rest ? null : /^[A-Ga-g]/.test(parts[0]) ? parsePitch(parts[0]) : null;
+    if (pitch === null && !rest) {
       return { ok: false, error: `${at}: “${parts[0]}” is not a note name like F#5` };
     }
     let len: Seconds;
@@ -303,7 +360,7 @@ export function parseTuneText(
       len =
         old && formatTuneLen(old.len, beat) === formatNum(v, 3) ? old.len : lenFromShown(v, beat);
     }
-    notes.push({ pitch, len });
+    notes.push(pitch === null ? { rest: true, len } : { pitch, len });
   }
   return { ok: true, notes };
 }
@@ -433,6 +490,7 @@ export function shiftMelody(
   const steps = diatonic ? scaleDegreeIndex(to, key) - scaleDegreeIndex(from, key) : 0;
   const [lo, hi] = range[0] <= range[1] ? range : [range[1], range[0]];
   return notes.map((n, k) => {
+    if (isRest(n)) return n;
     let p: Pitch;
     if (diatonic) {
       const kk = keyOf(k);
@@ -471,10 +529,13 @@ export function melodyMove(
   const now = lineAfter(piece, m, patch);
   if (!now || now.voice === undefined || now.voice === old.voice) return patch;
   const starts = tuneNoteStarts(m);
-  const notes = shiftMelody(m.notes, old.pitch, now.pitch, keyAt(score, m.at), now.range, (k) =>
+  // Sounding pitches (revision 10), written back un-transposed.
+  const shift = tuneShiftIn(score, m);
+  const sounding = shiftTuneNotes(m.notes, shift);
+  const moved = shiftMelody(sounding, old.pitch, now.pitch, keyAt(score, m.at), now.range, (k) =>
     keyAt(score, starts[k]),
   );
-  return notes === m.notes ? patch : { ...patch, notes: notes.slice() };
+  return moved === sounding ? patch : { ...patch, notes: shiftTuneNotes(moved, -shift).slice() };
 }
 
 /** The line (voice index) that would play tune `m` after choice `c`; undefined if none. */
@@ -558,13 +619,13 @@ export function tuneLineAt(
 export function randomMelody(
   piece: Piece,
   score: CompiledScore,
-  m: Pick<TuneMoment, 'id' | 'at' | 'notes' | 'target' | 'line'>,
+  m: Pick<TuneMoment, 'id' | 'at' | 'notes' | 'target' | 'line' | 'writtenIn'>,
   seed: number,
 ): TuneNote[] {
   const len = tuneEnd(m) - m.at;
   const total = len > 1e-9 ? len : newTuneLength(piece.view);
   const line = tuneLineAt(piece, score, m);
-  return randomTune({
+  const notes = randomTune({
     seed,
     key: keyAt(score, m.at),
     start: line.pitch,
@@ -573,6 +634,8 @@ export function randomMelody(
     beat: tuneBeat(piece.view),
     endPcs: chordAt(score, m.at + total)?.pcs,
   });
+  // Drawn at sounding pitches; written back un-transposed (revision 10).
+  return shiftTuneNotes(notes, -tuneShiftIn(score, m));
 }
 
 /**
