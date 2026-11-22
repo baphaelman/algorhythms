@@ -243,28 +243,6 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     }
     frameStats.ghost = ghost.value;
 
-    // Direct DOM writes: time, duration, scrubber, key and voice count.
-    writeText(live.time, formatTime(t));
-    writeText(live.duration, formatTime(compiled.duration));
-    if (live.scrub) {
-      const max = String(compiled.duration);
-      if (live.scrub.max !== max) live.scrub.max = max;
-      if (!transport.scrubbing) {
-        const v = t.toFixed(2);
-        if (v !== lastScrub) {
-          lastScrub = v;
-          live.scrub.value = v;
-        }
-      }
-    }
-    if (live.status) {
-      const active = activeAt(compiled, t).length;
-      writeText(
-        live.status,
-        `${keyName(keyAt(compiled, t))} · ${active} / ${compiled.voices.length} notes`,
-      );
-    }
-
     const selection = useEditor.getState().selection;
     // Compose for me: the moment a pass is editing is highlighted with the selection.
     const flash = composeView.flash;
@@ -290,10 +268,6 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
     if (camera.pitch !== lastPitch) {
       lastPitch = camera.pitch;
       dirty = true;
-    }
-    if (frameListeners.size > 0 && width > 0 && height > 0) {
-      const v = cameraAt(cameraScore(compiled), cam, t, { width, height }, view.hud);
-      for (const fn of frameListeners) fn(v, compiled);
     }
 
     // A moment preview's ghost lines (./preview.ts).
@@ -400,6 +374,35 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
           hit.x + 12 + tip.offsetWidth > width ? hit.x - 12 - tip.offsetWidth : hit.x + 12;
         tip.style.transform = `translate(${Math.round(left)}px, ${Math.round(hit.y - 24)}px)`;
       }
+    }
+
+    // DOM writes come after the drawing: a canvas font set after them forced a style recalc of
+    // everything written into this callback (build log "Frame cost v49").
+    // Direct DOM writes: time, duration, scrubber, key and voice count.
+    writeText(live.time, formatTime(t));
+    writeText(live.duration, formatTime(compiled.duration));
+    if (live.scrub) {
+      const max = String(compiled.duration);
+      if (live.scrub.max !== max) live.scrub.max = max;
+      if (!transport.scrubbing) {
+        const v = t.toFixed(2);
+        if (v !== lastScrub) {
+          lastScrub = v;
+          live.scrub.value = v;
+        }
+      }
+    }
+    if (live.status) {
+      const active = activeAt(compiled, t).length;
+      writeText(
+        live.status,
+        `${keyName(keyAt(compiled, t))} · ${active} / ${compiled.voices.length} notes`,
+      );
+    }
+    // The DOM layers that follow the camera (ruler, lanes, playhead, …).
+    if (frameListeners.size > 0 && width > 0 && height > 0) {
+      const v = cameraAt(cameraScore(compiled), cam, t, { width, height }, view.hud);
+      for (const fn of frameListeners) fn(v, compiled);
     }
 
     if (frameStats.enabled) {

@@ -11,6 +11,7 @@ import { generate } from '../../../src/core/generate';
 import { sample } from '../../../src/core/query';
 import type { CompiledScore, CompiledVoice, Life, Segment } from '../../../src/core/types';
 import { drawScore, pitchToY, tokensOf, type Ctx2D, type ScoreStyle } from '../../../src/render';
+import { outlineFrame } from '../../../src/render/outline';
 import { sampleInto, samples, stableScale } from '../../../src/render/sampling';
 import { pathCtx } from './path-ctx';
 
@@ -278,6 +279,65 @@ describe('the ghost layer', () => {
       for (const f of fills.filter((x) => x.style === color)) {
         for (const [, y] of f.pts) expect(Math.abs(y - yc)).toBeLessThan(80);
       }
+    }
+  });
+});
+
+/** outlineFrame before it reused each point's outgoing direction as the next one's incoming. */
+function outlineFrameRef(
+  x: Float64Array,
+  y: Float64Array,
+  w: Float64Array,
+  n: number,
+  nx: Float64Array,
+  ny: Float64Array,
+  h: Float64Array,
+): void {
+  const unit = (dx: number, dy: number): [number, number] => {
+    const l = Math.sqrt(dx * dx + dy * dy);
+    return l > 1e-9 ? [dx / l, dy / l] : [0, 0];
+  };
+  let px = 1;
+  let py = 0;
+  for (let i = 0; i < n; i++) {
+    let [ix, iy] = i > 0 ? unit(x[i] - x[i - 1], y[i] - y[i - 1]) : [0, 0];
+    let [ox, oy] = i + 1 < n ? unit(x[i + 1] - x[i], y[i + 1] - y[i]) : [0, 0];
+    if (ix === 0 && iy === 0) [ix, iy] = [ox, oy];
+    if (ox === 0 && oy === 0) [ox, oy] = [ix, iy];
+    if (ix === 0 && iy === 0) [ix, iy, ox, oy] = [px, py, px, py];
+    let [tx, ty] = unit(ix + ox, iy + oy);
+    if (tx === 0 && ty === 0) [tx, ty] = [ix, iy];
+    nx[i] = -ty;
+    ny[i] = tx;
+    const c = -iy * nx[i] + ix * ny[i];
+    const k = c > 1 / 2 ? 1 / c : 2;
+    h[i] = (w[i] / 2) * (i === 0 || i === n - 1 ? 1 : k);
+    px = ox;
+    py = oy;
+  }
+}
+
+describe('outline frame', () => {
+  it('equals the two-sided computation bit for bit (repeats, reversals, bends)', () => {
+    let seed = 7;
+    const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    for (let trial = 0; trial < 50; trial++) {
+      const n = 1 + (trial % 13) * 7;
+      const x = new Float64Array(n);
+      const y = new Float64Array(n);
+      const w = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const r = rnd();
+        // Repeated points (zero-length segments), reversals and ordinary steps.
+        x[i] = i === 0 ? 0 : r > 0.8 ? x[i - 1] : r < -0.8 ? x[i - 1] - 3 : x[i - 1] + 2 + r;
+        y[i] = i === 0 ? 0 : r > 0.6 ? y[i - 1] : y[i - 1] + 10 * rnd();
+        w[i] = 1 + Math.abs(rnd()) * 4;
+      }
+      const got = [new Float64Array(n), new Float64Array(n), new Float64Array(n)] as const;
+      const want = [new Float64Array(n), new Float64Array(n), new Float64Array(n)] as const;
+      outlineFrame(x, y, w, n, ...got);
+      outlineFrameRef(x, y, w, n, ...want);
+      for (let k = 0; k < 3; k++) expect(Array.from(got[k])).toEqual(Array.from(want[k]));
     }
   });
 });

@@ -36,23 +36,14 @@ export function outlineFrame(
   // Last non-zero segment direction, for points with a zero-length neighbour.
   let px = 1;
   let py = 0;
+  // The previous point's outgoing unit direction before the fallbacks: this point's incoming one.
+  let rx = 0;
+  let ry = 0;
   for (let i = 0; i < n; i++) {
-    let ix = 0;
-    let iy = 0;
+    let ix = rx;
+    let iy = ry;
     let ox = 0;
     let oy = 0;
-    if (i > 0) {
-      ix = x[i] - x[i - 1];
-      iy = y[i] - y[i - 1];
-      const l = Math.sqrt(ix * ix + iy * iy);
-      if (l > 1e-9) {
-        ix /= l;
-        iy /= l;
-      } else {
-        ix = 0;
-        iy = 0;
-      }
-    }
     if (i + 1 < n) {
       ox = x[i + 1] - x[i];
       oy = y[i + 1] - y[i];
@@ -65,6 +56,8 @@ export function outlineFrame(
         oy = 0;
       }
     }
+    rx = ox;
+    ry = oy;
     if (ix === 0 && iy === 0) {
       ix = ox;
       iy = oy;
