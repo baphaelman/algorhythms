@@ -61,15 +61,16 @@ function randomScript(seed: number) {
 /**
  * §15 M7 match on random takes: 40 events (keys on and off, releases, setting changes across the
  * modes) at random gaps of 0–400 ms, from a seeded generator; gated like the scripted takes
- * (≤ 1 cent, ≤ 1 block, outside presses from silence). Seeds 1–72 gate except KNOWN; those
- * and 73–172 are measured only (`LIVE_TAKE_SEEDS=1`; build log "M7-d").
+ * (≤ 1 cent, ≤ 1 block, outside presses from silence). Seeds 1–72 gate; more are measured only
+ * (`LIVE_TAKE_SEEDS=1`: 73–172; `LIVE_TAKE_SEEDS=a-b`: a–b; build log "M7: line identity").
  */
-/** Known gaps (build log "M7-d"): 47, lines sharing a note without joining; 33, after a tonic release. */
-const KNOWN = [33, 47];
+const MEASURED = ((): [number, number] => {
+  const m = /^(\d+)-(\d+)$/.exec(process.env.LIVE_TAKE_SEEDS ?? '');
+  return m ? [Number(m[1]), Number(m[2])] : [73, 172];
+})();
 
 describe('random takes match the live paths (§15 M7)', () => {
   for (let s = 1; s <= 72; s++) {
-    if (KNOWN.includes(s)) continue;
     it(`seed ${s}`, () => {
       const settings = MODES[s % MODES.length];
       const take = record(randomScript(s), settings);
@@ -82,10 +83,14 @@ describe('random takes match the live paths (§15 M7)', () => {
     });
   }
   it.runIf(process.env.LIVE_TAKE_SEEDS)(
-    'known gaps and seeds 73–172 (measured)',
+    `seeds ${MEASURED[0]}–${MEASURED[1]} (measured)`,
     () => {
       let bad = 0;
-      for (const s of [...KNOWN, ...Array.from({ length: 100 }, (_, k) => 73 + k)]) {
+      const seeds = Array.from(
+        { length: MEASURED[1] - MEASURED[0] + 1 },
+        (_, k) => MEASURED[0] + k,
+      );
+      for (const s of seeds) {
         const settings = MODES[s % MODES.length];
         const m = compare(record(randomScript(s), settings));
         const worst = m.misses.reduce((w, x) => Math.max(w, x.gap), 0);
@@ -97,8 +102,8 @@ describe('random takes match the live paths (§15 M7)', () => {
           );
         }
       }
-      console.log(`${bad} of ${KNOWN.length + 100} seeds miss`);
+      console.log(`${bad} of ${seeds.length} seeds miss`);
     },
-    1_200_000,
+    3_600_000,
   );
 });

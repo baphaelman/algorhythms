@@ -160,6 +160,30 @@ describe('moves', () => {
   });
 });
 
+describe('line identity (compile.ts onJoin; core/live-plan.ts)', () => {
+  it('voices on one note are one line only with one line id', () => {
+    // One line standing for voice 1: it keeps the target nearest (64), voice 0 forks to 50.
+    const one = holding([60, 60]).map((v) => ({ ...v, line: 1 }));
+    const m1 = liveMoves(one, [64, 50], S({ stagger: 0 }), 1);
+    expect(m1.find((m) => m.voice === 1)!.p1).toBe(64);
+    expect(m1.find((m) => m.voice === 0)!).toMatchObject({ p1: 50, born: true, line: 0 });
+    // Two lines that met there without merging: each takes its own target.
+    const two = holding([60, 60]).map((v, i) => ({ ...v, line: i }));
+    const m2 = liveMoves(two, [64, 50], S({ stagger: 0 }), 1);
+    expect(m2.find((m) => m.voice === 0)!).toMatchObject({ p1: 64, born: false, line: 0 });
+    expect(m2.find((m) => m.voice === 1)!).toMatchObject({ p1: 50, born: false, line: 1 });
+  });
+
+  it('lines coming to rest on one note, nothing pending, merge there: the lower index survives', () => {
+    const moves = liveMoves(holding([50, 70]), [60, 60], S({ stagger: 0 }), 1);
+    const a = moves.find((m) => m.voice === 0)!;
+    const b = moves.find((m) => m.voice === 1)!;
+    expect(a.delay + a.dur).toBe(b.delay + b.dur);
+    expect(a.join).toBeUndefined();
+    expect(b).toMatchObject({ line: 1, join: 0 });
+  });
+});
+
 describe('liveUpdate: silence and release', () => {
   const vs = holding([60, 60, 60]);
 
