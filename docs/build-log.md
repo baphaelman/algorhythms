@@ -2483,3 +2483,6 @@ On 75f3a4c. New layer `src/video/` (pure; in `tsconfig.pure.json`; boundaries: v
   - e2e `mp4-mux.spec.ts`: WebCodecs-encoded 2 s (frames of grey level 4k + a tone from 0.5 s), both layouts in a `<video>`: duration within a frame, seek into frame 31 shows 31 ± 1, Opus onset within 8 ms. Pairs h264+aac, h264+opus, vp9+opus, each skipped where it can't be encoded or played.
 - **Verified where.** chromium-dev/prod: h264+opus, vp9+opus pass; h264+aac skipped (no AAC encoder). firefox-dev/prod: h264+opus, vp9+opus pass; h264+aac skipped (no AAC encoder). H.264+AAC from WebCodecs: only CI's WebKit (not run here); real H.264/AAC streams are covered by the ffprobe test.
 - **Status.** Lint, typecheck pass; `pnpm test --maxWorkers=2` 2503 passed (+2 skipped).
+
+## M8: CI gates for video export
+`video-export.spec.ts` gates relaxed to CI measurements: frame PSNR >= 37 dB and >= control + 4 dB (Firefox/Linux 39.4-41.3 vs 31-35); audio lag <= 1 ms Opus, <= 5 ms AAC (WebKit -3.25 ms, priming 2112). Test-only; no src/ change.
