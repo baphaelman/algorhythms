@@ -926,7 +926,9 @@ export class Compiler {
         if (vs.every((v) => this.levelOf(v) === m.gain)) {
           this.noEffect(m, vs, this.sortedActive());
         }
-        for (const v of vs) this.voices[v].level.push({ t: T, gain: m.gain, over });
+        const change = { t: T, gain: m.gain, over };
+        for (const v of vs) this.voices[v].level.push(change);
+        this.levelMerging(vs, change);
         if (vs.length === 0)
           this.diag('info', 'no-targets', 'The level targets no active voice.', m.id);
         this.span(i, T, T + over);
@@ -1164,6 +1166,27 @@ export class Compiler {
   private levelOf(v: number): number {
     const l = this.voices[v].level;
     return l.length > 0 ? l[l.length - 1].gain : 1;
+  }
+
+  /**
+   * Lines merging into a line a level moment targets are part of its note (as its phantoms are):
+   * they take the same level change, so their fade follows it and the weight they hand over is
+   * not scaled by a level they kept only because they were dying when the moment came.
+   */
+  private levelMerging(vs: readonly number[], change: VoiceRun['level'][number]): void {
+    const hit = new Set(vs);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const run of this.voices) {
+        if (run.status !== Status.Dying || hit.has(run.index)) continue;
+        let s = run.into;
+        if (s < 0) for (const mv of run.pending) if (!mv.cancelled && mv.death) s = mv.death.into;
+        if (s < 0 || !hit.has(s)) continue;
+        hit.add(run.index);
+        run.level.push(change);
+        grew = true;
+      }
+    }
   }
 
   private applyPointMoment(

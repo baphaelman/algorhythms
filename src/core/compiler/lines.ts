@@ -154,6 +154,13 @@ export interface Collapsed {
 
 const key = (p: Pitch): number => Math.round(p * 1e6);
 
+/** Weight tolerance (weights are sums of shares). */
+const EPS = 1e-9;
+
+/** k split into n near-even whole parts, larger first. */
+const shares = (k: number, n: number): number[] =>
+  Array.from({ length: n }, (_, j) => Math.floor(k / n) + (j < k % n ? 1 : 0));
+
 /** Removes and returns the first voice of `list` whose range holds `p` (else the first; −1). */
 function takeFor(list: number[], p: Pitch, voices: readonly VoiceRun[]): number {
   if (list.length === 0) return -1;
@@ -348,6 +355,14 @@ export function collapse(
     intents.push(it);
     hold(fold(it.voice, it.to), it.voice, pf.b);
   });
+  /** Weight line b keeps after its copies above forked, died or joined other lines. */
+  const kept = new Map<number, number>();
+  for (const b of x.active) {
+    if (x.base.get(b) !== b) continue;
+    let w = voices[b].weight - (lose.get(b)?.weight ?? 0) + (absorb.get(b)?.weight ?? 0);
+    for (const f of forks.values()) if (f.parent === b) w -= f.weight;
+    kept.set(b, w);
+  }
   // A dying line merges into whatever now carries its absorber.
   for (const d of deaths) {
     const c = d.into >= 0 ? carrierOf.get(d.into) : undefined;
@@ -357,9 +372,18 @@ export function collapse(
   }
   // Births from the moment itself fork from the line their parent belongs to. A parent line that
   // still stands for several voices shares them out evenly with its newborns (the parent first,
-  // then the newborns low to high); newborns past its count are fresh voices (weight 1). A
+  // then the newborns low to high); newborns past its count are fresh voices (count 1). A
   // newborn bound for a note that another line already sounds or heads to (more notes asked for
   // than there are, owner 2026-11-21) is not born: its share, or its fresh voice, joins that line.
+  //
+  // Weight (2026-11-22): a merge or `count` death hands on weight but not count, so a line can
+  // weigh more than its count while the voices merged into it are dormant again. A split that
+  // brings voices back takes their weight rather than adding fresh voices': a heavy parent
+  // (weight above its count) shares its weight evenly over the voices of its lines (count shares,
+  // one per fresh newborn), at least one per voice; the weight left above one per voice, and the
+  // weight above their count of the other lines the moment touches, goes to the part's fresh
+  // voices, each line giving in proportion. So a line never weighs more than the voices that fed
+  // it, and a merge then a split back restores every line's weight.
   const mapped = births
     .map((it) => {
       const p = it.parent ?? -1;
@@ -387,25 +411,66 @@ export function collapse(
     if (!list) byParent.set(b, (list = []));
     list.push(it);
   }
-  for (const [b, list] of byParent) {
+  const partOf = (v: number): string => voices[v < x.pool ? v : x.base.get(v)!].part;
+  /** Per part: weight fresh voices add. Per line: weight above one per voice it can give. */
+  const demand = new Map<string, number>();
+  const supply = new Map<number, number>();
+  const need = (p: string, w: number): void => {
+    if (w > EPS) demand.set(p, (demand.get(p) ?? 0) + w);
+  };
+  for (const it of mapped) if (it.parent! < 0) need(partOf(it.voice), 1);
+  const groups = [...byParent].map(([b, list]) => {
     const k = keep.get(b)?.count ?? voices[b].count;
-    const W = voices[b].weight;
-    const n = Math.min(list.length + 1, Math.max(1, k));
-    const parts = Array.from({ length: n }, (_, j) => Math.floor(k / n) + (j < k % n ? 1 : 0));
+    const W = kept.get(b) ?? voices[b].weight;
+    const L = list.length + 1;
+    const parts = shares(k, Math.min(L, Math.max(1, k)));
+    // Voices of its lines after the moment: count shares, then one per fresh newborn.
+    const C = Math.max(k, L);
+    const heavy = W > k + EPS;
+    if (heavy) {
+      need(voices[b].part, C - W);
+      if (W > C + EPS) supply.set(b, W - C);
+    } else need(voices[b].part, L - parts.length);
+    return { b, list, k, W, parts, C, heavy };
+  });
+  for (const b of x.active) {
+    if (x.base.get(b) !== b || !touched.has(b) || byParent.has(b)) continue;
+    const k = keep.get(b)?.count ?? voices[b].count;
+    const W = kept.get(b) ?? voices[b].weight;
+    if (W > k + EPS) supply.set(b, W - k);
+  }
+  /** Weight each line gives the part's fresh voices. */
+  const give = new Map<number, number>();
+  for (const [p, d] of demand) {
+    let s = 0;
+    for (const [b, w] of supply) if (voices[b].part === p) s += w;
+    if (s <= EPS) continue;
+    const f = Math.min(1, d / s);
+    for (const [b, w] of supply) if (voices[b].part === p) give.set(b, w * f);
+  }
+  for (const [b, g] of give) if (!byParent.has(b)) add(b, 0, -g);
+  for (const { b, list, k, W, parts, C, heavy } of groups) {
+    // Weight per voice slot: a light parent keeps the old shares (fresh newborns weigh 1).
+    const u = heavy ? (Math.max(W, C) - (give.get(b) ?? 0)) / C : W / k;
     let mine = parts[0];
     list.forEach((it, j) => {
-      const share = j + 1 < n ? parts[j + 1] : 0;
+      const share = parts[j + 1] ?? 0;
+      const c = share > 0 ? share : 1;
+      // 0: a fresh voice.
+      const w = share > 0 || heavy ? c * u : 0;
       const r = into.get(it.voice);
       if (r === undefined) {
-        if (share > 0)
-          forks.set(it.voice, { parent: b, count: share, weight: (W * share) / k, members: [] });
-      } else if (share === 0) add(r, 1, 1);
-      else if (r === b) mine += share;
+        if (w > 0) forks.set(it.voice, { parent: b, count: c, weight: w, members: [] });
+      } else if (w === 0) add(r, 1, 1);
+      else if (r === b) mine += c;
       else {
-        add(r, share, (W * share) / k);
-        add(b, 0, -(W * share) / k);
+        add(r, c, w);
+        add(b, 0, -w);
       }
     });
+    // A heavy parent ends at its own share: the forks take theirs from it; this adds what came
+    // in for its fresh voices, or takes what went to the part's other fresh voices.
+    if (heavy && Math.abs(u * C - W) > EPS) add(b, 0, u * C - W);
     if (k > 1 || into.size > 0) {
       const born = new Set(list.map((it) => it.voice));
       keep.set(b, {

@@ -25,14 +25,15 @@ const EXAMPLES = join(import.meta.dirname, '../../../examples');
  * (the opening chord's span, its harmony entry and the opening holds' moment id), and with R9-2
  * (revision 9: births and deaths take ranked stagger offsets). Seeds-4: a seven-doors newborn forks 35 ms earlier (out of order with a line across unborn siblings).
  * Fold apart (composing.md §3 #6, 2026-11-22): clockwork-heron's CkPin1 and lanterns' LnSft2
- * folded a line onto a part-mate, which merged; they now take a free note.
+ * folded a line onto a part-mate, which merged; they now take a free note. Split weights
+ * (2026-11-22): cartographers-rain's split after its merge takes back the merged weight.
  */
 const PRE_REV6: Record<string, string> = {
   'clockwork-heron.algorhythms.json': '596f6249a680347c',
   // M4.5-30: LnSpr1 hits both range edges; it no longer folds. M5: canonical times (≤ 1e-13 s).
   'lanterns-over-salt-flats.algorhythms.json': 'cbcee86781d28e95',
   'seven-doors-in-fog.algorhythms.json': '59ee4a1ef9e4b868',
-  'the-cartographers-rain.algorhythms.json': '0b264e117885c818',
+  'the-cartographers-rain.algorhythms.json': '05aae9ab194ab0cf',
   'tidewater-hymn.algorhythms.json': '0c5d3a62a9e535c8',
 };
 
