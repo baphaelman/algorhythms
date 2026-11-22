@@ -36,7 +36,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 ## Environment
 - **Repo:** `/Users/raps/algorhythms`. Remote `origin` = https://github.com/baphaelman/algorhythms (public). The site is https://baphaelman.github.io/algorhythms/; the hidden test page is `/algorhythms/fixtures.html`.
 - **Shell setup:** start every shell command with `eval "$(/opt/homebrew/bin/brew shellenv)"`. Node 22, pnpm and gh are installed, and gh is logged in as the owner.
-- **Commits** use the placeholder author `AlgoRhythms builder <builder@algorhythms.invalid>`, which the owner chose to keep, plus a trailer naming the committing model.
+- **Commits** use `Claude <noreply@anthropic.com>` via `git -c user.name="Claude" -c user.email="noreply@anthropic.com" commit` (owner switched 2026-11-22; never change the git config, never rewrite older placeholder-author commits), plus a trailer naming the committing model.
 - **Only the integrator pushes.**
 - **How to push safely.** Builders leave uncommitted work in the tree, so verify the *committed* HEAD in a clean worktree, then push exactly that commit:
   ```sh
@@ -56,7 +56,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 - E2E here: `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` (symlinks Chromium 1243 as the 1255 Playwright wants; Firefox 1572 installed there via the "algorhythms" cloud environment, which allows Playwright's download hosts). Audio specs need a sink: `apt-get install -y pulseaudio; pulseaudio --start --exit-idle-time=-1; pactl load-module module-null-sink sink_name=ci_null; pactl set-default-sink ci_null`. WebKit runs only on CI (macOS).
 - CI skips docs-only pushes (`paths` in ci.yml, M4.5-19), so batch doc commits freely.
 - After each push, rebuild and republish the preview artifact (see "Demo links").
-- Owner: one line per builder return; keep the placeholder commit author despite the stop hook.
+- Owner: one line per builder return; commit as Claude <noreply@anthropic.com> with per-command `-c` flags (owner, 2026-11-22).
 
 ## Working notes
 - **Check your own context size.** You can't run `/context`, but `mcp__ccd_session_mgmt__get_usage` (session `"self"`; load it with ToolSearch) returns `context.tokensUsed`. Call it after each builder report or push. At about 180k, update the docs and ask the owner to `/compact` without being asked (the second integrator overran to ~250k and the owner had to flag it). Keep context lean: headless checks and DOM reads instead of screenshots; test output to files.

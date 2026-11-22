@@ -63,8 +63,8 @@ The integrator continues the work with a fresh agent.
 - Commit locally at sensible checkpoints, with clear messages.
 - The remote is `origin`: https://github.com/baphaelman/algorhythms, which is public. The site deploys to https://baphaelman.github.io/algorhythms/ from `main`.
 - **Only the integrator pushes.** Builders commit locally and never push.
-- Commit as the placeholder author, whom the owner chose to keep:
-  `git -c user.name="AlgoRhythms builder" -c user.email="builder@algorhythms.invalid" commit …`
+- Commit as Claude (owner, 2026-11-22; earlier commits keep the old placeholder author, and are never rewritten):
+  `git -c user.name="Claude" -c user.email="noreply@anthropic.com" commit …`
   Don't change the git config.
 - End commit messages with a trailer that names **your own** model, for example:
   - `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
