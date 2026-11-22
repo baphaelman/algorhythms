@@ -17,10 +17,11 @@ Status key: **C+P** covered and passing; **Part** partly covered; **None** not c
 
 ## Gaps and findings (read first)
 
-1. **Being fixed (another builder, in parallel):**
-   - Play is a no-op while live.
-   - Notes-drawer edits (gain, timbre) don't reach the live engine.
-   - Opening another piece while live keeps the old live voices.
+1. **Fixed after this audit (86e3c28, build log "M7 leftovers"; owner approved the behaviour 2026-11-22):**
+   - Play while live leaves live mode and plays from the playhead (Space still only stops a take).
+   - Notes-drawer timbre, gain and mute edits reach the live voices in place (20 ms timbre crossfade); a pool change re-enters live.
+   - Opening another piece while live re-enters live on it.
+   - Not covered: changing the pool size re-enters even when the voices sounding at the playhead stay the same.
 2. **Known take/live edge (not gating).** 2 of the measured random seeds 73–372 miss: 116 (stagger 0.12, random order; worst 30.1 c, 6 missed blocks) and 181 (octaves; worst 65.4 c, 15 missed blocks). This was measured here: 2 of 300 seeds miss, the same as in the build log. The cause is the same for both (build log "M7: line identity"). A key lands within MIN_GLIDE + CLOSE_GAP (11 ms) of the end of a fade release. The take's re-establishing `merge` then starts before the fade ends, so for about 10 ms it re-targets lines that are still gliding. Live keeps those lines on their glide. All of this happens in the fade's tail, at −30 dB or lower. Seeds 1–72 and every scripted take gate at 0.0000 c and ≤ 1 block.
 3. **"Device output latency" includes one device callback, and Firefox's own output latency is not checked.** The gate is total − device ≤ 10 ms, with device = min(outputLatency, timestamp lag) + the measured callback period. On Firefox the output timestamp carries no lag, so device is the callback alone (17–20 ms). The gate therefore proves only that the glide is rendered within 10 ms plus one callback; the time the device takes to play it is unmeasured. WebKit reports outputLatency 0, so it is gated the same way. A note that misses the callback in progress starts with the next one, and this is counted as device latency (build log "Live latency gate on Firefox").
 4. **Deviation from §9, within the 15 ms window.** §9 says a chord press is re-targeted through the interruption rule with carried velocity. Since M7-c, keys within 15 ms re-plan the press from its first key (`LiveTracks.rewind`), so a key-by-key chord plays exactly as the one chord the take records. Two consequences, both excluded from the gate:
@@ -75,7 +76,7 @@ Status key: **C+P** covered and passing; **Part** partly covered; **None** not c
 | Record into silence: the transport runs, moments at their times with the glide settings, ordinary editable moments | §9 Recording | C+P | `live-record.spec` (arm at T₀, the playhead runs, `merge`, establishing chord, unison and chord at the stamped times with glide settings; one undo restores the piece exactly, redo; Escape, Space and close stop; an empty take changes nothing); `live-take.test.ts` `takeBase` |
 | No layering over playback (v1) | §9, §17 | C+P | `takeBase`: moments at T₀ and later are removed and every line has died by `silentFrom` (`live-take.test.ts` "a take into a sounding piece…") |
 | Voices filled to 4 when fewer sound | build log M7 | C+P | `live-fill.test.ts`; `live-record.spec` (1 voice filled to 4) |
-| Play, Notes-drawer edits, opening another piece while live | §9 / §11 | Part (gap 1) | Being fixed |
+| Play, Notes-drawer edits, opening another piece while live | §9 / §11 | C+P | `live-leftovers.spec.ts` (4 tests, recording and undo/redo included); `live.test.ts` timbre changes on a held triad (clicks within 2× unedited, level within 10 %); `live-setup-change.test.ts` (gap 1) |
 | Playing with a real MIDI keyboard; the feel of latency and glides | §9 | Owner | — |
 
 ## Owner steps
