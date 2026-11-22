@@ -159,3 +159,105 @@ test('add a progression, type chords, lane names, HUD while playing, Freeze', as
     .poll(async () => (await H(page).moments()).some((m) => m.type === 'progression'))
     .toBe(true);
 });
+
+/** The notes (pitches, low to high) each voice is heading for at `t`. */
+async function notesAt(page: Page, t: number): Promise<number[]> {
+  return page.evaluate((t) => {
+    type Seg = { t0: number; t1: number; p1: number; curve?: { p1: number } };
+    const s = (
+      window.__algorhythms as unknown as {
+        store: { getState(): { compiled: { voices: { segments: Seg[] }[] } } };
+      }
+    ).store.getState().compiled;
+    const out: number[] = [];
+    for (const v of s.voices) {
+      const g = v.segments.find((x) => x.t0 <= t && t < x.t1);
+      if (g) out.push(g.curve ? g.curve.p1 : g.p1);
+    }
+    return out.sort((a, b) => a - b);
+  }, t);
+}
+
+test('owner notes: on New → Empty, chords match, default spacing, the chord list edits', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('./?example=tidewater-hymn');
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await page.getByTestId('menu-button').click();
+  await page.getByTestId('new-piece').click();
+  await expect.poll(async () => (await H(page).moments()).length).toBe(0);
+
+  await page.getByTestId('palette').locator('[data-moment="progression"]').click();
+  const prog = (await H(page).moments()).find((m) => m.type === 'progression')!;
+  expect(prog.at).toBe(0);
+  // No tempo: glide 3 s + stagger 0.8 s, then Next's 2 s hold.
+  // A dorian's own chords, as the chips name them.
+  expect(prog.chords).toEqual(['i', 'IV', '♭VII', 'i'].map((notes) => ({ notes, len: 5.8 })));
+
+  // Every chord, the first included: three notes in a close voicing around the middle.
+  for (let k = 0; k < 4; k++) {
+    const ps = await notesAt(page, 5.8 * (k + 1) - 0.05);
+    expect(ps).toHaveLength(3);
+    expect(ps[2] - ps[0]).toBeLessThanOrEqual(12);
+  }
+
+  const insp = page.getByTestId('inspector');
+  const rows = insp.getByTestId('prog-chord');
+  const bar = page.locator(`.lane-item[data-moment="${prog.id}"]`);
+  await expect(rows).toHaveCount(4);
+
+  // A chip appends its chord with the default spacing.
+  await insp.getByTestId('prog-chips').locator('[data-numeral="ii"]').click();
+  await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Add chord');
+  let chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords.at(-1)).toEqual({ notes: 'ii', len: 5.8 });
+  await expect(rows).toHaveCount(5);
+  await expect(insp.getByTestId('prog-chord-name').nth(4)).toHaveText('ii · Bm');
+  await expect(bar.getByTestId('lane-prog-chord')).toHaveCount(5);
+  await expect(bar.getByTestId('lane-prog-chord').nth(4)).toHaveText('ii · Bm');
+
+  // Hovering a row highlights its chord on the lane.
+  await rows.nth(1).hover();
+  await expect(bar.getByTestId('lane-prog-chord').nth(1)).toHaveClass(/\bon\b/);
+
+  // Retime chord 2 (seconds without a tempo).
+  const len = rows.nth(1).getByTestId('prog-chord-len');
+  await len.fill('3');
+  await len.press('Enter');
+  await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Edit chord length');
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords[1]).toEqual({ notes: 'IV', len: 3 });
+
+  // Change chord 1 with the picker.
+  await rows.nth(0).getByTestId('prog-chord-pick').click();
+  await expect(insp.getByTestId('prog-chips').locator('[data-numeral="i"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await insp.getByTestId('prog-chips').locator('[data-numeral="♭III"]').click();
+  await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Change chord');
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords[0].notes).toBe('♭III');
+  await insp.getByTestId('prog-change-done').click();
+
+  // Reorder, then remove chord 3.
+  await rows.nth(0).getByTestId('prog-chord-down').click();
+  await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Move chord');
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords.slice(0, 2).map((c) => c.notes)).toEqual(['IV', '♭III']);
+  await rows.nth(2).getByTestId('prog-chord-remove').click();
+  await expect(rows).toHaveCount(4);
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords.map((c) => c.notes)).toEqual(['IV', '♭III', 'i', 'ii']);
+  await expect(bar.getByTestId('lane-prog-chord')).toHaveCount(4);
+
+  // Each edit is one undo step.
+  await H(page).undo();
+  await expect(rows).toHaveCount(5);
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords.map((c) => c.notes)).toEqual(['IV', '♭III', '♭VII', 'i', 'ii']);
+  await H(page).undo();
+  chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
+  expect(chords.map((c) => c.notes)).toEqual(['♭III', 'IV', '♭VII', 'i', 'ii']);
+});

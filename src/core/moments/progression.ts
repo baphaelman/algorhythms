@@ -5,13 +5,18 @@
  * voice leading, register, count, numerals read at its own time, root in the bass, parts
  * entering from silence, and the moment's glide (stagger, land) on every change.
  *
+ * Voicing (owner notes 2026-11-22): `even` with no register voices every chord `close` around
+ * the middle of the voices' range, which is what chord 1 does when it brings the voices in from
+ * silence (./establish), so the first chord sounds and looks like the others (without this the
+ * later chords spread over the whole range).
+ *
  * The expanded chords keep the progression's id (diagnostics, spans, segments and harmony name
  * it) and get an explicit seed per chord (`progressionChordSeed`), which Freeze writes into the
  * chord moments it makes, so they sound the same.
  */
 
 import { hash32, momentSeed } from '../rng';
-import type { ChordMoment, Piece, ProgressionMoment, Seconds } from '../types';
+import type { ChordMoment, Piece, ProgressionMoment, Seconds, Voicing } from '../types';
 
 /** Why a progression can't run (`progression-invalid`), or null. An empty one does nothing. */
 export function progressionProblem(m: ProgressionMoment): string | null {
@@ -46,9 +51,16 @@ export function progressionChordSeed(progressionSeed: number, k: number): number
   return hash32(progressionSeed, `chord${k}`);
 }
 
+/** The voicing each chord of `m` uses: `even` without a register reads `close` (module comment). */
+export function progressionVoicing(m: Pick<ProgressionMoment, 'voicing' | 'register'>): Voicing {
+  const v = m.voicing ?? 'even';
+  return v === 'even' && m.register === undefined ? 'close' : v;
+}
+
 /**
  * The chord moments progression `m` stands for, chord k at its start with the progression's
- * target, glide and chord settings and seed `progressionChordSeed`. Ids stay `m.id`; the caller
+ * target, glide and chord settings (voicing: `progressionVoicing`) and seed
+ * `progressionChordSeed`. Ids stay `m.id`; the caller
  * renames them when they become moments of their own (Freeze). Muted or invalid: none.
  */
 export function progressionChords(m: ProgressionMoment, pieceSeed: Piece['seed']): ChordMoment[] {
@@ -61,7 +73,7 @@ export function progressionChords(m: ProgressionMoment, pieceSeed: Piece['seed']
       type: 'chord',
       at: starts[k],
       notes: { kind: 'chord', symbol: c.notes },
-      voicing: m.voicing,
+      voicing: progressionVoicing(m),
       assign: m.assign,
       seed: progressionChordSeed(seed, k),
     };

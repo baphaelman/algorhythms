@@ -138,3 +138,22 @@ test('add a strike partial, edit it, undo', async ({ page }) => {
   await page.keyboard.press('ControlOrMeta+z');
   expect((await piece(page)).timbres[name]).toEqual(before);
 });
+
+test('level normalisation: only with parts; by part by default; one undo entry', async ({
+  page,
+}) => {
+  await openSound(page, 'tidewater-hymn', 'master');
+  await expect(page.getByTestId('mx-normalise')).toHaveCount(0);
+
+  await openSound(page, 'porch-light', 'master');
+  const sel = page.getByTestId('mx-normalise');
+  await expect(sel).toHaveValue('part');
+  const norm = async () => ((await piece(page)).mix as unknown as { normalise?: string }).normalise;
+  expect(await norm()).toBe('part');
+  await sel.selectOption('all');
+  expect(await norm()).toBe('all');
+  expect((await editor(page)).undoLabel).toBe('Level normalisation');
+  await blurAndUndo(page);
+  expect(await norm()).toBe('part');
+  await expect(sel).toHaveValue('part');
+});

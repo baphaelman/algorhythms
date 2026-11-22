@@ -542,7 +542,7 @@ The worklet runs on the context clock, so the playhead is derived from that cloc
 - **Vibrato:** only after a voice arrives at a pitch; rate, depth in cents, and onset delay. Zero during glides.
 - **Pan:** equal-power, set per voice or `auto` (by index or by pitch, per mix setting).
 - **Starting phase:** a seeded random phase per voice, for determinism only. Unison phase-summing is handled by the lock above.
-- **Sum normalisation:** every voice is multiplied by the same gain, `g_n(t) = 1/√(Σ life weights)` (as in the prototype), smoothed over 50 ms. **Revision 10 (2026-11-22), proposed, needs the owner's ears:** in a piece with parts, normalise per part (each part's lines by 1/√ of that part's life weights; voices with no part form one group), so a part joining doesn't lower the others (today about −1.8 dB when 3 bells join 6 lines). Pieces without parts are unchanged. Ships only after before/after renders are approved. It is applied per voice, before the dry/send split (§8.6), so stems can carry it exactly (§12).
+- **Sum normalisation:** every voice is multiplied by the same gain, `g_n(t) = 1/√(Σ life weights)` (as in the prototype), smoothed over 50 ms. **Revision 10 (2026-11-22; owner approved the renders):** in a piece with parts, normalise per part: part p's lines are scaled by √(N_p/ΣN) / √max(1, Σ life × line weight of p), where N_p is the most lines of p sounding at once; voices with no part form one group. A part joining or leaving changes no other part; with every part at its peak the levels equal the old ones. Sparse sections are quieter than before (a band thinning out). `mix.normalise: 'all'` keeps the old rule; the default is `'part'`. Pieces without parts are unchanged. It is applied per voice, before the dry/send split (§8.6), so stems can carry it exactly (§12).
 
 ### 8.5 Timbre model
 
@@ -1138,7 +1138,7 @@ The original questions follow for reference.
 - **Progression (§6.2):** a new region moment, a typed chord sequence.
 - **Walk over chord (§6.2):** `over: 'chord'` steps through chord tones.
 - **Pulse drawing (§10):** pulsed lines drawn by envelope with hit marks.
-- **Per-part normalisation (§8.4, proposed):** a joining part doesn't lower the others.
+- **Per-part normalisation (§8.4):** a joining part doesn't lower the others (owner approved).
 - Already landed: root in the bass, parts entering from silence (warning when nothing happens), range folding that never merges a part's lines.
 
 ### Revision 9 (2026-11-20): owner notes after the compositions

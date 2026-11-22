@@ -753,6 +753,14 @@ export interface MixSettings {
   };
   /** How voices with `pan: 'auto'` are placed: spread by pool index, or by current pitch. */
   panAuto: 'index' | 'pitch';
+  /**
+   * Sum normalisation (§8.4, revision 10): 'all' scales every line by 1/√(Σ life weights); 'part'
+   * scales each part's lines by 1/√(that part's Σ life weights) times a static share
+   * √(N_p / Σ N), N_p = the part's peak lines (FlatScore.partLines), so with every part at its
+   * peak the levels are those of 'all'. Voices with no part form one group; a piece without
+   * parts sounds the same either way. @default 'part' (absent means 'part').
+   */
+  normalise?: 'all' | 'part';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1027,6 +1035,8 @@ export interface CompiledVoice {
   solo: boolean;
   /** VoiceDef.sends overrides; a missing key means "use mix.sends". Extension of §7.9. */
   sends: { reverb?: number; delay?: number };
+  /** VoiceDef.part when set and not '' (revision 10: per-part sum normalisation). Extension. */
+  part?: string;
 }
 
 /** Severity of a compiler diagnostic. */

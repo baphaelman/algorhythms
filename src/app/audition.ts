@@ -328,6 +328,31 @@ export function auditionStepAfterEdit(step: {
 }
 
 /**
+ * The notes heading for their destinations at `t`: each voice alive there, at the end pitch of its
+ * segment at `t`.
+ */
+export function notesAt(score: CompiledScore, t: Seconds): AuditionNote[] {
+  const out: AuditionNote[] = [];
+  for (const v of score.voices) {
+    const life = lifeAt(v, t);
+    if (!life || (life.died !== undefined && life.died <= t + 1e-6)) continue;
+    const s = segmentAt(v, t);
+    if (s) out.push({ voice: v.index, pitch: s.curve ? s.curve.p1 : s.p1 });
+  }
+  return out;
+}
+
+/**
+ * A progression chord picked or changed in the inspector: once the edit has compiled, the notes
+ * the voices hold at `t` (just before the chord's end), once.
+ */
+export function auditionAtAfterEdit(t: Seconds): void {
+  afterEdit(() => {
+    audition(notesAt(usePlayer.getState().compiled, t), t);
+  });
+}
+
+/**
  * Moved arrival points (Shift+▲/▼ on dots): once the edit has compiled, their pitches together,
  * each on its voice (else the voice sounding nearest it at its time), at the first one's time.
  */

@@ -24,7 +24,7 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const MAX_BYTES = 6000;
 
 function runHarness(
-  mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx' | 'live',
+  mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx' | 'parts' | 'live',
   extra: string[] = [],
 ): {
   gcLines: string[];
@@ -62,6 +62,16 @@ describe('no GC in process()', () => {
     const { gcLines, summary } = runHarness('lock');
     console.info(
       `no-GC run (unison lock): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
+    );
+    expect(gcLines).toEqual([]);
+    expect(summary.observedGc).toBe(0);
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
+  }, 120_000);
+
+  it("runs 60 s of the unison-lock workload with seeks under mix.normalise 'part' with no scavenge", () => {
+    const { gcLines, summary } = runHarness('parts');
+    console.info(
+      `no-GC run (per-part normalisation): 60 s of audio in ${summary.ms} ms, ${gcLines.length} GC lines, ${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);

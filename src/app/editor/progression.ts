@@ -1,33 +1,174 @@
 /**
  * Progression editing (PLAN.md §6.2 `progression`, revision 10): typed chords ("IV 2, V 2, iii 2,
- * vi 2", lengths in beats with a tempo, else seconds), the lane's chord names and end drag, a new
- * progression's chords and Freeze into chord moments. Pure.
+ * vi 2", lengths in beats with a tempo, else seconds), the default spacing (owner notes
+ * 2026-11-22), the inspector's list edits (append, change, retime, remove, reorder), the lane's
+ * chord names and end drag, a new progression's chords and Freeze into chord moments. Pure.
  */
 
+import { diatonicChords, type DiatonicChord } from '../../core/chord-spec';
 import { parseChord } from '../../core/chords';
+import { momentGlide, sanitizeGlide } from '../../core/compiler/glide';
+import { defaultGlide } from '../../core/defaults';
 import { harmonyLabel } from '../../core/harmony';
 import { progressionChords, progressionStarts } from '../../core/moments/progression';
+import { scaleIntervals } from '../../core/scales';
 import type {
   ChordMoment,
   HarmonyChange,
   Key,
+  Moment,
   Piece,
   ProgressionChord,
   ProgressionMoment,
+  ScaleName,
   Seconds,
 } from '../../core/types';
 import { formatNum, parseNum } from '../ui/inspector/fields';
 import { newMomentIds, randomU32 } from './ops';
-import { MIN_TUNE_LEN, formatTuneLen, lenFromShown } from './tune';
+import { NEXT_HOLD } from './snap';
+import { MIN_TUNE_LEN, formatTuneLen, lenFromShown, tuneBeat } from './tune';
 
 /** Longest typed length: 64 beats, or 60 s without a tempo (as a tune's). */
-const MAX_BEATS = 64;
-const MAX_SECONDS = 60;
+export const MAX_BEATS = 64;
+export const MAX_SECONDS = 60;
 
-/** A new progression's chords: I vi IV V, a bar each with a tempo (`beat` s), else 2 s each. */
-export function newProgressionChords(beat: Seconds | null, meter = 4): ProgressionChord[] {
-  const len = beat ? Math.round(beat * meter * 1e6) / 1e6 : 2;
-  return ['I', 'vi', 'IV', 'V'].map((notes) => ({ notes, len }));
+const roundUs = (t: Seconds): Seconds => Math.round(t * 1e6) / 1e6;
+
+/**
+ * The default chord length (owner notes 2026-11-22): what separate chords added with Next get, so
+ * changes don't chain: the glide (length + stagger of `m`'s glide over the piece's default), then
+ * Next's hold (a bar with a tempo, else `NEXT_HOLD`). With a tempo, rounded up to whole beats.
+ */
+export function progressionSpacing(
+  piece: Pick<Piece, 'defaults' | 'view'>,
+  m: Pick<Moment, 'glide'> = {},
+): Seconds {
+  const g = momentGlide(sanitizeGlide(piece.defaults?.glide, defaultGlide()), {
+    type: 'progression',
+    glide: m.glide,
+  });
+  const beat = tuneBeat(piece.view);
+  const meter = piece.view?.meter && piece.view.meter > 0 ? piece.view.meter : 4;
+  const raw = g.length + g.stagger + (beat ? beat * meter : NEXT_HOLD);
+  return beat ? roundUs(Math.ceil(raw / beat - 1e-6) * beat) : roundUs(raw);
+}
+
+/**
+ * A new progression's default degrees (0-based) in each 7-note scale: the tonic first, then a
+ * common order for the mode, all major or minor triads of the key. Locrian's tonic is
+ * diminished, so it starts on ♭II.
+ */
+const MODE_DEGREES: Readonly<Partial<Record<ScaleName, readonly number[]>>> = {
+  major: [0, 5, 3, 4], // I vi IV V
+  ionian: [0, 5, 3, 4],
+  minor: [0, 5, 2, 6], // i ♭VI ♭III ♭VII
+  aeolian: [0, 5, 2, 6],
+  dorian: [0, 3, 6, 0], // i IV ♭VII i
+  phrygian: [0, 1, 2, 0], // i ♭II ♭III i
+  lydian: [0, 1, 4, 0], // I II V I
+  mixolydian: [0, 6, 3, 0], // I ♭VII IV I
+  locrian: [1, 6, 3, 1], // ♭II ♭vii iv ♭II
+  'harmonic-minor': [0, 5, 3, 4], // i ♭VI iv V
+  'melodic-minor': [0, 3, 4, 0], // i IV V i
+};
+
+/**
+ * The defaults for scales without diatonic chips: the scale's own triads (pentatonic i/♭III,
+ * I/vi), then the nearest triads by fifths, which hold one note outside the scale.
+ */
+const OTHER_SCALE_CHORDS: Readonly<Partial<Record<ScaleName, readonly string[]>>> = {
+  'pentatonic-major': ['I', 'vi', 'V', 'I'],
+  'pentatonic-minor': ['i', '♭III', '♭VII', 'i'],
+  blues: ['i', '♭III', '♭VII', 'i'],
+  'whole-tone': ['I', 'II', '♭VII', 'I'],
+  chromatic: ['I', 'vi', 'IV', 'V'],
+};
+
+const plainTriad = (d: DiatonicChord): boolean => d.quality.id === 'maj' || d.quality.id === 'min';
+
+/**
+ * A new progression's four chord symbols in `key`: the key's own major and minor triads as the
+ * picker's chips name them (Roman numerals on the major-scale ruler), never diminished. Major
+ * keeps I vi IV V.
+ */
+export function defaultProgressionSymbols(key: Key): string[] {
+  const name = typeof key.scale === 'string' ? key.scale : null;
+  const chips = diatonicChords(key).filter(plainTriad);
+  if (chips.length > 0) {
+    const byDegree = new Map(chips.map((d) => [d.degree, d.numeral]));
+    const want = (name && MODE_DEGREES[name]) ?? [0, 5, 3, 4];
+    const fill = chips.map((d) => d.numeral);
+    const out = want.map((d) => byDegree.get(d));
+    if (out.every((x) => x !== undefined)) return out as string[];
+    // A custom 7-note scale: the chips in degree order, from the first plain triad.
+    return [0, 1, 2, 3].map((k) => fill[k % fill.length]);
+  }
+  const fixed = name ? OTHER_SCALE_CHORDS[name] : undefined;
+  if (fixed) return fixed.slice();
+  // A custom scale: the tonic triad (minor when the scale has a minor 3rd but no major one),
+  // then the major- and minor-scale neighbours.
+  const iv = scaleIntervals(key.scale);
+  const minor = iv.includes(3) && !iv.includes(4);
+  return minor ? ['i', '♭VI', '♭VII', 'i'] : ['I', 'IV', 'V', 'I'];
+}
+
+/** A new progression's chords in `key` (`defaultProgressionSymbols`), each `len` s. */
+export function newProgressionChords(len: Seconds, key: Key): ProgressionChord[] {
+  return defaultProgressionSymbols(key).map((notes) => ({ notes, len }));
+}
+
+/** `chords` with `notes` appended, `len` s long. */
+export function appendProgressionChord(
+  chords: readonly ProgressionChord[],
+  notes: string,
+  len: Seconds,
+): ProgressionChord[] {
+  return [...chords, { notes, len }];
+}
+
+/** `chords` with chord k's symbol set to `notes`; null when out of range or unchanged. */
+export function setProgressionChord(
+  chords: readonly ProgressionChord[],
+  k: number,
+  notes: string,
+): ProgressionChord[] | null {
+  const c = chords[k];
+  if (!c || c.notes === notes) return null;
+  return chords.map((x, i) => (i === k ? { ...x, notes } : x));
+}
+
+/** `chords` with chord k `len` s long (≥ MIN_TUNE_LEN); null when out of range or unchanged. */
+export function retimeProgressionChord(
+  chords: readonly ProgressionChord[],
+  k: number,
+  len: Seconds,
+): ProgressionChord[] | null {
+  const c = chords[k];
+  const l = Math.max(MIN_TUNE_LEN, roundUs(len));
+  if (!c || !Number.isFinite(len) || c.len === l) return null;
+  return chords.map((x, i) => (i === k ? { ...x, len: l } : x));
+}
+
+/** `chords` without chord k; null when out of range. */
+export function removeProgressionChord(
+  chords: readonly ProgressionChord[],
+  k: number,
+): ProgressionChord[] | null {
+  if (k < 0 || k >= chords.length) return null;
+  return chords.filter((_, i) => i !== k);
+}
+
+/** `chords` with chord k swapped with its neighbour (`dir` −1: earlier, +1: later); null at an end. */
+export function moveProgressionChord(
+  chords: readonly ProgressionChord[],
+  k: number,
+  dir: -1 | 1,
+): ProgressionChord[] | null {
+  const j = k + dir;
+  if (k < 0 || k >= chords.length || j < 0 || j >= chords.length) return null;
+  const out = chords.slice();
+  [out[k], out[j]] = [out[j], out[k]];
+  return out;
 }
 
 /** The chords as typed text, "IV 2, V 2": symbol and length (beats with a tempo, else seconds). */
@@ -44,15 +185,16 @@ export type ProgressionParse =
 /**
  * Parses typed chords: comma-separated "<symbol> <length>" items. A symbol is a chord symbol or
  * Roman numeral as a chord's (checked in `key`); a length is beats (with a tempo, `beat` s each)
- * or seconds; a missing length repeats the previous one (the first: `firstLen` s). With `prev`
- * (the current chords), a length typed as shown keeps its exact value. Errors name the chord.
+ * or seconds; a missing length is `defaultLen` s (the default spacing, owner notes 2026-11-22).
+ * With `prev` (the current chords), a length typed as shown keeps its exact value. Errors name
+ * the chord.
  */
 export function parseProgressionText(
   text: string,
   beat: Seconds | null,
   key: Key,
   prev: readonly ProgressionChord[] = [],
-  firstLen: Seconds = beat ?? 2,
+  defaultLen: Seconds = beat ?? 2,
 ): ProgressionParse {
   const t = text.trim();
   if (t === '') return { ok: true, chords: [] };
@@ -74,7 +216,7 @@ export function parseProgressionText(
     if (!r.ok) return { ok: false, error: `${at}: “${symbol}” is not a chord (${r.error})` };
     let len: Seconds;
     if (parts.length === 1) {
-      len = chords.at(-1)?.len ?? firstLen;
+      len = defaultLen;
     } else {
       const v = parseNum(parts[1]);
       if (v === null) return { ok: false, error: `${at}: “${parts[1]}” is not a length` };

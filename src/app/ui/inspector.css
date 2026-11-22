@@ -729,6 +729,107 @@
   margin-top: 4px;
 }
 
+/* Progression chords (owner notes 2026-11-22): name (click to change), length slider and box,
+   ↑ ↓ ×; then the key's chords and the typed field. */
+.insp-prog legend .dim {
+  color: var(--ink-2);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.insp-prog .prog-name {
+  flex: 0 0 6.2em;
+  display: block;
+  overflow: hidden;
+  padding: 3px 4px 3px 6px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.insp-prog .prog-name[aria-pressed='true'] {
+  font-weight: 600;
+}
+
+.insp-prog .prog-len-slider {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  min-width: 2.5em;
+  padding: 0 4px;
+  border-left: 1px solid var(--rule);
+}
+
+.insp-prog .prog-len-slider input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.insp-prog .weight-box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--rule);
+  font: 11px var(--f-mono);
+}
+
+.insp-prog .weight-box .scrub-label {
+  padding: 0 1px 0 4px;
+  color: var(--ink-2);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.insp-prog .weight-box input {
+  width: 2.9em;
+  padding: 2px 2px 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+
+.insp-prog .step-move {
+  padding: 0 5px;
+}
+
+.insp-prog .step-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.insp-prog .prog-chips .chips.diatonic {
+  margin-top: 4px;
+}
+
+.insp-prog .prog-change {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.insp-prog .prog-change .insp-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.insp-prog .prog-done {
+  margin-top: 3px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.insp-prog .insp-row input {
+  font-family: var(--f-mono);
+}
+
+.insp-prog > .insp-row {
+  margin-top: 4px;
+}
+
 /* Pulse pattern (R9-7): one cell per step, filled to its accent. */
 
 .pulse-cells {

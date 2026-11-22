@@ -5547,6 +5547,15 @@ This is the *input* form: fields with defaults are optional here.
             "index",
             "pitch"
           ]
+        },
+        "normalise": {
+          "default": "part",
+          "description": "Sum normalisation (§8.4): per part, or the whole mix ('all').",
+          "type": "string",
+          "enum": [
+            "all",
+            "part"
+          ]
         }
       },
       "additionalProperties": {}

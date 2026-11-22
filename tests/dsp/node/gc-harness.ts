@@ -11,9 +11,10 @@
  * struck partials and an FM index envelope) or 'timbre' (the 'lock' workload with seeks, every
  * voice changing timbre every ~1.5 s across every synthesis path, with overlapping fades: timbre
  * moments, M6-b2) or 'fx' (the plain workload with a master FX edit every 0.25 s: tilt, low-pass
- * in and out of bypass, room size and delay-time crossfades and glides).
+ * in and out of bypass, room size and delay-time crossfades and glides) or 'parts' (the 'lock'
+ * workload with seeks, its voices in two parts and no part, `mix.normalise: 'part'`).
  * 'live' (M7a; argv[3]: the session file, see `buildLive`).
- * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx|live <file>]
+ * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx|parts|live <file>]
  */
 
 import { PerformanceObserver } from 'node:perf_hooks';
@@ -43,13 +44,14 @@ const mode =
   arg === 'm6' ||
   arg === 'timbre' ||
   arg === 'fx' ||
+  arg === 'parts' ||
   arg === 'live'
     ? arg
     : 'plain';
-const seeking = mode === 'lock' || mode === 'timbre';
+const seeking = mode === 'lock' || mode === 'timbre' || mode === 'parts';
 // Every other voice pulses (R9-3b): onsets, strikes and decays on the audio thread.
 const score = withPulses(
-  mode === 'lock'
+  mode === 'lock' || mode === 'parts'
     ? lockStressScore(12, 80, 17)
     : mode === 'timbre'
       ? withTimbreChanges(lockStressScore(12, 80, 17), [
@@ -70,6 +72,7 @@ const score = withPulses(
           mode === 'm6' ? ['bell', 'fmreed', 'breath', 'strikebell'] : undefined,
         ),
 );
+if (mode === 'parts') score.voices.forEach((v, i) => (v.part = ['A', 'B', ''][i % 3]));
 const left = new Float32Array(BLOCK_FRAMES);
 const right = new Float32Array(BLOCK_FRAMES);
 const live = mode === 'live' ? buildLive() : null;
@@ -77,7 +80,7 @@ const graph =
   live?.graph ??
   createLoadedGraph({
     score,
-    mix: FIXTURE_MIX,
+    mix: mode === 'parts' ? { ...FIXTURE_MIX, normalise: 'part' } : FIXTURE_MIX,
     timbres: mode === 'm6' || mode === 'timbre' ? M6_WORKLOAD_TIMBRES : undefined,
     sampleRate: RATE,
   });

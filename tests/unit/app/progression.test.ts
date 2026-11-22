@@ -50,19 +50,19 @@ const rnd = (() => {
 })();
 
 describe('typed chords', () => {
-  it('parses lengths in beats, repeats a missing length, names errors by chord', () => {
+  it('parses lengths in beats, a missing length is the default, names errors by chord', () => {
     const beat = 0.5;
-    const r = parseProgressionText('IV 2, V 2, iii, vi 1.5', beat, C);
+    const r = parseProgressionText('IV 2, V 2, iii, vi 1.5', beat, C, [], 3);
     expect(r).toEqual({
       ok: true,
       chords: [
         { notes: 'IV', len: 1 },
         { notes: 'V', len: 1 },
-        { notes: 'iii', len: 1 },
+        { notes: 'iii', len: 3 },
         { notes: 'vi', len: 0.75 },
       ],
     });
-    // Seconds without a tempo; the first missing length is `firstLen`.
+    // Seconds without a tempo; a missing length is `defaultLen`.
     expect(parseProgressionText('Am, F 3', null, C, [], 2)).toEqual({
       ok: true,
       chords: [
@@ -196,7 +196,15 @@ describe('share, schema, palette, key carry', () => {
     p.view = { ...p.view, gridBpm: 120, meter: 4 };
     const m = defaultMoment('progression', 2, 'x', p, compile(p));
     expect(m.chords.map((c) => c.notes)).toEqual(['I', 'vi', 'IV', 'V']);
-    expect(m.chords.every((c) => c.len === 2)).toBe(true);
+    // The default spacing: glide 0.5 s + a bar (2 s), in whole beats.
+    expect(m.chords.every((c) => c.len === 2.5)).toBe(true);
+    // The key in effect at the insert time picks the chords: A dorian from 1 s.
+    const d = withProg([['I', 8]]);
+    d.moments.unshift({ id: 'k', type: 'key', at: 1, key: { tonic: 'A', scale: 'dorian' } });
+    const md = defaultMoment('progression', 2, 'y', d, compile(d));
+    expect(md.chords.map((c) => c.notes)).toEqual(['i', 'IV', '♭VII', 'i']);
+    const m0 = defaultMoment('progression', 0.5, 'z', d, compile(d));
+    expect(m0.chords.map((c) => c.notes)).toEqual(['I', 'vi', 'IV', 'V']);
   });
 
   it('key carry transposes letter chords and keeps numerals', () => {

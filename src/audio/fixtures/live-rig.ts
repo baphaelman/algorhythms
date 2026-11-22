@@ -39,6 +39,7 @@ export function liveSetupOf(
       range: [range[0], range[1]],
       timbre,
       pitch: start,
+      part: '',
       gain: 1,
       pan: 'auto',
       mute: false,

@@ -35,7 +35,7 @@ vi.mock('../../../src/app/audio', () => {
 import { DEFAULT_MIX, newPiece } from '../../../src/core/defaults';
 import { MixSchema, parsePiece } from '../../../src/core/schema';
 import type { MixSettings, Piece } from '../../../src/core/types';
-import { undo, useEditor } from '../../../src/app/editor/history';
+import { edit, undo, useEditor } from '../../../src/app/editor/history';
 import {
   DELAY_BEATS,
   DELAY_TIME,
@@ -45,8 +45,10 @@ import {
   isSectionDefault,
   MIX_CONTROLS,
   mixValue,
+  normaliseOf,
   resetSection,
   setMixAt,
+  setNormalise,
   setPanAuto,
   type MixSection,
 } from '../../../src/app/editor/mix-edit';
@@ -226,6 +228,33 @@ describe('a master drag is one undo entry, heard live', () => {
     expect(usePlayer.getState().piece.mix).toEqual(start.mix);
     // Undo reaches the engine too.
     expect((audio.mixes.at(-1) as MixSettings).reverb.decay).toBe(DEFAULT_MIX.reverb.decay);
+    expect(useEditor.getState().canUndo).toBe(false);
+  });
+});
+
+describe('level normalisation (§8.4 revision 10)', () => {
+  beforeEach(() => {
+    loadPiece(base());
+    frames();
+    audio.mixes.length = 0;
+  });
+
+  it("defaults to 'part' (absent too); one undo entry, heard live", () => {
+    const start = usePlayer.getState().piece;
+    expect(DEFAULT_MIX.normalise).toBe('part');
+    expect(start.mix.normalise).toBe('part');
+    const { normalise: _, ...absent } = start.mix;
+    expect(normaliseOf(absent)).toBe('part');
+    expect(MixSchema.parse(absent).normalise).toBe('part');
+    expect(setNormalise('part')(start)).toBe(start);
+    expect(edit(setNormalise('all'), 'Level normalisation')).toBe(true);
+    expect(usePlayer.getState().piece.mix.normalise).toBe('all');
+    expect(usePlayer.getState().piece.mix.reverb).toBe(start.mix.reverb);
+    expect((audio.mixes.at(-1) as MixSettings).normalise).toBe('all');
+    expect(useEditor.getState().undoLabel).toBe('Level normalisation');
+    expect(undo()).toBe(true);
+    expect(usePlayer.getState().piece.mix).toEqual(start.mix);
+    expect((audio.mixes.at(-1) as MixSettings).normalise).toBe('part');
     expect(useEditor.getState().canUndo).toBe(false);
   });
 });

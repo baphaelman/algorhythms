@@ -24,13 +24,15 @@ import {
   SEG_T1,
   segmentVelocity,
 } from '../../src/core/segment';
-import type { EaseRef } from '../../src/core/types';
+import type { EaseRef, MixSettings, Piece } from '../../src/core/types';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
 import { LIVE_SEG_CAP, type LiveTracks } from '../../src/dsp/live';
 import { LiveRig, liveSetupOf } from '../../src/audio/fixtures/live-rig';
-import { DRY_MIX } from '../../src/audio/fixtures/scores';
+import { DRY_MIX, makeScore } from '../../src/audio/fixtures/scores';
+import { liveSetupFrom } from '../../src/audio/live-setup';
+import { newPiece } from '../../src/core/defaults';
 import { Prng } from '../../src/dsp/rng';
-import { clickScore, RATE, rms } from './helpers';
+import { clickScore, Driver, RATE, rms } from './helpers';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -233,6 +235,73 @@ describe('live messages (M7a)', () => {
     );
     // Stepped, not glided: the voices hold 69 from the start.
     for (let i = 0; i < 3; i++) expect(rig.input.tracks.pitchAt(i, on + 0.001)).toBe(69);
+  });
+});
+
+describe("live under mix.normalise 'part' (the default)", () => {
+  /** A: 3 lines from 0; B: 2 lines from 2 s; C: 1 line from 8 s (silent at 5 s); to 10 s. */
+  function partsPiece(normalise: 'part' | 'all') {
+    const specs = [
+      ...[57, 64, 69].map((start) => ({ start, died: 10 })),
+      ...[72, 76].map((start) => ({ start, born: 2, died: 10 })),
+      { start: 81, born: 8, died: 10 },
+    ];
+    const score = makeScore(specs, 10);
+    score.voices.forEach((v, i) => (v.part = i < 3 ? 'A' : i < 5 ? 'B' : 'C'));
+    const mix: MixSettings = { ...DRY_MIX, normalise };
+    const piece: Piece = {
+      ...newPiece({ seed: 1, poolSize: specs.length, timbre: 'sine' }),
+      mix,
+    };
+    return { score, piece, mix };
+  }
+
+  /** Each sounding voice's amplitude in the piece at 5 s and live (entered at 5 s, level 1). */
+  function amplitudes(normalise: 'part' | 'all') {
+    const { score, piece, mix } = partsPiece(normalise);
+    const d = new Driver(score, mix);
+    d.graph.play(0);
+    d.run(5);
+    const setup = liveSetupFrom(piece, score, 5);
+    const rig = new LiveRig(setup);
+    rig.record = false;
+    rig.run(0.05);
+    rig.post({ moves: [], level: { gain: 1, over: 0 } }); // sound at the piece's pitches
+    rig.run(1);
+    return setup.voices.map((v, k) => {
+      const i = score.voices.findIndex((c) => c.id === v.id);
+      return { piece: d.graph.voiceAmplitude(i), live: rig.graph.voiceAmplitude(k), rig, k };
+    });
+  }
+
+  for (const normalise of ['part', 'all'] as const) {
+    it(`entering keeps each voice's gain from the piece (${normalise})`, () => {
+      const amps = amplitudes(normalise);
+      expect(amps).toHaveLength(5); // C is silent at the playhead
+      for (const a of amps) {
+        expect(a.piece).toBeGreaterThan(0);
+        expect(Math.abs(a.live / a.piece - 1)).toBeLessThan(0.02);
+      }
+    });
+  }
+
+  it('silence as a shared level of 0 keeps the normalisation constant', () => {
+    const { score, piece } = partsPiece('part');
+    const rig = new LiveRig(liveSetupFrom(piece, score, 5), { release: 'fade', releaseFade: 0.2 });
+    rig.run(0.05);
+    rig.noteOn(60);
+    rig.noteOn(67);
+    rig.run(1);
+    const before = rig.input.tracks.data.map((_, k) => rig.graph.voiceAmplitude(k));
+    rig.allOff();
+    rig.run(0.5);
+    for (let k = 0; k < before.length; k++) expect(rig.graph.voiceAmplitude(k)).toBe(0);
+    rig.noteOn(60);
+    rig.noteOn(67);
+    rig.run(1);
+    rig.input.tracks.data.forEach((_, k) =>
+      expect(Math.abs(rig.graph.voiceAmplitude(k) / before[k] - 1)).toBeLessThan(0.02),
+    );
   });
 });
 
