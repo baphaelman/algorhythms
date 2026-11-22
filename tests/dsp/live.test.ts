@@ -445,6 +445,25 @@ describe('no clicks under rapid key changes (M7a)', () => {
         `live clicks ${timbre}: rapid ${got.ratio.toFixed(3)} vs slow ${ref.ratio.toFixed(3)}`,
       );
       expect(got.ratio).toBeLessThan(Math.max(2 * ref.ratio, 0.05));
+      // Press-window rewinds (M7-c): chords pressed key by key 3–10 ms apart, every 80–300 ms.
+      const press = new LiveRig(liveSetupOf(8, timbre), { glide: 0.15, stagger: 0.02 });
+      const rng = new Prng(17);
+      press.run(0.05);
+      let rewinds = 0;
+      while (press.time < 8) {
+        press.keys.allOff();
+        const k = 2 + Math.floor(rng.next() * 3);
+        for (let j = 0; j < k; j++) {
+          press.noteOn(48 + Math.floor(rng.next() * 25));
+          if (j > 0 && press.changes.at(-1)!.press !== press.changes.at(-1)!.seq) rewinds++;
+          press.run(0.003 + rng.next() * 0.007);
+        }
+        press.run(0.08 + rng.next() * 0.22);
+      }
+      const pr = clickScore(press.out().left, Math.floor(0.2 * RATE));
+      console.info(`live clicks ${timbre}: presses ${pr.ratio.toFixed(3)} (${rewinds} rewinds)`);
+      expect(rewinds).toBeGreaterThan(20);
+      expect(pr.ratio).toBeLessThan(Math.max(2 * ref.ratio, 0.05));
     });
   }
 });

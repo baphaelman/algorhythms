@@ -721,6 +721,57 @@ export class LiveInput {
     return true;
   }
 
+  /**
+   * A re-planned press (queue `slot`): sets LR[R_TA] to the time its first message was applied
+   * at; false if that one is no longer remembered.
+   */
+  private pressTime(slot: number): boolean {
+    const press = this.qPress[slot];
+    for (let k = 0; k < LIVE_RING; k++) {
+      if (this.ringSeq[k] === press) {
+        LR[R_TA] = this.ringTime[k];
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Applies the queued messages at the graph's position. Out of `beforeBlock` and taking no
+   * arguments: kept inside it, the per-message path left beforeBlock too big to inline into its
+   * caller and allocated ~100 B per message (no-GC live harness, M7-c).
+   */
+  private drain(): void {
+    const g = this.graph;
+    const tA = g.position;
+    const touched = this.touched;
+    touched.fill(0);
+    while (this.qLen > 0) {
+      const slot = this.qHead;
+      LR[R_TA] = tA;
+      LR[R_GAIN] = this.qGain[slot];
+      LR[R_OVER] = this.qOver[slot];
+      const rewind = this.qPress[slot] > 0 && this.pressTime(slot);
+      this.tracks.run(
+        this.qMoves,
+        slot * DSP_MAX_VOICES * LIVE_STRIDE,
+        this.qCount[slot],
+        touched,
+        rewind,
+      );
+      this.ringSeq[this.ringHead] = this.qSeq[slot];
+      this.ringTime[this.ringHead] = tA;
+      this.ringHead = (this.ringHead + 1) % LIVE_RING;
+      this.appliedSeq[this.appliedCount++] = this.qSeq[slot];
+      this.qHead = (this.qHead + 1) % LIVE_QUEUE;
+      this.qLen--;
+    }
+    const pf = Math.round(tA * this.rate);
+    for (let i = 0; i < this.tracks.data.length; i++)
+      if (touched[i] === 1) g.voiceAt(i).jump(pf, false);
+    this.appliedTime = tA;
+  }
+
   /** Target bend in semitones (smoothed over BEND_SMOOTHING). */
   setBend(semitones: number): void {
     this.bendTarget = semitones === semitones ? semitones : 0;
@@ -741,39 +792,7 @@ export class LiveInput {
       g.setPitchOffset(b);
     }
     if (this.qLen === 0) return;
-    const tA = g.position;
-    const touched = this.touched;
-    touched.fill(0);
-    while (this.qLen > 0) {
-      const slot = this.qHead;
-      const press = this.qPress[slot];
-      let at = -1;
-      if (press > 0) {
-        for (let k = 0; k < LIVE_RING; k++) {
-          if (this.ringSeq[k] === press) at = this.ringTime[k];
-        }
-      }
-      LR[R_TA] = at >= 0 ? at : tA;
-      LR[R_GAIN] = this.qGain[slot];
-      LR[R_OVER] = this.qOver[slot];
-      this.tracks.run(
-        this.qMoves,
-        slot * DSP_MAX_VOICES * LIVE_STRIDE,
-        this.qCount[slot],
-        touched,
-        at >= 0,
-      );
-      this.ringSeq[this.ringHead] = this.qSeq[slot];
-      this.ringTime[this.ringHead] = tA;
-      this.ringHead = (this.ringHead + 1) % LIVE_RING;
-      this.appliedSeq[this.appliedCount++] = this.qSeq[slot];
-      this.qHead = (this.qHead + 1) % LIVE_QUEUE;
-      this.qLen--;
-    }
-    const pf = Math.round(tA * this.rate);
-    for (let i = 0; i < this.tracks.data.length; i++)
-      if (touched[i] === 1) g.voiceAt(i).jump(pf, false);
-    this.appliedTime = tA;
+    this.drain();
     this.appliedFrame = frame;
   }
 }

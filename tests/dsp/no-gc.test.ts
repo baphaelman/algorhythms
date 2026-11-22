@@ -119,9 +119,11 @@ describe('no GC in process()', () => {
       const { gcLines, summary } = runHarness('live', [file]);
       console.info(
         `no-GC run (live): 60 s of audio in ${summary.ms} ms, ${summary.messages} live messages ` +
-          `(${made.messages} + ${made.bends} bends in the session), ${gcLines.length} GC lines, ` +
+          `(${made.messages}, ${made.presses} re-planning a press, + ${made.bends} bends), ` +
+          `${gcLines.length} GC lines, ` +
           `${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
       );
+      expect(made.presses).toBeGreaterThan(50); // the press-window rewind path is exercised
       expect(gcLines).toEqual([]);
       expect(summary.observedGc).toBe(0);
       expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
