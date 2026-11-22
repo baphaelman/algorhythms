@@ -40,8 +40,7 @@ export class MixState {
    * some no-GC 'fx' runs).
    */
   set(mix: MixSettings): void {
-    let x = 0;
-    x = mix.reverb.size;
+    let x = mix.reverb.size;
     if (Number.isFinite(x)) this.reverbSize = x;
     x = mix.reverb.decay;
     if (Number.isFinite(x)) this.reverbDecay = x;
