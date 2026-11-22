@@ -66,6 +66,8 @@ export default defineConfig(
       'test-results/',
       'blob-report/',
       'prototype/',
+      'gallery/',
+      'renders/',
       'node_modules/',
     ],
   },
