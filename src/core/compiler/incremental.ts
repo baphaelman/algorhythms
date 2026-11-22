@@ -16,7 +16,7 @@
  * queued move starts, walk and pulse ticks (a pulse tick's state rides on the event, immutable),
  * note returns and tunes' next notes (a `TuneStep`, immutable) with each move's `cancelled` flag
  * (a move's `memo` is a pure cache, left as is);
- * key, keys/harmony/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
+ * key, keys/harmony/drivers/walkSteps/simulation-diagnostic lengths, lastActivity, and the spans of moments that can
  * still change (later moves extend earlier moments' spans). Array prefixes and final spans are
  * read from the previous run, whose arrays are never truncated (each run builds new ones, so
  * returned scores stay intact). Restored tails and lives are fresh copies.
@@ -58,6 +58,7 @@ import {
   type CompileOptions,
 } from './compile';
 import { decisionTime, sanitizeGlide } from './glide';
+import type { DriverRecord } from './tune-harmony';
 import { defaultGlide } from '../defaults';
 import { EventClass, type QueuedEvent } from './queue';
 import type { Birth, Move, Status, VoiceRun } from './voice';
@@ -99,6 +100,7 @@ interface Checkpoint {
   key: Key;
   keys: number;
   harmony: number;
+  drivers: number;
   walkSteps: number;
   /** Diagnostics raised by the simulation (after the init ones). */
   diags: number;
@@ -127,6 +129,7 @@ interface State {
   rests: VoiceRun['rests'][];
   keys: KeyChange[];
   harmony: HarmonyChange[];
+  drivers: DriverRecord[];
   walkSteps: WalkStepRecord[];
   diags: Diagnostic[];
   initDiags: number;
@@ -294,6 +297,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
     key: c.key,
     keys: c.keys.length,
     harmony: c.harmony.length,
+    drivers: c.drivers.length,
     walkSteps: c.walkSteps.length,
     diags: c.diags.length - initDiags,
     lastActivity: c.lastActivity,
@@ -398,6 +402,8 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   c.key = cp.key;
   pushPrefix(c.keys, prev.keys, cp.keys, 1); // keys[0] is the new piece's own (equal) start key
   pushPrefix(c.harmony, prev.harmony, cp.harmony);
+  pushPrefix(c.drivers, prev.drivers, cp.drivers);
+  c.syncDrivers();
   pushPrefix(c.walkSteps, prev.walkSteps, cp.walkSteps);
   c.lastActivity = cp.lastActivity;
   // Spans of the moments handled before the checkpoint (all below k): final ones from the
@@ -523,6 +529,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       rests: c.voices.map((r) => r.rests),
       keys: c.keys,
       harmony: c.harmony,
+      drivers: c.drivers,
       walkSteps: c.walkSteps,
       diags: c.diags,
       initDiags,

@@ -66,6 +66,12 @@ describe('suggestNext', () => {
     const p = piece({ start: [], moments: [] });
     const open = suggestNext(p, compile(p), 1);
     expect(open.map((x) => x.label)).toEqual(['Start on Am', 'Start on A']);
+    // In a major key the triad and the tonic share a name: the unison says so (one React key each).
+    const major = piece({ start: [], moments: [], key: { tonic: 'C', scale: 'major' } });
+    expect(suggestNext(major, compile(major), 10).map((x) => x.label)).toEqual([
+      'Start on C',
+      'Start on C (unison)',
+    ]);
     for (const x of open) expect(momentEffectAt(p, compile(p), x.moment).effect).toBe(true);
     for (const [, ex] of examples) {
       const s = compile(ex);

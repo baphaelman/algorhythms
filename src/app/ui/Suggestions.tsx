@@ -3,6 +3,7 @@ import type { Suggestion } from '../../core/suggest';
 import {
   addSuggestion,
   appendMoment,
+  suggestionKey,
   useSuggestions,
   watchSuggestions,
 } from '../editor/suggestions';
@@ -77,7 +78,7 @@ export function Suggestions() {
       {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => (
         <button
-          key={`${t}:${s.label}`}
+          key={suggestionKey(t, i, s)}
           type="button"
           data-suggestion={i}
           data-kind={s.kind}

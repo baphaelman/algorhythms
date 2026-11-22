@@ -36,6 +36,7 @@ import {
   appendMoment,
   refreshSuggestions,
   suggestionsAt,
+  suggestionKey,
   suggestionTime,
   useSuggestions,
 } from '../../../src/app/editor/suggestions';
@@ -157,6 +158,16 @@ describe('Next after a zero-length tail', () => {
     const items = suggestionsAt(p, s, 0);
     expect(items.length).toBeGreaterThan(0);
     for (const it of items) expect(it.moment.at).toBe(0);
+  });
+
+  it('silence in a major key: the two openings have distinct React keys', () => {
+    const p = newPiece({ seed: 7 });
+    p.key = { tonic: 'C', scale: 'major' };
+    const s = compile(p);
+    const items = suggestionsAt(p, s, 10);
+    expect(items.map((x) => x.label)).toEqual(['Start on C', 'Start on C (unison)']);
+    const keys = items.map((x, i) => suggestionKey(10, i, x));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('a one-note opening: a hold after it, a bar with a tempo', () => {

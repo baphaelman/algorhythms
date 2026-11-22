@@ -28,6 +28,7 @@ import { defaultGlide } from '../defaults';
 import { crossfadeLength } from '../ease';
 import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
+import { tuneHarmony, type DriverRecord } from './tune-harmony';
 import { mod } from '../math';
 import { inPartScope, partScope, scopeName, type PartScope } from '../parts';
 import { isTimbreName } from '../timbres';
@@ -69,6 +70,7 @@ import {
   type KeyMoment,
   type Life,
   type Moment,
+  type MomentId,
   type MomentSpan,
   type MomentType,
   type NoteMoment,
@@ -384,6 +386,10 @@ export class Compiler {
   key: Key;
   readonly keys: KeyChange[];
   readonly harmony: HarmonyChange[] = [];
+  /** Who sets each line's pitch, pushed when it changes (tune-harmony.ts; `markDrivers`). */
+  readonly drivers: DriverRecord[] = [];
+  /** Per voice, its last entry in `drivers` (null: none, chord-driven). `syncDrivers` rebuilds. */
+  private lastDriver: (DriverRecord | null)[] = [];
   lastActivity = 0;
   readonly endAt: Seconds;
   readonly endFade: Seconds;
@@ -1362,6 +1368,12 @@ export class Compiler {
     this.touch();
     // A tune's notes are melody, not harmony: the HUD chord does not follow them.
     if (!tune) this.recordHarmony(i, T, key);
+    this.markDrivers(
+      [...targetedLines, ...res.moves.map((mv) => mv.voice), ...res.births.map((b) => b.voice)],
+      T,
+      m.id,
+      tune !== null,
+    );
     this.traceMoment(
       i,
       targetedLines,
@@ -1497,6 +1509,7 @@ export class Compiler {
     this.touch();
     // A tune's notes are melody, not harmony (as in applyPointMoment).
     if (m.type !== 'tune') this.recordHarmony(i, T, this.key);
+    this.markDrivers(opened, T, m.id, m.type === 'tune');
     this.traceMoment(i, [], subset, null, plan.intents, T);
     return none;
   }
@@ -1840,6 +1853,23 @@ export class Compiler {
       v = s ? s.index : -1;
     }
     return -1;
+  }
+
+  /** Records that moment `id` (a tune's note when `tune`) set these lines' pitch at t. */
+  private markDrivers(lines: readonly number[], t: Seconds, id: MomentId, tune: boolean): void {
+    for (const voice of lines) {
+      const last = this.lastDriver[voice] ?? null;
+      if (last ? last.tune === tune && (!tune || last.momentId === id) : !tune) continue;
+      const d: DriverRecord = { t, voice, tune, momentId: id };
+      this.drivers.push(d);
+      this.lastDriver[voice] = d;
+    }
+  }
+
+  /** Rebuilds `lastDriver` from `drivers` (incremental restore). */
+  syncDrivers(): void {
+    this.lastDriver = [];
+    for (const d of this.drivers) this.lastDriver[d.voice] = d;
   }
 
   /**
@@ -2907,7 +2937,15 @@ export class Compiler {
       walkSteps: this.walkSteps,
       diagnostics: this.origins ? this.progressionDiags() : this.diags,
       keys: this.keys,
-      harmony: this.harmony,
+      harmony: tuneHarmony(
+        this.harmony,
+        this.drivers,
+        voices,
+        this.keys,
+        duration,
+        this.piece.view?.gridBpm,
+        (pcs, bass, key) => cachedHarmonyLabel(this.labels, undefined, pcs, bass, key),
+      ),
       referenceHz:
         typeof this.piece.tuning?.referenceHz === 'number' ? this.piece.tuning.referenceHz : 440,
       seed: this.piece.seed,

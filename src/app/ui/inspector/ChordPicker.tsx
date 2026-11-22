@@ -68,7 +68,7 @@ export function ChordPicker({
 }) {
   const compiled = usePlayer((s) => s.compiled);
   const reading: ChordReading | null = value.kind === 'chord' ? readChord(value.symbol, key) : null;
-  const compiledLabel = compiled.harmony?.find((h) => h.momentId === momentId)?.label;
+  const compiledLabel = compiled.harmony?.find((h) => h.momentId === momentId && !h.from)?.label;
   const name = chordName(value, key, compiledLabel);
   const numeral = reading
     ? romanNumeral(reading.root, qualityById(reading.quality ?? ''), key)

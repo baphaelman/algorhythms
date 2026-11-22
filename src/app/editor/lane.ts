@@ -246,7 +246,7 @@ export function laneItems(
   const byId = new Map<MomentId, MomentSpan>();
   for (const s of spans) byId.set(s.id, s);
   const chordName = new Map<MomentId, string>();
-  for (const h of harmony ?? []) chordName.set(h.momentId, h.label);
+  for (const h of harmony ?? []) if (!h.from) chordName.set(h.momentId, h.label);
   // A progression's chords are named in the key at each chord's time (`keys` timeline).
   const keyOf = (t: Seconds): Key => {
     let k = piece.key;
