@@ -90,6 +90,41 @@ describe('dsp pmath', () => {
     }
   });
 
+  it("written-out polynomials and POW2 give the coefficient loops' bits", () => {
+    // exp2R and log2R spell out Horner over EXP_C / ATANH_C (and Voice.render copies exp2R's).
+    const view = new DataView(new ArrayBuffer(8));
+    for (const y of grid(-60, 60, 20001)) {
+      const n = Math.floor(y);
+      const z = (y - n) * pm.LN2;
+      let acc = pm.EXP_C[13];
+      for (let k = 12; k >= 0; k--) acc = acc * z + pm.EXP_C[k];
+      view.setUint32(0, (n + 1023) << 20);
+      view.setUint32(4, 0);
+      pm.R[0] = y;
+      pm.exp2R();
+      expect(pm.R[0]).toBe(acc * view.getFloat64(0));
+      expect(pm.POW2[n + 1022]).toBe(view.getFloat64(0));
+    }
+    for (const x of grid(0.001, 3000, 20001)) {
+      view.setFloat64(0, x);
+      const hi = view.getUint32(0);
+      let e = ((hi >>> 20) & 0x7ff) - 1023;
+      view.setUint32(0, (hi & 0x000fffff) | 0x3ff00000);
+      let m = view.getFloat64(0);
+      if (m > Math.SQRT2) {
+        m *= 0.5;
+        e += 1;
+      }
+      const z = (m - 1) / (m + 1);
+      const z2 = z * z;
+      let acc = pm.ATANH_C[11];
+      for (let k = 10; k >= 0; k--) acc = acc * z2 + pm.ATANH_C[k];
+      pm.R[0] = x;
+      pm.log2R();
+      expect(pm.R[0]).toBe(e + (2 * z * acc) / pm.LN2);
+    }
+  });
+
   it('gives pinned bits (same on every platform: only + − × ÷ and exact operations)', () => {
     const h = createHash('sha256');
     const buf = new Float64Array(9);

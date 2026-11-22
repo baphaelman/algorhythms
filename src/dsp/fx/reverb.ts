@@ -215,6 +215,171 @@ export class Reverb {
     let w = this.writePos;
     let pw = this.preWrite;
 
+    if (!xfOn) {
+      // The steady case, written out per line with the state in locals: the ±1 input and output
+      // signs become adds and subtracts (exact), so this is bit for bit the loop below.
+      const G = DIFFUSER_GAIN;
+      const inGain = IN_GAIN;
+      const b0 = this.diff[0];
+      const b1 = this.diff[1];
+      const b2 = this.diff[2];
+      const b3 = this.diff[3];
+      const n0 = this.diffLen[0];
+      const n1 = this.diffLen[1];
+      const n2 = this.diffLen[2];
+      const n3 = this.diffLen[3];
+      let q0 = this.diffPos[0];
+      let q1 = this.diffPos[1];
+      let q2 = this.diffPos[2];
+      let q3 = this.diffPos[3];
+      const L0 = lenCur[0];
+      const L1 = lenCur[1];
+      const L2 = lenCur[2];
+      const L3 = lenCur[3];
+      const L4 = lenCur[4];
+      const L5 = lenCur[5];
+      const L6 = lenCur[6];
+      const L7 = lenCur[7];
+      const c1 = cap;
+      const c2 = 2 * cap;
+      const c3 = 3 * cap;
+      const c4 = 4 * cap;
+      const c5 = 5 * cap;
+      const c6 = 6 * cap;
+      const c7 = 7 * cap;
+      const g0 = gain[0];
+      const g1 = gain[1];
+      const g2 = gain[2];
+      const g3 = gain[3];
+      const g4 = gain[4];
+      const g5 = gain[5];
+      const g6 = gain[6];
+      const g7 = gain[7];
+      let d0 = damp[0];
+      let d1 = damp[1];
+      let d2 = damp[2];
+      let d3 = damp[3];
+      let d4 = damp[4];
+      let d5 = damp[5];
+      let d6 = damp[6];
+      let d7 = damp[7];
+      for (let i = 0; i < BLOCK_FRAMES; i++) {
+        if (preMoving) {
+          const p = preFrom + dPre * (i + 1);
+          preDi = Math.floor(p);
+          preFr = p - preDi;
+        }
+        pre[pw] = input[i];
+        const r0 = pre[(pw - preDi) & preMask];
+        const r1 = pre[(pw - preDi - 1) & preMask];
+        pw = (pw + 1) & preMask;
+        let x = r0 + (r1 - r0) * preFr + ANTI_DENORMAL;
+
+        let dl = b0[q0];
+        let v = x + G * dl;
+        x = dl - G * v;
+        b0[q0] = v;
+        q0 = q0 + 1 === n0 ? 0 : q0 + 1;
+        dl = b1[q1];
+        v = x + G * dl;
+        x = dl - G * v;
+        b1[q1] = v;
+        q1 = q1 + 1 === n1 ? 0 : q1 + 1;
+        dl = b2[q2];
+        v = x + G * dl;
+        x = dl - G * v;
+        b2[q2] = v;
+        q2 = q2 + 1 === n2 ? 0 : q2 + 1;
+        dl = b3[q3];
+        v = x + G * dl;
+        x = dl - G * v;
+        b3[q3] = v;
+        q3 = q3 + 1 === n3 ? 0 : q3 + 1;
+
+        const o0 = lines[(w - L0) & mask];
+        const o1 = lines[c1 + ((w - L1) & mask)];
+        const o2 = lines[c2 + ((w - L2) & mask)];
+        const o3 = lines[c3 + ((w - L3) & mask)];
+        const o4 = lines[c4 + ((w - L4) & mask)];
+        const o5 = lines[c5 + ((w - L5) & mask)];
+        const o6 = lines[c6 + ((w - L6) & mask)];
+        const o7 = lines[c7 + ((w - L7) & mask)];
+        // OUT_L, OUT_R.
+        let l = 0;
+        l += o0;
+        l -= o1;
+        l += o2;
+        l -= o3;
+        l += o4;
+        l -= o5;
+        l += o6;
+        l -= o7;
+        let r = 0;
+        r += o0;
+        r += o1;
+        r -= o2;
+        r -= o3;
+        r += o4;
+        r += o5;
+        r -= o6;
+        r -= o7;
+        d0 += (o0 - d0) * dc;
+        d1 += (o1 - d1) * dc;
+        d2 += (o2 - d2) * dc;
+        d3 += (o3 - d3) * dc;
+        d4 += (o4 - d4) * dc;
+        d5 += (o5 - d5) * dc;
+        d6 += (o6 - d6) * dc;
+        d7 += (o7 - d7) * dc;
+        const y0 = d0 * g0;
+        const y1 = d1 * g1;
+        const y2 = d2 * g2;
+        const y3 = d3 * g3;
+        const y4 = d4 * g4;
+        const y5 = d5 * g5;
+        const y6 = d6 * g6;
+        const y7 = d7 * g7;
+        let sum = 0;
+        sum += y0;
+        sum += y1;
+        sum += y2;
+        sum += y3;
+        sum += y4;
+        sum += y5;
+        sum += y6;
+        sum += y7;
+        const h = sum * (2 / LINES);
+        const xin = x * inGain;
+        // IN_SIGN.
+        lines[w] = y0 - h + xin;
+        lines[c1 + w] = y1 - h - xin;
+        lines[c2 + w] = y2 - h + xin;
+        lines[c3 + w] = y3 - h - xin;
+        lines[c4 + w] = y4 - h - xin;
+        lines[c5 + w] = y5 - h + xin;
+        lines[c6 + w] = y6 - h - xin;
+        lines[c7 + w] = y7 - h + xin;
+        w = (w + 1) & mask;
+        outL[i] = l * OUT_GAIN;
+        outR[i] = r * OUT_GAIN;
+      }
+      damp[0] = d0;
+      damp[1] = d1;
+      damp[2] = d2;
+      damp[3] = d3;
+      damp[4] = d4;
+      damp[5] = d5;
+      damp[6] = d6;
+      damp[7] = d7;
+      this.diffPos[0] = q0;
+      this.diffPos[1] = q1;
+      this.diffPos[2] = q2;
+      this.diffPos[3] = q3;
+      this.writePos = w;
+      this.preWrite = pw;
+      return;
+    }
+
     for (let i = 0; i < BLOCK_FRAMES; i++) {
       // Pre-delay (fractional; interpolated per sample while it moves).
       if (preMoving) {

@@ -509,14 +509,18 @@ export class Graph {
     ctx.revIn.fill(0);
     ctx.dlyIn.fill(0);
     const mode = this.renderMode;
+    const voices = this.voices;
+    const ghosts = this.ghosts;
+    const pieceFrame = this.pieceFrame;
+    const stem = mode === RenderMode.Voice ? this.stemVoice : -1;
     for (let i = 0; i < DSP_MAX_VOICES; i++) {
-      const v = this.voices[i];
+      const v = voices[i];
       if (!v.enabled) continue;
       // In a voice stem, the other voices run silently: the unison lock couples them.
-      v.render(ctx, this.pieceFrame, mode !== RenderMode.Voice || i === this.stemVoice);
+      v.render(ctx, pieceFrame, stem < 0 || i === stem);
     }
     for (let i = 0; i < MAX_GHOSTS; i++) {
-      const g = this.ghosts[i];
+      const g = ghosts[i];
       if (!g.enabled) continue;
       if (mode !== RenderMode.Voice || g.index === this.stemVoice) {
         for (let k = 1; k <= TICKS_PER_BLOCK; k++) g.computeLife(g.frame + k * CONTROL_PERIOD, k);
