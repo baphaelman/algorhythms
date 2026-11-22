@@ -198,7 +198,21 @@ export function drawVideoFrame(
   k: number,
   fps: number,
 ): View {
-  const t = videoFrameTime(k, fps, compiled.duration);
+  return drawVideoFrameAt(ctx, compiled, opts, videoFrameTime(k, fps, compiled.duration));
+}
+
+/**
+ * Clears and draws the frame at score time t (clamped to the piece) on a canvas `scale` times
+ * `videoSize(aspect, size)` pixels: the same picture, smaller (the Export dialog's preview).
+ */
+export function drawVideoFrameAt(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  time: Seconds,
+  scale = 1,
+): View {
+  const t = Math.min(Math.max(0, time), Math.max(0, compiled.duration));
   const { width, height, dpr } = videoLayout(opts.aspect, opts.size);
   const cam = videoCamera(opts.camera, compiled, t, opts);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -211,6 +225,6 @@ export function drawVideoFrame(
   ctx.setLineDash([]);
   ctx.textAlign = 'left';
   const px = videoSize(opts.aspect, opts.size);
-  ctx.clearRect(0, 0, px.width, px.height);
-  return drawScore(ctx, compiled, cam, opts.style, t, { width, height }, dpr);
+  ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
+  return drawScore(ctx, compiled, cam, opts.style, t, { width, height }, dpr * scale);
 }

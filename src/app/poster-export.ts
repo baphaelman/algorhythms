@@ -5,7 +5,7 @@
 
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece } from '../core/types';
-import { drawScore } from '../render/draw';
+import { drawScore, type Ctx2D } from '../render/draw';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import {
@@ -80,6 +80,21 @@ export async function renderPosterPng(
   return canvas.convertToBlob({ type: 'image/png' });
 }
 
+/**
+ * The Export dialog's preview: the poster as the PNG export draws it, title block included, on a
+ * canvas `scale` times the poster's pixel size.
+ */
+export function previewPoster(
+  ctx: Ctx2D,
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: PosterOptions,
+  scale: number,
+): void {
+  const o = posterDrawOptions(piece, opts, supportsOklch());
+  drawPoster(ctx, compiled, posterInfo(piece), o, scale);
+}
+
 /** The poster as an SVG document. */
 export function renderPosterSvg(
   piece: Piece,
@@ -95,6 +110,24 @@ export function renderPosterSvg(
 /** `<title>.png` / `<title>.svg`. */
 export function posterFileName(piece: Piece, format: 'png' | 'svg'): string {
   return `${fileBase(piece)}.${format}`;
+}
+
+/**
+ * Tests: the poster at `scale` drawn on a fresh canvas `width` x `height` pixels (title block
+ * included), to compare with the dialog's preview.
+ */
+export function referencePosterAt(
+  piece: Piece,
+  opts: PosterOptions,
+  scale: number,
+  width: number,
+  height: number,
+): ImageData {
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d')!;
+  const o = posterDrawOptions(piece, opts, supportsOklch());
+  drawPoster(g, compile(piece), posterInfo(piece), o, scale);
+  return g.getImageData(0, 0, width, height);
 }
 
 /**

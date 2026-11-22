@@ -19,9 +19,14 @@ import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
+import { drawScore, type Ctx2D } from '../render/draw';
+import { resetContext } from '../render/poster';
 import {
   drawVideoFrame,
+  drawVideoFrameAt,
+  videoCamera,
   videoFrameCount,
+  videoLayout,
   videoMarkers,
   videoSize,
   videoStyle,
@@ -394,6 +399,48 @@ export function referenceFrame(piece: Piece, opts: VideoOptions, k: number): Ima
   const canvas = new OffscreenCanvas(width, height);
   const g = canvas.getContext('2d', { alpha: false })!;
   drawVideoFrame(g, compile(piece), frameOptions(piece, opts), k, opts.fps);
+  return g.getImageData(0, 0, width, height);
+}
+
+/**
+ * The Export dialog's preview: the frame at score time t as the export draws it, on a canvas
+ * `scale` times the video's pixel size (fresh context state, as on a new canvas).
+ */
+export function previewVideoFrame(
+  ctx: Ctx2D,
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: VideoOptions,
+  t: Seconds,
+  scale: number,
+): void {
+  resetContext(ctx);
+  drawVideoFrameAt(ctx, compiled, frameOptions(piece, opts), t, scale);
+}
+
+/**
+ * Tests: the frame at t drawn by `drawScore` directly (the same camera, style and layout) on a
+ * fresh canvas `width` x `height` pixels, `scale` times the video's, to compare with the preview.
+ */
+export function referenceFrameAt(
+  piece: Piece,
+  opts: VideoOptions,
+  t: Seconds,
+  scale: number,
+  width: number,
+  height: number,
+): ImageData {
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d')!;
+  const compiled = compile(piece);
+  const fo = frameOptions(piece, opts);
+  const lay = videoLayout(opts.aspect, opts.size);
+  const tc = Math.min(Math.max(0, t), compiled.duration);
+  const cam = videoCamera(fo.camera, compiled, tc, fo);
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.textAlign = 'left';
+  drawScore(g, compiled, cam, fo.style, tc, lay, lay.dpr * scale);
   return g.getImageData(0, 0, width, height);
 }
 

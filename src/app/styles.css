@@ -1027,47 +1027,93 @@ dialog.dialog.export {
   opacity: 0.5;
 }
 
-/* The export Look section (video and poster). */
-.dialog details.look {
+/* The export Look (video and poster): dropdowns in a label / control grid. */
+.dialog fieldset.look {
+  min-width: 0;
   margin: 0 0 14px;
+  padding: 6px 11px 12px;
   border: 1px solid var(--rule);
   border-radius: 3px;
 }
 
-.dialog details.look > summary {
-  padding: 9px 11px;
+.dialog fieldset.look > legend {
+  padding: 0 4px;
   font: 500 12px/1.3 var(--f-mono);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-2);
-  cursor: pointer;
 }
 
-.dialog .look-body {
+.dialog .look-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.dialog .look-grid > label,
+.dialog .look-grid > .look-label {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.dialog .look-grid > .look-note {
+  grid-column: 2;
+  margin-top: -3px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.dialog .look select,
+.dialog .hud-picker > button {
+  width: 100%;
   min-width: 0;
-  margin: 0;
-  padding: 4px 11px 12px;
-  border: 0;
+  min-height: 32px;
+  padding: 5px 8px;
+  font: 500 13px/1.2 var(--f-mono);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  text-align: left;
 }
 
-.dialog .look-body .check:has(input:disabled) {
+.dialog .look select:disabled {
   opacity: 0.5;
 }
 
-.dialog .look-body .sub {
-  display: block;
-  margin: 6px 0 0 24px;
+.dialog .hud-picker {
+  position: relative;
+  min-width: 0;
 }
 
-.dialog .look-body .sub + .check {
-  margin-top: 6px;
+.dialog .hud-picker > button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
 }
 
-.dialog .hud-list .check {
+.dialog .hud-pop {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(340px, calc(100vw - 72px));
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
+}
+
+.dialog .hud-pop .check {
   flex-wrap: wrap;
+  padding: 3px 0;
 }
 
-.dialog .hud-list .hud-sample {
+.dialog .hud-pop .hud-sample {
   margin-left: auto;
   font: 12px/1.3 var(--f-mono);
   color: var(--ink-2);
@@ -1080,12 +1126,93 @@ dialog.dialog.export {
   margin-bottom: 4px;
 }
 
-.dialog .look-body input[type='color'] {
+.dialog .look input[type='color'] {
   width: 44px;
   height: 30px;
   padding: 0;
   border: 1px solid var(--rule);
   background: none;
+}
+
+/*
+ * The live preview (video, poster). Wide screens: a left column that stays in view while the
+ * options scroll. Narrow screens: sticky at the top of the dialog, the options scrolling under it.
+ */
+dialog.dialog.export.has-preview {
+  width: min(1040px, calc(100vw - 32px));
+}
+
+.export-preview {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
+.export-preview .preview-box {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.export-preview canvas {
+  display: block;
+  border: 1px solid var(--rule);
+}
+
+/* A transparent poster on a checkerboard. */
+.export-preview canvas.checker {
+  background: repeating-conic-gradient(#c9ced4 0% 25%, #f4f6f8 0% 50%) 0 0 / 12px 12px;
+}
+
+.export-preview .preview-time {
+  margin-top: 6px;
+}
+
+@media (min-width: 900px) {
+  .has-preview .export-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+    grid-template-areas: 'preview format' 'preview options';
+    align-items: start;
+    column-gap: 20px;
+  }
+
+  .has-preview .export-format {
+    grid-area: format;
+  }
+
+  .has-preview .export-options {
+    grid-area: options;
+  }
+
+  .has-preview .export-preview {
+    grid-area: preview;
+    /* Stuck over the dialog's 16 px padding too, so nothing shows above it. */
+    top: -16px;
+    margin-top: -16px;
+    padding-top: 20px;
+  }
+}
+
+@media (max-width: 899px) {
+  .export-preview {
+    /* Stuck at the dialog's top edge, over its 14 px padding. */
+    top: -14px;
+    margin: 0 -14px 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .export-preview .preview-time {
+    margin-top: 4px;
+  }
+
+  /* Labels wrap so the dropdowns keep room for their text. */
+  .dialog .look-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    column-gap: 8px;
+  }
 }
 
 /* ---- phones: player only ----------------------------------------------------------------- */

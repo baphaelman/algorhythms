@@ -115,6 +115,7 @@ export type {
 } from './types';
 export {
   drawVideoFrame,
+  drawVideoFrameAt,
   videoCamera,
   videoFrameCount,
   videoFrameTime,

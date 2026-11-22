@@ -9,7 +9,8 @@ import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/s
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
 import { exportFrameCount } from '../audio/offline';
 import { wavExportSize } from '../audio/wav-export';
-import type { CompiledScore, Piece } from '../core/types';
+import type { CompiledScore, Piece, Seconds } from '../core/types';
+import type { Ctx2D } from '../render/draw';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
   exportFileName,
@@ -28,6 +29,7 @@ import {
   estimateVideoBytes,
   exportVideo,
   fileSink,
+  previewVideoFrame,
   videoSupport,
   type VideoOptions,
   type VideoPhase,
@@ -35,7 +37,7 @@ import {
   type VideoSink,
 } from './video-export';
 
-import { posterFileName, renderPosterPng, renderPosterSvg } from './poster-export';
+import { posterFileName, previewPoster, renderPosterPng, renderPosterSvg } from './poster-export';
 import type { PosterOptions } from './poster-export';
 
 export { canSaveToDisk, pickStemsFile, posterFileName, videoSupport };
@@ -239,6 +241,48 @@ export async function runPoster(
     throw e;
   }
   return { name, blob: null, bytes: blob.size, files: 1 };
+}
+
+/** What the dialog's preview last drew (tests compare it with a direct render). */
+export type PreviewRequest =
+  | { kind: 'video'; options: VideoOptions; t: Seconds; scale: number }
+  | { kind: 'poster'; options: PosterOptions; scale: number };
+
+let lastPreview: PreviewRequest | null = null;
+
+/** The last preview drawn (tests). */
+export function lastPreviewRequest(): PreviewRequest | null {
+  return lastPreview;
+}
+
+/**
+ * The dialog's preview of a video export: the frame at t, drawn by the export's own code with
+ * the options `runVideo` would use, on a canvas `scale` times the video's pixels.
+ */
+export function previewVideo(
+  g: Ctx2D,
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  t: Seconds,
+  scale: number,
+): void {
+  const options = videoOptions(form, src.piece, ctx);
+  lastPreview = { kind: 'video', options, t, scale };
+  previewVideoFrame(g, src.piece, src.compiled, options, t, scale);
+}
+
+/** The dialog's preview of a poster export (as `previewVideo`; the whole poster). */
+export function previewPosterOf(
+  g: Ctx2D,
+  src: ExportSource,
+  form: ExportForm,
+  ctx: LookAppContext,
+  scale: number,
+): void {
+  const options = posterOptions(form, src.piece, ctx);
+  lastPreview = { kind: 'poster', options, scale };
+  previewPoster(g, src.piece, src.compiled, options, scale);
 }
 
 const PHASE_LABEL: Record<VideoPhase, string> = {
