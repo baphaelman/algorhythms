@@ -130,7 +130,13 @@ export function drawScore(
   const { width: W, height: H } = size;
   const C = style.tokens;
   const MONO = style.fontMono ?? DEFAULT_MONO;
-  const view = cameraAt(cameraScore(compiled), camera, t, size, style.hud);
+  const view = cameraAt(
+    cameraScore(compiled),
+    camera,
+    t,
+    size,
+    style.hud || style.reserveHud === true,
+  );
   const { padT, padB, padL, padR } = view;
 
   g.setTransform(dpr, 0, 0, dpr, 0, 0);

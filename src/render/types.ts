@@ -92,6 +92,11 @@ export interface ScoreStyle {
   futureOpacity: number;
   /** Draw the heads-up display. */
   hud: boolean;
+  /**
+   * Keep the HUD's bottom padding with `hud` false: the poster's title block goes there (§12
+   * "Poster export"). @default false
+   */
+  reserveHud?: boolean;
   /** Draw heads (dots, rings, Hz labels) and the playhead emphasis. @default true */
   heads?: boolean;
   /**

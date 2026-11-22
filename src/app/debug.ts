@@ -9,6 +9,7 @@ import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
 import { armRecord, enterLive, exitLive, live, stopRecord, useRecord } from './live';
 import { lifeAt, pitchAt } from '../core/query';
+import { parsePiece } from '../core/schema';
 import { connectMidi, disconnectMidi, liveInputs, midiSink, useLive } from './live-ui';
 import { frameStats } from './loop';
 import { auditionState } from './audition';
@@ -70,6 +71,10 @@ export interface AlgoRhythmsDebug {
   videoExport(): Promise<typeof import('./video-export')>;
   /** The Export dialog's engine room (`lastVideoRequest()` for M8-d's tests), loaded on demand. */
   exportRun(): Promise<typeof import('./export-run')>;
+  /** Poster export (M9-a): `renderPosterPng`, `renderPosterSvg`, `referencePoster`. */
+  poster(): Promise<typeof import('./poster-export')>;
+  /** `parsePiece` (core/schema), for tests that load example files. */
+  parsePiece: typeof parsePiece;
 }
 
 declare global {
@@ -136,5 +141,7 @@ export function installDebug(): void {
     video: () => import('../video/mp4'),
     videoExport: () => import('./video-export'),
     exportRun: () => import('./export-run'),
+    poster: () => import('./poster-export'),
+    parsePiece,
   };
 }
