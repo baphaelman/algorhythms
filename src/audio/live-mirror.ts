@@ -6,7 +6,15 @@
 
 import { bezierOf, easeCodeOf } from '../core/ease';
 import { flatten } from '../core/flat';
-import type { LiveMove, LiveView } from '../core/live';
+import {
+  liveUpdate,
+  MERGE_WINDOW,
+  type LiveMove,
+  type LiveSettings,
+  type LiveUpdate,
+  type LiveView,
+} from '../core/live';
+import { hash32 } from '../core/rng';
 import type { Pitch, Seconds } from '../core/types';
 import {
   LIVE_BX1,
@@ -54,6 +62,58 @@ export function liveView(
     level: voices.length > 0 ? tracks.levelAt(0, t) : 0,
     levelTarget: voices.length > 0 ? tracks.levelTarget(0) : 0,
   };
+}
+
+/** A press (§9 merge window): its first change, the state it was decided on, and when. */
+export interface LivePress {
+  /** Seq its first change was posted with. */
+  seq: number;
+  /** Call time of its first change (s, any clock). */
+  at: Seconds;
+  view: LiveView;
+  /** Live time it was decided at. */
+  t: Seconds;
+}
+
+/** What a change of H decides (LiveEngine, the Node rig). */
+export interface LiveDecision {
+  update: LiveUpdate;
+  /** Decision time (a re-planned press: its first change's). */
+  t: Seconds;
+  /** The press it re-plans (its first seq), or 0 for a new change. */
+  press: number;
+  seed: number;
+  /** The current press after this change (null: none). */
+  next: LivePress | null;
+}
+
+/**
+ * The decision for held set `held` at call time `at` (s): within MERGE_WINDOW of `press`'s first
+ * change, with notes held, the press re-planned on the state its first change saw; otherwise a
+ * new change on `tracks` at live time t, which starts a press when notes are held. `nextSeq` is
+ * the seq it would be posted with; seeds are hash32(baseSeed, the press's first seq).
+ */
+export function decideLive(
+  press: LivePress | null,
+  tracks: LiveTracks,
+  voices: readonly { id: string; range: readonly [Pitch, Pitch] }[],
+  held: readonly Pitch[],
+  settings: Readonly<LiveSettings>,
+  baseSeed: number,
+  nextSeq: number,
+  at: Seconds,
+  t: Seconds,
+): LiveDecision {
+  if (press && held.length > 0 && at - press.at <= MERGE_WINDOW) {
+    const seed = hash32(baseSeed, press.seq);
+    const update = liveUpdate(press.view, held, settings, seed);
+    return { update, t: press.t, press: press.seq, seed, next: press };
+  }
+  const view = liveView(tracks, voices, t);
+  const seed = hash32(baseSeed, nextSeq);
+  const update = liveUpdate(view, held, settings, seed);
+  const next = held.length > 0 ? { seq: nextSeq, at, view, t } : null;
+  return { update, t, press: 0, seed, next };
 }
 
 /** Live moves as LIVE_STRIDE records (dsp/live.ts); at least one record long. */

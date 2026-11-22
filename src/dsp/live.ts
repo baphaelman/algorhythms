@@ -77,6 +77,8 @@ export const LIVE_STRIKE_CAP = 128;
 export const LIVE_LEVEL_CAP = 32;
 /** Messages that can wait for one block. */
 export const LIVE_QUEUE = 32;
+/** Applied messages remembered for re-planned presses (a press spans a few messages). */
+export const LIVE_RING = 16;
 /** Bend smoothing time constant (s). */
 export const BEND_SMOOTHING = 0.008;
 
@@ -179,16 +181,33 @@ export class LiveTracks {
     over: number,
     tA: number,
     touched: Uint8Array | null = null,
+    rewind = false,
   ): void {
     LR[R_TA] = tA;
     LR[R_GAIN] = gain;
     LR[R_OVER] = over;
-    this.run(moves, base, n, touched);
+    this.run(moves, base, n, touched, rewind);
   }
 
-  /** `apply` with tA, gain and over in LR[R_TA], LR[R_GAIN], LR[R_OVER]. Allocation-free. */
-  run(moves: Float64Array, base: number, n: number, touched: Uint8Array | null): void {
+  /**
+   * `apply` with tA, gain and over in LR[R_TA], LR[R_GAIN], LR[R_OVER]. With `rewind` (a press
+   * re-planned from its first change, §9 merge window), every voice first drops what was written
+   * from tA on (`rewind`), so the moves replace the press's earlier ones. Allocation-free.
+   */
+  run(
+    moves: Float64Array,
+    base: number,
+    n: number,
+    touched: Uint8Array | null,
+    rewind = false,
+  ): void {
     const count = this.data.length;
+    if (rewind) {
+      for (let i = 0; i < count; i++) {
+        this.rewind(this.data[i]);
+        if (touched !== null) touched[i] = 1;
+      }
+    }
     for (let r = 0; r < n; r++) {
       const o = base + r * LIVE_STRIDE;
       const i = moves[o + LIVE_VOICE] | 0;
@@ -301,6 +320,38 @@ export class LiveTracks {
       LR[R_Y] = m[mo + LIVE_SHARE];
       this.strike(d, true);
       d.nSeg = n + 1;
+    }
+  }
+
+  /**
+   * Undoes voice d's moves from LR[R_TA] on: segments starting there or later and strikes after it
+   * are dropped, and the segment they cut is restored to its full curve (with its hold and
+   * arrival strike). A press's first change is applied at tA; its later changes rewind to tA and
+   * re-plan from the state before the press.
+   */
+  private rewind(d: VoiceData): void {
+    const tA = LR[R_TA];
+    const s = d.segs;
+    let n = d.nSeg;
+    while (n > 1 && s[(n - 1) * SEG_STRIDE + SEG_T0] >= tA) n--;
+    d.nSeg = n;
+    let ns = d.nStrike;
+    while (ns > 0 && d.strikeT[ns - 1] > tA) ns--;
+    d.nStrike = ns;
+    const lo = (n - 1) * SEG_STRIDE;
+    const ct1 = s[lo + SEG_CURVE_T1];
+    if (s[lo + SEG_T1] >= tA && s[lo + SEG_T1] < ct1) {
+      s[lo + SEG_T1] = ct1;
+      s[lo + SEG_P1] = s[lo + SEG_CURVE_P1];
+      if (ct1 < INF) {
+        LR[R_X] = ct1;
+        LR[R_Y] = s[lo + SEG_CURVE_P1];
+        this.writeHold(d, n);
+        if (d.segGlide[n - 1] === 1) {
+          LR[R_Y] = d.share[n - 1];
+          this.strike(d, false);
+        }
+      }
     }
   }
 
@@ -593,7 +644,7 @@ export function exerciseLiveTracks(from: VoiceData): void {
     m[LIVE_SCALE] = k % 3 === 0 ? 0.5 : 1;
     m[LIVE_SHARE] = 1;
     const gain = k % 2 === 0 ? (k % 4 === 0 ? 0 : 1) : NaN;
-    tracks.apply(m, 0, 1, gain, 0.025, t);
+    tracks.apply(m, 0, 1, gain, 0.025, t, null, k % 9 === 4); // a re-planned press now and then
     t += STEPS[k % STEPS.length];
   }
 }
@@ -611,6 +662,11 @@ export class LiveInput {
   private readonly qSeq = new Float64Array(LIVE_QUEUE);
   private readonly qGain = new Float64Array(LIVE_QUEUE);
   private readonly qOver = new Float64Array(LIVE_QUEUE);
+  private readonly qPress = new Float64Array(LIVE_QUEUE);
+  /** Recently applied seqs and the time each was applied at (a ring), for re-planned presses. */
+  private readonly ringSeq = new Float64Array(LIVE_RING).fill(-1);
+  private readonly ringTime = new Float64Array(LIVE_RING);
+  private ringHead = 0;
   private qHead = 0;
   private qLen = 0;
   private readonly touched = new Uint8Array(DSP_MAX_VOICES);
@@ -638,10 +694,18 @@ export class LiveInput {
   }
 
   /**
-   * Queues a message: `n` records of `moves` (copied) and a level ramp (NaN gain: none). False if
-   * the queue is full (the message is dropped).
+   * Queues a message: `n` records of `moves` (copied) and a level ramp (NaN gain: none). With
+   * `press` > 0 (the seq of its press's first message) it applies at the time that message was
+   * applied, after rewinding to it (`LiveTracks.run`). False if the queue is full (dropped).
    */
-  queue(seq: number, moves: Float64Array, n: number, gain: number, over: number): boolean {
+  queue(
+    seq: number,
+    moves: Float64Array,
+    n: number,
+    gain: number,
+    over: number,
+    press = 0,
+  ): boolean {
     if (this.qLen >= LIVE_QUEUE) return false;
     const slot = (this.qHead + this.qLen) % LIVE_QUEUE;
     const k = n < DSP_MAX_VOICES ? n : DSP_MAX_VOICES;
@@ -652,6 +716,7 @@ export class LiveInput {
     this.qSeq[slot] = seq;
     this.qGain[slot] = gain;
     this.qOver[slot] = over;
+    this.qPress[slot] = press;
     this.qLen++;
     return true;
   }
@@ -681,10 +746,26 @@ export class LiveInput {
     touched.fill(0);
     while (this.qLen > 0) {
       const slot = this.qHead;
-      LR[R_TA] = tA;
+      const press = this.qPress[slot];
+      let at = -1;
+      if (press > 0) {
+        for (let k = 0; k < LIVE_RING; k++) {
+          if (this.ringSeq[k] === press) at = this.ringTime[k];
+        }
+      }
+      LR[R_TA] = at >= 0 ? at : tA;
       LR[R_GAIN] = this.qGain[slot];
       LR[R_OVER] = this.qOver[slot];
-      this.tracks.run(this.qMoves, slot * DSP_MAX_VOICES * LIVE_STRIDE, this.qCount[slot], touched);
+      this.tracks.run(
+        this.qMoves,
+        slot * DSP_MAX_VOICES * LIVE_STRIDE,
+        this.qCount[slot],
+        touched,
+        at >= 0,
+      );
+      this.ringSeq[this.ringHead] = this.qSeq[slot];
+      this.ringTime[this.ringHead] = tA;
+      this.ringHead = (this.ringHead + 1) % LIVE_RING;
       this.appliedSeq[this.appliedCount++] = this.qSeq[slot];
       this.qHead = (this.qHead + 1) % LIVE_QUEUE;
       this.qLen--;

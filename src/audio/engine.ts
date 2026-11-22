@@ -318,8 +318,9 @@ export class AudioEngine {
     n: number,
     gain: number,
     over: number,
+    press = 0,
   ): void {
-    this.post({ type: 'live', seq, moves, n, gain, over }, [moves.buffer]);
+    this.post({ type: 'live', seq, moves, n, gain, over, press }, [moves.buffer]);
   }
 
   /** Live pitch bend, semitones. */

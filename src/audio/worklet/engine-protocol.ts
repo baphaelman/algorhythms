@@ -57,9 +57,18 @@ export type EngineInMessage =
   | { type: 'liveStart'; voices: number }
   /**
    * `live { segments }` (§8.2, §9): `n` LIVE_STRIDE move records timed from "now" and a level ramp
-   * (`gain` NaN: none), applied at the next block; answered by `liveApplied`.
+   * (`gain` NaN: none), applied at the next block; answered by `liveApplied`. `press` > 0: the
+   * seq of its press's first message; it re-plans that press from there (dsp/live.ts `rewind`).
    */
-  | { type: 'live'; seq: number; moves: Float64Array; n: number; gain: number; over: number }
+  | {
+      type: 'live';
+      seq: number;
+      moves: Float64Array;
+      n: number;
+      gain: number;
+      over: number;
+      press?: number;
+    }
   /** Live pitch bend in semitones (smoothed on the audio thread). */
   | { type: 'liveBend'; semitones: number };
 
