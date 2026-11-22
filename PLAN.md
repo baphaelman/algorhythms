@@ -563,7 +563,7 @@ interface Timbre {
 Built-in presets:
 - **M2 (wavetable and articulation only):** sine, glass, organ, reed, choir-ish (formant-weighted harmonics), pluck (high articulation).
 - **M3:** wobble (soft glass-like, `wobble` 3: converged voices beat slowly).
-- **M6:** bell (stretch + FM), plus further presets.
+- **M6:** bell (a harmonic held tone plus struck inharmonic partials that ring away, `strikePartials` and `fm.held`; redesigned 2026-11-21 after the owner rejected the stretch + FM bell), plus epiano, flute, marimba and brass.
 
 **Inharmonic timbres (resolved).** `stretch ≠ 0` makes the partials inharmonic, so a single-cycle wavetable can't represent them. Such timbres use an **additive path** instead: up to 16 partials, each with its own phase accumulator, read from the shared sine table, with partials above Nyquist skipped individually. The cost is 24 voices × 16 partials × 48k ≈ 18M table lookups per second, which is affordable. It ships in M6 with `stretch`.
 
