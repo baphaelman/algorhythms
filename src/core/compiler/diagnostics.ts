@@ -104,6 +104,11 @@ export const DIAGNOSTIC_CODES: Readonly<
     meaning:
       'The moment changes nothing at its time: no pitch target, audible count, level, key or timbre change (revision 6). A warning when nothing it targets is sounding.',
   },
+  'land-overtaken': {
+    level: 'info',
+    meaning:
+      "A land moment's glide starts before an earlier moment, which is then decided after it and moves its lines elsewhere before they arrive (revision 9).",
+  },
   'merge-nothing': {
     level: 'info',
     meaning: 'The active count is already at or below the target.',

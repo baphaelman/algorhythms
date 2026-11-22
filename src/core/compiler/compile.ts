@@ -97,7 +97,7 @@ import { foldApart, type FoldNote } from './fold-apart';
 import { foldIntoRange, sanitizeRange } from './range';
 import { cutRests, REST_ATTACK, REST_RETURN_MIN } from './rests';
 import { collapse, countsLines, expand, type Collapsed, type Expansion } from './lines';
-import { Status, VoiceRun, type Birth, type Move, type TimbreEntry } from './voice';
+import { isGlide, Status, VoiceRun, type Birth, type Move, type TimbreEntry } from './voice';
 
 /**
  * Distinct notes (revision 8) and merges and splits crossfade (owner 2026-11-21): a line that
@@ -311,6 +311,9 @@ interface HandoverRec {
   died: Seconds;
 }
 
+/** A time for a message: rounded to 0.01 s. */
+const secs = (t: Seconds): number => Math.round(t * 100) / 100;
+
 function moving(s: Segment): boolean {
   return s.p0 !== s.p1 || (s.m0 ?? 0) !== 0 || s.curve !== undefined;
 }
@@ -372,6 +375,8 @@ export class Compiler {
   readonly eventT: number[] = [];
   /** Per moment: its lead-in when it lands (revision 9), else null. */
   readonly landings: (Landing | null)[] = [];
+  /** Some non-tune moment decides at a lead-in before its `at` (`land-overtaken` checks). */
+  private anyLand = false;
   /** Valid key moments, by index (a land moment reads the key at its `at`). */
   private readonly keyMoments: number[] = [];
   readonly spanStart: number[] = [];
@@ -565,6 +570,7 @@ export class Compiler {
       this.glides[i] = momentGlide(defaults, m);
       const land = this.glides[i].land === true && glides(m) ? landing(m.at, this.glides[i]) : null;
       this.landings[i] = land;
+      if (land && m.type !== 'tune' && land.start < m.at) this.anyLand = true;
       this.eventT[i] = land ? land.start : m.at;
       if (m.type === 'key') this.keyMoments.push(i);
       this.queue.push({ t: this.eventT[i], cls: EventClass.Moment, key: i, sub: 0, ref: i });
@@ -1021,9 +1027,11 @@ export class Compiler {
     // the lines stand for (revision 8; owner, 2026-11-21).
     const flat = countsLines(this.moments[i]);
     const counts = this.voices.map((r) => (flat ? 1 : r.count));
+    const owed = this.anyLand && !back ? this.landsOwed(i, T) : null;
     const d0 = this.diags.length;
     const { targeted, res, lost, absorbed } = this.applyPointMoment(i, back, late);
     if (back) return;
+    if (owed) this.landOvertaken(i, owed);
     for (let k = d0; k < this.diags.length; k++) {
       const d = this.diags[k];
       if (d.level === 'error' || d.code === 'note-not-sounding') return;
@@ -1049,6 +1057,70 @@ export class Compiler {
       })}.`,
       this.moments[i].id,
     );
+  }
+
+  /**
+   * Before point moment i decides at T: per voice, a land moment k (`at` ≥ i's, so i decides
+   * after it only through k's lead-in) whose move there has not arrived (its last pending move,
+   * else a running tail glide), as [voice, k, destination] triples; null if none.
+   */
+  private landsOwed(i: number, T: Seconds): number[] | null {
+    const at = this.moments[i].at;
+    let out: number[] | null = null;
+    for (const run of this.voices) {
+      let k = -1;
+      let to = NaN;
+      let pending = false;
+      for (let j = run.pending.length - 1; j >= 0 && !pending; j--) {
+        const mv = run.pending[j];
+        if (mv.cancelled) continue;
+        pending = true;
+        if (!mv.death) {
+          k = mv.momentIndex;
+          to = mv.to;
+        }
+      }
+      if (!pending) {
+        const s = run.frontier.tail;
+        if (s && !run.frontier.open && s.t1 > T && isGlide(s)) {
+          k = run.tailMoment;
+          to = s.p1;
+        }
+      }
+      if (k < 0 || k === i || !this.landings[k] || !(this.moments[k].at >= at)) continue;
+      if (this.moments[k].type === 'tune') continue;
+      (out ??= []).push(run.index, k, to);
+    }
+    return out;
+  }
+
+  /**
+   * After point moment i: `land-overtaken` (revision 9) on each land moment of `owed` that i
+   * sent a line of elsewhere before it arrived. Without it the moment fails silently: no
+   * `no-effect`, since it did plan moves.
+   */
+  private landOvertaken(i: number, owed: readonly number[]): void {
+    const lost = new Map<number, number>();
+    for (let x = 0; x < owed.length; x += 3) {
+      const k = owed[x + 1];
+      if (this.destOf(owed[x]) !== owed[x + 2]) lost.set(k, (lost.get(k) ?? 0) + 1);
+    }
+    const mi = this.moments[i];
+    const current = this.current;
+    for (const [k, n] of lost) {
+      const mk = this.moments[k];
+      this.current = k;
+      this.diag(
+        'info',
+        'land-overtaken',
+        `Overtaken by '${mi.id}' (at ${secs(mi.at)} s): this glide starts earlier ` +
+          `(${secs(this.eventT[k])} s), so '${mi.id}' is decided after it and moves ` +
+          `${n === 1 ? 'a line' : `${n} lines`} elsewhere before ${n === 1 ? 'it arrives' : 'they arrive'}. ` +
+          'Shorten the glide or move the moments apart.',
+        mk.id,
+      );
+    }
+    this.current = current;
   }
 
   /** Raises `no-effect` for a key, level or tune moment (`warn`: a tune that targets nothing). */
@@ -2225,6 +2297,7 @@ export class Compiler {
       mv.momentId,
       mv,
     );
+    run.tailMoment = mv.momentIndex;
     this.span(mv.momentIndex, mv.t0, seg.t1);
     this.activity(seg.t1);
     if (mv.death) {
@@ -2488,6 +2561,7 @@ export class Compiler {
           d.range,
           mv.momentId,
         );
+        d.tailMoment = -1;
         if (wasClamped) seg.clamped = true;
         end = seg.t1;
         this.activity(end);
@@ -2535,6 +2609,7 @@ export class Compiler {
         d.range,
         this.moments[i].id,
       );
+      d.tailMoment = -1;
       this.activity(seg.t1);
       const fadeStart = d.diedAt - d.deathFade;
       if (t < fadeStart && seg.t1 > fadeStart) this.scheduleClose(d, seg.t1 + d.deathFade);

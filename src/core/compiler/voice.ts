@@ -350,6 +350,8 @@ export class VoiceRun {
   handed = false;
   /** Moves scheduled but not started, in start order. */
   pending: Move[] = [];
+  /** Index of the moment whose move started the tail glide (−1: another kind of tail). */
+  tailMoment = -1;
   /** A birth not yet happened (never cancelled). */
   pendingBirth: Birth | null = null;
   /** The open life, if sounding. */
