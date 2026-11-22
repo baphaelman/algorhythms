@@ -515,7 +515,10 @@ test(
       description: String(Math.round(heard)),
     });
     expect(heard).toBeGreaterThan(0);
-    expect(heard, 'ms from navigation start to audible output').toBeLessThan(3000);
+    // Visitors get the production build (§15); the dev server's unbundled modules only record.
+    if (info.project.name.endsWith('-prod')) {
+      expect(heard, 'ms from navigation start to audible output').toBeLessThan(3000);
+    }
   },
 );
 

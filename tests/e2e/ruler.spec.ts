@@ -119,6 +119,10 @@ test('clicking and dragging the ruler seeks; the view holds still', async ({ pag
   // Clicking while playing keeps playing from the new point.
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.waitForFunction(() => window.__algorhythms?.engine()?.isPlaying === true);
+  // `isPlaying` is optimistic (true once play is posted). Wait for the worklet's anchor, seen as
+  // the clock moving: clicking before it lets that stale anchor mask the seek.
+  const from = await shownTime(page);
+  await expect.poll(() => shownTime(page), { timeout: 10_000 }).toBeGreaterThan(from + 0.1);
   await page.mouse.click(x1, y);
   await expect.poll(async () => (await state(page)).status).toBe('playing');
   await expect.poll(() => shownTime(page), { timeout: 10_000 }).toBeGreaterThan(timeAt(x1));
