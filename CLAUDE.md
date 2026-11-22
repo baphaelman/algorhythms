@@ -82,4 +82,4 @@ The integrator continues the work with a fresh agent.
 | R9 Parts, pulse, tune, land (PLAN rev 9) | **done** 2026-11-21 (R9-1…9, crossfade, arrival bloom), pushed in v30–v32. The composition rewrite is on local branch `compositions-rev9`, waiting for the owner to listen |
 | M5 Editor completion | **feature-complete** 2026-11-21 (share links, multi-select/copy/paste/Freeze/piano ruler, touch), pushed in v33–v34. Acceptance: `docs/m5-acceptance.md`. Open: owner's check on a real iPad; the old compositions' links stay over 2,000 characters until the rewrite ships |
 | M6 Timbre depth | **feature-complete** 2026-11-22: all §15 acceptance lines pass (`docs/m6-acceptance.md`); FM, noise, additive, redesigned bell, presets, Sound drawer (timbre editor + master FX), `timbre` moment. Owner picked the church bell (2026-11-22) |
-| M7 Live instrument | **in progress** 2026-11-22: M7-a engine path (live voice leading, `live` segments, interactive context) |
+| M7 Live instrument | **in progress** 2026-11-22: M7-a engine path merged (live voice leading, interactive context, latency ≤ 10 ms); M7-b inputs + Live drawer and M7-c recording running |
