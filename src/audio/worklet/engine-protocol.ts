@@ -70,7 +70,9 @@ export type EngineInMessage =
       press?: number;
     }
   /** Live pitch bend in semitones (smoothed on the audio thread). */
-  | { type: 'liveBend'; semitones: number };
+  | { type: 'liveBend'; semitones: number }
+  /** Live voice `voice` crossfades to timbre `timbre` over `fade` s from the next block. */
+  | { type: 'liveTimbre'; voice: number; timbre: string; fade: number };
 
 /** Worklet → main thread. */
 export type EngineOutMessage =

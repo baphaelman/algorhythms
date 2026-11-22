@@ -262,7 +262,7 @@ export function LiveDrawer() {
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) {
           e.preventDefault();
-          closeLive();
+          void closeLive();
         }
       }}
     >
@@ -277,7 +277,7 @@ export function LiveDrawer() {
           type="button"
           className="vd-close"
           aria-label="Close live drawer"
-          onClick={() => closeLive()}
+          onClick={() => void closeLive()}
         >
           ×
         </button>

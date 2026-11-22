@@ -675,6 +675,11 @@ export class Graph {
     }
   }
 
+  /** The slot for timbre `name`, taking a free one if it has none (live timbre changes). */
+  slotFor(name: string): number {
+    return this.slotIndex(name);
+  }
+
   private slotIndex(name: string): number {
     const known = this.slotByName.get(name);
     if (known !== undefined) return known;

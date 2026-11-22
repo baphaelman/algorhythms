@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import { live } from '../dom';
 import { clampLoop } from '../ruler';
 import { RecordToggle, TypingToggle } from './LiveDrawer';
-import { scrubEnd, scrubTo, toggleLoop, togglePlay, usePlayer } from '../store';
+import { pressPlay } from '../live-ui';
+import { scrubEnd, scrubTo, toggleLoop, usePlayer } from '../store';
 
 /** Play/pause, the time readout, the meter and the key and voice status. */
 export function Transport({
@@ -32,7 +33,7 @@ export function Transport({
         className="primary play"
         data-testid="play"
         aria-keyshortcuts="Space"
-        onClick={togglePlay}
+        onClick={pressPlay}
       >
         {playing ? 'Pause' : 'Play'}
       </button>

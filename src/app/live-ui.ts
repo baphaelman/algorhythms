@@ -4,6 +4,9 @@
  * - Opening the drawer enters live mode (from the gesture) and turns musical typing on; closing it
  *   leaves live mode and turns typing off. Typing can be toggled meanwhile (transport button, `).
  *   A note key with typing on and the drawer closed opens it.
+ * - Play while live (not recording) closes the drawer and plays from the playhead (`pressPlay`);
+ *   Space does not (a take stops; otherwise nothing). Re-entering live mode (an edit that changes
+ *   the live voices, another piece opened) releases the held inputs; drawer and typing stay.
  * - The panel's settings (single key, chord voicing, release, glide, stagger, order) are viewer
  *   settings, not the piece's: kept for the session and remembered per viewer (localStorage).
  * - While typing is on, letters are taken in the window's capture phase, before any editor key
@@ -20,7 +23,17 @@ import {
 } from '../core/live';
 import type { Pitch } from '../core/types';
 import { LiveInputHub } from './live-input';
-import { armRecord, enterLive, exitLive, isRecording, live, stopRecord, useRecord } from './live';
+import { preparePlayback } from './audio';
+import {
+  armRecord,
+  enterLive,
+  exitLive,
+  isRecording,
+  live,
+  onReenter,
+  stopRecord,
+  useRecord,
+} from './live';
 import {
   ALL_INPUTS,
   hasWebMidi,
@@ -29,7 +42,7 @@ import {
   type MidiDevice,
   type MidiSink,
 } from './midi-input';
-import { pushNotice } from './store';
+import { play, pushNotice, togglePlay } from './store';
 import { DEFAULT_OCTAVE, letterCode, shiftOctave, typingAction } from './typing-keys';
 
 /** The panel's settings (a subset of `LiveSettings`). */
@@ -155,22 +168,57 @@ export function openLive(): void {
       pushNotice('error', 'Live mode could not start', [
         e instanceof Error ? e.message : String(e),
       ]);
-      closeLive();
+      void closeLive();
     },
   );
   if (midiRemembered && useLive.getState().midi.status === 'off') void connectMidi();
 }
 
-/** Closes the Live drawer and leaves live mode (playback works again). */
-export function closeLive(): void {
-  if (!useLive.getState().open) return;
+/** Closes the Live drawer and leaves live mode (playback works again); resolves once left. */
+export function closeLive(): Promise<void> {
+  if (!useLive.getState().open) return Promise.resolve();
   session++;
   void stopRecord(); // before the releases below, which the take must not record
   releaseTyping();
   liveInputs.releaseAll();
   useLive.setState({ open: false, typing: false, running: false });
-  void exitLive();
+  return exitLive();
 }
+
+/**
+ * The transport's Play button. While live and not recording: leaves live mode (as closing the
+ * drawer) and plays from the playhead, in one click. While recording it stops the take (Pause).
+ * Call from the click (the playback context is created in the gesture).
+ */
+export function pressPlay(): void {
+  if (!useLive.getState().open || isRecording() || useRecord.getState().status === 'saving') {
+    togglePlay();
+    return;
+  }
+  preparePlayback();
+  closeLive().then(
+    () => play(),
+    () => play(),
+  );
+}
+
+// Re-entering live mode (src/app/live.ts): the held inputs are released; on failure the drawer
+// closes.
+onReenter((failed) => {
+  if (failed === undefined) {
+    releaseTyping();
+    liveInputs.releaseAll();
+    return;
+  }
+  if (!useLive.getState().open) return;
+  pushNotice('error', 'Live mode could not restart', [
+    failed instanceof Error ? failed.message : String(failed),
+  ]);
+  session++;
+  releaseTyping();
+  liveInputs.releaseAll();
+  useLive.setState({ open: false, typing: false, running: false });
+});
 
 /**
  * Record toggle (§9 Recording): arms a take at the playhead while live, or stops and keeps it.
@@ -192,7 +240,7 @@ export function toggleRecord(): void {
       pushNotice('error', 'Recording could not start', [
         e instanceof Error ? e.message : String(e),
       ]);
-      closeLive();
+      void closeLive();
     },
   );
 }
@@ -200,7 +248,7 @@ export function toggleRecord(): void {
 /** Opens or closes the drawer. */
 export function toggleLive(open = !useLive.getState().open): void {
   if (open) openLive();
-  else closeLive();
+  else void closeLive();
 }
 
 /** Turns musical typing on or off. */

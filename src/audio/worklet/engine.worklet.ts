@@ -151,6 +151,9 @@ class EngineProcessor extends AudioWorkletProcessor {
         case 'liveBend':
           this.live?.setBend(msg.semitones);
           break;
+        case 'liveTimbre':
+          this.live?.setTimbre(msg.voice, g.slotFor(msg.timbre), msg.fade);
+          break;
       }
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });

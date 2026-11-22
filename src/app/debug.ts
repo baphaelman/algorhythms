@@ -74,6 +74,8 @@ declare global {
 
 let tap: AnalyserNode | null = null;
 let liveTap: AnalyserNode | null = null;
+/** The engine node `liveTap` listens to (re-entering live mode keeps the context). */
+let liveTapNode: AudioNode | null = null;
 
 /** Installs `window.__algorhythms`. */
 export function installDebug(): void {
@@ -105,10 +107,11 @@ export function installDebug(): void {
       analyser() {
         const e = live.engine;
         if (!e) return null;
-        if (!liveTap || liveTap.context !== e.context) {
+        if (!liveTap || liveTap.context !== e.context || liveTapNode !== e.node) {
           liveTap = e.context.createAnalyser();
           liveTap.fftSize = 2048;
           e.node.connect(liveTap);
+          liveTapNode = e.node;
         }
         return liveTap;
       },

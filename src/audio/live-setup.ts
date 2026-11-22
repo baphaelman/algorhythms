@@ -17,6 +17,7 @@ import type {
   Timbre,
   VoiceDef,
 } from '../core/types';
+import type { ParamValue } from '../dsp/mix';
 
 /** One live voice. */
 export interface LiveVoiceSetup {
@@ -61,10 +62,17 @@ export interface LiveSetup {
   partPeaks?: Record<string, number>;
   /** Definitions of the `fill: 'new'` voices (appended to the pool when a take is written). */
   added?: VoiceDef[];
+  /** The piece's voice ids (a pool change while live re-enters, `liveSetupChange`). */
+  pool?: string[];
 }
 
 /** Live mode plays at least this many voices (a triad plus a doubling), filling from the pool. */
 export const LIVE_MIN_VOICES = 4;
+
+/** Fade-out of the old live engine when re-entering on the same context (s). */
+export const LIVE_REENTER_FADE = 0.03;
+/** Crossfade of a live voice's timbre change (s), as playback's hot-swap fade (SWAP_FADE). */
+export const LIVE_TIMBRE_FADE = 0.02;
 
 /** Live time runs from 0 when live mode starts; the live score lasts this long (s). */
 export const LIVE_DURATION: Seconds = 1e7;
@@ -132,6 +140,7 @@ export function liveSetupFrom(piece: Piece, score: CompiledScore, at: Seconds): 
     key: score.keys.length > 0 ? keyAt(score, at) : piece.key,
     partPeaks,
     ...(added.length > 0 ? { added } : {}),
+    pool: piece.voices.map((v) => v.id),
   };
 }
 
@@ -241,6 +250,63 @@ export function liveGains(setup: LiveSetup, mix: MixSettings): number[] {
     mix,
   );
   return setup.voices.map((v, k) => (v.baseGain ?? v.gain) * c[k]);
+}
+
+/** What `LiveEngine.update` sends for a new setup of the same live voices. */
+export interface LiveSetupChange {
+  /** Live voices whose timbre changes (crossfaded). */
+  timbres: { voice: number; timbre: string }[];
+  /** `param` messages (dsp/mix.ts paths) for gains, pan, mute, solo and sends that change. */
+  params: { path: string; value: ParamValue }[];
+  /** Each live voice's static gain under the new setup (`liveGains`). */
+  gains: number[];
+}
+
+/**
+ * The in-place change from `old` to `next` (a piece edit while live), or null when the pool, the
+ * live voices (count, ids, ranges, parts) or the tuning differ: live mode must re-enter then.
+ * `sent`: the gains last sent (default: `old`'s under its mix).
+ */
+export function liveSetupChange(
+  old: LiveSetup,
+  next: LiveSetup,
+  sent: readonly number[] = liveGains(old, old.mix),
+): LiveSetupChange | null {
+  const n = old.voices.length;
+  if (next.voices.length !== n || next.referenceHz !== old.referenceHz) return null;
+  // A written take appends the voices live mode added (`added`): the same pool for live.
+  const pool = (next.pool ?? []).join('\n');
+  const was = old.pool ?? [];
+  if (
+    pool !== was.join('\n') &&
+    pool !== [...was, ...(old.added ?? []).map((v) => v.id)].join('\n')
+  ) {
+    return null;
+  }
+  for (let i = 0; i < n; i++) {
+    const a = old.voices[i];
+    const b = next.voices[i];
+    if (a.id !== b.id || a.part !== b.part) return null;
+    if (a.range[0] !== b.range[0] || a.range[1] !== b.range[1]) return null;
+  }
+  const gains = liveGains(next, next.mix);
+  const timbres: LiveSetupChange['timbres'] = [];
+  const params: LiveSetupChange['params'] = [];
+  for (let i = 0; i < n; i++) {
+    const a = old.voices[i];
+    const b = next.voices[i];
+    const at = `voices.${i}.`;
+    if (gains[i] !== sent[i]) params.push({ path: `${at}gain`, value: gains[i] });
+    if (b.pan !== a.pan) params.push({ path: `${at}pan`, value: b.pan });
+    if (b.mute !== a.mute) params.push({ path: `${at}mute`, value: b.mute });
+    if (b.solo !== a.solo) params.push({ path: `${at}solo`, value: b.solo });
+    for (const k of ['reverb', 'delay'] as const) {
+      if (b.sends[k] !== a.sends[k])
+        params.push({ path: `${at}sends.${k}`, value: b.sends[k] ?? null });
+    }
+    if (b.timbre !== a.timbre) timbres.push({ voice: i, timbre: b.timbre });
+  }
+  return { timbres, params, gains };
 }
 
 /** The piece's peak lines per part name (at least 1), every name included. */

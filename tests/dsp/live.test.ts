@@ -25,10 +25,12 @@ import {
 } from '../../src/core/segment';
 import type { EaseRef, MixSettings, Piece } from '../../src/core/types';
 import { BLOCK_FRAMES } from '../../src/dsp/constants';
-import { LIVE_SEG_CAP, type LiveTracks } from '../../src/dsp/live';
+import { LIVE_SEG_CAP, LIVE_TIMBRE_CAP, type LiveTracks } from '../../src/dsp/live';
+import { buildWavetables } from '../../src/dsp/wavetable';
 import { LiveRig, liveSetupOf } from '../../src/audio/fixtures/live-rig';
 import { DRY_MIX, makeScore } from '../../src/audio/fixtures/scores';
-import { liveGains, liveSetupFrom } from '../../src/audio/live-setup';
+import { LIVE_TIMBRE_FADE, liveGains, liveSetupFrom } from '../../src/audio/live-setup';
+import { resolveTimbre } from '../../src/audio/timbres';
 import { newPiece } from '../../src/core/defaults';
 import { Prng } from '../../src/dsp/rng';
 import { clickScore, Driver, RATE, rms } from './helpers';
@@ -466,4 +468,82 @@ describe('no clicks under rapid key changes (M7a)', () => {
       expect(pr.ratio).toBeLessThan(Math.max(2 * ref.ratio, 0.05));
     });
   }
+});
+
+describe('Notes-drawer edits while live (M7 leftovers)', () => {
+  /** A held triad on `from`; at 1 s every voice changes to `to` (then gain and mute edits). */
+  function session(from: string, to: string | null, edits = false) {
+    const rig = new LiveRig(liveSetupOf(4, from));
+    rig.run(0.05);
+    for (const p of [60, 64, 67]) rig.noteOn(p);
+    rig.run(1);
+    if (to !== null) {
+      // As AudioEngine.liveTimbres: the tables first, then each voice's change.
+      rig.graph.setTables(to, buildWavetables(resolveTimbre(to), RATE));
+      for (let k = 0; k < 4; k++) rig.input.setTimbre(k, rig.graph.slotFor(to), LIVE_TIMBRE_FADE);
+    }
+    rig.run(1);
+    if (edits) {
+      rig.graph.setParam('voices.0.gain', 0.4); // what LiveEngine.update re-sends
+      rig.graph.setParam('voices.1.mute', true);
+      rig.run(0.5);
+      rig.graph.setParam('voices.1.mute', false);
+    }
+    rig.run(0.5);
+    return rig;
+  }
+
+  for (const [from, to] of [
+    ['sine', 'glass'],
+    ['glass', 'pluck'],
+    ['epiano', 'sine'],
+  ] as const) {
+    it(`${from} to ${to}: held notes sound on, no click, then sound as ${to}`, () => {
+      const ref = session(from, null);
+      const rig = session(from, to, true);
+      const out = rig.out().left;
+      const a = Math.floor(0.3 * RATE);
+      const refScore = clickScore(ref.out().left, a);
+      const got = clickScore(out, a);
+      console.info(
+        `live timbre ${from} to ${to}: ${got.ratio.toFixed(3)} vs ${refScore.ratio.toFixed(3)}`,
+      );
+      expect(got.ratio).toBeLessThan(Math.max(2 * refScore.ratio, 0.05));
+      // No gap: 10 ms windows across the change keep most of the lower of the two levels (a
+      // decaying timbre such as pluck has decayed by then, as on a held note in playback).
+      const want = session(to, null).out().left;
+      const at = (x: Float32Array, t: number) =>
+        rms(x, Math.floor(t * RATE), Math.floor((t + 0.01) * RATE));
+      for (let t = 1.05; t < 1.2; t += 0.01) {
+        const floor = Math.min(at(ref.out().left, t), at(want, t));
+        expect(at(out, t), `${t.toFixed(2)} s`).toBeGreaterThan(0.5 * floor);
+      }
+      // After the fade it sounds as the same chord held on `to` from the start.
+      const w0 = Math.floor(1.5 * RATE);
+      const w1 = Math.floor(2 * RATE);
+      expect(Math.abs(rms(out, w0, w1) / rms(want, w0, w1) - 1)).toBeLessThan(0.1);
+      const d = rig.input.tracks.data[0];
+      expect(d.nTimbre).toBe(2);
+      expect(d.timbreSlot[1]).toBe(rig.graph.slotFor(to));
+    });
+  }
+
+  it('many changes compact the timbre records and keep sounding', () => {
+    const rig = new LiveRig(liveSetupOf(2, 'sine'));
+    rig.graph.setTables('glass', buildWavetables(resolveTimbre('glass'), RATE));
+    rig.run(0.05);
+    rig.noteOn(60);
+    rig.run(0.3);
+    for (let j = 0; j < 3 * LIVE_TIMBRE_CAP; j++) {
+      const name = j % 2 === 0 ? 'glass' : 'sine';
+      rig.input.setTimbre(0, rig.graph.slotFor(name), LIVE_TIMBRE_FADE);
+      rig.run(0.03 + (j % 3) * 0.01);
+    }
+    rig.run(0.3);
+    const d = rig.input.tracks.data[0];
+    expect(d.nTimbre).toBeLessThanOrEqual(LIVE_TIMBRE_CAP);
+    expect(d.timbreSlot[d.nTimbre - 1]).toBe(rig.graph.slotFor('sine')); // the last j is odd
+    const out = rig.out().left;
+    expect(rms(out, out.length - Math.floor(0.2 * RATE), out.length)).toBeGreaterThan(1e-3);
+  });
 });
