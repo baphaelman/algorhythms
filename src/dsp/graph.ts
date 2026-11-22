@@ -386,6 +386,11 @@ export class Graph {
     if (from !== undefined) this.pendingPos = this.toFrame(from);
   }
 
+  /** Whether a play, pause or seek is waiting to be applied at a block boundary. */
+  get transportPending(): boolean {
+    return this.pendingPlay >= 0 || this.pendingPos >= 0;
+  }
+
   /** Pauses at the next block with a 5 ms fade-out; FX tails keep ringing. */
   pause(): void {
     this.pendingPlay = 0;
