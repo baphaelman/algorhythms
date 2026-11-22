@@ -31,7 +31,8 @@ interface MomentShape {
   voicing?: string;
   glide?: { length: number; stagger: number; order: string; jitter: number; ease: string };
 }
-type Hook = Omit<LiveHook, 'live' | 'editor'> & {
+type Hook = Omit<LiveHook, 'live' | 'editor' | 'engine'> & {
+  engine(): { currentTime(): number } | null;
   actions: { seek(t: number): void };
   editor: {
     state: { getState(): { undoLabel: string } };
@@ -82,6 +83,30 @@ async function arm(page: Page): Promise<void> {
   await page.getByTestId('live-record').click();
   await expect.poll(() => recordStatus(page)).toBe('recording');
   await expect(page.getByTestId('live-record')).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * Taps the playback output, waits until the heard playhead passes `t` (a new playback context can
+ * take seconds to start running in headless Firefox, the playhead held meanwhile), then the RMS.
+ */
+async function rmsOnceHeard(page: Page, t: number): Promise<number> {
+  await page.evaluate(() => (window as unknown as W).__algorhythms.analyser());
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => (window as unknown as W).__algorhythms.engine()?.currentTime() ?? 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(t);
+  return page.evaluate(() => {
+    const an = (window as unknown as W).__algorhythms.analyser();
+    if (!an) return 0;
+    const buf = new Float32Array(an.fftSize);
+    an.getFloatTimeDomainData(buf);
+    let s = 0;
+    for (const x of buf) s += x * x;
+    return Math.sqrt(s / buf.length);
+  });
 }
 
 /** Distinct pitches of the sounding live voices at live time t. */
@@ -235,16 +260,7 @@ test('record a take: moments, one undo, playback matches live', async ({ page })
       }),
     )
     .toBe('playing/ready');
-  const rms = await page.evaluate(async () => {
-    const an = (window as unknown as W).__algorhythms.analyser();
-    if (!an) return 0;
-    await new Promise((r) => setTimeout(r, 600));
-    const buf = new Float32Array(an.fftSize);
-    an.getFloatTimeDomainData(buf);
-    let s = 0;
-    for (const x of buf) s += x * x;
-    return Math.sqrt(s / buf.length);
-  });
+  const rms = await rmsOnceHeard(page, establish.at + 0.5);
   expect(rms).toBeGreaterThan(1e-4);
 });
 
@@ -391,15 +407,6 @@ test('a chord lifted key by key 20 ms apart holds the chord; on 1 voice filled t
       }),
     )
     .toBe('playing/ready');
-  const rms = await page.evaluate(async () => {
-    const an = (window as unknown as W).__algorhythms.analyser();
-    if (!an) return 0;
-    await new Promise((r) => setTimeout(r, 900));
-    const buf = new Float32Array(an.fftSize);
-    an.getFloatTimeDomainData(buf);
-    let s = 0;
-    for (const x of buf) s += x * x;
-    return Math.sqrt(s / buf.length);
-  });
+  const rms = await rmsOnceHeard(page, establish.at + 0.5);
   expect(rms).toBeGreaterThan(1e-4);
 });
