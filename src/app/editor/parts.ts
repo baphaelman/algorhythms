@@ -4,7 +4,7 @@
  * recipe returns the same piece when nothing changes (so `edit` records no entry).
  */
 
-import { partOf, selectorPart } from '../../core/parts';
+import { inPartScope, partOf, partScope, renamePartIn, type PartScope } from '../../core/parts';
 import type { Moment, Piece, Pitch, VoiceDef, VoiceId } from '../../core/types';
 import { normalizeRange, patchVoice, type VoicePatch } from './voices';
 
@@ -33,9 +33,15 @@ export function freePartName(piece: Piece): string {
   return `Part ${n}`;
 }
 
-/** Moments whose target is `{ part }`. */
+/** A short label for a part scope: "Melody", "Melody, Bass", "all but Melody". */
+export function scopeLabel(scope: PartScope): string {
+  const names = scope.names.map((n) => (n === '' ? 'Unassigned' : n)).join(', ');
+  return scope.except ? `all but ${names}` : names;
+}
+
+/** Moments whose target names `part` (`{ part }`, or in `{ parts }` / `{ exceptParts }`). */
 export function momentsTargeting(piece: Piece, part: string): Moment[] {
-  return piece.moments.filter((m) => selectorPart(m.target) === part);
+  return piece.moments.filter((m) => partScope(m.target)?.names.includes(part) === true);
 }
 
 /** Moves a voice into `part` ('' or undefined: unassigned). */
@@ -61,25 +67,26 @@ export function renameError(piece: Piece, from: string, to: string): string | nu
   return null;
 }
 
-/** Renames a part: its voices and every `{ part }` target naming it. */
+/** Renames a part: its voices and every target naming it (`part`, `parts`, `exceptParts`). */
 export function renamePart(piece: Piece, from: string, to: string): Piece {
   const name = to.trim();
   if (from === '' || name === from || renameError(piece, from, name)) return piece;
   const voices = piece.voices.map((v) => (partOf(v) === from ? { ...v, part: name } : v));
-  const moments = piece.moments.map((m) =>
-    selectorPart(m.target) === from ? { ...m, target: { part: name } } : m,
-  );
+  const moments = piece.moments.map((m) => {
+    const target = renamePartIn(m.target, from, name);
+    return target === m.target ? m : { ...m, target };
+  });
   return { ...piece, voices, moments };
 }
 
 /**
- * Deletes a part: its voices become unassigned, and a moment targeting it targets the part's
- * voices by pick instead (the same notes; none left means the default target).
+ * Deletes a part: its voices become unassigned, and a moment whose target names it targets the
+ * voices that target picked by pick instead (the same notes; none left means the default target).
  */
 export function deletePart(piece: Piece, part: string): Piece {
   if (part === '') return piece;
-  const ids = partVoices(piece, part).map((v) => v.id);
-  if (ids.length === 0 && momentsTargeting(piece, part).length === 0) return piece;
+  if (partVoices(piece, part).length === 0 && momentsTargeting(piece, part).length === 0)
+    return piece;
   const voices = piece.voices.map((v) => {
     if (partOf(v) !== part) return v;
     const next = { ...v };
@@ -87,7 +94,9 @@ export function deletePart(piece: Piece, part: string): Piece {
     return next;
   });
   const moments = piece.moments.map((m): Moment => {
-    if (selectorPart(m.target) !== part) return m;
+    const scope = partScope(m.target);
+    if (!scope?.names.includes(part)) return m;
+    const ids = piece.voices.filter((v) => inPartScope(scope, partOf(v))).map((v) => v.id);
     const next = { ...m };
     if (ids.length > 0) next.target = { voices: ids };
     else delete next.target;

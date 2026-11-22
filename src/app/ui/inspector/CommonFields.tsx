@@ -3,9 +3,9 @@
  * the transition (sliders, Order and Curve chips, curve preview, Arrive together) and seed.
  */
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { glides, landing } from '../../../core/compiler/glide';
-import { selectorPart } from '../../../core/parts';
+import { partScope } from '../../../core/parts';
 import { TUNE_GLIDE } from '../../../core/defaults';
 import { activeAt } from '../../../core/query';
 import { momentSeed } from '../../../core/rng';
@@ -18,52 +18,71 @@ import {
   arriveGlide,
   easePath,
   landGlide,
-  partTarget,
+  partPick,
+  pickTarget,
   targetMode,
+  togglePart,
   type TargetMode,
 } from './fields';
 
-const ALL = '\u0000all';
-const OTHER = '\u0000other';
-
 /**
- * The Part chooser (§11.3 revision 9): in the main section whenever the piece has parts. "All"
- * writes the default target, a part writes `{ part }`; a rank or pick target shows as "Advanced".
+ * The Part chooser (§11.3 revisions 9–10): in the main section whenever the piece has parts. A
+ * chip per part, ticked on and off ("All" clears them), and an **All but these** switch: nothing
+ * ticked writes the default target, one part `{ part }`, several `{ parts }`, the switch
+ * `{ exceptParts }` (`pickTarget`). Each change is one undo entry. A rank or pick target shows
+ * no ticks and the note "Advanced".
  */
 export function PartField({ m, piece }: { m: Moment; piece: Piece }) {
-  const id = useId();
   const parts = partNames(piece);
-  const cur = selectorPart(m.target);
-  if (parts.length === 0 && cur === null) return null;
-  const mode = targetMode(m.target);
-  const value = mode === 'all' ? ALL : cur !== null ? cur : OTHER;
+  const pick = partPick(m.target);
+  const named = partScope(m.target)?.names ?? [];
+  if (parts.length === 0 && named.length === 0) return null;
+  const ticked = pick?.ticked ?? [];
+  const extra = named.filter((n) => !parts.includes(n));
+  const write = (next: VoiceSelector | undefined): void => {
+    updateMoment(m.id, { target: next }, 'Change part');
+  };
   return (
-    <Row label="Part" htmlFor={id}>
-      <select
-        id={id}
-        value={value}
-        data-testid="insp-part"
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === OTHER || v === value) return;
-          updateMoment(m.id, { target: partTarget(v === ALL ? '' : v) }, 'Change part');
-        }}
-      >
-        <option value={ALL}>All</option>
-        {parts.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
+    <Row label="Part" className="insp-part-row">
+      <fieldset className="chips insp-part" data-testid="insp-part">
+        <legend className="sr-only">Parts</legend>
+        <button
+          type="button"
+          aria-pressed={pick !== null && ticked.length === 0}
+          data-part=""
+          onClick={() => {
+            if (pick === null || pick.ticked.length > 0) write(undefined);
+          }}
+        >
+          All
+        </button>
+        {[...parts, ...extra].map((p) => (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={ticked.includes(p)}
+            data-part={p}
+            title={parts.includes(p) ? undefined : 'No notes in this part'}
+            onClick={() => write(pickTarget(togglePart(pick, p), parts))}
+          >
+            {p === '' ? 'Unassigned' : parts.includes(p) ? p : `${p} (no notes)`}
+          </button>
         ))}
-        {cur !== null && !parts.includes(cur) && (
-          <option value={cur}>{cur === '' ? 'Unassigned' : `${cur} (no notes)`}</option>
-        )}
-        {value === OTHER && (
-          <option value={OTHER} disabled>
-            Advanced
-          </option>
-        )}
-      </select>
+        {pick === null && <span className="insp-part-adv">Advanced</span>}
+      </fieldset>
+      <label
+        className="insp-check insp-part-except"
+        title="Target every note outside the ticked parts"
+      >
+        <input
+          type="checkbox"
+          checked={pick?.except === true}
+          disabled={ticked.length === 0}
+          data-testid="insp-part-except"
+          onChange={(e) => write(pickTarget({ ticked, except: e.target.checked }, parts))}
+        />
+        All but these
+      </label>
     </Row>
   );
 }

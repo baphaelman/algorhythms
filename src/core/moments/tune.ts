@@ -38,12 +38,13 @@ export function tuneStarts(m: TuneMoment): Seconds[] {
 
 /**
  * Semitones a tune written in `writtenIn` sounds shifted by in `key` (revision 10): the smallest
- * interval from `writtenIn` to the key's tonic, −5…+6 (a tritone goes up). 0 without `writtenIn`.
+ * interval from `writtenIn` to the key's tonic, −6…+5 (a tritone goes down, as key carry's
+ * `tonicShift`). 0 without `writtenIn`.
  */
 export function tuneShift(writtenIn: PitchClass | undefined, key: Key): number {
   if (writtenIn === undefined) return 0;
   const d = (((pitchClassOf(key.tonic) - pitchClassOf(writtenIn)) % 12) + 12) % 12;
-  return d > 6 ? d - 12 : d;
+  return d >= 6 ? d - 12 : d;
 }
 
 /** Note k's sounding pitch (`shift` added), or NaN for a rest. */

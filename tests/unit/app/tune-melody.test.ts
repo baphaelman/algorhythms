@@ -108,6 +108,20 @@ describe('tune: Melody on', () => {
     expect(options.find((o) => o.value === current)?.label).toMatch(/not sounding/);
   });
 
+  it('multi-part targets (revision 10): "of Chords, Melody", "of all but Chords"; lines in scope', () => {
+    const both = make(tune({ target: { parts: ['Chords', 'Melody'] }, line: 'high' }), true);
+    expect(menu(both).options[0].label).toBe('Highest of Chords, Melody');
+    expect(lineOf(both)).toBe(2);
+    const except = make(tune({ target: { exceptParts: ['Melody'] } }), true);
+    expect(menu(except).options.at(-1)!.label).toBe('Lowest of all but Melody');
+    expect(lineOf(except)).toBe(0);
+    // Highest/Lowest keep a list target.
+    const m = tuneOf(both);
+    expect(melodyPatch(both, m, { kind: 'line', line: 'low' }).target).toEqual({
+      parts: ['Chords', 'Melody'],
+    });
+  });
+
   it('a rank target: "of the target"', () => {
     const p = make(tune({ target: { rank: [0, 1] } }));
     expect(menu(p).options[0].label).toBe('Highest of the target');

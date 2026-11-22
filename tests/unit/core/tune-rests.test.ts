@@ -223,10 +223,12 @@ describe('tune: re-struck repeated notes', () => {
 });
 
 describe('tune: writtenIn follows the key at `at`', () => {
-  it('the smallest interval, −5…+6', () => {
+  it('the smallest interval, −6…+5 (a tritone goes down)', () => {
     const k = (tonic: string) => ({ tonic, scale: 'major' }) as Piece['key'];
     expect(tuneShift('C', k('D'))).toBe(2);
-    expect(tuneShift('C', k('F#'))).toBe(6);
+    expect(tuneShift('C', k('F#'))).toBe(-6);
+    expect(tuneShift('F#', k('C'))).toBe(-6);
+    expect(tuneShift('C', k('F'))).toBe(5);
     expect(tuneShift('C', k('G'))).toBe(-5);
     expect(tuneShift('C', k('Bb'))).toBe(-2);
     expect(tuneShift('Db', k('C#'))).toBe(0);

@@ -29,7 +29,7 @@ import { crossfadeLength } from '../ease';
 import { changesPitch, noEffectReason, sameKey } from '../effect';
 import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
-import { selectorPart } from '../parts';
+import { inPartScope, partScope, scopeName, type PartScope } from '../parts';
 import { isTimbreName } from '../timbres';
 import { nextPulseIndex, nextPulseOrder, type PulseWalk } from '../pulse';
 import { hash32, momentSeed, Purpose, randHashed } from '../rng';
@@ -712,16 +712,28 @@ export class Compiler {
       const hi = Math.min(active.length - 1, Math.floor(Math.max(a, b)));
       return lo <= hi ? active.slice(lo, hi + 1) : [];
     }
-    const part = selectorPart(sel);
-    if (part !== null) {
-      if (!this.parts.has(part)) {
-        if (momentId !== null)
-          this.diag('warn', 'unknown-part', `The target names no part '${part}'.`, momentId);
-        return [];
-      }
-      return active.filter((v) => this.lineOf(v, x).part === part);
-    }
+    const scope = this.knownScope(sel, momentId);
+    if (scope !== null) return active.filter((v) => inPartScope(scope, this.lineOf(v, x).part));
     return active.slice();
+  }
+
+  /**
+   * A selector's part scope (revision 10), warning `unknown-part` for each name the pool lacks
+   * (when `momentId` is given). A `{ part }`/`{ parts }` scope naming no known part keeps nothing.
+   */
+  private knownScope(sel: VoiceSelector | undefined, momentId: string | null): PartScope | null {
+    const scope = partScope(sel);
+    if (scope === null) return null;
+    for (const name of scope.names) {
+      if (!this.parts.has(name) && momentId !== null)
+        this.diag('warn', 'unknown-part', `The target names no part '${name}'.`, momentId);
+    }
+    return scope;
+  }
+
+  /** True when pool voice `v` is in a moment's part scope (always, for a target without one). */
+  private inScope(scope: PartScope | null, v: number): boolean {
+    return inPartScope(scope, this.voices[v].part);
   }
 
   /** Parts of the pool (revision 9; '' when some voice has none). */
@@ -922,8 +934,8 @@ export class Compiler {
     }
     const before = this.destsInto(this.effBefore);
     // A `{ part }` target's reason reads its part (revision 9).
-    const scope = selectorPart(this.moments[i].target);
-    const inScope = (v: number): boolean => scope === null || this.voices[v].part === scope;
+    const scope = partScope(this.moments[i].target);
+    const inScope = (v: number): boolean => this.inScope(scope, v);
     const activeBefore = this.sortedActive().filter(inScope);
     const T = back ? back.t : late ? this.moments[i].at : this.eventT[i];
     const dormant = this.dormantAt(T).filter(inScope).length;
@@ -986,10 +998,10 @@ export class Compiler {
    */
   private entersSilent(m: Moment): boolean {
     if (!bringsIn(m) || (m.type === 'chord' && m.count !== undefined)) return false;
-    const part = selectorPart(m.target);
-    if (part === null || !this.parts.has(part)) return false;
-    for (const v of this.sortedActive()) if (this.voices[v].part === part) return false;
-    return true;
+    const scope = partScope(m.target);
+    if (scope === null) return false;
+    for (const v of this.sortedActive()) if (this.inScope(scope, v)) return false;
+    return this.voices.some((r) => inPartScope(scope, r.part));
   }
 
   /**
@@ -1044,13 +1056,8 @@ export class Compiler {
       return [...want].sort(byIndex);
     }
     const all = this.voices.map((r) => r.index);
-    const part = selectorPart(sel);
-    if (part === null) return all;
-    if (!this.parts.has(part)) {
-      this.diag('warn', 'unknown-part', `The target names no part '${part}'.`, m.id);
-      return [];
-    }
-    return all.filter((v) => this.voices[v].part === part);
+    const scope = this.knownScope(sel, m.id);
+    return scope === null ? all : all.filter((v) => this.inScope(scope, v));
   }
 
   /** The level target of a voice now (1 before its first level change). */
@@ -1595,9 +1602,8 @@ export class Compiler {
     const n = m.notes.length;
     const k = st.k;
     const g0 = this.glides[i];
-    const scope = selectorPart(m.target);
-    const activeInScope = (): number[] =>
-      this.sortedActive().filter((v) => scope === null || this.voices[v].part === scope);
+    const scope = partScope(m.target);
+    const activeInScope = (): number[] => this.sortedActive().filter((v) => this.inScope(scope, v));
     if (k === 0) {
       this.span(i, late ? m.at : this.eventT[i], starts[n]);
       this.activity(starts[n]);
@@ -1652,14 +1658,13 @@ export class Compiler {
           return;
         }
       } else if (this.entersSilent(m)) {
-        const part = selectorPart(m.target);
-        v = this.dormantAt(T).find((u) => this.voices[u].part === part) ?? -1;
+        v = this.dormantAt(T).find((u) => this.inScope(scope, u)) ?? -1;
         enter = v >= 0;
         if (!enter) {
           this.diag(
             'warn',
             'pool-exhausted',
-            `The tune needs a voice but part '${part}' has none free; it was dropped.`,
+            `The tune needs a voice but none in ${scopeName(scope!)} is free; it was dropped.`,
             m.id,
           );
         }
@@ -1668,9 +1673,7 @@ export class Compiler {
     if (v < 0) {
       if (k <= Math.max(fp, 0)) {
         const scoped = activeInScope();
-        const dormant = this.dormantAt(T0).filter(
-          (u) => scope === null || this.voices[u].part === scope,
-        ).length;
+        const dormant = this.dormantAt(T0).filter((u) => this.inScope(scope, u)).length;
         this.noEffect(m, [], scoped, n > 0 ? 'warn' : 'info', dormant);
         if (!traced)
           this.traceMoment(i, [], m.target !== undefined && m.target !== 'all', null, null);
@@ -1826,9 +1829,10 @@ export class Compiler {
     const line = (u: number): VoiceRun => this.voices[x.base.get(u) ?? u];
     // Revision 9: a moment targeting a part sees that part only (its lines, its dormant voices),
     // so its counts count the part's lines.
-    const scope = selectorPart(m.target);
-    const active = scope === null ? x.active : x.active.filter((u) => line(u).part === scope);
-    const dormant = scope === null ? free : free.filter((u) => this.voices[u].part === scope);
+    const scope = partScope(m.target);
+    const active =
+      scope === null ? x.active : x.active.filter((u) => inPartScope(scope, line(u).part));
+    const dormant = scope === null ? free : free.filter((u) => this.inScope(scope, u));
     return {
       t,
       momentId: m.id,

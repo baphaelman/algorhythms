@@ -7,7 +7,8 @@
 
 import { compile } from '../../core/compiler/compile';
 import { readState } from '../../core/effect';
-import { partOf, selectorPart } from '../../core/parts';
+import { partOf, partScope } from '../../core/parts';
+import { scopeLabel } from './parts';
 import { chordAt, keyAt } from '../../core/query';
 import {
   isScaleTone,
@@ -428,10 +429,10 @@ export function melodyOptions(
   }
   notes.sort((a, b) => b.pitch! - a.pitch! || a.value.localeCompare(b.value));
   const target = lineTarget(piece, m);
-  const part = selectorPart(target);
+  const scope = partScope(target);
   const of =
-    part !== null
-      ? ` of ${part === '' ? 'Unassigned' : part}`
+    scope !== null
+      ? ` of ${scopeLabel(scope)}`
       : target === undefined || target === 'all'
         ? ' note'
         : ' of the target';

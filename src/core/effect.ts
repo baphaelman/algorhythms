@@ -27,7 +27,7 @@ import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
 import { isRest, tuneRestrikes, tuneShift } from './moments/tune';
-import { partOf, selectorPart } from './parts';
+import { inPartScope, partOf, partScope, scopeName } from './parts';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
   CompiledScore,
@@ -130,12 +130,13 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
   if (m.type === 'timbre') return 'the notes already have this timbre';
   const n = c.active.length;
   // A silent part (composing.md §3 #4): a chord, unison or tune brings it in.
-  const part = selectorPart(m.target);
-  if (n === 0 && part !== null && m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse') {
-    const name = part === '' ? 'the unassigned part' : `the part '${part}'`;
+  const scope = partScope(m.target);
+  if (n === 0 && scope !== null && m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse') {
+    const name = scopeName(scope);
+    const is = scope.names.length === 1 && !scope.except ? 'is' : 'are';
     return c.dormant === 0 && bringsIn(m)
-      ? `${name} is silent here and has no free voice`
-      : `${name} is silent here; bring it in with a chord, a unison or a tune`;
+      ? `${name} ${is} silent here and ${is === 'is' ? 'has' : 'have'} no free voice`
+      : `${name} ${is} silent here; bring ${is === 'is' ? 'it' : 'them'} in with a chord, a unison or a tune`;
   }
   if (n === 0 && m.type !== 'key') {
     // Nothing sounds yet (M4.5-27): only a chord or a unison can start the sound.
@@ -213,8 +214,8 @@ function timbreTargetsIn(piece: Piece, m: Moment, active: readonly number[]): nu
     const want = new Set(sel.voices);
     return all.filter((v) => want.has(piece.voices[v].id));
   }
-  const part = selectorPart(sel);
-  return part === null ? all : all.filter((v) => partOf(piece.voices[v]) === part);
+  const scope = partScope(sel);
+  return all.filter((v) => inPartScope(scope, partOf(piece.voices[v])));
 }
 
 /** The preset a voice's timbre timeline is heading for at `t` (entries at `t` included). */
@@ -383,8 +384,8 @@ function resolveTarget(
   partAt: (v: number) => string,
 ): number[] {
   const active = st.active;
-  const part = selectorPart(sel);
-  if (part !== null) return active.filter((v) => partAt(v) === part);
+  const scope = partScope(sel);
+  if (scope !== null) return active.filter((v) => inPartScope(scope, partAt(v)));
   if (sel === undefined || sel === 'all') return active.slice();
   if (typeof sel === 'object' && 'voices' in sel && Array.isArray(sel.voices)) {
     const want = new Set(sel.voices.map(indexOf));
@@ -414,10 +415,9 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
       ? st.active.filter((v) => ids[v] === m.voice)
       : resolveTarget(m.target, st, indexOf, partAt);
   // A `{ part }` target sees that part only (as the compiler's env, revision 9).
-  const scope = selectorPart(m.target);
-  const active = scope === null ? st.active : st.active.filter((v) => partAt(v) === scope);
-  const dormant =
-    scope === null ? st.dormant : st.dormant.filter((v) => partOf(piece.voices[v]) === scope);
+  const scope = partScope(m.target);
+  const active = st.active.filter((v) => inPartScope(scope, partAt(v)));
+  const dormant = st.dormant.filter((v) => inPartScope(scope, partOf(piece.voices[v])));
   const ctx = (births = 0, deaths = 0): EffectContext => ({
     targeted: targeted.map((v) => st.dest[v]),
     active: active.map((v) => st.dest[v]),
