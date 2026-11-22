@@ -64,6 +64,8 @@ export interface AlgoRhythmsDebug {
   };
   /** Each compiled voice's pitch at piece time t (null where it is silent), by voice id. */
   pitchesAt(t: number): Record<string, number | null>;
+  /** The MP4 muxer (M8), loaded on demand. */
+  video(): Promise<typeof import('../video/mp4')>;
 }
 
 declare global {
@@ -127,5 +129,6 @@ export function installDebug(): void {
       }
       return out;
     },
+    video: () => import('../video/mp4'),
   };
 }

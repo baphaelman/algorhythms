@@ -11,6 +11,7 @@
  * - render imports core.
  * - midi   imports core.
  * - audio  imports core and dsp.
+ * - video  imports core (the MP4 muxer, M8).
  * - app    imports anything.
  * - core/ease and core/segment are leaves: they import only types, and segment may import ease.
  * - Nothing except app imports from outside src/.
@@ -19,7 +20,7 @@
 import path from 'node:path';
 
 const SRC = path.resolve(import.meta.dirname, 'src');
-const LAYERS = new Set(['core', 'dsp', 'audio', 'render', 'midi', 'app']);
+const LAYERS = new Set(['core', 'dsp', 'audio', 'render', 'midi', 'video', 'app']);
 
 /** Layers each layer may import from (besides itself). */
 const ALLOWED = /** @type {Record<string, string[]>} */ ({
@@ -28,6 +29,7 @@ const ALLOWED = /** @type {Record<string, string[]>} */ ({
   render: ['core'],
   midi: ['core'],
   audio: ['core', 'dsp'],
+  video: ['core'],
   app: [...LAYERS],
 });
 
