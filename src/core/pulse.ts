@@ -19,7 +19,9 @@
  * advance). The targeted voices are resolved at each step as for any moment; the sounding ones
  * are ordered by their pitch at that instant (ties: pool index). `together` hits them all;
  * `up`, `down` and `updown` hit one, walking that order (`nextPulseIndex`); `random` draws one
- * from the moment's seed and the step index.
+ * from the moment's seed and the step index; `order` (revision 10) hits one, following
+ * `PulseMoment.order` (`nextPulseOrder`). A step with one sounding voice hits it without moving
+ * any walk, and a rest moves none either.
  */
 
 import type { CompiledVoice, PulseMode, Seconds } from './types';
@@ -67,9 +69,12 @@ export function pulseBreaks(voice: CompiledVoice): Seconds[] {
   return out;
 }
 
-/** Walk position of an arpeggio mode (`up`, `down`, `updown`). */
+/** Walk position of an arpeggio mode (`up`, `down`, `updown`, `order`). */
 export interface PulseWalk {
-  /** Index into the pitch-ordered voices last hit; −1 before the first hit. */
+  /**
+   * Index into the pitch-ordered voices last hit (`order`: into `PulseMoment.order`); −1 before
+   * the first hit.
+   */
   index: number;
   /** updown: +1 rising, −1 falling. */
   dir: number;
@@ -101,4 +106,22 @@ export function nextPulseIndex(mode: PulseMode, n: number, last: PulseWalk): Pul
     default: // 'up'
       return { index: i < 0 || i + 1 >= n ? 0 : i + 1, dir: 1 };
   }
+}
+
+/**
+ * Mode `order` (revision 10): the next position in `order` (cycling, from the last one) and the
+ * voice it hits among `n` pitch-ordered voices (n ≥ 1): entry e is voice (e − 1) mod n, so an
+ * index past the count wraps. The position does not depend on n, so voices joining or leaving
+ * keep the order's place; only the voice an entry names changes.
+ */
+export function nextPulseOrder(
+  order: readonly number[],
+  n: number,
+  last: PulseWalk,
+): { walk: PulseWalk; voice: number } {
+  const len = order.length;
+  const pos = last.index < 0 || last.index + 1 >= len ? 0 : last.index + 1;
+  const e = Math.round(order[pos]) - 1;
+  const voice = n <= 1 ? 0 : ((e % n) + n) % n;
+  return { walk: { index: pos, dir: last.dir }, voice };
 }

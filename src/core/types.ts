@@ -472,8 +472,11 @@ export interface LevelMoment extends MomentBase {
   over: Seconds;
 }
 
-/** How a pulse picks the voices it hits on each step (§6.2 `pulse`, revision 9). */
-export type PulseMode = 'together' | 'up' | 'down' | 'updown' | 'random';
+/**
+ * How a pulse picks the voices it hits on each step (§6.2 `pulse`, revision 9; `order`:
+ * revision 10, with `PulseMoment.order`).
+ */
+export type PulseMode = 'together' | 'up' | 'down' | 'updown' | 'random' | 'order';
 
 /**
  * Region moment (revision 9): a repeating volume pattern. Every `step` seconds from `at` while
@@ -495,6 +498,11 @@ export interface PulseMoment extends MomentBase {
   floor: number;
   /** 'together' hits every targeted voice; the others one voice per step, in pitch order. */
   mode: PulseMode;
+  /**
+   * Revision 10, mode 'order': the voices to hit, one per step, cycling. Positive integers in
+   * pitch order (1 = the lowest targeted voice); an index past the voice count wraps.
+   */
+  order?: number[];
   /** Each hit re-strikes the timbre's articulation. Absent means true. */
   strike?: boolean;
 }

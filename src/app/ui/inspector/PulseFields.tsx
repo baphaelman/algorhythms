@@ -1,6 +1,7 @@
 /**
  * The pulse inspector (PLAN.md §6.2 `pulse`, §11.3; R9-7): region, step (beat values with a
- * tempo), the accent pattern as a row of step cells, decay, floor, mode and re-strike. Every edit
+ * tempo), the accent pattern as a row of step cells, decay, floor, mode (with the typed order of
+ * 'Custom order', revision 10) and re-strike. Every edit
  * is one undo entry; a drag on a cell or a slider is one gesture.
  */
 
@@ -9,16 +10,19 @@ import type { Piece, PulseMoment } from '../../../core/types';
 import { updateMoment } from '../../editor/actions';
 import {
   BEAT_VALUES,
+  DEFAULT_ORDER,
   PULSE_MODES,
   accentAtY,
   addStep,
   beatSeconds,
   beatValueOf,
+  formatOrder,
+  parseOrder,
   removeStep,
   setAccent,
 } from '../../editor/pulse';
 import { tuneBeat } from '../../editor/tune';
-import { CheckField, Chips, NumberField, fieldSetter } from './controls';
+import { CheckField, Chips, NumberField, TextField, fieldSetter } from './controls';
 import { formatNum } from './fields';
 
 const round6 = (t: number): number => Math.round(t * 1e6) / 1e6;
@@ -99,8 +103,34 @@ export function PulseFields({ m, piece }: { m: PulseMoment; piece: Piece }) {
         testId="insp-pulse-mode"
         options={PULSE_MODES}
         pressed={(v) => v === m.mode}
-        onPick={(mode) => mode !== m.mode && updateMoment(m.id, { mode }, 'Change pulse mode')}
+        onPick={(mode) =>
+          mode !== m.mode &&
+          updateMoment(
+            m.id,
+            mode === 'order'
+              ? { mode, order: m.order ?? [...DEFAULT_ORDER] }
+              : { mode, order: undefined },
+            'Change pulse mode',
+          )
+        }
       />
+      {m.mode === 'order' && (
+        <TextField
+          label="Order"
+          value={formatOrder(m.order)}
+          placeholder="1 3 2 4"
+          testId="insp-pulse-order"
+          parse={parseOrder}
+          feedback={(text) => {
+            const r = parseOrder(text);
+            return r.ok ? null : { ok: false, text: r.error };
+          }}
+          onCommit={(text) => {
+            const r = parseOrder(text);
+            if (r.ok) updateMoment(m.id, { order: r.order }, 'Edit pulse order');
+          }}
+        />
+      )}
       <CheckField
         label="Re-strike each hit"
         checked={m.strike !== false}

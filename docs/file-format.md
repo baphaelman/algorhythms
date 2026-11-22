@@ -3843,8 +3843,19 @@ This is the *input* form: fields with defaults are optional here.
                   "up",
                   "down",
                   "updown",
-                  "random"
+                  "random",
+                  "order"
                 ]
+              },
+              "order": {
+                "description": "mode 'order': voices to hit, one per step, cycling; 1 = the lowest targeted voice, an index past the count wraps.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
               },
               "strike": {
                 "description": "Each hit re-strikes the timbre's articulation (absent: true).",

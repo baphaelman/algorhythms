@@ -31,7 +31,7 @@ import { harmonyLabel } from '../harmony';
 import { mod } from '../math';
 import { selectorPart } from '../parts';
 import { isTimbreName } from '../timbres';
-import { nextPulseIndex, type PulseWalk } from '../pulse';
+import { nextPulseIndex, nextPulseOrder, type PulseWalk } from '../pulse';
 import { hash32, momentSeed, Purpose, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
@@ -1905,6 +1905,10 @@ export class Compiler {
           j = Math.floor(
             randHashed(this.seeds[pi], this.emptyHash, k, Purpose.PulsePick) * order.length,
           );
+        } else if (p.mode === 'order') {
+          const o = nextPulseOrder(p.order!, order.length, st);
+          next = { ...next, index: o.walk.index, dir: o.walk.dir };
+          j = o.voice;
         } else {
           const w = nextPulseIndex(p.mode, order.length, st);
           next = { ...next, index: w.index, dir: w.dir };
@@ -2737,6 +2741,15 @@ function pulseProblem(m: PulseMoment): string | null {
     return 'A pulse needs a non-empty pattern.';
   if (!m.pattern.every((a) => typeof a === 'number' && Number.isFinite(a)))
     return 'Every accent of a pulse pattern must be a number.';
+  if (
+    m.mode === 'order' &&
+    !(
+      Array.isArray(m.order) &&
+      m.order.length > 0 &&
+      m.order.every((e) => Number.isInteger(e) && e >= 1)
+    )
+  )
+    return "A pulse in mode 'order' needs an order of whole numbers ≥ 1.";
   return null;
 }
 

@@ -362,12 +362,30 @@ export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitr
                 'down' as const,
                 'updown' as const,
                 'random' as const,
+                'order' as const,
               ),
+              // Revision 10; entries past the voice count wrap.
+              order: fc.array(fc.integer({ min: 1, max: 6 }), { minLength: 1, maxLength: 5 }),
               strike: fc.boolean(),
             },
-            { requiredKeys: ['at', 'type', 'len', 'step', 'pattern', 'decay', 'floor', 'mode'] },
+            {
+              requiredKeys: [
+                'at',
+                'type',
+                'len',
+                'step',
+                'pattern',
+                'decay',
+                'floor',
+                'mode',
+                'order',
+              ],
+            },
           )
-          .map(({ len, ...m }) => ({ ...m, until: m.at + len }) as Draft),
+          .map(
+            ({ len, order, ...m }) =>
+              ({ ...m, ...(m.mode === 'order' ? { order } : {}), until: m.at + len }) as Draft,
+          ),
       },
       {
         // M6: a timbre change, often on silent voices; `mine` is a piece timbre only after an
