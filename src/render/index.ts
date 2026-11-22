@@ -94,7 +94,10 @@ export {
 export {
   EXPORT_LOOK,
   LINE_SCALE,
+  LINE_SCALE_MAX,
+  LINE_SCALE_MIN,
   PLAYER_LOOK,
+  lineScaleOf,
   lookFutureOpacity,
   lookStyle,
   pieceLook,

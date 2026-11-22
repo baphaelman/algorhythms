@@ -9,6 +9,8 @@ import type { LineColors, Piece, Seconds } from '../core/types';
 import { DEFAULT_HUD, HUD_ITEMS } from '../render/hud';
 import {
   EXPORT_LOOK,
+  LINE_SCALE_MAX,
+  LINE_SCALE_MIN,
   lookBeats,
   type Look,
   type LookFuture,
@@ -549,11 +551,17 @@ function parseLook(r: Record<string, unknown>): LookForm {
   if (typeof r.futureOpacity === 'number' && Number.isFinite(r.futureOpacity)) {
     l.futureOpacity = Math.min(1, Math.max(0, r.futureOpacity));
   }
+  // The Ahead slider's ends are Hidden and Full: a dimmed 0 or 1 reads as those.
+  if (l.future === 'dimmed' && l.futureOpacity <= 0) l.future = 'hidden';
+  if (l.future === 'dimmed' && l.futureOpacity >= 1) l.future = 'full';
   if (oneOf(LOOK_COLORS, r.colors)) l.colors = r.colors;
   if (r.lineInk === null || (typeof r.lineInk === 'string' && HEX.test(r.lineInk))) {
     l.lineInk = r.lineInk;
   }
   if (oneOf(LOOK_WIDTHS, r.lineWidth)) l.lineWidth = r.lineWidth;
+  else if (typeof r.lineWidth === 'number' && Number.isFinite(r.lineWidth)) {
+    l.lineWidth = Math.min(LINE_SCALE_MAX, Math.max(LINE_SCALE_MIN, r.lineWidth));
+  }
   return l;
 }
 

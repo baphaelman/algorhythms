@@ -63,7 +63,8 @@ export interface Look {
   colors: LineColors;
   /** A colour for 'ink' lines and the 'custom' fallback; absent = the theme's ink. */
   lineInk?: string;
-  lineWidth: LookLineWidth;
+  /** Line width: a factor (LINE_SCALE_MIN..MAX; the dialog's slider) or a named width. */
+  lineWidth: LookLineWidth | number;
   /** The HUD readouts in order (left column first); [] = no HUD. */
   hud: readonly HudItem[];
 }
@@ -74,6 +75,16 @@ export const LINE_SCALE: Readonly<Record<LookLineWidth, number>> = {
   normal: 1,
   bold: 1.75,
 };
+
+/** The line width factor's range. */
+export const LINE_SCALE_MIN = 0.5;
+export const LINE_SCALE_MAX = 2;
+
+/** The factor of a line width (a name, or a number clamped to the range; NaN → 1). */
+export function lineScaleOf(w: LookLineWidth | number): number {
+  if (typeof w !== 'number') return LINE_SCALE[w] ?? 1;
+  return Number.isFinite(w) ? Math.min(LINE_SCALE_MAX, Math.max(LINE_SCALE_MIN, w)) : 1;
+}
 
 /** The player's drawing, as video drew it before revision 13 (light theme). */
 export const PLAYER_LOOK: Look = {
@@ -167,7 +178,8 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
   if (!look.dots) style.dots = false;
   if (!look.rings) style.rings = false;
   if (!look.hzLabels) style.hzLabels = false;
-  if (look.lineWidth !== 'normal') style.lineScale = LINE_SCALE[look.lineWidth];
+  const scale = lineScaleOf(look.lineWidth);
+  if (scale !== 1) style.lineScale = scale;
   if (look.lineInk) style.lineInk = look.lineInk;
   if (ctx.customColors) style.customColors = ctx.customColors;
   if (ctx.labels) style.labels = ctx.labels;

@@ -1,20 +1,22 @@
 /**
- * The Export dialog's compact Look (PLAN.md §12 "Export look", preview and layout): each
- * dropdown or switch (`toggle`, two-way choices) as a pure mapping between the form and one `<select>` value. A dropdown sets exactly
- * the fields its checkboxes or radios set before, so the Look, the video and poster options and
- * the remembered prefs keep their meaning. A form state no option names (an older stored
- * combination) gets an extra option of its own, so the select never shows something else.
+ * The Export dialog's Look controls (PLAN.md §12 "Export look", controls): continuous values are
+ * sliders, yes/no choices switches, small fixed sets segmented buttons, Heads a row of on/off
+ * segments. Each control is a pure mapping between the form and its value, and sets exactly the
+ * fields the old checkboxes, radios and dropdowns set, so the Look, the video and poster options
+ * and the remembered prefs keep their meaning.
  */
 
 import { DEFAULT_HUD } from '../render/hud';
+import { LINE_SCALE_MAX, LINE_SCALE_MIN, lineScaleOf } from '../render/look';
 import {
   FOLLOW_AT_HIDDEN,
+  FOLLOW_AT_MAX,
+  FOLLOW_AT_MIN,
   FOLLOW_AT_SHOWN,
   HUD_CHOICES,
-  LOOK_COLORS,
-  LOOK_WIDTHS,
   followAtOf,
   type ExportForm,
+  type LookColors,
   type LookForm,
 } from './export-options';
 
@@ -25,21 +27,51 @@ export interface LookChoice {
   label: string;
 }
 
-export interface LookControl {
+interface Base {
   /** The control's test id (`look-<id>`). */
   id: string;
   label: string;
-  /** A two-way choice, shown as a switch: values 'on' / 'off', `label` names the 'on' state. */
-  toggle?: true;
   /** The formats that show it. */
   kinds: readonly LookKind[];
-  /** The options, including one for the current value when no listed option names it. */
-  choices(form: ExportForm): LookChoice[];
-  /** The selected option's value. */
+}
+
+/** One of a few options, as segmented buttons. */
+export interface LookSegments extends Base {
+  type: 'segments';
+  choices: readonly LookChoice[];
+  /** The selected option's value (or '' when the form matches none). */
   value(form: ExportForm): string;
-  /** The form fields to change for an option (a Partial to merge into the form). */
   apply(form: ExportForm, value: string): Partial<ExportForm>;
 }
+
+/** A yes/no choice, as a switch; `label` says what On means. */
+export interface LookToggle extends Base {
+  type: 'toggle';
+  value(form: ExportForm): boolean;
+  apply(form: ExportForm, on: boolean): Partial<ExportForm>;
+}
+
+/** A continuous value, as a slider with its value shown. */
+export interface LookSlider extends Base {
+  type: 'slider';
+  min: number;
+  max: number;
+  step: number;
+  value(form: ExportForm): number;
+  apply(form: ExportForm, n: number): Partial<ExportForm>;
+  /** The value as shown beside the slider (and its aria-valuetext). */
+  text(n: number): string;
+}
+
+/** Independent flags in one row, as on/off segments. */
+export interface LookFlags extends Base {
+  type: 'flags';
+  flags: readonly { id: string; label: string; key: FlagKey }[];
+}
+
+type FlagKey = { [K in keyof LookForm]: LookForm[K] extends boolean ? K : never }[keyof LookForm];
+
+export type LookControl = LookSegments | LookToggle | LookSlider | LookFlags;
 
 const BOTH: readonly LookKind[] = ['video', 'poster'];
 const VIDEO: readonly LookKind[] = ['video'];
@@ -49,25 +81,20 @@ const look = (form: ExportForm, p: Partial<LookForm>): Partial<ExportForm> => ({
   look: { ...form.look, ...p },
 });
 
-/** A control whose options each set a few Look fields; `value` names the form's state. */
-function fixed(
+/** Segments whose options each set a few Look fields; `value` names the form's state. */
+function segments(
   id: string,
   label: string,
   kinds: readonly LookKind[],
   options: readonly { value: string; label: string; set: Partial<LookForm> }[],
   value: (l: LookForm) => string,
-  other?: (l: LookForm) => string,
-): LookControl {
+): LookSegments {
   return {
+    type: 'segments',
     id,
     label,
     kinds,
-    choices: (form) => {
-      const v = value(form.look);
-      const list: LookChoice[] = options.map((o) => ({ value: o.value, label: o.label }));
-      if (!list.some((o) => o.value === v)) list.push({ value: v, label: other?.(form.look) ?? v });
-      return list;
-    },
+    choices: options.map((o) => ({ value: o.value, label: o.label })),
     value: (form) => value(form.look),
     apply: (form, v) => {
       const o = options.find((x) => x.value === v);
@@ -76,111 +103,104 @@ function fixed(
   };
 }
 
-/** A switch for one flag; `label` says what On means. */
-function onOff(
-  id: string,
-  label: string,
-  key: keyof LookForm,
-  kinds: readonly LookKind[],
-): LookControl {
-  const c = fixed(
+function onOff(id: string, label: string, key: FlagKey, kinds: readonly LookKind[]): LookToggle {
+  return {
+    type: 'toggle',
     id,
     label,
     kinds,
-    [
-      { value: 'on', label: 'On', set: { [key]: true } },
-      { value: 'off', label: 'Off', set: { [key]: false } },
-    ],
-    (l) => (l[key] ? 'on' : 'off'),
-  );
-  return { ...c, toggle: true };
+    value: (form) => form.look[key],
+    apply: (form, on) => look(form, { [key]: on }),
+  };
 }
-
-/** Dimmed opacities offered, %. */
-export const DIMMED_STEPS = [20, 35, 50, 75] as const;
-/** Playhead places offered, %. */
-export const FOLLOW_AT_STEPS = [35, 50, 65, 80, 90] as const;
 
 const pct = (x: number) => Math.round(x * 100);
 
-const futureValue = (l: LookForm): string =>
-  l.future === 'dimmed' ? `dimmed:${pct(l.futureOpacity)}` : l.future;
+/**
+ * Ahead of the playhead, 0..100 %: 0 = hidden (nothing drawn ahead), 100 = full, between =
+ * dimmed at that opacity. Hidden and Full keep the dimmed opacity, as the old radios did.
+ */
+export function futurePercent(l: Pick<LookForm, 'future' | 'futureOpacity'>): number {
+  if (l.future === 'hidden') return 0;
+  if (l.future === 'full') return 100;
+  // A dimmed future is never shown at an end, which would read as Hidden or Full.
+  return Math.min(99, Math.max(1, pct(l.futureOpacity)));
+}
 
-const futureControl: LookControl = {
+export function futureFromPercent(n: number): Pick<LookForm, 'future'> & Partial<LookForm> {
+  const r = Math.round(n);
+  if (!(r > 0)) return { future: 'hidden' };
+  if (r >= 100) return { future: 'full' };
+  return { future: 'dimmed', futureOpacity: r / 100 };
+}
+
+const futureControl: LookSlider = {
+  type: 'slider',
   id: 'future',
   label: 'Ahead of the playhead',
   kinds: VIDEO,
-  choices: (form) => {
-    const list: LookChoice[] = [{ value: 'hidden', label: 'Hidden' }];
-    const steps: number[] = [...DIMMED_STEPS];
-    const cur = pct(form.look.futureOpacity);
-    if (form.look.future === 'dimmed' && !steps.includes(cur)) steps.push(cur);
-    for (const s of steps.sort((a, b) => a - b)) {
-      list.push({ value: `dimmed:${s}`, label: `Dimmed ${s} %` });
-    }
-    list.push({ value: 'full', label: 'Full' });
-    return list;
-  },
-  value: (form) => futureValue(form.look),
-  apply: (form, v) => {
-    if (v === 'hidden' || v === 'full') return look(form, { future: v });
-    const m = /^dimmed:(\d+)$/.exec(v);
-    if (!m) return {};
-    return look(form, { future: 'dimmed', futureOpacity: Number(m[1]) / 100 });
-  },
+  min: 0,
+  max: 100,
+  step: 1,
+  value: (form) => futurePercent(form.look),
+  apply: (form, n) => (Number.isFinite(n) ? look(form, futureFromPercent(n)) : {}),
+  text: (n) => (n <= 0 ? 'Hidden' : n >= 100 ? 'Full' : `${Math.round(n)} %`),
 };
 
-const followAtControl: LookControl = {
+const followAtControl: LookSlider = {
+  type: 'slider',
   id: 'follow-at',
   label: 'Playhead at',
   kinds: VIDEO,
-  choices: (form) => {
-    const cur = followAtOf(form);
-    const steps: number[] = [...FOLLOW_AT_STEPS];
-    if (!steps.includes(cur)) steps.push(cur);
-    return steps.sort((a, b) => a - b).map((s) => ({ value: String(s), label: `${s} %` }));
-  },
-  value: (form) => String(followAtOf(form)),
-  apply: (_form, v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? { videoFollowAt: n } : {};
-  },
+  min: FOLLOW_AT_MIN,
+  max: FOLLOW_AT_MAX,
+  step: 1,
+  value: (form) => Math.round(followAtOf(form)),
+  apply: (_form, n) =>
+    Number.isFinite(n)
+      ? { videoFollowAt: Math.min(FOLLOW_AT_MAX, Math.max(FOLLOW_AT_MIN, Math.round(n))) }
+      : {},
+  text: (n) => `${Math.round(n)} %`,
 };
 
-const HEADS = [
-  { value: 'none', label: 'None', set: { dots: false, rings: false, hzLabels: false } },
-  { value: 'dots', label: 'Dots', set: { dots: true, rings: false, hzLabels: false } },
-  { value: 'dots-hz', label: 'Dots + Hz', set: { dots: true, rings: false, hzLabels: true } },
-  { value: 'dots-rings', label: 'Dots + rings', set: { dots: true, rings: true, hzLabels: false } },
-  { value: 'all', label: 'Dots + rings + Hz', set: { dots: true, rings: true, hzLabels: true } },
-] as const;
+/** "1×", "0.6×", "1.75×". */
+const factor = (n: number) => `${Number(n.toFixed(2))}×`;
 
-function headsValue(l: LookForm): string {
-  const h = HEADS.find(
-    (o) => o.set.dots === l.dots && o.set.rings === l.rings && o.set.hzLabels === l.hzLabels,
-  );
-  return h ? h.value : `custom:${+l.dots}${+l.rings}${+l.hzLabels}`;
-}
+const widthControl: LookSlider = {
+  type: 'slider',
+  id: 'width',
+  label: 'Line width',
+  kinds: BOTH,
+  min: LINE_SCALE_MIN,
+  max: LINE_SCALE_MAX,
+  step: 0.05,
+  value: (form) => lineScaleOf(form.look.lineWidth),
+  apply: (form, n) =>
+    Number.isFinite(n) ? look(form, { lineWidth: Number(lineScaleOf(n).toFixed(2)) }) : {},
+  text: factor,
+};
 
-function headsLabel(l: LookForm): string {
-  const parts = [l.rings && 'Rings', l.hzLabels && 'Hz'].filter(Boolean);
-  return parts.length ? `${parts.join(' + ')} (no dots)` : 'None';
-}
+const COLORS: readonly { id: LookColors; label: string }[] = [
+  { id: 'app', label: 'App' },
+  { id: 'pitch', label: 'By pitch' },
+  { id: 'ink', label: 'Ink' },
+  { id: 'custom', label: 'Custom' },
+];
 
-/** The Look's dropdowns in dialog order (Theme and the HUD are separate controls). */
+/** The Look's controls in dialog order (Theme and the HUD are separate controls). */
 export const LOOK_CONTROLS: readonly LookControl[] = [
-  fixed(
+  segments(
     'guides',
     'Guides',
     BOTH,
     [
       { value: 'off', label: 'Off', set: { guides: false, guideLabels: false } },
       { value: 'lines', label: 'Lines', set: { guides: true, guideLabels: false } },
-      { value: 'labels', label: 'Lines + Hz labels', set: { guides: true, guideLabels: true } },
+      { value: 'labels', label: 'Lines + labels', set: { guides: true, guideLabels: true } },
     ],
     (l) => (!l.guides ? 'off' : l.guideLabels ? 'labels' : 'lines'),
   ),
-  fixed(
+  segments(
     'beats',
     'Beat lines',
     BOTH,
@@ -191,15 +211,15 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     ],
     (l) => l.beats,
   ),
-  fixed(
+  segments(
     'moments',
     'Moments',
     BOTH,
     [
       { value: 'off', label: 'Off', set: { markers: false, sections: false } },
+      { value: 'labels', label: 'Labels', set: { markers: false, sections: true } },
       { value: 'markers', label: 'Markers', set: { markers: true, sections: false } },
-      { value: 'all', label: 'Markers + labels', set: { markers: true, sections: true } },
-      { value: 'labels', label: 'Labels only', set: { markers: false, sections: true } },
+      { value: 'all', label: 'Both', set: { markers: true, sections: true } },
     ],
     (l) => (l.markers ? (l.sections ? 'all' : 'markers') : l.sections ? 'labels' : 'off'),
   ),
@@ -209,21 +229,25 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
   onOff('level', 'Louder lines brighter', 'levelOpacity', BOTH),
   onOff('thickness', 'Thicker when merged or weighted', 'thickness', BOTH),
   onOff('pulse', 'Pulse marks', 'pulseMarks', BOTH),
-  fixed('heads', 'Heads', VIDEO, HEADS, headsValue, headsLabel),
-  fixed(
+  {
+    type: 'flags',
+    id: 'heads',
+    label: 'Heads',
+    kinds: VIDEO,
+    flags: [
+      { id: 'dots', label: 'Dots', key: 'dots' },
+      { id: 'rings', label: 'Rings', key: 'rings' },
+      { id: 'hz', label: 'Hz', key: 'hzLabels' },
+    ],
+  },
+  segments(
     'colors',
     'Line colours',
     BOTH,
-    LOOK_COLORS.map((c) => ({ value: c.id, label: c.label, set: { colors: c.id } })),
+    COLORS.map((c) => ({ value: c.id, label: c.label, set: { colors: c.id } })),
     (l) => l.colors,
   ),
-  fixed(
-    'width',
-    'Line width',
-    BOTH,
-    LOOK_WIDTHS.map((w) => ({ value: w.id, label: w.label, set: { lineWidth: w.id } })),
-    (l) => l.lineWidth,
-  ),
+  widthControl,
   onOff('background', 'Transparent background', 'transparent', POSTER),
 ];
 
@@ -237,7 +261,7 @@ export function defaultHud(kind: LookKind) {
   return kind === 'video' ? DEFAULT_HUD : [];
 }
 
-/** The HUD button's text: "6 readouts", "1 readout", "None". */
+/** The HUD row's count: "6 readouts", "1 readout", "None". */
 export function hudSummary(items: readonly unknown[]): string {
   const n = HUD_CHOICES.filter((c) => items.includes(c.id)).length;
   return n === 0 ? 'None' : `${n} readout${n === 1 ? '' : 's'}`;

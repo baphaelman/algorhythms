@@ -16,6 +16,7 @@ import { auditionState } from './audition';
 import { composeView } from './compose-view';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
+import { previewStats } from './ui/ExportDialog';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
 export interface AlgoRhythmsDebug {
@@ -71,6 +72,8 @@ export interface AlgoRhythmsDebug {
   videoExport(): Promise<typeof import('./video-export')>;
   /** The Export dialog's engine room (`lastVideoRequest()` for M8-d's tests), loaded on demand. */
   exportRun(): Promise<typeof import('./export-run')>;
+  /** The Export dialog preview's counters: measure and scroll-padding callbacks, draws. */
+  exportPreview: typeof previewStats;
   /** Poster export (M9-a): `renderPosterPng`, `renderPosterSvg`, `referencePoster`. */
   poster(): Promise<typeof import('./poster-export')>;
   /** `parsePiece` (core/schema), for tests that load example files. */
@@ -105,6 +108,7 @@ export function installDebug(): void {
       return tap;
     },
     frameStats,
+    exportPreview: previewStats,
     actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,
     editor: { state: useEditor, select, undo, redo },

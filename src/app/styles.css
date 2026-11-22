@@ -1027,7 +1027,7 @@ dialog.dialog.export {
   opacity: 0.5;
 }
 
-/* The export Look (video and poster): dropdowns in a label / control grid. */
+/* The export Look (video and poster): sliders, switches and segments in a label / control grid. */
 .dialog fieldset.look {
   min-width: 0;
   margin: 0 0 14px;
@@ -1058,12 +1058,6 @@ dialog.dialog.export {
   color: var(--ink-2);
 }
 
-/* HUD: level with its button while the checklist opens below. */
-.dialog .look-grid > .look-label {
-  align-self: start;
-  padding-top: 8px;
-}
-
 .dialog .look-grid > .look-note {
   grid-column: 2;
   margin-top: -3px;
@@ -1071,22 +1065,49 @@ dialog.dialog.export {
   color: var(--ink-2);
 }
 
-.dialog .look select,
-.dialog .hud-picker > button {
-  width: 100%;
+/* Segments: one bar, never wrapping; the options share the width. */
+.dialog .seg.look-seg {
+  display: flex;
+  flex-wrap: nowrap;
+  align-self: stretch;
+  justify-self: stretch;
   min-width: 0;
   min-height: 32px;
-  padding: 5px 8px;
-  font: 500 13px/1.2 var(--f-mono);
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  text-align: left;
 }
 
-/* Two-way choices: a full row, label left, switch at the right (out of the label column's sizing). */
-.dialog .look-grid > .look-switch {
+.dialog .seg.look-seg label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.dialog .seg.look-seg:has(input:disabled) {
+  opacity: 0.5;
+}
+
+.dialog .look-range {
+  min-height: 32px;
+  gap: 8px;
+}
+
+.dialog .look-range output {
+  min-width: 6ch;
+}
+
+.dialog .look-range input:disabled,
+.dialog .look-range input:disabled + output {
+  opacity: 0.5;
+}
+
+/* Yes/no choices: a full row, label left, switch at the right (out of the label column's sizing). */
+.dialog .look-grid > .look-switch,
+.dialog .field > .look-switch,
+.dialog .hud-inner > .look-switch {
   grid-column: 1 / -1;
   display: flex;
   justify-content: space-between;
@@ -1096,6 +1117,20 @@ dialog.dialog.export {
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
+}
+
+.dialog .field > label.look-switch {
+  font: 13px/1.3 var(--f-sans);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.dialog .look-switch .switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
 .dialog .look-switch > input {
@@ -1139,47 +1174,104 @@ dialog.dialog.export {
   outline-offset: 2px;
 }
 
-.dialog .look select:disabled {
+.dialog .look-switch > input:disabled {
   opacity: 0.5;
+  cursor: default;
 }
 
-.dialog .hud-picker {
-  position: relative;
+/* HUD: a disclosure row; its readout list swoops open in place (rows below move down). */
+.dialog .hud-section {
+  grid-column: 1 / -1;
   min-width: 0;
 }
 
-.dialog .hud-picker > button {
+.dialog .hud-row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 0;
+  font: 13px/1.2 var(--f-sans);
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
 }
 
-/* Opens in place (pushes the rows below down), so it never covers the dialog's buttons. */
-.dialog .hud-pop {
-  margin-top: 4px;
-  padding: 8px 10px;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
+.dialog .hud-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.dialog .hud-pop .check {
-  flex-wrap: wrap;
-  padding: 3px 0;
+.dialog .hud-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.22s ease;
 }
 
-.dialog .hud-pop .hud-sample {
-  margin-left: auto;
-  font: 12px/1.3 var(--f-mono);
+.dialog .hud-row[aria-expanded='true'] .hud-chevron {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+/* Height animation: a one-row grid from 0fr to 1fr. Hidden (after the animation) when closed. */
+.dialog .hud-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.22s ease,
+    visibility 0s linear 0.22s;
+}
+
+.dialog .hud-panel.open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows 0.22s ease,
+    visibility 0s;
+}
+
+.dialog .hud-inner {
+  min-height: 0;
+  /* clip, not hidden: a hidden box is a scroll container that scrollIntoView could scroll. */
+  overflow: hidden;
+  overflow: clip;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--rule);
+}
+
+.dialog .hud-inner > .look-switch {
+  min-height: 30px;
+  padding: 2px 0;
+}
+
+.dialog .hud-sample {
+  font: 11px/1.3 var(--f-mono);
   color: var(--ink-2);
+  opacity: 0.85;
   overflow-wrap: anywhere;
 }
 
 .dialog .hud-quick {
   display: flex;
   gap: 8px;
-  margin-bottom: 4px;
+  padding: 4px 0 6px;
+}
+
+.dialog .hud-quick button {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .dialog .look input[type='color'] {
@@ -1264,14 +1356,14 @@ dialog.dialog.export.has-preview {
     margin-top: 4px;
   }
 
-  /* Labels wrap so the dropdowns keep room for their text. */
+  /* Labels wrap so the segments keep room for their text. */
   .dialog .look-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     column-gap: 8px;
   }
 }
 
-/* Phones: label above its control, so the chosen option reads in full. */
+/* Phones: label above its control; segments and sliders take the full width. */
 @media (max-width: 479px) {
   .dialog .look-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1289,7 +1381,8 @@ dialog.dialog.export.has-preview {
     margin-top: 0;
   }
 
-  .dialog .look-grid > .look-switch {
+  .dialog .look-grid > .look-switch,
+  .dialog .look-grid > .hud-section {
     margin-top: 6px;
   }
 }
