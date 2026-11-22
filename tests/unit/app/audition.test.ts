@@ -57,6 +57,7 @@ import {
   AUDITION_SECONDS,
   audition,
   auditionAfterEdit,
+  auditionMelodyAfterEdit,
   auditionMoment,
   auditionScore,
   auditionState,
@@ -64,6 +65,7 @@ import {
   momentNotes,
   stopAudition,
 } from '../../../src/app/audition';
+import { tuneLineAt } from '../../../src/app/editor/tune';
 import { liveNotes } from '../../../src/app/ui/inspector/fields';
 import { loadPiece, setPiece, usePlayer } from '../../../src/app/store';
 
@@ -295,5 +297,32 @@ describe('step edits audition the moved notes', () => {
     moveChordNote('c', 1, -1);
     await settle();
     expect(audio.jobs).toHaveLength(0);
+  });
+});
+
+describe('tune auditions', () => {
+  it("a melody that keeps its line's pitch (no segment of the tune) still plays on that line", () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const tune = { id: 'tun001', type: 'tune', at: 4, notes: [{ pitch: 60, len: 1 }] };
+      const p = usePlayer.getState().piece;
+      const line = tuneLineAt(p, compile(p), tune as never);
+      expect(line.voice).toBeDefined();
+      // CI v59 flake: Random melody rolled the line's own pitch twice; nothing moved, no sound.
+      const notes = [
+        { pitch: line.pitch, len: 1 },
+        { pitch: line.pitch, len: 1 },
+      ];
+      auditionMelodyAfterEdit('tun001', notes, 4);
+      setPiece({ ...p, moments: [...p.moments, { ...tune, notes } as unknown as Moment] });
+      const { compiled } = usePlayer.getState();
+      expect(compiled.voices.some((v) => v.segments.some((x) => x.momentId === 'tun001'))).toBe(
+        false,
+      );
+      expect(audio.jobs).toHaveLength(1);
+      expect(auditionState.notes).toEqual([{ voice: line.voice, pitch: line.pitch }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

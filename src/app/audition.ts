@@ -25,6 +25,7 @@ import type {
   Segment,
 } from '../core/types';
 import { auditionAudio, endAuditionAudio, primeAudio, resumeAudio } from './audio';
+import { tuneLineAt } from './editor/tune';
 import { compiledThisTask, usePlayer } from './store';
 
 /** Length of a one-shot audition, seconds. */
@@ -280,14 +281,23 @@ export function auditionAfterEdit(id: MomentId, only?: readonly Pitch[]): void {
 }
 
 /**
+ * The line that plays tune `id` in the current score (editor/tune `tuneLineAt`). Not just a line
+ * with a segment of the tune: a tune whose notes all equal the line's pitch moves nothing.
+ */
+function tuneVoice(id: MomentId): number | undefined {
+  const { compiled, piece } = usePlayer.getState();
+  const m = piece.moments.find((x) => x.id === id);
+  return m?.type === 'tune' ? tuneLineAt(piece, compiled, m).voice : undefined;
+}
+
+/**
  * A tune's "Melody on" pick: once the edit has compiled, `pitch` (its first note) on the line that
  * now plays tune `id`, at `t`.
  */
 export function auditionTuneAfterEdit(id: MomentId, pitch: Pitch, t: Seconds): void {
   afterEdit(() => {
-    const score = usePlayer.getState().compiled;
-    const v = score.voices.find((x) => x.segments.some((s) => s.momentId === id));
-    if (v) audition([{ voice: v.index, pitch }], t);
+    const v = tuneVoice(id);
+    if (v !== undefined) audition([{ voice: v, pitch }], t);
   });
 }
 
@@ -302,12 +312,11 @@ export function auditionMelodyAfterEdit(
 ): void {
   if (notes.length === 0) return;
   afterEdit(() => {
-    const score = usePlayer.getState().compiled;
-    const v = score.voices.find((x) => x.segments.some((s) => s.momentId === id));
-    if (!v) return;
+    const v = tuneVoice(id);
+    if (v === undefined) return;
     const total = notes.reduce((a, n) => a + n.len, 0);
     const seconds = Math.min(MELODY_SECONDS, total + FADE_OUT);
-    audition([{ voice: v.index, pitch: notes[0].pitch }], at, { seconds, melody: notes });
+    audition([{ voice: v, pitch: notes[0].pitch }], at, { seconds, melody: notes });
   });
 }
 
