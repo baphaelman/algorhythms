@@ -83,7 +83,9 @@ export class AudioEngine {
   /** Called on worklet errors. */
   onError: ((message: string) => void) | null = null;
   /** Live mode: message `seq` applied at context frame `frame`, live time `time` (§9). */
-  onLiveApplied: ((seq: number, frame: number, time: number) => void) | null = null;
+  onLiveApplied:
+    | ((seq: number, frame: number, time: number, received: number, callback: number) => void)
+    | null = null;
 
   private readonly tables = new TableBuilder();
   /**
@@ -444,7 +446,7 @@ export class AudioEngine {
         this.onError?.(msg.message);
         break;
       case 'liveApplied':
-        this.onLiveApplied?.(msg.seq, msg.frame, msg.time);
+        this.onLiveApplied?.(msg.seq, msg.frame, msg.time, msg.received, msg.callback);
         break;
     }
   }
