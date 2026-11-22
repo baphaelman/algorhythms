@@ -297,6 +297,8 @@ export interface LiveVoiceView {
   seg?: Segment;
   /** The line it is on: the pool index standing for it (absent: its own). */
   line?: number;
+  /** Its part (absent: none); lines of different parts never merge (compile.ts `onJoin`). */
+  part?: string;
   /** It has moves posted that have not started (a new move cancels them). */
   pending?: boolean;
   /**
@@ -454,6 +456,8 @@ export interface LiveMove {
   line?: number;
   /** A fork's departure (dsp/live.ts LIVE_BORN). */
   born?: boolean;
+  /** The line it is on from its arrival, when it merges there (dsp/live.ts LIVE_JOIN; absent: `line`). */
+  join?: number;
 }
 
 /** What one change of H (or of the release) does. */
@@ -519,21 +523,33 @@ export function liveMoves(
       share,
       line: m.line,
       born: m.born,
+      ...(m.join >= 0 ? { join: m.join } : {}),
     }));
 }
 
-/** All voices step to their targets at once (from silence). */
+/**
+ * All voices step to their targets at once (from silence). Voices of a part on one note are one
+ * line, the lowest index standing for it (as the compiler's establishing moment leaves them).
+ */
 function stepMoves(voices: readonly LiveVoiceView[], targets: readonly Pitch[], s: LiveSettings) {
   const share = 1 / Math.sqrt(voices.length);
-  return voices.map((v, i): LiveMove => ({
-    voice: v.index,
-    delay: 0,
-    dur: 0,
-    p1: targets[i],
-    ease: s.ease,
-    scale: 0,
-    share,
-  }));
+  return voices.map((v, i): LiveMove => {
+    let line = v.index;
+    voices.forEach((u, j) => {
+      if (targets[j] === targets[i] && (u.part ?? '') === (v.part ?? '') && u.index < line)
+        line = u.index;
+    });
+    return {
+      voice: v.index,
+      delay: 0,
+      dur: 0,
+      p1: targets[i],
+      ease: s.ease,
+      scale: 0,
+      share,
+      line,
+    };
+  });
 }
 
 /** True when the live voices are silent: level 0 and not ramping up. */

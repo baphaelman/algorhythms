@@ -2359,3 +2359,13 @@ On 94b1d3c (`main-7glpov` with `m7d-match` and `live-grace-fill`), branch `live-
   - `pnpm test --maxWorkers=2`: 2441 passed (+2 skipped).
   - `pnpm test:perf`: 11/11 passed.
   - e2e:quick live, live-drawer, live-record and musical-typing: 16/16 on chromium-dev and chromium-prod.
+
+## M7: line identity from line ids (core, dsp, audio; 2026-11-22)
+On 5d4dea4 (`main-7glpov`), branch `live-line-id`. Seeds 33 and 47 now gate (random seeds 1–72 all gate).
+- **Rule (`core/live-plan.ts`).** One line = one line id (LIVE_LINE) and one path. Lines that meet on a note without merging stay apart. Seed 47: arrivals with pending moves to different notes. Seed 33: linear forks that share their parent's path while still gliding.
+  - After planning, `planLive` runs the compiler's join checks over the coming events (`onJoin`): glides in force arriving, moves arriving, births, and lines this change leaves holding with nothing pending (at T). A line merges with every line of its part resting on its note with the same destination. The one resting longest survives (ties: lower index). The others drop their pending moves and follow the survivor's.
+  - The merges are recorded in the ids: new record field `LIVE_JOIN` (`LIVE_STRIDE` 14), the line of the hold after a move's arrival, or a hold record with the survivor's id (as a cancellation's: glide end + 1 ms, or 0). This replaces M7-d's "joins before a move starts".
+  - From silence, the voices of a part on one note step as one line (the lowest index).
+- **View (`audio/live-mirror.ts`, `LiveTracks.postedAfter`).** A voice is `pending` also when something is posted after its glide in force: a move starting after its arrival, or a line change there. Its cancel record then drops the change, as the compiler cancels pending moves. Without this, a stale join from an earlier change merged lines (seed 47).
+- **Measured (`LIVE_TAKE_SEEDS=1`, or `=a-b` for a range).** Seeds 1–372 miss 2 (was 11): 116 (30.1 c, 6 misses) and 181 (65.4 c, 15 misses), unchanged from before. One cause for both, in `live-take.ts`: a key comes within MIN_GLIDE + CLOSE_GAP (11 ms) of the end of a fade. The re-establish `merge` then starts before the fade ends and re-targets lines still gliding over 10 ms, at the fade's tail (−30 dB or lower), where live kept to its glide. Ending the take's fade at the merge instead leaves live sounding where the take is silent. Not fixed.
+- **Status.** Lint and typecheck pass. `pnpm test --maxWorkers=2`: 2445 passed (+2 skipped). `pnpm test:perf`: 11/11; live no-GC 1976 B (3 runs). e2e:quick live, live-drawer, live-record, musical-typing: 16/16 on chromium-dev and chromium-prod (Firefox is not installed here).

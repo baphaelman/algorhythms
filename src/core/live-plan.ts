@@ -3,10 +3,11 @@
  * take plays back with pitch paths matching the live ones"). A port of compiler/plan.ts
  * `planMoment` and compiler/lines.ts `collapse` onto the live voices, so a take compiled as
  * moments plays the paths live mode played:
- * - voices on one path (same pitch, velocity and destination) are one line, as the compiler's
- *   stacked lines; a line keeps the target group nearest where it was heading (ties: lower) and the
- *   other groups fork off it (births: silent for the crossing check until they depart, starting from
- *   the line's state there);
+ * - voices on one line id (dsp/live.ts LIVE_LINE) and one path are one line, as the compiler's
+ *   stacked lines; lines that meet on a note stay apart unless they merge as `onJoin` merges
+ *   them, which the moves record in the ids (LIVE_JOIN, holds); a line keeps the target group
+ *   nearest where it was heading (ties: lower) and the other groups fork off it (births: silent
+ *   for the crossing check until they depart, starting from the line's state there);
  * - timings: `drawTimings` over the movers (preDest, target, voice), every move ending together;
  * - overshoot limits L = min(1, gap to the pitch-order neighbours), narrowed by the range room;
  * - under `ordered`, the §7.2 crossing loop over every line, holding or still gliding from an
@@ -50,6 +51,8 @@ export interface PlanVoice {
   seg: Segment;
   /** The line it is on (the pool index standing for it). */
   line: number;
+  /** Its part (absent: none); lines of different parts never merge. */
+  part?: string;
   /** It has moves posted that have not started (cancelled by this change unless it moves). */
   pending?: boolean;
   /** A fork not departed yet: when it leaves and the line it forms (core/live.ts LiveVoiceView). */
@@ -72,6 +75,8 @@ export interface PlannedMove {
   line: number;
   /** A fork's departure: until it starts the voice is not a line of its own. */
   born: boolean;
+  /** The line it is on from its arrival, when it merges there into another (−1: `line`). */
+  join: number;
 }
 
 const enum Kind {
@@ -84,6 +89,10 @@ interface Part {
   kind: Kind;
   /** The voice standing for it (pool index): the line's, or the fork's carrier. */
   voice: number;
+  /** Its voices' line id now (lines; births and unborn lines: `voice`). */
+  line: number;
+  /** Its part ('' = none). */
+  group: string;
   hash: number;
   range: readonly [Pitch, Pitch];
   /** Live voices on it. */
@@ -152,7 +161,9 @@ export function planLive(
           Math.abs(u.unborn.t - v.unborn.t) <= SAME_TIME
         );
       }
+      // One line: one path and one line id (lines meeting on a note without merging stay apart).
       return (
+        u.line === v.line &&
         u.dest === v.dest &&
         Math.abs(u.pitch - v.pitch) <= SAME &&
         Math.abs(u.velocity - v.velocity) <= SAME
@@ -167,6 +178,8 @@ export function planLive(
     const p: Part = {
       kind,
       voice: v.index,
+      line: kind === Kind.Birth || v.unborn ? v.index : v.line,
+      group: v.part ?? '',
       hash: hash32(v.id),
       range: v.range,
       voices: members.map((m) => voices[m].index),
@@ -676,47 +689,117 @@ export function planLive(
     const m0 = seg.m0 ?? 0;
     return raw === 0 || m0 === 0 ? (raw === 0 ? 1 : 0) : m0 / raw;
   };
-  // Joins (compile.ts `onJoin`): a line arriving, before its move starts, on the note another line
-  // holds, both bound for one destination, merges into the one holding longest (ties: lower
-  // index) and drops its move: its voices follow that line's.
-  const follow = parts.map((_, i) => i);
+  // Joins (compile.ts `onJoin`), run as the events after this change will run them: a line coming
+  // to rest (its glide in force or its move arriving, its birth, or held by this change with
+  // nothing pending) merges with every line resting on its note bound for the same destination
+  // (nothing pending, or pending moves to one note). The one there first survives (ties: lower
+  // index); the others drop their pending moves and follow it, and their voices take its line id.
   const sinceOf = (q: Part): Seconds => (glides(q.seg) ? q.seg.t1 : q.seg.t0);
-  const byArrival = parts
-    .map((_, i) => i)
-    .filter((i) => parts[i].kind === Kind.Move && !unbornLine(i) && stillGliding(i))
-    .sort((a, b) => parts[a].seg.t1 - parts[b].seg.t1);
-  for (const i of byArrival) {
+  const arrive = (i: number): Seconds => parts[i].t0 + parts[i].dur;
+  const bornAt = (i: number): Seconds =>
+    parts[i].kind === Kind.Birth ? parts[i].t0 : unbornLine(i) ? bornT(i) : -Infinity;
+  const holdingAt = (i: number, t: Seconds): boolean => {
     const p = parts[i];
-    const ta = p.seg.t1;
-    if (!(p.t0 > ta) || follow[i] !== i) continue;
-    const group = [i];
+    if (t < bornAt(i)) return false;
+    if (p.moving && t >= p.t0) return t >= arrive(i) || !glides(moveOf(i));
+    if (p.kind === Kind.Birth || (unbornLine(i) && p.moving)) return false;
+    if (unbornLine(i)) return true;
+    return !(glides(p.seg) && t < p.seg.t1);
+  };
+  const headingAt = (i: number, t: Seconds): Pitch => {
+    const p = parts[i];
+    if (p.moving && t >= p.t0) return p.to;
+    return unbornLine(i) ? holdPitch(i) : p.seg.p1;
+  };
+  const destAt = (i: number, t: Seconds): Pitch =>
+    parts[i].moving && t < parts[i].t0 ? parts[i].to : headingAt(i, t);
+  const restingSince = (i: number, t: Seconds): Seconds => {
+    const p = parts[i];
+    if (p.moving && t >= p.t0) return glides(moveOf(i)) ? arrive(i) : p.t0;
+    return unbornLine(i) ? p.deferT : sinceOf(p);
+  };
+  const events: { t: Seconds; i: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = parts[i];
+    const born = p.kind === Kind.Birth || unbornLine(i);
+    if (p.moving) events.push({ t: arrive(i), i });
+    if (!born && glides(p.seg) && p.seg.t1 > 0 && (!p.moving || p.seg.t1 <= p.t0))
+      events.push({ t: p.seg.t1, i });
+    if (!p.moving && unbornLine(i)) events.push({ t: p.deferT, i });
+    if (!p.moving && !born && holdingAt(i, 0)) events.push({ t: 0, i });
+  }
+  events.sort((a, b) => a.t - b.t || parts[a.i].voice - parts[b.i].voice);
+  /** The line a part merged into (−1: none), when, and whether its own move was still to come. */
+  const into = parts.map(() => -1);
+  const diedAt = parts.map(() => Infinity);
+  const dropped = parts.map(() => false);
+  const members = parts.map((p) => [...p.voices]);
+  const idChanges: { voice: number; t: Seconds; line: number; p: Pitch }[] = [];
+  /** A part's line id at t (its voices' LIVE_LINE). */
+  const lineOf = (i: number, t: Seconds): number => {
+    const p = parts[i];
+    return p.kind === Kind.Birth || unbornLine(i) || (p.moving && t >= p.t0) ? p.voice : p.line;
+  };
+  for (const e of events) {
+    const a = e.i;
+    const t = e.t;
+    if (into[a] >= 0 || !holdingAt(a, t)) continue;
+    const pa = headingAt(a, t);
+    const da = destAt(a, t);
+    const group = [a];
     for (let j = 0; j < n; j++) {
-      const q = parts[j];
-      if (j === i || q.kind !== Kind.Move || unbornLine(j) || follow[j] !== j) continue;
-      if (Math.abs(q.to - p.to) > SAME_PITCH || !(q.t0 > ta)) continue;
-      if (glides(q.seg) && q.seg.t1 > ta) continue; // still gliding there
-      if (Math.abs(q.seg.p1 - p.seg.p1) > SAME_PITCH) continue;
-      group.push(j);
+      if (j === a || into[j] >= 0 || parts[j].group !== parts[a].group) continue;
+      if (!holdingAt(j, t)) continue;
+      if (Math.abs(headingAt(j, t) - pa) > SAME_PITCH) continue;
+      if (Math.abs(destAt(j, t) - da) <= SAME_PITCH) group.push(j);
     }
-    let s = i;
+    if (group.length < 2) continue;
+    let s = group[0];
     for (const j of group) {
-      const a = sinceOf(parts[s]);
-      const b = sinceOf(parts[j]);
-      if (b < a - SAME_TIME || (Math.abs(b - a) <= SAME_TIME && parts[j].voice < parts[s].voice))
+      const x = restingSince(j, t);
+      const y = restingSince(s, t);
+      if (x < y - SAME_TIME || (Math.abs(x - y) <= SAME_TIME && parts[j].voice < parts[s].voice))
         s = j;
     }
-    // The survivor may be the later arrival (a tie within SAME_TIME): the others follow it.
-    for (const j of group) if (j !== s) follow[j] = s;
+    for (const d of group) {
+      if (d === s) continue;
+      into[d] = s;
+      diedAt[d] = t;
+      dropped[d] = parts[d].moving && parts[d].t0 > t;
+      const id = lineOf(s, t);
+      for (const v of members[d]) idChanges.push({ voice: v, t, line: id, p: pa });
+      members[s].push(...members[d]);
+    }
   }
-  for (let i = 0; i < n; i++) while (follow[follow[i]] !== follow[i]) follow[i] = follow[follow[i]];
+  /** The line whose moves a merged part's voices follow: past those whose own moves were dropped. */
+  const moveOwner = (i: number): number => {
+    let s = into[i];
+    for (let k = 0; k < n && dropped[s] && into[s] >= 0; k++) s = into[s];
+    return s;
+  };
 
   const out: PlannedMove[] = [];
   /** Part q's change of path before `until` (its move, or an unborn line's hold), or null. */
-  const pathOf = (qi: number, until: Seconds): Omit<PlannedMove, 'voice' | 'order'> | null => {
+  const pathOf = (
+    qi: number,
+    until: Seconds,
+    depth = 0,
+  ): Omit<PlannedMove, 'voice' | 'order'> | null => {
     const q = parts[qi];
+    if (dropped[qi] && depth < n)
+      return diedAt[qi] < until ? pathOf(moveOwner(qi), until, depth + 1) : null;
     if (q.moving && q.t0 < until) {
       const scale = scaleOf(qi);
-      return { delay: q.t0, dur: q.dur, p1: q.to, scale, part: qi, line: q.voice, born: false };
+      return {
+        delay: q.t0,
+        dur: q.dur,
+        p1: q.to,
+        scale,
+        part: qi,
+        line: q.voice,
+        born: false,
+        join: -1,
+      };
     }
     if (!q.moving && unbornLine(qi) && q.deferT < until) {
       const p1 = holdPitch(qi);
@@ -728,6 +811,7 @@ export function planLive(
         part: -1,
         line: q.voice,
         born: false,
+        join: -1,
       };
     }
     return null;
@@ -736,55 +820,84 @@ export function planLive(
     const p = parts[i];
     const forms = p.kind === Kind.Birth || unbornLine(i);
     if (!p.moving && !unbornLine(i)) continue;
-    if (follow[i] !== i) {
-      // Holds until it arrives, then follows the line it joined.
-      const q = parts[follow[i]];
-      const qs = scaleOf(follow[i]);
-      for (const v of p.voices) {
-        out.push({
-          voice: v,
-          delay: q.t0,
-          dur: q.dur,
-          p1: q.to,
-          scale: qs,
-          part: follow[i],
-          order: 0,
-          line: q.voice,
-          born: false,
-        });
-      }
-      continue;
-    }
+    if (dropped[i]) continue; // its voices follow the line it merged into (below)
     // A fork (a birth, or a line not born yet) follows its parent's path until it departs.
-    let order = 0;
     const at = p.moving ? p.t0 : p.deferT;
     const before = forms && p.parent >= 0 ? pathOf(p.parent, at) : null;
-    if (before) {
-      for (const v of p.voices) out.push({ voice: v, order: 0, ...before });
-      order = 1;
-    }
+    if (before) for (const v of p.voices) out.push({ voice: v, order: 0, ...before });
     // Its own move; an unborn line that stays is born holding its parent's pitch there.
     const own = p.moving
       ? { delay: p.t0, dur: p.dur, p1: p.to, scale: scaleOf(i), part: i }
       : { delay: p.deferT, dur: MIN_GLIDE, p1: holdPitch(i), scale: 0, part: -1 };
-    for (const v of p.voices) out.push({ voice: v, order, ...own, line: p.voice, born: forms });
+    for (const v of p.voices)
+      out.push({ voice: v, order: 0, ...own, line: p.voice, born: forms, join: -1 });
+  }
+  // Merged lines' voices follow the moves the line they merged into makes after the merge.
+  for (let i = 0; i < n; i++) {
+    if (into[i] < 0) continue;
+    const s = moveOwner(i);
+    const q = parts[s];
+    if (dropped[s] || !q.moving || !(q.t0 > diedAt[i])) continue;
+    const qs = scaleOf(s);
+    for (const v of parts[i].voices) {
+      out.push({
+        voice: v,
+        delay: q.t0,
+        dur: q.dur,
+        p1: q.to,
+        scale: qs,
+        part: s,
+        order: 0,
+        line: q.voice,
+        born: false,
+        join: -1,
+      });
+    }
   }
   // Voices that do not move but had moves pending: those are cancelled (the compiler cancels every
   // targeted line's pending moves), by a hold from the end of the glide in force.
+  const cancelAt = (v: PlanVoice): Seconds =>
+    glides(v.seg) && v.seg.t1 > 0 ? v.seg.t1 + CANCEL_AFTER : 0;
+  const hold = (voice: number, delay: Seconds, p1: Pitch, line: number): PlannedMove => ({
+    voice,
+    delay,
+    dur: MIN_GLIDE,
+    p1,
+    scale: 0,
+    part: -1,
+    order: 0,
+    line,
+    born: false,
+    join: -1,
+  });
   const moved = new Set(out.map((x) => x.voice));
-  for (const v of voices) {
-    if (!v.pending || moved.has(v.index)) continue;
-    out.push({
-      voice: v.index,
-      delay: glides(v.seg) && v.seg.t1 > 0 ? v.seg.t1 + CANCEL_AFTER : 0,
-      dur: MIN_GLIDE,
-      p1: v.seg.p1,
-      scale: 0,
-      part: -1,
-      order: 0,
-      line: v.line,
-      born: false,
-    });
+  for (const v of voices)
+    if (v.pending && !moved.has(v.index)) out.push(hold(v.index, cancelAt(v), v.seg.p1, v.line));
+  // Line ids after merges: on the record arriving there, else on a hold from then on.
+  for (const c of idChanges) {
+    const recs = out.filter((x) => x.voice === c.voice);
+    const arriving = recs.find(
+      (x) =>
+        Math.abs(x.delay + x.dur - c.t) <= SAME_TIME ||
+        (x.born && x.part < 0 && Math.abs(x.delay - c.t) <= SAME_TIME),
+    );
+    if (arriving) {
+      arriving.join = c.line;
+      continue;
+    }
+    // A hold from then on (as a cancellation's, after the glide arriving there).
+    const at = c.t > 0 ? c.t + CANCEL_AFTER : 0;
+    const h = recs.find((x) => x.part < 0 && !x.born && Math.abs(x.delay - at) <= SAME_TIME);
+    if (h) h.line = c.line;
+    else out.push(hold(c.voice, at, c.p, c.line));
+  }
+  // Application order within a voice: by start.
+  const seen = new Map<number, number>();
+  out.sort((x, y) => x.delay - y.delay);
+  for (const x of out) {
+    const k = seen.get(x.voice) ?? 0;
+    x.order = k;
+    seen.set(x.voice, k + 1);
   }
   return out;
 }
