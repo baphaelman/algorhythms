@@ -10,16 +10,7 @@
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
-import {
-  activeAt,
-  chordAt,
-  lifeAt,
-  keyAt,
-  motionAt,
-  pitchAt,
-  sample,
-  segmentIndexAt,
-} from '../core/query';
+import { activeAt, chordAt, lifeAt, keyAt, motionAt, pitchAt, segmentIndexAt } from '../core/query';
 import { hzOf } from '../core/tuning';
 import type {
   CompiledScore,
@@ -32,10 +23,11 @@ import type {
 } from '../core/types';
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, hudLines, pitchToY, timeToX } from './camera';
-import { drawGhost, ghostOf } from './ghost';
+import { drawGhost, ghostOf, type Reach } from './ghost';
 import { OPACITY_EPS, breaksIn, opacityIn } from './level';
 import { outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
+import { sampleInto, samples, stableScale, type Samples } from './sampling';
 import {
   drawnLives,
   geometryAt,
@@ -303,6 +295,8 @@ const OPACITY_FLAT = 1e-3;
 /** An opacity ramp is filled in slices whose alpha differs by at most this. */
 const ALPHA_STEP = 0.025;
 const NO_RANGES: number[] = [];
+/** The samples of the range being traced (one at a time). */
+const PTS = samples();
 
 // Scratch arrays of the outline path, grown as needed and reused across frames.
 let SN = 0;
@@ -377,7 +371,7 @@ function traceWeighted(
   if (!weighted && !strands && !O) {
     g.globalAlpha = alpha;
     g.lineWidth = base;
-    trace(g, view, sample(v, a, b, maxStep, tolerance));
+    trace(g, view, sampleInto(PTS, v, a, b, maxStep, tolerance));
     return;
   }
   g.fillStyle = g.strokeStyle;
@@ -405,6 +399,12 @@ function isEvent(events: readonly number[], t: Seconds): boolean {
 
 function inRanges(r: readonly number[], t: Seconds): boolean {
   for (let i = 0; i + 1 < r.length; i += 2) if (r[i] <= t && r[i + 1] >= t) return true;
+  return false;
+}
+
+/** True when t is within `m` of one of the ranges `r`. */
+function nearRanges(r: readonly number[], t: Seconds, m: Seconds): boolean {
+  for (let i = 0; i + 1 < r.length; i += 2) if (r[i] - m <= t && r[i + 1] + m >= t) return true;
   return false;
 }
 
@@ -449,19 +449,22 @@ function tracePiece(
       o = alpha * (ramp ? o0 : opacityIn(v, lives, (c0 + c1) / 2));
     }
     const dense = ramp || overlaps(vary, c0, c1);
-    const pts = sample(v, c0, c1, maxStep, tolerance);
+    const pts = sampleInto(PTS, v, c0, c1, maxStep, tolerance);
     let lastO = o;
-    for (let k = 0; k < pts.length; k++) {
-      const t = pts[k][0];
-      const p = pts[k][1];
+    for (let k = 0; k < pts.n; k++) {
+      const t = pts.t[k];
+      const p = pts.p[k];
       if (p !== p) continue;
       if (SN > 0 && t <= ST[SN - 1]) continue; // the shared end of the previous sub-interval
-      if (SN > 0 && dense) {
+      // Outside the varying ranges (and an opacity ramp) the dense points would be collinear,
+      // at a constant width and alpha: the shape is the same without them.
+      if (SN > 0 && dense && (ramp || overlaps(vary, ST[SN - 1] - maxStep, t + maxStep))) {
         const ta = ST[SN - 1];
         const pa = SP[SN - 1];
         const n = Math.ceil((t - ta) / maxStep);
         for (let j = 1; j < n; j++) {
           const tj = ta + ((t - ta) * j) / n;
+          if (!ramp && !nearRanges(vary, tj, maxStep)) continue;
           const oj = ramp ? alpha * opacityIn(v, lives, tj) : o;
           push(tj, pa + ((p - pa) * j) / n, ramp ? (lastO + oj) / 2 : o, ramp);
           lastO = oj;
@@ -594,7 +597,7 @@ function traceSilent(
       const silent = k < n && lifeSilent(v, lives, (u0 + u1) / 2);
       if (silent && runA !== runA) runA = u0;
       if (!silent && runA === runA) {
-        trace(g, view, sample(v, runA, u0, maxStep, tolerance), sf, v);
+        trace(g, view, sampleInto(PTS, v, runA, u0, maxStep, tolerance), sf, v);
         runA = NaN;
       }
     }
@@ -633,10 +636,21 @@ function selectedLevelFrom(
 /** The pitch colouring's vertical gradient on `g`, or null for the other colourings. */
 function pitchGradient(g: Ctx2D, style: ScoreStyle, view: View): CanvasGradient | null {
   if (style.colors !== 'pitch') return null;
-  const gradient = g.createLinearGradient(0, pitchToY(view, view.pLo), 0, pitchToY(view, view.pHi));
+  const y0 = pitchToY(view, view.pLo);
+  const y1 = pitchToY(view, view.pHi);
+  const hit = gradients.get(g);
+  if (hit && hit.y0 === y0 && hit.y1 === y1 && hit.dark === style.dark && hit.oklch === style.oklch)
+    return hit.gradient;
+  const gradient = g.createLinearGradient(0, y0, 0, y1);
   for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
+  gradients.set(g, { y0, y1, dark: style.dark, oklch: style.oklch, gradient });
   return gradient;
 }
+/** The last pitch gradient made on each context (constant while the camera follows). */
+const gradients = new WeakMap<
+  Ctx2D,
+  { y0: number; y1: number; dark: boolean; oklch: boolean; gradient: CanvasGradient }
+>();
 
 function drawLines(
   g: CanvasRenderingContext2D,
@@ -649,6 +663,7 @@ function drawLines(
   const { t, tL, tR, pps } = view;
   const maxStep = GLIDE_STEP_PX / pps;
   const tolerance = chordTolerance(view);
+  stableScale(maxStep, tolerance);
   const ghost = style.futureOpacity > 0.01;
   g.lineWidth = LINE_WIDTH;
   g.lineJoin = 'round';
@@ -698,6 +713,7 @@ function drawLines(
         const b = Math.min(tR, hi);
         if (b > a) traceWeighted(ctx, view, v, a, b, LINE_WIDTH, al, maxStep, tolerance, sf);
       },
+      reachOf(view, LINE_WIDTH, maxStep, tolerance),
     );
   }
   if (hl) {
@@ -728,13 +744,24 @@ function drawLines(
       });
     }
     if (hg) {
-      drawGhost(g, hg, voices, style, view, dpr, gradient, ghGradient, hlA, (ctx, v, al, lo, hi) =>
-        forHighlighted(v, hl, tL, tR, (a, b) => {
-          const a1 = Math.max(t, a, lo);
-          const b1 = Math.min(b, hi);
-          if (b1 > a1)
-            traceWeighted(ctx, view, v, a1, b1, HIGHLIGHT_WIDTH, al, maxStep, tolerance, sf);
-        }),
+      drawGhost(
+        g,
+        hg,
+        voices,
+        style,
+        view,
+        dpr,
+        gradient,
+        ghGradient,
+        hlA,
+        (ctx, v, al, lo, hi) =>
+          forHighlighted(v, hl, tL, tR, (a, b) => {
+            const a1 = Math.max(t, a, lo);
+            const b1 = Math.min(b, hi);
+            if (b1 > a1)
+              traceWeighted(ctx, view, v, a1, b1, HIGHLIGHT_WIDTH, al, maxStep, tolerance, sf);
+          }),
+        reachOf(view, HIGHLIGHT_WIDTH, maxStep, tolerance),
       );
     }
   }
@@ -758,6 +785,36 @@ function drawLines(
     }
   }
   g.globalAlpha = 1;
+}
+
+/**
+ * How far a line's drawing can reach from its centre line's pitch, in base widths: its strand
+ * offset (|off| ≤ about 4.2) plus its half width at a mitred bend (≤ 2 × 2.2), with room to spare.
+ */
+const REACH_UNITS = 12;
+
+/**
+ * `Reach` for the ghost layer: voice v over [lo, hi] can reach y0..y1 when its sampled pitches,
+ * widened by REACH_UNITS base widths and a pixel, overlap that band.
+ */
+function reachOf(view: View, base: number, maxStep: number, tolerance: number): Reach {
+  const m = REACH_UNITS * base + 1;
+  return (v, lo, hi, y0, y1) => {
+    const pts = sampleInto(PTS, v, lo, hi, maxStep, tolerance);
+    let pMin = Infinity;
+    let pMax = -Infinity;
+    for (let k = 0; k < pts.n; k++) {
+      const p = pts.p[k];
+      if (p !== p) continue;
+      if (p < pMin) pMin = p;
+      if (p > pMax) pMax = p;
+    }
+    if (!(pMax >= pMin)) return false;
+    // Widened by the sampling tolerance (in pitch); a mirrored plot swaps the ends.
+    const ya = pitchToY(view, pMax + tolerance);
+    const yb = pitchToY(view, pMin - tolerance);
+    return Math.max(ya, yb) + m >= y0 && Math.min(ya, yb) - m <= y1;
+  };
 }
 
 /** Opacity of the preview's dashed lines. */
@@ -785,7 +842,7 @@ function drawPreview(
   for (const v of score.voices) {
     if (v.segments.length === 0) continue;
     g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-    trace(g, view, sample(v, a, view.tR, maxStep, tolerance));
+    trace(g, view, sampleInto(PTS, v, a, view.tR, maxStep, tolerance));
   }
   g.restore();
 }
@@ -836,23 +893,23 @@ function forHighlighted(
 function trace(
   g: CanvasRenderingContext2D,
   view: View,
-  pts: [number, number][],
+  pts: Samples,
   sf?: StrandFrame,
   v?: CompiledVoice,
 ): void {
-  if (pts.length === 0) return;
+  if (pts.n === 0) return;
   const shift = sf !== undefined && v !== undefined && hasStrands(sf, v);
   g.beginPath();
   let pen = false;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i][1];
+  for (let i = 0; i < pts.n; i++) {
+    const p = pts.p[i];
     if (p !== p) {
       pen = false;
       continue;
     }
-    const x = timeToX(view, pts[i][0]);
+    const x = timeToX(view, pts.t[i]);
     let y = pitchToY(view, p);
-    if (shift) y += geometryAt(sf, v, pts[i][0]).off * LINE_WIDTH;
+    if (shift) y += geometryAt(sf, v, pts.t[i]).off * LINE_WIDTH;
     if (pen) g.lineTo(x, y);
     else g.moveTo(x, y);
     pen = true;
