@@ -608,7 +608,7 @@ input[type='range'] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 16px;
+  gap: 6px 12px;
 }
 
 .vb-row button {
@@ -619,7 +619,7 @@ input[type='range'] {
 .vb-end {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-left: auto;
 }
 

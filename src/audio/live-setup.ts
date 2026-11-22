@@ -19,6 +19,8 @@ export interface LiveVoiceSetup {
   part: string;
   /** Static gain: the voice's, times the per-part trim correction (`liveSetupFrom`). */
   gain: number;
+  /** The voice's own gain, before that correction (`liveGains` recomputes it for a new mix). */
+  baseGain?: number;
   pan: number | 'auto';
   mute: boolean;
   solo: boolean;
@@ -34,6 +36,11 @@ export interface LiveSetup {
   seed: number;
   /** Key at the playhead (release 'tonic'). */
   key: Key;
+  /**
+   * Peak lines per part over the whole piece (every part name, '' = none; at least 1), for the
+   * per-part correction (`liveGains`). Absent: gains are used as given.
+   */
+  partPeaks?: Record<string, number>;
 }
 
 /** Live time runs from 0 when live mode starts; the live score lasts this long (s). */
@@ -59,8 +66,9 @@ export function liveSetupFrom(piece: Piece, score: CompiledScore, at: Seconds): 
   if (pick.length === 0) pick = compiled.filter((v) => v.lives.length > 0);
   if (pick.length === 0) pick = compiled.slice(0, 1);
   const part = (i: number): string => compiled[i]?.part ?? '';
+  const partPeaks = peaksOf(score);
   const correction = partCorrection(
-    score,
+    partPeaks,
     pick.map((cv) => part(cv.index)),
     piece.mix,
   );
@@ -77,6 +85,7 @@ export function liveSetupFrom(piece: Piece, score: CompiledScore, at: Seconds): 
       pitch: p,
       part: part(cv.index),
       gain: cv.gain * correction[k],
+      baseGain: cv.gain,
       pan: cv.pan,
       mute: cv.mute,
       solo: cv.solo,
@@ -90,15 +99,45 @@ export function liveSetupFrom(piece: Piece, score: CompiledScore, at: Seconds): 
     referenceHz: score.referenceHz,
     seed: score.seed,
     key: score.keys.length > 0 ? keyAt(score, at) : piece.key,
+    partPeaks,
   };
 }
 
-/** Per live voice (parts `live`): the gain factor that keeps its per-part trim (see above). */
-function partCorrection(score: CompiledScore, live: readonly string[], mix: MixSettings): number[] {
-  const names = new Set(score.voices.map((v) => v.part ?? ''));
-  if (mix.normalise === 'all' || names.size < 2) return live.map(() => 1);
+/**
+ * Each live voice's static gain under `mix` (a `mix.normalise` change while live): its own gain
+ * times the per-part correction for that mode. Setups without `partPeaks` keep their gains.
+ */
+export function liveGains(setup: LiveSetup, mix: MixSettings): number[] {
+  const peaks = setup.partPeaks;
+  if (!peaks) return setup.voices.map((v) => v.gain);
+  const c = partCorrection(
+    peaks,
+    setup.voices.map((v) => v.part),
+    mix,
+  );
+  return setup.voices.map((v, k) => (v.baseGain ?? v.gain) * c[k]);
+}
+
+/** The piece's peak lines per part name (at least 1), every name included. */
+function peaksOf(score: CompiledScore): Record<string, number> {
   const lines = partLines(score);
-  const peak = (name: string): number => Math.max(1, lines[name] ?? 1);
+  const out: Record<string, number> = {};
+  for (const v of score.voices) {
+    const name = v.part ?? '';
+    out[name] = Math.max(1, lines[name] ?? 1);
+  }
+  return out;
+}
+
+/** Per live voice (parts `live`): the gain factor that keeps its per-part trim (see above). */
+function partCorrection(
+  peaks: Record<string, number>,
+  live: readonly string[],
+  mix: MixSettings,
+): number[] {
+  const names = Object.keys(peaks);
+  if (mix.normalise === 'all' || names.length < 2) return live.map(() => 1);
+  const peak = (name: string): number => peaks[name] ?? 1;
   let total = 0;
   for (const name of names) total += peak(name);
   const count = new Map<string, number>();

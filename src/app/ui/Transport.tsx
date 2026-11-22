@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { live } from '../dom';
 import { clampLoop } from '../ruler';
+import { TypingToggle } from './LiveDrawer';
 import { scrubEnd, scrubTo, toggleLoop, togglePlay, usePlayer } from '../store';
 
 /** Play/pause, the time readout, the meter and the key and voice status. */
@@ -51,6 +52,7 @@ export function Transport({
       >
         Loop
       </button>
+      <TypingToggle />
       {history}
       <div className="readout" role="timer" aria-label="Playback time">
         <span ref={time} data-testid="time" />

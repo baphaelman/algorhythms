@@ -20,6 +20,7 @@ import {
 import { setKeepOrder, useLineOrder } from '../editor/line-order';
 import { refreshSuggestions } from '../editor/suggestions';
 import { beatStep } from '../editor/snap';
+import { LiveToggle } from './LiveDrawer';
 import { SoundToggle } from './SoundDrawer';
 import { VoicesToggle } from './VoicesDrawer';
 
@@ -167,6 +168,7 @@ export function ViewBar() {
         <div className="vb-end">
           <VoicesToggle />
           <SoundToggle />
+          <LiveToggle />
           <BarPopover
             label="View ▾"
             title="Line colours, theme, HUD, line order"

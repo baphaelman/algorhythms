@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
+import { attachLiveKeys } from './live-ui';
 import { useCompose } from './compose';
 import './naming';
 import { startPersistence } from './persist';
@@ -22,6 +23,7 @@ import { TouchMenu } from './ui/TouchMenu';
 import { Scrubber, Transport } from './ui/Transport';
 import { UndoRedo } from './ui/UndoRedo';
 import { ViewBar } from './ui/ViewBar';
+import { LiveDrawer } from './ui/LiveDrawer';
 import { SoundDrawer } from './ui/SoundDrawer';
 import { VoicesDrawer } from './ui/VoicesDrawer';
 
@@ -54,7 +56,12 @@ export function App() {
   useEffect(() => {
     startPersistence();
     startPlayer();
-    return attachKeys();
+    const detachLive = attachLiveKeys();
+    const detach = attachKeys();
+    return () => {
+      detach();
+      detachLive();
+    };
   }, []);
 
   return (
@@ -84,6 +91,7 @@ export function App() {
       </main>
       {wide && <VoicesDrawer />}
       {wide && <SoundDrawer />}
+      {wide && <LiveDrawer />}
       {wide && <TouchMenu />}
     </div>
   );

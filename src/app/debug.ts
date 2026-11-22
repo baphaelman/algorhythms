@@ -8,6 +8,7 @@ import type { LiveEngine } from '../audio/live-engine';
 import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
 import { enterLive, exitLive, live } from './live';
+import { connectMidi, disconnectMidi, liveInputs, midiSink, useLive } from './live-ui';
 import { frameStats } from './loop';
 import { auditionState } from './audition';
 import { composeView } from './compose-view';
@@ -51,6 +52,12 @@ export interface AlgoRhythmsDebug {
     exit: typeof exitLive;
     engine(): LiveEngine;
     analyser(): AnalyserNode | null;
+    /** The Live drawer, typing and panel state (M7-b). */
+    ui: typeof useLive;
+    /** The live inputs' hub (held pitches by source). */
+    inputs: typeof liveInputs;
+    /** Web MIDI: connect with a fake MIDIAccess, the sink, disconnect. */
+    midi: { connect: typeof connectMidi; sink: typeof midiSink; disconnect: typeof disconnectMidi };
   };
 }
 
@@ -100,6 +107,9 @@ export function installDebug(): void {
         }
         return liveTap;
       },
+      ui: useLive,
+      inputs: liveInputs,
+      midi: { connect: connectMidi, sink: midiSink, disconnect: disconnectMidi },
     },
   };
 }

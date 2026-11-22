@@ -60,6 +60,7 @@ export {
   pulseHits,
   pulseLevel,
 } from './level';
+export { LIVE_SILENT, LIVE_VEIL, drawLiveLines, type LiveTrail } from './live';
 export { HOVER_RADIUS_PX, hoverLabel, nearestLine, noteLabel, type LineHit } from './hover';
 export {
   DARK_TOKENS,
