@@ -102,3 +102,20 @@ export {
   type VideoSize,
   type VideoStyleOptions,
 } from './video';
+export {
+  POSTER_CREDIT,
+  POSTER_DPR,
+  drawPoster,
+  drawTitleBlock,
+  posterCamera,
+  posterLayout,
+  posterLength,
+  posterSize,
+  posterStyle,
+  resetContext,
+  type PosterDrawOptions,
+  type PosterInfo,
+  type PosterSize,
+  type PosterStyleOptions,
+} from './poster';
+export { MONO_ADVANCE, SvgContext, SvgGradient, asCtx2D, escapeXml, svgColor } from './svg';

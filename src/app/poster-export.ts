@@ -1,0 +1,109 @@
+/**
+ * Poster export (PLAN.md §12 "Poster export", revision 12): the whole piece as a PNG
+ * (OffscreenCanvas + convertToBlob) or an SVG (`SvgContext`), drawn by `drawPoster`.
+ */
+
+import { compile } from '../core/compiler/compile';
+import type { CompiledScore, LineColors, Piece } from '../core/types';
+import { drawScore } from '../render/draw';
+import { supportsOklch } from '../render/palettes';
+import {
+  drawPoster,
+  posterCamera,
+  posterLayout,
+  posterSize,
+  posterStyle,
+  type PosterDrawOptions,
+  type PosterInfo,
+  type PosterSize,
+} from '../render/poster';
+import { SvgContext, asCtx2D } from '../render/svg';
+import { videoMarkers } from '../render/video';
+import { fileBase } from './export-options';
+
+export interface PosterOptions {
+  size: PosterSize;
+  theme: 'light' | 'dark';
+  /** No background (PNG alpha, no SVG background rect). */
+  transparent: boolean;
+  /** The title block (name, length, key, credit). */
+  title: boolean;
+  /** Weight drawn as thickness. */
+  thickness: boolean;
+  /** @default 'pitch' */
+  colors?: LineColors;
+  /** Voice colours by pool index, for `colors: 'custom'`. */
+  customColors?: readonly (string | undefined)[];
+}
+
+/**
+ * `drawPoster`'s options for a piece. `oklch`: the PNG uses what the browser parses; the SVG
+ * always asks for OKLCH (SvgContext writes it as hex).
+ */
+export function posterDrawOptions(
+  piece: Piece,
+  opts: PosterOptions,
+  oklch: boolean,
+): PosterDrawOptions {
+  const style = posterStyle({
+    theme: opts.theme,
+    thickness: opts.thickness,
+    transparent: opts.transparent,
+    title: opts.title,
+    colors: opts.colors ?? 'pitch',
+    oklch,
+    ...(opts.customColors ? { customColors: opts.customColors } : {}),
+    ...videoMarkers(piece),
+  });
+  return { size: opts.size, style, title: opts.title };
+}
+
+function posterInfo(piece: Piece): PosterInfo {
+  return { name: piece.meta.title, key: piece.key };
+}
+
+/** The poster as a PNG. */
+export async function renderPosterPng(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore = compile(piece),
+): Promise<Blob> {
+  const { width, height } = posterSize(opts.size);
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d', { alpha: opts.transparent });
+  if (!g) throw new Error('Poster export: this browser cannot draw on an OffscreenCanvas.');
+  drawPoster(g, compiled, posterInfo(piece), posterDrawOptions(piece, opts, supportsOklch()));
+  return canvas.convertToBlob({ type: 'image/png' });
+}
+
+/** The poster as an SVG document. */
+export function renderPosterSvg(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore = compile(piece),
+): string {
+  const { width, height } = posterSize(opts.size);
+  const svg = new SvgContext(width, height);
+  drawPoster(asCtx2D(svg), compiled, posterInfo(piece), posterDrawOptions(piece, opts, true));
+  return svg.toSvg();
+}
+
+/** `<title>.png` / `<title>.svg`. */
+export function posterFileName(piece: Piece, format: 'png' | 'svg'): string {
+  return `${fileBase(piece)}.${format}`;
+}
+
+/**
+ * Tests: the poster drawn by `drawScore` directly (same camera, style and layout, no title) on a
+ * fresh OffscreenCanvas, to compare with `renderPosterPng`.
+ */
+export function referencePoster(piece: Piece, opts: PosterOptions): ImageData {
+  const { width, height } = posterSize(opts.size);
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d', { alpha: opts.transparent })!;
+  const compiled = compile(piece);
+  const { style } = posterDrawOptions(piece, { ...opts, title: false }, supportsOklch());
+  const lay = posterLayout(opts.size);
+  drawScore(g, compiled, posterCamera(compiled), style, compiled.duration, lay, lay.dpr);
+  return g.getImageData(0, 0, width, height);
+}
