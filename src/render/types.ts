@@ -146,4 +146,9 @@ export interface ScoreStyle {
    * moment's lines draw in as it is placed. Absent: the whole score.
    */
   reveal?: Seconds;
+  /**
+   * Line thickness by weight, with merges and splits as strands and ropes (§11.3). False draws
+   * every line at the base width (video export's thickness off, §12). @default true
+   */
+  thickness?: boolean;
 }

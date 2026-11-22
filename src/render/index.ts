@@ -85,3 +85,20 @@ export type {
   ThemeTokens,
   View,
 } from './types';
+export {
+  drawVideoFrame,
+  videoCamera,
+  videoFrameCount,
+  videoFrameTime,
+  videoLayout,
+  videoMarkers,
+  videoSize,
+  videoStyle,
+  videoWindow,
+  type VideoAspect,
+  type VideoCameraMode,
+  type VideoCameraOptions,
+  type VideoFrameOptions,
+  type VideoSize,
+  type VideoStyleOptions,
+} from './video';

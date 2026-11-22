@@ -8,6 +8,15 @@ import { parsePiece } from '../../core/schema';
 import type { CompiledScore, Piece } from '../../core/types';
 import { DEFAULT_FUTURE_OPACITY, drawScore, followStart, type ScoreStyle } from '../index';
 import { DARK_TOKENS, LIGHT_TOKENS, supportsOklch } from '../index';
+import {
+  drawVideoFrame,
+  videoMarkers,
+  videoSize,
+  videoStyle,
+  type VideoAspect,
+  type VideoFrameOptions,
+  type VideoSize,
+} from '../video';
 
 function compileExample(json: unknown): { score: CompiledScore; piece: Piece } {
   const parsed = parsePiece(json);
@@ -144,4 +153,105 @@ function frame(
   return { start: v.start, pps: v.pps, pLo: v.pLo, pHi: v.pHi, padT: v.padT, padB: v.padB };
 }
 
-(globalThis as unknown as { __render: unknown }).__render = { bench, shot, frame };
+interface VideoOptions {
+  aspect: VideoAspect;
+  size: VideoSize;
+  camera: 'follow' | 'whole';
+  window: number;
+  dark: boolean;
+  thickness: boolean;
+  fps: number;
+  /** Stress the pool to this many voices (0: as written). */
+  voices?: number;
+}
+
+function videoSetup(json: unknown, o: VideoOptions) {
+  const { score: s0, piece } = compileExample(json);
+  const score = o.voices ? stress(s0, o.voices) : s0;
+  const px = videoSize(o.aspect, o.size);
+  const canvas = new OffscreenCanvas(px.width, px.height);
+  const g = canvas.getContext('2d', { alpha: false });
+  if (!g) throw new Error('no 2d context');
+  const style = videoStyle({
+    theme: o.dark ? 'dark' : 'light',
+    thickness: o.thickness,
+    oklch: supportsOklch(),
+    customColors: piece.voices.map((v) => v.color),
+    ...videoMarkers(piece),
+  });
+  const opts: VideoFrameOptions = {
+    aspect: o.aspect,
+    size: o.size,
+    camera: o.camera,
+    window: o.window,
+    style,
+  };
+  return { score, canvas, g, opts };
+}
+
+/** FNV-1a over the pixels. */
+function hashPixels(g: OffscreenCanvasRenderingContext2D, w: number, h: number): string {
+  const d = g.getImageData(0, 0, w, h).data;
+  let x = 0x811c9dc5;
+  for (let i = 0; i < d.length; i++) x = Math.imul(x ^ d[i], 0x01000193);
+  return (x >>> 0).toString(16);
+}
+
+/**
+ * Video frames on an OffscreenCanvas: per frame k, the pixel hash and the count of non-paper
+ * pixels; frame `png` (if any) as a PNG data URL.
+ */
+async function videoFrames(json: unknown, o: VideoOptions, frames: number[], png: number) {
+  const { score, canvas, g, opts } = videoSetup(json, o);
+  const out: { k: number; hash: string; inked: number }[] = [];
+  const { width: w, height: h } = canvas;
+  let url = '';
+  for (const k of frames) {
+    drawVideoFrame(g, score, opts, k, o.fps);
+    const d = g.getImageData(0, 0, w, h).data;
+    let inked = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) inked++;
+    }
+    out.push({ k, hash: hashPixels(g, w, h), inked });
+    if (k === png) {
+      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      url = await new Promise<string>((res) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.readAsDataURL(blob);
+      });
+    }
+  }
+  return { frames: out, png: url, duration: score.duration, width: w, height: h };
+}
+
+/** Frame cost (ms) over `n` frames spread across the piece, raster flushed with one pixel read. */
+function videoBench(json: unknown, o: VideoOptions, n: number) {
+  const { score, g, opts } = videoSetup(json, o);
+  const last = Math.floor(score.duration * o.fps);
+  for (let i = 0; i < 10; i++) drawVideoFrame(g, score, opts, (last * 0.3) | 0, o.fps);
+  const times: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const k = Math.round((last * i) / n);
+    const w0 = performance.now();
+    drawVideoFrame(g, score, opts, k, o.fps);
+    g.getImageData(0, 0, 1, 1);
+    times.push(performance.now() - w0);
+  }
+  times.sort((a, b) => a - b);
+  return {
+    median: times[times.length >> 1],
+    p95: times[Math.floor(times.length * 0.95)],
+    max: times[times.length - 1],
+    voices: score.voices.length,
+  };
+}
+
+(globalThis as unknown as { __render: unknown }).__render = {
+  bench,
+  shot,
+  frame,
+  videoFrames,
+  videoBench,
+};
