@@ -58,6 +58,16 @@ export interface Mp4DecoderConfig {
   codedHeight?: number;
   sampleRate?: number;
   numberOfChannels?: number;
+  /** WebCodecs' VideoColorSpaceInit; written to vpcC (VP9). */
+  colorSpace?: Mp4ColorSpace;
+}
+
+/** As WebCodecs' VideoColorSpaceInit. */
+export interface Mp4ColorSpace {
+  primaries?: string | null;
+  transfer?: string | null;
+  matrix?: string | null;
+  fullRange?: boolean | null;
 }
 
 export interface Mp4VideoConfig {
@@ -187,6 +197,42 @@ function toBytes(b: Bytes): Uint8Array {
     : new Uint8Array(b).slice();
 }
 
+/**
+ * Repairs an avcC record as Firefox's H.264 encoder emits it (seen in 2026-11): every SPS/PPS
+ * starts with its NAL header byte twice (`67 67 64 …`, `68 68 …`, lengths counting both) and the
+ * reserved bits are 0, so ffmpeg (and players reading the avcC) misparse the SPS. Detected by
+ * the SPS's profile_idc reading 0x67 (no such profile). Anything else is returned unchanged.
+ */
+export function normalizeAvcC(b: Uint8Array): Uint8Array {
+  if (b.length < 7 || b[0] !== 1) return b;
+  const nSps = b[5] & 0x1f;
+  if (nSps === 0 || b.length < 9) return b;
+  const first = b.subarray(8, 8 + ((b[6] << 8) | b[7]));
+  if (first.length < 2 || first[0] !== 0x67 || first[1] !== 0x67) return b;
+  const out: number[] = [1, b[1], b[2], b[3], 0xfc | (b[4] & 3), 0xe0 | nSps];
+  let at = 6;
+  const copy = (count: number, header: number): boolean => {
+    for (let i = 0; i < count; i++) {
+      if (at + 2 > b.length) return false;
+      const len = (b[at] << 8) | b[at + 1];
+      const nal = b.subarray(at + 2, at + 2 + len);
+      if (nal.length !== len) return false;
+      const doubled = len >= 2 && nal[0] === header && nal[1] === header;
+      const fixed = doubled ? nal.subarray(1) : nal;
+      out.push(fixed.length >> 8, fixed.length & 0xff, ...fixed);
+      at += 2 + len;
+    }
+    return true;
+  };
+  if (!copy(nSps, 0x67)) return b;
+  if (at >= b.length) return b;
+  const nPps = b[at++];
+  out.push(nPps);
+  if (!copy(nPps, 0x68)) return b;
+  for (; at < b.length; at++) out.push(b[at]); // High-profile extension, as given
+  return new Uint8Array(out);
+}
+
 const MATRIX = [0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000];
 
 // ---------------------------------------------------------------------------------------------
@@ -206,6 +252,46 @@ function audioKind(codec: string): AudioKind {
   if (/^mp4a\.40(\.|$)/.test(codec) || codec === 'aac') return 'aac';
   if (codec === 'opus') return 'opus';
   throw new Error(`mp4: unsupported audio codec ${codec}`);
+}
+
+const PRIMARIES: Record<string, number> = {
+  bt709: 1,
+  bt470bg: 5,
+  smpte170m: 6,
+  bt2020: 9,
+  smpte432: 12,
+};
+const TRANSFERS: Record<string, number> = {
+  bt709: 1,
+  smpte170m: 6,
+  linear: 8,
+  'iec61966-2-1': 13,
+  pq: 16,
+  hlg: 18,
+};
+const MATRICES: Record<string, number> = {
+  rgb: 0,
+  bt709: 1,
+  bt470bg: 5,
+  smpte170m: 6,
+  'bt2020-ncl': 9,
+};
+
+/**
+ * vpcC fields with the colour of the encoder's output (`colorSpace`) over the codec string's
+ * (Chromium's VP9 is full range with the sRGB transfer, which the codec string doesn't say).
+ */
+export function vpcCWithColour(codec: string, cs?: Mp4ColorSpace | null): number[] {
+  const f = vpcCFields(codec);
+  if (!cs) return f;
+  const p = cs.primaries ? PRIMARIES[cs.primaries] : undefined;
+  const t = cs.transfer ? TRANSFERS[cs.transfer] : undefined;
+  const m = cs.matrix ? MATRICES[cs.matrix] : undefined;
+  if (p !== undefined) f[4] = p;
+  if (t !== undefined) f[5] = t;
+  if (m !== undefined) f[6] = m;
+  if (typeof cs.fullRange === 'boolean') f[7] = cs.fullRange ? 1 : 0;
+  return f;
 }
 
 /** vpcC (v1) fields from `vp09.PP.LL.DD[.CC.cp.tc.mc.FF]`; defaults as the VP9 codec string spec. */
@@ -269,6 +355,7 @@ class Track {
   receivedEndUs = -Infinity;
   bytes = 0;
   description: Uint8Array | null = null;
+  colorSpace: Mp4ColorSpace | null = null;
 
   constructor(
     readonly kind: 'video' | 'audio',
@@ -345,7 +432,7 @@ export class Mp4Muxer {
           this.audio.kind === 'opus' ? 48000 : this.audio.sampleRate,
         )
       : null;
-    if (this.vt && this.video?.description) this.vt.description = toBytes(this.video.description);
+    if (this.vt && this.video?.description) this.vt.description = this.avcc(this.video.description);
     if (this.at && this.audio?.description) this.at.description = toBytes(this.audio.description);
     this.tracks = [this.vt, this.at].filter((t): t is Track => t !== null);
 
@@ -368,11 +455,17 @@ export class Mp4Muxer {
     }
   }
 
+  private avcc(d: Bytes): Uint8Array {
+    const b = toBytes(d);
+    return this.video?.kind === 'avc' ? normalizeAvcC(b) : b;
+  }
+
   /** Adds a video chunk; `meta` is WebCodecs' output metadata (its decoderConfig, if any). */
   addVideoChunk(chunk: Mp4Chunk, meta?: { decoderConfig?: Mp4DecoderConfig }): Promise<void> {
     if (!this.vt || !this.video) throw new Error('mp4: no video track');
     const dc = meta?.decoderConfig;
-    if (dc?.description) this.vt.description = toBytes(dc.description);
+    if (dc?.description) this.vt.description = this.avcc(dc.description);
+    if (dc?.colorSpace) this.vt.colorSpace = dc.colorSpace;
     if (dc?.codec && videoKind(dc.codec) === this.video.kind) this.video.codec = dc.codec;
     return this.add(this.vt, chunk);
   }
@@ -733,7 +826,10 @@ export class Mp4Muxer {
         const d = t.description;
         w.box('avcC', () => w.bytes(d));
       } else {
-        const [profile, level, depth, chroma, prim, transfer, matrix, full] = vpcCFields(v.codec);
+        const [profile, level, depth, chroma, prim, transfer, matrix, full] = vpcCWithColour(
+          v.codec,
+          t.colorSpace,
+        );
         w.full('vpcC', 1, 0, () => {
           w.u8(profile);
           w.u8(level);

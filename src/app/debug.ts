@@ -66,6 +66,8 @@ export interface AlgoRhythmsDebug {
   pitchesAt(t: number): Record<string, number | null>;
   /** The MP4 muxer (M8), loaded on demand. */
   video(): Promise<typeof import('../video/mp4')>;
+  /** Video export (M8-c): `videoSupport`, `exportVideo`, reference frames and the mix. */
+  videoExport(): Promise<typeof import('./video-export')>;
 }
 
 declare global {
@@ -130,5 +132,6 @@ export function installDebug(): void {
       return out;
     },
     video: () => import('../video/mp4'),
+    videoExport: () => import('./video-export'),
   };
 }
