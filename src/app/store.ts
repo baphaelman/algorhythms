@@ -40,6 +40,7 @@ import {
 import {
   configureAudio,
   getEngine,
+  isLiveAudio,
   loadAudio,
   loopAudio,
   mixAudio,
@@ -290,6 +291,14 @@ function queueAudioLoad(piece: Piece, compiled: CompiledScore): void {
   onIdle(flushAudioLoad);
 }
 
+/** Loads the current piece into the engine again (after live mode, §9). */
+export function reloadAudio(): void {
+  const { piece, compiled } = get();
+  clock.started = false;
+  queueAudioLoad(piece, compiled);
+  flushAudioLoad();
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pieces
 // ---------------------------------------------------------------------------------------------
@@ -521,6 +530,8 @@ export async function openShareHash(hash: string): Promise<boolean> {
 export function play(): void {
   const { transport, compiled } = get();
   if (transport.status === 'playing' && !transport.scrubbing) return;
+  // v1: live mode and playback don't overlap (§9; leave live mode first).
+  if (isLiveAudio()) return;
   // The synchronous part runs inside the gesture: create/resume the context before any await.
   void primeAudio().catch(() => undefined);
   resumeAudio();

@@ -4,8 +4,10 @@
  */
 
 import type { AudioEngine } from '../audio/engine';
+import type { LiveEngine } from '../audio/live-engine';
 import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
+import { enterLive, exitLive, live } from './live';
 import { frameStats } from './loop';
 import { auditionState } from './audition';
 import { composeView } from './compose-view';
@@ -43,6 +45,13 @@ export interface AlgoRhythmsDebug {
   audition: typeof auditionState;
   /** Compose for me's pen and phase (M4.5-38). */
   compose: typeof composeView;
+  /** Live mode (M7): enter/exit, the LiveEngine (noteOn, …), and an analyser on its output. */
+  live: {
+    enter: typeof enterLive;
+    exit: typeof exitLive;
+    engine(): LiveEngine;
+    analyser(): AnalyserNode | null;
+  };
 }
 
 declare global {
@@ -52,6 +61,7 @@ declare global {
 }
 
 let tap: AnalyserNode | null = null;
+let liveTap: AnalyserNode | null = null;
 
 /** Installs `window.__algorhythms`. */
 export function installDebug(): void {
@@ -76,5 +86,20 @@ export function installDebug(): void {
     preview: previewState,
     audition: auditionState,
     compose: composeView,
+    live: {
+      enter: enterLive,
+      exit: exitLive,
+      engine: () => live,
+      analyser() {
+        const e = live.engine;
+        if (!e) return null;
+        if (!liveTap || liveTap.context !== e.context) {
+          liveTap = e.context.createAnalyser();
+          liveTap.fftSize = 2048;
+          e.node.connect(liveTap);
+        }
+        return liveTap;
+      },
+    },
   };
 }

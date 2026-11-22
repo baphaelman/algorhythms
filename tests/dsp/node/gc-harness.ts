@@ -13,12 +13,14 @@
  * moments, M6-b2) or 'fx' (the plain workload with a master FX edit every 0.25 s: tilt, low-pass
  * in and out of bypass, room size and delay-time crossfades and glides) or 'parts' (the 'lock'
  * workload with seeks, its voices in two parts and no part, `mix.normalise: 'part'`).
- * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx|parts]
+ * 'live' (M7a; argv[3]: the session file, see `buildLive`).
+ * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx|parts|live <file>]
  */
 
 import { PerformanceObserver } from 'node:perf_hooks';
 import v8 from 'node:v8';
 import { createLoadedGraph } from '../../../src/audio/offline';
+import type { Graph } from '../../../src/dsp/graph';
 import {
   ALL_EASES,
   denseScore,
@@ -31,6 +33,8 @@ import {
 } from '../../../src/audio/fixtures/scores';
 import { BLOCK_FRAMES } from '../../../src/dsp/constants';
 import type { MixSettings } from '../../../src/core/types';
+import { LiveInput } from '../../../src/dsp/live';
+import { readFileSync } from 'node:fs';
 
 const RATE = 48000;
 const arg = process.argv[2];
@@ -40,7 +44,8 @@ const mode =
   arg === 'm6' ||
   arg === 'timbre' ||
   arg === 'fx' ||
-  arg === 'parts'
+  arg === 'parts' ||
+  arg === 'live'
     ? arg
     : 'plain';
 const seeking = mode === 'lock' || mode === 'timbre' || mode === 'parts';
@@ -68,15 +73,18 @@ const score = withPulses(
         ),
 );
 if (mode === 'parts') score.voices.forEach((v, i) => (v.part = ['A', 'B', ''][i % 3]));
-const graph = createLoadedGraph({
-  score,
-  mix: mode === 'parts' ? { ...FIXTURE_MIX, normalise: 'part' } : FIXTURE_MIX,
-  timbres: mode === 'm6' || mode === 'timbre' ? M6_WORKLOAD_TIMBRES : undefined,
-  sampleRate: RATE,
-});
 const left = new Float32Array(BLOCK_FRAMES);
 const right = new Float32Array(BLOCK_FRAMES);
-graph.play(0);
+const live = mode === 'live' ? buildLive() : null;
+const graph =
+  live?.graph ??
+  createLoadedGraph({
+    score,
+    mix: mode === 'parts' ? { ...FIXTURE_MIX, normalise: 'part' } : FIXTURE_MIX,
+    timbres: mode === 'm6' || mode === 'timbre' ? M6_WORKLOAD_TIMBRES : undefined,
+    sampleRate: RATE,
+  });
+if (!live) graph.play(0);
 
 // 'lock': the measured run seeks every 5 s (from its first block), cycling through SEEK_TO, so it
 // replays the same score spans each cycle. The targets are Smis, so the call itself cannot box a
@@ -112,14 +120,17 @@ const FX_EDITS: MixSettings[] = [
 const editEvery = mode === 'fx' ? Math.round((0.25 * RATE) / BLOCK_FRAMES) : 0;
 /** One block of the run; block i of a seek cycle seeks first when it starts a 5 s span. */
 function step(i: number): void {
+  if (live) return live.step();
   if (seekEvery > 0 && i % seekEvery === 0) graph.seek(SEEK_TO[(i / seekEvery) & 3]);
   if (editEvery > 0 && i % editEvery === 0) graph.setMix(FX_EDITS[(i / editEvery) % 3]);
   graph.process(left, right);
 }
 const runBlocks = Math.round((60 * RATE) / BLOCK_FRAMES);
-const playThrough = Math.round(((seeking ? 76 : 5) * RATE) / BLOCK_FRAMES);
+// live: 30 s (the session file's fast phase), so every apply path, compaction included, is
+// optimised before the run.
+const playThrough = Math.round(((seeking ? 76 : live ? 30 : 5) * RATE) / BLOCK_FRAMES);
 for (let i = 0; i < playThrough; i++) {
-  if (editEvery > 0) step(i);
+  if (editEvery > 0 || live) step(i);
   else graph.process(left, right);
 }
 if (seekEvery > 0) {
@@ -134,6 +145,7 @@ if (editEvery > 0) {
   for (let i = 0; i < WARM_EDITS; i++) graph.setMix(FX_EDITS[i % 3]);
   graph.setMix(F);
 }
+// (The live run's blocks are counted by `live.step` itself.)
 const warmCycle = seekEvery > 0 ? 4 * seekEvery : Math.round((5 * RATE) / BLOCK_FRAMES);
 for (let i = 0; i < warmCycle; i++) step(i);
 
@@ -167,5 +179,62 @@ const observedGc = starts.filter((t) => t >= t0 && t <= t1).length;
 // Shows allocation too small to set off a GC; meaningless if a GC ran (the counts above fail).
 const newSpaceBytes = nB - nA - own;
 process.stdout.write(
-  `\n${JSON.stringify({ mode, audioSeconds: 60, ms: Math.round(t1 - t0), observedGc, newSpaceBytes })}\n`,
+  `\n${JSON.stringify({ mode, audioSeconds: 60, ms: Math.round(t1 - t0), observedGc, newSpaceBytes, ...(live ? { messages: live.measured() } : {}) })}\n`,
 );
+
+/**
+ * 'live' (M7a): 24 live voices (a graph in live mode and its LiveInput, as in the worklet) under
+ * the session tests/dsp/live-schedule.ts wrote to argv[3]: the main thread's decisions, made
+ * beforehand because they allocate, replayed block by block. So the measured span holds only what
+ * the worklet does: queueing a message's copy, applying it, the bend, rendering.
+ */
+function buildLive(): { graph: Graph; step(): void; measured(): number } {
+  const file = JSON.parse(readFileSync(process.argv[3], 'utf8')) as {
+    score: Parameters<typeof createLoadedGraph>[0]['score'];
+    mix: MixSettings;
+    voices: number;
+    warmBlocks: number;
+    messages: {
+      block: number;
+      seq: number;
+      moves: number[];
+      n: number;
+      gain: number | null;
+      over: number;
+    }[];
+    bends: { block: number; semitones: number }[];
+  };
+  const g = createLoadedGraph({ score: file.score, mix: file.mix, sampleRate: RATE });
+  const input = new LiveInput(g, file.voices);
+  g.play(0);
+  const msgs = file.messages;
+  const nMsg = msgs.length;
+  // Typed arrays and preallocated records, read without allocating.
+  const B = Int32Array.from(msgs, (m) => m.block);
+  const Q = Float64Array.from(msgs, (m) => m.seq);
+  const N = Int32Array.from(msgs, (m) => m.n);
+  const G = Float64Array.from(msgs, (m) => (m.gain === null ? NaN : m.gain));
+  const O = Float64Array.from(msgs, (m) => m.over);
+  const M = msgs.map((m) => Float64Array.from(m.moves));
+  const BB = Int32Array.from(file.bends, (x) => x.block);
+  const BV = Float64Array.from(file.bends, (x) => x.semitones);
+  let k = 0;
+  let kb = 0;
+  let b = 0;
+  let measureFrom = -1;
+  return {
+    graph: g,
+    step(): void {
+      if (measureFrom < 0 && b >= file.warmBlocks) measureFrom = k;
+      while (k < nMsg && B[k] === b) {
+        input.queue(Q[k], M[k], N[k], G[k], O[k]);
+        k++;
+      }
+      while (kb < BB.length && BB[kb] === b) input.setBend(BV[kb++]);
+      input.beforeBlock(b * BLOCK_FRAMES);
+      g.process(left, right);
+      b++;
+    },
+    measured: () => k - Math.max(0, measureFrom),
+  };
+}

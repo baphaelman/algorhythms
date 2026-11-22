@@ -13,20 +13,26 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { writeLiveSchedule } from './live-schedule';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 /** The timer and flag calls around the run allocate ~2 KB; one interpreted seek ~8 KB. */
 const MAX_BYTES = 6000;
 
-function runHarness(mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx' | 'parts'): {
+function runHarness(
+  mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx' | 'parts' | 'live',
+  extra: string[] = [],
+): {
   gcLines: string[];
-  summary: { ms: number; observedGc: number; newSpaceBytes: number };
+  summary: { ms: number; observedGc: number; newSpaceBytes: number; messages?: number };
 } {
   const res = spawnSync(
     process.execPath,
-    ['--import', './tests/dsp/node/register.mjs', 'tests/dsp/node/gc-harness.ts', mode],
+    ['--import', './tests/dsp/node/register.mjs', 'tests/dsp/node/gc-harness.ts', mode, ...extra],
     { cwd: ROOT, encoding: 'utf8', timeout: 120_000 },
   );
   if (res.status !== 0) throw new Error(`harness failed: ${res.stderr}`);
@@ -35,6 +41,7 @@ function runHarness(mode: 'plain' | 'all' | 'lock' | 'm6' | 'timbre' | 'fx' | 'p
     ms: number;
     observedGc: number;
     newSpaceBytes: number;
+    messages?: number;
   };
   const gcLines = lines.filter((l) => /Scavenge|Mark-Compact|Mark-sweep|Minor|MinorMS/.test(l));
   return { gcLines, summary };
@@ -103,6 +110,25 @@ describe('no GC in process()', () => {
     // handling caught unoptimised. 8 B per block in process() would be 180 KB.
     expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES + 240 * 32);
   }, 120_000);
+
+  it('runs 60 s of live input (24 voices, key changes, bends, releases) with no scavenge', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'algorhythms-live-'));
+    const file = path.join(dir, 'session.json');
+    try {
+      const made = writeLiveSchedule(file);
+      const { gcLines, summary } = runHarness('live', [file]);
+      console.info(
+        `no-GC run (live): 60 s of audio in ${summary.ms} ms, ${summary.messages} live messages ` +
+          `(${made.messages} + ${made.bends} bends in the session), ${gcLines.length} GC lines, ` +
+          `${summary.observedGc} observed, ${summary.newSpaceBytes} B allocated`,
+      );
+      expect(gcLines).toEqual([]);
+      expect(summary.observedGc).toBe(0);
+      expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 240_000);
 
   it('reports the GC rate when expo and bézier glides are included', () => {
     const { gcLines, summary } = runHarness('all');

@@ -49,7 +49,19 @@ export type EngineInMessage =
   /** One parameter; paths are listed in dsp/mix.ts. */
   | { type: 'param'; path: string; value: ParamValue }
   /** The whole mix at once (an addition to §8.2, for preset changes). */
-  | { type: 'mix'; mix: MixSettings };
+  | { type: 'mix'; mix: MixSettings }
+  /**
+   * Live mode (§9): the first `voices` voices of the loaded score become live voices
+   * (dsp/live.ts) and the transport plays from 0. Answered by `liveApplied` with seq 0.
+   */
+  | { type: 'liveStart'; voices: number }
+  /**
+   * `live { segments }` (§8.2, §9): `n` LIVE_STRIDE move records timed from "now" and a level ramp
+   * (`gain` NaN: none), applied at the next block; answered by `liveApplied`.
+   */
+  | { type: 'live'; seq: number; moves: Float64Array; n: number; gain: number; over: number }
+  /** Live pitch bend in semitones (smoothed on the audio thread). */
+  | { type: 'liveBend'; semitones: number };
 
 /** Worklet → main thread. */
 export type EngineOutMessage =
@@ -69,7 +81,12 @@ export type EngineOutMessage =
   | { type: 'ended' }
   /** Post-limiter levels over the last ~50 ms (linear). */
   | { type: 'meter'; peakL: number; peakR: number; rms: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /**
+   * Live message `seq` was applied at the block starting at context frame `frame`, live (piece)
+   * time `time`: its glides start there (§9 "the worklet stamps the actual frame").
+   */
+  | { type: 'liveApplied'; seq: number; frame: number; time: number };
 
 /**
  * Everything needed to start sounding, handed over in `processorOptions` so it is applied in the

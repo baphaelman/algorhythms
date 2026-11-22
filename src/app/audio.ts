@@ -53,16 +53,64 @@ export function getAudioContext(): AudioContext | null {
  */
 export function primeAudio(): Promise<AudioEngine> {
   if (creating) return creating;
-  requestPlaybackSession(navigator);
-  context = new AudioContext({ latencyHint: 'playback' });
-  creating = AudioEngine.create({ context }).then((e) => {
-    engine = e;
-    wire(e);
-    return e;
-  });
+  creating = createPlayback();
   // A failed creation must not be retried on every call; callers see the rejection through `whenReady`.
   creating.catch(() => undefined);
   return creating;
+}
+
+/** A 'playback' context and its engine (adopted unless live mode took over meanwhile). */
+function createPlayback(): Promise<AudioEngine> {
+  requestPlaybackSession(navigator);
+  const ctx = new AudioContext({ latencyHint: 'playback' });
+  context = ctx;
+  return AudioEngine.create({ context: ctx }).then((e) => {
+    if (context === ctx) {
+      engine = e;
+      wire(e);
+    }
+    return e;
+  });
+}
+
+/** Set while live mode holds the audio; `release` lets the held jobs run on a new engine. */
+let liveGate: { release: () => void } | null = null;
+
+/** True while live mode holds the audio (§9): there is no playback engine then. */
+export function isLiveAudio(): boolean {
+  return liveGate !== null;
+}
+
+/**
+ * Live mode starts (§9, §8.3): a job, queued after everything queued so far, closes the playback
+ * engine and its context. Jobs queued after it wait until `endLiveAudio`, which creates a new
+ * 'playback' engine for them, so only the live context is open meanwhile. (Waiting for the queue
+ * from outside it could deadlock: a job still waiting to start would get the held engine.)
+ */
+export function beginLiveAudio(): Promise<void> {
+  if (liveGate) return Promise.resolve();
+  let release = (): void => undefined;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  liveGate = { release };
+  return enqueue(async (e) => {
+    engine = null;
+    context = null;
+    creating = gate.then(() => createPlayback());
+    creating.catch(() => undefined);
+    await e.dispose();
+  }).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/** Live mode ended: a new 'playback' context and engine; the jobs held meanwhile run on it. */
+export function endLiveAudio(): Promise<AudioEngine> {
+  const g = liveGate;
+  if (!g) return primeAudio();
+  liveGate = null;
+  g.release();
+  return creating as Promise<AudioEngine>;
 }
 
 /** Resumes the context if it is suspended. Call synchronously in a user-gesture handler. */

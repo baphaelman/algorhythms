@@ -197,6 +197,9 @@ export class Graph {
   private duration = 0;
   private seed = 0;
   private readonly mix = new MixState();
+  /** log2(referenceHz / MIP_BASE_HZ) of the loaded score, and the live bend on top (semitones). */
+  private baseRefOct = 0;
+  private pitchOffset = 0;
 
   private readonly reverb: Reverb;
   private readonly delay: PingPongDelay;
@@ -406,6 +409,15 @@ export class Graph {
   setMix(mix: MixSettings): void {
     this.mix.set(mix);
     this.applyMix(false);
+  }
+
+  /**
+   * Live pitch bend (§9): every voice sounds `semitones` higher from its next control tick, by
+   * moving the reference pitch. The caller smooths it (dsp/live.ts). Allocation-free.
+   */
+  setPitchOffset(semitones: number): void {
+    this.pitchOffset = semitones;
+    this.ctx.refOct = this.baseRefOct + semitones / 12;
   }
 
   /** Sets one mix or voice parameter by path (see dsp/mix.ts). Returns false if not applied. */
@@ -763,7 +775,8 @@ export class Graph {
     this.voiceIds = p.voiceIds;
     this.duration = p.duration;
     this.durationFrames = Math.round(p.duration * this.sampleRate);
-    this.ctx.refOct = pmath.log2(p.referenceHz / MIP_BASE_HZ);
+    this.baseRefOct = pmath.log2(p.referenceHz / MIP_BASE_HZ);
+    this.ctx.refOct = this.baseRefOct + this.pitchOffset / 12;
     this.updateSolo(p.data);
     if (p.groupsReset) this.groupQuiet.fill(1);
     // Groups this score does not use start afresh if a later score brings them back.
