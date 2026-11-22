@@ -884,7 +884,7 @@ The voice stems plus the FX return then sum to the mix up to floating-point erro
 
 ### Export look (revision 13, owner 2026-11-22)
 Video and poster exports share one **Look** panel in the Export dialog that exposes every visual decision the renderer makes, each as an option. Remembered per viewer. The renderer gets a switch for each one that lacks it; with no Look given, the app's own drawing stays exactly as today.
-- **Export defaults (owner):** octave guide lines (the A lines and their Hz labels) **off**; beat and bar lines and ticks **off**; moment markers and section labels **off**; **nothing drawn ahead of the playhead** (future hidden). Each is an option to turn back on (future: hidden / dimmed with an opacity / full).
+- **Export defaults (owner):** octave guide lines (the A lines and their Hz labels) **off**; beat and bar lines and ticks **off**; moment markers and section labels **on** (owner, 2026-11-22, revised); **nothing drawn ahead of the playhead** (future hidden). Each is an option (future: hidden / dimmed with an opacity / full).
 - **Other options (defaults as the app draws today):** louder voices brighter (opacity by audible level); merged and weighted lines thicker (thickness); pulse hit marks; heads (dots, moving rings, Hz labels, each separately); playhead line; line colours (by pitch, ink, custom); line width (thin, normal, bold); theme; transparent background (poster). Any visual rule the code has that is not in this list is added to it, not hard-coded.
 - **HUD, fully customisable:** a checklist of readouts, each on or off, shown in the order listed (left column, then right): the formula, notes sounding / pool, time / length, chord, key and follow mode, Hz range, and new readouts: **spread** (lowest to highest sounding line as an interval: semitones and name, e.g. "19 st · octave + 5th"), lowest and highest note names, the sounding notes by name, the gaps between neighbouring lines (semitones), the piece's name. The default selection is today's HUD. More readouts can be added to the list later.
 - Poster: the same Look, except the future and playhead options (a poster shows the finished piece).
@@ -1174,7 +1174,7 @@ The original questions follow for reference.
 ## 18. Changelog
 
 ### Revision 13 (2026-11-22): export look (owner)
-- **Export look (§12):** every visual decision is an export option; export defaults drop the octave guides, beat lines, moment markers and the future; the HUD becomes a checklist of readouts, with new ones (spread, note names, gaps).
+- **Export look (§12):** every visual decision is an export option; export defaults drop the octave guides, beat lines and the future (moment markers stay on); the HUD becomes a checklist of readouts, with new ones (spread, note names, gaps).
 
 ### Revision 12 (2026-11-22): poster export next (owner)
 - **Poster export (§12, §15 M9):** moved from Later to M9. Whole-piece render as PNG or SVG (recording context), 4K-class sizes, theme, transparent background, title block; integrator defaults.
