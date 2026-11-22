@@ -192,7 +192,8 @@ test('owner notes: on New → Empty, chords match, default spacing, the chord li
   const prog = (await H(page).moments()).find((m) => m.type === 'progression')!;
   expect(prog.at).toBe(0);
   // No tempo: glide 3 s + stagger 0.8 s, then Next's 2 s hold.
-  expect(prog.chords).toEqual(['I', 'vi', 'IV', 'V'].map((notes) => ({ notes, len: 5.8 })));
+  // A dorian's own chords, as the chips name them.
+  expect(prog.chords).toEqual(['i', 'IV', '♭VII', 'i'].map((notes) => ({ notes, len: 5.8 })));
 
   // Every chord, the first included: three notes in a close voicing around the middle.
   for (let k = 0; k < 4; k++) {
@@ -226,33 +227,37 @@ test('owner notes: on New → Empty, chords match, default spacing, the chord li
   await len.press('Enter');
   await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Edit chord length');
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords[1]).toEqual({ notes: 'vi', len: 3 });
+  expect(chords[1]).toEqual({ notes: 'IV', len: 3 });
 
   // Change chord 1 with the picker.
   await rows.nth(0).getByTestId('prog-chord-pick').click();
-  await insp.getByTestId('prog-chips').locator('[data-numeral="IV"]').click();
+  await expect(insp.getByTestId('prog-chips').locator('[data-numeral="i"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await insp.getByTestId('prog-chips').locator('[data-numeral="♭III"]').click();
   await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Change chord');
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords[0].notes).toBe('IV');
+  expect(chords[0].notes).toBe('♭III');
   await insp.getByTestId('prog-change-done').click();
 
   // Reorder, then remove chord 3.
   await rows.nth(0).getByTestId('prog-chord-down').click();
   await expect.poll(async () => (await H(page).undoLabel()) ?? '').toContain('Move chord');
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords.slice(0, 2).map((c) => c.notes)).toEqual(['vi', 'IV']);
+  expect(chords.slice(0, 2).map((c) => c.notes)).toEqual(['IV', '♭III']);
   await rows.nth(2).getByTestId('prog-chord-remove').click();
   await expect(rows).toHaveCount(4);
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords.map((c) => c.notes)).toEqual(['vi', 'IV', 'V', 'ii']);
+  expect(chords.map((c) => c.notes)).toEqual(['IV', '♭III', 'i', 'ii']);
   await expect(bar.getByTestId('lane-prog-chord')).toHaveCount(4);
 
   // Each edit is one undo step.
   await H(page).undo();
   await expect(rows).toHaveCount(5);
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords.map((c) => c.notes)).toEqual(['vi', 'IV', 'IV', 'V', 'ii']);
+  expect(chords.map((c) => c.notes)).toEqual(['IV', '♭III', '♭VII', 'i', 'ii']);
   await H(page).undo();
   chords = (await H(page).moments()).find((m) => m.id === prog.id)!.chords!;
-  expect(chords.map((c) => c.notes)).toEqual(['IV', 'vi', 'IV', 'V', 'ii']);
+  expect(chords.map((c) => c.notes)).toEqual(['♭III', 'IV', '♭VII', 'i', 'ii']);
 });
