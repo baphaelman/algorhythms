@@ -88,6 +88,11 @@ describe('import boundaries (§14)', () => {
     ['src/audio/worklet/x.worklet.ts', "import { a } from '../../dsp/a'; export { a };", true],
     ['src/audio/x.ts', "import { a } from '../render/a'; export { a };", false],
     ['src/audio/x.ts', "import { a } from '../app/a'; export { a };", false],
+    // video imports core only
+    ['src/video/x.ts', "import { flatten } from '../core/flat'; export { flatten };", true],
+    ['src/video/x.ts', "import { a } from '../render/a'; export { a };", false],
+    ['src/video/x.ts', "import { a } from '../audio/a'; export { a };", false],
+    ['src/app/x.ts', "import { a } from '../video/a'; export { a };", true],
     // app imports anything
     [
       'src/app/x.ts',
