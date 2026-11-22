@@ -78,7 +78,7 @@ No cheap new test was needed: every §15 line has a test, and the gaps above are
 | Over about 2,000 characters the UI warns and offers a file | C+P | `share.spec` "a link over 2,000 characters warns and offers the piece as a file" |
 | Name it before moving on: asks when edited and unnamed; Save name, Skip, Escape; once per piece; unedited asks nothing | C+P | `naming.spec` (5 tests) |
 
-## Owner iPad check (iPad Safari, the live site, a Generate or example piece)
+## Owner iPad check (dropped by the owner 2026-11-22; kept for reference) (iPad Safari, the live site, a Generate or example piece)
 
 1. Tap a palette button: a moment appears at the playhead. Tap it: it is selected and the inspector opens.
 2. Drag it sideways: it moves; a small wobble is still a tap.
