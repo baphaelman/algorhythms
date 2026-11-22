@@ -92,7 +92,13 @@ jobs:
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=ci_null
           pactl set-default-sink ci_null
-      - run: pnpm e2e --project='${{ matrix.browser }}-*'
+      # Timing gates alone first, so other specs' load doesn't skew them; then the rest.
+      # Own output dir: each run empties its output dir, which would drop the first run's traces.
+      - name: E2E timing gates (@perf, @latency), one worker
+        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep '@perf|@latency' --workers=1 --output=test-results-timing
+      - name: E2E functional specs
+        if: success() || failure()
+        run: pnpm e2e --project='${{ matrix.browser }}-*' --grep-invert '@perf|@latency'
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -100,6 +106,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            test-results-timing/
           retention-days: 7
 
   e2e-webkit:
@@ -120,7 +127,13 @@ jobs:
           path: ~/Library/Caches/ms-playwright
           key: pw-${{ runner.os }}-webkit-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install webkit
-      - run: pnpm e2e --project='webkit-*'
+      # Timing gates alone first, so other specs' load doesn't skew them; then the rest.
+      # Own output dir: each run empties its output dir, which would drop the first run's traces.
+      - name: E2E timing gates (@perf, @latency), one worker
+        run: pnpm e2e --project='webkit-*' --grep '@perf|@latency' --workers=1 --output=test-results-timing
+      - name: E2E functional specs
+        if: success() || failure()
+        run: pnpm e2e --project='webkit-*' --grep-invert '@perf|@latency'
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -128,6 +141,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            test-results-timing/
           retention-days: 7
 
   deploy:
