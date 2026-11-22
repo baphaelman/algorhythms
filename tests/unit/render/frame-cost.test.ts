@@ -73,10 +73,12 @@ describe('cached glide samples', () => {
             sampleInto(out, v, a, b, maxStep, tol);
             const want = sample(v, a, b, maxStep, tol);
             expect(out.n).toBe(want.length);
-            for (let k = 0; k < out.n; k++) {
-              expect(out.t[k]).toBe(want[k][0]);
-              expect(Object.is(out.p[k], want[k][1]) || out.p[k] === want[k][1]).toBe(true);
+            // One assertion per range (per-point expects made this test slow on CI).
+            let bad = -1;
+            for (let k = 0; k < out.n && bad < 0; k++) {
+              if (out.t[k] !== want[k][0] || !Object.is(out.p[k], want[k][1])) bad = k;
             }
+            expect(bad, `voice ${v.index} [${a}, ${b}] first mismatch`).toBe(-1);
           }
         }
       }
