@@ -33,6 +33,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
 
 ## Decided by the integrator (veto if wrong)
+- **Pulse custom order (rev 10).** Mode chooser: "Custom order" with an Order field (`1 3 2 4`, 1 = lowest line, values past the line count wrap). A rest doesn't advance the order; when lines join or leave, the order keeps its place. Switching to another mode drops the typed order (undo brings it back).
 - **Speed gate measures the shipped code (v43).** The ≥ 10× real-time gate now runs the DSP bundled the way the worklet ships (Vite, minified), in Node, instead of through Vitest's module loader, which slowed every call. Same threshold. The DSP itself also got 1.2–1.3× faster with identical output. Heavy timbre pieces have less spare speed (about 13× here) than plain ones (about 31×).
 - **Compact bar (v41).** Lines, Theme, HUD and Keep lines in order moved into a "View ▾" popover; help text into "?"; the bar spans the full width under the inspector too (the inspector is ~75 px shorter). The score keeps a minimum height (~204 px); the lanes shrink first, then an open drawer.
 - **Master FX (v41).** Master is a tab beside Timbre in the Sound drawer; delay snaps to 1/16 … 1/2 including dotted values. Tone, reverb size and delay time changes now glide (15–50 ms), so live edits don't click.
