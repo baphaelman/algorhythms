@@ -299,6 +299,11 @@ interface Win {
 export interface StrandFrame {
   strands: Strands;
   pps: number;
+  /**
+   * Equal-width lines (video's thickness off): every line at width 1 and no offset; merges and
+   * splits keep their drawn lives (a merging line ends at the meeting, unfaded).
+   */
+  flat: boolean;
   /** Taper length of an edit's weight change, s. */
   taper: Seconds;
   wins: (Win[] | null)[];
@@ -312,17 +317,24 @@ export function bundlesOf(f: StrandFrame): readonly Bundle[] {
 }
 
 /** The strand windows for drawing `score` at `pps` px/s (the last one is reused). */
-export function strandFrame(score: CompiledScore, pps: number): StrandFrame {
+export function strandFrame(score: CompiledScore, pps: number, flat = false): StrandFrame {
   const strands = strandsOf(score);
-  if (lastFrame && lastFrame.strands === strands && lastFrame.pps === pps) return lastFrame;
+  if (
+    lastFrame &&
+    lastFrame.strands === strands &&
+    lastFrame.pps === pps &&
+    lastFrame.flat === flat
+  )
+    return lastFrame;
   const f: StrandFrame = {
     strands,
     pps,
+    flat,
     taper: TAPER_PX / pps,
-    wins: strands.voices.map((s) => (s && s.events.length > 0 ? [] : null)),
+    wins: strands.voices.map((s) => (s && s.events.length > 0 && !flat ? [] : null)),
   };
   const V = score.voices;
-  for (const b of strands.bundles) {
+  for (const b of flat ? [] : strands.bundles) {
     // The rope: the merged line just after a merge; the parent as drawn just before a split.
     let A: number;
     let off = 0;
@@ -371,6 +383,7 @@ export function hasStrands(f: StrandFrame, v: CompiledVoice): boolean {
 
 /** Sorted times where v's drawn geometry jumps (its merges and splits). */
 export function strandEvents(f: StrandFrame, v: CompiledVoice): readonly number[] {
+  if (f.flat) return NO_EVENTS;
   return f.strands.voices[v.index]?.events ?? NO_EVENTS;
 }
 const NO_EVENTS: number[] = [];
@@ -381,7 +394,7 @@ const NO_EVENTS: number[] = [];
  */
 export function naturalWeight(f: StrandFrame, v: CompiledVoice, t: Seconds): number {
   const W = v.weight;
-  if (!W || W.length === 0) return 1;
+  if (!W || W.length === 0 || f.flat) return 1;
   const steps = f.strands.voices[v.index]?.steps;
   let w = 1;
   let prev = 1;
@@ -480,6 +493,7 @@ export function geometryAt(
  */
 export function varyingRanges(f: StrandFrame, v: CompiledVoice, a: Seconds, b: Seconds): number[] {
   const out: number[] = [];
+  if (f.flat) return out;
   for (const w of f.wins[v.index] ?? []) {
     const lo = w.split ? w.t : w.s0;
     const hi = w.split ? w.e1 : w.t;

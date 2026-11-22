@@ -176,7 +176,7 @@ export function drawScore(
     g.rect(0, 0, Math.max(0, timeToX(view, style.reveal ?? 0)), H);
     g.clip();
   }
-  const sf = strandFrame(compiled, view.pps);
+  const sf = strandFrame(compiled, view.pps, style.thickness === false);
   drawLines(g, compiled, style, view, sf, dpr);
   if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
@@ -364,7 +364,7 @@ function traceWeighted(
   tolerance: number,
   sf: StrandFrame,
 ): void {
-  const weighted = v.weight !== undefined && v.weight.length > 0;
+  const weighted = v.weight !== undefined && v.weight.length > 0 && !sf.flat;
   const strands = hasStrands(sf, v);
   const lives = drawnLives(sf, v);
   const O = breaksIn(v, lives);
@@ -479,7 +479,7 @@ function tracePiece(
   }
   const n = SN;
   if (n < 2) return;
-  const shaped = v.weight !== undefined || hasStrands(sf, v);
+  const shaped = (v.weight !== undefined && !sf.flat) || hasStrands(sf, v);
   // Between varying ranges the geometry is constant (weights step only at piece ends): it is
   // evaluated once per such stretch.
   let cu = NaN;
@@ -830,7 +830,7 @@ function drawHits(
   }
   if (lo >= n || H[lo * 2] >= b) return;
   const lives = drawnLives(sf, v);
-  const shaped = (v.weight !== undefined && v.weight.length > 0) || hasStrands(sf, v);
+  const shaped = (v.weight !== undefined && v.weight.length > 0 && !sf.flat) || hasStrands(sf, v);
   g.lineWidth = HIT_WIDTH;
   g.lineCap = 'butt';
   let lastX = -Infinity;
