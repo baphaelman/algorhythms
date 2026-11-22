@@ -88,6 +88,7 @@ const LABELS: Record<MomentType, string> = {
   level: 'level',
   pulse: 'pulse',
   tune: 'tune',
+  progression: 'progression',
   timbre: 'timbre change',
 };
 
@@ -606,10 +607,16 @@ export function addPointDrag(at: Seconds, voice: number, from: Pitch): PitchDrag
 
 /** Freezes the freezable moments in `ids` (./freeze) as one undo entry. False if none changed. */
 export function freezeMoments(ids: readonly MomentId[]): boolean {
-  return edit(
+  const before = new Set(usePlayer.getState().piece.moments.map((m) => m.id));
+  const ok = edit(
     (p) => freezeAll(p, ids, scoreOf),
     ids.length === 1 ? 'Freeze moment' : 'Freeze moments',
   );
+  // A frozen progression became chord moments (revision 10): they take its place in the selection.
+  const added = usePlayer.getState().piece.moments.filter((m) => !before.has(m.id));
+  if (ok && added.length > 0)
+    select([...useEditor.getState().selection, ...added.map((m) => m.id)]);
+  return ok;
 }
 
 /** What a piano-ruler key did to the selected chord or pin. */

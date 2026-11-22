@@ -44,6 +44,10 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'error',
     meaning: 'A tune needs a list of notes, each with a numeric pitch and a length > 0.',
   },
+  'progression-invalid': {
+    level: 'error',
+    meaning: 'A progression needs a list of chords, each with a chord symbol and a length > 0.',
+  },
   'after-end': { level: 'info', meaning: 'The moment is at or after the end of the piece.' },
   'unknown-timbre': {
     level: 'warn',

@@ -27,6 +27,7 @@ import { IntentKind, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
 import { isRest, tuneRestrikes, tuneShift } from './moments/tune';
+import { progressionChords } from './moments/progression';
 import { inPartScope, partOf, partScope, scopeName } from './parts';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
@@ -191,6 +192,10 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
       return 'it targets no sounding note';
     case 'tune':
       return 'the line already plays every note of the tune';
+    case 'progression':
+      return m.chords.length === 0
+        ? 'the progression has no chords'
+        : 'the notes already sound these chords';
   }
 }
 
@@ -265,9 +270,11 @@ export interface StateAt {
   stacked?: StateAt;
 }
 
+const EMPTY_CONTEXT: EffectContext = { targeted: [], active: [], births: 0, deaths: 0, dormant: 0 };
+
 /** True for moment types that can end a voice's life (§7.4). */
 const kills = (m: Moment): boolean =>
-  m.type === 'merge' || (m.type === 'chord' && m.count !== undefined);
+  m.type === 'merge' || ((m.type === 'chord' || m.type === 'progression') && m.count !== undefined);
 
 /** The state at t from a compiled score (no recompile); see `momentEffectAt`. */
 export function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
@@ -283,10 +290,10 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   };
   const scheduled = (id: string | undefined): boolean => {
     const m = id === undefined ? undefined : byId.get(id);
-    // Walk steps and tune notes are decided where their moves start, so later ones are not
-    // scheduled yet at t.
+    // Walk steps, tune notes and progression chords are decided where their moves start, so
+    // later ones are not scheduled yet at t.
     if (!m || !isDecided(m)) return false;
-    return m.type !== 'walk' && m.type !== 'tune';
+    return m.type !== 'walk' && m.type !== 'tune' && m.type !== 'progression';
   };
   const n = score.voices.length;
   const dest = new Float64Array(n).fill(NaN);
@@ -403,6 +410,15 @@ function resolveTarget(
 }
 
 function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): MomentEffect {
+  if (m.type === 'progression') {
+    // Its first chord decides at its time; a second, different chord always moves something.
+    const chords = progressionChords(m, piece.seed);
+    if (chords.length === 0) return { effect: false, reason: noEffectReason(m, EMPTY_CONTEXT) };
+    const first = effectOn(piece, score, st0, chords[0]);
+    return first.effect || new Set(m.chords.map((c) => c.notes.trim())).size > 1
+      ? { effect: true }
+      : first;
+  }
   // Moments with a count count lines; the others see stacked voices (compiler/lines.ts).
   const st = countsLines(m) ? st0 : (st0.stacked ?? st0);
   const no = (reason: string): MomentEffect => ({ effect: false, reason });

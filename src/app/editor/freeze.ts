@@ -4,7 +4,9 @@
  * - chord: `freezeChord` (a `pitches` NoteSet, `assign: 'ordered'`, `count` kept), with the old
  *   notes in `frozenFrom` for Unfreeze;
  * - split: the pitches its voices (survivors and newborns) get, as a `pitches` NoteSet;
- * - walk: its steps as `fixed` notes (`freezeWalk`; Unfreeze drops them).
+ * - walk: its steps as `fixed` notes (`freezeWalk`; Unfreeze drops them);
+ * - progression (revision 10): replaced by its chord moments, each with its explicit seed
+ *   (`freezeProgression`); no Unfreeze but undo.
  * Other moments have no NoteSet or random draw to bake, so they are not freezable.
  */
 
@@ -15,11 +17,17 @@ import { freezeWalk } from '../../core/moments/walk';
 import { momentSeed } from '../../core/rng';
 import type { CompiledScore, Moment, MomentId, Piece, Pitch } from '../../core/types';
 import { frozenPatch } from './chord-notes';
-import { patchMoment, type MomentPatch } from './ops';
+import { patchMoment, randomU32, type MomentPatch } from './ops';
+import { freezeProgression } from './progression';
 
 /** True for the moment types Freeze applies to. */
 export function canFreeze(m: Moment): boolean {
-  return m.type === 'chord' || m.type === 'split' || m.type === 'walk';
+  return (
+    m.type === 'chord' ||
+    m.type === 'split' ||
+    m.type === 'walk' ||
+    (m.type === 'progression' && !m.muted && m.chords.length > 0)
+  );
 }
 
 /** True if `m` is already frozen (or fixed by hand: a split listing its pitches). */
@@ -85,11 +93,16 @@ export function freezeAll(
   piece: Piece,
   ids: readonly MomentId[],
   compile: (p: Piece) => CompiledScore,
+  rnd: () => number = randomU32,
 ): Piece {
   const want = new Set(ids);
   let p = piece;
   for (const id of piece.moments.filter((m) => want.has(m.id)).map((m) => m.id)) {
     const m = p.moments.find((x) => x.id === id);
+    if (m?.type === 'progression') {
+      p = freezeProgression(p, id, rnd);
+      continue;
+    }
     const patch = m && freezePatch(p, compile(p), m);
     if (patch) p = patchMoment(p, id, patch);
   }

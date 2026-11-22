@@ -241,6 +241,7 @@ export type MomentType =
   | 'level'
   | 'pulse'
   | 'tune'
+  | 'progression'
   | 'timbre';
 
 /** Fields common to every moment (§6.1). */
@@ -558,6 +559,34 @@ export interface TuneMoment extends MomentBase {
   writtenIn?: PitchClass;
 }
 
+/** One chord of a progression (revision 10): a chord symbol or Roman numeral, held `len` seconds. */
+export interface ProgressionChord {
+  /** As a chord moment's `{ kind: 'chord', symbol }` notes, e.g. "Am9", "IV", "V7/B". */
+  notes: string;
+  /** How long it lasts (> 0); the next chord starts `len` after this one. */
+  len: Seconds;
+}
+
+/**
+ * Revision 10 (region): a chord sequence typed once. From `at`, chord k is applied at `at` + the
+ * lengths before it, exactly as a `chord` moment with these settings (and this moment's glide and
+ * target) would be; numerals read the key at each chord's own time. It ends after the last
+ * chord's length; the voices hold. The compiler expands it into chord moments
+ * (core/moments/progression.ts `progressionChords`).
+ */
+export interface ProgressionMoment extends MomentBase {
+  type: 'progression';
+  chords: ProgressionChord[];
+  /** @default 'even' */
+  voicing: Voicing;
+  /** Candidate register [low, high]; absent means the union of the targeted voices' ranges. */
+  register?: [Pitch, Pitch];
+  /** @default 'ordered' */
+  assign: AssignMode;
+  /** Active voice count from the first chord on, as a chord's `count`; absent: unchanged. */
+  count?: number;
+}
+
 /** The line of a tune's target that carries it: its lowest or highest in pitch order. */
 export type TuneLine = 'low' | 'high';
 
@@ -590,6 +619,7 @@ export type Moment =
   | LevelMoment
   | PulseMoment
   | TuneMoment
+  | ProgressionMoment
   | TimbreMoment;
 
 /** Look up a moment interface by its type, e.g. `MomentOf<'walk'>`. */

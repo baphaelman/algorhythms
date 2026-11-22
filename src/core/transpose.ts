@@ -175,6 +175,8 @@ export function hasFixedNotes(m: Moment): boolean {
     case 'tune':
       // Revision 10: a tune with `writtenIn` follows the key by itself.
       return m.writtenIn === undefined && m.notes.some((x) => !isRest(x));
+    case 'progression':
+      return m.chords.some((c) => symbolHasFixedNotes(c.notes));
     default:
       return false;
   }
@@ -346,6 +348,20 @@ export function remapMoment(
           ? { ...m, notes: m.notes.map((x) => (isRest(x) ? x : { ...x, pitch: r(x.pitch) })) }
           : m;
       break;
+    case 'progression': {
+      // A letter-root chord the scale change can't rename stays as it is (no pitch list here).
+      let changed = false;
+      const chords = m.chords.map((c) => {
+        if (!symbolHasFixedNotes(c.notes)) return c;
+        const symbol = remapSymbol(c.notes, from, to);
+        if (symbol === null) skipped = true;
+        if (symbol === null || symbol === c.notes) return c;
+        changed = true;
+        return { ...c, notes: symbol };
+      });
+      out = changed ? { ...m, chords } : m;
+      break;
+    }
     default:
       break;
   }

@@ -123,6 +123,7 @@ const MOMENTS: Record<string, Record<string, Spec>> = {
     floor: roundLevel,
   },
   tune: { notes: each(obj({ pitch: roundOther, len: roundStep })) },
+  progression: { chords: each(obj({ len: roundStep })), register: pitches },
   timbre: { fade: roundTime },
 };
 

@@ -72,7 +72,10 @@ function pruneMoment(m: Moment, gone: Set<VoiceId>, size: number): Moment | null
     }
   }
   if (
-    (out.type === 'split' || out.type === 'merge' || out.type === 'chord') &&
+    (out.type === 'split' ||
+      out.type === 'merge' ||
+      out.type === 'chord' ||
+      out.type === 'progression') &&
     out.count !== undefined &&
     out.count > size
   ) {

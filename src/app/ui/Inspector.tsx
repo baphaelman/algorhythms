@@ -43,6 +43,7 @@ const TYPE_NAMES: Record<Moment['type'], string> = {
   level: 'Level',
   pulse: 'Pulse',
   tune: 'Tune',
+  progression: 'Progression',
   timbre: 'Timbre',
 };
 
@@ -146,7 +147,8 @@ function Empty() {
         Select a moment on the lane to edit it here, or add one at the playhead with a key:{' '}
         <kbd>C</kbd> chord, <kbd>U</kbd> unison, <kbd>S</kbd> split, <kbd>M</kbd> merge,{' '}
         <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>R</kbd> pulse, <kbd>E</kbd>{' '}
-        tune, <kbd>I</kbd> pin, <kbd>K</kbd> key, <kbd>L</kbd> level, <kbd>B</kbd> timbre.
+        tune, <kbd>O</kbd> progression, <kbd>I</kbd> pin, <kbd>K</kbd> key, <kbd>L</kbd> level,{' '}
+        <kbd>B</kbd> timbre.
       </p>
       <BarFields />
     </div>

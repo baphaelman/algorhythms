@@ -6,7 +6,8 @@
  * - **v2** (`2.` + base64url): the piece with its defaults stripped (`stripDefaults`), unchanged
  *   built-in timbres written as `1`, moment ids that just count up from the previous one omitted,
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
- *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
+ *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
+ *   `[notes, len, …]` lists (revision 10); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
@@ -161,6 +162,16 @@ function plainNote(n: unknown): n is { pitch: number; len: number } | { rest: tr
   );
 }
 
+/** A progression chord that packs into a `[notes, len]` pair (no other fields). */
+function plainChord(c: unknown): c is { notes: string; len: number } {
+  return (
+    isRec(c) &&
+    Object.keys(c).length === 2 &&
+    typeof c.notes === 'string' &&
+    typeof c.len === 'number'
+  );
+}
+
 /** The v2 form of a piece (JSON data), or null when it can't express this piece exactly. */
 export function packPiece(piece: Piece): Rec | null {
   const out = stripDefaults(piece);
@@ -194,6 +205,13 @@ export function packPiece(piece: Piece): Rec | null {
         if (k === 'at') m.at = ms - prevMs;
         else if (k === 'notes' && raw.type === 'tune' && Array.isArray(v) && v.every(plainNote))
           m.notes = v.flatMap((n) => ['pitch' in n ? n.pitch : null, n.len]);
+        else if (
+          k === 'chords' &&
+          raw.type === 'progression' &&
+          Array.isArray(v) &&
+          v.every(plainChord)
+        )
+          m.chords = v.flatMap((c) => [c.notes, c.len]);
         else m[k] = v;
       }
       if (typeof raw.id !== 'string') return null;
@@ -249,6 +267,16 @@ export function unpackPiece(packed: unknown): unknown {
               v[i] === null ? { rest: true, len: v[i + 1] } : { pitch: v[i], len: v[i + 1] },
             );
           m.notes = notes;
+        } else if (
+          k === 'chords' &&
+          raw.type === 'progression' &&
+          Array.isArray(v) &&
+          v.length % 2 === 0 &&
+          v.every((x, i) => typeof x === (i % 2 === 0 ? 'string' : 'number'))
+        ) {
+          const chords: Rec[] = [];
+          for (let i = 0; i + 1 < v.length; i += 2) chords.push({ notes: v[i], len: v[i + 1] });
+          m.chords = chords;
         } else m[k] = v;
       }
       if (typeof m.id === 'string') prevId = m.id;

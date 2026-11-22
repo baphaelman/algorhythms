@@ -145,7 +145,8 @@ function noteDots(score: CompiledScore, m: NoteMoment): ArrivalDot[] {
 /**
  * The dots of moment `m`. A chord with `chordNotes` (its full note list, ./chord-notes) gets one
  * dot per note at its span end, including voices already on their note; without it, the landings
- * of the voices that move. Walk: its steps. Note: `to` where it arrives. Others: the landings.
+ * of the voices that move. Walk: its steps. Note: `to` where it arrives. Progression: none
+ * (Freeze it to edit notes). Others: the landings.
  */
 export function momentArrivals(
   score: CompiledScore,
@@ -155,6 +156,8 @@ export function momentArrivals(
   if (m.type === 'walk') return walkDots(score, m);
   if (m.type === 'note') return noteDots(score, m);
   if (m.type === 'tune') return tuneDots(score, m);
+  // A progression's notes are edited after Freeze (as chord moments), so it has no dots.
+  if (m.type === 'progression') return [];
   if (m.type === 'chord' && chordNotes) {
     const t = chordArrival(score, m);
     return chordNotes.map((pitch) => {
@@ -198,7 +201,14 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
     }
     for (const [id, b] of best) {
       const type = byId.get(id)?.type;
-      if (type === undefined || type === 'walk' || type === 'note' || type === 'tune') continue;
+      if (
+        type === undefined ||
+        type === 'walk' ||
+        type === 'note' ||
+        type === 'tune' ||
+        type === 'progression'
+      )
+        continue;
       let list = landings.get(id);
       if (!list) landings.set(id, (list = []));
       if (addLanding(list, score, b)) out.push({ momentId: id, type, t: b.t, pitch: b.p });
@@ -315,7 +325,7 @@ export function dotAction(
   chordNotes: (m: ChordMoment) => readonly Pitch[] | null,
 ): DotAction {
   const m = piece.moments.find((x) => x.id === dot.momentId);
-  if (!m) return { kind: 'none' };
+  if (!m || m.type === 'progression') return { kind: 'none' };
   const voice = dot.voice;
   if (m.type === 'chord') {
     const notes = chordNotes(m);

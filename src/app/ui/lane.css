@@ -222,6 +222,24 @@
   background: color-mix(in srgb, var(--c) 14%, transparent);
 }
 
+/* Progression (revision 10): a light region with each chord's name over its span. */
+.lane-item[data-type='progression'] .lane-bar {
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+
+.lane-art.lane-progression > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  padding-left: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
+  font: 9px/12px var(--f-mono);
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
 .lane-art {
   position: absolute;
   inset: 0;
