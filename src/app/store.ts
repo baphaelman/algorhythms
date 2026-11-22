@@ -203,8 +203,36 @@ const clock = {
   token: 0,
 };
 
+/**
+ * A live take being recorded (src/app/live.ts `armRecord`): the transport shows 'playing' and the
+ * playhead runs over the timeline on the live clock (silent: no playback in live mode, §9).
+ */
+let recording: { now: () => Seconds; stop: () => void } | null = null;
+
+/** Starts the recording clock: the playhead follows `now`; pausing calls `stop`. */
+export function startRecordClock(now: () => Seconds, stop: () => void): void {
+  clock.token++;
+  clock.started = false;
+  recording = { now, stop };
+  setTransport({ status: 'playing', scrubbing: false });
+}
+
+/** Stops the recording clock, leaving the playhead at `at`. */
+export function stopRecordClock(at: Seconds): void {
+  if (!recording) return;
+  recording = null;
+  clock.pos = Math.max(0, at);
+  setTransport({ status: 'paused' });
+}
+
+/** True while a live take runs the transport. */
+export function isRecordClock(): boolean {
+  return recording !== null;
+}
+
 /** The playhead time, seconds: what the picture and readouts show right now. */
 export function currentTime(): Seconds {
+  if (recording) return recording.now();
   const { transport, compiled } = get();
   if (transport.scrubbing) return clock.scrub;
   if (transport.status === 'ended') return compiled.duration;
@@ -352,6 +380,7 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   // are canonical (core/canonical.ts), so share links round-trip exactly.
   const piece = canonicalPiece(foldOpeningKeys(loaded));
   if (piece !== loaded) opts = { ...opts, compiled: undefined };
+  recording = null; // a take being recorded is dropped (live.ts listens)
   clock.token++;
   clock.pos = 0;
   clock.started = false;
@@ -557,6 +586,11 @@ export function play(): void {
 
 /** Pauses, keeping the position. */
 export function pause(): void {
+  // While recording, Pause (and Space) stops the take and keeps it.
+  if (recording) {
+    recording.stop();
+    return;
+  }
   const { transport } = get();
   if (transport.status !== 'playing') return;
   clock.pos = currentTime();
@@ -585,6 +619,7 @@ function seekable(t: Seconds, playing: boolean): Seconds {
 
 /** Moves the playhead to `t` seconds (playing continues from there). */
 export function seekTo(t: Seconds): void {
+  if (recording) return;
   const { transport } = get();
   const to = seekable(t, transport.status === 'playing');
   clock.pos = to;
@@ -605,6 +640,7 @@ export function seekBy(dt: Seconds): void {
  * release it resumes from there if it was playing, else waits paused at the new position.
  */
 export function scrubTo(t: Seconds): void {
+  if (recording) return;
   const { transport } = get();
   if (!transport.scrubbing) {
     clock.resume = transport.status === 'playing';

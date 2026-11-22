@@ -201,6 +201,7 @@ function buildLive(): { graph: Graph; step(): void; measured(): number } {
       n: number;
       gain: number | null;
       over: number;
+      press: number;
     }[];
     bends: { block: number; semitones: number }[];
   };
@@ -215,6 +216,7 @@ function buildLive(): { graph: Graph; step(): void; measured(): number } {
   const N = Int32Array.from(msgs, (m) => m.n);
   const G = Float64Array.from(msgs, (m) => (m.gain === null ? NaN : m.gain));
   const O = Float64Array.from(msgs, (m) => m.over);
+  const P = Float64Array.from(msgs, (m) => m.press);
   const M = msgs.map((m) => Float64Array.from(m.moves));
   const BB = Int32Array.from(file.bends, (x) => x.block);
   const BV = Float64Array.from(file.bends, (x) => x.semitones);
@@ -227,7 +229,7 @@ function buildLive(): { graph: Graph; step(): void; measured(): number } {
     step(): void {
       if (measureFrom < 0 && b >= file.warmBlocks) measureFrom = k;
       while (k < nMsg && B[k] === b) {
-        input.queue(Q[k], M[k], N[k], G[k], O[k]);
+        input.queue(Q[k], M[k], N[k], G[k], O[k], P[k]);
         k++;
       }
       while (kb < BB.length && BB[kb] === b) input.setBend(BV[kb++]);

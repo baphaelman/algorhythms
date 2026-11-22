@@ -12,7 +12,6 @@ import {
   SEG_BX2,
   SEG_BY1,
   SEG_BY2,
-  SEG_CLAMPED,
   SEG_CURVE_P1,
   SEG_CURVE_T1,
   SEG_EASE,
@@ -160,40 +159,77 @@ describe('live messages (M7a)', () => {
     expectSameTracks(rig.mirror, rig.input.tracks);
   });
 
-  it('a chord pressed within 15 ms re-targets each voice with no velocity jump', () => {
-    const rig = new LiveRig(liveSetupOf(6, 'glass'), { glide: 0.3 });
+  // §9 merge window (M7-c): a press re-plans from its first key, so it plays as one chord there.
+  for (const [name, lead] of [
+    ['holding', 0.5],
+    ['mid-glide', 0.1],
+  ] as const) {
+    it(`a chord pressed key by key within 15 ms plays as the chord from its first key (${name})`, () => {
+      const make = () => {
+        const rig = new LiveRig(liveSetupOf(6, 'glass'), { glide: 0.3 });
+        rig.run(0.05);
+        rig.noteOn(55);
+        rig.run(lead);
+        rig.noteOff(55);
+        return rig;
+      };
+      // C, E, G 5 ms apart, landing in three different blocks.
+      const rig = make();
+      const t0 = rig.time;
+      rig.noteOn(60);
+      rig.run(0.005);
+      rig.noteOn(64);
+      rig.run(0.005);
+      const t2 = rig.time;
+      rig.noteOn(67);
+      rig.run(0.6);
+      // The same chord as one change at t0.
+      const ref = make();
+      expect(ref.time).toBe(t0);
+      ref.keys.noteOn(60);
+      ref.keys.noteOn(64);
+      ref.noteOn(67);
+      ref.run(0.61);
+      const a = rig.input.tracks;
+      const b = ref.input.tracks;
+      for (let i = 0; i < a.data.length; i++) {
+        for (let t = t2; t < rig.time; t += 0.001) {
+          expect(Math.abs(a.pitchAt(i, t) - b.pitchAt(i, t))).toBeLessThan(1e-9);
+        }
+        expect(a.dest(i)).toBe(b.dest(i));
+      }
+      expectSameTracks(rig.mirror, rig.input.tracks);
+      expect(new Set(a.data.map((_, i) => a.dest(i)))).toEqual(new Set([60, 64, 67]));
+      // Every press change is logged with the first one's press and time.
+      const press = rig.changes.slice(-3);
+      expect(press.map((c) => c.press)).toEqual([press[0].seq, press[0].seq, press[0].seq]);
+      expect(press.every((c) => c.time === t0)).toBe(true);
+    });
+  }
+
+  it('a key beyond 15 ms re-targets mid-glide, carrying velocity', () => {
+    const rig = new LiveRig(liveSetupOf(4, 'glass'), { glide: 0.3 });
     rig.run(0.05);
     rig.noteOn(55);
     rig.run(0.5);
-    rig.noteOff(55);
-    // C, E, G 5 ms apart, landing in three different blocks.
-    const t = [rig.time];
     rig.noteOn(60);
-    rig.run(0.005);
-    t.push(rig.time);
-    rig.noteOn(64);
-    rig.run(0.005);
-    t.push(rig.time);
+    rig.run(0.02);
+    const t = rig.time;
     rig.noteOn(67);
-    rig.run(0.6);
+    rig.run(0.4);
     const tr = rig.input.tracks;
     const h = 1e-5;
     let joins = 0;
     for (let i = 0; i < tr.data.length; i++) {
-      for (const tj of t.slice(1)) {
-        const vBefore = (tr.pitchAt(i, tj) - tr.pitchAt(i, tj - h)) / h;
-        const vAfter = (tr.pitchAt(i, tj + h) - tr.pitchAt(i, tj)) / h;
-        const k = tr.segmentAt(i, tj);
-        if (tr.data[i].segs[k * SEG_STRIDE + SEG_T0] !== tj) continue; // not moved here
-        joins++;
-        expect(tr.data[i].segs[k * SEG_STRIDE + SEG_CLAMPED]).toBe(0);
-        expect(Math.abs(vAfter - vBefore)).toBeLessThan(0.02 * Math.max(1, Math.abs(vBefore)));
-      }
-      expect(Math.abs(tr.pitchAt(i, rig.time) - tr.dest(i))).toBeLessThan(1e-9);
+      const k = tr.segmentAt(i, t);
+      if (tr.data[i].segs[k * SEG_STRIDE + SEG_T0] !== t) continue;
+      joins++;
+      const vBefore = (tr.pitchAt(i, t) - tr.pitchAt(i, t - h)) / h;
+      const vAfter = (tr.pitchAt(i, t + h) - tr.pitchAt(i, t)) / h;
+      expect(Math.abs(vAfter - vBefore)).toBeLessThan(0.02 * Math.max(1, Math.abs(vBefore)));
     }
     expect(joins).toBeGreaterThan(0);
-    const dests = tr.data.map((_, i) => tr.dest(i)).sort((a, b) => a - b);
-    expect(new Set(dests)).toEqual(new Set([60, 64, 67]));
+    expect(rig.changes.at(-1)!.press).toBe(rig.changes.at(-1)!.seq);
   });
 
   it('bend shifts every voice continuously', () => {
@@ -266,7 +302,7 @@ describe("live under mix.normalise 'part' (the default)", () => {
     const rig = new LiveRig(setup);
     rig.record = false;
     rig.run(0.05);
-    rig.post({ moves: [], level: { gain: 1, over: 0 } }); // sound at the piece's pitches
+    rig.post({ moves: [], level: { gain: 1, over: 0 }, targets: null, silent: false }); // sound at the piece's pitches
     rig.run(1);
     return setup.voices.map((v, k) => {
       const i = score.voices.findIndex((c) => c.id === v.id);
@@ -291,7 +327,7 @@ describe("live under mix.normalise 'part' (the default)", () => {
     const rig = new LiveRig(setup);
     rig.record = false;
     rig.run(0.05);
-    rig.post({ moves: [], level: { gain: 1, over: 0 } });
+    rig.post({ moves: [], level: { gain: 1, over: 0 }, targets: null, silent: false });
     rig.run(0.5);
     for (const normalise of ['all', 'part'] as const) {
       const mix: MixSettings = { ...DRY_MIX, normalise };
@@ -409,6 +445,25 @@ describe('no clicks under rapid key changes (M7a)', () => {
         `live clicks ${timbre}: rapid ${got.ratio.toFixed(3)} vs slow ${ref.ratio.toFixed(3)}`,
       );
       expect(got.ratio).toBeLessThan(Math.max(2 * ref.ratio, 0.05));
+      // Press-window rewinds (M7-c): chords pressed key by key 3–10 ms apart, every 80–300 ms.
+      const press = new LiveRig(liveSetupOf(8, timbre), { glide: 0.15, stagger: 0.02 });
+      const rng = new Prng(17);
+      press.run(0.05);
+      let rewinds = 0;
+      while (press.time < 8) {
+        press.keys.allOff();
+        const k = 2 + Math.floor(rng.next() * 3);
+        for (let j = 0; j < k; j++) {
+          press.noteOn(48 + Math.floor(rng.next() * 25));
+          if (j > 0 && press.changes.at(-1)!.press !== press.changes.at(-1)!.seq) rewinds++;
+          press.run(0.003 + rng.next() * 0.007);
+        }
+        press.run(0.08 + rng.next() * 0.22);
+      }
+      const pr = clickScore(press.out().left, Math.floor(0.2 * RATE));
+      console.info(`live clicks ${timbre}: presses ${pr.ratio.toFixed(3)} (${rewinds} rewinds)`);
+      expect(rewinds).toBeGreaterThan(20);
+      expect(pr.ratio).toBeLessThan(Math.max(2 * ref.ratio, 0.05));
     });
   }
 });

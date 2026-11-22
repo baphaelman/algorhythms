@@ -141,7 +141,10 @@ class EngineProcessor extends AudioWorkletProcessor {
           break;
         case 'live':
           this.liveReceived = this.nextFrame;
-          if (this.live && !this.live.queue(msg.seq, msg.moves, msg.n, msg.gain, msg.over)) {
+          if (
+            this.live &&
+            !this.live.queue(msg.seq, msg.moves, msg.n, msg.gain, msg.over, msg.press ?? 0)
+          ) {
             this.post({ type: 'error', message: 'live queue full' });
           }
           break;

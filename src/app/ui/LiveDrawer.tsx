@@ -7,8 +7,10 @@
  * (mix edits while live are heard).
  */
 
+import { useEffect, useRef } from 'react';
 import type { GlideOrder } from '../../core/types';
 import { glideFromModWheel } from '../../core/live';
+import { recordElapsed, useRecord } from '../live';
 import {
   closeLive,
   connectMidi,
@@ -16,6 +18,7 @@ import {
   setPanel,
   setTyping,
   toggleLive,
+  toggleRecord,
   useLive,
   type LivePanel,
   type MidiStatus,
@@ -67,6 +70,70 @@ export function TypingToggle() {
         </>
       ) : (
         'Typing'
+      )}
+    </button>
+  );
+}
+
+/** m:ss.s */
+function clockText(t: number): string {
+  const tenths = Math.floor(t * 10);
+  const m = Math.floor(tenths / 600);
+  const sec = (tenths % 600) / 10;
+  return `${m}:${sec < 10 ? '0' : ''}${sec.toFixed(1)}`;
+}
+
+/** The time recorded so far, updated every animation frame while recording. */
+function Elapsed() {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = (): void => {
+      if (ref.current) ref.current.textContent = clockText(recordElapsed());
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <span ref={ref} className="live-record-time" data-testid="live-record-time" />;
+}
+
+/**
+ * Record (§9 Recording, record into silence): arms a take at the playhead while live; pressing
+ * it again (or Pause, Space, Escape, closing the drawer) stops and keeps it. Shown in the
+ * transport while live (`live-record`) and in the drawer's header (`live-record-drawer`).
+ */
+export function RecordToggle({ where }: { where: 'transport' | 'drawer' }) {
+  const open = useLive((s) => s.open);
+  const status = useRecord((s) => s.status);
+  if (where === 'transport' && !open) return null;
+  const on = status === 'starting' || status === 'recording';
+  return (
+    <button
+      type="button"
+      className="live-record"
+      aria-pressed={on}
+      data-testid={where === 'transport' ? 'live-record' : 'live-record-drawer'}
+      data-status={status}
+      disabled={status === 'saving'}
+      title={
+        on
+          ? 'Stop recording and keep the take (Space, Escape)'
+          : 'Record what you play from the playhead (replaces the piece from there)'
+      }
+      onClick={() => toggleRecord()}
+    >
+      <span className="live-record-dot" aria-hidden="true" />
+      {status === 'recording' ? (
+        <>
+          Recording <Elapsed />
+        </>
+      ) : status === 'starting' ? (
+        'Arming…'
+      ) : status === 'saving' ? (
+        'Saving…'
+      ) : (
+        'Record'
       )}
     </button>
   );
@@ -204,6 +271,7 @@ export function LiveDrawer() {
         <span className="live-state" data-testid="live-state">
           {running ? 'Playing live' : 'Starting…'}
         </span>
+        <RecordToggle where="drawer" />
         <Midi />
         <button
           type="button"

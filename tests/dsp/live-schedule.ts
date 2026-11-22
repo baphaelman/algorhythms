@@ -2,7 +2,7 @@
  * The live session the no-GC harness replays ('live' mode, tests/dsp/node/gc-harness.ts): the
  * main thread's decisions (LiveRig) over 96 s of 24 voices, written as JSON. A key change every
  * 4–34 blocks (chords, unisons, `exact` and `range`, releases with hold, fade and tonic, sustain,
- * a 30 ms stagger) and bends; the first 30 s (in the harness's 35 s warm-up) change every 2 blocks, so
+ * a 30 ms stagger) and bends; changes ≤ 15 ms apart re-plan their press (the rewind path); the first 30 s (in the harness's 35 s warm-up) change every 2 blocks, so
  * every apply path (compaction included) is optimised before the measured minute.
  */
 
@@ -23,10 +23,16 @@ interface Message {
   n: number;
   gain: number | null;
   over: number;
+  /** The press it re-plans (rewinding to its first change), or 0. */
+  press: number;
 }
 
 /** Writes the session to `file`; returns its message and bend counts. */
-export function writeLiveSchedule(file: string): { messages: number; bends: number } {
+export function writeLiveSchedule(file: string): {
+  messages: number;
+  bends: number;
+  presses: number;
+} {
   const setup = liveSetupOf(24, 'glass', [36, 84], 60, FIXTURE_MIX);
   const total = Math.round((96 * RATE) / BLOCK_FRAMES);
   const warmBlocks = Math.round((35 * RATE) / BLOCK_FRAMES);
@@ -37,10 +43,10 @@ export function writeLiveSchedule(file: string): { messages: number; bends: numb
   const bends: { block: number; semitones: number }[] = [];
   let block = 0;
   const queue = plan.input.queue.bind(plan.input);
-  plan.input.queue = (seq, m, n, gain, over) => {
+  plan.input.queue = (seq, m, n, gain, over, press = 0) => {
     const moves = Array.from(m);
-    messages.push({ block, seq, moves, n, gain: gain === gain ? gain : null, over });
-    return queue(seq, m, n, gain, over);
+    messages.push({ block, seq, moves, n, gain: gain === gain ? gain : null, over, press });
+    return queue(seq, m, n, gain, over, press);
   };
   const setBend = plan.input.setBend.bind(plan.input);
   plan.input.setBend = (semitones) => {
@@ -86,5 +92,9 @@ export function writeLiveSchedule(file: string): { messages: number; bends: numb
     bends,
   };
   writeFileSync(file, JSON.stringify(json));
-  return { messages: messages.length, bends: bends.length };
+  return {
+    messages: messages.length,
+    bends: bends.length,
+    presses: messages.filter((m) => m.press > 0).length,
+  };
 }

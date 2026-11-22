@@ -181,13 +181,16 @@ describe('liveUpdate: silence and release', () => {
   });
 
   it('release hold keeps everything', () => {
-    expect(liveUpdate(view(vs), [], S(), 1)).toEqual({ moves: [], level: null });
+    expect(liveUpdate(view(vs), [], S(), 1)).toMatchObject({ moves: [], level: null });
   });
 
   it('release fade ramps the level to 0', () => {
     const s = S({ release: 'fade', releaseFade: 0.8 });
-    expect(liveUpdate(view(vs), [], s, 1)).toEqual({ moves: [], level: { gain: 0, over: 0.8 } });
-    expect(liveUpdate(view(vs, 0, 0), [], s, 1)).toEqual({ moves: [], level: null });
+    expect(liveUpdate(view(vs), [], s, 1)).toMatchObject({
+      moves: [],
+      level: { gain: 0, over: 0.8 },
+    });
+    expect(liveUpdate(view(vs, 0, 0), [], s, 1)).toMatchObject({ moves: [], level: null });
   });
 
   it('release tonic glides to the tonic nearest the voices', () => {
