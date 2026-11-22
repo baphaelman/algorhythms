@@ -66,6 +66,16 @@ export class Limiter {
 
   /** Output ceiling in dBFS. */
   setCeilingDb(db: number): void {
+    this.params[0] = db;
+    this.applyParams();
+  }
+
+  /** Input of applyParams: the ceiling in dBFS (see Reverb.params). */
+  readonly params = new Float64Array(1);
+
+  /** setCeilingDb with the value in `params`. */
+  applyParams(): void {
+    const db = this.params[0];
     const c = Number.isFinite(db) ? Math.min(0, db) : -1;
     pmath.R[0] = c;
     pmath.dbToGainR();

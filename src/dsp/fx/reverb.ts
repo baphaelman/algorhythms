@@ -107,6 +107,26 @@ export class Reverb {
     preDelay: number,
     immediate = false,
   ): void {
+    const p = this.params;
+    p[0] = size;
+    p[1] = decay;
+    p[2] = damping;
+    p[3] = preDelay;
+    this.applyParams(immediate);
+  }
+
+  /**
+   * Inputs of applyParams: size, decay, damping, pre-delay. The graph writes them here, as a double
+   * passed to a call that is not inlined is boxed (FX edits arrive on the audio thread).
+   */
+  readonly params = new Float64Array(4);
+
+  /** setParams with the values in `params`. */
+  applyParams(immediate = false): void {
+    const size = this.params[0];
+    const decay = this.params[1];
+    const damping = this.params[2];
+    const preDelay = this.params[3];
     const s = Math.min(1, Math.max(0, size));
     const scale = MIN_SCALE + SCALE_RANGE * s;
     for (let k = 0; k < LINES; k++)

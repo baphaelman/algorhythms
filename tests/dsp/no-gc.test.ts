@@ -88,9 +88,10 @@ describe('no GC in process()', () => {
     );
     expect(gcLines).toEqual([]);
     expect(summary.observedGc).toBe(0);
-    // 240 edits; setMix (message handling) boxes the doubles it passes on, ~170 B per edit (a
-    // real edit's postMessage allocates far more). 8 B per block in process() would be 180 KB.
-    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES + 240 * 256);
+    // 240 edits. setMix and the FX pass values through typed arrays, so an edit allocates nothing
+    // once optimised (measured: 1864 B, as the plain run); the slack is 32 B per edit for message
+    // handling caught unoptimised. 8 B per block in process() would be 180 KB.
+    expect(summary.newSpaceBytes).toBeLessThanOrEqual(MAX_BYTES + 240 * 32);
   }, 120_000);
 
   it('reports the GC rate when expo and bézier glides are included', () => {

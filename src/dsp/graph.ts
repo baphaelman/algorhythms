@@ -702,16 +702,21 @@ export class Graph {
 
   private applyMix(immediate: boolean): void {
     const m = this.mix;
-    this.reverb.setParams(
-      m.reverbSize,
-      m.reverbDecay,
-      m.reverbDamping,
-      m.reverbPreDelay,
-      immediate,
-    );
-    this.delay.setParams(m.delayTime, m.delayFeedback, immediate);
-    this.tone.setParams(m.toneTilt, m.toneLowpassHz, immediate);
-    this.limiter.setCeilingDb(m.ceilingDb);
+    // Through the FX's param arrays, not double arguments (those would be boxed per edit).
+    const rp = this.reverb.params;
+    rp[0] = m.reverbSize;
+    rp[1] = m.reverbDecay;
+    rp[2] = m.reverbDamping;
+    rp[3] = m.reverbPreDelay;
+    this.reverb.applyParams(immediate);
+    this.delay.params[0] = m.delayTime;
+    this.delay.params[1] = m.delayFeedback;
+    this.delay.applyParams(immediate);
+    this.tone.params[0] = m.toneTilt;
+    this.tone.params[1] = m.toneLowpassHz;
+    this.tone.applyParams(immediate);
+    this.limiter.params[0] = m.ceilingDb;
+    this.limiter.applyParams();
     this.ctx.sendReverb = Math.max(0, m.sendReverb);
     this.ctx.sendDelay = Math.max(0, m.sendDelay);
     this.ctx.panByPitch = m.panByPitch;

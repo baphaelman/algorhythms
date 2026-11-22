@@ -40,6 +40,9 @@ export class Tone {
   // Shelf high-pass coefficients (bilinear, prewarped) and state per channel.
   private readonly hpB0 = new Float64Array(SHELVES);
   private readonly hpA1 = new Float64Array(SHELVES);
+  /** Each shelf high-pass's response at PIVOT_HZ (real, imaginary), for the normalisation. */
+  private readonly pivRe = new Float64Array(SHELVES);
+  private readonly pivIm = new Float64Array(SHELVES);
   private readonly x1 = new Float64Array(2 * SHELVES);
   private readonly y1 = new Float64Array(2 * SHELVES);
   /** Per-block one-pole coefficients. */
@@ -52,7 +55,6 @@ export class Tone {
   private gm1From = 0;
   private normFrom = 1;
   private tiltRamp = false;
-  private tiltMoving = false;
   private lpMoving = false;
   /** Steady low-pass output: true when active (wet 1), false when bypassed. */
   private lpWrite = false;
@@ -81,6 +83,20 @@ export class Tone {
       this.hpB0[k] = 1 / (1 + K);
       this.hpA1[k] = (K - 1) / (1 + K);
     }
+    PR[0] = (2 * Math.PI * PIVOT_HZ) / sampleRate;
+    pmath.sinCosR();
+    const s = PR[0];
+    const c = PR[1];
+    for (let k = 0; k < SHELVES; k++) {
+      // HP(e^{jw}) = b0 (1 − e^{−jw}) / (1 + a1 e^{−jw}).
+      const nr = this.hpB0[k] * (1 - c);
+      const ni = this.hpB0[k] * s;
+      const dr = 1 + this.hpA1[k] * c;
+      const di = -this.hpA1[k] * s;
+      const den = dr * dr + di * di;
+      this.pivRe[k] = (nr * dr + ni * di) / den;
+      this.pivIm[k] = (ni * dr - nr * di) / den;
+    }
     this.tiltSmooth = 1 - pmath.exp(-BLOCK_FRAMES / (TILT_TAU * sampleRate));
     this.cutSmooth = 1 - pmath.exp(-CUT_STEP / (CUT_TAU * sampleRate));
     this.setParams(0, sampleRate, true);
@@ -88,6 +104,18 @@ export class Tone {
 
   /** Sets the tilt (dB/oct) and low-pass cutoff (Hz); `immediate` skips smoothing. */
   setParams(tilt: number, lowpassHz: number, immediate = false): void {
+    this.params[0] = tilt;
+    this.params[1] = lowpassHz;
+    this.applyParams(immediate);
+  }
+
+  /** Inputs of applyParams: tilt, low-pass cutoff (see Reverb.params). */
+  readonly params = new Float64Array(2);
+
+  /** setParams with the values in `params`. */
+  applyParams(immediate = false): void {
+    const tilt = this.params[0];
+    const lowpassHz = this.params[1];
     this.tiltTarget = Number.isFinite(tilt) ? Math.max(-6, Math.min(6, tilt)) : 0;
     const on = !(lowpassHz >= LP_MAX * this.nyq || !(lowpassHz > 0));
     this.cutTarget = on ? Math.max(20, lowpassHz) : LP_MAX * this.nyq;
@@ -104,7 +132,6 @@ export class Tone {
       PR[0] = this.cutTarget;
       this.updateLowpassR();
     }
-    this.tiltMoving = this.tiltCur !== this.tiltTarget;
     this.lpMoving = this.logCut !== this.logTarget || this.lpWet !== this.lpWetTarget;
   }
 
@@ -116,33 +143,19 @@ export class Tone {
     this.ic2.fill(0);
   }
 
-  /** gm1 and norm for tiltCur. */
+  /**
+   * gm1 and norm for tiltCur. Runs every block (see advanceTilt), tilt 0 included: there g is
+   * exactly 1, so gm1 = 0 and norm = 1 as before.
+   */
   private updateTilt(): void {
-    if (this.tiltCur === 0) {
-      this.gm1 = 0;
-      this.norm = 1;
-      return;
-    }
-    // Each shelf adds 2·tilt dB above its corner (two octaves per shelf).
+    // Each shelf adds 2·tilt dB above its corner (two octaves per shelf); shelf = 1 + (g − 1)·HP.
     PR[0] = 2 * this.tiltCur;
     pmath.dbToGainR();
     const g = PR[0];
-    PR[0] = (2 * Math.PI * PIVOT_HZ) / this.sampleRate;
-    pmath.sinCosR();
-    const s = PR[0];
-    const c = PR[1];
     let mag = 1;
     for (let k = 0; k < SHELVES; k++) {
-      // HP(e^{jw}) = b0 (1 − e^{−jw}) / (1 + a1 e^{−jw}); shelf = 1 + (g − 1)·HP.
-      const nr = this.hpB0[k] * (1 - c);
-      const ni = this.hpB0[k] * s;
-      const dr = 1 + this.hpA1[k] * c;
-      const di = -this.hpA1[k] * s;
-      const den = dr * dr + di * di;
-      const hr = (nr * dr + ni * di) / den;
-      const hi = (ni * dr - nr * di) / den;
-      const sr = 1 + (g - 1) * hr;
-      const si = (g - 1) * hi;
+      const sr = 1 + (g - 1) * this.pivRe[k];
+      const si = (g - 1) * this.pivIm[k];
       mag *= Math.sqrt(sr * sr + si * si);
     }
     this.gm1 = g - 1;
@@ -160,12 +173,11 @@ export class Tone {
   }
 
   /**
-   * Filters one stereo block in place. With constant settings this touches only booleans: it is
-   * called once per block and runs interpreted (boxing every double it reads) until V8 tiers it up.
+   * Filters one stereo block in place. Every block takes the same calls, moving or not, so the
+   * paths an edit needs are already optimised when it arrives.
    */
   process(L: Float64Array, R: Float64Array): void {
-    if (this.tiltMoving) this.advanceTilt();
-    else this.tiltRamp = false;
+    this.advanceTilt();
     this.tiltBlock(L, 0);
     this.tiltBlock(R, 1);
     if (this.lpMoving) this.lowpassMovingBlock(L, R);
@@ -175,13 +187,17 @@ export class Tone {
     }
   }
 
-  /** Advances tilt's one-pole; tiltBlock ramps the gains across the block. */
+  /**
+   * Advances tilt's one-pole; tiltBlock ramps the gains across the block. Runs every block, moving
+   * or not (at rest it recomputes the same gm1 and norm), so V8 keeps it and updateTilt optimised:
+   * called only while tilt moved, they ran unoptimised and boxed every double (~110 KB a minute in
+   * the no-GC 'fx' run).
+   */
   private advanceTilt(): void {
     this.gm1From = this.gm1;
     this.normFrom = this.norm;
     const d = this.tiltTarget - this.tiltCur;
     this.tiltCur = Math.abs(d) < 1e-4 ? this.tiltTarget : this.tiltCur + d * this.tiltSmooth;
-    this.tiltMoving = this.tiltCur !== this.tiltTarget;
     this.updateTilt();
     this.tiltRamp = this.gm1From !== this.gm1 || this.normFrom !== this.norm;
   }
