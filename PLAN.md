@@ -847,7 +847,7 @@ Tablets such as iPads are wider than 900 px, so they get the editor. Touch rules
 | **MIDI (notes only)** | M3 | Each arrival becomes a note; glides are dropped. Intended for notation and non-MPE synths. |
 | **Piece JSON** | M4 | `.algorhythms.json` |
 | Poster PNG/SVG | Later | The same renderer with the overview camera at 4K. |
-| Video (MP4) | Later | WebCodecs `VideoEncoder` and `AudioEncoder` with an MP4 muxer, rendering frames offline for exact sync, in 16:9, 9:16 and 1:1. |
+| **Video (MP4)** | M8 | WebCodecs `VideoEncoder` and `AudioEncoder` with a small in-house MP4 muxer, rendering frames offline for exact sync, in 16:9, 9:16 and 1:1. Details below (revision 11). |
 
 ### MIDI details
 
@@ -881,6 +881,18 @@ The voice stems plus the FX return then sum to the mix up to floating-point erro
 - Elsewhere, use a Blob built from parts. Offer mono stems and 16-bit as smaller options, and warn when the estimated size is above about 1 GB.
 - **Formats:** 24-bit PCM or 32-bit float.
 - **ZIP64:** 32 float stereo stems over 10 minutes pass 4 GB. Check in M3 whether fflate writes ZIP64. If it doesn't, write a small in-house store-mode ZIP64 writer (store mode needs no compression code, so it is a few hundred lines), or split the export into several zips under 4 GB each.
+
+### Video export (revision 11, owner chose it next 2026-11-22)
+- **Pipeline (offline, never real time):** audio = the WAV export's offline render of the mix (§12 WAV, same samples); frame k = `drawScore` at t = k / fps on an `OffscreenCanvas` (a worker where the browser allows it), wrapped in a `VideoFrame` with timestamp k / fps. Both go through WebCodecs encoders into an in-house MP4 muxer (`moov` at the front or fragmented; no dependency, like the WAV and SMF writers). Progress and cancel as the other exports; closing the dialog cancels.
+- **Codecs:** H.264 (`avc1`, High) + AAC-LC 48 kHz stereo, 192 kb/s, chosen by `isConfigSupported`. Fallbacks in the same MP4: VP9 (`vp09`) for video, Opus for audio. A browser without `VideoEncoder` (or with no supported config) shows why and offers nothing; one without `AudioEncoder` support for both codecs likewise.
+- **Options (integrator defaults, owner may veto):**
+  - aspect 16:9 (1920×1080, default), 9:16 (1080×1920), 1:1 (1080×1080); 720p-class sizes as a smaller option;
+  - 30 fps (default) or 60 fps; bitrate from size and fps (about 8 Mb/s at 1080p30);
+  - camera **Follow** (default: Smooth follow with the editor's current zoom window, playhead at 35 %, clamped at the ends as §10) or **Whole piece** (Fit; the playhead moves across a still view). Time stays horizontal in every aspect; 9:16 gets more pitch height;
+  - theme (current, light or dark), HUD on, thickness on (off draws equal-width lines), future ghost as the player.
+  - No editor overlays (selection, markers' editing affordances); section labels drawn as the player shows them.
+- **Memory:** stream the MP4 to disk with `showSaveFilePicker` on Chromium (the muxer writes chunks in order; `moov` patched at the end, or fragmented MP4); elsewhere a Blob from parts, with a warning above about 1 GB estimated.
+- **Tail:** the video runs to the piece's end plus the audio's ring-out (the WAV export's length), last frame held.
 
 ---
 
@@ -1063,9 +1075,16 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - a recorded take plays back with pitch paths matching the live ones within 1 cent and 1 block;
   - while musical typing is on, no editor shortcut fires from a letter key.
 
+**M8. Video export (M)** (revision 11)
+- §12 "Video export": offline frames + mix audio through WebCodecs into an in-house MP4 muxer, the three aspects, Follow and Whole-piece cameras, options, streaming save, progress and cancel.
+- *Accept when:*
+  - the file plays in Chromium, Firefox and Safari `<video>` elements with duration within one frame of the WAV export's length;
+  - decoded frame k matches a direct `drawScore` render at t = k / fps (codec tolerance), and the decoded audio matches the WAV export within codec tolerance, so sync is exact by construction (no drift over a 10-minute piece);
+  - a 1080p30 export of a 3-minute piece finishes faster than real time on a desktop, and cancel stops it within 1 s;
+  - the muxer's output passes a box-structure check (and `ffprobe` where available in CI).
+
 **Later, in no order:**
 - poster PNG/SVG;
-- video export;
 - camera moments;
 - mirror, arpeggio and drift moments;
 - Scala tunings;
@@ -1130,6 +1149,9 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 11 (2026-11-22): video export next (owner)
+- **Video export (§12, §15 M8):** moved from Later to M8. Offline WebCodecs pipeline, in-house MP4 muxer, 16:9 / 9:16 / 1:1, Follow or Whole-piece camera; integrator defaults for sizes, fps, codecs and options.
 
 ### Revision 10 (2026-11-22): composing suggestions (owner: "I like your suggestions", docs/composing.md §3)
 - **Tunes (§6.2):** rests, re-struck repeated notes (`strike`), and transposing with the key (`writtenIn`).
