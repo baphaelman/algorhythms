@@ -71,6 +71,7 @@ import {
   type LevelPoint,
 } from '../editor/lane';
 import { loadLaneSplit, saveLaneSplit } from '../lane-split';
+import { useProgressionFocus } from '../progression-focus';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
 import { idsInRect, marqueeSelection, rectOf, type Rect } from '../editor/selection';
 import { beatStep, changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
@@ -1212,7 +1213,9 @@ function pulseMask(art: Extract<LaneItem['art'], { kind: 'pulse' }>): {
 const tuneTop = (top: number): string => `calc(${(top * 0.7).toFixed(2)}% + 1px)`;
 
 /** A pulse's accent cycle or a tune's notes, drawn inside its bar (R9-7). */
-function BarArt({ art }: { art: LaneItem['art'] }) {
+function BarArt({ art, id }: { art: LaneItem['art']; id?: MomentId }) {
+  // The inspector's focused progression chord (cheap: one selector, a class on one span).
+  const focus = useProgressionFocus((s) => (id !== undefined && s.id === id ? s.k : -1));
   if (!art) return null;
   if (art.kind === 'pulse') {
     const { url, size } = pulseMask(art);
@@ -1231,6 +1234,7 @@ function BarArt({ art }: { art: LaneItem['art'] }) {
           <span
             key={i}
             data-testid="lane-prog-chord"
+            className={i === focus ? 'on' : undefined}
             style={{ left: `${c.left}%`, width: `${c.width}%` }}
           >
             {c.name}
@@ -1650,7 +1654,7 @@ export function Lane() {
                 }}
               >
                 <span className="lane-bar">
-                  <BarArt art={it.art} />
+                  <BarArt art={it.art} id={it.id} />
                   <span className="lane-bar-text">{barText(it)}</span>
                   {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
                 </span>

@@ -240,6 +240,11 @@
   text-overflow: clip;
 }
 
+.lane-art.lane-progression > span.on {
+  background: color-mix(in srgb, var(--c) 42%, transparent);
+  font-weight: 600;
+}
+
 .lane-art {
   position: absolute;
   inset: 0;

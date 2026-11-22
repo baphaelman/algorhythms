@@ -18,7 +18,7 @@ import {
 import { pitchClasses } from '../../core/voicing';
 import { momentSeed } from '../../core/rng';
 import { randomMelody, writtenInAt } from './tune';
-import { newProgressionChords } from './progression';
+import { newProgressionChords, progressionSpacing } from './progression';
 import { timbreOptions } from './voices';
 import type {
   ChordMoment,
@@ -189,21 +189,16 @@ export function defaultMoment<T extends MomentType>(
       m = tune;
       break;
     }
-    case 'progression': {
-      // I vi IV V, a bar each with a tempo, else 2 s each (revision 10).
-      const meter = piece.view?.meter;
+    case 'progression':
+      // I vi IV V, each the default spacing: glide, then Next's hold (owner notes 2026-11-22).
       m = {
         ...base,
         type: 'progression',
-        chords: newProgressionChords(
-          beatOf(piece),
-          typeof meter === 'number' && meter > 0 ? meter : 4,
-        ),
+        chords: newProgressionChords(progressionSpacing(piece)),
         voicing: 'even',
         assign: 'ordered',
       };
       break;
-    }
     case 'timbre':
       m = {
         ...base,
@@ -252,7 +247,9 @@ export function chordSize(m: ChordMoment, key: Key): number {
  * A new chord (or progression, by its largest chord) brings in its extra notes (owner, "Mouse-only gaps"): when fewer lines sound at `at`
  * than the chord has notes, `count` becomes its size (at most the pool), so it sounds as a chord.
  * Otherwise, or with a count or a voice target already set, `m` is returned as is. From silence
- * the chord establishes one voice per note anyway (core/moments/establish), so nothing is added.
+ * the chord establishes one voice per note anyway (core/moments/establish), so nothing is added;
+ * a progression whose largest chord has more notes than its first gets that count, so chord 1
+ * establishes the full count (owner notes 2026-11-22).
  */
 export function withChordFill<M extends Moment>(
   m: M,
@@ -263,17 +260,17 @@ export function withChordFill<M extends Moment>(
   if (m.type === 'progression') {
     if (m.count !== undefined || (m.target && typeof m.target === 'object')) return m;
     const read = Math.min(at, Math.max(0, score.duration - 0.01));
-    const n = activeAt(score, read).length;
-    if (n === 0) return m;
-    // Its largest chord, each read in the key at `at`.
+    // Its chords' sizes, each read in the key at `at`.
     const key = keyAt(score, read);
-    let size = 0;
-    for (const c of m.chords) {
+    const sizes = m.chords.map((c) => {
       const pc = pitchClasses({ kind: 'chord', symbol: c.notes }, key, []);
-      if (pc.ok) size = Math.max(size, pc.pcs.length);
-    }
+      return pc.ok ? pc.pcs.length : 0;
+    });
+    const size = Math.max(0, ...sizes);
+    // From silence chord 1 brings in its own notes' worth.
+    const n = activeAt(score, read).length || (sizes[0] ?? 0);
     const want = Math.min(piece.voices.length, size);
-    return want > n ? { ...m, count: want } : m;
+    return n > 0 && want > n ? { ...m, count: want } : m;
   }
   if (m.type !== 'chord' || m.count !== undefined || m.byVoice) return m;
   if (m.target && typeof m.target === 'object') return m;
