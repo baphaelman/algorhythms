@@ -2281,8 +2281,8 @@ On 0afabcf, branch `ci-perf-solo`. Budgets and test logic unchanged.
 - The live latency test in `live.spec.ts` is tagged `@latency`; `pnpm e2e:quick` still runs it (excludes `@perf` only).
 - Split per engine: 560 = 14 timing + 546 rest. Each step restarts both web servers and the prod build (~3 s here), so no prebuilt-output switch was added.
 
-## M7-d: live = take by the compiler's planner rules (core, dsp, audio; 2026-11-22) — HANDOFF
-On 62fc85a (`main-7glpov`), branch `m7-live-match`. Fix 1 of 3 done (mostly); fixes 2 and 3 not started (context limit).
+## M7-d: live = take by the compiler's planner rules (core, dsp, audio; 2026-11-22)
+On 62fc85a (`main-7glpov`), branches `m7-live-match`, then `m7d-match`. The 60 ms release grace and the 4-voice fill are a separate builder's (`live-grace-fill`).
 - **Design (fix 1).** Ported the compiler's rules into live instead of calling the planner (it needs `VoiceRun`s): `core/live-plan.ts planLive`, called by `liveMoves`. Main thread only; the audio thread stays allocation-free.
   - Lines = voices on one path. Each line keeps its target group nearest its destination; the other groups fork off it as births (`collapse`). Carriers are the line's other voices, low to high. A line's representative is tracked per segment (below). Lines that met on a note are one line, and the one holding longest stands for it (ties: lower index), as `onJoin` does.
   - `planMoment` step 4, ported: Fixed/Move/Birth parts; the order is (to, preDest, voice), with the extra pairs across births; the union-find adoption; retiming of still-gliding Fixed lines; pullBack; tighten; the −2/−3 cases. `touched` is marked on every invalidation, as `invalidate` does. Carried velocity comes from each part's projected state at its own start, with the range room. A birth starts from its parent's projected state.
@@ -2299,15 +2299,11 @@ On 62fc85a (`main-7glpov`), branch `m7-live-match`. Fix 1 of 3 done (mostly); fi
   - `live.ts byDest`: the phantom rank is gone (the compiler sorts by index).
   - `live-take.ts`: the re-establish `merge` now glides for MIN_GLIDE, not the 3 s default, so the silent lines have died when the chord establishes. It was missing a whole line.
   - The unit test "5 ms re-targets" now asserts continuity and no crossings. It used to assert no velocity clamp, which the compiler rule doesn't give; presses are merged by `decideLive`.
-- **Measured (`tests/dsp/live-take*.test.ts`, gating ≤ 1 cent / ≤ 1 block).**
-  - Passing: the scripted take, the glide settings, the three former known-gap cases (the split mid-glide case was 392 c) and random seeds 1–12. All match at 0.0000 cents, ≤ 8 frames offset, 0 misses.
-  - Seeds 13–72 are measured only (`LIVE_TAKE_SEEDS=1`): 9 of 60 still miss, worst 633 c. These are stagger cases (16, 17, 25, 36, 47, 56), fades (24, 64) and tonic (33).
-  - Cause found for seed 16: a re-target while a staggered fork has not departed. The compiler keeps that voice as its own unborn line (pendingBirth, deferT; births are never cancelled; `dest` = the parent's pitch at birth). Live groups it with the parent line.
-  - Planned fix: flag a fork's departure segment (e.g. a LIVE_BIRTH field and a per-segment flag next to `lines`); in `liveView`, report `unborn {t, line}`; in `planLive`, make such voices their own part with `deferT` (start = max(group start, deferT); `lastStart` includes it; the window extends by maxDefer + maxDur; projection NaN before its birth, then the parent's state). Fixed unborn lines hold at the parent's pitch at birth. Not yet diagnosed: seeds 24, 33, 64.
-  - Debug: `EXPLAIN=1|2|3|4` in the take tests (`explain()` in `live-take-helpers.ts`: miss regions, changes, moments, compiler trace, first voice-identity divergence).
-- **Not done.**
-  - Fix 2: the 60 ms staggered-release grace.
-  - Fix 3: fill the live voices up to 4.
-  - `pnpm test:perf` (the audio thread changed, so the no-GC live run is needed); e2e.
-  - The gating random test covers seeds 1–12 only. The rest wait for the unborn-fork fix.
-- **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 2363 passed (+2 skipped; compiler goldens unchanged). test:perf and e2e not run.
+- **Follow-up (`m7d-match`).**
+  - **Audio thread.** The no-GC live run allocated 50.6 KB (limit 6 KB): `run` had grown too big to inline into `drain`, which then boxed ~90 B per message. The rewind loop moved out (`rewindAll`); now ~4.5 KB. `LiveInput`'s queue held 24 records per message, so messages with two per voice were cut; it now holds `LIVE_MAX_RECORDS` = 2 per voice.
+  - **Not-yet-born forks** (seeds 16, 17, 25, 36, 56). New record field `LIVE_BORN` (`LIVE_STRIDE` 13) and `LiveTracks.departs` (per segment) mark a fork's departure. `liveView` reports `unborn {t, line}`, with `dest` = the in-force (uncut) path at the departure (compile.ts `birthPitch`). `planLive` makes such voices their own line with `deferT` (start = max(group start, deferT); window + maxDefer + maxDur; no pull-back past deferT; never retimed or joined). The path is the parent's until the birth: at its move's start if it moves (projector rule), else at deferT, holding the parent's pitch. Records: follow the parent's change, then its own move or that hold, flagged `born`.
+  - **Fades** (seeds 24, 56, 64): a compiler bug. `establish` reopened a dead stacked line with its old count, weight and members, so each re-entry from silence stacked more logical voices (15 on 6). It now resets them. Compiler goldens are unchanged.
+  - **Gate:** seeds 1–72 except 33 and 47 (≤ 1 cent, ≤ 1 block outside presses from silence), plus the scripted takes. `LIVE_TAKE_SEEDS=1` measures 33, 47 and seeds 73–172: 5 of 102 miss.
+    - 47 (stagger, range; worst 633 c) and probably 116, 117 (stagger; 37.5 c, 373.8 c): lines that share a note without joining. Example: voices arrive together with pending moves to different notes, and the compiler keeps them as separate lines (`onJoin` needs one destination). Live groups voices by path and makes them one line with forks. The fix is line identity from line ids, with joins recorded (establish ids, a hold record carrying the survivor at each join, lines left holding joining at T). A first try regressed 8 seeds, so it was reverted.
+    - 33 (tonic release cancelling unborn forks, then a re-target 340 ms later; 26.7 c) and 74 (fade; 177 c): not diagnosed.
+  - Debug: `EXPLAIN=1|2|3|4` in the take tests (`explain()`: miss regions, changes, moments, compiler trace, first voice-identity divergence) and `EXPLAIN_WIN` (seconds before a miss region; default 0.6). Trace lines print `targeted` and the `logical` intents.

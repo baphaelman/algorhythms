@@ -1530,6 +1530,11 @@ export class Compiler {
       }
       run.status = Status.Active;
       this.resetLevel(run, T);
+      // A fresh line of one: a stacked line that died keeps its count, weight and members.
+      run.setCount(T, 1);
+      run.weight = 1;
+      run.members = [];
+      run.rampWeight(T, 1, 0);
       run.frontier.openAt(T, { p: f.p, v: 0, mid: false }, m.id);
       run.life = { born: T, fadeIn: 0 };
       run.lives.push(run.life);

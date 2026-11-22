@@ -221,6 +221,7 @@ export function report(name: string, m: Match): void {
 
 /** Debug: each miss region (live time from the take start) with its worst gap and the changes before it. */
 export function explain(take: Take, m: Match, maxRegions = 4): void {
+  const WIN = Number(process.env.EXPLAIN_WIN ?? 0.6);
   const regions: { a: number; b: number; worst: number }[] = [];
   for (const x of m.misses) {
     const r = regions[regions.length - 1];
@@ -288,7 +289,7 @@ export function explain(take: Take, m: Match, maxRegions = 4): void {
       const { trace } = compileWithTrace(take.piece);
       for (const mt of trace.moments) {
         const t = mt.t - take.T0;
-        if (t < r.a - 0.6 || t > r.b || !mt.plan) continue;
+        if (t < r.a - WIN || t > r.b || !mt.plan) continue;
         console.log(
           `  trace ${t.toFixed(4)} order [${mt.plan.order}] movers [${mt.plan.movers}] limits ` +
             mt.plan.limits
@@ -297,11 +298,11 @@ export function explain(take: Take, m: Match, maxRegions = 4): void {
                   `${l.voice}:${l.up.toFixed(2)}/${l.down.toFixed(2)}x${l.crossScale.toFixed(3)}`,
               )
               .join(' ') +
-            ` intents ${JSON.stringify(mt.intents)}`,
+            ` intents ${JSON.stringify(mt.intents)} targeted [${mt.targeted}] logical ${JSON.stringify(mt.logical)}`,
         );
       }
       for (const v of score.voices) {
-        const segs = v.segments.filter((g) => g.t0 - take.T0 >= r.a - 0.6 && g.t0 - take.T0 <= r.b);
+        const segs = v.segments.filter((g) => g.t0 - take.T0 >= r.a - WIN && g.t0 - take.T0 <= r.b);
         console.log(
           `  ${v.id}: ` +
             segs
@@ -315,14 +316,14 @@ export function explain(take: Take, m: Match, maxRegions = 4): void {
     }
     for (const mo of take.moments) {
       const t = mo.at - take.T0;
-      if (t >= r.a - 0.6 && t <= r.b)
+      if (t >= r.a - WIN && t <= r.b)
         console.log(
           `  moment ${t.toFixed(4)} ${JSON.stringify({ ...mo, id: undefined, at: undefined })}`,
         );
     }
     for (const c of changes) {
       const t = c.time - take.liveAt;
-      if (t < r.a - 0.6 || t > r.b) continue;
+      if (t < r.a - WIN || t > r.b) continue;
       const mv = c.update.moves
         .map(
           (x) =>

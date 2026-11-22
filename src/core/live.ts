@@ -241,6 +241,11 @@ export interface LiveVoiceView {
   line?: number;
   /** It has moves posted that have not started (a new move cancels them). */
   pending?: boolean;
+  /**
+   * A fork not departed yet (compile.ts `pendingBirth`): when it leaves (from the decision) and
+   * the line it forms. Until then it follows its parent's line (`line`).
+   */
+  unborn?: { t: Seconds; line: number };
 }
 
 /** The live state a decision reads. */
@@ -389,6 +394,8 @@ export interface LiveMove {
   share: number;
   /** The line the voice is on after the move (a pool index; absent: its own). */
   line?: number;
+  /** A fork's departure (dsp/live.ts LIVE_BORN). */
+  born?: boolean;
 }
 
 /** What one change of H (or of the release) does. */
@@ -453,6 +460,7 @@ export function liveMoves(
       scale: m.scale,
       share,
       line: m.line,
+      born: m.born,
     }));
 }
 

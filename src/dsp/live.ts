@@ -70,7 +70,12 @@ export const LIVE_SCALE = 9;
 export const LIVE_SHARE = 10;
 /** Pool index of the line the voice is on after the move (core/live-plan.ts: the compiler's line). */
 export const LIVE_LINE = 11;
-export const LIVE_STRIDE = 12;
+/**
+ * 1: the move is a fork's departure (its birth, compile.ts `pendingBirth`); until it starts the
+ * voice follows its parent's line, not yet a line of its own.
+ */
+export const LIVE_BORN = 12;
+export const LIVE_STRIDE = 13;
 /** Records per message: up to two per voice (a fork first follows its parent's move). */
 export const LIVE_MAX_RECORDS = 2 * DSP_MAX_VOICES;
 
@@ -174,12 +179,15 @@ export class LiveTracks {
    * voices, compile.ts `onJoin` survivors). Main-thread bookkeeping the worklet carries along.
    */
   readonly lines: Float64Array[];
+  /** Per voice and segment: 1 if it starts a fork's departure (LIVE_BORN). */
+  readonly departs: Uint8Array[];
   private runs = 0;
 
   constructor(initial: readonly VoiceData[]) {
     this.data = initial.slice(0, DSP_MAX_VOICES).map(liveVoiceData);
     this.runOf = new Int32Array(this.data.length);
     this.lines = this.data.map((_, i) => new Float64Array(LIVE_SEG_CAP).fill(i));
+    this.departs = this.data.map(() => new Uint8Array(LIVE_SEG_CAP));
   }
 
   /**
@@ -224,7 +232,7 @@ export class LiveTracks {
       if (i < 0 || i >= count) continue;
       const follows = this.runOf[i] === this.runs;
       this.runOf[i] = this.runs;
-      this.move(this.data[i], moves, o, follows, this.lines[i]);
+      this.move(this.data[i], moves, o, follows, this.lines[i], this.departs[i]);
       if (touched !== null) touched[i] = 1;
     }
     if (LR[R_GAIN] === LR[R_GAIN]) {
@@ -242,7 +250,7 @@ export class LiveTracks {
   private rewindAll(touched: Uint8Array | null): void {
     const count = this.data.length;
     for (let i = 0; i < count; i++) {
-      this.rewind(this.data[i], this.lines[i]);
+      this.rewind(this.data[i], this.lines[i], this.departs[i]);
       if (touched !== null) touched[i] = 1;
     }
   }
@@ -253,6 +261,7 @@ export class LiveTracks {
     mo: number,
     follows: boolean,
     line: Float64Array,
+    departs: Uint8Array,
   ): void {
     const tA = LR[R_TA];
     const delay = m[mo + LIVE_DELAY] > 0 ? m[mo + LIVE_DELAY] : 0;
@@ -269,7 +278,7 @@ export class LiveTracks {
     let ns = d.nStrike;
     while (ns > 0 && d.strikeT[ns - 1] > cut) ns--;
     d.nStrike = ns;
-    if (n + 3 > LIVE_SEG_CAP) n = this.compactSegs(d, line);
+    if (n + 3 > LIVE_SEG_CAP) n = this.compactSegs(d, line, departs);
     if (d.nStrike + 2 > LIVE_STRIKE_CAP) this.compactStrikes(d);
     let lo = (n - 1) * SEG_STRIDE;
     // A segment a cancelled move had cut gets its full curve back (the move never happened, as a
@@ -285,6 +294,7 @@ export class LiveTracks {
       LR[R_Y] = s[lo + SEG_P1];
       this.writeHold(d, n);
       line[n] = line[n - 1];
+      departs[n] = 0;
       LR[R_Y] = d.share[n - 1];
       this.strike(d, false);
       n++;
@@ -353,6 +363,8 @@ export class LiveTracks {
       }
       line[n] = m[mo + LIVE_LINE];
       line[n + 1] = m[mo + LIVE_LINE];
+      departs[n] = m[mo + LIVE_BORN] > 0 ? 1 : 0;
+      departs[n + 1] = 0;
       d.nSeg = n + 2;
     } else {
       LR[R_X] = t0;
@@ -361,6 +373,7 @@ export class LiveTracks {
       LR[R_Y] = m[mo + LIVE_SHARE];
       this.strike(d, true);
       line[n] = m[mo + LIVE_LINE];
+      departs[n] = m[mo + LIVE_BORN] > 0 ? 1 : 0;
       d.nSeg = n + 1;
     }
   }
@@ -371,7 +384,7 @@ export class LiveTracks {
    * arrival strike). A press's first change is applied at tA; its later changes rewind to tA and
    * re-plan from the state before the press.
    */
-  private rewind(d: VoiceData, line: Float64Array): void {
+  private rewind(d: VoiceData, line: Float64Array, departs: Uint8Array): void {
     const tA = LR[R_TA];
     const s = d.segs;
     let n = d.nSeg;
@@ -390,6 +403,7 @@ export class LiveTracks {
         LR[R_Y] = s[lo + SEG_CURVE_P1];
         this.writeHold(d, n);
         line[n] = line[n - 1];
+        departs[n] = 0;
         if (d.segGlide[n - 1] === 1) {
           LR[R_Y] = d.share[n - 1];
           this.strike(d, false);
@@ -470,9 +484,10 @@ export class LiveTracks {
   }
 
   /** Keeps only the last segment (the one in force at tA); returns the new count, 1. */
-  private compactSegs(d: VoiceData, line: Float64Array): number {
+  private compactSegs(d: VoiceData, line: Float64Array, departs: Uint8Array): number {
     const k = d.nSeg - 1;
     line[0] = line[k];
+    departs[0] = departs[k];
     d.segs.copyWithin(0, k * SEG_STRIDE, (k + 1) * SEG_STRIDE);
     d.segGlide[0] = d.segGlide[k];
     d.holdStart[0] = d.holdStart[k];
@@ -570,12 +585,21 @@ export class LiveTracks {
     return this.lines[i][this.segmentAt(i, t)];
   }
 
+  /** Voice i's fork departure after t (a segment index), or −1: before it, it is not born. */
+  departureAfter(i: number, t: number): number {
+    const d = this.data[i];
+    for (let k = this.segmentAt(i, t) + 1; k < d.nSeg; k++)
+      if (this.departs[i][k] === 1 && d.segs[k * SEG_STRIDE + SEG_T0] > t) return k;
+    return -1;
+  }
+
   /** A deep copy (main thread). */
   clone(): LiveTracks {
     const c = Object.create(LiveTracks.prototype) as LiveTracks;
     (c as { data: VoiceData[] }).data = this.data.map(liveVoiceData);
     (c as unknown as { runOf: Int32Array }).runOf = new Int32Array(this.data.length);
     (c as { lines: Float64Array[] }).lines = this.lines.map((l) => l.slice());
+    (c as { departs: Uint8Array[] }).departs = this.departs.map((l) => l.slice());
     return c;
   }
 }
@@ -688,6 +712,7 @@ export function exerciseLiveTracks(from: VoiceData): void {
   m[LIVE_STRIDE + LIVE_DUR] = 0.03;
   m[LIVE_STRIDE + LIVE_SCALE] = 1;
   m[LIVE_STRIDE + LIVE_SHARE] = 1;
+  m[LIVE_STRIDE + LIVE_BORN] = 1;
   let t = 0;
   // Steps of 0 (a repeated time), 4 ms (interrupting glides) and 40 ms (glides that arrive, so
   // their strikes stay and fill the strike buffer).
@@ -700,6 +725,7 @@ export function exerciseLiveTracks(from: VoiceData): void {
     m[LIVE_SCALE] = k % 3 === 0 ? 0.5 : 1;
     m[LIVE_SHARE] = 1;
     m[LIVE_LINE] = 0;
+    m[LIVE_BORN] = k % 4 === 1 ? 1 : 0;
     const gain = k % 2 === 0 ? (k % 4 === 0 ? 0 : 1) : NaN;
     // A second record for the voice now and then (a fork following its parent's move first).
     m[LIVE_STRIDE + LIVE_DELAY] = 0.01 + (k % 3) * 0.01;

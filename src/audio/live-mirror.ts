@@ -19,6 +19,7 @@ import {
   SEG_STRIDE,
   SEG_T0,
   SEG_T1,
+  evalSegment,
 } from '../core/segment';
 import { flatten } from '../core/flat';
 import {
@@ -44,6 +45,7 @@ import {
   LIVE_SCALE,
   LIVE_LINE,
   LIVE_SHARE,
+  LIVE_BORN,
   LIVE_STRIDE,
   LIVE_VOICE,
   LiveTracks,
@@ -102,7 +104,16 @@ function uncut(v: LiveVoiceView & { seg: Segment }): LiveVoiceView {
   const c = v.seg.curve;
   const seg = c ? { ...v.seg, t1: c.t1, p1: c.p1 } : v.seg;
   if (c) delete seg.curve;
-  return { ...v, seg, dest: seg.p1, pending: c !== undefined };
+  // Not born yet: heading where its parent's path is at its birth (compile.ts `birthPitch`).
+  const dest = v.unborn ? evalSegment(seg, v.unborn.t) : seg.p1;
+  return { ...v, seg, dest, pending: c !== undefined || v.unborn !== undefined };
+}
+
+/** Voice i's fork departure after t, if it has not left yet (times from t). */
+function unbornAt(tracks: LiveTracks, i: number, t: Seconds): LiveVoiceView['unborn'] {
+  const k = tracks.departureAfter(i, t);
+  if (k < 0) return undefined;
+  return { t: tracks.data[i].segs[k * SEG_STRIDE + SEG_T0] - t, line: tracks.lines[i][k] };
 }
 
 /** The live state core decides on (`liveUpdate`), read from `tracks` at live time t. */
@@ -123,6 +134,7 @@ export function liveView(
         dest: NaN,
         seg: segmentAt(tracks, i, t),
         line: tracks.lineAt(i, t),
+        unborn: unbornAt(tracks, i, t),
       }),
     ),
     level: voices.length > 0 ? tracks.levelAt(0, t) : 0,
@@ -200,6 +212,7 @@ export function encodeMoves(moves: readonly LiveMove[]): Float64Array<ArrayBuffe
     out[o + LIVE_SCALE] = m.scale;
     out[o + LIVE_SHARE] = m.share;
     out[o + LIVE_LINE] = m.line ?? m.voice;
+    out[o + LIVE_BORN] = m.born ? 1 : 0;
   });
   return out;
 }

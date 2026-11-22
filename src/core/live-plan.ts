@@ -52,6 +52,8 @@ export interface PlanVoice {
   line: number;
   /** It has moves posted that have not started (cancelled by this change unless it moves). */
   pending?: boolean;
+  /** A fork not departed yet: when it leaves and the line it forms (core/live.ts LiveVoiceView). */
+  unborn?: { t: Seconds; line: number };
 }
 
 /** One planned move of a live voice (core/live.ts LiveMove without the strike share). */
@@ -68,6 +70,8 @@ export interface PlannedMove {
   order: number;
   /** The line the voice is on after it (pool index). */
   line: number;
+  /** A fork's departure: until it starts the voice is not a line of its own. */
+  born: boolean;
 }
 
 const enum Kind {
@@ -86,8 +90,15 @@ interface Part {
   voices: number[];
   to: Pitch;
   preDest: Pitch;
-  /** Births: the parent part. */
+  /** Births and unborn lines: the parent part (−1: an unborn line's parent is not in the plan). */
   parent: number;
+  /**
+   * Not born before this (plan.ts `deferT`): a line whose fork has not departed (compile.ts
+   * `pendingBirth`), or a birth off one; −Infinity otherwise.
+   */
+  deferT: Seconds;
+  /** An unborn line: the voice of the line it is still on. */
+  parentVoice: number;
   /** The in-force segment (lines; a birth's parent's). */
   seg: Segment;
   limits: OvershootLimits;
@@ -132,6 +143,15 @@ export function planLive(
     const v = voices[k];
     const line = lines.find((l) => {
       const u = voices[l[0]];
+      // A fork not departed yet is its own line (with the voices of its fork), not its parent's.
+      if (u.unborn || v.unborn) {
+        return (
+          u.unborn !== undefined &&
+          v.unborn !== undefined &&
+          u.unborn.line === v.unborn.line &&
+          Math.abs(u.unborn.t - v.unborn.t) <= SAME_TIME
+        );
+      }
       return (
         u.dest === v.dest &&
         Math.abs(u.pitch - v.pitch) <= SAME &&
@@ -153,6 +173,8 @@ export function planLive(
       to,
       preDest,
       parent: -1,
+      deferT: -Infinity,
+      parentVoice: -1,
       seg: v.seg,
       limits: FREE_LIMITS,
       crossScale: 1,
@@ -186,10 +208,14 @@ export function planLive(
     // The line keeps its own voice; the forks, low to high, take its other voices low to high
     // (a carrier whose range holds the target first), then the line's members, then each fork's.
     // The line stands for its voices as before; lines that met on this note since are one, the
-    // one holding longest (ties: lower index) standing for it, as compile.ts `onJoin` keeps.
+    // one holding longest (ties: lower index) standing for it, as compile.ts `onJoin` keeps. An
+    // unborn line: its fork's carrier.
     const since = (k: number): Seconds =>
       glides(voices[k].seg) ? voices[k].seg.t1 : voices[k].seg.t0;
-    const reps = line.filter((k) => voices[k].line === voices[k].index);
+    const ub = voices[line[0]].unborn;
+    const reps = ub
+      ? line.filter((k) => voices[k].index === ub.line)
+      : line.filter((k) => voices[k].line === voices[k].index);
     const rep =
       reps.length === 0
         ? line[0]
@@ -208,7 +234,13 @@ export function planLive(
     });
     const own = [rep, ...spare.splice(0, primary.n - 1)];
     const moves = primary.to !== d0;
-    if (moves || ordered) mk(moves ? Kind.Move : Kind.Fixed, rep, own, primary.to, d0);
+    if (moves || ordered) {
+      const p = mk(moves ? Kind.Move : Kind.Fixed, rep, own, primary.to, d0);
+      if (ub) {
+        p.deferT = ub.t;
+        p.parentVoice = voices[rep].line;
+      }
+    }
     const li = parts.length - 1;
     forks.forEach((g, j) => {
       births.push({
@@ -222,6 +254,10 @@ export function planLive(
       // Free assignment, line staying: its forks still need the line's path.
       const p = mk(Kind.Fixed, rep, own, primary.to, d0);
       p.moving = false;
+      if (ub) {
+        p.deferT = ub.t;
+        p.parentVoice = voices[rep].line;
+      }
       for (const b of births) if (b.line === -1) b.line = parts.length - 1;
     }
   }
@@ -230,8 +266,19 @@ export function planLive(
     const p = mk(Kind.Birth, b.k, b.members, b.to, parent.preDest);
     p.parent = b.line;
     p.seg = parent.seg;
+    p.deferT = parent.deferT; // a fork off a line not born yet waits for it (plan.ts)
   }
   const n = parts.length;
+  /** A line whose fork has not departed (not a birth of this change). */
+  const unbornLine = (i: number): boolean =>
+    parts[i].kind !== Kind.Birth && parts[i].deferT > -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (!unbornLine(i)) continue;
+    const pv = parts[i].parentVoice;
+    parts[i].parent = parts.findIndex(
+      (q, j) => j !== i && q.kind !== Kind.Birth && q.voices.includes(pv),
+    );
+  }
   // A part made only to carry a free fork's parent path takes no part in the order.
   const inOrder = (i: number): boolean => ordered || parts[i].kind !== Kind.Fixed;
 
@@ -263,7 +310,8 @@ export function planLive(
   };
   const startOf = (i: number): Seconds => {
     const r = find(i);
-    return gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
+    const s = gLink[r] >= 0 ? startOf(gLink[r]) : gStart[r];
+    return s > parts[i].deferT ? s : parts[i].deferT;
   };
   let lastStart = 0;
   for (const i of movers) lastStart = Math.max(lastStart, startOf(i));
@@ -301,13 +349,13 @@ export function planLive(
 
   // Projections.
   const touched = new Uint8Array(n);
-  const clear = (i: number): void => {
+  const clear = (i: number, depth = 0): void => {
     const p = parts[i];
     p.move = null;
     p.start = null;
     p.samples = null;
     touched[i] = 1; // as plan.ts `invalidate`: skipped for the rest of the pass
-    for (let j = 0; j < n; j++) if (parts[j].parent === i) clear(j);
+    if (depth < 40) for (let j = 0; j < n; j++) if (parts[j].parent === i) clear(j, depth + 1);
   };
   const sync = (): void => {
     for (let i = 0; i < n; i++) {
@@ -327,9 +375,23 @@ export function planLive(
     parts[i].t0 = startOf(i);
     parts[i].dur = durOf(i);
   }
-  /** State just before t (the left limit) of part i: its path up to t. */
-  const stateBefore = (i: number, t: Seconds): StartState => {
+  /** An unborn line's birth: when its move departs, else when its fork was to (projector). */
+  const bornT = (i: number): Seconds => (parts[i].moving ? parts[i].t0 : parts[i].deferT);
+  /** The path an unborn line follows until its birth: its parent's. */
+  const parentState = (i: number, t: Seconds, depth: number): StartState => {
     const p = parts[i];
+    return p.parent >= 0 && depth < 40 ? stateBefore(p.parent, t, depth + 1) : stateOf(p.seg, t);
+  };
+  /** Where an unborn line left holding is born: its parent's pitch then. */
+  const holdPitch = (i: number): Pitch => parentState(i, parts[i].deferT, 0).p;
+  /** State just before t (the left limit) of part i: its path up to t. */
+  const stateBefore = (i: number, t: Seconds, depth = 0): StartState => {
+    const p = parts[i];
+    if (unbornLine(i)) {
+      if (t <= bornT(i)) return parentState(i, t, depth);
+      if (p.moving) return stateOf(moveOf(i), t);
+      return { p: holdPitch(i), v: 0, mid: false };
+    }
     if (p.kind === Kind.Birth) {
       const mv = moveOf(i);
       return stateOf(mv, t);
@@ -340,7 +402,12 @@ export function planLive(
   const startState = (i: number): StartState => {
     const p = parts[i];
     if (p.start) return p.start;
-    p.start = p.kind === Kind.Birth ? stateBefore(p.parent, p.t0) : stateOf(p.seg, p.t0);
+    p.start =
+      p.kind === Kind.Birth
+        ? stateBefore(p.parent, p.t0)
+        : unbornLine(i)
+          ? parentState(i, p.t0, 0)
+          : stateOf(p.seg, p.t0);
     return p.start;
   };
   function moveOf(i: number): Segment {
@@ -360,16 +427,28 @@ export function planLive(
   const pitchAt = (i: number, t: Seconds): Pitch => {
     const p = parts[i];
     if (p.kind === Kind.Birth) return t < p.t0 ? NaN : evalSegment(moveOf(i), t);
+    if (unbornLine(i)) {
+      if (t < bornT(i)) return NaN;
+      return p.moving ? evalSegment(moveOf(i), t) : holdPitch(i);
+    }
     if (p.moving && t >= p.t0) return evalSegment(moveOf(i), t);
     return evalSegment(p.seg, t);
   };
 
   let we = 0;
+  let maxDur = 0;
+  let maxDefer = -Infinity;
   for (let i = 0; i < n; i++) {
     const p = parts[i];
-    const e = p.moving ? p.t0 + p.dur : glides(p.seg) ? p.seg.t1 : 0;
+    const e = p.moving ? p.t0 + p.dur : glides(p.seg) && !unbornLine(i) ? p.seg.t1 : 0;
     if (e > we) we = e;
+    if (p.moving && p.dur > maxDur) maxDur = p.dur;
+    if (p.deferT > maxDefer) maxDefer = p.deferT;
   }
+  if (maxDefer + maxDur > we) we = maxDefer + maxDur;
+  /** Still gliding from an earlier change (plan.ts `lastGlideEnd() > T`); unborn: not sounding. */
+  const stillGliding = (i: number): boolean =>
+    !unbornLine(i) && glides(parts[i].seg) && parts[i].seg.t1 > 0;
   const times = new Float64Array(SAMPLES);
   for (let j = 0; j < SAMPLES; j++) times[j] = (we * j) / (SAMPLES - 1);
   const sample = (i: number): Float64Array => {
@@ -480,7 +559,7 @@ export function planLive(
     const pullBack = (i: number, at: number): boolean => {
       const t = times[at - 1];
       const s = startOf(i);
-      if (!(s > t)) return false;
+      if (!(s > t) || parts[i].deferT >= s) return false;
       const r = find(i);
       gLink[r] = -1;
       gStart[r] = t;
@@ -505,7 +584,7 @@ export function planLive(
       pairLo.push(k);
       pairHi.push(k + 1);
     }
-    const unborn = (i: number): boolean => parts[i].kind === Kind.Birth;
+    const unborn = (i: number): boolean => parts[i].kind === Kind.Birth || parts[i].deferT > 0;
     for (let k = 0; k + 2 < m; k++) {
       for (let q = k + 1; q + 1 < m && unborn(order[q]); q++) {
         pairLo.push(k);
@@ -537,7 +616,7 @@ export function planLive(
           const other = nb === li ? hi : li;
           const o = parts[other];
           if (nb >= 0 && o.kind === Kind.Fixed) {
-            if (glides(o.seg) && o.seg.t1 > 0) {
+            if (stillGliding(other)) {
               retime(other);
               adopt(other, nb);
               acted = true;
@@ -572,8 +651,7 @@ export function planLive(
           } else adopt(ai, bi);
         } else {
           const fixedI = parts[ai].moving ? bi : ai;
-          const fixed = parts[fixedI];
-          if (glides(fixed.seg) && fixed.seg.t1 > 0) {
+          if (stillGliding(fixedI)) {
             retime(fixedI);
             if (fixedI === ai) adopt(ai, bi);
             else adopt(bi, ai);
@@ -605,7 +683,7 @@ export function planLive(
   const sinceOf = (q: Part): Seconds => (glides(q.seg) ? q.seg.t1 : q.seg.t0);
   const byArrival = parts
     .map((_, i) => i)
-    .filter((i) => parts[i].kind === Kind.Move && glides(parts[i].seg) && parts[i].seg.t1 > 0)
+    .filter((i) => parts[i].kind === Kind.Move && !unbornLine(i) && stillGliding(i))
     .sort((a, b) => parts[a].seg.t1 - parts[b].seg.t1);
   for (const i of byArrival) {
     const p = parts[i];
@@ -614,7 +692,7 @@ export function planLive(
     let s = i;
     for (let j = 0; j < n; j++) {
       const q = parts[j];
-      if (j === i || q.kind !== Kind.Move || follow[j] !== j) continue;
+      if (j === i || q.kind !== Kind.Move || unbornLine(j) || follow[j] !== j) continue;
       if (Math.abs(q.to - p.to) > SAME_PITCH || !(q.t0 > ta)) continue;
       if (glides(q.seg) && q.seg.t1 > ta) continue; // still gliding there
       if (Math.abs(q.seg.p1 - p.seg.p1) > SAME_PITCH) continue;
@@ -626,9 +704,31 @@ export function planLive(
   }
 
   const out: PlannedMove[] = [];
+  /** Part q's change of path before `until` (its move, or an unborn line's hold), or null. */
+  const pathOf = (qi: number, until: Seconds): Omit<PlannedMove, 'voice' | 'order'> | null => {
+    const q = parts[qi];
+    if (q.moving && q.t0 < until) {
+      const scale = scaleOf(qi);
+      return { delay: q.t0, dur: q.dur, p1: q.to, scale, part: qi, line: q.voice, born: false };
+    }
+    if (!q.moving && unbornLine(qi) && q.deferT < until) {
+      const p1 = holdPitch(qi);
+      return {
+        delay: q.deferT,
+        dur: MIN_GLIDE,
+        p1,
+        scale: 0,
+        part: -1,
+        line: q.voice,
+        born: false,
+      };
+    }
+    return null;
+  };
   for (let i = 0; i < n; i++) {
     const p = parts[i];
-    if (!p.moving) continue;
+    const forms = p.kind === Kind.Birth || unbornLine(i);
+    if (!p.moving && !unbornLine(i)) continue;
     if (follow[i] !== i) {
       // Holds until it arrives, then follows the line it joined.
       const q = parts[follow[i]];
@@ -643,43 +743,24 @@ export function planLive(
           part: follow[i],
           order: 0,
           line: q.voice,
+          born: false,
         });
       }
       continue;
     }
-    const scale = scaleOf(i);
+    // A fork (a birth, or a line not born yet) follows its parent's path until it departs.
     let order = 0;
-    if (p.kind === Kind.Birth) {
-      const q = parts[p.parent];
-      if (q.moving && q.t0 < p.t0) {
-        const qs = scaleOf(p.parent);
-        for (const v of p.voices) {
-          out.push({
-            voice: v,
-            delay: q.t0,
-            dur: q.dur,
-            p1: q.to,
-            scale: qs,
-            part: p.parent,
-            order: 0,
-            line: q.voice,
-          });
-        }
-        order = 1;
-      }
+    const at = p.moving ? p.t0 : p.deferT;
+    const before = forms && p.parent >= 0 ? pathOf(p.parent, at) : null;
+    if (before) {
+      for (const v of p.voices) out.push({ voice: v, order: 0, ...before });
+      order = 1;
     }
-    for (const v of p.voices) {
-      out.push({
-        voice: v,
-        delay: p.t0,
-        dur: p.dur,
-        p1: p.to,
-        scale,
-        part: i,
-        order,
-        line: p.voice,
-      });
-    }
+    // Its own move; an unborn line that stays is born holding its parent's pitch there.
+    const own = p.moving
+      ? { delay: p.t0, dur: p.dur, p1: p.to, scale: scaleOf(i), part: i }
+      : { delay: p.deferT, dur: MIN_GLIDE, p1: holdPitch(i), scale: 0, part: -1 };
+    for (const v of p.voices) out.push({ voice: v, order, ...own, line: p.voice, born: forms });
   }
   // Voices that do not move but had moves pending: those are cancelled (the compiler cancels every
   // targeted line's pending moves), by a hold from the end of the glide in force.
@@ -695,6 +776,7 @@ export function planLive(
       part: -1,
       order: 0,
       line: v.line,
+      born: false,
     });
   }
   return out;

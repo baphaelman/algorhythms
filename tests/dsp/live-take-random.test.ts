@@ -61,11 +61,15 @@ function randomScript(seed: number) {
 /**
  * §15 M7 match on random takes: 40 events (keys on and off, releases, setting changes across the
  * modes) at random gaps of 0–400 ms, from a seeded generator; gated like the scripted takes
- * (≤ 1 cent, ≤ 1 block, outside presses from silence). Seeds 13–72 are measured only: a few still
- * miss (re-targets while a staggered fork has not departed yet; build log "M7-d").
+ * (≤ 1 cent, ≤ 1 block, outside presses from silence). Seeds 1–72 gate except KNOWN; those
+ * and 73–172 are measured only (`LIVE_TAKE_SEEDS=1`; build log "M7-d").
  */
+/** Known gaps (build log "M7-d"): 47, lines sharing a note without joining; 33, after a tonic release. */
+const KNOWN = [33, 47];
+
 describe('random takes match the live paths (§15 M7)', () => {
-  for (let s = 1; s <= 12; s++) {
+  for (let s = 1; s <= 72; s++) {
+    if (KNOWN.includes(s)) continue;
     it(`seed ${s}`, () => {
       const settings = MODES[s % MODES.length];
       const take = record(randomScript(s), settings);
@@ -78,20 +82,23 @@ describe('random takes match the live paths (§15 M7)', () => {
     });
   }
   it.runIf(process.env.LIVE_TAKE_SEEDS)(
-    'seeds 13–72 (measured)',
+    'known gaps and seeds 73–172 (measured)',
     () => {
       let bad = 0;
-      for (let s = 13; s <= 72; s++) {
+      for (const s of [...KNOWN, ...Array.from({ length: 100 }, (_, k) => 73 + k)]) {
         const settings = MODES[s % MODES.length];
         const m = compare(record(randomScript(s), settings));
         const worst = m.misses.reduce((w, x) => Math.max(w, x.gap), 0);
-        if (m.misses.length > 0) {
+        if (m.misses.length > 0 || m.cents0 > 1 || m.frames > BLOCK_FRAMES) {
           bad++;
-          console.log(`seed ${s} ${JSON.stringify(settings)}: worst ${(worst * 100).toFixed(1)} c`);
+          console.log(
+            `seed ${s} ${JSON.stringify(settings)}: worst ${(worst * 100).toFixed(1)} c, ` +
+              `${m.misses.length} misses, ${m.cents0.toFixed(3)} c, ${m.frames} frames`,
+          );
         }
       }
-      console.log(`${bad} of 60 seeds miss`);
+      console.log(`${bad} of ${KNOWN.length + 100} seeds miss`);
     },
-    600_000,
+    1_200_000,
   );
 });
