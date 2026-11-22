@@ -6,16 +6,31 @@
  * Latency, per note (all in the page):
  * - `at`: performance.now() when `noteOn` is called; `contextTime`: ctx.currentTime then;
  * - `frame`: the context frame of the block the worklet applied the note at (its glide starts on
- *   that block), reported back by the worklet;
+ *   that block), reported back by the worklet with `receivedFrame` (the next block's first frame
+ *   when the message arrived) and `callbackFrames`: the device callback period, measured by the
+ *   worklet as the median run of blocks it renders back to back (Date.now gaps ≥ 2 ms between
+ *   callbacks). Firefox reports baseLatency 0 but renders 6–7 blocks per ~19 ms callback (pulse,
+ *   any latencyHint), so the period is measured, not taken from baseLatency;
  * - engine latency = frame / sampleRate − contextTime: how far past the context's render position
- *   at the call the glide starts (message passing plus the wait for the next block);
+ *   at the call the glide starts (message passing plus the wait for the next callback);
  * - heard = getOutputTimestamp's performanceTime + (frame / sampleRate − its contextTime): when the
  *   glide's first frame leaves the device, on the performance clock; total = heard − at;
- * - device = outputLatency + baseLatency (what the platform adds after the render position).
+ * - lag: how far the timestamp's heard position trails the render position (currentTime) at that
+ *   instant, i.e. the output latency the timestamp actually includes;
+ * - device = min(outputLatency, lag) + callback period.
  * Gate (§15 M7: key-to-glide start ≤ 10 ms + device output latency), on every note:
- * total − device ≤ 10 ms, and engine ≤ 10 ms + baseLatency. The context renders a callback of
- * baseLatency at a time and ctx.currentTime is where the next one starts: a message posted while
- * one is being rendered waits for the next (engine = baseLatency), else engine is 0.
+ * - frame = receivedFrame: the worklet applies a message at the first block after it arrives;
+ * - engine ≤ 10 ms + one callback period: a message that misses the callback in progress (it is
+ *   rendered in one go, and Firefox delivers port messages only between callbacks) starts with
+ *   the next one;
+ * - total − device ≤ 10 ms.
+ * What the heard gate covers per engine (measured 2026-11-22):
+ * - Chromium: baseLatency = the callback (512 frames); getOutputTimestamp trails currentTime by
+ *   outputLatency + 0…1 callback, so the gate includes the reported device output latency;
+ * - Firefox: the timestamp is currentTime − outputLatency at now − outputLatency (lag 0), so it
+ *   excludes the output latency and device is the callback alone: the gate proves key → glide
+ *   rendered ≤ 10 ms + one callback; the device's own latency is Firefox's outputLatency, unchecked;
+ * - WebKit (macOS CI): outputLatency 0 (unreported), callback 128 frames: the same as Firefox.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -31,7 +46,7 @@ interface LiveHookShape {
       noteOn(p: number): {
         at: number;
         contextTime: number;
-        applied: Promise<{ frame: number } | null>;
+        applied: Promise<{ frame: number; receivedFrame: number; callbackFrames: number } | null>;
       };
       noteOff(p: number): { applied: Promise<unknown> };
       allNotesOff(): void;
@@ -101,6 +116,10 @@ test('live mode: enter, notes sound with key-to-glide start ≤ 10 ms + device l
     engineMs: number;
     totalMs: number;
     deviceMs: number;
+    callbackMs: number;
+    lagMs: number;
+    frame: number;
+    receivedFrame: number;
   }[] = [];
   for (const [i, p] of notes.entries()) {
     const r = await page.evaluate(
@@ -115,15 +134,24 @@ test('live mode: enter, notes sound with key-to-glide start ≤ 10 ms + device l
         const stamp = await ev.applied;
         if (!stamp) return null;
         const ts = ctx.getOutputTimestamp();
+        const lagMs =
+          (ctx.currentTime - (ts.contextTime ?? NaN)) * 1000 -
+          (performance.now() - (ts.performanceTime ?? NaN));
         const start = stamp.frame / ctx.sampleRate;
         const heard =
           ts.performanceTime !== undefined && ts.contextTime !== undefined
             ? ts.performanceTime + (start - ts.contextTime) * 1000
             : NaN;
+        const callbackMs = (stamp.callbackFrames / ctx.sampleRate) * 1000;
+        const outputMs = Math.max(0, Math.min((ctx.outputLatency || 0) * 1000, lagMs));
         return {
           engineMs: (start - ev.contextTime) * 1000,
           totalMs: heard - ev.at,
-          deviceMs: ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000,
+          deviceMs: outputMs + callbackMs,
+          callbackMs,
+          lagMs,
+          frame: stamp.frame,
+          receivedFrame: stamp.receivedFrame,
         };
       },
       { p, prev: i > 0 ? notes[i - 1] : null },
@@ -139,17 +167,23 @@ test('live mode: enter, notes sound with key-to-glide start ≤ 10 ms + device l
   const engine = results.map((r) => r.engineMs);
   const total = results.map((r) => r.totalMs);
   const beyond = results.map((r) => r.totalMs - r.deviceMs);
+  const callback = results.map((r) => r.callbackMs);
+  const lag = results.map((r) => r.lagMs);
   console.info(
     `live latency (${results.length} notes, ${info.sampleRate} Hz, baseLatency ${(info.baseLatency * 1000).toFixed(1)} ms, ` +
-      `outputLatency ${(info.outputLatency * 1000).toFixed(1)} ms): engine median ${med(engine).toFixed(1)} / max ${Math.max(...engine).toFixed(1)} ms; ` +
+      `outputLatency ${(info.outputLatency * 1000).toFixed(1)} ms, callback ${Math.min(...callback).toFixed(1)}–${Math.max(...callback).toFixed(1)} ms, ` +
+      `timestamp lag ${Math.min(...lag).toFixed(1)}–${Math.max(...lag).toFixed(1)} ms): engine median ${med(engine).toFixed(1)} / max ${Math.max(...engine).toFixed(1)} ms; ` +
       `key → heard median ${med(total).toFixed(1)} / max ${Math.max(...total).toFixed(1)} ms; ` +
       `beyond device latency median ${med(beyond).toFixed(1)} / max ${Math.max(...beyond).toFixed(1)} ms; rms ${rms.toFixed(4)}`,
   );
   expect(rms).toBeGreaterThan(0.005);
   for (const r of results) {
+    expect(r.callbackMs).toBeGreaterThan(0); // measured
+    expect(r.frame).toBe(r.receivedFrame); // applied at the first block after it arrived
     expect(r.engineMs).toBeGreaterThanOrEqual(0); // never before the call
-    // At most one device callback (baseLatency) late: the message missed the callback in progress.
-    expect(r.engineMs).toBeLessThanOrEqual(10 + info.baseLatency * 1000);
+    // At most one callback late: the message missed the callback in progress. (frame equals
+    // receivedFrame, so anything later is the message's delivery to the audio thread.)
+    expect(r.engineMs, 'message delivery to the worklet').toBeLessThanOrEqual(10 + r.callbackMs);
     expect(r.totalMs - r.deviceMs).toBeLessThanOrEqual(10);
   }
 

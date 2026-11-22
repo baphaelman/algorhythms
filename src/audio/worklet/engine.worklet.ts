@@ -17,6 +17,14 @@ import {
 } from './engine-protocol';
 
 const EMPTY = new Float64Array(0);
+/**
+ * A block that starts ≥ this many ms (Date.now) after the previous one starts a new device
+ * callback; blocks of one callback are rendered back to back (well under 1 ms apart). The
+ * shortest callback (one block, 128 frames at 48 kHz) is 2.7 ms.
+ */
+const CALLBACK_GAP_MS = 2;
+/** Device callbacks the reported period is the median of (robust to a stalled or merged one). */
+const CALLBACK_HISTORY = 15;
 
 class EngineProcessor extends AudioWorkletProcessor {
   private readonly graph = new Graph(sampleRate);
@@ -42,9 +50,27 @@ class EngineProcessor extends AudioWorkletProcessor {
   private readonly meterMsg = { type: 'meter' as const, peakL: 0, peakR: 0, rms: 0 };
   private readonly posMsg = { type: 'pos' as const, frame: 0, time: 0 };
   private readonly endedMsg = { type: 'ended' as const };
-  private readonly liveMsg = { type: 'liveApplied' as const, seq: 0, frame: 0, time: 0 };
+  private readonly liveMsg = {
+    type: 'liveApplied' as const,
+    seq: 0,
+    frame: 0,
+    time: 0,
+    received: 0,
+    callback: 0,
+  };
   /** Live mode (§9), from `liveStart` on. */
   private live: LiveInput | null = null;
+  /** First frame of the next block (set after each block). */
+  private nextFrame = 0;
+  /** `nextFrame` when the newest live message arrived. */
+  private liveReceived = 0;
+  // Device callbacks while live (latency stamps): the wall clock of the previous block, the first
+  // frame of the callback in progress, and the lengths (frames) of the last completed ones.
+  private lastWall = 0;
+  private callbackStart = 0;
+  private callbackCount = 0;
+  private readonly callbacks = new Float64Array(CALLBACK_HISTORY);
+  private readonly callbackSorted = new Float64Array(CALLBACK_HISTORY);
 
   constructor(options?: AudioWorkletNodeOptions) {
     super(options);
@@ -114,6 +140,7 @@ class EngineProcessor extends AudioWorkletProcessor {
           this.live.queue(0, EMPTY, 0, NaN, 0);
           break;
         case 'live':
+          this.liveReceived = this.nextFrame;
           if (
             this.live &&
             !this.live.queue(msg.seq, msg.moves, msg.n, msg.gain, msg.over, msg.press ?? 0)
@@ -143,6 +170,19 @@ class EngineProcessor extends AudioWorkletProcessor {
     this.port.postMessage(a);
   }
 
+  /** Median length of the recent device callbacks, in frames (0 before the first one ends). */
+  private callbackPeriod(): number {
+    const n = this.callbackCount < CALLBACK_HISTORY ? this.callbackCount : CALLBACK_HISTORY;
+    const a = this.callbackSorted;
+    for (let i = 0; i < n; i++) {
+      const x = this.callbacks[i];
+      let j = i;
+      for (; j > 0 && a[j - 1] > x; j--) a[j] = a[j - 1];
+      a[j] = x;
+    }
+    return n === 0 ? 0 : a[n >> 1];
+  }
+
   override process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0];
     if (out === undefined || out.length === 0) return true;
@@ -155,6 +195,16 @@ class EngineProcessor extends AudioWorkletProcessor {
     }
     const g = this.graph;
     const live = this.live;
+    if (live !== null) {
+      const wall = Date.now();
+      if (wall - this.lastWall >= CALLBACK_GAP_MS) {
+        if (this.lastWall > 0)
+          this.callbacks[this.callbackCount++ % CALLBACK_HISTORY] =
+            currentFrame - this.callbackStart;
+        this.callbackStart = currentFrame;
+      }
+      this.lastWall = wall;
+    }
     try {
       if (live !== null) live.beforeBlock(currentFrame);
       g.process(left, right);
@@ -172,6 +222,8 @@ class EngineProcessor extends AudioWorkletProcessor {
       const m = this.liveMsg;
       m.frame = live.appliedFrame;
       m.time = live.appliedTime;
+      m.received = this.liveReceived;
+      m.callback = this.callbackPeriod();
       for (let k = 0; k < live.appliedCount; k++) {
         m.seq = live.appliedSeq[k];
         this.port.postMessage(m);
@@ -203,6 +255,7 @@ class EngineProcessor extends AudioWorkletProcessor {
       }
     }
     this.wasPlaying = playing;
+    this.nextFrame = currentFrame + BLOCK_FRAMES;
     return true;
   }
 }
