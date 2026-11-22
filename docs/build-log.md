@@ -2026,3 +2026,8 @@ CI's `pnpm test:perf` was red since 3ba6f0c. On bcfcf3a. Linux cloud box (4-core
 - **Unexplained:** native profiles put 6–7 % of plain self time on the `v.render(...)` call line in `Graph.process`, with `LoadIC`/`KeyedLoadIC` ticks under it; all Voice/slot maps are uniform and fast. Not chased.
 - **Headroom left for M6 (slow CI runner ≈ 0.84× this box: ~11×):** log2R/exp2R per tick in synthExt (~6 % of M6), per-sample bus writes (4 RMW per voice), partial table reads. Further gains need small output changes (≤ −120 dBFS; re-pin) or design changes.
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=2` pass; `pnpm test:perf` 3/3 runs pass (RTF above; no-GC 1864–2088 B in every mode but `all`, which reports 17–18 scavenges as before).
+
+### 2026-11-22: first-sound gate on prod only; ruler seek-while-playing race
+
+- `app.spec.ts` time to first sound: still measured and annotated everywhere, but the 3 s limit is asserted only on `*-prod` projects (incl. `webkit-prod`; visitors get the build, §15). firefox-dev ran 3.4–3.6 s.
+- `ruler.spec.ts` click-while-playing: it clicked once `engine().isPlaying` was true, which is optimistic (set when play is posted). The worklet's late play anchor then cleared the seek's optimistic time, showing the old position. The test now waits for the clock to move first. App-side note: `AudioEngine.receive` lets an anchor for an older command clear a newer optimistic state (a brief glitch until the next anchor).
