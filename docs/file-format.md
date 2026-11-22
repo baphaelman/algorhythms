@@ -2729,6 +2729,14 @@ This is the *input* form: fields with defaults are optional here.
                 "type": "number",
                 "minimum": 0
               },
+              "over": {
+                "description": "What a step counts: scale steps ('key', the default) or chord tones ('chord'; revision 10).",
+                "type": "string",
+                "enum": [
+                  "key",
+                  "chord"
+                ]
+              },
               "bass": {
                 "type": "object",
                 "properties": {

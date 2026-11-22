@@ -273,6 +273,12 @@ const MOMENT_SCHEMAS = {
       .default(() => [...D.walk.steps])
       .describe('Allowed steps in scale steps.'),
     stepGlide: nonNegative.default(D.walk.stepGlide),
+    over: z
+      .enum(['key', 'chord'])
+      .optional()
+      .describe(
+        "What a step counts: scale steps ('key', the default) or chord tones ('chord'; revision 10).",
+      ),
     bass: z
       .looseObject({
         leap: z

@@ -390,6 +390,12 @@ export interface WalkMoment extends MomentBase {
   /** When present, the lowest voice leaps by a random interval in [min, max] semitones. */
   bass?: { leap: [number, number] };
   /**
+   * Revision 10: what a step counts. 'chord': steps count chord tones (±1 = the next chord tone up
+   * or down) of the latest chord at or before the tick, and the bass leap lands on the nearest
+   * chord tone; before any chord, the key. @default 'key'
+   */
+  over?: 'key' | 'chord';
+  /**
    * Frozen walk (§6.2, revision 5): when present the walk draws nothing; on each listed tick each
    * listed voice glides to its pitch, unlisted voices hold. density, steps, bass and seed are ignored.
    */

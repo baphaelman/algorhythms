@@ -327,6 +327,12 @@ function SpreadFields({ m }: { m: SpreadMoment }) {
   );
 }
 
+/** The walk's step basis (revision 10): scale steps or chord tones. */
+const WALK_OVER = [
+  ['key', 'Key'],
+  ['chord', 'Chord'],
+] as const;
+
 function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
   const region = fieldSetter<number>(m.id, 'Edit walk region', (x, v) => ({ until: x.at + v }));
   const grid = field<number>(m.id, 'grid', 'Edit grid');
@@ -407,6 +413,17 @@ function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
           max={100}
           slider={{ min: 0, max: 100 }}
           testId="insp-walk-density"
+        />
+        <Chips
+          legend="Walk over"
+          testId="insp-walk-over"
+          options={WALK_OVER}
+          pressed={(o) => (m.over ?? 'key') === o}
+          onPick={(o) => {
+            if ((m.over ?? 'key') === o) return;
+            // 'key' is the default: drop the field so the piece reads as before.
+            updateMoment(m.id, { over: o === 'chord' ? 'chord' : undefined }, 'Walk over');
+          }}
         />
         <Chips
           legend="Allowed steps"
