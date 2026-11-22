@@ -18,6 +18,7 @@ import {
   VOICE_STRIDE,
   flatten,
   hashVoiceId,
+  partLines,
   transferList,
   unflatten,
 } from '../../src/core/flat';
@@ -157,6 +158,41 @@ describe('flatten / unflatten', () => {
   it('handles an empty score', () => {
     const empty: CompiledScore = { ...fixture(), voices: [] };
     expect(unflatten(flatten(empty))).toEqual(audioPart(empty));
+  });
+});
+
+describe('parts (revision 10)', () => {
+  const lives = (born: number, died: number, fade = 1) => [
+    { born, died, fadeIn: fade, fadeOut: fade },
+  ];
+  const score = (voices: CompiledVoice[]): CompiledScore => ({ ...fixture(), voices });
+
+  it('carries CompiledVoice.part through flatten and unflatten', () => {
+    const s = score([voice(0, { part: 'Bass' }), voice(1), voice(2, { part: 'Keys' })]);
+    const flat = flatten(s);
+    expect(flat.voiceParts).toEqual(['Bass', '', 'Keys']);
+    expect(unflatten(flat).voices.map((v) => v.part)).toEqual(['Bass', undefined, 'Keys']);
+  });
+
+  it('partLines: per part, the most voices sounding at once; crossfades count once', () => {
+    // A: 0–10 and 2–8 overlap (2); B: 5–15; no part: 18–25.
+    const s = score([
+      voice(0, { part: 'A', lives: lives(0, 10) }),
+      voice(1, { part: 'A', lives: lives(2, 8) }),
+      voice(2, { part: 'B', lives: lives(5, 15) }),
+      voice(3, { lives: lives(18, 25) }),
+    ]);
+    expect(partLines(s)).toEqual({ A: 2, B: 1, '': 1 });
+    // A third A line crossfading in as voice 0 fades out: counted from fade middles, still 2.
+    s.voices[0].lives = lives(0, 11, 2);
+    s.voices.push(voice(4, { part: 'A', lives: lives(9, 14, 2) }));
+    expect(partLines(s)).toEqual({ A: 2, B: 1, '': 1 });
+    // Voices, not line weights.
+    s.voices[1].weight = [{ t: 4, w: 3, over: 1 }];
+    expect(partLines(s)).toEqual({ A: 2, B: 1, '': 1 });
+    s.voices.push(voice(5, { part: 'A', lives: lives(3, 6) }));
+    expect(flatten(s).partLines).toEqual({ A: 3, B: 1, '': 1 });
+    expect(partLines(score([voice(0)]))).toEqual({ '': 1 });
   });
 });
 

@@ -2868,6 +2868,7 @@ export class Compiler {
       if (run.weights.length > 0) cv.weight = run.weights;
       if (run.counts.length > 0) cv.stack = run.counts;
       if (run.pulse.length > 0) cv.pulse = run.pulse;
+      if (run.part !== '') cv.part = run.part;
       return cv;
     });
     let duration = 0;

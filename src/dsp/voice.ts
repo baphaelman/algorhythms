@@ -1043,8 +1043,12 @@ export class VoiceContext {
   sendDelay = 0;
   /** Render frame of the block start (for timbre-slot fades). */
   renderFrame0 = 0;
-  /** g_n at the block start (index 0) and at the end of each tick (1..TICKS_PER_BLOCK). */
-  readonly gn = new Float64Array(TICKS_PER_BLOCK + 1);
+  /**
+   * g_n at the block start (index 0) and at the end of each tick (1..TICKS_PER_BLOCK), one row of
+   * TICKS_PER_BLOCK + 1 per normalisation group (row 0: every voice, or the first part; §8.4
+   * revision 10). A voice reads row `Voice.gnOff`.
+   */
+  readonly gn = new Float64Array(DSP_MAX_VOICES * (TICKS_PER_BLOCK + 1));
   /** Dry stereo bus and the mono send buses. */
   readonly dryL = new Float64Array(BLOCK_FRAMES);
   readonly dryR = new Float64Array(BLOCK_FRAMES);
@@ -1235,6 +1239,8 @@ export class Voice {
   enabled = false;
   /** A ghost computes its own life weights; a main voice reads `lifeTick` (filled by the graph). */
   isGhost = false;
+  /** Offset of this voice's g_n row in VoiceContext.gn (set by the graph; 0 for 'all'). */
+  gnOff = 0;
   /** Ghosts only: piece frame of the ghost's own timeline at the block start. */
   frame = 0;
   /**
@@ -1573,6 +1579,7 @@ export class Voice {
     this.index = v.index;
     this.data = v.data;
     this.enabled = true;
+    this.gnOff = v.gnOff;
     this.st.set(v.st);
     this.segCur = v.segCur;
     this.lifeCur = v.lifeCur;
@@ -1648,6 +1655,7 @@ export class Voice {
     const lam = st[S_LAM];
     const free = 1 - lam;
     const tp = this.tp;
+    const gno = this.gnOff;
     for (let k = 0; k < TICKS_PER_BLOCK; k++) {
       const frame = frame0 + (k + 1) * K;
       const t = frame * inv;
@@ -2086,7 +2094,7 @@ export class Voice {
           if (sources > 1) this.balanceRoles(ctx);
 
           // Amplitude (§8.4).
-          const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
+          const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[gno + k + 1];
           const accent = tp[TP_ACCENT];
           const raw =
             VOICE_BASE_GAIN *

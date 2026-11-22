@@ -112,6 +112,20 @@ describe('stems exact sum', () => {
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
   }, 90_000);
 
+  it("holds with mix.normalise 'part' (parts joining and leaving, limiter engaged)", () => {
+    const score = stressScore(8, 10, 1, 9);
+    score.voices.forEach((v, i) => {
+      v.gain = 3;
+      v.part = ['A', 'B', ''][i % 3];
+      if (i % 3 === 1) v.lives = [{ born: 3, died: 8, fadeIn: 0.4, fadeOut: 0.6 }];
+    });
+    const mix: MixSettings = { ...FIXTURE_MIX, normalise: 'part' };
+    const { worst, minGain } = stemSum(score, mix, 11);
+    expect(minGain, 'limiter engaged').toBeLessThan(0.8);
+    console.info(`stems residual, per-part normalisation: ${dbfs(worst).toFixed(1)} dBFS`);
+    expect(dbfs(worst)).toBeLessThanOrEqual(-90);
+  }, 90_000);
+
   it('replaying the recorded g_L reproduces the mix bit for bit', () => {
     const score = stressScore(6, 6, 1, 2);
     for (const v of score.voices) v.gain = 3;
