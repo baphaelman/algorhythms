@@ -257,8 +257,12 @@ export class LiveEngine {
         this.onApplied(seq, frame, time, received, callback);
       this.engineValue = engine;
       engine.startLive(setup.voices.length);
-      // While the worklet starts its live score.
-      this.warmUp();
+      // While the worklet starts its live score. Only a speed-up: never fails `enter`.
+      try {
+        this.warmUp();
+      } catch {
+        /* the first keys run cold */
+      }
       await started;
       this.notify();
     }
@@ -294,12 +298,20 @@ export class LiveEngine {
         assign: base.assign === 'free' ? 'ordered' : 'free',
       }),
     ];
-    const tracks = this.confirmed.clone();
+    // Cycles of chords.length changes, each from silence on a fresh copy (the first key of a
+    // session steps from silence).
+    let tracks = this.confirmed;
     let press: LivePress | null = null;
     let t = 0;
     for (let k = 0; k < WARM_UP_CHANGES; k++) {
-      const settings = variants[Math.floor(k / chords.length) % variants.length];
-      const held = chords[k % chords.length];
+      const c = Math.floor(k / chords.length);
+      if (k % chords.length === 0) {
+        tracks = this.confirmed.clone();
+        press = null;
+        t = 0;
+      }
+      const settings = variants[c % variants.length];
+      const held = chords[(k + c) % chords.length];
       // Every third change falls within the merge window of the one before (a re-plan).
       t += k % 3 === 2 ? 0.005 : 0.15;
       const d = decideLive(press, tracks, voices, held, settings, this.seed, k + 1, t, t);
@@ -309,7 +321,6 @@ export class LiveEngine {
       const gain = d.update.level ? d.update.level.gain : NaN;
       const over = d.update.level ? d.update.level.over : 0;
       tracks.apply(moves.slice(), 0, n, gain, over, d.t, null, d.press > 0);
-      if (k % chords.length === 0) tracks.clone();
     }
     // A live message's structured clone (the first post took ~0.3 ms more).
     const ch = new MessageChannel();

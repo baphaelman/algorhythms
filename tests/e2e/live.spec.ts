@@ -26,8 +26,9 @@
  * - total − device ≤ 10 ms;
  * - main thread: call → post (`postMs`, the key's message handed to the port) ≤ 5 ms.
  * The log lists each note: post, plan (call → decided), applied (call → stamp back), and slip
- * (wall − context time since the call). A note late to the ear with a small engine latency and a
- * matching slip is an audio-render stall (the context clock stopped), not main-thread work.
+ * (wall − context time since the call: within about a callback, as currentTime steps by one).
+ * A note late to the ear with a small engine latency and a slip as large is an audio-render stall
+ * (the context clock stopped while the wall clock ran), not main-thread work.
  * What the heard gate covers per engine (measured 2026-11-22):
  * - Chromium: baseLatency = the callback (512 frames); getOutputTimestamp trails currentTime by
  *   outputLatency + 0…1 callback, so the gate includes the reported device output latency;
@@ -147,7 +148,7 @@ test(
           if (!stamp) return null;
           const appliedMs = performance.now() - ev.at;
           const ts = ctx.getOutputTimestamp();
-          // Wall time since the call minus context time since: > 0 when the render clock stalled.
+          // Wall minus context time since the call: ≫ one callback when the render clock stalled.
           const slipMs = performance.now() - ev.at - (ctx.currentTime - ev.contextTime) * 1000;
           const lagMs =
             (ctx.currentTime - (ts.contextTime ?? NaN)) * 1000 -
@@ -209,7 +210,9 @@ test(
     console.info(perNote);
     expect(rms).toBeGreaterThan(0.005);
     // Main thread: every press posts its message within 5 ms of the call.
-    expect(Math.max(...post), `main-thread call → post per note:\n${perNote}`).toBeLessThanOrEqual(5);
+    expect(Math.max(...post), `main-thread call → post per note:\n${perNote}`).toBeLessThanOrEqual(
+      5,
+    );
     for (const r of results) {
       expect(r.callbackMs).toBeGreaterThan(0); // measured
       expect(r.frame).toBe(r.receivedFrame); // applied at the first block after it arrived
