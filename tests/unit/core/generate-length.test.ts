@@ -118,6 +118,10 @@ describe('generate: length', () => {
       const piece = { ...full, moments: full.moments.filter((m) => m.type !== 'note') };
       expect(piece.defaults.glide.arrive).toBe('together');
       delete piece.defaults.glide.arrive;
+      // Revision 10 added `mix.normalise: 'part'` (no sound change without parts).
+      expect(piece.mix.normalise).toBe('part');
+      piece.mix = { ...piece.mix };
+      delete piece.mix.normalise;
       // Schema v2 (M4.5-27): compared as the version 1 file (the opening back in `start`).
       expect(hashPieceAsV1(piece), c.key).toBe((snapshot as Record<string, string>)[c.key]);
     }

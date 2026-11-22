@@ -628,6 +628,10 @@ export const MixSchema = z.looseObject({
     .looseObject({ ceilingDb: z.number().max(0).default(M.limiter.ceilingDb) })
     .prefault({}),
   panAuto: z.enum(['index', 'pitch']).default(M.panAuto),
+  normalise: z
+    .enum(['all', 'part'])
+    .default(M.normalise ?? 'part')
+    .describe("Sum normalisation (§8.4): per part, or the whole mix ('all')."),
 });
 
 const V = DEFAULT_VIEW;
