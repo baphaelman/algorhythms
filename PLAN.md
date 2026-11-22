@@ -542,7 +542,7 @@ The worklet runs on the context clock, so the playhead is derived from that cloc
 - **Vibrato:** only after a voice arrives at a pitch; rate, depth in cents, and onset delay. Zero during glides.
 - **Pan:** equal-power, set per voice or `auto` (by index or by pitch, per mix setting).
 - **Starting phase:** a seeded random phase per voice, for determinism only. Unison phase-summing is handled by the lock above.
-- **Sum normalisation:** every voice is multiplied by the same gain, `g_n(t) = 1/√(Σ life weights)` (as in the prototype), smoothed over 50 ms. It is applied per voice, before the dry/send split (§8.6), so stems can carry it exactly (§12).
+- **Sum normalisation:** every voice is multiplied by the same gain, `g_n(t) = 1/√(Σ life weights)` (as in the prototype), smoothed over 50 ms. **Revision 10 (2026-11-22), proposed, needs the owner's ears:** in a piece with parts, normalise per part (each part's lines by 1/√ of that part's life weights; voices with no part form one group), so a part joining doesn't lower the others (today about −1.8 dB when 3 bells join 6 lines). Pieces without parts are unchanged. Ships only after before/after renders are approved. It is applied per voice, before the dry/send split (§8.6), so stems can carry it exactly (§12).
 
 ### 8.5 Timbre model
 
@@ -660,7 +660,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
   5. Playhead. In the editor layout the playhead is one DOM line over the ruler, score and lanes (§11.2), and `drawScore` skips it.
   6. HUD, including the chord being played (`chordAt`; e.g. `ii7 · Dm7`, `Am7/E`), owner request 2026-11-20. In the editor layout the top bar shows it instead.
   7. Editor overlay (§11): with a walk selected, its steps (`walkSteps`) as dots; the selected step highlighted.
-- **Silent lines vanish (revision 9, owner 2026-11-20):** each line is drawn with its opacity multiplied by its audible level (level, pulse and life fades, clamped 0..1, before the voice gain), so a voice at level 0 is not drawn and one fading in looks like it is spawning; heads and dots follow. In the editor, a silent line that belongs to the selected moment, or is under the pointer, shows as a faint dotted trace so it can still be selected. A pulsing line flickers with its hits.
+- **Silent lines vanish (revision 9, owner 2026-11-20):** each line is drawn with its opacity multiplied by its audible level (level, pulse and life fades, clamped 0..1, before the voice gain), so a voice at level 0 is not drawn and one fading in looks like it is spawning; heads and dots follow. In the editor, a silent line that belongs to the selected moment, or is under the pointer, shows as a faint dotted trace so it can still be selected. A pulsing line flickers with its hits. **Revision 10 (2026-11-22):** a pulsed line is drawn by its envelope instead: during a pulse region the line keeps at least a visible floor opacity (as if the pulse floor were ≥ 0.15), and each hit is marked with a short bright tick or swell at the hit, so a floor-0 arpeggio reads as a line with marks rather than dust. The audible level outside pulses is drawn as before.
 - **Colors:** by pitch (the default: a vertical gradient, low cool to high warm); ink; or custom per voice (`VoiceDef.color`, falling back to ink). An HSL fallback covers browsers without OKLCH. The per-voice hue mode was removed (owner, 2026-11-20); old files with `"voice"` load as `"pitch"`.
 
 ### Camera (revision 5)
@@ -1137,6 +1137,8 @@ The original questions follow for reference.
 - **Targets (§11.3):** several parts (`{ parts }`) and all but some parts (`{ exceptParts }`).
 - **Progression (§6.2):** a new region moment, a typed chord sequence.
 - **Walk over chord (§6.2):** `over: 'chord'` steps through chord tones.
+- **Pulse drawing (§10):** pulsed lines drawn by envelope with hit marks.
+- **Per-part normalisation (§8.4, proposed):** a joining part doesn't lower the others.
 - Already landed: root in the bass, parts entering from silence (warning when nothing happens), range folding that never merges a part's lines.
 
 ### Revision 9 (2026-11-20): owner notes after the compositions
