@@ -1147,6 +1147,17 @@ export class Compiler {
     if (p.end > t) run.level.push({ t, gain: p.gain, over: p.end - t });
   }
 
+  /**
+   * A line born with no parent (coming in from silence, establishing) starts at level 1
+   * (integrator, 2026-11-22), not at its voice's earlier level or a ramp left running at its old
+   * death. Appends only, as `inheritLevel`.
+   */
+  private resetLevel(run: VoiceRun, t: Seconds): void {
+    const own = run.levelState(t);
+    if (own.value === 1 && own.end === t) return;
+    run.level.push({ t, gain: 1, over: 0 });
+  }
+
   /** The level target of a voice now (1 before its first level change). */
   private levelOf(v: number): number {
     const l = this.voices[v].level;
@@ -1336,6 +1347,7 @@ export class Compiler {
         src = pb.parent;
       }
       if (src >= 0) this.inheritLevel(run, this.voices[src], T);
+      else this.resetLevel(run, T);
       b.levels = run.level.length;
       this.queue.push({
         t: b.t,
@@ -1515,6 +1527,7 @@ export class Compiler {
         continue;
       }
       run.status = Status.Active;
+      this.resetLevel(run, T);
       run.frontier.openAt(T, { p: f.p, v: 0, mid: false }, m.id);
       run.life = { born: T, fadeIn: 0 };
       run.lives.push(run.life);
@@ -1995,9 +2008,13 @@ export class Compiler {
     const parent = src >= 0 ? this.voices[src].frontier.stateAt(b.t) : null;
     run.frontier.openAt(b.t, parent ?? { p: b.pitch, v: 0, mid: false });
     run.life = { born: b.t, fadeIn: b.fadeIn };
-    // It comes in at the level of the line it forks from, unless a level moment addressed it
-    // while it was pending (it then keeps that, on top of the level it took at the fork).
-    if (parent && run.level.length === b.levels) this.inheritLevel(run, this.voices[src], b.t);
+    // It comes in at the level of the line it forks from (at 1 with no parent), unless a level
+    // moment addressed it while it was pending (it then keeps that, on top of the level it took
+    // when its birth was decided).
+    if (run.level.length === b.levels) {
+      if (parent) this.inheritLevel(run, this.voices[src], b.t);
+      else if (src < 0) this.resetLevel(run, b.t);
+    }
     // A fork crossfades out of its parent (owner 2026-11-21) over the start of its departure:
     // the newborn fades in along `crossfade` while the parent's weight falls by its share (a
     // parent not sounding yet starts without it, and the newborn fades in as before).

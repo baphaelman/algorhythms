@@ -210,3 +210,119 @@ describe('incremental compile', () => {
     }
   });
 });
+
+describe('a line born with no parent starts at level 1', () => {
+  const MELODY: MomentInput = {
+    type: 'level',
+    at: 1,
+    gain: 0.3,
+    over: 0,
+    target: { part: 'Melody' },
+  };
+
+  /** v1, v3 Bass; v2, v4 Melody. Melody dies at 3 and comes back from silence at 10. */
+  function reborn(level: MomentInput, after: MomentInput[] = []): Piece {
+    const p = piece({
+      pool: 4,
+      start: [36, 72],
+      moments: [
+        { id: 'lv', ...level },
+        { id: 'mg', type: 'merge', at: 3, count: 1, which: 'top', fade: 1 },
+        {
+          id: 'in',
+          type: 'chord',
+          at: 10,
+          notes: { kind: 'pitches', pitches: [72] },
+          voicing: 'even',
+          assign: 'ordered',
+          target: { part: 'Melody' },
+        },
+        ...after,
+      ],
+    });
+    p.voices.forEach((v, i) => (v.part = i % 2 === 0 ? 'Bass' : 'Melody'));
+    return p;
+  }
+
+  /** The Melody line, which lived twice. */
+  function melody(p: Piece): { v: CompiledVoice; b: number } {
+    const v = compile(p).voices.find((x) => x.lives.length === 2)!;
+    expect(v.lives[0].died).toBeLessThan(10);
+    return { v, b: born(v) };
+  }
+
+  it('a part coming in from silence plays at 1, not at its earlier level', () => {
+    const { v, b } = melody(reborn(MELODY));
+    expect(levelAt(v, 2)).toBeCloseTo(0.3, 12);
+    expect(b).toBe(10);
+    for (const t of [b, b + 1, 20]) expect(levelAt(v, t)).toBe(1);
+  });
+
+  it('an establishing chord after full silence plays at 1', () => {
+    const p = piece({
+      pool: 2,
+      start: [57],
+      moments: [
+        { type: 'level', at: 1, gain: 0.3, over: 0 },
+        { type: 'merge', at: 3, count: 0, which: 'top', fade: 1 },
+        {
+          type: 'chord',
+          at: 10,
+          notes: { kind: 'pitches', pitches: [60] },
+          voicing: 'even',
+          assign: 'ordered',
+        },
+      ],
+    });
+    const v = compile(p).voices[0];
+    expect(v.lives.map((l) => l.born)).toEqual([0, 10]);
+    expect(levelAt(v, 2)).toBeCloseTo(0.3, 12);
+    expect(levelAt(v, 10)).toBe(1);
+    expect(levelAt(v, 12)).toBe(1);
+  });
+
+  it('keeps a level moment that addresses it while pending', () => {
+    const late: MomentInput = {
+      type: 'level',
+      at: 10,
+      gain: 0.5,
+      over: 0,
+      target: { part: 'Melody' },
+    };
+    const { v, b } = melody(reborn(MELODY, [late]));
+    expect(levelAt(v, b)).toBeCloseTo(0.5, 12);
+    expect(levelAt(v, 20)).toBeCloseTo(0.5, 12);
+  });
+
+  it('a ramp in progress at the old death does not continue into the new life', () => {
+    // 1 → 0.1 over 1…21 s: still running when the line dies and when it comes back.
+    const { v, b } = melody(reborn({ ...MELODY, gain: 0.1, over: 20 }));
+    expect(levelAt(v, 5)).toBeLessThan(0.9);
+    for (const t of [b, 15, 21, 25]) expect(levelAt(v, t)).toBe(1);
+  });
+
+  it('a line that never had a level gets no entry', () => {
+    const { v } = melody(reborn({ ...MELODY, target: { part: 'Bass' } }));
+    expect(v.level).toEqual([]);
+  });
+
+  it('incremental compile matches compile across edits', () => {
+    const inc = createIncrementalCompiler();
+    let p = reborn({ ...MELODY, over: 6 }, [
+      { id: 'lt', type: 'level', at: 12, gain: 0.6, over: 2, target: { part: 'Melody' } },
+    ]);
+    expect(inc.compile(p)).toStrictEqual(compile(p));
+    const edits: ((q: Piece) => Piece)[] = [
+      (q) => patchMoment(q, 'lv', { gain: 0.2 }),
+      (q) => moveMomentsBy(q, ['in'], 2.5),
+      (q) => moveMomentsBy(q, ['lt'], -4.5),
+      (q) => moveMomentsBy(q, ['mg'], 1.2),
+      (q) => patchMoment(q, 'lv', { over: 30 }),
+      (q) => moveMomentsBy(q, ['in'], -3),
+    ];
+    for (const e of edits) {
+      p = e(p);
+      expect(inc.compile(p)).toStrictEqual(compile(p));
+    }
+  });
+});
