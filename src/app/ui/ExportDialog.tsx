@@ -1,12 +1,23 @@
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef } from 'react';
 import { create } from 'zustand';
+import { DEFAULT_HUD } from '../../render/hud';
+import { tokensOf } from '../../render/palettes';
+import type { HudItem } from '../../render/types';
 import { downloadBlob } from '../download';
 import {
   BEND_RANGES,
   BIT_DEPTHS,
   DEFAULT_EXPORT_FORM,
   EXPORT_FORMATS,
+  FOLLOW_AT_MAX,
+  FOLLOW_AT_MIN,
+  HUD_CHOICES,
+  LOOK_COLORS,
+  LOOK_FUTURES,
+  LOOK_WIDTHS,
   MIDI_MODES,
+  POSTER_FORMATS,
+  POSTER_SIZES,
   RATES,
   VIDEO_ASPECTS,
   VIDEO_CAMERAS,
@@ -15,8 +26,15 @@ import {
   VIDEO_THEMES,
   codecLabel,
   exportFileName,
+  followAtOf,
   formatBytes,
+  hudInOrder,
+  loadExportPrefs,
+  posterPixels,
+  resetLook,
+  saveExportPrefs,
   type ExportForm,
+  type LookForm,
   type VideoContext,
 } from '../export-options';
 import type { ExportEstimate, ExportOutput } from '../export-run';
@@ -41,6 +59,8 @@ interface ExportUi {
   runtime: Runtime | null;
   /** The browser's video codecs for `key` (aspect, size, fps); null while being checked. */
   video: { key: string; support: VideoSupport | null };
+  /** The Look section is open (session only). */
+  lookOpen: boolean;
 }
 
 const RUN_LABEL: Record<ExportForm['format'], string> = {
@@ -48,6 +68,7 @@ const RUN_LABEL: Record<ExportForm['format'], string> = {
   stems: 'Export stems',
   midi: 'Export MIDI',
   video: 'Export video',
+  poster: 'Export poster',
 };
 
 const IDLE: RunState = { status: 'idle', fraction: null, label: '', message: '' };
@@ -59,17 +80,23 @@ const useExportUi = create<ExportUi>()(() => ({
   run: IDLE,
   runtime: null,
   video: { key: '', support: null },
+  lookOpen: false,
 }));
 
 const videoKey = (f: ExportForm) => `${f.videoAspect} ${f.videoSize} ${f.videoFps}`;
 
-/** What the video takes from the app now: the editor's zoom, the theme and the line colours. */
-function videoContext(): VideoContext {
+/** The app's theme now, resolved (system → the browser's colour scheme). */
+function appDark(): boolean {
   const { view } = usePlayer.getState();
-  const dark =
+  return (
     view.theme === 'dark' ||
-    (view.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  return { window: cameraOf().window, dark, colors: view.colors };
+    (view.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+  );
+}
+
+/** What the video and poster take from the app now: the editor's zoom and the theme. */
+function videoContext(): VideoContext {
+  return { window: cameraOf().window, dark: appDark() };
 }
 
 let controller: AbortController | null = null;
@@ -78,7 +105,13 @@ let controller: AbortController | null = null;
 export function openExport(): void {
   const s = useExportUi.getState();
   // A finished or cancelled run's message is stale by the next time; a running one is kept.
-  useExportUi.setState({ open: true, run: s.run.status === 'running' ? s.run : IDLE });
+  const running = s.run.status === 'running';
+  useExportUi.setState({
+    open: true,
+    run: running ? s.run : IDLE,
+    // The remembered Look and video/poster choices (none if storage is unavailable).
+    form: running ? s.form : { ...s.form, ...loadExportPrefs() },
+  });
 }
 
 /** Closes the dialog; a running export is cancelled. */
@@ -93,6 +126,11 @@ function cancelExport(): void {
 
 function patch(p: Partial<ExportForm>): void {
   useExportUi.setState((s) => ({ form: { ...s.form, ...p }, run: IDLE }));
+  saveExportPrefs(useExportUi.getState().form);
+}
+
+function patchLook(p: Partial<LookForm>): void {
+  patch({ look: { ...useExportUi.getState().form.look, ...p } });
 }
 
 function setRun(run: Partial<RunState>): void {
@@ -115,19 +153,24 @@ export function startExport(): void {
   controller = ac;
 
   const video = form.format === 'video';
+  const poster = form.format === 'poster';
   if (video && useExportUi.getState().video.support?.ok !== true) return;
   // Chromium: ask where to save first (synchronously, inside the gesture), then stream to disk.
-  const toDisk = (form.format === 'stems' || video) && runtime.canSaveToDisk();
-  const name = exportFileName(src.piece, form);
+  const toDisk = (form.format === 'stems' || video || poster) && runtime.canSaveToDisk();
+  const name = poster
+    ? runtime.posterFileName(src.piece, form.posterFormat)
+    : exportFileName(src.piece, form);
   const pickVideo = toDisk && video ? runtime.pickVideoFile(name) : null;
-  const pickStems = toDisk && !video ? runtime.pickStemsFile(name) : null;
+  const pickPoster = toDisk && poster ? runtime.pickPosterFile(name, form.posterFormat) : null;
+  const pickStems = toDisk && form.format === 'stems' ? runtime.pickStemsFile(name) : null;
   const picking = toDisk;
-  const ctx = video ? videoContext() : null;
+  const ctx = video || poster ? videoContext() : null;
+  const what = video ? 'video' : poster ? 'poster' : 'zip';
 
   setRun({
     status: 'running',
     fraction: null,
-    label: picking ? `Choose where to save the ${video ? 'video' : 'zip'}…` : 'Starting…',
+    label: picking ? `Choose where to save the ${what}…` : 'Starting…',
     message: '',
   });
 
@@ -143,6 +186,9 @@ export function startExport(): void {
         out = await runtime.runWav(src, form, hooks);
       } else if (form.format === 'midi') {
         out = runtime.runMidi(src, form);
+      } else if (ctx && poster) {
+        const target = pickPoster ? await picked(pickPoster, ac.signal) : undefined;
+        out = await runtime.runPoster(src, form, ctx, { ...hooks, target });
       } else if (ctx) {
         const target = pickVideo ? await picked(pickVideo, ac.signal) : undefined;
         out = await runtime.runVideo(src, form, ctx, { ...hooks, target });
@@ -239,8 +285,294 @@ function Radios<T extends string | number>({
   );
 }
 
+/** A labelled checkbox. */
+function Check({
+  checked,
+  disabled,
+  testId,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  testId: string;
+  label: string;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="check">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        data-testid={testId}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+type LookFlag = 'guides' | 'beats' | 'markers' | 'sections' | 'levelOpacity' | 'thickness';
+
+const LOOK_FLAGS: readonly { key: LookFlag; testId: string; label: string }[] = [
+  { key: 'guides', testId: 'look-guides', label: 'Octave guide lines' },
+  { key: 'beats', testId: 'look-beats', label: 'Beat and bar lines' },
+  { key: 'markers', testId: 'look-markers', label: 'Moment markers' },
+  { key: 'sections', testId: 'look-sections', label: 'Section labels' },
+  { key: 'levelOpacity', testId: 'look-level', label: 'Louder notes brighter' },
+  { key: 'thickness', testId: 'look-thickness', label: 'Merged and weighted lines thicker' },
+];
+
 /**
- * The Export dialog (PLAN.md §12): WAV, stems, MIDI and video. A native modal `<dialog>`, so focus is
+ * The Look section (PLAN.md §12 "Export look"), shared by video and poster: every drawing
+ * switch, the HUD checklist and, for a following video, the playhead's place. Collapsed at first.
+ */
+function LookPanel({
+  form,
+  kind,
+  disabled,
+}: {
+  form: ExportForm;
+  kind: 'video' | 'poster';
+  disabled: boolean;
+}) {
+  const open = useExportUi((s) => s.lookOpen);
+  const pieceName = usePlayer((s) => s.piece.meta.title);
+  const id = useId();
+  const look = form.look;
+  const video = kind === 'video';
+  const hud = video ? form.videoHud : form.posterHud;
+  const setHud = (items: readonly HudItem[]) =>
+    patch(video ? { videoHud: hudInOrder(items) } : { posterHud: hudInOrder(items) });
+  const followAt = followAtOf(form);
+  const follow = form.videoCamera === 'follow';
+  const dark = look.theme === 'current' ? appDark() : look.theme === 'dark';
+  const ink = look.lineInk ?? tokensOf(dark ? 'dark' : 'light').ink;
+
+  return (
+    <details
+      className="look"
+      open={open}
+      data-testid="look"
+      onToggle={(e) => useExportUi.setState({ lookOpen: e.currentTarget.open })}
+    >
+      <summary data-testid="look-toggle">Look</summary>
+      <fieldset className="look-body" disabled={disabled}>
+        <div className="field">
+          {LOOK_FLAGS.map((f) => (
+            <Fragment key={f.key}>
+              <Check
+                checked={look[f.key]}
+                testId={f.testId}
+                label={f.label}
+                // The guides' labels follow the guides (unticked separately).
+                onChange={(v) =>
+                  patchLook(f.key === 'guides' ? { guides: v, guideLabels: v } : { [f.key]: v })
+                }
+              />
+              {f.key === 'guides' && (
+                <span className="sub">
+                  <Check
+                    checked={look.guideLabels}
+                    disabled={!look.guides}
+                    testId="look-guide-labels"
+                    label="Their Hz labels"
+                    onChange={(guideLabels) => patchLook({ guideLabels })}
+                  />
+                </span>
+              )}
+            </Fragment>
+          ))}
+          <Check
+            checked={look.pulseMarks}
+            testId="look-pulse"
+            label="Pulse hit marks"
+            onChange={(pulseMarks) => patchLook({ pulseMarks })}
+          />
+          {video ? (
+            <>
+              <Check
+                checked={look.dots}
+                testId="look-dots"
+                label="Dots"
+                onChange={(dots) => patchLook({ dots })}
+              />
+              <Check
+                checked={look.rings}
+                testId="look-rings"
+                label="Moving rings"
+                onChange={(rings) => patchLook({ rings })}
+              />
+              <Check
+                checked={look.hzLabels}
+                testId="look-hz"
+                label="Hz labels on the dots"
+                onChange={(hzLabels) => patchLook({ hzLabels })}
+              />
+              <Check
+                checked={look.playhead}
+                testId="look-playhead"
+                label="Playhead line"
+                onChange={(playhead) => patchLook({ playhead })}
+              />
+            </>
+          ) : (
+            <Check
+              checked={look.transparent}
+              testId="look-transparent"
+              label="Transparent background"
+              onChange={(transparent) => patchLook({ transparent })}
+            />
+          )}
+        </div>
+
+        {video && (
+          <>
+            <Radios
+              legend="Ahead of the playhead"
+              name={`${id}-future`}
+              value={look.future}
+              options={LOOK_FUTURES}
+              testId="look-future"
+              onChange={(future) => patchLook({ future })}
+            />
+            {look.future === 'dimmed' && (
+              <div className="field">
+                <label htmlFor={`${id}-fo`}>Dimmed to</label>
+                <div className="field-row">
+                  <input
+                    id={`${id}-fo`}
+                    type="range"
+                    min={5}
+                    max={100}
+                    step={5}
+                    value={Math.round(look.futureOpacity * 100)}
+                    data-testid="look-future-opacity"
+                    onChange={(e) => patchLook({ futureOpacity: Number(e.target.value) / 100 })}
+                  />
+                  <output>{Math.round(look.futureOpacity * 100)} %</output>
+                </div>
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor={`${id}-at`}>Playhead at</label>
+              <div className="field-row">
+                <input
+                  id={`${id}-at`}
+                  type="range"
+                  min={FOLLOW_AT_MIN}
+                  max={FOLLOW_AT_MAX}
+                  step={5}
+                  value={followAt}
+                  disabled={!follow}
+                  data-testid="look-follow-at"
+                  onChange={(e) => patch({ videoFollowAt: Number(e.target.value) })}
+                />
+                <output data-testid="look-follow-at-value">{followAt} %</output>
+              </div>
+              <small>
+                {!follow
+                  ? 'Follow only (Whole piece: the playhead moves across).'
+                  : form.videoFollowAt === null
+                    ? 'Across the frame; set by the option above until you move it.'
+                    : 'Across the frame.'}
+              </small>
+            </div>
+          </>
+        )}
+
+        <Radios
+          legend="Line colours"
+          name={`${id}-colors`}
+          value={look.colors}
+          options={LOOK_COLORS}
+          testId="look-colors"
+          onChange={(colors) => patchLook({ colors })}
+        />
+        {look.colors !== 'pitch' && (
+          <div className="field">
+            <label htmlFor={`${id}-ink`}>
+              {look.colors === 'ink' ? 'Line colour' : 'Lines without their own colour'}
+            </label>
+            <div className="field-row">
+              <input
+                id={`${id}-ink`}
+                type="color"
+                value={ink}
+                data-testid="look-ink"
+                onChange={(e) => patchLook({ lineInk: e.target.value })}
+              />
+              {look.lineInk !== null && (
+                <button
+                  type="button"
+                  data-testid="look-ink-reset"
+                  onClick={() => patchLook({ lineInk: null })}
+                >
+                  Theme ink
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <Radios
+          legend="Line width"
+          name={`${id}-width`}
+          value={look.lineWidth}
+          options={LOOK_WIDTHS}
+          testId="look-width"
+          onChange={(lineWidth) => patchLook({ lineWidth })}
+        />
+
+        <fieldset className="field hud-list" data-testid="look-hud">
+          <legend>HUD</legend>
+          <div className="hud-quick">
+            <button type="button" data-testid="hud-none" onClick={() => setHud([])}>
+              None
+            </button>
+            <button
+              type="button"
+              data-testid="hud-default"
+              onClick={() => setHud(video ? DEFAULT_HUD : [])}
+            >
+              Default
+            </button>
+          </div>
+          {HUD_CHOICES.map((c) => (
+            <label key={c.id} className="check">
+              <input
+                type="checkbox"
+                checked={hud.includes(c.id)}
+                data-testid={`hud-${c.id}`}
+                onChange={(e) =>
+                  setHud(e.target.checked ? [...hud, c.id] : hud.filter((h) => h !== c.id))
+                }
+              />
+              <span>{c.label}</span>
+              <small className="hud-sample">
+                {c.id === 'title' ? pieceName || 'Untitled' : c.sample}
+              </small>
+            </label>
+          ))}
+        </fieldset>
+
+        <button
+          type="button"
+          data-testid="look-reset"
+          onClick={() => {
+            useExportUi.setState((s) => ({ form: resetLook(s.form), run: IDLE }));
+            saveExportPrefs(useExportUi.getState().form);
+          }}
+        >
+          Reset to defaults
+        </button>
+      </fieldset>
+    </details>
+  );
+}
+
+/**
+ * The Export dialog (PLAN.md §12): WAV, stems, MIDI, video and poster. A native modal `<dialog>`, so focus is
  * trapped, Escape closes it (cancelling a running export) and focus returns to the menu button.
  */
 export function ExportDialog() {
@@ -313,6 +645,7 @@ export function ExportDialog() {
 
   const running = run.status === 'running';
   const isVideo = form.format === 'video';
+  const isPoster = form.format === 'poster';
   const toDisk = (form.format === 'stems' || isVideo) && runtime?.canSaveToDisk() === true;
   const videoBlocked = isVideo && support?.ok !== true;
   const cameraHint = VIDEO_CAMERAS.find((c) => c.id === form.videoCamera)?.hint;
@@ -488,37 +821,55 @@ export function ExportDialog() {
                 onChange={(videoCamera) => patch({ videoCamera })}
               />
               <small className="export-hint">{cameraHint}</small>
+            </>
+          )}
+
+          {isPoster && (
+            <>
+              <div className="field-pair">
+                <Radios
+                  legend="File"
+                  name={`${id}-pformat`}
+                  value={form.posterFormat}
+                  options={POSTER_FORMATS}
+                  disabled={running}
+                  testId="export-pformat"
+                  onChange={(posterFormat) => patch({ posterFormat })}
+                />
+                <Radios
+                  legend="Size"
+                  name={`${id}-psize`}
+                  value={form.posterSize}
+                  options={POSTER_SIZES}
+                  disabled={running}
+                  testId="export-psize"
+                  onChange={(posterSize) => patch({ posterSize })}
+                />
+              </div>
+              <div className="field">
+                <Check
+                  checked={form.posterTitle}
+                  disabled={running}
+                  testId="export-ptitle"
+                  label="Title block (name, length, key)"
+                  onChange={(posterTitle) => patch({ posterTitle })}
+                />
+              </div>
+            </>
+          )}
+
+          {(isVideo || isPoster) && (
+            <>
               <Radios
                 legend="Theme"
                 name={`${id}-vtheme`}
-                value={form.videoTheme}
+                value={form.look.theme}
                 options={VIDEO_THEMES}
                 disabled={running}
                 testId="export-vtheme"
-                onChange={(videoTheme) => patch({ videoTheme })}
+                onChange={(theme) => patchLook({ theme })}
               />
-              <div className="field">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.videoHud}
-                    disabled={running}
-                    data-testid="export-hud"
-                    onChange={(e) => patch({ videoHud: e.target.checked })}
-                  />
-                  <span>HUD (chord and readouts)</span>
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.videoThickness}
-                    disabled={running}
-                    data-testid="export-thickness"
-                    onChange={(e) => patch({ videoThickness: e.target.checked })}
-                  />
-                  <span>Thickness (louder lines are thicker)</span>
-                </label>
-              </div>
+              <LookPanel form={form} kind={isPoster ? 'poster' : 'video'} disabled={running} />
             </>
           )}
 
@@ -544,6 +895,11 @@ export function ExportDialog() {
                   ? `${estimate.files} files, ${formatBytes(estimate.bytes)} zipped`
                   : `${isVideo ? 'Up to' : 'About'} ${formatBytes(estimate.bytes)}`}
                 {estimate.zip64 && ' (ZIP64: some unzip tools need a recent version)'}
+              </p>
+            )}
+            {!running && isPoster && (
+              <p className="export-size" data-testid="export-size">
+                {posterPixels(form.posterSize)}, {form.posterFormat.toUpperCase()}
               </p>
             )}
             {!running && form.format === 'wav' && estimate === null && runtime === null && (

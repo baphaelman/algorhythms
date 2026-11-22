@@ -14,6 +14,7 @@ import { exportMidi, zipFiles } from '../midi/export';
 import {
   exportFileName,
   midiOptions,
+  posterOptions,
   stemsOptions,
   videoOptions,
   wavOptions,
@@ -33,7 +34,10 @@ import {
   type VideoSink,
 } from './video-export';
 
-export { canSaveToDisk, pickStemsFile, videoSupport };
+import { posterFileName, renderPosterPng, renderPosterSvg } from './poster-export';
+import type { PosterOptions } from './poster-export';
+
+export { canSaveToDisk, pickStemsFile, posterFileName, videoSupport };
 
 /** The piece as it sounds now. */
 export interface ExportSource {
@@ -157,23 +161,83 @@ export interface VideoFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;
 }
 
-/**
- * Opens the save dialog for the MP4; call it from the click handler, before any `await`. Null if
- * the browser has no picker or the user cancels.
- */
-export async function pickVideoFile(suggestedName: string): Promise<VideoFileHandle | null> {
+/** The save dialog for one file type; null if the browser has no picker or the user cancels. */
+async function pickFile(
+  suggestedName: string,
+  description: string,
+  accept: Record<string, string[]>,
+): Promise<VideoFileHandle | null> {
   const pick = (globalThis as { showSaveFilePicker?: (o: unknown) => Promise<VideoFileHandle> })
     .showSaveFilePicker;
   if (!pick) return null;
   try {
-    return await pick.call(globalThis, {
-      suggestedName,
-      types: [{ description: 'Video (MP4)', accept: { 'video/mp4': ['.mp4'] } }],
-    });
+    return await pick.call(globalThis, { suggestedName, types: [{ description, accept }] });
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return null;
     throw e;
   }
+}
+
+/**
+ * Opens the save dialog for the MP4; call it from the click handler, before any `await`. Null if
+ * the browser has no picker or the user cancels.
+ */
+export function pickVideoFile(suggestedName: string): Promise<VideoFileHandle | null> {
+  return pickFile(suggestedName, 'Video (MP4)', { 'video/mp4': ['.mp4'] });
+}
+
+/** Opens the save dialog for a poster (as `pickVideoFile`). */
+export function pickPosterFile(
+  suggestedName: string,
+  format: 'png' | 'svg',
+): Promise<VideoFileHandle | null> {
+  return format === 'png'
+    ? pickFile(suggestedName, 'PNG image', { 'image/png': ['.png'] })
+    : pickFile(suggestedName, 'SVG image', { 'image/svg+xml': ['.svg'] });
+}
+
+let lastPoster: { options: PosterOptions; format: 'png' | 'svg' } | null = null;
+
+/** The last poster export started: its options and format (tests). */
+export function lastPosterRequest(): typeof lastPoster {
+  return lastPoster;
+}
+
+const aborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
+
+/**
+ * Draws the poster (PNG or SVG). With a `target` (from `pickPosterFile`) it is written there and
+ * `blob` is null; otherwise it comes back as a Blob.
+ */
+export async function runPoster(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: Pick<VideoContext, 'dark'>,
+  hooks: RunHooks & { target?: VideoFileHandle } = {},
+): Promise<ExportOutput> {
+  const options = posterOptions(form, src.piece, ctx);
+  const format = form.posterFormat;
+  lastPoster = { options, format };
+  const name = posterFileName(src.piece, format);
+  hooks.onProgress?.(0, 'Drawing the poster…');
+  // Let the label paint before the (synchronous) drawing.
+  await new Promise((r) => setTimeout(r, 0));
+  if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
+  const blob =
+    format === 'png'
+      ? await renderPosterPng(src.piece, options, src.compiled)
+      : new Blob([renderPosterSvg(src.piece, options, src.compiled)], { type: 'image/svg+xml' });
+  if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
+  if (!hooks.target) return { name, blob, bytes: blob.size, files: 1 };
+  const w = await hooks.target.createWritable();
+  try {
+    await w.write(blob);
+    await w.close();
+  } catch (e) {
+    await w.abort().catch(() => undefined);
+    throw e;
+  }
+  return { name, blob: null, bytes: blob.size, files: 1 };
 }
 
 const PHASE_LABEL: Record<VideoPhase, string> = {

@@ -8,10 +8,13 @@
  * (720p30, Follow) through the dialog into that folder, plus dialog.png (Chromium only).
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { formatBytes } from '../../src/app/export-options';
+import { DEFAULT_HUD, HUD_ITEMS } from '../../src/render/hud';
+import { EXPORT_LOOK } from '../../src/render/look';
+import type * as VideoExport from '../../src/app/video-export';
 import type * as ExportRun from '../../src/app/export-run';
 
 interface HookWindow {
@@ -22,11 +25,14 @@ interface HookWindow {
     };
     actions: { loadPiece(p: unknown): void };
     exportRun(): Promise<typeof ExportRun>;
+    videoExport(): Promise<typeof VideoExport>;
   };
 }
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
 const SAMPLES = process.env.VIDEO_SAMPLES_DIR;
+/** Owner review images of the Look (dialog, default frame). */
+const LOOK_SAMPLES = process.env.LOOK_SAMPLES_DIR;
 
 async function openExport(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
@@ -40,6 +46,13 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 }
 
 const pickVideo = (page: Page) => choose(page, 'export-format', 'Video (MP4)');
+
+/** Opens the Look section (it stays open for the session). */
+async function openLook(page: Page): Promise<void> {
+  const look = page.getByTestId('look');
+  if ((await look.getAttribute('open')) === null) await page.getByTestId('look-toggle').click();
+  await expect(page.getByTestId('look-reset')).toBeVisible();
+}
 
 async function loadShortPiece(page: Page, seconds: number): Promise<void> {
   await page.evaluate((at) => {
@@ -103,8 +116,9 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
   for (const label of ['9:16', '1:1', '720p', '60 fps', 'Whole piece', 'Light', 'Dark']) {
     await expect(d.getByLabel(label, { exact: true })).not.toBeChecked();
   }
-  await expect(page.getByTestId('export-hud')).toBeChecked();
-  await expect(page.getByTestId('export-thickness')).toBeChecked();
+  await openLook(page);
+  for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).toBeChecked();
+  await expect(page.getByTestId('look-thickness')).toBeChecked();
   await expect(page.getByTestId('export-depth')).toHaveCount(0);
   await expect(page.getByTestId('export-codec')).toHaveText(/^(H\.264|VP9) \+ (AAC|Opus)$/);
   const big = Number(
@@ -127,7 +141,8 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await choose(page, 'export-aspect', '9:16');
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-vtheme', 'Dark');
-  await dialog(page).getByTestId('export-hud').uncheck();
+  await openLook(page);
+  await dialog(page).getByTestId('hud-none').click();
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 60_000 }),
     page.getByTestId('export-run').click(),
@@ -137,9 +152,6 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
     /^Saved Tidewater-Hymn\.mp4 \(.+\) to your downloads\./,
   );
   const req = (await lastRequest(page))!;
-  const colors = await page.evaluate(
-    () => (window as unknown as HookWindow).__algorhythms.store.getState().view.colors,
-  );
   expect(req.options).toMatchObject({
     aspect: '9:16',
     size: '720',
@@ -149,8 +161,9 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
     theme: 'dark',
     hud: false,
     thickness: true,
-    colors,
+    colors: 'pitch',
   });
+  expect(req.options.look!.hud).toEqual([]);
   const bytes = [...readFileSync(await download.path())];
   const played = await probeInPage(page, { bytes });
   expect(played).toMatchObject({ width: 720, height: 1280 });
@@ -316,8 +329,9 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await choose(page, 'export-fps', '60 fps');
   await choose(page, 'export-camera', 'Whole piece');
   await choose(page, 'export-vtheme', 'Light');
-  await dialog(page).getByTestId('export-hud').uncheck();
-  await dialog(page).getByTestId('export-thickness').uncheck();
+  await openLook(page);
+  await dialog(page).getByTestId('hud-none').click();
+  await dialog(page).getByTestId('look-thickness').uncheck();
   await page.getByTestId('export-close').click();
   await expect(dialog(page)).toBeHidden();
   await openExport(page);
@@ -328,8 +342,8 @@ test('remembers the video choices across closing and other formats', async ({ pa
   for (const label of ['1:1', '720p', '60 fps', 'Whole piece', 'Light']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
-  await expect(page.getByTestId('export-hud')).not.toBeChecked();
-  await expect(page.getByTestId('export-thickness')).not.toBeChecked();
+  for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).not.toBeChecked();
+  await expect(page.getByTestId('look-thickness')).not.toBeChecked();
 });
 
 test('fits a phone screen with Video selected, in both themes', async ({ page }) => {
@@ -339,6 +353,7 @@ test('fits a phone screen with Video selected, in both themes', async ({ page })
     await openExport(page);
     await pickVideo(page);
     await expect(page.getByTestId('export-codec')).toBeVisible();
+    await openLook(page);
     const box = (await dialog(page).boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(375);
@@ -346,11 +361,185 @@ test('fits a phone screen with Video selected, in both themes', async ({ page })
     expect(box.y + box.height).toBeLessThanOrEqual(640);
     expect(await dialog(page).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     // Every control is reachable (the dialog scrolls vertically).
-    await page.getByTestId('export-run').scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('export-run')).toBeInViewport();
+    for (const t of ['look-reset', 'hud-title', 'look-follow-at', 'export-run']) {
+      await page.getByTestId(t).scrollIntoViewIfNeeded();
+      await expect(page.getByTestId(t)).toBeInViewport();
+    }
+    const wide = await dialog(page).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return [...el.querySelectorAll('label, button, input, small')].filter((c) => {
+        const b = c.getBoundingClientRect();
+        return b.width > 0 && (b.left < r.left - 0.5 || b.right > r.right + 0.5);
+      }).length;
+    });
+    expect(wide).toBe(0);
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
   }
+});
+
+test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered; Reset', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await loadShortPiece(page, 2);
+  await openExport(page);
+  await pickVideo(page);
+  await choose(page, 'export-vsize', '720p');
+  await openLook(page);
+  const d = dialog(page);
+  const checked: Record<string, boolean> = {
+    'look-guides': false,
+    'look-beats': false,
+    'look-markers': true,
+    'look-sections': true,
+    'look-level': true,
+    'look-thickness': true,
+    'look-pulse': true,
+    'look-dots': true,
+    'look-rings': true,
+    'look-hz': true,
+    'look-playhead': true,
+  };
+  const expectDefaults = async () => {
+    for (const [t, on] of Object.entries(checked)) {
+      if (on) await expect(page.getByTestId(t), t).toBeChecked();
+      else await expect(page.getByTestId(t), t).not.toBeChecked();
+    }
+    await expect(page.getByTestId('look-guide-labels')).toBeDisabled();
+    for (const l of ['Hidden', 'By pitch', 'Normal']) {
+      await expect(d.getByLabel(l, { exact: true })).toBeChecked();
+    }
+    await expect(page.getByTestId('look-follow-at-value')).toHaveText('80 %');
+    for (const it of HUD_ITEMS) {
+      if (DEFAULT_HUD.includes(it)) await expect(page.getByTestId(`hud-${it}`)).toBeChecked();
+      else await expect(page.getByTestId(`hud-${it}`)).not.toBeChecked();
+    }
+    await expect(page.getByTestId('look-transparent')).toHaveCount(0);
+  };
+  await expectDefaults();
+  await expect(d.getByTestId('look-hud')).toContainText('spread 19 st · octave + 5th');
+
+  const exportNow = async () => {
+    await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByTestId('export-run').click(),
+    ]);
+    return (await lastRequest(page))!.options;
+  };
+  const def = await exportNow();
+  expect(def.look).toEqual({ ...EXPORT_LOOK, theme: 'light' });
+  expect(def.followAt).toBe(0.8);
+
+  // The future shown: the playhead default moves to 35 % until the slider is moved.
+  await choose(page, 'look-future', 'Dimmed');
+  await expect(page.getByTestId('look-follow-at-value')).toHaveText('35 %');
+  await page.getByTestId('look-future-opacity').fill('50');
+  await page.getByTestId('look-guides').check();
+  await choose(page, 'look-width', 'Bold');
+  await page.getByTestId('hud-none').click();
+  await page.getByTestId('hud-spread').check();
+  await page.getByTestId('hud-chord').check();
+  await page.getByTestId('look-follow-at').fill('60');
+  await expect(page.getByTestId('look-follow-at-value')).toHaveText('60 %');
+  const opts = await exportNow();
+  expect(opts.look).toMatchObject({
+    guides: true,
+    guideLabels: true,
+    future: 'dimmed',
+    futureOpacity: 0.5,
+    lineWidth: 'bold',
+    hud: ['chord', 'spread'],
+  });
+  expect(opts.followAt).toBe(0.6);
+
+  // Remembered after a reload.
+  await page.reload();
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openExport(page);
+  await pickVideo(page);
+  await openLook(page);
+  await expect(page.getByTestId('look-guides')).toBeChecked();
+  await expect(d.getByLabel('Bold', { exact: true })).toBeChecked();
+  await expect(d.getByLabel('Dimmed', { exact: true })).toBeChecked();
+  await expect(page.getByTestId('look-follow-at-value')).toHaveText('60 %');
+  await expect(page.getByTestId('hud-spread')).toBeChecked();
+  await expect(page.getByTestId('hud-formula')).not.toBeChecked();
+  await expect(d.getByLabel('720p', { exact: true })).toBeChecked();
+
+  await page.getByTestId('look-reset').click();
+  await expectDefaults();
+  await page.reload();
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openExport(page);
+  await pickVideo(page);
+  await openLook(page);
+  await expectDefaults();
+});
+
+test('renders without storage (localStorage throws)', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      get() {
+        throw new DOMException('denied', 'SecurityError');
+      },
+    });
+  });
+  await page.goto('./?example=tidewater-hymn');
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openExport(page);
+  await pickVideo(page);
+  await openLook(page);
+  await page.getByTestId('look-guides').check();
+  await expect(page.getByTestId('look-guides')).toBeChecked();
+  await expect(page.getByTestId('look-follow-at-value')).toHaveText('80 %');
+});
+
+test('owner look samples: the dialog with the Look open, a default frame', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(!LOOK_SAMPLES || browserName !== 'chromium', 'set LOOK_SAMPLES_DIR (Chromium)');
+  test.setTimeout(120_000);
+  mkdirSync(LOOK_SAMPLES!, { recursive: true });
+  await page.setViewportSize({ width: 900, height: 2200 });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('./?example=little-round');
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openExport(page);
+  await pickVideo(page);
+  await openLook(page);
+  await expect(page.getByTestId('export-codec')).toHaveText(/\+/);
+  await dialog(page).screenshot({ path: join(LOOK_SAMPLES!, 'dialog-video.png') });
+  // The export's own options (started, then cancelled), drawn by its frame code at mid-piece.
+  await page.getByTestId('export-run').click();
+  await page.getByTestId('export-cancel').click();
+  await expect(page.getByTestId('export-message')).toHaveText('Export cancelled.');
+  const opts = (await lastRequest(page))!.options;
+  expect(opts).toMatchObject({ aspect: '16:9', camera: 'follow', followAt: 0.8 });
+  expect(opts.look).toMatchObject({ future: 'hidden' });
+  const b64 = await page.evaluate(async (o) => {
+    const h = (window as unknown as HookWindow).__algorhythms;
+    const m = await h.videoExport();
+    const piece = h.store.getState().piece as Parameters<typeof m.referenceFrame>[0];
+    const k = Math.round(
+      (h.store.getState() as unknown as { compiled: { duration: number } }).compiled.duration *
+        0.5 *
+        o.fps,
+    );
+    const img = m.referenceFrame(piece, o, k);
+    const c = new OffscreenCanvas(img.width, img.height);
+    c.getContext('2d')!.putImageData(img, 0, 0);
+    const bytes = new Uint8Array(
+      await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer(),
+    );
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }, opts);
+  writeFileSync(join(LOOK_SAMPLES!, 'frame-default.png'), Buffer.from(b64, 'base64'));
 });
 
 test('owner samples: Little Round at 16:9 and 9:16, 720p30 Follow', async ({

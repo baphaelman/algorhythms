@@ -41,6 +41,8 @@ export interface VideoOptions {
   camera: VideoCameraMode;
   /** Follow: the editor's zoom window (s), as seen at 16:9. */
   window?: Seconds;
+  /** Follow: the playhead's place across the frame, 0..1. @default 0.35 */
+  followAt?: number;
   theme: 'light' | 'dark';
   hud: boolean;
   thickness: boolean;
@@ -382,6 +384,7 @@ export function frameOptions(piece: Piece, opts: VideoOptions): VideoFrameOption
   });
   const o: VideoFrameOptions = { aspect: opts.aspect, size: opts.size, camera: opts.camera, style };
   if (opts.window !== undefined) o.window = opts.window;
+  if (opts.followAt !== undefined) o.followAt = opts.followAt;
   return o;
 }
 

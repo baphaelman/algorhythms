@@ -96,6 +96,22 @@ describe('videoCamera', () => {
     expect(videoCamera('follow', s, 130, opts).start).toBe(80); // the tail holds the end
   });
 
+  it('followAt puts the playhead there, clamped at the ends; 0.35 is the default', () => {
+    const at = { ...opts, followAt: 0.8 };
+    const mid = videoCamera('follow', s, 50, at);
+    expect((50 - mid.start) / mid.window).toBeCloseTo(0.8, 12);
+    expect(videoCamera('follow', s, 10, at).start).toBe(0);
+    expect(videoCamera('follow', s, 99, at).start).toBe(80);
+    expect(videoCamera('follow', s, 130, at).start).toBe(80);
+    for (const t of [0, 5, 50, 95, 130]) {
+      expect(videoCamera('follow', s, t, { ...opts, followAt: SMOOTH_X }).start).toBeCloseTo(
+        videoCamera('follow', s, t, opts).start,
+        12,
+      );
+    }
+    expect(videoCamera('whole', s, 50, at).start).toBe(0);
+  });
+
   it('whole piece: the fitted piece at every t', () => {
     for (const t of [0, 33, 100]) {
       expect(videoCamera('whole', s, t, opts)).toMatchObject({ start: 0, window: 100 });
