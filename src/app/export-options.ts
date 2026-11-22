@@ -5,14 +5,17 @@
  * `export-run.ts`, which the dialog loads on demand.
  */
 
-import type { Piece } from '../core/types';
+import type { LineColors, Piece, Seconds } from '../core/types';
+import type { VideoAspect, VideoCameraMode, VideoSize } from '../render/video';
+import type { VideoOptions } from './video-export';
 
-export type ExportFormat = 'wav' | 'stems' | 'midi';
+export type ExportFormat = 'wav' | 'stems' | 'midi' | 'video';
 
 export const EXPORT_FORMATS: readonly { id: ExportFormat; label: string }[] = [
   { id: 'wav', label: 'WAV' },
   { id: 'stems', label: 'Stems' },
   { id: 'midi', label: 'MIDI' },
+  { id: 'video', label: 'Video (MP4)' },
 ];
 
 /** 32 means 32-bit float. */
@@ -57,6 +60,39 @@ export const BEND_RANGES: readonly { id: ExportBendRange; label: string }[] = [
   { id: 48, label: '±48' },
 ];
 
+export type ExportVideoTheme = 'current' | 'light' | 'dark';
+
+export const VIDEO_ASPECTS: readonly { id: VideoAspect; label: string }[] = [
+  { id: '16:9', label: '16:9' },
+  { id: '9:16', label: '9:16' },
+  { id: '1:1', label: '1:1' },
+];
+
+export const VIDEO_SIZES: readonly { id: VideoSize; label: string }[] = [
+  { id: '1080', label: '1080p' },
+  { id: '720', label: '720p' },
+];
+
+export const VIDEO_FPS: readonly { id: 30 | 60; label: string }[] = [
+  { id: 30, label: '30 fps' },
+  { id: 60, label: '60 fps' },
+];
+
+export const VIDEO_CAMERAS: readonly { id: VideoCameraMode; label: string; hint: string }[] = [
+  { id: 'follow', label: 'Follow', hint: 'Follows the playhead at the editor’s current zoom.' },
+  {
+    id: 'whole',
+    label: 'Whole piece',
+    hint: 'The whole piece in view; the playhead moves across.',
+  },
+];
+
+export const VIDEO_THEMES: readonly { id: ExportVideoTheme; label: string }[] = [
+  { id: 'current', label: 'Current' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+];
+
 /** What the dialog's controls hold. */
 export interface ExportForm {
   format: ExportFormat;
@@ -73,6 +109,13 @@ export interface ExportForm {
   cc11: boolean;
   /** End and re-strike the note on every arrival (plucked sounds). */
   restrike: boolean;
+  videoAspect: VideoAspect;
+  videoSize: VideoSize;
+  videoFps: 30 | 60;
+  videoCamera: VideoCameraMode;
+  videoTheme: ExportVideoTheme;
+  videoHud: boolean;
+  videoThickness: boolean;
 }
 
 export const DEFAULT_EXPORT_FORM: ExportForm = {
@@ -84,6 +127,13 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   bendRange: 24,
   cc11: false,
   restrike: false,
+  videoAspect: '16:9',
+  videoSize: '1080',
+  videoFps: 30,
+  videoCamera: 'follow',
+  videoTheme: 'current',
+  videoHud: true,
+  videoThickness: true,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -129,6 +179,8 @@ export function exportFileName(piece: Piece, form: ExportForm, files = 1): strin
       return `${base}-stems.zip`;
     case 'midi':
       return files > 1 ? `${base}-midi.zip` : `${base}.mid`;
+    case 'video':
+      return `${base}.mp4`;
   }
 }
 
@@ -187,6 +239,44 @@ export function midiOptions(form: ExportForm, piece: Piece): MidiRequest {
   const bpm = piece.view.gridBpm;
   if (typeof bpm === 'number' && Number.isFinite(bpm) && bpm > 0) req.bpm = bpm;
   return req;
+}
+
+/** What the video export takes from the app beyond the form. */
+export interface VideoContext {
+  /** The editor's zoom window now (s); Follow uses it. */
+  window: Seconds;
+  /** The app's theme now (for 'current'). */
+  dark: boolean;
+  colors: LineColors;
+}
+
+export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
+  const o: VideoOptions = {
+    aspect: form.videoAspect,
+    size: form.videoSize,
+    fps: form.videoFps,
+    camera: form.videoCamera,
+    theme: form.videoTheme === 'current' ? (ctx.dark ? 'dark' : 'light') : form.videoTheme,
+    hud: form.videoHud,
+    thickness: form.videoThickness,
+    colors: ctx.colors,
+    customColors: piece.voices.map((v) => v.color),
+  };
+  if (form.videoCamera === 'follow') o.window = ctx.window;
+  return o;
+}
+
+const CODEC_NAMES: [string, string][] = [
+  ['avc1', 'H.264'],
+  ['vp09', 'VP9'],
+  ['mp4a', 'AAC'],
+  ['opus', 'Opus'],
+];
+
+/** "H.264 + AAC" from WebCodecs codec strings. */
+export function codecLabel(video: string, audio: string): string {
+  const name = (c: string) => CODEC_NAMES.find(([p]) => c.startsWith(p))?.[1] ?? c;
+  return `${name(video)} + ${name(audio)}`;
 }
 
 // ---------------------------------------------------------------------------------------------

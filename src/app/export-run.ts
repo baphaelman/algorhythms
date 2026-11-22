@@ -7,6 +7,7 @@
 import { exportWav } from '../audio/export-client';
 import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/stems-client';
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
+import { exportFrameCount } from '../audio/offline';
 import { wavExportSize } from '../audio/wav-export';
 import type { CompiledScore, Piece } from '../core/types';
 import { exportMidi, zipFiles } from '../midi/export';
@@ -14,11 +15,25 @@ import {
   exportFileName,
   midiOptions,
   stemsOptions,
+  videoOptions,
   wavOptions,
   type ExportForm,
+  type VideoContext,
 } from './export-options';
+import {
+  VIDEO_SAMPLE_RATE,
+  blobSink,
+  estimateVideoBytes,
+  exportVideo,
+  fileSink,
+  videoSupport,
+  type VideoOptions,
+  type VideoPhase,
+  type VideoResult,
+  type VideoSink,
+} from './video-export';
 
-export { canSaveToDisk, pickStemsFile };
+export { canSaveToDisk, pickStemsFile, videoSupport };
 
 /** The piece as it sounds now. */
 export interface ExportSource {
@@ -30,7 +45,7 @@ export interface ExportSource {
 export interface ExportEstimate {
   bytes: number;
   files: number;
-  /** Stems only: over 1 GB. */
+  /** Stems and video: over 1 GB. */
   large: boolean;
   zip64: boolean;
 }
@@ -45,6 +60,16 @@ export function estimateExport(src: ExportSource, form: ExportForm): ExportEstim
   if (form.format === 'stems') {
     const p = planStems(input, stemsOptions(form, src.piece));
     return { bytes: p.bytes, files: p.entries.length, large: p.large, zip64: p.zip64 };
+  }
+  if (form.format === 'video') {
+    const seconds =
+      exportFrameCount(src.compiled, src.piece.mix, VIDEO_SAMPLE_RATE) / VIDEO_SAMPLE_RATE;
+    const bytes = estimateVideoBytes(seconds, {
+      aspect: form.videoAspect,
+      size: form.videoSize,
+      fps: form.videoFps,
+    });
+    return { bytes, files: 1, large: bytes > 1e9, zip64: false };
   }
   return null;
 }
@@ -125,4 +150,85 @@ export async function runStems(
     bytes: r.bytes,
     files: r.entries.length,
   };
+}
+
+/** A file handle from the save picker (`FileSystemFileHandle`). */
+export interface VideoFileHandle {
+  createWritable(): Promise<FileSystemWritableFileStream>;
+}
+
+/**
+ * Opens the save dialog for the MP4; call it from the click handler, before any `await`. Null if
+ * the browser has no picker or the user cancels.
+ */
+export async function pickVideoFile(suggestedName: string): Promise<VideoFileHandle | null> {
+  const pick = (globalThis as { showSaveFilePicker?: (o: unknown) => Promise<VideoFileHandle> })
+    .showSaveFilePicker;
+  if (!pick) return null;
+  try {
+    return await pick.call(globalThis, {
+      suggestedName,
+      types: [{ description: 'Video (MP4)', accept: { 'video/mp4': ['.mp4'] } }],
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return null;
+    throw e;
+  }
+}
+
+const PHASE_LABEL: Record<VideoPhase, string> = {
+  audio: 'Rendering the audio…',
+  video: 'Drawing and encoding the video…',
+  finishing: 'Finishing the file…',
+};
+
+let lastVideo: { options: VideoOptions; result: VideoResult | null } | null = null;
+
+/** The last video export started: its options, and its result once finished (tests). */
+export function lastVideoRequest(): typeof lastVideo {
+  return lastVideo;
+}
+
+/**
+ * Exports the MP4. With a `target` (from `pickVideoFile`) it is streamed to disk and `blob` is
+ * null; otherwise it is built in memory and comes back as a Blob.
+ */
+export async function runVideo(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  hooks: RunHooks & { target?: VideoFileHandle } = {},
+): Promise<ExportOutput> {
+  const opts = videoOptions(form, src.piece, ctx);
+  const last = { options: opts, result: null as VideoResult | null };
+  lastVideo = last;
+  const mem = hooks.target ? null : blobSink();
+  let sink: VideoSink = mem ?? fileSink(await hooks.target!.createWritable());
+  let bytes = 0;
+  if (!mem) {
+    // Count the appended bytes (the one positioned write patches the mdat size in place).
+    const inner = sink;
+    sink = {
+      ...inner,
+      write: (data, position) => {
+        if (position === undefined) bytes += data.byteLength;
+        return inner.write(data, position);
+      },
+    };
+  }
+  try {
+    last.result = await exportVideo(src.piece, opts, sink, {
+      signal: hooks.signal,
+      onProgress: (f, phase) => hooks.onProgress?.(f, PHASE_LABEL[phase]),
+    });
+  } catch (e) {
+    // exportVideo aborts the sink itself once it has started; not on its early checks.
+    await sink.abort?.().catch(() => undefined);
+    throw e;
+  }
+  if (mem) {
+    const blob = mem.blob();
+    return { name: exportFileName(src.piece, form), blob, bytes: blob.size, files: 1 };
+  }
+  return { name: exportFileName(src.piece, form), blob: null, bytes, files: 1 };
 }

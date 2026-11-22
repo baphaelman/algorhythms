@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_EXPORT_FORM, type ExportForm } from '../../../src/app/export-options';
 import { estimateExport, runMidi, type ExportSource } from '../../../src/app/export-run';
+import { estimateVideoBytes } from '../../../src/app/video-export';
+import { exportFrameCount } from '../../../src/audio/offline';
 import { compile } from '../../../src/core/compiler/compile';
 import { generate } from '../../../src/core/generate';
 
@@ -46,6 +48,24 @@ describe('estimateExport', () => {
       form({ format: 'stems', bitDepth: 32 }),
     )!;
     expect(big.bytes).toBeGreaterThan(1e9);
+    expect(big.large).toBe(true);
+  });
+
+  it("video size follows the bitrate, over the WAV export's length", () => {
+    const v = estimateExport(src, form({ format: 'video' }))!;
+    const small = estimateExport(src, form({ format: 'video', videoSize: '720' }))!;
+    const fast = estimateExport(src, form({ format: 'video', videoFps: 60 }))!;
+    const seconds = exportFrameCount(src.compiled, src.piece.mix, 48000) / 48000;
+    expect(v.bytes).toBe(estimateVideoBytes(seconds, { aspect: '16:9', size: '1080', fps: 30 }));
+    expect(small.bytes).toBeLessThan(v.bytes);
+    expect(fast.bytes).toBeGreaterThan(v.bytes);
+    expect(v.files).toBe(1);
+    expect(v.large).toBe(false);
+    const long = generate(3, { mode: 'dorian', voices: 4, length: 1200 });
+    const big = estimateExport(
+      { piece: long, compiled: compile(long) },
+      form({ format: 'video' }),
+    )!;
     expect(big.large).toBe(true);
   });
 

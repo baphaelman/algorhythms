@@ -68,6 +68,8 @@ export interface AlgoRhythmsDebug {
   video(): Promise<typeof import('../video/mp4')>;
   /** Video export (M8-c): `videoSupport`, `exportVideo`, reference frames and the mix. */
   videoExport(): Promise<typeof import('./video-export')>;
+  /** The Export dialog's engine room (`lastVideoRequest()` for M8-d's tests), loaded on demand. */
+  exportRun(): Promise<typeof import('./export-run')>;
 }
 
 declare global {
@@ -133,5 +135,6 @@ export function installDebug(): void {
     },
     video: () => import('../video/mp4'),
     videoExport: () => import('./video-export'),
+    exportRun: () => import('./export-run'),
   };
 }

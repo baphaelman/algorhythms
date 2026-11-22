@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EXPORT_FORM,
+  codecLabel,
   exportFileName,
   fileBase,
   formatBytes,
   midiOptions,
   sanitizeFileName,
   stemsOptions,
+  videoOptions,
   voiceNames,
   wavOptions,
   type ExportForm,
@@ -125,5 +127,67 @@ describe('formatBytes', () => {
     expect(formatBytes(1_234_567)).toBe('1.2 MB');
     expect(formatBytes(1e9)).toBe('1.00 GB');
     expect(formatBytes(2.28e9)).toBe('2.28 GB');
+  });
+});
+
+describe('video', () => {
+  const ctx = { window: 12, dark: true, colors: 'pitch' as const };
+  it('maps the defaults: 16:9 1080p30 Follow at the editor window, current theme', () => {
+    const p = piece('Clip');
+    expect(DEFAULT_EXPORT_FORM).toMatchObject({
+      videoAspect: '16:9',
+      videoSize: '1080',
+      videoFps: 30,
+      videoCamera: 'follow',
+      videoTheme: 'current',
+      videoHud: true,
+      videoThickness: true,
+    });
+    expect(videoOptions(form({ format: 'video' }), p, ctx)).toEqual({
+      aspect: '16:9',
+      size: '1080',
+      fps: 30,
+      camera: 'follow',
+      window: 12,
+      theme: 'dark',
+      hud: true,
+      thickness: true,
+      colors: 'pitch',
+      customColors: p.voices.map((v) => v.color),
+    });
+    expect(videoOptions(form(), p, { ...ctx, dark: false }).theme).toBe('light');
+  });
+  it('passes every choice; Whole piece has no window', () => {
+    const o = videoOptions(
+      form({
+        videoAspect: '9:16',
+        videoSize: '720',
+        videoFps: 60,
+        videoCamera: 'whole',
+        videoTheme: 'light',
+        videoHud: false,
+        videoThickness: false,
+      }),
+      piece('Clip'),
+      ctx,
+    );
+    expect(o).toMatchObject({
+      aspect: '9:16',
+      size: '720',
+      fps: 60,
+      camera: 'whole',
+      theme: 'light',
+      hud: false,
+      thickness: false,
+    });
+    expect('window' in o).toBe(false);
+  });
+  it('names the file .mp4 and the codecs plainly', () => {
+    expect(exportFileName(piece('Tidewater Hymn'), form({ format: 'video' }))).toBe(
+      'Tidewater-Hymn.mp4',
+    );
+    expect(codecLabel('avc1.640028', 'mp4a.40.2')).toBe('H.264 + AAC');
+    expect(codecLabel('avc1.64001f', 'opus')).toBe('H.264 + Opus');
+    expect(codecLabel('vp09.00.40.08', 'opus')).toBe('VP9 + Opus');
   });
 });

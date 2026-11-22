@@ -8,12 +8,20 @@ import {
   EXPORT_FORMATS,
   MIDI_MODES,
   RATES,
+  VIDEO_ASPECTS,
+  VIDEO_CAMERAS,
+  VIDEO_FPS,
+  VIDEO_SIZES,
+  VIDEO_THEMES,
+  codecLabel,
   exportFileName,
   formatBytes,
   type ExportForm,
+  type VideoContext,
 } from '../export-options';
 import type { ExportEstimate, ExportOutput } from '../export-run';
-import { pushNotice, usePlayer } from '../store';
+import type { VideoSupport } from '../video-export';
+import { cameraOf, pushNotice, usePlayer } from '../store';
 
 /** The lazily loaded engine room (it pulls in the DSP graph, so it is not in the main chunk). */
 type Runtime = typeof import('../export-run');
@@ -31,12 +39,15 @@ interface ExportUi {
   form: ExportForm;
   run: RunState;
   runtime: Runtime | null;
+  /** The browser's video codecs for `key` (aspect, size, fps); null while being checked. */
+  video: { key: string; support: VideoSupport | null };
 }
 
 const RUN_LABEL: Record<ExportForm['format'], string> = {
   wav: 'Export WAV',
   stems: 'Export stems',
   midi: 'Export MIDI',
+  video: 'Export video',
 };
 
 const IDLE: RunState = { status: 'idle', fraction: null, label: '', message: '' };
@@ -47,7 +58,19 @@ const useExportUi = create<ExportUi>()(() => ({
   form: { ...DEFAULT_EXPORT_FORM },
   run: IDLE,
   runtime: null,
+  video: { key: '', support: null },
 }));
+
+const videoKey = (f: ExportForm) => `${f.videoAspect} ${f.videoSize} ${f.videoFps}`;
+
+/** What the video takes from the app now: the editor's zoom, the theme and the line colours. */
+function videoContext(): VideoContext {
+  const { view } = usePlayer.getState();
+  const dark =
+    view.theme === 'dark' ||
+    (view.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  return { window: cameraOf().window, dark, colors: view.colors };
+}
 
 let controller: AbortController | null = null;
 
@@ -91,16 +114,20 @@ export function startExport(): void {
   const ac = new AbortController();
   controller = ac;
 
+  const video = form.format === 'video';
+  if (video && useExportUi.getState().video.support?.ok !== true) return;
   // Chromium: ask where to save first (synchronously, inside the gesture), then stream to disk.
-  const picking =
-    form.format === 'stems' && runtime.canSaveToDisk()
-      ? runtime.pickStemsFile(exportFileName(src.piece, form))
-      : null;
+  const toDisk = (form.format === 'stems' || video) && runtime.canSaveToDisk();
+  const name = exportFileName(src.piece, form);
+  const pickVideo = toDisk && video ? runtime.pickVideoFile(name) : null;
+  const pickStems = toDisk && !video ? runtime.pickStemsFile(name) : null;
+  const picking = toDisk;
+  const ctx = video ? videoContext() : null;
 
   setRun({
     status: 'running',
     fraction: null,
-    label: picking ? 'Choose where to save the zip…' : 'Starting…',
+    label: picking ? `Choose where to save the ${video ? 'video' : 'zip'}…` : 'Starting…',
     message: '',
   });
 
@@ -116,19 +143,12 @@ export function startExport(): void {
         out = await runtime.runWav(src, form, hooks);
       } else if (form.format === 'midi') {
         out = runtime.runMidi(src, form);
+      } else if (ctx) {
+        const target = pickVideo ? await picked(pickVideo, ac.signal) : undefined;
+        out = await runtime.runVideo(src, form, ctx, { ...hooks, target });
       } else {
-        let target;
-        if (picking) {
-          // The browser's picker cannot be dismissed from here; Cancel just stops waiting for it.
-          const gone = new Promise<never>((_, reject) =>
-            ac.signal.addEventListener('abort', () =>
-              reject(new DOMException('Cancelled', 'AbortError')),
-            ),
-          );
-          target = await Promise.race([picking, gone]);
-          if (!target) throw new DOMException('Save cancelled', 'AbortError');
-        }
-        out = await runtime.runStems(src, form, { ...hooks, target: target ?? undefined });
+        const target = pickStems ? await picked(pickStems, ac.signal) : undefined;
+        out = await runtime.runStems(src, form, { ...hooks, target });
       }
       if (out.blob) downloadBlob(out.blob, out.name);
       setRun({
@@ -151,6 +171,19 @@ export function startExport(): void {
       if (controller === ac) controller = null;
     }
   })();
+}
+
+/**
+ * The picked file handle. The browser's picker cannot be dismissed from here; Cancel just stops
+ * waiting for it. Dismissing the picker cancels the export.
+ */
+async function picked<T>(picking: Promise<T | null>, signal: AbortSignal): Promise<T> {
+  const gone = new Promise<never>((_, reject) =>
+    signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))),
+  );
+  const target = await Promise.race([picking, gone]);
+  if (!target) throw new DOMException('Save cancelled', 'AbortError');
+  return target;
 }
 
 function estimateFor(
@@ -207,7 +240,7 @@ function Radios<T extends string | number>({
 }
 
 /**
- * The Export dialog (PLAN.md §12): WAV, stems and MIDI. A native modal `<dialog>`, so focus is
+ * The Export dialog (PLAN.md §12): WAV, stems, MIDI and video. A native modal `<dialog>`, so focus is
  * trapped, Escape closes it (cancelling a running export) and focus returns to the menu button.
  */
 export function ExportDialog() {
@@ -244,13 +277,45 @@ export function ExportDialog() {
     };
   }, [open, runtime]);
 
+  // Which codecs this browser would use at the chosen size (an async WebCodecs query).
+  const vkey = videoKey(form);
+  const wantVideo = open && runtime !== null && form.format === 'video';
+  useEffect(() => {
+    if (!wantVideo || !runtime || useExportUi.getState().video.key === vkey) return;
+    useExportUi.setState({ video: { key: vkey, support: null } });
+    const [aspect, size, fps] = vkey.split(' ');
+    void runtime
+      .videoSupport({
+        aspect: aspect as ExportForm['videoAspect'],
+        size: size as ExportForm['videoSize'],
+        fps: Number(fps) as ExportForm['videoFps'],
+      })
+      .then(
+        (support) => support,
+        (e: unknown): VideoSupport => ({
+          ok: false,
+          reason: e instanceof Error ? e.message : String(e),
+        }),
+      )
+      .then((support) => {
+        if (useExportUi.getState().video.key === vkey) {
+          useExportUi.setState({ video: { key: vkey, support } });
+        }
+      });
+  }, [wantVideo, runtime, vkey]);
+  const videoState = useExportUi((s) => s.video);
+  const support = form.format === 'video' && videoState.key === vkey ? videoState.support : null;
+
   const estimate = useMemo(
     () => (open ? estimateFor(runtime, piece, compiled, form) : null),
     [open, runtime, piece, compiled, form],
   );
 
   const running = run.status === 'running';
-  const toDisk = form.format === 'stems' && runtime?.canSaveToDisk() === true;
+  const isVideo = form.format === 'video';
+  const toDisk = (form.format === 'stems' || isVideo) && runtime?.canSaveToDisk() === true;
+  const videoBlocked = isVideo && support?.ok !== true;
+  const cameraHint = VIDEO_CAMERAS.find((c) => c.id === form.videoCamera)?.hint;
   const mpe = form.midiMode === 'mpe';
   const notes = form.midiMode === 'notesOnly';
   const hint = MIDI_MODES.find((m) => m.id === form.midiMode)?.hint;
@@ -290,7 +355,7 @@ export function ExportDialog() {
             onChange={(format) => patch({ format })}
           />
 
-          {form.format !== 'midi' && (
+          {(form.format === 'wav' || form.format === 'stems') && (
             <>
               <Radios
                 legend="Bit depth"
@@ -382,24 +447,116 @@ export function ExportDialog() {
             </>
           )}
 
+          {isVideo && (
+            <>
+              <Radios
+                legend="Aspect"
+                name={`${id}-aspect`}
+                value={form.videoAspect}
+                options={VIDEO_ASPECTS}
+                disabled={running}
+                testId="export-aspect"
+                onChange={(videoAspect) => patch({ videoAspect })}
+              />
+              <div className="field-pair">
+                <Radios
+                  legend="Size"
+                  name={`${id}-vsize`}
+                  value={form.videoSize}
+                  options={VIDEO_SIZES}
+                  disabled={running}
+                  testId="export-vsize"
+                  onChange={(videoSize) => patch({ videoSize })}
+                />
+                <Radios
+                  legend="Frame rate"
+                  name={`${id}-fps`}
+                  value={form.videoFps}
+                  options={VIDEO_FPS}
+                  disabled={running}
+                  testId="export-fps"
+                  onChange={(videoFps) => patch({ videoFps })}
+                />
+              </div>
+              <Radios
+                legend="Camera"
+                name={`${id}-camera`}
+                value={form.videoCamera}
+                options={VIDEO_CAMERAS}
+                disabled={running}
+                testId="export-camera"
+                onChange={(videoCamera) => patch({ videoCamera })}
+              />
+              <small className="export-hint">{cameraHint}</small>
+              <Radios
+                legend="Theme"
+                name={`${id}-vtheme`}
+                value={form.videoTheme}
+                options={VIDEO_THEMES}
+                disabled={running}
+                testId="export-vtheme"
+                onChange={(videoTheme) => patch({ videoTheme })}
+              />
+              <div className="field">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={form.videoHud}
+                    disabled={running}
+                    data-testid="export-hud"
+                    onChange={(e) => patch({ videoHud: e.target.checked })}
+                  />
+                  <span>HUD (chord and readouts)</span>
+                </label>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={form.videoThickness}
+                    disabled={running}
+                    data-testid="export-thickness"
+                    onChange={(e) => patch({ videoThickness: e.target.checked })}
+                  />
+                  <span>Thickness (louder lines are thicker)</span>
+                </label>
+              </div>
+            </>
+          )}
+
           <div className="export-status" aria-live="polite" data-testid="export-status">
-            {!running && estimate && (
+            {!running && isVideo && runtime && support === null && (
+              <p className="export-size" data-testid="export-codec">
+                Checking this browser’s video encoders…
+              </p>
+            )}
+            {!running && support?.ok === true && (
+              <p className="export-size" data-testid="export-codec">
+                {codecLabel(support.video, support.audio)}
+              </p>
+            )}
+            {!running && support?.ok === false && (
+              <p className="export-warn" role="alert" data-testid="export-unsupported">
+                {support.reason}
+              </p>
+            )}
+            {!running && estimate && support?.ok !== false && (
               <p className="export-size" data-testid="export-size">
                 {form.format === 'stems'
                   ? `${estimate.files} files, ${formatBytes(estimate.bytes)} zipped`
-                  : `About ${formatBytes(estimate.bytes)}`}
+                  : `${isVideo ? 'Up to' : 'About'} ${formatBytes(estimate.bytes)}`}
                 {estimate.zip64 && ' (ZIP64: some unzip tools need a recent version)'}
               </p>
             )}
             {!running && form.format === 'wav' && estimate === null && runtime === null && (
               <p className="export-size">Loading the exporter…</p>
             )}
-            {!running && estimate?.large && (
+            {!running && estimate?.large && support?.ok !== false && (
               <p className="export-warn" role="alert" data-testid="export-large">
                 This export is large (over 1 GB).{' '}
                 {toDisk
                   ? 'It will be written straight to the file you pick, so memory stays low.'
-                  : 'This browser keeps the whole zip in memory until it is saved. Mono or 16-bit make it smaller, or use Chrome or Edge to save straight to disk.'}
+                  : isVideo
+                    ? 'This browser keeps the whole video in memory until it is saved. 720p or 30 fps make it smaller, or use Chrome or Edge to save straight to disk.'
+                    : 'This browser keeps the whole zip in memory until it is saved. Mono or 16-bit make it smaller, or use Chrome or Edge to save straight to disk.'}
               </p>
             )}
             {running && (
@@ -440,7 +597,7 @@ export function ExportDialog() {
             <button
               type="submit"
               className="primary"
-              disabled={running || !runtime}
+              disabled={running || !runtime || videoBlocked}
               data-testid="export-run"
             >
               {RUN_LABEL[form.format]}

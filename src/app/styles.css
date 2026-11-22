@@ -1016,6 +1016,13 @@ dialog.dialog.export {
   accent-color: var(--accent);
 }
 
+/* Two short radio groups side by side, wrapping on narrow screens. */
+.dialog .field-pair {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+}
+
 .seg.radios:has(input:disabled) {
   opacity: 0.5;
 }
