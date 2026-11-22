@@ -14,6 +14,7 @@ import {
   scaleIntervals,
 } from '../../../core/scales';
 import { activeAt, segmentAt } from '../../../core/query';
+import { partScope } from '../../../core/parts';
 import type {
   CompiledScore,
   EaseRef,
@@ -53,13 +54,51 @@ export type TargetMode = 'all' | 'rank' | 'pick' | 'part';
 export function targetMode(t: VoiceSelector | undefined): TargetMode {
   if (!t || t === 'all') return 'all';
   if ('voices' in t) return 'pick';
-  if ('part' in t) return 'part';
+  if ('part' in t || 'parts' in t || 'exceptParts' in t) return 'part';
   return 'rank';
 }
 
 /** The target the Part chooser writes: undefined (the default, all) for '', else `{ part }`. */
 export function partTarget(part: string): VoiceSelector | undefined {
   return part === '' ? undefined : { part };
+}
+
+/** What the Part chooser shows (revision 10): the ticked parts and the All but these switch. */
+export interface PartPick {
+  ticked: readonly string[];
+  except: boolean;
+}
+
+/** The Part chooser's state for a target; null for a rank or pick target ("Advanced"). */
+export function partPick(t: VoiceSelector | undefined): PartPick | null {
+  if (targetMode(t) === 'all') return { ticked: [], except: false };
+  const scope = partScope(t);
+  return scope && { ticked: scope.names, except: scope.except };
+}
+
+/**
+ * The target a Part pick writes: nothing ticked is All (undefined), the switch writes
+ * `{ exceptParts }`, one ticked part `{ part }` and several `{ parts }` (in pool order, `order`).
+ */
+export function pickTarget(
+  pick: PartPick,
+  order: readonly string[] = [],
+): VoiceSelector | undefined {
+  const rank = (n: string): number => {
+    const i = order.indexOf(n);
+    return i < 0 ? order.length : i;
+  };
+  const names = [...new Set(pick.ticked)].sort((a, b) => rank(a) - rank(b));
+  if (names.length === 0) return undefined;
+  if (pick.except) return { exceptParts: names };
+  return names.length === 1 ? { part: names[0] } : { parts: names };
+}
+
+/** The pick with `part` ticked or unticked (from "Advanced", ticking starts a fresh pick). */
+export function togglePart(pick: PartPick | null, part: string): PartPick {
+  const p = pick ?? { ticked: [], except: false };
+  const ticked = p.ticked.includes(part) ? p.ticked.filter((n) => n !== part) : [...p.ticked, part];
+  return { ticked, except: ticked.length > 0 && p.except };
 }
 
 /**

@@ -199,7 +199,11 @@ export type VoiceSelector =
   /** By pitch order at that time, inclusive; 0 = lowest. Ties break by pool index. */
   | { rank: [number, number] }
   /** Revision 9: the active voices of that part (`VoiceDef.part`). */
-  | { part: string };
+  | { part: string }
+  /** Revision 10: the active voices of any of these parts. */
+  | { parts: string[] }
+  /** Revision 10: every active voice outside these parts (voices with no part included). */
+  | { exceptParts: string[] };
 
 /** A set of notes a moment moves voices to (§5, §7.3). */
 export type NoteSet =
@@ -548,8 +552,8 @@ export interface TuneMoment extends MomentBase {
   strike?: boolean;
   /**
    * Revision 10: the tonic the notes are written in. When set, the tune sounds transposed by the
-   * smallest interval (−5…+6 semitones) from it to the tonic of the key in effect at `at`. Absent:
-   * the pitches are absolute.
+   * smallest interval (−6…+5 semitones; a tritone goes down) from it to the tonic of the key in
+   * effect at `at`. Absent: the pitches are absolute.
    */
   writtenIn?: PitchClass;
 }

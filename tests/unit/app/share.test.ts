@@ -183,6 +183,32 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
     expect(await open(link)).toEqual(p);
   });
 
+  it('round-trips multi-part targets (revision 10)', async () => {
+    const piece = withOpening(newPiece({ seed: 9 }));
+    piece.voices[0].part = 'Melody';
+    piece.voices[1].part = 'Bass';
+    piece.moments.push(
+      {
+        id: 'mp1',
+        type: 'shift',
+        at: 2,
+        by: 2,
+        unit: 'semitones',
+        target: { parts: ['Melody', 'Bass'] },
+      },
+      { id: 'mp2', type: 'level', at: 3, gain: 0.5, over: 1, target: { exceptParts: ['Bass'] } },
+    );
+    const p = parsed(piece);
+    const link = await encodeShareLink(p, BASE);
+    expect(link).toContain('#p=2.');
+    const q = await open(link);
+    expect(q).toEqual(p);
+    expect(q.moments.slice(-2).map((m) => m.target)).toEqual([
+      { parts: ['Melody', 'Bass'] },
+      { exceptParts: ['Bass'] },
+    ]);
+  });
+
   it('nextId counts up within the same width', () => {
     expect(nextId('kd0041')).toBe('kd0042');
     expect(nextId('m00009')).toBe('m00010');

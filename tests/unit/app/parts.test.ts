@@ -28,6 +28,7 @@ vi.mock('../../../src/app/audio', () => {
 
 import { newPiece } from '../../../src/core/defaults';
 import type { Moment, Piece } from '../../../src/core/types';
+import { updateMoment } from '../../../src/app/editor/actions';
 import { edit, undo, useEditor } from '../../../src/app/editor/history';
 import {
   assignPart,
@@ -35,13 +36,21 @@ import {
   deletePart,
   freePartName,
   hasParts,
+  momentsTargeting,
   partNames,
   patchPart,
   renameError,
   renamePart,
+  scopeLabel,
   setPartRangeBound,
 } from '../../../src/app/editor/parts';
-import { partTarget, targetMode } from '../../../src/app/ui/inspector/fields';
+import {
+  partPick,
+  partTarget,
+  pickTarget,
+  targetMode,
+  togglePart,
+} from '../../../src/app/ui/inspector/fields';
 import { loadPiece, usePlayer } from '../../../src/app/store';
 
 const cur = (): Piece => usePlayer.getState().piece;
@@ -131,6 +140,98 @@ describe('parts', () => {
     // An unknown part's moments fall back to the default target.
     const q: Piece = { ...cur(), moments: [...cur().moments, shift('m3', 6, 'Gone')] };
     expect(targetOf(deletePart(q, 'Gone'), 'm3')).toBeUndefined();
+  });
+});
+
+describe('multi-part targets (revision 10)', () => {
+  const withLists = (): Piece => ({
+    ...cur(),
+    moments: [
+      ...cur().moments,
+      { ...shift('m3', 6, 'x'), target: { parts: ['Melody', 'Bass'] } },
+      { ...shift('m4', 8, 'x'), target: { exceptParts: ['Melody'] } },
+    ],
+  });
+
+  it('rename rewrites the lists too, as one undo entry', () => {
+    loadPiece(withLists());
+    edit((p) => renamePart(p, 'Melody', 'Tune'), 'Rename part');
+    expect(targetOf(cur(), 'm1')).toEqual({ part: 'Tune' });
+    expect(targetOf(cur(), 'm3')).toEqual({ parts: ['Tune', 'Bass'] });
+    expect(targetOf(cur(), 'm4')).toEqual({ exceptParts: ['Tune'] });
+    undo();
+    expect(targetOf(cur(), 'm3')).toEqual({ parts: ['Melody', 'Bass'] });
+  });
+
+  it('counts list targets as targeting a part; delete picks the same voices', () => {
+    const p = withLists();
+    expect(momentsTargeting(p, 'Melody').map((m) => m.id)).toEqual(['m1', 'm3', 'm4']);
+    expect(momentsTargeting(p, 'Bass').map((m) => m.id)).toEqual(['m2', 'm3']);
+    const q = deletePart(p, 'Melody');
+    expect(targetOf(q, 'm3')).toEqual({ voices: ['v1', 'v2', 'v3', 'v4'] });
+    expect(targetOf(q, 'm4')).toEqual({ voices: ['v3', 'v4', 'v5'] });
+    expect(targetOf(q, 'm2')).toEqual({ part: 'Bass' });
+  });
+
+  it('labels a scope', () => {
+    expect(scopeLabel({ names: ['Melody'], except: false })).toBe('Melody');
+    expect(scopeLabel({ names: ['Melody', ''], except: false })).toBe('Melody, Unassigned');
+    expect(scopeLabel({ names: ['Bass'], except: true })).toBe('all but Bass');
+  });
+
+  it('the Part chooser: ticks, the switch, and the target each writes', () => {
+    const order = ['Melody', 'Bass', 'Pad'];
+    expect(partPick(undefined)).toEqual({ ticked: [], except: false });
+    expect(partPick({ rank: [0, 1] })).toBeNull();
+    expect(partPick({ voices: ['v1'] })).toBeNull();
+    expect(partPick({ part: 'Bass' })).toEqual({ ticked: ['Bass'], except: false });
+    expect(partPick({ parts: ['Bass', 'Pad'] })).toEqual({
+      ticked: ['Bass', 'Pad'],
+      except: false,
+    });
+    expect(partPick({ exceptParts: ['Pad'] })).toEqual({ ticked: ['Pad'], except: true });
+
+    const one = togglePart(partPick(undefined), 'Bass');
+    expect(pickTarget(one, order)).toEqual({ part: 'Bass' });
+    const two = togglePart(one, 'Melody');
+    expect(pickTarget(two, order)).toEqual({ parts: ['Melody', 'Bass'] });
+    expect(pickTarget({ ...two, except: true }, order)).toEqual({
+      exceptParts: ['Melody', 'Bass'],
+    });
+    expect(pickTarget({ ticked: ['Bass'], except: true }, order)).toEqual({
+      exceptParts: ['Bass'],
+    });
+    // Unticking the last part is All, and the switch goes off.
+    const none = togglePart({ ticked: ['Bass'], except: true }, 'Bass');
+    expect(none).toEqual({ ticked: [], except: false });
+    expect(pickTarget(none, order)).toBeUndefined();
+    expect(pickTarget({ ticked: [], except: true }, order)).toBeUndefined();
+    // From Advanced (a pick or rank), a tick starts a fresh pick.
+    expect(pickTarget(togglePart(null, 'Pad'), order)).toEqual({ part: 'Pad' });
+    for (const t of [{ parts: ['A', 'B'] }, { exceptParts: ['A'] }])
+      expect(targetMode(t)).toBe('part');
+  });
+
+  it('a chooser change is one undo entry; nothing ticked drops the target', () => {
+    const m1 = (): Moment => cur().moments.find((m) => m.id === 'm1')!;
+    const pick = (part: string): void => {
+      updateMoment(
+        'm1',
+        { target: pickTarget(togglePart(partPick(m1().target), part), partNames(cur())) },
+        'Change part',
+      );
+    };
+    pick('Bass');
+    expect(m1().target).toEqual({ parts: ['Melody', 'Bass'] });
+    expect(useEditor.getState().undoLabel).toBe('Change part');
+    pick('Melody');
+    pick('Bass');
+    expect('target' in m1()).toBe(false);
+    undo();
+    expect(m1().target).toEqual({ part: 'Bass' });
+    undo();
+    undo();
+    expect(m1().target).toEqual({ part: 'Melody' });
   });
 });
 

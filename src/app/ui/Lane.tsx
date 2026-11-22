@@ -33,7 +33,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
-import { selectorPart } from '../../core/parts';
+import { partScope } from '../../core/parts';
+import { scopeLabel } from '../editor/parts';
 import type { View } from '../../render';
 import { auditionMoment } from '../audition';
 import { keyName } from '../../render';
@@ -1260,12 +1261,12 @@ function noEffectReasons(compiled: CompiledScore): Map<MomentId, string> {
   return out;
 }
 
-/** Moments with a `{ part }` target and the part's name (revision 9). */
+/** Moments with a part target and its label (revisions 9–10: "Melody", "all but Bass"). */
 function momentParts(piece: Piece): Map<MomentId, string> {
   const out = new Map<MomentId, string>();
   for (const m of piece.moments) {
-    const p = selectorPart(m.target);
-    if (p !== null) out.set(m.id, p === '' ? 'Unassigned' : p);
+    const scope = partScope(m.target);
+    if (scope !== null) out.set(m.id, scopeLabel(scope));
   }
   return out;
 }

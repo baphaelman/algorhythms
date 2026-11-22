@@ -64,8 +64,9 @@ test('parts: build, choose in the inspector, rename, whole-part timbre', async (
 
   // Inspector: choose Part 2; header and lane tooltip name it.
   const chooser = insp.getByTestId('insp-part');
-  await expect(chooser).toHaveValue('\u0000all');
-  await chooser.selectOption('Part 2');
+  const chip = (part: string) => chooser.locator(`button[data-part="${part}"]`);
+  await expect(chip('')).toHaveAttribute('aria-pressed', 'true');
+  await chip('Part 2').click();
   expect(await targetOf(page, CHORD)).toEqual({ part: 'Part 2' });
   await expect(insp.getByTestId('insp-head-part')).toHaveText(/Part 2/);
   await expect(page.locator(`.lane-item[data-moment="${CHORD}"]`)).toHaveAttribute(
@@ -98,7 +99,7 @@ test('parts: build, choose in the inspector, rename, whole-part timbre', async (
   await name.press('Enter');
   await expect(drawer.locator('[data-part="Bass"]').first()).toBeVisible();
   expect(await targetOf(page, CHORD)).toEqual({ part: 'Bass' });
-  await expect(chooser).toHaveValue('Bass');
+  await expect(chip('Bass')).toHaveAttribute('aria-pressed', 'true');
   await expect(insp.getByTestId('insp-head-part')).toHaveText(/Bass/);
   await undo(page);
   expect(await targetOf(page, CHORD)).toEqual({ part: 'Part 2' });
@@ -119,12 +120,12 @@ test('parts: build, choose in the inspector, rename, whole-part timbre', async (
   expect(await voices(page)).toEqual(before);
 
   // "All" writes the default target.
-  await chooser.selectOption({ label: 'All' });
+  await chip('').click();
   expect(await targetOf(page, CHORD)).toBeNull();
   await expect(insp.getByTestId('insp-head-part')).toHaveCount(0);
 
   // Deleting a targeted part asks inline, then retargets its moments by pick.
-  await chooser.selectOption('Bass');
+  await chip('Bass').click();
   await bass.getByTestId('part-delete').click();
   await expect(drawer.getByRole('alert')).toContainText('1 moment targets Bass');
   await drawer.getByTestId('part-delete-confirm').click();

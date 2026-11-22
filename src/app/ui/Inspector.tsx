@@ -22,7 +22,8 @@ import { atPatch, patchMoment } from '../editor/ops';
 import { usePlayer } from '../store';
 import { NumberField, TextField, fieldSetter, type Setter } from './inspector/controls';
 import { GlideFields, PartField, SeedField, TargetField } from './inspector/CommonFields';
-import { selectorPart } from '../../core/parts';
+import { partScope } from '../../core/parts';
+import { scopeLabel } from '../editor/parts';
 import { formatTime, keyAt } from './inspector/fields';
 import { KeyFields, TypeFields } from './inspector/TypeFields';
 import { Overrides } from './inspector/Overrides';
@@ -244,17 +245,17 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
     m.type !== 'key' && m.type !== 'level' && m.type !== 'pulse' && m.type !== 'timbre';
   // A tune draws nothing at random (one line, no jitter): no seed either.
   const seeded = (pitched && m.type !== 'tune') || (m.type === 'pulse' && m.mode === 'random');
-  const part = selectorPart(m.target);
+  const scope = partScope(m.target);
 
   return (
     <div className="insp-one" data-moment-id={m.id} data-moment-type={m.type}>
       <header className="insp-head">
         <h2>
           {TYPE_NAMES[m.type]} <span className="insp-at">@ {formatTime(m.at)}</span>
-          {part !== null && (
+          {scope !== null && (
             <span className="insp-head-part" data-testid="insp-head-part">
               {' '}
-              · {part === '' ? 'Unassigned' : part}
+              · {scopeLabel(scope)}
             </span>
           )}
         </h2>

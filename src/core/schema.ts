@@ -160,6 +160,8 @@ export const VoiceSelectorSchema = z.union([
   z.looseObject({ voices: z.array(id) }),
   z.looseObject({ rank: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }),
   z.looseObject({ part: z.string() }),
+  z.looseObject({ parts: z.array(z.string()).min(1) }),
+  z.looseObject({ exceptParts: z.array(z.string()).min(1) }),
 ]);
 
 export const NoteSetSchema = z.discriminatedUnion('kind', [
@@ -408,7 +410,7 @@ const MOMENT_SCHEMAS = {
       .enum(PITCH_CLASSES)
       .optional()
       .describe(
-        'The tonic the notes are written in: the tune sounds moved by the smallest interval (−5…+6) to the tonic at `at` (absent: absolute pitches).',
+        'The tonic the notes are written in: the tune sounds moved by the smallest interval (−6…+5, a tritone down) to the tonic at `at` (absent: absolute pitches).',
       ),
   }),
   timbre: z.looseObject({

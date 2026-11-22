@@ -630,6 +630,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1064,6 +1096,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1301,6 +1365,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
@@ -1614,6 +1710,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -1855,6 +1983,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -2084,6 +2244,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
@@ -2332,6 +2524,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
@@ -2643,6 +2867,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -2902,6 +3158,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -3129,6 +3417,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
@@ -3435,6 +3755,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -3662,6 +4014,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
@@ -3947,6 +4331,38 @@ This is the *input* form: fields with defaults are optional here.
                       "part"
                     ],
                     "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
+                    ],
+                    "additionalProperties": {}
                   }
                 ]
               },
@@ -4142,7 +4558,7 @@ This is the *input* form: fields with defaults are optional here.
                 "type": "boolean"
               },
               "writtenIn": {
-                "description": "The tonic the notes are written in: the tune sounds moved by the smallest interval (−5…+6) to the tonic at `at` (absent: absolute pitches).",
+                "description": "The tonic the notes are written in: the tune sounds moved by the smallest interval (−6…+5, a tritone down) to the tonic at `at` (absent: absolute pitches).",
                 "type": "string",
                 "enum": [
                   "C",
@@ -4247,6 +4663,38 @@ This is the *input* form: fields with defaults are optional here.
                     },
                     "required": [
                       "part"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "parts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "parts"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "exceptParts": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "exceptParts"
                     ],
                     "additionalProperties": {}
                   }
