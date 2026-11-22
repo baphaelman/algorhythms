@@ -80,10 +80,13 @@ function openings(
   count: number,
 ): Suggestion[] {
   const pcs = degreesToPcs([0, 2, 4], key);
+  const triad = `Start on ${nameChord(pcs, pcs[0], key)}`;
+  // A major triad is named by its root ("C"), so the tonic alone then says "(unison)".
+  const alone = `Start on ${key.tonic}`;
   const drafts: [SuggestionKind, string, Draft][] = [
     [
       'open',
-      `Start on ${nameChord(pcs, pcs[0], key)}`,
+      triad,
       {
         type: 'chord',
         notes: { kind: 'degrees', degrees: [0, 2, 4] },
@@ -91,7 +94,11 @@ function openings(
         assign: 'ordered',
       },
     ],
-    ['open', `Start on ${key.tonic}`, { type: 'unison', pitch: 'tonic', octaves: false }],
+    [
+      'open',
+      alone === triad ? `${alone} (unison)` : alone,
+      { type: 'unison', pitch: 'tonic', octaves: false },
+    ],
   ];
   const out: Suggestion[] = [];
   for (const [kind, label, m] of drafts) {

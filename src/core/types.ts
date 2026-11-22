@@ -1077,6 +1077,12 @@ export interface HarmonyChange {
   bass: number;
   /** Display label, e.g. "ii7 · Dm7", "F/A" or "C E F♯" (core/harmony.ts). */
   label: string;
+  /**
+   * Absent: set by `momentId` at `t`. 'tunes': named from the notes sounding while only tunes
+   * drive the lines (`momentId` is the bass line's tune). 'resume': the chord entry of `momentId`
+   * shown again when a chord-driven line sounds after such a passage (compiler/tune-harmony.ts).
+   */
+  from?: 'tunes' | 'resume';
 }
 
 /** Output of `compile(piece)` (§7.9): what audio, picture and MIDI all read (P1). */

@@ -77,6 +77,11 @@ export function suggestionsAt(piece: Piece, score: CompiledScore, t: Seconds): S
   return read === t ? out : out.map((s) => ({ ...s, moment: shifted(s.moment, t - read) }));
 }
 
+/** React key of suggestion `i` of the list for time `t` (unique in the list). */
+export function suggestionKey(t: Seconds, i: number, s: Suggestion): string {
+  return `${t}:${i}:${s.kind}:${s.label}`;
+}
+
 /**
  * The piece with `moment` appended: an explicit `end.at` that would leave less than 4 s after the
  * moment's span moves out to that. Used for adding and for the hover preview.

@@ -96,7 +96,7 @@ export function noteHarmony(
   m: NoteMoment,
 ): { before: string | null; after: string | null } {
   const h = score.harmony ?? [];
-  const k = h.findIndex((e) => e.momentId === m.id && Math.abs(e.t - m.at) < 1e-9);
+  const k = h.findIndex((e) => e.momentId === m.id && !e.from && Math.abs(e.t - m.at) < 1e-9);
   if (k >= 0) return { before: k > 0 ? h[k - 1].label : null, after: h[k].label };
   let cur: string | null = null;
   for (const e of h) {

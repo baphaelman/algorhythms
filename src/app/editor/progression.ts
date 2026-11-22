@@ -101,7 +101,7 @@ export function progressionChordNames(
   keyAt: (t: Seconds) => Key,
 ): string[] {
   const starts = progressionStarts(m);
-  const mine = (harmony ?? []).filter((h) => h.momentId === m.id);
+  const mine = (harmony ?? []).filter((h) => h.momentId === m.id && !h.from);
   return m.chords.map((c, k) => {
     // A land chord decides before its start: take the harmony entry nearest its start.
     const lo = k > 0 ? (starts[k - 1] + starts[k]) / 2 : -Infinity;
