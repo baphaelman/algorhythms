@@ -2344,3 +2344,18 @@ On 99cddd2, branch `live-grace-fill`. Fixes 2 and 3 of M7-d. `core/live-plan.ts`
   - Lint, typecheck: pass. `pnpm test --maxWorkers=2`: 2383 passed (+2 skipped).
   - e2e:quick live, live-drawer, live-record and musical-typing: 16/16 on chromium-dev + chromium-prod. Firefox is not installed here.
   - `pnpm test:perf`: 10/11. The live no-GC run fails: 50.6 KB allocated against a 6 KB limit, 0 GC. It fails identically at 99cddd2, so it comes from M7-d's `dsp/live.ts` changes, which were never run under the harness. Left to that work.
+
+## M7: merge fix, live = take seed 35, steady live no-GC (core, dsp, tests; 2026-11-22)
+On 94b1d3c (`main-7glpov` with `m7d-match` and `live-grace-fill`), branch `live-merge-fix`.
+- **Seed 35 (stagger 0.12, low-first).** The grace changed the random take's event timing (with grace off, it passes), which exposed a planner gap in M7-d. The cause was a join of two lines arriving on one note within SAME_TIME, both bound for one destination. `planLive` only let the line being scanned follow another. When the survivor (the lower index, as `onJoin` picks) arrived later by rounding, it was skipped as "still gliding", and the earlier arrival was never folded into it. Fix (`core/live-plan.ts`, joins): collect the whole group, pick the survivor, and make every other member follow it. Follow chains are flattened.
+- **Seeds 73–172 (`LIVE_TAKE_SEEDS=1`).** 1 of 100 misses (116: 30.1 c, 6 misses), against 3 for M7-d alone (74, 116, 117). The merged tree without the fix missed 2 (116, 153). 33 and 47 still miss.
+- **Live no-GC, now steady at 1976 B** (was 4520, sometimes 6032). Two sources of allocation depended on JIT timing:
+  - The compactions (`dsp/live.ts`) run too rarely to be optimised. Unoptimised, `a[0] = a[k]` on a Float64Array boxes the double. They now use `copyWithin` (~1.3 KB).
+  - The harness passed bend values (and the message scalars) from Float64Arrays. Each call V8 did not inline (`setBend`) boxed a double (~1.4 KB). They now come from tagged arrays, as a port message's fields do.
+
+  10 consecutive runs of the test under load (`pnpm test` running, load average 3.3–4.1 on 4 cores) all gave 1976 B. The limit is unchanged.
+- **Status.**
+  - Lint and typecheck pass.
+  - `pnpm test --maxWorkers=2`: 2441 passed (+2 skipped).
+  - `pnpm test:perf`: 11/11 passed.
+  - e2e:quick live, live-drawer, live-record and musical-typing: 16/16 on chromium-dev and chromium-prod.

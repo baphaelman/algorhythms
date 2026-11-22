@@ -689,19 +689,26 @@ export function planLive(
     const p = parts[i];
     const ta = p.seg.t1;
     if (!(p.t0 > ta) || follow[i] !== i) continue;
-    let s = i;
+    const group = [i];
     for (let j = 0; j < n; j++) {
       const q = parts[j];
       if (j === i || q.kind !== Kind.Move || unbornLine(j) || follow[j] !== j) continue;
       if (Math.abs(q.to - p.to) > SAME_PITCH || !(q.t0 > ta)) continue;
       if (glides(q.seg) && q.seg.t1 > ta) continue; // still gliding there
       if (Math.abs(q.seg.p1 - p.seg.p1) > SAME_PITCH) continue;
-      const a = sinceOf(parts[s]);
-      const b = sinceOf(q);
-      if (b < a - SAME_TIME || (Math.abs(b - a) <= SAME_TIME && q.voice < parts[s].voice)) s = j;
+      group.push(j);
     }
-    if (s !== i) follow[i] = s;
+    let s = i;
+    for (const j of group) {
+      const a = sinceOf(parts[s]);
+      const b = sinceOf(parts[j]);
+      if (b < a - SAME_TIME || (Math.abs(b - a) <= SAME_TIME && parts[j].voice < parts[s].voice))
+        s = j;
+    }
+    // The survivor may be the later arrival (a tie within SAME_TIME): the others follow it.
+    for (const j of group) if (j !== s) follow[j] = s;
   }
+  for (let i = 0; i < n; i++) while (follow[follow[i]] !== follow[i]) follow[i] = follow[follow[i]];
 
   const out: PlannedMove[] = [];
   /** Part q's change of path before `until` (its move, or an unborn line's hold), or null. */

@@ -483,23 +483,27 @@ export class LiveTracks {
     d.nLevel = k + 1;
   }
 
-  /** Keeps only the last segment (the one in force at tA); returns the new count, 1. */
+  /**
+   * Keeps only the last segment (the one in force at tA); returns the new count, 1. The compactions
+   * copy doubles with `copyWithin`: they run too rarely to be optimised, and an unoptimised
+   * `a[0] = a[k]` boxes the double (~1.3 KB per no-GC live run).
+   */
   private compactSegs(d: VoiceData, line: Float64Array, departs: Uint8Array): number {
     const k = d.nSeg - 1;
-    line[0] = line[k];
+    line.copyWithin(0, k, k + 1);
     departs[0] = departs[k];
     d.segs.copyWithin(0, k * SEG_STRIDE, (k + 1) * SEG_STRIDE);
     d.segGlide[0] = d.segGlide[k];
-    d.holdStart[0] = d.holdStart[k];
-    d.share[0] = d.share[k];
+    d.holdStart.copyWithin(0, k, k + 1);
+    d.share.copyWithin(0, k, k + 1);
     d.nSeg = 1;
     return 1;
   }
 
   private compactStrikes(d: VoiceData): void {
     const k = d.nStrike - 1;
-    d.strikeT[0] = d.strikeT[k];
-    d.strikeShare[0] = d.strikeShare[k];
+    d.strikeT.copyWithin(0, k, k + 1);
+    d.strikeShare.copyWithin(0, k, k + 1);
     d.strikePrevT[0] = NaN;
     d.strikePrevShare[0] = 1;
     d.nStrike = 1;
@@ -511,13 +515,12 @@ export class LiveTracks {
     if (d.levels[k * LEVEL_STRIDE + LEVEL_T] >= LR[R_TA] && k > 0) {
       // The last may be overwritten, which reads its start level.
       d.levels.copyWithin(0, (k - 1) * LEVEL_STRIDE, (k + 1) * LEVEL_STRIDE);
-      d.levelStart[0] = d.levelStart[k - 1];
-      d.levelStart[1] = d.levelStart[k];
+      d.levelStart.copyWithin(0, k - 1, k + 1);
       d.nLevel = 2;
       return 2;
     }
     d.levels.copyWithin(0, k * LEVEL_STRIDE, (k + 1) * LEVEL_STRIDE);
-    d.levelStart[0] = d.levelStart[k];
+    d.levelStart.copyWithin(0, k, k + 1);
     d.nLevel = 1;
     return 1;
   }
