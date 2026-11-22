@@ -49,6 +49,7 @@ import {
 } from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
+import { ChordTrack, noteSetPcs } from './chord-track';
 import {
   MAX_VOICES,
   type CompiledScore,
@@ -892,8 +893,13 @@ export class Compiler {
    * moment deciding earlier (revision 9). Key moments at the same time count in array order.
    */
   private keyFor(i: number): Key {
+    if (this.eventT[i] === this.moments[i].at) return this.key;
+    return this.keyBefore(i);
+  }
+
+  /** The key in effect at moment i's `at`, from the piece alone (no simulation state). */
+  private keyBefore(i: number): Key {
     const at = this.moments[i].at;
-    if (this.eventT[i] === at) return this.key;
     let key = this.piece.key;
     let bestAt = -Infinity;
     for (const j of this.keyMoments) {
@@ -2443,6 +2449,26 @@ export class Compiler {
     }
   }
 
+  private chordTrack: ChordTrack | null = null;
+
+  /**
+   * Pitch classes of the latest chord at or before t, whatever its target (§6.2 walk `over`,
+   * revision 10), or null before any chord. Static (read from the piece, built on first use), so
+   * the incremental compile's causality covers it. The progression moment adds its chords here.
+   */
+  chordPitchClassesAt(t: Seconds): readonly number[] | null {
+    if (!this.chordTrack) {
+      const track = new ChordTrack();
+      this.moments.forEach((m, i) => {
+        if (!this.valid[i] || m.type !== 'chord') return;
+        const pcs = noteSetPcs(m.notes, this.keyBefore(i));
+        if (pcs) track.add(m.at, i, pcs);
+      });
+      this.chordTrack = track;
+    }
+    return this.chordTrack.pcsAt(t);
+  }
+
   private onTick(wi: number, k: number): void {
     const w = this.moments[wi] as WalkMoment;
     const t = w.at + k * w.grid;
@@ -2476,6 +2502,7 @@ export class Compiler {
       t,
       tick: k,
       key: this.key,
+      chord: w.over === 'chord' ? this.chordPitchClassesAt(t) : null,
       seed: this.seeds[wi],
       order,
       dest: (v) => this.destOf(v),

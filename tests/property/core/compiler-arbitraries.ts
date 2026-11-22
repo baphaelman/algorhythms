@@ -266,6 +266,7 @@ export function momentArb(ids: string[], maxT: number, parts = false): fc.Arbitr
                   .map(([a, b]) => ({ leap: [a, b] as [number, number] })),
                 { nil: undefined },
               ),
+              over: fc.constantFrom('key' as const, 'chord' as const),
             },
             { requiredKeys: ['at', 'type', 'len', 'grid', 'density', 'steps', 'stepGlide'] },
           )

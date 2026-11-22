@@ -9,6 +9,10 @@
  * scale tone between leap[0] and leap[1] semitones away that stays more than 2 semitones below the
  * next voice (as in the prototype).
  *
+ * With `over: 'chord'` (revision 10) and a chord in effect (`env.chord`), a step counts chord tones
+ * instead (`stepByChord`), and the bass's drawn leap target moves to the nearest chord tone that
+ * keeps the bass's constraints. The draws are the same as over the key.
+ *
  * Draws are keyed by (walk seed, voice, tick index, purpose), so a voice's step at tick 12 depends
  * only on its own state (§7.7). All steps of a tick start at the tick with the same duration
  * (`stepGlide`) and ease, and idle voices carry no velocity, so two stepping voices whose start
@@ -16,6 +20,7 @@
  */
 
 import { Purpose, randHashed } from '../rng';
+import { mod } from '../math';
 import { pitchesWithPcs, scalePcs, stepByScale } from '../scales';
 import type { CompiledScore, Key, MomentId, Pitch, Seconds, WalkMoment, WalkNote } from '../types';
 
@@ -30,6 +35,11 @@ export interface WalkEnv {
   /** Tick index (the `step` of the keyed draws). */
   readonly tick: number;
   readonly key: Key;
+  /**
+   * Pitch classes of the chord in effect at the tick when the walk steps over chords
+   * (`over: 'chord'`); null to step over the key (also before any chord).
+   */
+  readonly chord: readonly number[] | null;
   readonly seed: number;
   /** Every active voice, sorted by committed destination (ties: pool index). */
   readonly order: readonly number[];
@@ -88,11 +98,19 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
       });
       if (cands.length > 0) {
         to = cands[Math.floor(randHashed(env.seed, h, env.tick, Purpose.BassLeap) * cands.length)];
+        if (env.chord) {
+          to = nearestChordTone(
+            to,
+            env.chord,
+            r,
+            (p) => p > below && p < above - BASS_MARGIN && p !== cur,
+          );
+        }
       }
     } else {
       const s =
         steps[Math.floor(randHashed(env.seed, h, env.tick, Purpose.WalkStep) * steps.length)];
-      const p = stepByScale(cur, s, env.key);
+      const p = env.chord ? stepByChord(cur, s, env.chord) : stepByScale(cur, s, env.key);
       if (p > below && p < above && p >= r[0] && p <= r[1] && p !== cur) to = p;
     }
     if (Number.isFinite(to)) {
@@ -101,6 +119,49 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
     }
   }
   return out;
+}
+
+/** Pitches within this of an integer count as that integer (on a chord tone). */
+const EPS = 1e-9;
+
+/**
+ * Moves `p` by `steps` chord tones (revision 10): +n is the n-th chord tone strictly above p, −n
+ * the n-th strictly below, so a voice off the chord first steps to the nearest chord tone in the
+ * step's direction. 0 goes to the nearest chord tone (ties down). Non-integer steps are rounded;
+ * an empty chord leaves p.
+ */
+export function stepByChord(p: Pitch, steps: number, pcs: readonly number[]): Pitch {
+  const set = new Set(pcs.map((pc) => mod(Math.round(pc), 12)));
+  if (set.size === 0 || !Number.isFinite(p)) return p;
+  const n = Math.round(steps);
+  if (n === 0) return nearestChordTone(p, pcs, [-Infinity, Infinity], () => true);
+  const dir = n > 0 ? 1 : -1;
+  let x = n > 0 ? Math.floor(p + EPS) + 1 : Math.ceil(p - EPS) - 1;
+  let left = Math.abs(n);
+  for (;;) {
+    if (set.has(mod(x, 12)) && --left === 0) return x;
+    x += dir;
+  }
+}
+
+/**
+ * The chord tone nearest p within `range` that passes `ok` (ties: the lower one), or NaN if none
+ * does within an octave and a half.
+ */
+export function nearestChordTone(
+  p: Pitch,
+  pcs: readonly number[],
+  range: readonly [Pitch, Pitch],
+  ok: (q: Pitch) => boolean,
+): Pitch {
+  const set = new Set(pcs.map((pc) => mod(Math.round(pc), 12)));
+  let best = NaN;
+  // Ascending with a strict comparison, so at equal distance the lower tone wins.
+  for (let q = Math.floor(p) - 18; q <= Math.ceil(p) + 18; q++) {
+    if (!set.has(mod(q, 12)) || q < range[0] || q > range[1] || !ok(q)) continue;
+    if (Number.isNaN(best) || Math.abs(q - p) < Math.abs(best - p)) best = q;
+  }
+  return best;
 }
 
 /** Tick count of a walk region: ticks at at + k·grid while < until. */
