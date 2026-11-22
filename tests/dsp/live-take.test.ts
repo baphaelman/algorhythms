@@ -12,9 +12,11 @@
  * live mode sounds its first key at once (no debounce, §9), the take starts the whole chord there.
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/core/compiler/compile';
 import { newPiece } from '../../src/core/defaults';
+import { parsePiece } from '../../src/core/schema';
 import { takeBase, takeMoments } from '../../src/core/live-take';
 import type { LiveSettings } from '../../src/core/live';
 import { lifeAt, pitchAt } from '../../src/core/query';
@@ -371,6 +373,25 @@ describe('recorded take plays back as played (§15 M7)', () => {
       const worst = m.misses.reduce((w, x) => Math.max(w, x.gap), 0);
       console.log(`known gap, ${name}: worst ${(worst * 100).toFixed(1)} cents`);
       expect(m.blocks).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('takeBase', () => {
+  it('a take into a sounding piece: every line has died by silentFrom, shortly after T', () => {
+    const raw: unknown = JSON.parse(
+      readFileSync('examples/tidewater-hymn.algorhythms.json', 'utf8'),
+    );
+    const parsed = parsePiece(raw);
+    if (!parsed.ok) throw new Error('example did not parse');
+    for (const T of [6, 30]) {
+      let n = 0;
+      const { piece, silentFrom } = takeBase(parsed.piece, T, () => `cut${n++}`);
+      expect(silentFrom).toBeLessThan(T + 0.07);
+      const score = compile(piece);
+      for (const v of score.voices) expect(lifeAt(v, silentFrom)).toBeNull();
+      // The live pool: every voice that sounded before T (1 at 6 s, 8 at 30 s).
+      expect(liveSetupFrom(piece, score, silentFrom).voices.length).toBe(T === 6 ? 1 : 8);
     }
   });
 });

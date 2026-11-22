@@ -2,7 +2,8 @@
    Notes or Sound drawer. The transport's musical typing indicator. */
 
 .app[data-layout='player'] .live-toggle,
-.app[data-layout='player'] .typing-toggle {
+.app[data-layout='player'] .typing-toggle,
+.app[data-layout='player'] .live-record {
   display: none;
 }
 
@@ -90,4 +91,43 @@
 .piano-key[data-held] {
   background: var(--accent);
   color: var(--paper);
+}
+
+/* Record (M7-c): a dot, filled and pulsing while a take runs. */
+.live-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-record-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+}
+
+.live-record[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.live-record[aria-pressed='true'] .live-record-dot {
+  background: var(--paper);
+  border-color: var(--paper);
+  animation: live-record-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes live-record-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-record[aria-pressed='true'] .live-record-dot {
+    animation: none;
+  }
 }

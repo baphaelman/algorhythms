@@ -247,9 +247,16 @@ export function takeBase(
     count: 0,
     which: 'outer',
     fade: TAKE_CUT_FADE,
+    // The shortest glide (a merge's dying lines glide before they fade; length 0 means default).
+    glide: { length: 0.01, stagger: 0, jitter: 0 },
   };
-  return {
-    piece: { ...cut, moments: [...moments, merge] },
-    silentFrom: T + TAKE_CUT_FADE + CLOSE_GAP,
-  };
+  const out: Piece = { ...cut, moments: [...moments, merge] };
+  // When the cut lines have died (not assumed: a merge may still be gliding them).
+  const closed = compile({ ...out, end: { ...out.end, at: T + 1 } });
+  let silent = T + TAKE_CUT_FADE;
+  for (const v of closed.voices) {
+    const life = lifeAt(v, T);
+    if (life?.died !== undefined) silent = Math.max(silent, life.died);
+  }
+  return { piece: out, silentFrom: silent + CLOSE_GAP };
 }

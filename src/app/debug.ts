@@ -7,7 +7,8 @@ import type { AudioEngine } from '../audio/engine';
 import type { LiveEngine } from '../audio/live-engine';
 import { getAudioContext, getEngine } from './audio';
 import { redo, select, undo, useEditor } from './editor/history';
-import { enterLive, exitLive, live } from './live';
+import { armRecord, enterLive, exitLive, live, stopRecord, useRecord } from './live';
+import { lifeAt, pitchAt } from '../core/query';
 import { connectMidi, disconnectMidi, liveInputs, midiSink, useLive } from './live-ui';
 import { frameStats } from './loop';
 import { auditionState } from './audition';
@@ -58,7 +59,11 @@ export interface AlgoRhythmsDebug {
     inputs: typeof liveInputs;
     /** Web MIDI: connect with a fake MIDIAccess, the sink, disconnect. */
     midi: { connect: typeof connectMidi; sink: typeof midiSink; disconnect: typeof disconnectMidi };
+    /** Recording (M7-c): arm, stop, and its state. */
+    record: { arm: typeof armRecord; stop: typeof stopRecord; state: typeof useRecord };
   };
+  /** Each compiled voice's pitch at piece time t (null where it is silent), by voice id. */
+  pitchesAt(t: number): Record<string, number | null>;
 }
 
 declare global {
@@ -110,6 +115,14 @@ export function installDebug(): void {
       ui: useLive,
       inputs: liveInputs,
       midi: { connect: connectMidi, sink: midiSink, disconnect: disconnectMidi },
+      record: { arm: armRecord, stop: stopRecord, state: useRecord },
+    },
+    pitchesAt(t) {
+      const out: Record<string, number | null> = {};
+      for (const v of usePlayer.getState().compiled.voices) {
+        out[v.id] = lifeAt(v, t) ? pitchAt(v, t) : null;
+      }
+      return out;
     },
   };
 }

@@ -20,7 +20,7 @@ import {
 } from '../core/live';
 import type { Pitch } from '../core/types';
 import { LiveInputHub } from './live-input';
-import { enterLive, exitLive, live } from './live';
+import { armRecord, enterLive, exitLive, isRecording, live, stopRecord, useRecord } from './live';
 import {
   ALL_INPUTS,
   hasWebMidi,
@@ -165,10 +165,36 @@ export function openLive(): void {
 export function closeLive(): void {
   if (!useLive.getState().open) return;
   session++;
+  void stopRecord(); // before the releases below, which the take must not record
   releaseTyping();
   liveInputs.releaseAll();
   useLive.setState({ open: false, typing: false, running: false });
   void exitLive();
+}
+
+/**
+ * Record toggle (§9 Recording): arms a take at the playhead while live, or stops and keeps it.
+ * Call from a user gesture (arming opens a new 'interactive' context).
+ */
+export function toggleRecord(): void {
+  if (useRecord.getState().status !== 'off') {
+    void stopRecord();
+    return;
+  }
+  if (!useLive.getState().open) return;
+  const token = session;
+  armRecord().then(
+    () => {
+      if (token === session) liveInputs.resync(); // keys held across the restart
+    },
+    (e: unknown) => {
+      if (token !== session) return;
+      pushNotice('error', 'Recording could not start', [
+        e instanceof Error ? e.message : String(e),
+      ]);
+      closeLive();
+    },
+  );
 }
 
 /** Opens or closes the drawer. */
@@ -221,7 +247,15 @@ function editorLayout(): boolean {
  */
 export function attachLiveKeys(): () => void {
   const onDown = (e: KeyboardEvent): void => {
-    if (e.defaultPrevented || document.querySelector('dialog[open]') || !editorLayout()) return;
+    if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    // Escape stops a take (and keeps it); a second Escape closes the drawer as before.
+    if (e.key === 'Escape' && isRecording()) {
+      e.preventDefault();
+      e.stopPropagation();
+      void stopRecord();
+      return;
+    }
+    if (!editorLayout()) return;
     const s = useLive.getState();
     const a = typingAction(e, s.typing, s.octave);
     if (!a) return;

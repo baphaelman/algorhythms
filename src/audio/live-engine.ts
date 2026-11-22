@@ -169,6 +169,8 @@ export class LiveEngine {
   /** Live time each recent seq was applied at (presses re-plan from their first one's). */
   private readonly appliedAt = new Map<number, Seconds>();
   private readonly listeners = new Set<(s: LiveSnapshot) => void>();
+  /** `settled()` callers waiting for every posted change to be applied. */
+  private settledWaiters: (() => void)[] = [];
 
   /** Whether live mode is on (entered, not exited). */
   get active(): boolean {
@@ -242,6 +244,18 @@ export class LiveEngine {
     }
   }
 
+  /** Resolves once every posted change is applied (stamped), or live mode ended. */
+  settled(): Promise<void> {
+    if (this.pending.length === 0 || !this.active) return Promise.resolve();
+    return new Promise((resolve) => this.settledWaiters.push(resolve));
+  }
+
+  private releaseSettled(): void {
+    const waiters = this.settledWaiters;
+    this.settledWaiters = [];
+    for (const w of waiters) w();
+  }
+
   /** Leaves live mode: releases everything and closes the interactive context. */
   async exit(): Promise<void> {
     const engine = this.engineValue;
@@ -253,6 +267,7 @@ export class LiveEngine {
     this.logged.clear();
     this.press = null;
     this.pending = [];
+    this.releaseSettled();
     this.keys.allOff();
     await engine.dispose();
     this.notify();
@@ -532,6 +547,7 @@ export class LiveEngine {
         tr.apply(q.moves, 0, q.n, q.gain, q.over, tq, null, q.press > 0);
       }
       this.predicted = tr;
+      if (this.pending.length === 0) this.releaseSettled();
       const logged = this.logged.get(seq);
       if (logged) {
         logged.stamp = { seq, frame, contextTime: frame / rate, liveTime: time };
