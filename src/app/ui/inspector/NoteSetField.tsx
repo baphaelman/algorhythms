@@ -12,6 +12,7 @@ import {
   chordFeedback,
   degreeCells,
   formatPitchList,
+  numeralHint,
   parsePitchList,
   toggleDegree,
 } from './fields';
@@ -80,6 +81,16 @@ export function NoteSetField({
           onCommit={(t) => onChange({ kind: 'chord', symbol: t.trim() }, 'Change chord')}
         />
       )}
+      {value.kind === 'chord' && (
+        <NumeralHintRow
+          symbol={value.symbol}
+          keyAtMoment={keyAtMoment}
+          onFix={(symbol) => {
+            onChange({ kind: 'chord', symbol }, 'Flatten numeral');
+            auditionAfterEdit(momentId);
+          }}
+        />
+      )}
       {/* Remounts when the kind changes: open for degrees, pitches and current; closed for chords. */}
       <details key={value.kind} className="insp-other" open={!chord}>
         <summary>Other notes</summary>
@@ -121,6 +132,28 @@ export function NoteSetField({
         )}
       </details>
     </>
+  );
+}
+
+/** The "did you mean ♭VI?" hint under a numeral outside a minor-type key (composing.md §3 #10). */
+function NumeralHintRow({
+  symbol,
+  keyAtMoment,
+  onFix,
+}: {
+  symbol: string;
+  keyAtMoment: Key;
+  onFix: (symbol: string) => void;
+}) {
+  const h = numeralHint(symbol, keyAtMoment);
+  if (!h) return null;
+  return (
+    <p className="insp-hint" role="status" data-testid="insp-numeral-hint">
+      <code>{h.numeral}</code> here is {h.note}; did you mean <code>{h.flat}</code> = {h.flatNote}?{' '}
+      <button type="button" data-testid="insp-numeral-fix" onClick={() => onFix(h.fixed)}>
+        Use {h.flat}
+      </button>
+    </p>
   );
 }
 

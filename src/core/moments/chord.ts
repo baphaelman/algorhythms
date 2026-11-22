@@ -18,6 +18,7 @@
  *   survives (`count-limited`).
  */
 
+import { parseChord } from '../chords';
 import { assignFree, assignOrdered } from '../voice-leading';
 import { pitchesWithPcs } from '../scales';
 import { fillOctaves, pitchClasses, voiceNotes } from '../voicing';
@@ -39,7 +40,40 @@ export function chordMoment(m: ChordMoment, env: MomentEnv): MomentPlan | null {
     if (diff > 0) return withBirths(m, env, diff);
     if (diff < 0) return withDeaths(m, env, -diff);
   }
-  return voiceChord(m, env, env.targeted);
+  return bassLine(m, env) ?? voiceChord(m, env, env.targeted);
+}
+
+/**
+ * Root in the bass (composing.md §3 #2, 2026-11-21): a chord symbol on exactly one sounding line
+ * (a one-line part, a single voice, a rank of size 1) puts it on the chord's bass, the slash bass
+ * if given, else the root, at the octave nearest the line's committed destination (ties: lower)
+ * within its range, and within the moment's register when that holds one, short of the octaves
+ * another line of its part holds. Hand-written notes
+ * (`pitches`, a frozen chord) and per-voice overrides win: they never reach this, or apply after.
+ * Null when it does not apply (the chord is then voiced as usual).
+ */
+function bassLine(m: ChordMoment, env: MomentEnv): MomentPlan | null {
+  if (env.targeted.length !== 1 || m.notes.kind !== 'chord') return null;
+  const r = parseChord(m.notes.symbol, env.key);
+  if (!r.ok) return null;
+  const v = env.targeted[0];
+  const range = env.range(v);
+  const bass = r.bass ?? r.root;
+  let cands = pitchesWithPcs([bass], range[0], range[1]);
+  if (m.register) {
+    const lo = Math.min(m.register[0], m.register[1]);
+    const hi = Math.max(m.register[0], m.register[1]);
+    const inside = cands.filter((p) => p >= lo && p <= hi);
+    if (inside.length > 0) cands = inside;
+  }
+  // Not onto another line of its part (they would merge): the nearest free octave, else as usual.
+  const held = occupying(env, [v]);
+  cands = cands.filter((c) => !held.some((p) => Math.abs(p - c) < 1e-9));
+  if (cands.length === 0) return null;
+  const from = env.dest(v);
+  let to = cands[0];
+  for (const c of cands) if (Math.abs(c - from) < Math.abs(to - from)) to = c;
+  return { ordered: m.assign !== 'free', intents: [{ voice: v, to, kind: IntentKind.Move }] };
 }
 
 /** Explicit pitch lists (and `current`) stay as written: their unisons merge (owner, 2026-11-21). */

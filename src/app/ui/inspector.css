@@ -179,6 +179,20 @@
   display: none;
 }
 
+/* A numeral outside a minor-type key: "did you mean ♭VI?" (composing.md §3 #10). */
+.insp-hint {
+  margin: 2px 0 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--accent);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.insp-hint button {
+  margin-left: 4px;
+}
+
 .insp-check {
   display: flex;
   align-items: center;

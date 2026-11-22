@@ -85,7 +85,7 @@ Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mj
 
 **Traps met**
 - Only the first establishing moment starts from silence. A `tune` or `unison` on a silent part does nothing (an `info` diagnostic only). Bring a part in with a `chord` + `count`.
-- A one-line part given a chord symbol takes whichever chord tone the voicing picks (often the 3rd or 5th), not the root. Basses are tunes.
+- A one-line part given a chord symbol takes whichever chord tone the voicing picks (often the 3rd or 5th), not the root. Basses are tunes. (Fixed 2026-11-22, suggestion #2: one line now takes the root or slash bass.)
 - Tunes have no rests, and a repeated pitch is held, not re-struck.
 - Roman numerals count major-scale degrees in every mode: in minor write `bIII bVI bVII`; `VI` in A minor is F♯.
 - A `shift` past a line's range folds it an octave, onto another line of its part, which then merges and is lost. Give planed parts an octave of headroom.

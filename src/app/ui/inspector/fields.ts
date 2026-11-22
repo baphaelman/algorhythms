@@ -199,6 +199,72 @@ export function chordFeedback(
   return { ok: true, text: r.pcs.map((pc) => names[pc]).join(' ') };
 }
 
+/** A suggested flat for a Roman numeral that falls outside a minor-type key (composing.md §3 #10). */
+export interface NumeralHint {
+  /** The numeral as typed, e.g. 'VI'. */
+  numeral: string;
+  /** Its root spelled in the key, e.g. 'F♯'. */
+  note: string;
+  /** The suggested numeral, e.g. '♭VI'. */
+  flat: string;
+  /** The flat's root spelled in the key, e.g. 'F'. */
+  flatNote: string;
+  /** The whole symbol rewritten with the flat (ASCII 'b'), e.g. 'bVI7/C'. */
+  fixed: string;
+}
+
+const HINT_NUMERAL_RE = /^(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)(?![IVXiv])/;
+const LETTERS = 'CDEFGAB';
+const LETTER_PCS = [0, 2, 4, 5, 7, 9, 11];
+/** Semitones above the tonic of the major-scale degrees I..VII (the numeral ruler, §7.3). */
+const NUMERAL_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const NUMERAL_NAMES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+
+/** A key whose scale has a minor third and no major third (aeolian, dorian, minor pentatonic…). */
+export function isMinorType(key: Key): boolean {
+  const iv = scaleIntervals(key.scale);
+  return iv.includes(3) && !iv.includes(4);
+}
+
+/** Spells pitch class `pc` on the letter `degree` steps above the tonic's letter. */
+function spellOnLetter(key: Key, degree: number, pc: number): string {
+  const li = (LETTERS.indexOf(key.tonic.charAt(0)) + degree) % 7;
+  let acc = (((pc - LETTER_PCS[li]) % 12) + 12) % 12;
+  if (acc > 6) acc -= 12;
+  const mark = acc > 0 ? '♯'.repeat(acc) : '♭'.repeat(-acc);
+  return LETTERS.charAt(li) + mark;
+}
+
+/**
+ * When `symbol` starts with an unaltered Roman numeral whose root is outside a minor-type key's
+ * scale but whose flat is in it ('VI' in A minor), the flat to suggest. Numerals keep the
+ * major-scale ruler (owner, 2026-11-21); this only points the difference out. Null otherwise,
+ * including for applied chords (V/V), whose numeral is not measured from the key's tonic.
+ */
+export function numeralHint(symbol: string, key: Key): NumeralHint | null {
+  if (!isMinorType(key)) return null;
+  const s = symbol.trim();
+  const m = HINT_NUMERAL_RE.exec(s);
+  if (!m) return null;
+  const slash = s.indexOf('/');
+  if (slash >= 0 && /^[#b♯♭]?(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)$/.test(s.slice(slash + 1)))
+    return null;
+  if (!parseChord(s, key).ok) return null;
+  const degree = NUMERAL_NAMES.indexOf(m[1].toUpperCase());
+  const tonic = parsePitchClass(key.tonic) ?? 0;
+  const pcs = new Set(scaleIntervals(key.scale).map((i) => (tonic + i) % 12));
+  const pc = (tonic + NUMERAL_STEPS[degree]) % 12;
+  const flatPc = (pc + 11) % 12;
+  if (pcs.has(pc) || !pcs.has(flatPc)) return null;
+  return {
+    numeral: m[1],
+    note: spellOnLetter(key, degree, pc),
+    flat: `♭${m[1]}`,
+    flatNote: spellOnLetter(key, degree, flatPc),
+    fixed: `b${s}`,
+  };
+}
+
 /** One cell of the degree picker. */
 export interface DegreeCell {
   /** 0-based degree index (the stored value). */
