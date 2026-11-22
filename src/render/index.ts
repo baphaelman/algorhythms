@@ -38,6 +38,8 @@ export {
   GLIDE_STEP_PX,
   chordTolerance,
   HIGHLIGHT_WIDTH,
+  HIT_HALF_PX,
+  HIT_WIDTH,
   LINE_WIDTH,
   TRACE_ALPHA,
   TRACE_BELOW,
@@ -47,7 +49,17 @@ export {
   weightWidth,
   type Ctx2D,
 } from './draw';
-export { OPACITY_EPS, levelAt, lifeLevel, opacityAt, opacityBreaks, pulseLevel } from './level';
+export {
+  OPACITY_EPS,
+  PULSE_DRAW_FLOOR,
+  levelAt,
+  lifeLevel,
+  opacityAt,
+  opacityBreaks,
+  pulseDrawLevel,
+  pulseHits,
+  pulseLevel,
+} from './level';
 export { HOVER_RADIUS_PX, hoverLabel, nearestLine, noteLabel, type LineHit } from './hover';
 export {
   DARK_TOKENS,

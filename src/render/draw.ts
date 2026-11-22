@@ -4,7 +4,7 @@
  *
  *   1. background          2. octave grid (A lines labelled in Hz), bar grid (editor)
  *   3. moment/section markers
- *   4. lines (past solid, future ghost)   5. heads (dots, motion rings, Hz labels)
+ *   4. lines (past solid, future ghost; pulse hit marks)   5. heads (dots, motion rings, Hz labels)
  *   6. playhead            7. HUD (chord, key, voices, time)
  *
  * The editor overlay (§11) is drawn by the app on top of this.
@@ -24,7 +24,7 @@ import type {
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, hudLines, pitchToY, timeToX } from './camera';
 import { drawGhost, ghostOf, type Reach } from './ghost';
-import { OPACITY_EPS, breaksIn, opacityIn } from './level';
+import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
 import { sampleInto, samples, stableScale, type Samples } from './sampling';
@@ -765,6 +765,13 @@ function drawLines(
       );
     }
   }
+  // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
+  for (const v of voices) {
+    if (v.segments.length === 0 || !v.pulse) continue;
+    g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+    if (past) drawHits(g, view, v, tL, Math.min(t, tR), dim, sf);
+    if (ghost && t < tR) drawHits(g, view, v, Math.max(t, tL), tR, futureA, sf);
+  }
   // Dotted traces of silent lines (editor): the selection's and the hovered voice's.
   const hv = style.traceVoice;
   if (style.traces && (hl || hv !== undefined)) {
@@ -785,6 +792,81 @@ function drawLines(
     }
   }
   g.globalAlpha = 1;
+}
+
+/** Hit mark (revision 10): a tick across the line, this many px each side of it at accent 1. */
+export const HIT_HALF_PX = 5;
+/** Hit mark stroke width, px. */
+export const HIT_WIDTH = 1.75;
+/** Hits closer than this (px) to the last mark drawn are skipped: dense pulses at Fit. */
+const HIT_MIN_PX = 4;
+/** A mark's alpha at accent 0 and 1, times the line's level and life. */
+const HIT_ALPHA_LO = 0.4;
+
+/**
+ * Marks each pulse hit of `v` in [a, b) with a short tick across the line (PLAN.md §10,
+ * revision 10): its length and alpha grow with the accent, its alpha follows the line's level and
+ * life fades, and it widens with the line's weight. Hits come from a per-compile cache
+ * (level.ts `pulseHits`); marks of equal alpha share one stroke.
+ */
+function drawHits(
+  g: CanvasRenderingContext2D,
+  view: View,
+  v: CompiledVoice,
+  a: Seconds,
+  b: Seconds,
+  alpha: number,
+  sf: StrandFrame,
+): void {
+  const H = pulseHits(v);
+  if (!H || !(b > a)) return;
+  const n = H.length >> 1;
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (H[mid * 2] < a) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo >= n || H[lo * 2] >= b) return;
+  const lives = drawnLives(sf, v);
+  const shaped = (v.weight !== undefined && v.weight.length > 0) || hasStrands(sf, v);
+  g.lineWidth = HIT_WIDTH;
+  g.lineCap = 'butt';
+  let lastX = -Infinity;
+  let pathA = -1;
+  for (let i = lo; i < n; i++) {
+    const t = H[i * 2];
+    if (t >= b) break;
+    const x = timeToX(view, t);
+    if (x - lastX < HIT_MIN_PX) continue;
+    const base = baseOpacityIn(v, lives, t);
+    const acc = H[i * 2 + 1];
+    const al = alpha * base * (HIT_ALPHA_LO + (1 - HIT_ALPHA_LO) * acc);
+    if (al < OPACITY_EPS) continue;
+    const p = pitchAt(v, t);
+    if (p === null) continue;
+    let y = pitchToY(view, p);
+    let u = 1;
+    if (shaped) {
+      const q = geometryAt(sf, v, t, 1);
+      y += q.off * LINE_WIDTH;
+      u = q.u;
+    }
+    const h = HIT_HALF_PX * (0.6 + 0.4 * acc) + (u - 1) * LINE_WIDTH * 0.5;
+    const qa = Math.round(al * 32) / 32;
+    if (qa !== pathA) {
+      if (pathA >= 0) g.stroke();
+      g.globalAlpha = qa;
+      g.beginPath();
+      pathA = qa;
+    }
+    g.moveTo(x, y - h);
+    g.lineTo(x, y + h);
+    lastX = x;
+  }
+  if (pathA >= 0) g.stroke();
+  g.lineCap = 'round';
 }
 
 /**
