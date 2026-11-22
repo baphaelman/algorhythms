@@ -137,3 +137,35 @@ test('selecting the level moment, or hovering the silent line, shows a dotted tr
   await expect(page.getByTestId('score-hover')).toContainText('E4');
   await expect.poll(() => contrast(page, 8.2, 64, 20)).toBeGreaterThan(15);
 });
+
+test('a floor-0 pulse draws a faint line between hits and marks each hit (revision 10)', async ({
+  page,
+}) => {
+  await open(page, [
+    {
+      id: 'pu',
+      type: 'pulse',
+      at: 4,
+      until: 12,
+      step: 1,
+      pattern: [1],
+      decay: 0.2,
+      floor: 0,
+      mode: 'together',
+    },
+  ]);
+  const full = await contrast(page, 2.5, 64);
+  const between = [];
+  for (const t of [5.5, 7.6, 10.5]) between.push(await contrast(page, t, 64));
+  const hits = [];
+  for (const t of [6, 9]) hits.push(await contrast(page, t, 64));
+  // Not dust: the line stays visible between hits, fainter than an unpulsed line.
+  for (const c of between) {
+    expect(c).toBeGreaterThan(8);
+    expect(c).toBeLessThan(full);
+  }
+  // Each hit is marked at full strength.
+  for (const c of hits) expect(c).toBeGreaterThan(30);
+  // Outside the region the line is drawn as before.
+  expect(await contrast(page, 13.5, 64)).toBeGreaterThan(30);
+});

@@ -3,11 +3,14 @@
  * with its opacity multiplied by level moments × life fades × pulse, clamped to 0..1. Voice gain
  * (`VoiceDef.gain`) is not part of it. Pure; reads the compiled score only.
  *
+ * Revision 10: during a pulse region the pulse factor is drawn no lower than PULSE_DRAW_FLOOR, so
+ * a floor-0 pulse reads as a line (its hits are marked by draw.ts), not as specks.
+ *
  * Breakpoints (times where the curve changes shape) are precomputed once per compiled voice, so a
  * frame only binary-searches them.
  */
 
-import { pulseBreaks, pulseGainAt } from '../core/pulse';
+import { pulseBreaks, pulseGainAt, pulseIndexAt } from '../core/pulse';
 import { lifeAt } from '../core/query';
 import type { CompiledVoice, Life, Seconds } from '../core/types';
 
@@ -56,9 +59,22 @@ function ramp(start: number, k: number, voice: CompiledVoice, t: Seconds): numbe
   return c.over > 0 && t < c.t + c.over ? start + ((c.gain - start) * (t - c.t)) / c.over : c.gain;
 }
 
-/** Pulse envelope at t (core/pulse): 1 outside any pulse. */
+/** The lowest pulse factor drawn inside a pulse region (revision 10). */
+export const PULSE_DRAW_FLOOR = 0.15;
+
+/** Pulse envelope at t (core/pulse): 1 outside any pulse. The audible value. */
 export function pulseLevel(voice: CompiledVoice, t: Seconds): number {
   return pulseGainAt(voice, t);
+}
+
+/**
+ * The pulse factor as drawn (revision 10): the envelope, but at least PULSE_DRAW_FLOOR while a
+ * pulse record is in force (a region's last boundary has floor 1, so this ends with it).
+ */
+export function pulseDrawLevel(voice: CompiledVoice, t: Seconds): number {
+  if (pulseIndexAt(voice, t) < 0) return 1;
+  const g = pulseGainAt(voice, t);
+  return g > PULSE_DRAW_FLOOR ? g : PULSE_DRAW_FLOOR;
 }
 
 /** Opacity factor of voice `v` at t: level × life × pulse, clamped to 0..1. */
@@ -88,9 +104,39 @@ function lifeIn(lives: readonly Life[], t: Seconds): Life | null {
 export function opacityIn(voice: CompiledVoice, lives: readonly Life[], t: Seconds): number {
   const life = lives === voice.lives ? lifeAt(voice, t) : lifeIn(lives, t);
   if (!life) return 0;
-  const o = levelAt(voice, t) * lifeLevel(life, t) * pulseLevel(voice, t);
+  const o = levelAt(voice, t) * lifeLevel(life, t) * pulseDrawLevel(voice, t);
   return o > 1 ? 1 : o > 0 ? o : 0;
 }
+
+/** `opacityIn` without the pulse factor: the strength of a hit mark at t (draw.ts). */
+export function baseOpacityIn(voice: CompiledVoice, lives: readonly Life[], t: Seconds): number {
+  const life = lives === voice.lives ? lifeAt(voice, t) : lifeIn(lives, t);
+  if (!life) return 0;
+  const o = levelAt(voice, t) * lifeLevel(life, t);
+  return o > 1 ? 1 : o > 0 ? o : 0;
+}
+
+/** Hit times and accents of a voice's pulse records, interleaved [t, accent, …]; cached. */
+export function pulseHits(voice: CompiledVoice): Float64Array | null {
+  const r = voice.pulse;
+  if (!r || r.length === 0) return null;
+  const hit = hitCache.get(r);
+  if (hit && hit.n === r.length) return hit.out;
+  let n = 0;
+  for (const p of r) if (p.hit) n++;
+  const out = n > 0 ? new Float64Array(n * 2) : null;
+  if (out) {
+    let k = 0;
+    for (const p of r) {
+      if (!p.hit) continue;
+      out[k++] = p.t;
+      out[k++] = p.accent;
+    }
+  }
+  hitCache.set(r, { n: r.length, out });
+  return out;
+}
+const hitCache = new WeakMap<readonly unknown[], { n: number; out: Float64Array | null }>();
 
 interface Breaks {
   level: CompiledVoice['level'];
