@@ -362,7 +362,7 @@ interface SliderProps {
  * A bare range input on a `Setter`: a pointer drag is one undo entry (one gesture from pointer
  * down to up); a held arrow key is one entry per key release. `filter` may reject a value (null).
  */
-function RangeInput({
+export function RangeInput({
   id,
   label,
   value,

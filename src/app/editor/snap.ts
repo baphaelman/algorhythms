@@ -15,6 +15,9 @@ import type { CompiledScore, MomentId, Piece, Seconds, ViewSettings } from '../.
 import { momentArrivals, type ArrivalDot } from './arrival-points';
 import { sameStep } from './walk-steps';
 
+/** Next's hold after the piece's last moment without a tempo, s (with one: a bar). */
+export const NEXT_HOLD = 2;
+
 /** Snap reach, CSS px. */
 export const SNAP_PX = 8;
 

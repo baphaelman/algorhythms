@@ -12,7 +12,7 @@ import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core
 import { usePlayer } from '../store';
 import { edit, select } from './history';
 import { extendEnd } from './end';
-import { beatStep, nextBeat } from './snap';
+import { NEXT_HOLD, beatStep, nextBeat } from './snap';
 import { withChordFill } from './new-moment';
 import { insertMoments, newMomentIds } from './ops';
 
@@ -35,14 +35,11 @@ function momentEnd(m: Moment, score: CompiledScore): Seconds {
   return Math.max(own, span?.end ?? -Infinity);
 }
 
-/** The hold (s) before a new moment without a tempo; with one, a bar. */
-const HOLD = 2;
-
 /**
  * The time suggestions are for (0 with no unmuted moments): a hold after the later of the latest
  * end and the latest marker of the piece's unmuted moments, so shifts don't chain immediately and
  * a zero-length tail (an establishing chord, a key, a note) still comes first. The hold is one bar
- * with "Snap to beats" on (revision 9), then the next beat at or after; else `HOLD`.
+ * with "Snap to beats" on (revision 9), then the next beat at or after; else `NEXT_HOLD`.
  */
 export function suggestionTime(piece: Piece, score: CompiledScore): Seconds {
   let end = -Infinity;
@@ -51,7 +48,7 @@ export function suggestionTime(piece: Piece, score: CompiledScore): Seconds {
   }
   if (end === -Infinity) return 0;
   const step = beatStep(piece.view);
-  const t = end + (step ? step * (piece.view.meter ?? 4) : HOLD);
+  const t = end + (step ? step * (piece.view.meter ?? 4) : NEXT_HOLD);
   return round3(step ? nextBeat(t, step) : t);
 }
 

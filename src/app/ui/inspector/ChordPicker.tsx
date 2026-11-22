@@ -14,6 +14,7 @@ import {
   romanNumeral,
   type ChordBass,
   type ChordReading,
+  type DiatonicChord,
 } from '../../../core/chord-spec';
 import { parseChord } from '../../../core/chords';
 import { harmonyLabel, spellPc } from '../../../core/harmony';
@@ -37,6 +38,50 @@ const VOICINGS: readonly (readonly [Voicing, string])[] = [
 ];
 
 const ROOTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+/**
+ * The key's diatonic chords as one-click chips (numeral over the letter chord); the one `reading`
+ * names is pressed. Shared with the progression inspector. Nothing for scales without them.
+ */
+export function DiatonicChips({
+  chords,
+  keyIn: key,
+  reading,
+  onPick,
+  legend = 'From the key',
+  testId,
+}: {
+  chords: readonly DiatonicChord[];
+  keyIn: Key;
+  reading: ChordReading | null;
+  onPick: (d: DiatonicChord) => void;
+  legend?: string;
+  testId?: string;
+}) {
+  if (chords.length === 0) return null;
+  return (
+    <fieldset className="chips diatonic" data-testid={testId}>
+      <legend>{legend}</legend>
+      {chords.map((d) => {
+        const on =
+          reading?.root === d.root && reading.quality === d.quality.id && reading.bass === 'any';
+        return (
+          <button
+            key={d.degree}
+            type="button"
+            aria-pressed={on}
+            aria-label={`${d.numeral} ${d.symbol}`}
+            data-numeral={d.numeral}
+            onClick={() => onPick(d)}
+          >
+            <b>{d.numeral}</b>
+            <small>{spellPc(d.root, key) + d.quality.suffix.replace(/b/g, '♭')}</small>
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
 
 /** The chord's display name: the letter chord for a written symbol, else the compiled label. */
 function chordName(value: NoteSet, key: Key, compiledLabel: string | undefined): string {
@@ -123,29 +168,12 @@ export function ChordPicker({
         </span>
       </div>
 
-      {diatonic.length > 0 && (
-        <fieldset className="chips diatonic">
-          <legend>From the key</legend>
-          {diatonic.map((d) => {
-            const on =
-              reading?.root === d.root &&
-              reading.quality === d.quality.id &&
-              reading.bass === 'any';
-            return (
-              <button
-                key={d.degree}
-                type="button"
-                aria-pressed={on}
-                aria-label={`${d.numeral} ${d.symbol}`}
-                onClick={() => write(d.symbol, 'Pick chord')}
-              >
-                <b>{d.numeral}</b>
-                <small>{spellPc(d.root, key) + d.quality.suffix.replace(/b/g, '♭')}</small>
-              </button>
-            );
-          })}
-        </fieldset>
-      )}
+      <DiatonicChips
+        chords={diatonic}
+        keyIn={key}
+        reading={reading}
+        onPick={(d) => write(d.symbol, 'Pick chord')}
+      />
 
       <fieldset className="chips roots">
         <legend>Root</legend>
