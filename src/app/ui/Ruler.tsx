@@ -57,6 +57,9 @@ export function Ruler() {
     const endMark = endEl.current;
     if (!el || !box || !beats || !bars || !endMark) return;
     const pool: HTMLSpanElement[] = [];
+    /** The time and step each pooled tick shows (NaN: hidden). */
+    const poolT: number[] = [];
+    const poolStep: number[] = [];
     let view: View | null = null;
     let lastKey = '';
     let lastBeat = '';
@@ -80,13 +83,19 @@ export function Ruler() {
           const s = pool[i]!;
           const t = times[i];
           if (t === undefined) {
-            s.hidden = true;
+            if (!s.hidden) s.hidden = true;
+            poolT[i] = NaN;
             continue;
           }
-          s.hidden = false;
-          const label = rulerLabel(t, step);
-          if (s.textContent !== label) s.textContent = label;
-          s.dataset.t = String(t);
+          if (s.hidden) s.hidden = false;
+          // A tick keeps its time across frames while the view scrolls: only its x changes.
+          if (poolT[i] !== t || poolStep[i] !== step) {
+            poolT[i] = t;
+            poolStep[i] = step;
+            const label = rulerLabel(t, step);
+            if (s.textContent !== label) s.textContent = label;
+            s.dataset.t = String(t);
+          }
           s.style.transform = `translateX(${(t - v.start) * v.pps}px)`;
         }
       }

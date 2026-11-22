@@ -462,9 +462,9 @@ describe('ghost strands do not stack', () => {
     const view = drawScore(p.ctx, s, { start: 0, window: 20 }, { ...style, ...over }, t, SIZE, 1);
     return { p, view };
   };
-  /** The composited boxes: [x, y, w, h] per drawImage. */
+  /** The composited boxes: [x, y, w, h] per drawImage (its destination). */
   const boxes = (p: ReturnType<typeof pathCtx>) =>
-    p.images.map((im) => im.args.slice(1, 5) as number[]);
+    p.images.map((im) => im.args.slice(5, 9) as number[]);
 
   it('composites the merge and the split once each, at the ghost opacity', () => {
     const { p, view } = draw(mergeSplit(), 0);

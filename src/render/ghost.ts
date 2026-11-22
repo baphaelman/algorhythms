@@ -26,6 +26,13 @@ export interface Ghost {
   boxes: number[];
   /** 1 for the voices drawn through the layer: the strands of the boxes' bundles. */
   strands: Uint8Array;
+  /**
+   * Device px of the target at the layer's origin: the layer covers only the boxes' hull, so it
+   * is snapshotted and cleared at that size each frame, not the whole canvas's (whole px: the
+   * drawing in it is the same).
+   */
+  ox: number;
+  oy: number;
 }
 /** Per target context; null where no layer can be made (the future is then drawn directly). */
 const layers = new WeakMap<object, Layer | null>();
@@ -184,17 +191,44 @@ export function ghostOf(
     for (const m of b.members) STRANDS[m.v] = 1;
   }
   if (BOXES.length === 0) return null;
+  let ox = Infinity;
+  let oy = Infinity;
+  let ex = 0;
+  let ey = 0;
+  for (let i = 0; i < BOXES.length; i += 4) {
+    ox = Math.min(ox, BOXES[i]);
+    oy = Math.min(oy, BOXES[i + 1]);
+    ex = Math.max(ex, BOXES[i + 2]);
+    ey = Math.max(ey, BOXES[i + 3]);
+  }
+  const lw = layerSize(ex - ox, w);
+  const lh = layerSize(ey - oy, h);
   let l = layers.get(target);
   if (l === undefined) {
-    l = makeLayer(target, w, h);
+    l = makeLayer(target, lw, lh);
     layers.set(target, l);
   }
   if (!l) return null;
-  if (l.canvas.width !== w || l.canvas.height !== h) {
-    l.canvas.width = w;
-    l.canvas.height = h;
+  // Grown to fit; shrunk only when far too big, so a hull that varies does not resize every frame.
+  let cw = l.canvas.width;
+  let ch = l.canvas.height;
+  if (cw * ch > 4 * lw * lh) {
+    cw = lw;
+    ch = lh;
+  } else {
+    cw = Math.max(cw, lw);
+    ch = Math.max(ch, lh);
   }
-  return { layer: l, boxes: BOXES, strands: STRANDS };
+  if (cw !== l.canvas.width || ch !== l.canvas.height) {
+    l.canvas.width = cw;
+    l.canvas.height = ch;
+  }
+  return { layer: l, boxes: BOXES, strands: STRANDS, ox, oy };
+}
+
+/** Layer side for a hull `n` device px long on a canvas side `max` long: rounded up to 128 px. */
+function layerSize(n: number, max: number): number {
+  return Math.max(1, Math.min(max, Math.ceil(n / 128) * 128));
 }
 
 /** Adds the boxes (device px; all, or the one at `only`) to g's path, in CSS px. */
@@ -224,6 +258,12 @@ export type FutureTrace = (
 ) => void;
 
 /**
+ * False when nothing of voice v drawn over [lo, hi] can reach the band y0..y1 (CSS px): it is not
+ * traced into that box. Conservative: true when unsure.
+ */
+export type Reach = (v: CompiledVoice, lo: Seconds, hi: Seconds, y0: number, y1: number) => boolean;
+
+/**
  * Draws the future through the ghost at `alpha`: other lines directly onto g; the strands outside
  * the boxes directly too (under one clip), inside them at full strength into the layer, which is
  * composited once.
@@ -239,8 +279,9 @@ export function drawGhost(
   layerGradient: CanvasGradient | null,
   alpha: number,
   trace: FutureTrace,
+  reach?: Reach,
 ): void {
-  const { boxes, strands } = gh;
+  const { boxes, strands, ox, oy } = gh;
   for (let pass = 0; pass < 2; pass++) {
     if (pass === 1) {
       g.save();
@@ -261,9 +302,14 @@ export function drawGhost(
   L.save();
   L.setTransform(1, 0, 0, 1, 0, 0);
   for (let i = 0; i < boxes.length; i += 4) {
-    L.clearRect(boxes[i], boxes[i + 1], boxes[i + 2] - boxes[i], boxes[i + 3] - boxes[i + 1]);
+    L.clearRect(
+      boxes[i] - ox,
+      boxes[i + 1] - oy,
+      boxes[i + 2] - boxes[i],
+      boxes[i + 3] - boxes[i + 1],
+    );
   }
-  L.setTransform(dpr, 0, 0, dpr, 0, 0);
+  L.setTransform(dpr, 0, 0, dpr, -ox, -oy);
   L.lineJoin = 'round';
   L.lineCap = 'round';
   const pad = TRACE_PAD / view.pps;
@@ -274,8 +320,12 @@ export function drawGhost(
     L.clip();
     const lo = xToTime(view, boxes[i] / dpr) - pad;
     const hi = xToTime(view, boxes[i + 2] / dpr) + pad;
+    const y0 = boxes[i + 1] / dpr;
+    const y1 = boxes[i + 3] / dpr;
     for (const v of voices) {
       if (v.segments.length === 0 || strands[v.index] !== 1) continue;
+      // Each box holds a few strands; the others pass elsewhere (most of the layer's paths).
+      if (reach && !reach(v, lo, hi, y0, y1)) continue;
       L.strokeStyle = layerGradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       trace(L, v, 1, lo, hi);
     }
@@ -290,7 +340,7 @@ export function drawGhost(
     const y = boxes[i + 1];
     const w = boxes[i + 2] - x;
     const h = boxes[i + 3] - y;
-    g.drawImage(gh.layer.canvas, x, y, w, h, x, y, w, h);
+    g.drawImage(gh.layer.canvas, x - ox, y - oy, w, h, x, y, w, h);
   }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.globalAlpha = 1;
