@@ -66,6 +66,9 @@ class EngineProcessor extends AudioWorkletProcessor {
         case 'tables':
           g.setTables(msg.timbre, msg.mips);
           break;
+        case 'forget':
+          g.forget(msg.timbres);
+          break;
         case 'play':
           g.play(msg.from);
           break;

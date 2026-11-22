@@ -17,6 +17,7 @@
 
 import { flatten, transferList, type FlatScore } from '../core/flat';
 import type { CompiledScore, MixSettings, Timbre } from '../core/types';
+import { MAX_TIMBRE_SLOTS } from '../dsp/constants';
 import type { ParamValue } from '../dsp/mix';
 import { buildWavetables, wavetableTransferList, type WavetableSet } from '../dsp/wavetable';
 import { TableBuilder } from './tables';
@@ -83,8 +84,16 @@ export class AudioEngine {
   onError: ((message: string) => void) | null = null;
 
   private readonly tables = new TableBuilder();
-  /** Timbre definition key last sent per name, so unchanged tables are not rebuilt. */
+  /**
+   * Timbre definition key last sent per name, so unchanged tables are not rebuilt: exactly the
+   * names whose slots the worklet holds, least recently used first. Past MAX_TIMBRE_SLOTS names
+   * the oldest unneeded ones are evicted (a `forget` message), so a name that comes back gets
+   * its tables resent.
+   */
   private readonly sent = new Map<string, string>();
+  /** Timbre names of the score the worklet plays, and of the last loaded or swapped score. */
+  private workletNames: readonly string[] = [];
+  private realNames: readonly string[] = [];
   private anchors: Anchor[] = [];
   /** Piece time to show until the worklet confirms a command with an anchor. */
   private optimistic: { time: number; playing: boolean } | null = null;
@@ -136,9 +145,11 @@ export class AudioEngine {
     if (pre) {
       engine.durationValue = pre.score.duration;
       engine.timbresValue = pre.timbres;
-      for (const name of processorOptions.preload?.score.timbreNames ?? []) {
+      const names = processorOptions.preload?.score.timbreNames ?? [];
+      for (const name of names) {
         engine.sent.set(name, timbreKey(resolveTimbre(name, pre.timbres), context.sampleRate));
       }
+      engine.workletNames = engine.realNames = names;
     }
     return engine;
   }
@@ -162,13 +173,16 @@ export class AudioEngine {
     const flat = flatten(score);
     this.timbresValue = timbres;
     this.real = score;
-    const sets = await this.prepareTables(flat, timbres, true);
+    const build = this.prepareTables(flat, timbres, true);
+    this.realNames = flat.timbreNames;
+    const sets = await build;
     this.auditioning = false;
     this.durationValue = score.duration;
     this.anchors = [];
     this.optimistic = { time: 0, playing: false };
     this.playingValue = false;
     this.loopRange = null;
+    this.workletNames = flat.timbreNames;
     this.post({ type: 'load', score: flat, mix: structuredClone(mix) }, transferList(flat));
     this.postTables(sets);
   }
@@ -182,17 +196,18 @@ export class AudioEngine {
     if (timbres) this.timbresValue = timbres;
     this.real = score;
     const pending = this.tablesToBuild(flat, this.timbresValue, false);
+    this.realNames = flat.timbreNames;
     if (pending.length === 0) {
       // Nothing to build (the usual edit): post now.
       this.durationValue = score.duration;
-      if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+      if (!this.auditioning) this.postSwap(flat);
       return Promise.resolve();
     }
     return this.buildTables(pending).then((sets) => {
       this.postTables(sets);
       this.durationValue = score.duration;
       if (this.real !== score) return;
-      if (!this.auditioning) this.post({ type: 'swap', score: flat }, transferList(flat));
+      if (!this.auditioning) this.postSwap(flat);
     });
   }
 
@@ -206,15 +221,16 @@ export class AudioEngine {
     if (!this.auditioning && this.isPlaying) return false;
     const flat = flatten(score);
     const sets = await this.prepareTables(flat, timbres ?? this.timbresValue, false);
-    if (!this.auditioning && this.isPlaying) return false;
+    // Marked sent, so posted even when the audition is refused.
     this.postTables(sets);
+    if (!this.auditioning && this.isPlaying) return false;
     if (!this.auditioning) {
       this.auditioning = true;
       this.post({ type: 'loop', range: null });
     }
     const ctx = this.context;
     if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
-    this.post({ type: 'swap', score: flat }, transferList(flat));
+    this.postSwap(flat);
     this.post({ type: 'play', from: 0 });
     this.optimistic = { time: 0, playing: true };
     return true;
@@ -231,10 +247,7 @@ export class AudioEngine {
     this.auditioning = false;
     this.optimistic = { time: 0, playing: false };
     this.post({ type: 'pause' });
-    if (this.real) {
-      const flat = flatten(this.real);
-      this.post({ type: 'swap', score: flat }, transferList(flat));
-    }
+    if (this.real) this.postSwap(flatten(this.real));
     this.post({ type: 'loop', range: this.loopRange });
   }
 
@@ -324,6 +337,11 @@ export class AudioEngine {
     this.node.port.postMessage(msg, transfer);
   }
 
+  private postSwap(flat: FlatScore): void {
+    this.workletNames = flat.timbreNames;
+    this.post({ type: 'swap', score: flat }, transferList(flat));
+  }
+
   /** The context time of the sample now leaving the speakers. */
   private heardContextTime(): number {
     const ctx = this.context;
@@ -395,22 +413,51 @@ export class AudioEngine {
     return this.buildTables(this.tablesToBuild(flat, timbres, all));
   }
 
-  /** The timbres whose tables must be built and sent (all, or those changed); marks them sent. */
+  /**
+   * The timbres whose tables must be built and sent (all, or those changed); marks them sent,
+   * most recently used, after evicting old names to make room.
+   */
   private tablesToBuild(
     flat: FlatScore,
     timbres: Record<string, Timbre> | undefined,
     all: boolean,
   ): { name: string; timbre: Timbre }[] {
+    this.makeRoom(flat.timbreNames);
     const rate = this.context.sampleRate;
     const out: { name: string; timbre: Timbre }[] = [];
     for (const name of flat.timbreNames) {
       const timbre = resolveTimbre(name, timbres);
       const key = timbreKey(timbre, rate);
-      if (!all && this.sent.get(name) === key) continue;
+      const had = this.sent.get(name);
+      this.sent.delete(name);
       this.sent.set(name, key);
+      if (!all && had === key) continue;
       out.push({ name, timbre });
     }
     return out;
+  }
+
+  /**
+   * Keeps the worklet's slots for at most MAX_TIMBRE_SLOTS names once `names` arrive: evicts the
+   * least recently used names that neither `names`, the worklet's current score nor the last
+   * real score uses, and tells the worklet before anything new is posted.
+   */
+  private makeRoom(names: readonly string[]): void {
+    let incoming = 0;
+    for (const name of new Set(names)) if (!this.sent.has(name)) incoming++;
+    let over = this.sent.size + incoming - MAX_TIMBRE_SLOTS;
+    if (over <= 0) return;
+    const keep = new Set([...names, ...this.workletNames, ...this.realNames]);
+    const evict: string[] = [];
+    for (const name of this.sent.keys()) {
+      if (over <= 0) break;
+      if (keep.has(name)) continue;
+      evict.push(name);
+      over--;
+    }
+    if (evict.length === 0) return;
+    for (const name of evict) this.sent.delete(name);
+    this.post({ type: 'forget', timbres: evict });
   }
 
   private async buildTables(

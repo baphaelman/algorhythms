@@ -32,6 +32,8 @@ export type EngineInMessage =
   | { type: 'load'; score: FlatScore; mix: MixSettings }
   /** Wavetables for a timbre name (built in a worker, §8.11). */
   | { type: 'tables'; timbre: string; mips: WavetableSet }
+  /** Free these timbres' slots (the bridge evicts least-recently-used names; Graph.forget). */
+  | { type: 'forget'; timbres: string[] }
   /** Start playing, from `from` seconds if given. */
   | { type: 'play'; from?: number }
   | { type: 'pause' }

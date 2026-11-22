@@ -3,10 +3,12 @@
  * series allpass diffusers, then 8 delay lines mixed by a Householder matrix with a one-pole
  * damping filter and an RT60-calibrated gain in every line. Deterministic, no impulse responses.
  *
- * Decay, damping and pre-delay are smoothed per block (the pre-delay read position is
- * interpolated per sample). A `size` change crossfades every line from its old read tap to the
- * new one over XFADE_SECONDS (a convex blend of two delays, so the FDN stays passive); the next
- * change waits for it, so a drag steps through crossfades. Allocation-free after construction.
+ * Line lengths are whole samples: a fractional (interpolated) read would low-pass every pass and
+ * shorten the broadband RT60 (~12 % with linear interpolation). Decay, damping and pre-delay are
+ * smoothed per block (the pre-delay read position is interpolated per sample). A `size` change
+ * crossfades every line from its old integer tap to the new one over XFADE_SECONDS (a convex
+ * blend of two delays, so the FDN stays passive); the next change waits for it, so a drag steps
+ * through crossfades. Allocation-free after construction.
  */
 
 import { BLOCK_FRAMES } from '../constants';
@@ -47,11 +49,12 @@ export class Reverb {
   private readonly lineMask: number = 0;
   private readonly lineCap: number = 0;
   private readonly lines: Float64Array;
-  private readonly lenCur = new Float64Array(LINES);
-  private readonly lenTarget = new Float64Array(LINES);
+  /** Line lengths in whole samples. */
+  private readonly lenCur = new Int32Array(LINES);
+  private readonly lenTarget = new Int32Array(LINES);
   private readonly gain = new Float64Array(LINES);
   /** Size crossfade: the new lengths, their gains, and progress 0..1 (−1 when idle). */
-  private readonly lenNext = new Float64Array(LINES);
+  private readonly lenNext = new Int32Array(LINES);
   private readonly gainNext = new Float64Array(LINES);
   /** Gains for lenTarget at decayTarget. */
   private readonly gainTarget = new Float64Array(LINES);
@@ -106,7 +109,8 @@ export class Reverb {
   ): void {
     const s = Math.min(1, Math.max(0, size));
     const scale = MIN_SCALE + SCALE_RANGE * s;
-    for (let k = 0; k < LINES; k++) this.lenTarget[k] = LINE_SECONDS[k] * scale * this.sampleRate;
+    for (let k = 0; k < LINES; k++)
+      this.lenTarget[k] = Math.round(LINE_SECONDS[k] * scale * this.sampleRate);
     this.decayTarget = Math.max(0.05, Math.min(60, decay));
     this.dampTarget = 1 - 0.85 * Math.min(1, Math.max(0, damping));
     this.preTarget = Math.min(MAX_PREDELAY, Math.max(0, preDelay)) * this.sampleRate;
@@ -235,7 +239,7 @@ export class Reverb {
         this.diffPos[a] = p + 1 === this.diffLen[a] ? 0 : p + 1;
       }
 
-      // Read the lines (fractional), damp, apply the RT60 gain.
+      // Read the lines, damp, apply the RT60 gain.
       let sum = 0;
       let l = 0;
       let r = 0;
@@ -245,14 +249,8 @@ export class Reverb {
         const u = xf * xf * (3 - 2 * xf);
         for (let k = 0; k < LINES; k++) {
           const base = k * cap;
-          const d0 = lenCur[k];
-          const i0 = d0 | 0;
-          const a0 = lines[base + ((w - i0) & mask)];
-          const o0 = a0 + (lines[base + ((w - i0 - 1) & mask)] - a0) * (d0 - i0);
-          const d1 = lenNext[k];
-          const i1 = d1 | 0;
-          const a1 = lines[base + ((w - i1) & mask)];
-          const o1 = a1 + (lines[base + ((w - i1 - 1) & mask)] - a1) * (d1 - i1);
+          const o0 = lines[base + ((w - lenCur[k]) & mask)];
+          const o1 = lines[base + ((w - lenNext[k]) & mask)];
           const out = o0 + (o1 - o0) * u;
           l += OUT_L[k] * out;
           r += OUT_R[k] * out;
@@ -263,13 +261,7 @@ export class Reverb {
         }
       } else {
         for (let k = 0; k < LINES; k++) {
-          const d = lenCur[k];
-          const di = d | 0;
-          const fr = d - di;
-          const base = k * cap;
-          const a = lines[base + ((w - di) & mask)];
-          const b = lines[base + ((w - di - 1) & mask)];
-          const out = a + (b - a) * fr;
+          const out = lines[k * cap + ((w - lenCur[k]) & mask)];
           l += OUT_L[k] * out;
           r += OUT_R[k] * out;
           damp[k] += (out - damp[k]) * dc;

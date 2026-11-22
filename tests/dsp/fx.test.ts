@@ -66,20 +66,24 @@ function lowpass(x: Float64Array): Float64Array {
 }
 
 describe('reverb (FDN, 8 lines, Householder)', () => {
-  it.each([1, 3])('decays at its RT60 setting (%f s, no damping)', (decay) => {
+  it.each([
+    [1, 0.6],
+    [3, 0.6],
+    [1, 0],
+    [3, 1],
+  ])('decays at its RT60 setting (%f s, size %f, no damping)', (decay, size) => {
     const rv = new Reverb(RATE);
-    rv.setParams(0.6, decay, 0, 0, true);
+    rv.setParams(size, decay, 0, 0, true);
     const { l, r } = run((i, a, b) => rv.process(i, a, b), impulse(decay * 1.6));
     const low = rt60(lowpass(l), lowpass(r));
     const broad = rt60(l, r);
     console.info(
-      `reverb RT60 set ${decay} s: < 200 Hz ${low.toFixed(3)} s, broadband ${broad.toFixed(3)} s`,
+      `reverb RT60 set ${decay} s, size ${size}: < 200 Hz ${low.toFixed(3)} s, ` +
+        `broadband ${broad.toFixed(3)} s`,
     );
-    expect(Math.abs(low / decay - 1)).toBeLessThan(0.05);
-    // Known (docs/m6-acceptance.md): the lines' linear-interpolated fractional reads lose some
-    // high end each pass, so even at damping 0 the broadband tail is 10–13 % short.
-    expect(broad / decay).toBeGreaterThan(0.85);
-    expect(broad / decay).toBeLessThan(1.05);
+    // Whole-sample line lengths: no interpolation loss, so the broadband tail matches too.
+    expect(Math.abs(low / decay - 1)).toBeLessThan(0.03);
+    expect(Math.abs(broad / decay - 1)).toBeLessThan(0.03);
   });
 
   it('damping shortens the high end only; pre-delay delays the onset; renders are identical', () => {

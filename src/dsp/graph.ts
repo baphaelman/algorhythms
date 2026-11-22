@@ -599,20 +599,42 @@ export class Graph {
     this.anchorReason = reason;
   }
 
+  /**
+   * Frees the slots of timbres the host no longer needs. `AudioEngine` evicts least-recently-used
+   * names this way, so its record of which tables the worklet holds stays true and `slotIndex`
+   * never has to recycle a named slot. A freed slot keeps its tables until it is reused, so voices
+   * still fading out on it keep sounding.
+   */
+  forget(names: readonly string[]): void {
+    for (const name of names) {
+      const i = this.slotByName.get(name);
+      if (i === undefined) continue;
+      this.slotByName.delete(name);
+      this.slots[i].name = '';
+    }
+  }
+
   private slotIndex(name: string): number {
     const known = this.slotByName.get(name);
     if (known !== undefined) return known;
+    // A free slot no voice references; else any free one; else recycle a named one.
+    const used = this.referencedSlots();
     let free = -1;
-    for (let i = 0; i < MAX_TIMBRE_SLOTS && free < 0; i++) if (this.slots[i].name === '') free = i;
-    if (free < 0) free = this.recycleSlot();
+    let anyFree = -1;
+    for (let i = 0; i < MAX_TIMBRE_SLOTS && free < 0; i++) {
+      if (this.slots[i].name !== '') continue;
+      if (used[i] === 0) free = i;
+      else if (anyFree < 0) anyFree = i;
+    }
+    if (free < 0) free = anyFree >= 0 ? anyFree : this.recycleSlot(used);
     this.slots[free].clear();
     this.slots[free].name = name;
     this.slotByName.set(name, free);
     return free;
   }
 
-  /** Frees a slot no current or pending voice data references (slot 0 as a last resort). */
-  private recycleSlot(): number {
+  /** 1 for each slot current, fading or pending voice data references. */
+  private referencedSlots(): Uint8Array {
     const used = new Uint8Array(MAX_TIMBRE_SLOTS);
     const mark = (d: VoiceData) => {
       for (let i = 0; i < d.nTimbre; i++) if (d.timbreSlot[i] >= 0) used[d.timbreSlot[i]] = 1;
@@ -620,6 +642,15 @@ export class Graph {
     for (const v of this.voices) mark(v.data);
     for (const g of this.ghosts) if (g.enabled) mark(g.data);
     if (this.pendingSwap) for (const d of this.pendingSwap.data) mark(d);
+    return used;
+  }
+
+  /**
+   * Frees a named slot no voice data references (slot 0 as a last resort). Only reached when more
+   * than MAX_TIMBRE_SLOTS names are live at once (a host that does not `forget`, or one score
+   * with that many); the host is not told.
+   */
+  private recycleSlot(used: Uint8Array): number {
     let pick = 0;
     for (let i = 0; i < MAX_TIMBRE_SLOTS; i++) {
       if (used[i] === 0) {
