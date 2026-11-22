@@ -2246,3 +2246,8 @@ CI chromium-dev `app-perf` failed on 8654544 (v49): median work 5.1, retry 4.1 m
 - **Result, median work (ms), 9 interleaved runs each:** eb72891 2.8 (2.6–3.0), 8654544 2.8 (2.5–3.4), this 2.6 (2.3–2.9): about 8 % under v48.
 - **Left:** most of the rAF is line drawing (`drawLines` ~85 %, the future through the ghost ~⅔ of it). Larger savings need sub-pixel changes (cached cut-glide samples, or PLAN §10's offscreen cache per scale); not done. CI's spread (2.0–5.6 ms on the same code) is larger than this margin; running the @perf specs on their own would steady it.
 - **Status:** lint, typecheck, `pnpm test --maxWorkers=2` 2342 passed (+1 skipped). e2e:quick chromium-dev `--workers=1`: live, live-drawer, musical-typing, render, ruler, view-follow, score-hover, piano-ruler, app, lane, loop 47 passed (1 skipped). Perf, chromium-dev: app-perf and edit-latency pass; `render.spec` @perf fails here at eb72891 too (flush timings ~4.2 ms on this box).
+## CI: timing gates run alone (`.github/workflows/ci.yml`; 2026-11-22)
+On 0afabcf, branch `ci-perf-solo`. Budgets and test logic unchanged.
+- Each e2e job runs two steps: the timing gates (`--grep '@perf|@latency' --workers=1`), then the rest (`--grep-invert` the same, usual workers, `if: success() || failure()`). Step 1 writes to `test-results-timing/` (each Playwright run empties its output dir); the failure upload takes both.
+- The live latency test in `live.spec.ts` is tagged `@latency`; `pnpm e2e:quick` still runs it (excludes `@perf` only).
+- Split per engine: 560 = 14 timing + 546 rest. Each step restarts both web servers and the prod build (~3 s here), so no prebuilt-output switch was added.
