@@ -23,6 +23,7 @@
  */
 
 import { compile } from './compiler/compile';
+import { MIN_GLIDE } from './compiler/glide';
 import type { LiveSettings, LiveUpdate } from './live';
 import { lifeAt } from './query';
 import type {
@@ -108,10 +109,13 @@ export function takeMoments(changes: readonly TakeChange[], opts: TakeOptions): 
           ...base,
           id: opts.newId(),
           type: 'merge',
-          at: Math.max(lastAt, Math.min(fadeEnd, T - CLOSE_GAP)),
+          at: Math.max(lastAt, Math.min(fadeEnd, T - CLOSE_GAP - MIN_GLIDE)),
           count: 0,
           which: 'outer',
           fade: 0,
+          // The shortest glide, so the silent lines have died when the chord establishes (a
+          // merge's dying lines glide first; length 0 means the default, seconds).
+          glide: { length: MIN_GLIDE, stagger: 0, jitter: 0 },
         };
         out.push(m);
       }
