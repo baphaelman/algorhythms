@@ -35,7 +35,7 @@ Status key: **C+P** covered and passing; **Part** partly covered; **None** not c
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| Key-to-glide start ≤ 10 ms plus device output latency | C+P (gap 3); feel: Owner | `tests/e2e/live.spec.ts` @latency: 12 notes per run. Gated on every note: `frame = receivedFrame`, engine ≤ 10 ms + callback, total − device ≤ 10 ms, call → post ≤ 5 ms. CI v52 (446b30c), quoted below; this box below that |
+| Key-to-glide start ≤ 10 ms plus device output latency | C+P (gap 3); feel: owner played it, "its good" (2026-11-22) | `tests/e2e/live.spec.ts` @latency: 12 notes per run. Gated on every note: `frame = receivedFrame`, engine ≤ 10 ms + callback, total − device ≤ 10 ms, call → post ≤ 5 ms. CI v52 (446b30c), quoted below; this box below that |
 | A recorded take plays back with pitch paths matching the live ones within 1 cent and 1 block | C+P (gaps 2, 4) | `dsp/live-take.test.ts`: scripted take (silence, key-by-key chords, re-targets mid-glide, hold, tonic and fade releases, re-entry, sustain), glide settings (stagger and order, range voicing, linear ease), split of a doubled line mid-glide, staggered releases in each release mode, partial release with a press during the grace. All at 0.0000 c, 0 misses. `live-take-random.test.ts`: seeds 1–72 gate, each at ≤ 1 cent and ≤ 128 frames with no miss. `live-fill.test.ts` "plays back as played". `live-take-moments.test.ts`: a key 14.9 ms after the first joins its press, 15.1 ms starts a new one. E2E `live-record.spec.ts`: a take armed at 30 s compiles equal to the live pitches within 1 cent at 6 settled times; a chord on 1 voice filled to 4 plays back; Play plays the take |
 | No editor shortcut fires from a letter key while musical typing is on | C+P | `musical-typing.spec.ts` "while musical typing is on, no editor shortcut fires from a letter key": a–z and Shift+A–Z, with a selection. The piece JSON, moment count, selection and undo label are unchanged; C4 and C5 played; nothing held after. With the mode toggled off by `` ` ``, C adds a moment. `unit/app/typing-keys.test.ts` "with the mode on, every letter is taken…", "letters without a note are taken too", "Space, Escape, Delete, arrows and ⌘/Ctrl/Alt chords stay editor keys", "text fields keep their keys". Every single-letter shortcut (`editor/shortcuts.ts`: C U S M T P W R E O I K L B, and N-held) is a letter in that sweep |
 
@@ -77,7 +77,7 @@ Status key: **C+P** covered and passing; **Part** partly covered; **None** not c
 | No layering over playback (v1) | §9, §17 | C+P | `takeBase`: moments at T₀ and later are removed and every line has died by `silentFrom` (`live-take.test.ts` "a take into a sounding piece…") |
 | Voices filled to 4 when fewer sound | build log M7 | C+P | `live-fill.test.ts`; `live-record.spec` (1 voice filled to 4) |
 | Play, Notes-drawer edits, opening another piece while live | §9 / §11 | C+P | `live-leftovers.spec.ts` (4 tests, recording and undo/redo included); `live.test.ts` timbre changes on a held triad (clicks within 2× unedited, level within 10 %); `live-setup-change.test.ts` (gap 1) |
-| Playing with a real MIDI keyboard; the feel of latency and glides | §9 | Owner | — |
+| Playing it; the feel of latency and glides | §9 | Owner: passed | Owner played live mode, "its good" (2026-11-22). A real MIDI device and the Firefox add-on prompt were not reported separately |
 
 ## Owner steps
 

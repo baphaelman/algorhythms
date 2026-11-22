@@ -23,6 +23,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **v41.** Sound drawer → Master tab (reverb, delay in beats, sends, tone; Voices drawer gets per-note R/D sends); the new bell's strike partials and FM "held" in the timbre editor. Empty: no opening note, opens on the key with Tonic focused, the first moment lands at 0:00. Melody on moves the tune by scale steps and highlights a line on hover. Compact bar under the lanes: Add + Next on one row, zoom/follow/snap + Notes/Sound/View ▾/? on the second.
 
 ## Answered
+- **M7 feel check: passed.** The owner played live mode: "its good" (2026-11-22).
 - **Live mode and the rest of the app (M7): approved by the owner 2026-11-22.** Play while live leaves live mode and plays from the playhead in one click; Space while live still only stops a take (hands on the keys). Notes-drawer timbre, gain and mute edits are heard on the live voices as they sound; a pool change re-enters live. Opening another piece while live re-enters live on it, drawer and typing kept.
 - 2026-11-22: no iPad check ("I won't do an iPad test"); touch editing stays covered by CI only (touch-edit.spec on Chromium and Firefox).
 - 2026-11-22: commits from now on are authored as Claude <noreply@anthropic.com> (earlier ones keep the placeholder).
