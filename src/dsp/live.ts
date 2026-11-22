@@ -75,7 +75,12 @@ export const LIVE_LINE = 11;
  * voice follows its parent's line, not yet a line of its own.
  */
 export const LIVE_BORN = 12;
-export const LIVE_STRIDE = 13;
+/**
+ * Line of the hold after the move's arrival, when it joins another line there (compile.ts
+ * `onJoin`; core/live-plan.ts); −1: LIVE_LINE.
+ */
+export const LIVE_JOIN = 13;
+export const LIVE_STRIDE = 14;
 /** Records per message: up to two per voice (a fork first follows its parent's move). */
 export const LIVE_MAX_RECORDS = 2 * DSP_MAX_VOICES;
 
@@ -362,7 +367,7 @@ export class LiveTracks {
         this.strike(d, false);
       }
       line[n] = m[mo + LIVE_LINE];
-      line[n + 1] = m[mo + LIVE_LINE];
+      line[n + 1] = m[mo + LIVE_JOIN] >= 0 ? m[mo + LIVE_JOIN] : m[mo + LIVE_LINE];
       departs[n] = m[mo + LIVE_BORN] > 0 ? 1 : 0;
       departs[n + 1] = 0;
       d.nSeg = n + 2;
@@ -588,6 +593,20 @@ export class LiveTracks {
     return this.lines[i][this.segmentAt(i, t)];
   }
 
+  /**
+   * Voice i has more posted after t than the segment in force and its own hold: a later move, or
+   * a line change at its arrival (LIVE_JOIN). Main thread.
+   */
+  postedAfter(i: number, t: number): boolean {
+    const d = this.data[i];
+    const k = this.segmentAt(i, t);
+    if (k + 1 >= d.nSeg) return false;
+    if (k + 2 < d.nSeg) return true;
+    const s = d.segs;
+    const next = s[(k + 1) * SEG_STRIDE + SEG_T0];
+    return next > s[k * SEG_STRIDE + SEG_CURVE_T1] || this.lines[i][k + 1] !== this.lines[i][k];
+  }
+
   /** Voice i's fork departure after t (a segment index), or −1: before it, it is not born. */
   departureAfter(i: number, t: number): number {
     const d = this.data[i];
@@ -716,6 +735,7 @@ export function exerciseLiveTracks(from: VoiceData): void {
   m[LIVE_STRIDE + LIVE_SCALE] = 1;
   m[LIVE_STRIDE + LIVE_SHARE] = 1;
   m[LIVE_STRIDE + LIVE_BORN] = 1;
+  m[LIVE_STRIDE + LIVE_JOIN] = -1;
   let t = 0;
   // Steps of 0 (a repeated time), 4 ms (interrupting glides) and 40 ms (glides that arrive, so
   // their strikes stay and fill the strike buffer).
@@ -729,6 +749,7 @@ export function exerciseLiveTracks(from: VoiceData): void {
     m[LIVE_SHARE] = 1;
     m[LIVE_LINE] = 0;
     m[LIVE_BORN] = k % 4 === 1 ? 1 : 0;
+    m[LIVE_JOIN] = k % 3 === 2 ? 0 : -1;
     const gain = k % 2 === 0 ? (k % 4 === 0 ? 0 : 1) : NaN;
     // A second record for the voice now and then (a fork following its parent's move first).
     m[LIVE_STRIDE + LIVE_DELAY] = 0.01 + (k % 3) * 0.01;

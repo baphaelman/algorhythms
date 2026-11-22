@@ -46,6 +46,7 @@ import {
   LIVE_LINE,
   LIVE_SHARE,
   LIVE_BORN,
+  LIVE_JOIN,
   LIVE_STRIDE,
   LIVE_VOICE,
   LiveTracks,
@@ -98,15 +99,16 @@ export function segmentAt(tracks: LiveTracks, i: number, t: Seconds): Segment {
 /**
  * A voice's view after a new change cancels its moves not started yet (as a moment cancels the
  * lines' pending moves in the compiler): the segment in force with its full curve, and its end as
- * the committed destination. `pending`: it had such moves.
+ * the committed destination. `pending`: it had such moves, or `posted`: a move or line change
+ * after the glide in force.
  */
-function uncut(v: LiveVoiceView & { seg: Segment }): LiveVoiceView {
+function uncut(v: LiveVoiceView & { seg: Segment }, posted: boolean): LiveVoiceView {
   const c = v.seg.curve;
   const seg = c ? { ...v.seg, t1: c.t1, p1: c.p1 } : v.seg;
   if (c) delete seg.curve;
   // Not born yet: heading where its parent's path is at its birth (compile.ts `birthPitch`).
   const dest = v.unborn ? evalSegment(seg, v.unborn.t) : seg.p1;
-  return { ...v, seg, dest, pending: c !== undefined || v.unborn !== undefined };
+  return { ...v, seg, dest, pending: c !== undefined || v.unborn !== undefined || posted };
 }
 
 /** Voice i's fork departure after t, if it has not left yet (times from t). */
@@ -119,23 +121,27 @@ function unbornAt(tracks: LiveTracks, i: number, t: Seconds): LiveVoiceView['unb
 /** The live state core decides on (`liveUpdate`), read from `tracks` at live time t. */
 export function liveView(
   tracks: LiveTracks,
-  voices: readonly { id: string; range: readonly [Pitch, Pitch] }[],
+  voices: readonly { id: string; range: readonly [Pitch, Pitch]; part?: string }[],
   t: Seconds,
 ): LiveView {
   return {
     voices: voices.map((v, i) =>
-      uncut({
-        index: i,
-        id: v.id,
-        range: v.range,
-        pitch: tracks.pitchAt(i, t),
-        velocity: tracks.velocityAt(i, t),
-        gliding: tracks.glidingAt(i, t),
-        dest: NaN,
-        seg: segmentAt(tracks, i, t),
-        line: tracks.lineAt(i, t),
-        unborn: unbornAt(tracks, i, t),
-      }),
+      uncut(
+        {
+          index: i,
+          id: v.id,
+          range: v.range,
+          ...(v.part ? { part: v.part } : {}),
+          pitch: tracks.pitchAt(i, t),
+          velocity: tracks.velocityAt(i, t),
+          gliding: tracks.glidingAt(i, t),
+          dest: NaN,
+          seg: segmentAt(tracks, i, t),
+          line: tracks.lineAt(i, t),
+          unborn: unbornAt(tracks, i, t),
+        },
+        tracks.postedAfter(i, t),
+      ),
     ),
     level: voices.length > 0 ? tracks.levelAt(0, t) : 0,
     levelTarget: voices.length > 0 ? tracks.levelTarget(0) : 0,
@@ -174,7 +180,7 @@ export interface LiveDecision {
 export function decideLive(
   press: LivePress | null,
   tracks: LiveTracks,
-  voices: readonly { id: string; range: readonly [Pitch, Pitch] }[],
+  voices: readonly { id: string; range: readonly [Pitch, Pitch]; part?: string }[],
   held: readonly Pitch[],
   settings: Readonly<LiveSettings>,
   baseSeed: number,
@@ -213,6 +219,7 @@ export function encodeMoves(moves: readonly LiveMove[]): Float64Array<ArrayBuffe
     out[o + LIVE_SHARE] = m.share;
     out[o + LIVE_LINE] = m.line ?? m.voice;
     out[o + LIVE_BORN] = m.born ? 1 : 0;
+    out[o + LIVE_JOIN] = m.join ?? -1;
   });
   return out;
 }
