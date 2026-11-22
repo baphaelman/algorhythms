@@ -247,7 +247,7 @@ for (const vp9 of [false, true]) {
     }
     // AAC: WebKit's decodeAudioData lands 3.25 ms early with the measured 2112-sample priming in
     // the edit list (imperceptible; lip sync tolerance ~20 ms); not resolvable without macOS.
-    const maxLagMs = r.codecs!.endsWith('aac') ? 5 : 1;
+    const maxLagMs = /\bmp4a\./.test(r.codecs!) ? 5 : 1;
     expect(Math.abs(r.lagMs!), 'audio lag (ms)').toBeLessThanOrEqual(maxLagMs);
     expect(Math.abs(r.rmsDb!), 'audio RMS (dB)').toBeLessThanOrEqual(1);
 
