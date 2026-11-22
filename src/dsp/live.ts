@@ -71,6 +71,8 @@ export const LIVE_SHARE = 10;
 /** Pool index of the line the voice is on after the move (core/live-plan.ts: the compiler's line). */
 export const LIVE_LINE = 11;
 export const LIVE_STRIDE = 12;
+/** Records per message: up to two per voice (a fork first follows its parent's move). */
+export const LIVE_MAX_RECORDS = 2 * DSP_MAX_VOICES;
 
 /** Segment records per voice; when full, records before the one in force are dropped. */
 export const LIVE_SEG_CAP = 256;
@@ -215,12 +217,7 @@ export class LiveTracks {
   ): void {
     const count = this.data.length;
     this.runs++;
-    if (rewind) {
-      for (let i = 0; i < count; i++) {
-        this.rewind(this.data[i], this.lines[i]);
-        if (touched !== null) touched[i] = 1;
-      }
-    }
+    if (rewind) this.rewindAll(touched);
     for (let r = 0; r < n; r++) {
       const o = base + r * LIVE_STRIDE;
       const i = moves[o + LIVE_VOICE] | 0;
@@ -235,6 +232,18 @@ export class LiveTracks {
         this.level(this.data[i]);
         if (touched !== null) touched[i] = 1;
       }
+    }
+  }
+
+  /**
+   * Out of `run`: inlined there, it left `run` too big to inline into `drain`, which then boxed
+   * ~90 B per message (no-GC live harness).
+   */
+  private rewindAll(touched: Uint8Array | null): void {
+    const count = this.data.length;
+    for (let i = 0; i < count; i++) {
+      this.rewind(this.data[i], this.lines[i]);
+      if (touched !== null) touched[i] = 1;
     }
   }
 
@@ -709,7 +718,7 @@ export class LiveInput {
   readonly tracks: LiveTracks;
   private readonly graph: Graph;
   private readonly rate: number;
-  private readonly qMoves = new Float64Array(LIVE_QUEUE * DSP_MAX_VOICES * LIVE_STRIDE);
+  private readonly qMoves = new Float64Array(LIVE_QUEUE * LIVE_MAX_RECORDS * LIVE_STRIDE);
   private readonly qCount = new Int32Array(LIVE_QUEUE);
   private readonly qSeq = new Float64Array(LIVE_QUEUE);
   private readonly qGain = new Float64Array(LIVE_QUEUE);
@@ -760,8 +769,8 @@ export class LiveInput {
   ): boolean {
     if (this.qLen >= LIVE_QUEUE) return false;
     const slot = (this.qHead + this.qLen) % LIVE_QUEUE;
-    const k = n < DSP_MAX_VOICES ? n : DSP_MAX_VOICES;
-    const base = slot * DSP_MAX_VOICES * LIVE_STRIDE;
+    const k = n < LIVE_MAX_RECORDS ? n : LIVE_MAX_RECORDS;
+    const base = slot * LIVE_MAX_RECORDS * LIVE_STRIDE;
     const len = k * LIVE_STRIDE;
     for (let j = 0; j < len; j++) this.qMoves[base + j] = moves[j];
     this.qCount[slot] = k;
@@ -806,7 +815,7 @@ export class LiveInput {
       const rewind = this.qPress[slot] > 0 && this.pressTime(slot);
       this.tracks.run(
         this.qMoves,
-        slot * DSP_MAX_VOICES * LIVE_STRIDE,
+        slot * LIVE_MAX_RECORDS * LIVE_STRIDE,
         this.qCount[slot],
         touched,
         rewind,
