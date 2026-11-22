@@ -4,7 +4,6 @@ The owner was away on the evening of 2026-11-21. Technical calls are the integra
 
 ## Needs you
 ### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
-- **Steady level when a part joins (v46+): listen.** `renders/part-norm/` has before/after pairs: `porch-light-bells-join-62-110s` (bells join at 78.4 s; before, everything else drops 1.8 dB), `tide-pools-0-50s` (Pad joins at 20 s) and `porch-light-0-50s`. After: a joining part no longer lowers the others; the loudest passages are unchanged. Cost: sparse sections are quieter than today (Porch Light's keys-only intro −3.5 dB, like a band thinning out). Say yes to make it the default.
 Try these in the newest preview; the integrator adds to this list as work lands:
 - **The pop at moment ends (fixed in v30).** Nothing had regressed: it was glass's arrival "bloom", +3.7 dB in 12 ms on every note at once. Sustained timbres now rise over at least 50 ms·√amount (glass 30 ms, reed 22 ms), and strikes within 40 ms share one bloom, so a glass chord bumps +2.0 dB instead of +3.7. Pluck keeps its approved 12 ms attack. **Organ changed too:** its 12 ms click measured just over the pop bar, so it now blooms over 17 ms; you approved the 12 ms click, so check it still sounds right. Listen to Kite Day: is the pop gone, and do arrivals still sound alive? Any timbre can opt back into the sharp attack with `articulation.crisp`.
 - **Moments bar (dense lanes v2).** Full-height rows that scroll inside the lane area, levels on the Level row, a Pins row, and a draggable divider between score and lanes. Open Kite Day and drag the divider.
@@ -24,6 +23,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **v41.** Sound drawer → Master tab (reverb, delay in beats, sends, tone; Voices drawer gets per-note R/D sends); the new bell's strike partials and FM "held" in the timbre editor. Empty: no opening note, opens on the key with Tonic focused, the first moment lands at 0:00. Melody on moves the tune by scale steps and highlights a line on hover. Compact bar under the lanes: Add + Next on one row, zoom/follow/snap + Notes/Sound/View ▾/? on the second.
 
 ## Answered
+- 2026-11-22: per-part normalisation: "yes" (renders in renders/part-norm/); it becomes the default.
 - 2026-11-22: bell pick: "church is fine" (1-church stays the bell preset).
 - 2026-11-21 (afternoon): the second set of compositions (Porch Light, Tide Pools, Interference, Switchyard, Little Round) goes in the Compositions menu. The owner likes the composer's suggestions (`docs/composing.md` §3, end); the integrator schedules them. Roman numerals: briefly reversed, then settled the same afternoon: they **keep the major-scale ruler** (consistent across modes, works for pentatonic keys), and the inspector gains a hint that suggests `♭VI` when `VI` falls outside a minor-type key's scale.
 - 2026-11-21 (v37): "the bell sounds awful" (heard in the Tidewater timbre-change render). Being redesigned: candidates rendered for the owner to pick.
