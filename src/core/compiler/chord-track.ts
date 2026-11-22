@@ -6,8 +6,8 @@
  *
  * Sources today: `chord` moments with a `pitches`, symbol / numeral or `degrees` NoteSet (a
  * numeral or degrees read in the key at the chord's time). `current` names no chord and is
- * skipped, as are muted, invalid and unparsable chords. A `progression` moment adds its chords
- * with `add` (one entry per chord, at its own time).
+ * skipped, as are muted, invalid and unparsable chords. A `progression` moment's chords come in
+ * as the chord moments the compiler expands it into (one entry per chord, at its own time).
  */
 
 import { mod } from '../math';

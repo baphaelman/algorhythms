@@ -420,3 +420,43 @@ describe('progression schema and incremental', () => {
     }
   });
 });
+
+describe('walk over chord follows progression chords', () => {
+  it('each step lands on a tone of the progression chord in effect', () => {
+    const walk: MomentInput = {
+      type: 'walk',
+      at: 0.5,
+      until: 12,
+      grid: 0.5,
+      density: 0.8,
+      steps: [-2, -1, 1, 2],
+      stepGlide: 0.2,
+      over: 'chord',
+      target: { part: 'Melody' },
+    } as MomentInput;
+    const p = band(
+      [
+        prog(
+          [
+            ['I', 3],
+            ['IV', 3],
+            ['V7', 3],
+          ],
+          { target: { part: 'Chords' } },
+        ),
+        walk,
+      ],
+      [48, 60, 64, 67, 76],
+    );
+    // v5 (on 76) carries the walk.
+    p.voices[4].part = 'Melody';
+    const s = compile(p);
+    const id = p.moments.find((m) => m.type === 'walk')!.id;
+    const steps = s.walkSteps.filter((w) => w.momentId === id && w.from !== w.to);
+    expect(steps.length).toBeGreaterThan(3);
+    const tones = (t: number): number[] => (t < 4 ? [0, 4, 7] : t < 7 ? [5, 9, 0] : [7, 11, 2, 5]);
+    for (const st of steps) expect(tones(st.t)).toContain(((Math.round(st.to) % 12) + 12) % 12);
+    // The same as with the chords written out.
+    expect(s.walkSteps).toEqual(compile(handWritten(p, 'm0')).walkSteps);
+  });
+});

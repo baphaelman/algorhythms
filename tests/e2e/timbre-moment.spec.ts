@@ -67,7 +67,7 @@ test('the palette fits one row at 1280 px with the timbre entry', async ({ page 
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   const buttons = page.getByTestId('palette').getByRole('button');
-  await expect(buttons).toHaveCount(14);
+  await expect(buttons).toHaveCount(15);
   await expect(page.getByTestId('palette').locator('[data-moment="timbre"]')).toHaveAttribute(
     'aria-keyshortcuts',
     'B',

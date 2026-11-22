@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { suggestNext, type Suggestion } from '../../core/suggest';
+import { progressionEnd } from '../../core/moments/progression';
 import type { CompiledScore, Moment, MomentId, Piece, Seconds } from '../../core/types';
 import { usePlayer } from '../store';
 import { edit, select } from './history';
@@ -17,10 +18,20 @@ import { insertMoments, newMomentIds } from './ops';
 
 const round3 = (t: Seconds): Seconds => Math.round(t * 1000) / 1000;
 
-/** Where a moment's effect ends: its span's end, else its region (walk, level), else `at`. */
+/**
+ * Where a moment's effect ends: its span's end, else its region (walk, level, progression), else
+ * `at`.
+ */
 function momentEnd(m: Moment, score: CompiledScore): Seconds {
   const span = score.momentSpans.find((s) => s.id === m.id);
-  const own = m.type === 'walk' ? m.until : m.type === 'level' ? m.at + m.over : m.at;
+  const own =
+    m.type === 'walk'
+      ? m.until
+      : m.type === 'level'
+        ? m.at + m.over
+        : m.type === 'progression'
+          ? progressionEnd(m)
+          : m.at;
   return Math.max(own, span?.end ?? -Infinity);
 }
 

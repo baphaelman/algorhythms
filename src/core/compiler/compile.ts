@@ -2516,7 +2516,8 @@ export class Compiler {
   /**
    * Pitch classes of the latest chord at or before t, whatever its target (§6.2 walk `over`,
    * revision 10), or null before any chord. Static (read from the piece, built on first use), so
-   * the incremental compile's causality covers it. The progression moment adds its chords here.
+   * the incremental compile's causality covers it. A progression's chords are chord moments of
+   * `this.moments` (expanded, order = their index), so each is added at its own time.
    */
   chordPitchClassesAt(t: Seconds): readonly number[] | null {
     if (!this.chordTrack) {

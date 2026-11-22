@@ -19,10 +19,13 @@
 
 .palette-add {
   border: 1px solid var(--rule);
-  gap: 3px;
+  gap: 2px;
 }
 
-/* Fourteen moment types (R9-7, M6 timbre) and four suggestions fit one row at 1280 px. */
+/*
+ * Fifteen moment types (R9-7, M6 timbre, rev 10 progression) and four suggestions fit one row at
+ * 1280 px.
+ */
 .palette.palette-add {
   height: auto;
   min-height: 36px;
@@ -30,7 +33,7 @@
 
 .palette.palette-add button {
   gap: 2px;
-  padding: 0 3px;
+  padding: 0 2px;
 }
 
 .app[data-layout='player'] .palette {

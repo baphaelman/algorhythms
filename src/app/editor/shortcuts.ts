@@ -37,7 +37,7 @@ export const PALETTE: readonly PaletteEntry[] = [
   {
     type: 'progression',
     key: 'O',
-    name: 'progression',
+    name: 'prog',
     icon: '⁞',
     hint: 'A chord progression, typed like “IV 2, V 2”',
   },
