@@ -45,6 +45,11 @@ export function isGlide(s: Segment): boolean {
   return s.p0 !== (s.curve ? s.curve.p1 : s.p1) || (s.m0 ?? 0) !== 0;
 }
 
+/** Level of change `c` (ramping from `start` at c.t) at t ≥ c.t. */
+function rampValue(start: number, c: { t: Seconds; gain: number; over: Seconds }, t: Seconds) {
+  return c.over > 0 && t < c.t + c.over ? start + ((c.gain - start) * (t - c.t)) / c.over : c.gain;
+}
+
 /** A timbre moment's change on one voice (M6), as the simulation records it. */
 export interface TimbreEntry {
   t: Seconds;
@@ -121,6 +126,11 @@ export interface Birth {
   fork?: number;
   /** When the fork was decided (its moment's time): a parent born later never had the share. */
   forkAt?: Seconds;
+  /**
+   * Length of the newborn's level timeline once it took its parent's level at the fork
+   * (`Compiler.inheritLevel`). Longer at the birth: a level moment addressed it while pending.
+   */
+  levels?: number;
 }
 
 /**
@@ -344,7 +354,7 @@ export class VoiceRun {
   pendingBirth: Birth | null = null;
   /** The open life, if sounding. */
   life: Life | null = null;
-  /** Level timeline. */
+  /** Level timeline, pushed at the simulation time, so sorted; never mutated. */
   readonly level: { t: Seconds; gain: number; over: Seconds }[] = [];
   /**
    * Timbre changes (M6), pushed at the simulation time, so sorted; never mutated. `finish` builds
@@ -423,6 +433,26 @@ export class VoiceRun {
     // Replace, never mutate (as rampWeight).
     if (last && last.t === t) c[c.length - 1] = { t, n };
     else c.push({ t, n });
+  }
+
+  /**
+   * The level timeline at t (1 before its first change; each change ramps linearly from the
+   * level in effect, as render/level.ts and the DSP): its value, and where it is heading (`gain`,
+   * reached at `end`; `end` = t and `gain` = `value` when settled).
+   */
+  levelState(t: Seconds): { value: number; gain: number; end: Seconds } {
+    const L = this.level;
+    let value = 1;
+    let k = -1;
+    for (let i = 0; i < L.length && L[i].t <= t; i++) {
+      if (k >= 0) value = rampValue(value, L[k], L[i].t);
+      k = i;
+    }
+    if (k < 0) return { value, gain: value, end: t };
+    const c = L[k];
+    const end = c.t + c.over;
+    value = rampValue(value, c, t);
+    return end > t ? { value, gain: c.gain, end } : { value, gain: value, end: t };
   }
 
   /**
