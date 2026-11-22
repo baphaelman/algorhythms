@@ -22,22 +22,13 @@
  */
 
 import { DEFAULT_GLIDE } from './defaults';
-import { easeCodeOf, bezierOf, easeSlope0 } from './ease';
-import {
-  carriedVelocity,
-  CHECK_SAMPLES,
-  FREE_LIMITS,
-  MAX_OVERSHOOT,
-  type OvershootLimits,
-} from './interrupt';
-import { drawTimings, MIN_GLIDE, sharedEnd, type TimedVoice } from './compiler/glide';
+import { MIN_GLIDE } from './compiler/glide';
 import { foldIntoRange } from './compiler/range';
 import { exp2, log2 } from './math';
 import { chordMoment } from './moments/chord';
 import type { MomentEnv } from './moments/types';
 import { unisonMoment } from './moments/unison';
-import { hash32 } from './rng';
-import { evalSegment } from './segment';
+import { planLive } from './live-plan';
 import type { AssignMode, EaseRef, Glide, GlideOrder, Key, Pitch, Seconds, Segment } from './types';
 import { assignFree, assignOrdered } from './voice-leading';
 import { voiceNotes } from './voicing';
@@ -244,6 +235,12 @@ export interface LiveVoiceView {
   gliding: boolean;
   /** Committed destination: where its moves already posted end. */
   dest: Pitch;
+  /** The segment in force now, times from the decision (absent: a hold, or a glide to dest). */
+  seg?: Segment;
+  /** The line it is on: the pool index standing for it (absent: its own). */
+  line?: number;
+  /** It has moves posted that have not started (a new move cancels them). */
+  pending?: boolean;
 }
 
 /** The live state a decision reads. */
@@ -256,28 +253,11 @@ export interface LiveView {
 
 /**
  * The voices sorted by committed destination, ties by pool index (§7.2), as the compiler orders
- * its logical voices: voices on one path (same pitch, velocity and destination) are one line
- * there, the lowest-index one standing for it and the others its phantoms, which follow every
- * line with that destination (compiler/lines.ts `expand`). So a voice doubled on a line ranks
- * after a single line heading to the same pitch, and a take voices the same way.
+ * its logical voices (compiler/lines.ts `expand`: a stacked line's phantoms are its former
+ * members, the live voices on its path, sorted with everything else by index).
  */
 function byDest(voices: readonly LiveVoiceView[]): LiveVoiceView[] {
-  const phantom = new Set<number>();
-  for (const v of voices) {
-    for (const u of voices) {
-      if (
-        u.index < v.index &&
-        u.dest === v.dest &&
-        Math.abs(u.pitch - v.pitch) <= 1e-9 &&
-        Math.abs(u.velocity - v.velocity) <= 1e-9
-      ) {
-        phantom.add(v.index);
-        break;
-      }
-    }
-  }
-  const rank = (v: LiveVoiceView): number => (phantom.has(v.index) ? 1 : 0);
-  return [...voices].sort((a, b) => a.dest - b.dest || rank(a) - rank(b) || a.index - b.index);
+  return [...voices].sort((a, b) => a.dest - b.dest || a.index - b.index);
 }
 
 /** A MomentEnv over `sorted` (env voice v = sorted[v]), all targeted and active. */
@@ -407,6 +387,8 @@ export interface LiveMove {
   scale: number;
   /** Share of a soft articulation strike at its arrival (1/√k for k arriving together). */
   share: number;
+  /** The line the voice is on after the move (a pool index; absent: its own). */
+  line?: number;
 }
 
 /** What one change of H (or of the release) does. */
@@ -420,63 +402,21 @@ export interface LiveUpdate {
   silent: boolean;
 }
 
-/**
- * Overshoot limits (§7.5) of every voice's move, by the compiler's rule (plan.ts step 4), so a
- * recorded take plays back as it was played (§15 M7): under `ordered`, L = min(1 semitone, gap to
- * each pitch-order neighbour, the gap being the smaller of the two moves' start-destination and
- * target differences). The compiler plans lines, not stacked voices: voices with the same
- * destination and target are one participant there, so they are here.
- */
-export function liveLimits(
-  voices: readonly LiveVoiceView[],
-  targets: readonly Pitch[],
-  ordered: boolean,
-): OvershootLimits[] {
-  if (!ordered) return voices.map(() => FREE_LIMITS);
-  const parts: { pre: Pitch; to: Pitch }[] = [];
-  const partOf = voices.map((v, i) => {
-    const to = targets[i];
-    let k = parts.findIndex((p) => p.pre === v.dest && p.to === to);
-    if (k < 0) k = parts.push({ pre: v.dest, to }) - 1;
-    return k;
-  });
-  const order = parts
-    .map((_, i) => i)
-    .sort((a, b) => parts[a].to - parts[b].to || parts[a].pre - parts[b].pre);
-  const rank = new Map<number, number>();
-  order.forEach((p, r) => rank.set(p, r));
-  const gap = (a: number, b: number): number =>
-    Math.min(Math.abs(parts[a].pre - parts[b].pre), Math.abs(parts[a].to - parts[b].to));
-  return partOf.map((k) => {
-    const r = rank.get(k) as number;
-    let up = MAX_OVERSHOOT;
-    let down = MAX_OVERSHOOT;
-    if (r + 1 < order.length) up = Math.min(up, gap(k, order[r + 1]));
-    if (r > 0) down = Math.min(down, gap(k, order[r - 1]));
-    return { up, down };
-  });
-}
-
-/** Raw m₀ = v·d − (p₁ − p₀)·e′(0) of a move (0 when holding). */
-function rawM0(v: LiveVoiceView, d: Seconds, p1: Pitch, ease: EaseRef): number {
-  if (!v.gliding) return 0;
-  const s0 = easeSlope0(easeCodeOf(ease), bezierOf(ease));
-  return v.velocity * d - (Number.isFinite(s0) ? (p1 - v.pitch) * s0 : 0);
+/** The segment in force for a view without one (unit tests): a hold, or a linear glide to dest. */
+function segOf(v: LiveVoiceView): Segment {
+  if (v.seg) return v.seg;
+  const dt = v.velocity !== 0 ? (v.dest - v.pitch) / v.velocity : 0;
+  if (!v.gliding || !(dt > 0) || !Number.isFinite(dt)) {
+    return { t0: 0, t1: Infinity, p0: v.pitch, p1: v.pitch, ease: 'linear' };
+  }
+  return { t0: 0, t1: dt, p0: v.pitch, p1: v.dest, ease: 'linear' };
 }
 
 /**
- * Pitch of voice `v` at time t (from the decision) under its planned move `seg`; before the move
- * starts it is taken as holding its pitch now (stagger offsets are short).
- */
-function pathAt(v: LiveVoiceView, seg: Segment, t: Seconds): Pitch {
-  return t < seg.t0 ? v.pitch : evalSegment(seg, t);
-}
-
-/**
- * The glides that take `voices` to `targets` (same order), starting at the decision time 0:
- * stagger and order by `drawTimings`, every move ending together (`sharedEnd`), the overshoot
- * clamp, and under `ordered` the §7.2 crossing rule on adjacent moving voices. Voices already
- * heading to their target (or holding it) do not move.
+ * The glides that take `voices` to `targets` (same order), planned from the decision time 0 by
+ * the compiler's rules (core/live-plan.ts): lines and forks, stagger and order by `drawTimings`
+ * with every move ending together, the overshoot clamp, and under `ordered` the §7.2 crossing
+ * loop, which re-times lines still gliding that a move overtakes. Strike share 1/√(moving parts).
  */
 export function liveMoves(
   voices: readonly LiveVoiceView[],
@@ -484,35 +424,6 @@ export function liveMoves(
   s: LiveSettings,
   seed: number,
 ): LiveMove[] {
-  const target = new Map<number, Pitch>();
-  voices.forEach((v, i) => target.set(v.index, targets[i]));
-  const all = byDest(voices).filter(
-    (v) => Math.abs((target.get(v.index) ?? v.dest) - v.dest) > 1e-9,
-  );
-  if (all.length === 0) return [];
-  // Voices on one path going to one target move as one line, as in the compiler: one timing draw
-  // and one crossing check per line (stagger is stratified over lines, not doubled voices).
-  const lines: LiveVoiceView[][] = [];
-  for (const v of all) {
-    const to = target.get(v.index);
-    const line = lines.find(
-      (l) =>
-        l[0].dest === v.dest &&
-        target.get(l[0].index) === to &&
-        Math.abs(l[0].pitch - v.pitch) <= 1e-9 &&
-        Math.abs(l[0].velocity - v.velocity) <= 1e-9,
-    );
-    if (line) line.push(v);
-    else lines.push([v]);
-  }
-  lines.sort(
-    (a, b) =>
-      a[0].dest - b[0].dest ||
-      (target.get(a[0].index) as Pitch) - (target.get(b[0].index) as Pitch) ||
-      a[0].index - b[0].index,
-  );
-  const movers = lines.map((l) => l[0]);
-  const n = movers.length;
   const glide: Glide = {
     length: s.glide,
     jitter: 0,
@@ -521,109 +432,28 @@ export function liveMoves(
     order: s.order,
     ease: s.ease,
   };
-  const timed: TimedVoice[] = movers.map((v) => ({ hash: hash32(v.id), index: v.index }));
-  const draws = drawTimings(timed, glide, seed);
-  let last = 0;
-  for (const d of draws) if (d.offset > last) last = d.offset;
-  const end = sharedEnd(last, glide, seed);
-  const start = draws.map((d) => d.offset);
-  const dur = start.map((o) => Math.max(MIN_GLIDE, end - o));
-  const q = movers.map((v) => target.get(v.index) as Pitch);
-  const ordered = s.assign !== 'free';
-  const limits = liveLimits(voices, targets, ordered);
-  const limitOf = new Map<number, OvershootLimits>();
-  voices.forEach((v, i) => limitOf.set(v.index, limits[i]));
-  const scale = movers.map((v, i) => {
-    const raw = rawM0(v, dur[i], q[i], s.ease);
-    if (raw === 0) return 1;
-    const c = carriedVelocity(
-      { p: v.pitch, v: v.velocity, mid: true },
-      dur[i],
-      q[i],
-      s.ease,
-      limitOf.get(v.index) as OvershootLimits,
-    );
-    return c.m0 / raw;
-  });
-  if (ordered && n > 1) enforceOrder(movers, q, start, dur, scale, s.ease);
-  const share = 1 / Math.sqrt(n);
-  const out: LiveMove[] = [];
-  lines.forEach((l, i) => {
-    for (const v of l) {
-      out.push({
-        voice: v.index,
-        delay: start[i],
-        dur: dur[i],
-        p1: q[i],
-        ease: s.ease,
-        scale: scale[i],
-        share,
-      });
-    }
-  });
-  return out;
-}
-
-/**
- * Order reversals up to this are touching, not crossing (semitones: 1 cent). Lines a hair apart
- * that re-target together can swap order by far less, from their carried velocities alone.
- */
-const CROSS_EPS = 0.01;
-
-/**
- * §7.2 crossing rule for live moves (`movers` sorted by committed destination): sample each
- * adjacent pair over the window at CHECK_SAMPLES points; if the curves cross, the voice that
- * starts earlier adopts the other's start and length. Repeats until no pair crosses (at worst all
- * share one timing). A crossing that equal timing cannot remove (carried velocity) drops the
- * overtaker's carried velocity.
- */
-function enforceOrder(
-  movers: readonly LiveVoiceView[],
-  q: readonly Pitch[],
-  start: Seconds[],
-  dur: Seconds[],
-  scale: number[],
-  ease: EaseRef,
-): void {
-  const n = movers.length;
-  const segOf = (i: number): Segment => {
-    const v = movers[i];
-    const m0 = rawM0(v, dur[i], q[i], ease) * scale[i];
-    const seg: Segment = { t0: start[i], t1: start[i] + dur[i], p0: v.pitch, p1: q[i], ease };
-    if (m0 !== 0) seg.m0 = m0;
-    return seg;
-  };
-  const crosses = (a: number, b: number): boolean => {
-    if (q[a] > q[b] + 1e-9) return false; // free-assigned endpoints: not ours to fix
-    const sa = segOf(a);
-    const sb = segOf(b);
-    const t1 = Math.max(sa.t1, sb.t1);
-    // An order already inverted at the start (an interrupted glide restarts its ease, so a
-    // neighbour that kept accelerating can be a hair past it) is not a crossing of this move.
-    const d0 = movers[a].pitch - movers[b].pitch;
-    const allow = (d0 > 0 ? d0 : 0) + CROSS_EPS;
-    for (let k = 0; k < CHECK_SAMPLES; k++) {
-      const t = (t1 * k) / (CHECK_SAMPLES - 1);
-      if (pathAt(movers[a], sa, t) - pathAt(movers[b], sb, t) > allow) return true;
-    }
-    return false;
-  };
-  for (let iter = 0; iter <= n; iter++) {
-    let any = false;
-    for (let i = 0; i + 1 < n; i++) {
-      if (!crosses(i, i + 1)) continue;
-      any = true;
-      if (start[i] === start[i + 1] && dur[i] === dur[i + 1]) {
-        const j = scale[i] !== 0 ? i : i + 1;
-        scale[j] = 0;
-        continue;
-      }
-      const [from, to] = start[i] <= start[i + 1] ? [i + 1, i] : [i, i + 1];
-      start[to] = start[from];
-      dur[to] = dur[from];
-    }
-    if (!any) return;
-  }
+  const planned = planLive(
+    voices.map((v) => ({ ...v, seg: segOf(v), line: v.line ?? v.index })),
+    targets,
+    glide,
+    s.ease,
+    s.assign !== 'free',
+    seed,
+  );
+  const parts = new Set(planned.filter((m) => m.part >= 0).map((m) => m.part)).size;
+  const share = parts > 0 ? 1 / Math.sqrt(parts) : 1;
+  return planned
+    .sort((x, y) => x.order - y.order)
+    .map((m) => ({
+      voice: m.voice,
+      delay: m.delay,
+      dur: m.dur,
+      p1: m.p1,
+      ease: s.ease,
+      scale: m.scale,
+      share,
+      line: m.line,
+    }));
 }
 
 /** All voices step to their targets at once (from silence). */

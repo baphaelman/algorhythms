@@ -217,14 +217,16 @@ describe('a chord pressed key by key re-targets smoothly', () => {
   const at = (chain: Segment[], t: number): Segment =>
     [...chain].reverse().find((s) => s.t0 <= t) ?? chain[0];
 
-  it('carries each voice’s velocity into the next key, 5 ms apart (no velocity jump)', () => {
+  // Re-targets 5 ms apart outside a press (decideLive merges real presses): the compiler's rules,
+  // so the overshoot clamp may drop carried velocity (limit 0 between lines from one note), but
+  // every join is continuous in pitch and the chord ends in order.
+  it('re-targets 5 ms apart: continuous, ending on the chord in order', () => {
     const n = 6;
     const chains: Segment[][] = Array.from({ length: n }, () => [
       { t0: 0, t1: Infinity, p0: 55, p1: 55, ease: 'smootherstep' },
     ]);
     const s = S({ glide: 0.3 });
     const held: number[] = [];
-    let jumps = 0;
     let joins = 0;
     for (const [k, key] of [60, 64, 67].entries()) {
       const t = 1 + 0.005 * k;
@@ -240,6 +242,7 @@ describe('a chord pressed key by key re-targets smoothly', () => {
           velocity: gliding ? evalSegmentVelocity(seg, t) : 0,
           gliding,
           dest: c[c.length - 1].p1,
+          seg: { ...seg, t0: seg.t0 - t, t1: seg.t1 - t },
         };
       });
       const u = liveUpdate(view(vs), held, s, 1);
@@ -248,19 +251,25 @@ describe('a chord pressed key by key re-targets smoothly', () => {
         const v = vs[m.voice];
         if (!v.gliding) continue;
         joins++;
-        expect(m.scale).toBe(1); // no overshoot clamp
         const next = chains[m.voice][chains[m.voice].length - 1];
-        const vNew = evalSegmentVelocity(next, t);
-        if (Math.abs(vNew - v.velocity) > 1e-9 * Math.max(1, Math.abs(v.velocity))) jumps++;
         expect(evalSegment(next, t)).toBe(v.pitch);
       }
     }
     expect(joins).toBeGreaterThan(0);
-    expect(jumps).toBe(0);
-    // Everyone ends on the chord, in order.
+    // Everyone ends on the chord, and no two paths cross after the last key.
     const ends = chains.map((c) => c[c.length - 1].p1);
-    expect(ends).toEqual([...ends].sort((a, b) => a - b));
     expect(new Set(ends)).toEqual(new Set([60, 64, 67]));
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let sign = 0;
+        for (let t = 1.01; t < 1.5; t += 0.002) {
+          const d = evalSegment(at(chains[i], t), t) - evalSegment(at(chains[j], t), t);
+          const sg = d > 1e-6 ? 1 : d < -1e-6 ? -1 : 0;
+          if (sg !== 0 && sign !== 0) expect(sg).toBe(sign);
+          if (sg !== 0) sign = sg;
+        }
+      }
+    }
   });
 });
 

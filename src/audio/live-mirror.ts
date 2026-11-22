@@ -4,10 +4,26 @@
  * the move records posted to the worklet.
  */
 
-import { bezierOf, easeCodeOf } from '../core/ease';
+import { bezierOf, easeCodeOf, EaseCode } from '../core/ease';
+import {
+  SEG_BX1,
+  SEG_BX2,
+  SEG_BY1,
+  SEG_BY2,
+  SEG_CURVE_P1,
+  SEG_CURVE_T1,
+  SEG_EASE,
+  SEG_M0,
+  SEG_P0,
+  SEG_P1,
+  SEG_STRIDE,
+  SEG_T0,
+  SEG_T1,
+} from '../core/segment';
 import { flatten } from '../core/flat';
 import {
   liveUpdate,
+  type LiveVoiceView,
   MERGE_WINDOW,
   type LiveMove,
   type LiveSettings,
@@ -15,7 +31,7 @@ import {
   type LiveView,
 } from '../core/live';
 import { hash32 } from '../core/rng';
-import type { Pitch, Seconds } from '../core/types';
+import type { EaseRef, Pitch, Seconds, Segment } from '../core/types';
 import {
   LIVE_BX1,
   LIVE_BX2,
@@ -26,6 +42,7 @@ import {
   LIVE_EASE,
   LIVE_P1,
   LIVE_SCALE,
+  LIVE_LINE,
   LIVE_SHARE,
   LIVE_STRIDE,
   LIVE_VOICE,
@@ -43,6 +60,51 @@ export function mirrorTracks(setup: LiveSetup): LiveTracks {
   );
 }
 
+const EASES: readonly EaseRef[] = ['smootherstep', 'smoothstep', 'cosine', 'linear', 'expo'];
+
+/** Voice i's segment in force at live time t, with times from t (the planner's frame). */
+export function segmentAt(tracks: LiveTracks, i: number, t: Seconds): Segment {
+  const d = tracks.data[i];
+  const o = tracks.segmentAt(i, t) * SEG_STRIDE;
+  const s = d.segs;
+  const code = s[o + SEG_EASE] | 0;
+  const ease: EaseRef =
+    code === EaseCode.Bezier
+      ? {
+          kind: 'bezier',
+          x1: s[o + SEG_BX1],
+          y1: s[o + SEG_BY1],
+          x2: s[o + SEG_BX2],
+          y2: s[o + SEG_BY2],
+        }
+      : EASES[code];
+  const seg: Segment = {
+    t0: s[o + SEG_T0] - t,
+    t1: s[o + SEG_T1] - t,
+    p0: s[o + SEG_P0],
+    p1: s[o + SEG_P1],
+    ease,
+  };
+  const m0 = s[o + SEG_M0];
+  if (m0 !== 0) seg.m0 = m0;
+  if (s[o + SEG_CURVE_T1] !== s[o + SEG_T1] || s[o + SEG_CURVE_P1] !== s[o + SEG_P1]) {
+    seg.curve = { t1: s[o + SEG_CURVE_T1] - t, p1: s[o + SEG_CURVE_P1] };
+  }
+  return seg;
+}
+
+/**
+ * A voice's view after a new change cancels its moves not started yet (as a moment cancels the
+ * lines' pending moves in the compiler): the segment in force with its full curve, and its end as
+ * the committed destination. `pending`: it had such moves.
+ */
+function uncut(v: LiveVoiceView & { seg: Segment }): LiveVoiceView {
+  const c = v.seg.curve;
+  const seg = c ? { ...v.seg, t1: c.t1, p1: c.p1 } : v.seg;
+  if (c) delete seg.curve;
+  return { ...v, seg, dest: seg.p1, pending: c !== undefined };
+}
+
 /** The live state core decides on (`liveUpdate`), read from `tracks` at live time t. */
 export function liveView(
   tracks: LiveTracks,
@@ -50,15 +112,19 @@ export function liveView(
   t: Seconds,
 ): LiveView {
   return {
-    voices: voices.map((v, i) => ({
-      index: i,
-      id: v.id,
-      range: v.range,
-      pitch: tracks.pitchAt(i, t),
-      velocity: tracks.velocityAt(i, t),
-      gliding: tracks.glidingAt(i, t),
-      dest: tracks.dest(i),
-    })),
+    voices: voices.map((v, i) =>
+      uncut({
+        index: i,
+        id: v.id,
+        range: v.range,
+        pitch: tracks.pitchAt(i, t),
+        velocity: tracks.velocityAt(i, t),
+        gliding: tracks.glidingAt(i, t),
+        dest: NaN,
+        seg: segmentAt(tracks, i, t),
+        line: tracks.lineAt(i, t),
+      }),
+    ),
     level: voices.length > 0 ? tracks.levelAt(0, t) : 0,
     levelTarget: voices.length > 0 ? tracks.levelTarget(0) : 0,
   };
@@ -133,6 +199,7 @@ export function encodeMoves(moves: readonly LiveMove[]): Float64Array<ArrayBuffe
     out[o + LIVE_BY2] = bz.y2;
     out[o + LIVE_SCALE] = m.scale;
     out[o + LIVE_SHARE] = m.share;
+    out[o + LIVE_LINE] = m.line ?? m.voice;
   });
   return out;
 }

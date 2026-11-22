@@ -294,6 +294,8 @@ const PULSE_START: PulseState = Object.freeze({ index: -1, dir: 1, heard: false 
 
 /** Resting pitches closer than this are one note. */
 const SAME_PITCH = 1e-6;
+/** Line arrivals this close are simultaneous (`onJoin`; s). */
+export const SAME_TIME = 1e-9;
 
 interface CloseRec {
   voice: number;
@@ -2257,7 +2259,9 @@ export class Compiler {
     for (const r of group) {
       const dr = since(r);
       const ds = since(s);
-      if (dr < ds || (dr === ds && r.index < s.index)) s = r;
+      // Arrivals within SAME_TIME are together (lines arriving at a shared end differ by rounding
+      // only): the lower index stands for them, so live mode can tell which (core/live-plan.ts).
+      if (dr < ds - SAME_TIME || (Math.abs(dr - ds) <= SAME_TIME && r.index < s.index)) s = r;
     }
     this.touch();
     // One crossfade window for the group: the end of the longest approach into the meeting.
