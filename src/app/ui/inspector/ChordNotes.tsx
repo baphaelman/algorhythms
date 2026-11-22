@@ -96,7 +96,6 @@ export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
           step={1}
           min={1}
           max={pool}
-          slider={pool > 1 ? { min: 1, max: pool, step: 1 } : undefined}
           testId="insp-chord-count"
         />
       </fieldset>

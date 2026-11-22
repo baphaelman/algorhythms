@@ -210,9 +210,10 @@ test('bar lines show in the ruler and the score; tempo and meter change them', a
   const bpm = page.getByTestId('insp-bpm');
   await bpm.fill('120');
   await bpm.press('Enter');
-  const meter = page.getByTestId('insp-meter');
-  await meter.fill('3');
-  await meter.press('Enter');
+  // Beats per bar (1–32) is a slider without a text box: 4 → 3.
+  const meter = page.getByTestId('insp-meter-slider');
+  await meter.focus();
+  await meter.press('ArrowLeft');
   await expect(bars).toHaveAttribute('data-step', '1.5');
   await expect(page.getByTestId('ruler-beats')).toHaveAttribute('data-step', '0.5');
 });
