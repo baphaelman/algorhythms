@@ -175,18 +175,22 @@ export function resetContext(ctx: Ctx2D): void {
 
 /**
  * Clears and draws the poster on a context whose canvas is `posterSize(size)` pixels (a canvas,
- * an OffscreenCanvas or an `SvgContext` through `asCtx2D`). Returns the score's view.
+ * an OffscreenCanvas or an `SvgContext` through `asCtx2D`), or `scale` times that (the Export
+ * dialog's preview: the same picture, smaller). Returns the score's view.
  */
 export function drawPoster(
   ctx: Ctx2D,
   compiled: CompiledScore,
   info: PosterInfo,
   opts: PosterDrawOptions,
+  scale = 1,
 ): View {
-  const { width, height, dpr } = posterLayout(opts.size);
+  const lay = posterLayout(opts.size);
+  const { width, height } = lay;
+  const dpr = lay.dpr * scale;
   const px = posterSize(opts.size);
   resetContext(ctx);
-  ctx.clearRect(0, 0, px.width, px.height);
+  ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
   const style = withTitle(opts.style, opts.title);
   const cam = posterCamera(compiled, opts.pitchRange);
   const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);

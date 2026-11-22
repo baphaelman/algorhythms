@@ -9,6 +9,7 @@ import {
   SMOOTH_X,
   drawScore,
   drawVideoFrame,
+  drawVideoFrameAt,
   pitchExtent,
   pitchToY,
   videoCamera,
@@ -353,5 +354,32 @@ describe('drawVideoFrame', () => {
     drawVideoFrame(c.ctx, s, o, 200, 30);
     expect(c.strokes).toEqual(a.strokes);
     expect(c.fills).toEqual(a.fills);
+  });
+
+  it('drawVideoFrameAt: the same frame at any scale, with the pixel ratio scaled (preview)', () => {
+    const o = {
+      aspect: '16:9' as const,
+      size: '720' as const,
+      camera: 'follow' as const,
+      window: 6,
+      style,
+    };
+    const full = pathCtx();
+    drawVideoFrame(full.ctx, s, o, 60, 30);
+    const small = pathCtx();
+    const dprs: number[] = [];
+    const set = small.ctx.setTransform.bind(small.ctx);
+    small.ctx.setTransform = ((...a: number[]) => {
+      dprs.push(a[0]);
+      (set as (...x: number[]) => void)(...a);
+    }) as typeof small.ctx.setTransform;
+    const view = drawVideoFrameAt(small.ctx, s, o, 2, 0.25);
+    expect(view.t).toBe(2);
+    expect(small.strokes).toEqual(full.strokes);
+    expect(small.fills).toEqual(full.fills);
+    expect(dprs).toContain(videoLayout('16:9', '720').dpr * 0.25);
+    // Clamped to the piece.
+    expect(drawVideoFrameAt(pathCtx().ctx, s, o, 1e9).t).toBe(s.duration);
+    expect(drawVideoFrameAt(pathCtx().ctx, s, o, -1).t).toBe(0);
   });
 });

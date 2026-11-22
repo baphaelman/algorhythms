@@ -2,7 +2,7 @@
  * Poster in the Export dialog (PLAN.md §12 "Poster export", "Export look"): the format and its
  * defaults, PNG and SVG saves (download, or a stubbed save picker in Chromium), the PNG's size
  * and transparent background, Look and HUD choices reaching the export, Reset, remembered
- * choices and the phone layout.
+ * choices and the phone layout; the live preview (matches a direct render, checkerboard).
  *
  * Owner samples: with LOOK_SAMPLES_DIR set, Chromium saves dialog-poster.png and
  * poster-default.png (the dialog's default poster of Little Round) there.
@@ -12,10 +12,15 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type * as ExportRun from '../../src/app/export-run';
+import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
 
 interface HookWindow {
-  __algorhythms: { exportRun(): Promise<typeof ExportRun> };
+  __algorhythms: {
+    exportRun(): Promise<typeof ExportRun>;
+    poster(): Promise<typeof Poster>;
+    store: { getState(): { piece: unknown } };
+  };
 }
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
@@ -34,11 +39,20 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 
 const pickPoster = (page: Page) => choose(page, 'export-format', 'Poster');
 
+/** The Look section (always shown for video and poster). */
 async function openLook(page: Page): Promise<void> {
-  const look = page.getByTestId('look');
-  if ((await look.getAttribute('open')) === null) await page.getByTestId('look-toggle').click();
-  await expect(page.getByTestId('look-reset')).toBeVisible();
+  await expect(page.getByTestId('look-reset')).toBeAttached();
 }
+
+/** Opens the HUD checklist. */
+async function openHud(page: Page): Promise<void> {
+  const b = page.getByTestId('look-hud-button');
+  if ((await b.getAttribute('aria-expanded')) !== 'true') await b.click();
+  await expect(page.getByTestId('look-hud')).toBeVisible();
+}
+
+const pick = (page: Page, testId: string, value: string) =>
+  page.getByTestId(testId).selectOption(value);
 
 const lastRequest = (page: Page) =>
   page.evaluate(async () =>
@@ -104,14 +118,15 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   await expect(page.getByTestId('export-run')).toHaveText('Export poster');
   await expect(page.getByTestId('export-codec')).toHaveCount(0);
   await openLook(page);
-  for (const t of ['look-future', 'look-follow-at', 'look-playhead', 'look-dots', 'look-rings']) {
+  for (const t of ['look-future', 'look-follow-at', 'look-playhead', 'look-heads']) {
     await expect(page.getByTestId(t)).toHaveCount(0);
   }
-  await expect(page.getByTestId('look-transparent')).not.toBeChecked();
-  await expect(page.getByTestId('look-guides')).not.toBeChecked();
-  await expect(page.getByTestId('look-markers')).toBeChecked();
-  await expect(page.getByTestId('look-sections')).toBeChecked();
+  await expect(page.getByTestId('look-background')).toHaveValue('off');
+  await expect(page.getByTestId('look-guides')).toHaveValue('off');
+  await expect(page.getByTestId('look-moments')).toHaveValue('all');
   // A poster's HUD is off by default (it would show end-of-piece values).
+  await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
+  await openHud(page);
   for (const box of await page.getByTestId('look-hud').locator('input').all()) {
     await expect(box).not.toBeChecked();
   }
@@ -137,8 +152,7 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 
   // Transparent 1:1: an empty corner has alpha 0.
   await choose(page, 'export-psize', '1:1');
-  await openLook(page);
-  await page.getByTestId('look-transparent').check();
+  await pick(page, 'look-background', 'on');
   const clear = await decodePng(page, (await download(page)).bytes);
   expect(clear).toMatchObject({ width: 2160, height: 2160, cornerAlpha: 0 });
   expect(clear.inked).toBeGreaterThan(100);
@@ -161,12 +175,14 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await page.getByTestId('export-ptitle').uncheck();
   await choose(page, 'export-vtheme', 'Dark');
   await openLook(page);
-  await page.getByTestId('look-guides').check();
-  await choose(page, 'look-width', 'Bold');
-  await choose(page, 'look-colors', 'Ink');
+  await pick(page, 'look-guides', 'labels');
+  await pick(page, 'look-width', 'bold');
+  await pick(page, 'look-colors', 'ink');
   await page.getByTestId('look-ink').fill('#336699');
+  await openHud(page);
   await page.getByTestId('hud-title').check();
   await page.getByTestId('hud-key').check();
+  await page.keyboard.press('Escape');
   await download(page);
   const req = (await lastRequest(page))!;
   expect(req.options).toMatchObject({ size: '1:1', title: false, theme: 'dark' });
@@ -185,20 +201,25 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await pickPoster(page);
   await openLook(page);
   const d = dialog(page);
-  for (const l of ['1:1', 'Dark', 'Bold', 'Ink']) {
+  for (const l of ['1:1', 'Dark']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
+  await expect(page.getByTestId('look-width')).toHaveValue('bold');
+  await expect(page.getByTestId('look-colors')).toHaveValue('ink');
   await expect(page.getByTestId('export-ptitle')).not.toBeChecked();
   await expect(page.getByTestId('look-ink')).toHaveValue('#336699');
+  await openHud(page);
   await expect(page.getByTestId('hud-title')).toBeChecked();
+  await page.keyboard.press('Escape');
 
   await page.getByTestId('look-reset').click();
-  for (const l of ['Current', 'Normal', 'As in the app']) {
-    await expect(d.getByLabel(l, { exact: true })).toBeChecked();
-  }
-  await expect(page.getByTestId('look-guides')).not.toBeChecked();
-  await expect(page.getByTestId('hud-title')).not.toBeChecked();
+  await expect(d.getByLabel('Current', { exact: true })).toBeChecked();
+  await expect(page.getByTestId('look-width')).toHaveValue('normal');
+  await expect(page.getByTestId('look-colors')).toHaveValue('app');
+  await expect(page.getByTestId('look-guides')).toHaveValue('off');
   await expect(page.getByTestId('look-ink')).toHaveCount(0);
+  await openHud(page);
+  await expect(page.getByTestId('hud-title')).not.toBeChecked();
   // Default / None quick buttons: a poster's default HUD is none.
   await page.getByTestId('hud-chord').check();
   await page.getByTestId('hud-default').click();
@@ -272,10 +293,87 @@ test('fits a phone screen with Poster and the Look open', async ({ page }) => {
   expect(box.x + box.width).toBeLessThanOrEqual(375);
   expect(box.y + box.height).toBeLessThanOrEqual(640);
   expect(await dialog(page).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  for (const t of ['look-transparent', 'hud-title', 'look-reset', 'export-run']) {
+  for (const t of ['look-background', 'look-hud-button', 'look-reset', 'export-run']) {
     await page.getByTestId(t).scrollIntoViewIfNeeded();
     await expect(page.getByTestId(t)).toBeInViewport();
+    await expect(page.getByTestId('preview-canvas')).toBeInViewport({ ratio: 1 });
   }
+  await openHud(page);
+  await page.getByTestId('hud-title').scrollIntoViewIfNeeded();
+  await expect(page.getByTestId('hud-title')).toBeInViewport();
+});
+
+/** Waits for a preview draw after `after` draws; returns the count. */
+async function drawn(page: Page, after = 0): Promise<number> {
+  const c = page.getByTestId('preview-canvas');
+  await expect
+    .poll(async () => Number((await c.getAttribute('data-draws')) ?? 0))
+    .toBeGreaterThan(after);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  return Number(await c.getAttribute('data-draws'));
+}
+
+/** The preview against `referencePosterAt` at its size: pixels off by more than 16; alpha at (2, 2). */
+async function comparePreview(page: Page) {
+  return page.evaluate(async () => {
+    const h = (window as unknown as HookWindow).__algorhythms;
+    const c = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;
+    const a = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    const req = (await h.exportRun()).lastPreviewRequest()!;
+    if (req.kind !== 'poster') throw new Error('not a poster preview');
+    const piece = h.store.getState().piece as never;
+    const ref = (await h.poster()).referencePosterAt(
+      piece,
+      req.options,
+      req.scale,
+      c.width,
+      c.height,
+    );
+    let bad = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (Math.abs(a[i] - ref.data[i]) > 16) {
+        bad++;
+        i += 3 - (i % 4);
+      }
+    }
+    return {
+      bad,
+      total: a.length / 4,
+      width: c.width,
+      height: c.height,
+      cornerAlpha: a[(2 * c.width + 2) * 4 + 3],
+      title: req.options.title,
+    };
+  });
+}
+
+test('the poster preview draws the export’s poster; transparent on a checkerboard; A4', async ({
+  page,
+}) => {
+  await openExport(page);
+  await pickPoster(page);
+  let n = await drawn(page);
+  const canvas = page.getByTestId('preview-canvas');
+  await expect(canvas).toHaveAttribute('aria-label', 'Preview of the poster, 16:9');
+  const first = await comparePreview(page);
+  expect(first.bad / first.total).toBeLessThan(0.002);
+  expect(first).toMatchObject({ cornerAlpha: 255, title: true });
+  expect(first.width / first.height).toBeCloseTo(16 / 9, 1);
+
+  await pick(page, 'look-background', 'on');
+  n = await drawn(page, n);
+  const clear = await comparePreview(page);
+  expect(clear.cornerAlpha).toBe(0);
+  expect(clear.bad / clear.total).toBeLessThan(0.002);
+  await expect(canvas).toHaveClass(/checker/);
+  await expect(canvas).toHaveAttribute('aria-label', /transparent background/);
+  expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toMatch(/gradient/);
+
+  await choose(page, 'export-psize', 'A4 portrait');
+  await drawn(page, n);
+  const a4 = await comparePreview(page);
+  expect(a4.height / a4.width).toBeCloseTo(3508 / 2480, 1);
+  expect(a4.bad / a4.total).toBeLessThan(0.002);
 });
 
 test('owner samples: the Poster dialog and the default poster', async ({ page, browserName }) => {
