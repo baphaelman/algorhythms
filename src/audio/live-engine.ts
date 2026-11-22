@@ -42,6 +42,9 @@ import { AudioEngine } from './engine';
 import { decideLive, encodeMoves, mirrorTracks, type LivePress } from './live-mirror';
 import { liveGains, liveScore, type LiveSetup, type LiveVoiceSetup } from './live-setup';
 
+/** Changes the warm-up at `enter` decides and applies on a scratch mirror (`warmUp`). */
+const WARM_UP_CHANGES = 120;
+
 /** When a live message took effect. */
 export interface LiveStamp {
   seq: number;
@@ -72,6 +75,9 @@ export interface LiveNoteEvent {
   held: Pitch[];
   /** Seq of the live message posted, or −1 when the event changed nothing. */
   seq: number;
+  /** ms from the call to the message's post (NaN: nothing posted), and of it deciding (`decideLive`). */
+  postMs: number;
+  planMs: number;
   /** Filled when the message is applied (also `applied`'s value). */
   stamp: LiveStamp | null;
   /** Resolves when the worklet applied it (null: nothing posted, or live mode ended first). */
@@ -251,9 +257,79 @@ export class LiveEngine {
         this.onApplied(seq, frame, time, received, callback);
       this.engineValue = engine;
       engine.startLive(setup.voices.length);
+      // While the worklet starts its live score. Only a speed-up: never fails `enter`.
+      try {
+        this.warmUp();
+      } catch {
+        /* the first keys run cold */
+      }
       await started;
       this.notify();
     }
+  }
+
+  /**
+   * Runs the press path (decideLive with presses and re-plans, encodeMoves, the mirror's apply
+   * and clone) on a scratch copy of the mirror, so the first keys run optimised code: cold, a
+   * press took 10–15 ms from call to post at 6× CPU throttling (build log, live main thread).
+   * Silent and pure: nothing is posted and no state changes (seeds are hashes of seqs).
+   */
+  private warmUp(): void {
+    const voices = this.voices;
+    if (voices.length === 0 || !this.confirmed) return;
+    const [lo, hi] = voices[0].range;
+    const mid = Math.round((lo + hi) / 2);
+    const chords: Pitch[][] = [
+      [mid],
+      [mid + 4],
+      [mid - 5],
+      [mid, mid + 4, mid + 7],
+      [mid - 3, mid + 2],
+      [mid - 7, mid, mid + 5, mid + 9],
+      [mid + 2],
+      [],
+    ];
+    const base = this.settingsValue;
+    const variants: LiveSettings[] = [
+      base,
+      mergeLiveSettings(base, { release: 'tonic', stagger: 0.03, order: 'random' }),
+      mergeLiveSettings(base, {
+        release: 'fade',
+        assign: base.assign === 'free' ? 'ordered' : 'free',
+      }),
+    ];
+    // Cycles of chords.length changes, each from silence on a fresh copy (the first key of a
+    // session steps from silence).
+    let tracks = this.confirmed;
+    let press: LivePress | null = null;
+    let t = 0;
+    for (let k = 0; k < WARM_UP_CHANGES; k++) {
+      const c = Math.floor(k / chords.length);
+      if (k % chords.length === 0) {
+        tracks = this.confirmed.clone();
+        press = null;
+        t = 0;
+      }
+      const settings = variants[c % variants.length];
+      const held = chords[(k + c) % chords.length];
+      // Every third change falls within the merge window of the one before (a re-plan).
+      t += k % 3 === 2 ? 0.005 : 0.15;
+      const d = decideLive(press, tracks, voices, held, settings, this.seed, k + 1, t, t);
+      press = d.next;
+      const n = d.update.moves.length;
+      const moves = encodeMoves(d.update.moves);
+      const gain = d.update.level ? d.update.level.gain : NaN;
+      const over = d.update.level ? d.update.level.over : 0;
+      tracks.apply(moves.slice(), 0, n, gain, over, d.t, null, d.press > 0);
+    }
+    // A live message's structured clone (the first post took ~0.3 ms more).
+    const ch = new MessageChannel();
+    const m = encodeMoves([]);
+    ch.port1.postMessage({ type: 'live', seq: 0, moves: m, n: 0, gain: NaN, over: 0, press: 0 }, [
+      m.buffer,
+    ]);
+    ch.port1.close();
+    ch.port2.close();
   }
 
   /** Resolves once every posted change is applied (stamped), or live mode ended. */
@@ -292,7 +368,9 @@ export class LiveEngine {
     this.flushGrace(ev.at);
     if (this.active && this.keys.noteOn(pitch)) {
       this.endGrace();
-      this.post(this.change(ev.at), ev);
+      const c = this.change(ev.at);
+      ev.planMs = performance.now() - ev.at;
+      this.post(c, ev);
     } else this.settle(ev);
     return ev;
   }
@@ -307,7 +385,9 @@ export class LiveEngine {
       this.armGrace();
     } else {
       this.endGrace();
-      this.post(this.change(ev.at), ev);
+      const c = this.change(ev.at);
+      ev.planMs = performance.now() - ev.at;
+      this.post(c, ev);
     }
     return ev;
   }
@@ -455,6 +535,8 @@ export class LiveEngine {
       liveTime: this.now(),
       held: [],
       seq: -1,
+      postMs: NaN,
+      planMs: NaN,
       stamp: null,
       applied: Promise.resolve(null),
     };
@@ -528,10 +610,13 @@ export class LiveEngine {
     return t;
   }
 
+  /**
+   * Posts a decided change. The message goes first: the mirror's bookkeeping (pending, the
+   * predicted tracks, the log) runs after it, off the key's path to the worklet.
+   */
   private post(change: Change, ev: LiveNoteEvent | null): void {
     const { update, press } = change;
     const engine = this.engineValue;
-    if (ev) ev.held = this.keys.held;
     // A re-planned press always posts: it rewinds the press even when it moves nothing.
     if (!engine || (press === 0 && update.moves.length === 0 && update.level === null)) {
       if (press === 0) this.press = null;
@@ -541,12 +626,15 @@ export class LiveEngine {
     const seq = ++this.seq;
     const n = update.moves.length;
     const moves = encodeMoves(update.moves);
+    const kept = moves.slice(); // `moves` is transferred
     const gain = update.level ? update.level.gain : NaN;
     const over = update.level ? update.level.over : 0;
+    engine.postLive(seq, moves, n, gain, over, press);
+    if (ev) ev.postMs = performance.now() - ev.at;
     const t = press > 0 ? this.timeOf(press, change.t) : change.t;
-    const p: Pending = { seq, press, moves: moves.slice(), n, gain, over, t };
+    const p: Pending = { seq, press, moves: kept, n, gain, over, t };
     this.pending.push(p);
-    (this.predicted as LiveTracks).apply(p.moves, 0, n, gain, over, t, null, press > 0);
+    (this.predicted as LiveTracks).apply(kept, 0, n, gain, over, t, null, press > 0);
     const logged: LiveChange = {
       seq,
       press: press > 0 ? press : seq,
@@ -559,6 +647,7 @@ export class LiveEngine {
     };
     this.changes.push(logged);
     if (ev) {
+      ev.held = this.keys.held;
       ev.seq = seq;
       ev.applied = new Promise<LiveStamp | null>((resolve) =>
         this.waiting.set(seq, (s) => {
@@ -568,7 +657,6 @@ export class LiveEngine {
       );
     }
     this.logged.set(seq, logged);
-    engine.postLive(seq, moves, n, gain, over, press);
     this.notify();
   }
 

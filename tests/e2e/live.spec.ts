@@ -23,7 +23,12 @@
  * - engine ≤ 10 ms + one callback period: a message that misses the callback in progress (it is
  *   rendered in one go, and Firefox delivers port messages only between callbacks) starts with
  *   the next one;
- * - total − device ≤ 10 ms.
+ * - total − device ≤ 10 ms;
+ * - main thread: call → post (`postMs`, the key's message handed to the port) ≤ 5 ms.
+ * The log lists each note: post, plan (call → decided), applied (call → stamp back), and slip
+ * (wall − context time since the call: within about a callback, as currentTime steps by one).
+ * A note late to the ear with a small engine latency and a slip as large is an audio-render stall
+ * (the context clock stopped while the wall clock ran), not main-thread work.
  * What the heard gate covers per engine (measured 2026-11-22):
  * - Chromium: baseLatency = the callback (512 frames); getOutputTimestamp trails currentTime by
  *   outputLatency + 0…1 callback, so the gate includes the reported device output latency;
@@ -46,6 +51,8 @@ interface LiveHookShape {
       noteOn(p: number): {
         at: number;
         contextTime: number;
+        postMs: number;
+        planMs: number;
         applied: Promise<{ frame: number; receivedFrame: number; callbackFrames: number } | null>;
       };
       noteOff(p: number): { applied: Promise<unknown> };
@@ -122,6 +129,10 @@ test(
       lagMs: number;
       frame: number;
       receivedFrame: number;
+      postMs: number;
+      planMs: number;
+      appliedMs: number;
+      slipMs: number;
     }[] = [];
     for (const [i, p] of notes.entries()) {
       const r = await page.evaluate(
@@ -135,7 +146,10 @@ test(
           const ev = live.noteOn(p);
           const stamp = await ev.applied;
           if (!stamp) return null;
+          const appliedMs = performance.now() - ev.at;
           const ts = ctx.getOutputTimestamp();
+          // Wall minus context time since the call: ≫ one callback when the render clock stalled.
+          const slipMs = performance.now() - ev.at - (ctx.currentTime - ev.contextTime) * 1000;
           const lagMs =
             (ctx.currentTime - (ts.contextTime ?? NaN)) * 1000 -
             (performance.now() - (ts.performanceTime ?? NaN));
@@ -154,6 +168,10 @@ test(
             lagMs,
             frame: stamp.frame,
             receivedFrame: stamp.receivedFrame,
+            postMs: ev.postMs,
+            planMs: ev.planMs,
+            appliedMs,
+            slipMs,
           };
         },
         { p, prev: i > 0 ? notes[i - 1] : null },
@@ -171,14 +189,30 @@ test(
     const beyond = results.map((r) => r.totalMs - r.deviceMs);
     const callback = results.map((r) => r.callbackMs);
     const lag = results.map((r) => r.lagMs);
+    const post = results.map((r) => r.postMs);
     console.info(
       `live latency (${results.length} notes, ${info.sampleRate} Hz, baseLatency ${(info.baseLatency * 1000).toFixed(1)} ms, ` +
         `outputLatency ${(info.outputLatency * 1000).toFixed(1)} ms, callback ${Math.min(...callback).toFixed(1)}–${Math.max(...callback).toFixed(1)} ms, ` +
         `timestamp lag ${Math.min(...lag).toFixed(1)}–${Math.max(...lag).toFixed(1)} ms): engine median ${med(engine).toFixed(1)} / max ${Math.max(...engine).toFixed(1)} ms; ` +
         `key → heard median ${med(total).toFixed(1)} / max ${Math.max(...total).toFixed(1)} ms; ` +
-        `beyond device latency median ${med(beyond).toFixed(1)} / max ${Math.max(...beyond).toFixed(1)} ms; rms ${rms.toFixed(4)}`,
+        `beyond device latency median ${med(beyond).toFixed(1)} / max ${Math.max(...beyond).toFixed(1)} ms; ` +
+        `call → post median ${med(post).toFixed(2)} / max ${Math.max(...post).toFixed(2)} ms; rms ${rms.toFixed(4)}`,
     );
+    // Per note: main-thread call → post and call → decided, call → stamp received, the clock
+    // slip (wall − context time since the call: an audio-render stall), engine and beyond device.
+    const perNote = results
+      .map(
+        (r, i) =>
+          `#${i} p${notes[i]}: post ${r.postMs.toFixed(2)} plan ${r.planMs.toFixed(2)} applied ${r.appliedMs.toFixed(1)} ` +
+          `slip ${r.slipMs.toFixed(1)} engine ${r.engineMs.toFixed(1)} beyond ${(r.totalMs - r.deviceMs).toFixed(1)} ms`,
+      )
+      .join('\n');
+    console.info(perNote);
     expect(rms).toBeGreaterThan(0.005);
+    // Main thread: every press posts its message within 5 ms of the call.
+    expect(Math.max(...post), `main-thread call → post per note:\n${perNote}`).toBeLessThanOrEqual(
+      5,
+    );
     for (const r of results) {
       expect(r.callbackMs).toBeGreaterThan(0); // measured
       expect(r.frame).toBe(r.receivedFrame); // applied at the first block after it arrived

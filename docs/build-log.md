@@ -2369,3 +2369,31 @@ On 5d4dea4 (`main-7glpov`), branch `live-line-id`. Seeds 33 and 47 now gate (ran
 - **View (`audio/live-mirror.ts`, `LiveTracks.postedAfter`).** A voice is `pending` also when something is posted after its glide in force: a move starting after its arrival, or a line change there. Its cancel record then drops the change, as the compiler cancels pending moves. Without this, a stale join from an earlier change merged lines (seed 47).
 - **Measured (`LIVE_TAKE_SEEDS=1`, or `=a-b` for a range).** Seeds 1–372 miss 2 (was 11): 116 (30.1 c, 6 misses) and 181 (65.4 c, 15 misses), unchanged from before. One cause for both, in `live-take.ts`: a key comes within MIN_GLIDE + CLOSE_GAP (11 ms) of the end of a fade. The re-establish `merge` then starts before the fade ends and re-targets lines still gliding over 10 ms, at the fade's tail (−30 dB or lower), where live kept to its glide. Ending the take's fade at the merge instead leaves live sounding where the take is silent. Not fixed.
 - **Status.** Lint and typecheck pass. `pnpm test --maxWorkers=2`: 2445 passed (+2 skipped). `pnpm test:perf`: 11/11; live no-GC 1976 B (3 runs). e2e:quick live, live-drawer, live-record, musical-typing: 16/16 on chromium-dev and chromium-prod (Firefox is not installed here).
+
+## M7: live main thread, call → post (audio; e2e; 2026-11-22)
+On 5d4dea4 + 410f3bb (line identity), branch `live-main-thread`. CI WebKit @latency: one note per run 74–381 ms late to the ear while its engine latency was ≤ 5 ms.
+- **WebKit finding.** Engine latency counts from `currentTime` read at the call, so main-thread time before the post shows up in it (on chromium a cold 10–15 ms press read engine 11.6 ms). CI's late notes had engine ≤ 2.7 ms, so the time went by while the context clock was stopped: an audio-render or device stall, not main-thread work. Not reproducible here (no WebKit). The spec now logs per note `post`, `plan`, `applied` and `slip` (wall − context time since the call), so the next CI failure names the note and the cause.
+- **Main-thread cost found (chromium, 6× CDP throttling).** Cold planner: the first presses took 9–15 ms to decide. The mirror's bookkeeping (predicted apply, log) ran before `postMessage`, up to ~6 ms more.
+- **Fix (`audio/live-engine.ts`).**
+  - `post` sends the message first; pending, predicted tracks, log and notify follow.
+  - `warmUp()` at `enter`, while the worklet starts: 120 changes (15 cycles from silence, 3 setting variants, re-plans inside the merge window) through decideLive → encodeMoves → apply on scratch clones, plus one structured clone of a live message. It posts nothing and changes no state; a throw only skips it. Cost: about +150–300 ms on `enter` at 6×.
+  - `LiveNoteEvent.postMs` / `planMs`: call → post, call → decided.
+- **Gate (`live.spec.ts` @latency).** Call → post ≤ 5 ms on every note, with the per-note table in the failure message.
+- **Numbers (chromium-prod, call → post).**
+
+  | Run | median | p90 | max |
+  |---|---|---|---|
+  | Before, 6×, 40 presses | 2.2 | 5.7 | 15.5 (first presses 10, 15, 6) |
+  | Reorder only, 6×, 5 fresh pages × 12 | 2.6 | 12.9 | 20.1 (first 3: median 10.2) |
+  | After, merged, 6×, 6 pages × 12 | 1.9 | 5.3 | 13.1 (first 3: median 2.8) |
+  | After, merged, 6×, 500 presses | 1.4 | 3.3 | 20.6 |
+  | After, unthrottled, @latency spec | 0.3 | — | 0.6 |
+
+  The 500-press session stays flat: medians of 1.3–1.5 ms in each block of 100. Firefox (1 ms clock): max 1 ms in the spec and max 2 ms over 500 presses. In Node, `liveUpdate` with the join pass costs ~0.05 ms per press after warm-up, unchanged by 410f3bb.
+- **Deviation: the ≤ 2 ms max at 6× is not met.** The throttler (and this shared box) pauses the main thread for 1–10 ms at a time. A 50 µs busy loop in the same page showed the same tail: p90 1.2 ms, max 5–24 ms. Medians meet the target.
+- **Status.**
+  - Lint and typecheck pass.
+  - `pnpm test --maxWorkers=2`: 2445 passed (+2 skipped).
+  - `pnpm test:perf`: 11/11.
+  - `live.spec.ts`: chromium-dev/prod and firefox-dev/prod 4/4.
+  - e2e:quick live-drawer, live-record, musical-typing: 14/14 on chromium-dev/prod.
