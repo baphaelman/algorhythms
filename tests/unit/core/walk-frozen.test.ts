@@ -147,12 +147,13 @@ describe('frozen walks', () => {
     const p = base();
     const fixed = freezeWalk(compile(p), 'w');
     const frozen = withFixed(p, 'w', fixed);
-    // A short shift before the walk moves every voice; the walk's notes stay put.
+    // A short shift before the walk moves every voice; the walk's notes stay put. (After the
+    // opening in array order: before it, nothing sounds and it would do nothing.)
     const edited: Piece = {
       ...frozen,
       moments: [
-        { id: 's', type: 'shift', at: 0, by: 2, unit: 'semitones', glide: { length: 0.4 } },
         ...frozen.moments,
+        { id: 's', type: 'shift', at: 0, by: 2, unit: 'semitones', glide: { length: 0.4 } },
       ],
     };
     const s = compile(edited);

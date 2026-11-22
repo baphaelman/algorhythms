@@ -292,8 +292,8 @@ describe('chord count keeps lines whole (M4.5-17)', () => {
         births += count(parent);
         checkLives(score, into, parent);
         // (a) The planner may still report a crossing it cannot remove (carried velocity), and
-        // folding a target by an octave (§7.8) may reorder lines.
-        const exempt = ['crossing-unresolved', 'range-fold', 'range-too-narrow'];
+        // folding a target by an octave (§7.8; or off a part-mate, `fold-apart`) may reorder lines.
+        const exempt = ['crossing-unresolved', 'range-fold', 'range-too-narrow', 'fold-apart'];
         if (score.diagnostics.some((d) => exempt.includes(d.code))) return;
         // Under `arrive: 'spread'` a fast voice can pass a slow one just before both arrive,
         // between the planner's 64 check samples (§7.2; not specific to counts).

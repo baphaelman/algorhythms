@@ -17,9 +17,11 @@
  * moves no pitch and leaves every cache and destination as it was, as a pulse tick does.
  * Then every voice is closed at the end (`end.at`, or the last activity + 4 s) with the end fade.
  *
- * Schema v2 (M4.5-27): every voice starts dormant. A chord or unison that comes when nothing is
- * sounding establishes: its voices come in on their notes with no glide (`establish`). Every
- * other moment has no effect from silence.
+ * Schema v2 (M4.5-27): every voice starts dormant. A chord, unison or tune that comes when nothing
+ * is sounding establishes: its voices come in on their notes with no glide (`establish`). Every
+ * other moment has no effect from silence. One that targets a silent part (composing.md §3 #4)
+ * brings the part in the same way: at the opening's time it joins the opening (`opensWith`), later
+ * its births fade in on their notes, as a chord `count`'s parentless births do (`entersSilent`).
  */
 
 import { defaultGlide } from '../defaults';
@@ -33,7 +35,7 @@ import { nextPulseIndex, type PulseWalk } from '../pulse';
 import { hash32, momentSeed, Purpose, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
-import { establishPlan, isEstablishing } from '../moments/establish';
+import { bringsIn, establishPlan } from '../moments/establish';
 import { noteMoment } from '../moments/note';
 import { tuneNotePlan, tuneProblem, tuneStarts } from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
@@ -73,6 +75,7 @@ import { applyOverrideEnds, applyOverridePitches, overridesOf } from './override
 import { planMoment, type CrossingsMode, type PlanResult, type PlanTrace } from './plan';
 import { Projector } from './project';
 import { EventClass, EventQueue } from './queue';
+import { foldApart, type FoldNote } from './fold-apart';
 import { foldIntoRange, sanitizeRange } from './range';
 import { collapse, countsLines, expand, type Collapsed, type Expansion } from './lines';
 import { Status, VoiceRun, type Birth, type Move, type TimbreEntry } from './voice';
@@ -143,6 +146,14 @@ export interface TuneStep {
 
 const TUNE_START: TuneStep = Object.freeze({ k: 0, voice: -1, moved: false });
 
+/** A tune's first note bringing its line in (no parent: it fades in on the note). */
+const entry = (voice: number, to: Pitch): Intent => ({
+  voice,
+  to,
+  kind: IntentKind.Birth,
+  parent: -1,
+});
+
 /** One tune note's timing, handed to `applyPointMoment`. */
 interface TuneNoteRun {
   k: number;
@@ -154,6 +165,8 @@ interface TuneNoteRun {
   glide: Glide;
   /** Under `land`: the arrival. */
   land: Seconds | undefined;
+  /** The first note brings `voice` in: its part was silent (composing.md §3 #4). */
+  enter?: boolean;
 }
 
 /**
@@ -840,7 +853,7 @@ export class Compiler {
       default:
         // A land moment whose lead-in finds nothing sounding waits for its marker (revision 9):
         // an establishing chord then comes in on the beat.
-        if (!late && T < m.at && this.sortedActive().length === 0) {
+        if (!late && T < m.at && (this.sortedActive().length === 0 || this.entersSilent(m))) {
           this.queue.push({ t: m.at, cls: EventClass.Moment, key: i, sub: SUB_LANDED, ref: i });
           return;
         }
@@ -919,8 +932,9 @@ export class Compiler {
     }
     const after = this.destsInto(this.effAfter);
     if (changesPitch({ before, after, deaths, births })) return;
+    // Nothing it targets sounds: a warning (composing.md §3 #4).
     this.diag(
-      'info',
+      targeted.length === 0 ? 'warn' : 'info',
       'no-effect',
       `No effect: ${noEffectReason(this.moments[i], {
         targeted: targeted.flatMap((v) => Array<number>(counts[v]).fill(before[v])),
@@ -933,16 +947,49 @@ export class Compiler {
     );
   }
 
-  /** Raises `no-effect` for a key or level moment. */
-  private noEffect(m: Moment, targeted: readonly number[], active: readonly number[]): void {
+  /** Raises `no-effect` for a key, level or tune moment (`warn`: a tune that targets nothing). */
+  private noEffect(
+    m: Moment,
+    targeted: readonly number[],
+    active: readonly number[],
+    level: DiagnosticLevel = 'info',
+    dormant = 0,
+  ): void {
     const reason = noEffectReason(m, {
       targeted: targeted.map((v) => this.destOf(v)),
       active: active.map((v) => this.destOf(v)),
       births: 0,
       deaths: 0,
-      dormant: 0,
+      dormant,
     });
-    this.diag('info', 'no-effect', `No effect: ${reason}.`, m.id);
+    this.diag(level, 'no-effect', `No effect: ${reason}.`, m.id);
+  }
+
+  /**
+   * True when `m` brings a silent part in (composing.md §3 #4): a chord with notes and no `count`
+   * (a count already births, `chord.ts withBirths`), a unison or a tune with notes, on a `{ part }`
+   * target of which no line is sounding. Nothing sounding at all is `establish`'s case.
+   */
+  private entersSilent(m: Moment): boolean {
+    if (!bringsIn(m) || (m.type === 'chord' && m.count !== undefined)) return false;
+    const part = selectorPart(m.target);
+    if (part === null || !this.parts.has(part)) return false;
+    for (const v of this.sortedActive()) if (this.voices[v].part === part) return false;
+    return true;
+  }
+
+  /**
+   * True when `m` brings a silent part in at the very time the piece opens (every sounding line
+   * was established at T): it joins the opening, coming in as it does (no fade-in).
+   */
+  private opensWith(m: Moment, T: Seconds): boolean {
+    if (m.at !== T || !this.entersSilent(m)) return false;
+    for (const v of this.sortedActive()) {
+      const run = this.voices[v];
+      if (run.pendingBirth || !run.life || run.life.born !== T || run.life.fadeIn !== 0)
+        return false;
+    }
+    return true;
   }
 
   /**
@@ -1022,7 +1069,8 @@ export class Compiler {
     const rest = back ? T : tune ? tune.rest : m0.at;
     const glide = tune ? tune.glide : land ? land.glide : this.glides[i];
     const key = back ? this.key : this.keyFor(i);
-    if (!back && !tune && this.sortedActive().length === 0) return this.establish(i);
+    if (!back && !tune && (this.sortedActive().length === 0 || this.opensWith(m, T)))
+      return this.establish(i);
     // Distinct notes (revision 8): the moment function sees each line as `count` stacked voices,
     // or once when the moment's count is a number of lines (`countsLines`).
     const dormant = this.dormantAt(T);
@@ -1036,8 +1084,8 @@ export class Compiler {
     let pre: number[];
     let subset: boolean;
     if (tune) {
-      // The tune's line (countsLines: seen once, so it moves whole).
-      pre = [tune.voice];
+      // The tune's line (countsLines: seen once, so it moves whole); none yet when it enters.
+      pre = tune.enter ? [] : [tune.voice];
       subset = true;
     } else if (m.type === 'pin') {
       const v = this.byId.get(m.voice);
@@ -1105,10 +1153,15 @@ export class Compiler {
       this.touch();
       x.active = sortU(x.active.slice());
       targeted = sortU(pre.slice());
+      const env = this.env(i, targeted, T, seed, x, destU, free, glide, key);
       plan =
         tune && m.type === 'tune'
-          ? tuneNotePlan(m, tune.k, tune.voice)
-          : pointMomentPlan(m, this.env(i, targeted, T, seed, x, destU, free, glide, key));
+          ? tune.enter
+            ? { ordered: false, intents: [entry(tune.voice, m.notes[0].pitch)] }
+            : tuneNotePlan(m, tune.k, tune.voice)
+          : !back && this.entersSilent(m)
+            ? establishPlan(m, env)
+            : pointMomentPlan(m, env);
     }
     const targetedLines = this.sortByDest(lines(targeted));
     if (!plan) {
@@ -1142,6 +1195,7 @@ export class Compiler {
     // Per-voice overrides (§11.3, revision 6): not on a note's return or a tune's notes.
     const ov = back || tune ? null : overridesOf(m, this.voices.length);
     if (ov) applyOverridePitches(plan, ov, targeted);
+    if (m.type !== 'unison') this.foldLinesApart(plan, x, destU, key, m.id);
     const logical = plan;
     const rangeU = (u: number): readonly [Pitch, Pitch] =>
       this.voices[u < x.pool ? u : x.base.get(u)!].range;
@@ -1283,14 +1337,17 @@ export class Compiler {
     res: PlanResult | null;
     lost: number;
     absorbed: number;
+    /** The lines it opened. */
+    opened: number[];
   } {
     const m = this.moments[i];
     const T = m.at;
     const subset = m.target !== undefined && m.target !== 'all';
-    const none = { targeted: [], res: null, lost: 0, absorbed: 0 };
+    const opened: number[] = [];
+    const none = { targeted: [], res: null, lost: 0, absorbed: 0, opened };
     const free = this.dormantAt(T);
     const x = expand(this.voices, [], free, (v) => this.destOf(v), true);
-    const plan = isEstablishing(m)
+    const plan = bringsIn(m)
       ? establishPlan(
           m,
           this.env(i, [], T, this.seeds[i], x, (v) => this.destOf(v), free),
@@ -1300,6 +1357,16 @@ export class Compiler {
     if (!plan || plan.intents.length === 0) {
       this.traceMoment(i, [], subset, null, null, T);
       return none;
+    }
+    // Folding never stacks two notes of a part (composing.md §3 #6); a unison gathers them.
+    const notes: FoldNote[] = plan.intents.map((it) => {
+      const r = this.voices[it.voice];
+      return { part: r.part, to: it.to, lo: r.range[0], hi: r.range[1] };
+    });
+    const apart = m.type === 'unison' ? 0 : foldApart(notes, [], this.key);
+    if (apart > 0) {
+      plan.intents.forEach((it, j) => (it.to = notes[j].to));
+      this.foldApartDiag(apart, m.id);
     }
     let folded = 0;
     const lines: VoiceRun[] = [];
@@ -1325,6 +1392,7 @@ export class Compiler {
       run.life = { born: T, fadeIn: 0 };
       run.lives.push(run.life);
       lines.push(run);
+      opened.push(run.index);
     }
     if (folded > 0) {
       this.diag(
@@ -1335,9 +1403,67 @@ export class Compiler {
       );
     }
     this.touch();
-    this.recordHarmony(i, T, this.key);
+    // A tune's notes are melody, not harmony (as in applyPointMoment).
+    if (m.type !== 'tune') this.recordHarmony(i, T, this.key);
     this.traceMoment(i, [], subset, null, plan.intents, T);
     return none;
+  }
+
+  /**
+   * Folding never merges lines (composing.md §3 #6): a target folded by octave onto a pitch that
+   * another line of its part holds or heads to takes the nearest free pitch (fold-apart.ts), on
+   * the logical intents before `collapse`, so neither a merge nor an absorbed newborn follows.
+   * Not for a unison, which gathers lines on one pitch class: there the fold only picks the
+   * octave they meet in.
+   */
+  private foldLinesApart(
+    plan: MomentPlan,
+    x: Expansion,
+    destU: (u: number) => Pitch,
+    key: Key,
+    id: string,
+  ): void {
+    const P = this.voices.length;
+    const runOf = (it: Intent): VoiceRun | null =>
+      it.kind === IntentKind.Birth
+        ? it.voice < P
+          ? this.voices[it.voice]
+          : null
+        : this.lineOf(it.voice, x);
+    let any = false;
+    for (const it of plan.intents) {
+      if (it.kind === IntentKind.Death) continue;
+      const r = runOf(it)?.range;
+      if (r && (it.to < r[0] || it.to > r[1])) any = true;
+    }
+    if (!any) return;
+    const moving = new Set<number>();
+    const notes: FoldNote[] = [];
+    const of: Intent[] = [];
+    for (const it of plan.intents) {
+      moving.add(it.voice);
+      const run = it.kind === IntentKind.Death ? null : runOf(it);
+      if (!run) continue;
+      notes.push({ part: run.part, to: it.to, lo: run.range[0], hi: run.range[1] });
+      of.push(it);
+    }
+    const held: { part: string; p: Pitch }[] = [];
+    for (const u of x.active) {
+      if (!moving.has(u)) held.push({ part: this.lineOf(u, x).part, p: destU(u) });
+    }
+    const n = foldApart(notes, held, key);
+    for (let j = 0; j < of.length; j++) of[j].to = notes[j].to;
+    if (n > 0) this.foldApartDiag(n, id);
+  }
+
+  private foldApartDiag(n: number, id: string): void {
+    this.diag(
+      'warn',
+      'fold-apart',
+      `${n} target(s) outside a voice's range would fold onto another line of their part and ` +
+        'merge with it; they took the nearest free note instead. Widen the range to keep the shape.',
+      id,
+    );
   }
 
   /**
@@ -1446,6 +1572,7 @@ export class Compiler {
     const starts = this.tunes[i]!;
     const n = m.notes.length;
     const k = st.k;
+    const g0 = this.glides[i];
     const scope = selectorPart(m.target);
     const activeInScope = (): number[] =>
       this.sortedActive().filter((v) => scope === null || this.voices[v].part === scope);
@@ -1458,10 +1585,55 @@ export class Compiler {
       const ts = this.resolveTarget(m.target, k === 0 ? m.id : null);
       v = ts.length === 0 ? -1 : m.line === 'high' ? ts[ts.length - 1] : ts[0];
     }
+    // A silent part (composing.md §3 #4): the first note brings one line in. At the opening it
+    // establishes (no glide, no fade); while others sound it is born there, fading in.
+    let enter = false;
+    let traced = false;
+    if (v < 0 && k === 0 && n > 0) {
+      const T = late ? m.at : this.eventT[i];
+      if (this.entersSilent(m) && (this.sortedActive().length === 0 || this.opensWith(m, T))) {
+        const u = this.establish(i).opened[0] ?? -1;
+        traced = true;
+        if (u >= 0) {
+          const line = this.voices[u];
+          if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
+          if (n > 1) {
+            const next: TuneStep = { k: 1, voice: u, moved: true };
+            const t = g0.land === true ? landing(starts[1], g0, starts[0]).start : starts[1];
+            this.queue.push({
+              t,
+              cls: EventClass.Moment,
+              key: i,
+              sub: SUB_TUNE,
+              ref: i,
+              obj: next,
+            });
+          }
+          return;
+        }
+      } else if (this.entersSilent(m)) {
+        const part = selectorPart(m.target);
+        v = this.dormantAt(T).find((u) => this.voices[u].part === part) ?? -1;
+        enter = v >= 0;
+        if (!enter) {
+          this.diag(
+            'warn',
+            'pool-exhausted',
+            `The tune needs a voice but part '${part}' has none free; it was dropped.`,
+            m.id,
+          );
+        }
+      }
+    }
     if (v < 0) {
       if (k === 0) {
-        this.noEffect(m, [], activeInScope());
-        this.traceMoment(i, [], m.target !== undefined && m.target !== 'all', null, null);
+        const scoped = activeInScope();
+        const dormant = this.dormantAt(late ? m.at : this.eventT[i]).filter(
+          (u) => scope === null || this.voices[u].part === scope,
+        ).length;
+        this.noEffect(m, [], scoped, n > 0 ? 'warn' : 'info', dormant);
+        if (!traced)
+          this.traceMoment(i, [], m.target !== undefined && m.target !== 'all', null, null);
       } else {
         this.diag(
           'info',
@@ -1472,23 +1644,24 @@ export class Compiler {
       }
       return;
     }
-    const g = this.glides[i];
+    const g = g0;
     let run: TuneNoteRun;
     if (g.land === true && !(late && k === 0)) {
       // Each note arrives on its start; its glide starts no earlier than the previous note.
       const l = landing(starts[k], g, k === 0 ? 0 : starts[k - 1]);
-      run = { k, voice: v, T: l.start, rest: starts[k], glide: l.glide, land: l.end };
+      run = { k, voice: v, T: l.start, rest: starts[k], glide: l.glide, land: l.end, enter };
     } else {
       // The portamento never outlasts the note.
       const len = m.notes[k].len;
       const glide = g.length > len ? { ...g, length: len } : g;
-      run = { k, voice: v, T: starts[k], rest: starts[k], glide, land: undefined };
+      run = { k, voice: v, T: starts[k], rest: starts[k], glide, land: undefined, enter };
     }
     // Walks leave the line alone until the tune ends (it holds its notes).
     const line = this.voices[v];
     if (line.tuneUntil < starts[n]) line.tuneUntil = starts[n];
     const { res } = this.applyPointMoment(i, null, late && k === 0, run);
-    const moved = st.moved || (res !== null && res.moves.length > 0);
+    const moved =
+      st.moved || (res !== null && (res.moves.length > 0 || (enter && res.births.length > 0)));
     if (k + 1 < n) {
       const next: TuneStep = { k: k + 1, voice: v, moved };
       const t = g.land === true ? landing(starts[k + 1], g, starts[k]).start : starts[k + 1];

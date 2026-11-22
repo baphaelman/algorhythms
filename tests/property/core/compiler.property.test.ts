@@ -672,7 +672,10 @@ describe('compiler properties (§14)', () => {
             its!.some((it) => it.folded) ||
             score.diagnostics.some(
               (d) =>
-                d.momentId === m.id && (d.code === 'range-fold' || d.code === 'range-too-narrow'),
+                d.momentId === m.id &&
+                (d.code === 'range-fold' ||
+                  d.code === 'range-too-narrow' ||
+                  d.code === 'fold-apart'),
             );
           if (folded) continue;
           for (let k = 1; k < its!.length; k++) {

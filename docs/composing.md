@@ -80,15 +80,15 @@ Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mj
 **What works well**
 - Numerals with `close` voicing in a register give good voice leading for free, and a `key` moment carries them.
 - Fourths (D G C F A) planed by `shift` stay clash-free on i, ii and v of dorian.
-- Births are entrances: a part brought in by a chord with `count` swoops out of the nearest line.
+- Births are entrances: a part brought in by a chord with `count` swoops out of the nearest line. (Correction, 2026-11-22: only within its part; a silent part's newborns have no line of their own part to fork from, so they fade in on their notes.)
 - One voice per part for microtonal work; `snap: 'none'` spreads, then `shift 0 scaleSteps` to resolve.
 
 **Traps met**
-- Only the first establishing moment starts from silence. A `tune` or `unison` on a silent part does nothing (an `info` diagnostic only). Bring a part in with a `chord` + `count`.
+- Only the first establishing moment starts from silence. A `tune` or `unison` on a silent part does nothing (an `info` diagnostic only). Bring a part in with a `chord` + `count`. (Fixed 2026-11-22, suggestion #4: a chord, unison or tune on a silent part brings it in; what still does nothing there is a warning.)
 - A one-line part given a chord symbol takes whichever chord tone the voicing picks (often the 3rd or 5th), not the root. Basses are tunes. (Fixed 2026-11-22, suggestion #2: one line now takes the root or slash bass.)
 - Tunes have no rests, and a repeated pitch is held, not re-struck.
 - Roman numerals count major-scale degrees in every mode: in minor write `bIII bVI bVII`; `VI` in A minor is F♯.
-- A `shift` past a line's range folds it an octave, onto another line of its part, which then merges and is lost. Give planed parts an octave of headroom.
+- A `shift` past a line's range folds it an octave, onto another line of its part, which then merges and is lost. Give planed parts an octave of headroom. (Fixed 2026-11-22, suggestion #6: the fold takes the next octave or the nearest free scale step instead, with a `fold-apart` warning. The headroom advice still keeps the shape.)
 - Walks follow the key, not the chord. Over a pentatonic walk, use pad chords made only of the scale's notes (Dm7, F6, Csus2, Gsus4), or set the key to the pentatonic (Porch Light does, for its bells; numerals don't care).
 - A part joining lowers every other line (the 1/√n normalisation): about −1.8 dB when 3 bells join 6 lines. Compensate with `level`.
 - Pulses with `floor: 0` draw as specks (lines show their level); a floor of 0.1–0.2 keeps the rope visible.

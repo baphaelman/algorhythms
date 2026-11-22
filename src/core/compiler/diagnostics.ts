@@ -97,7 +97,7 @@ export const DIAGNOSTIC_CODES: Readonly<
   'no-effect': {
     level: 'info',
     meaning:
-      'The moment changes nothing at its time: no pitch target, audible count, level, key or timbre change (revision 6).',
+      'The moment changes nothing at its time: no pitch target, audible count, level, key or timbre change (revision 6). A warning when nothing it targets is sounding.',
   },
   'merge-nothing': {
     level: 'info',
@@ -105,6 +105,11 @@ export const DIAGNOSTIC_CODES: Readonly<
   },
   // Ranges and crossings
   'range-fold': { level: 'info', meaning: 'Targets outside a voice range were folded by octave.' },
+  'fold-apart': {
+    level: 'warn',
+    meaning:
+      'A target folded by octave onto another line of its part; it took the nearest free note so the lines do not merge.',
+  },
   'invalid-target': {
     level: 'warn',
     meaning: 'A moment produced a non-finite target pitch; the voice keeps its destination.',

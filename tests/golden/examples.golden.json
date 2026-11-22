@@ -1,30 +1,30 @@
 {
   "clockwork-heron.algorhythms.json": {
-    "hash": "65de28db0502a794",
+    "hash": "b0434b384e8e8dfa",
     "duration": 149.41922053318905,
     "voices": [
       {
         "id": "v1",
         "lives": 1,
-        "segments": 56,
+        "segments": 64,
         "lastPitch": 57
       },
       {
         "id": "v2",
         "lives": 2,
-        "segments": 63,
+        "segments": 53,
         "lastPitch": 47
       },
       {
         "id": "v3",
         "lives": 2,
-        "segments": 67,
+        "segments": 61,
         "lastPitch": 47
       },
       {
         "id": "v4",
         "lives": 2,
-        "segments": 49,
+        "segments": 61,
         "lastPitch": 47
       },
       {
@@ -54,21 +54,21 @@
       {
         "id": "v9",
         "lives": 2,
-        "segments": 47,
+        "segments": 55,
         "lastPitch": 68
       },
       {
         "id": "v10",
-        "lives": 3,
-        "segments": 27,
+        "lives": 2,
+        "segments": 28,
         "lastPitch": 68
       }
     ],
-    "diagnostics": ["info:range-fold", "info:no-effect"],
+    "diagnostics": ["warn:fold-apart", "info:no-effect"],
     "spans": 21
   },
   "lanterns-over-salt-flats.algorhythms.json": {
-    "hash": "a6f920e4778f2dce",
+    "hash": "af81996b01374d14",
     "duration": 185.97914339979678,
     "voices": [
       {
@@ -92,13 +92,13 @@
       {
         "id": "v4",
         "lives": 2,
-        "segments": 30,
+        "segments": 28,
         "lastPitch": 59
       },
       {
         "id": "v5",
         "lives": 1,
-        "segments": 21,
+        "segments": 19,
         "lastPitch": 57
       },
       {
@@ -133,18 +133,18 @@
       },
       {
         "id": "v11",
-        "lives": 3,
-        "segments": 21,
+        "lives": 2,
+        "segments": 22,
         "lastPitch": 59
       },
       {
         "id": "v12",
         "lives": 1,
-        "segments": 17,
+        "segments": 15,
         "lastPitch": 69
       }
     ],
-    "diagnostics": ["info:range-fold", "info:range-fold", "info:range-fold"],
+    "diagnostics": ["info:range-fold", "info:range-fold", "warn:fold-apart"],
     "spans": 25
   },
   "seven-doors-in-fog.algorhythms.json": {
