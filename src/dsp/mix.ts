@@ -34,8 +34,8 @@ export class MixState {
   toneLowpassHz = 20000;
   ceilingDb = -1;
   panByPitch = false;
-  /** `mix.normalise === 'part'`. */
-  normPart = false;
+  /** `mix.normalise` is 'part' (absent means 'part'). */
+  normPart = true;
 
   /**
    * Copies every field of a MixSettings (a non-finite value keeps the old one). Written out, not
@@ -70,7 +70,7 @@ export class MixState {
     x = mix.limiter.ceilingDb;
     if (Number.isFinite(x)) this.ceilingDb = x;
     this.panByPitch = mix.panAuto === 'pitch';
-    this.normPart = mix.normalise === 'part';
+    this.normPart = mix.normalise !== 'all';
   }
 
   /** Applies one mix path; returns false if the path is not a mix path or the value is invalid. */

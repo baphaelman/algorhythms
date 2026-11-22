@@ -14,10 +14,11 @@ import { composeCases } from './compose-steps-cases';
 import snapshot from './compose-steps-snapshot.json';
 import { hashPiece } from './generate-snapshot-cases';
 
-const structure = (p: Piece): Piece => ({
-  ...p,
-  moments: p.moments.filter((m) => m.type !== 'note'),
-});
+/** The piece without detail notes, and without `mix.normalise` (revision 10, after the snapshot). */
+const structure = (p: Piece): Piece => {
+  const { normalise: _, ...mix } = p.mix;
+  return { ...p, mix, moments: p.moments.filter((m) => m.type !== 'note') };
+};
 
 describe('composeSteps', () => {
   it('replays to generate() for 200 seeds; the structure matches the pre-split snapshot', () => {

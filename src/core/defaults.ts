@@ -108,6 +108,7 @@ export const DEFAULT_MIX: DeepReadonly<MixSettings> = deepFreeze({
   tone: { tilt: 0, lowpassHz: 20000 },
   limiter: { ceilingDb: -1 },
   panAuto: 'index',
+  normalise: 'part',
 });
 
 /** Default view (§10): a 20 s window (the prototype's), colour by pitch, HUD on. */

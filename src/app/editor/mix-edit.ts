@@ -80,6 +80,14 @@ export function setPanAuto(v: MixSettings['panAuto']): Recipe {
   return (p) => (p.mix.panAuto === v ? p : { ...p, mix: { ...p.mix, panAuto: v } });
 }
 
+/** How the mix normalises its sum (§8.4 revision 10); absent means 'part'. */
+export const normaliseOf = (mix: MixSettings): 'all' | 'part' => mix.normalise ?? 'part';
+
+/** A recipe setting the level normalisation; same piece when unchanged. */
+export function setNormalise(v: 'all' | 'part'): Recipe {
+  return (p) => (normaliseOf(p.mix) === v ? p : { ...p, mix: { ...p.mix, normalise: v } });
+}
+
 /** Whether a section holds the defaults (Sends also covers `panAuto`). */
 export function isSectionDefault(mix: MixSettings, section: MixSection): boolean {
   const d = defaultMix();

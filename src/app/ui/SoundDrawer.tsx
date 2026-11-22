@@ -26,8 +26,10 @@ import {
   isSectionDefault,
   MIX_CONTROLS,
   mixValue,
+  normaliseOf,
   resetSection,
   setMixAt,
+  setNormalise,
   setPanAuto,
   type MixControl,
   type MixSection,
@@ -84,6 +86,7 @@ import {
   type TimbreControl,
   type TimbreFn,
 } from '../editor/timbre-edit';
+import { hasParts } from '../editor/parts';
 import { timbreOptions } from '../editor/voices';
 import { pushNotice, usePlayer } from '../store';
 import { useVoicesDrawer } from './VoicesDrawer';
@@ -492,13 +495,37 @@ function MixRow({
  * Master FX (§8.6): reverb, delay, default sends and auto pan, tone; each with a Reset to the
  * defaults. Applies to the whole piece; heard live (the engine smooths every change).
  */
-function Master({ mix, view }: { mix: MixSettings; view: ViewSettings }) {
+function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; parts: boolean }) {
   return (
     <>
       <p className="sd-hint sd-group" data-testid="master">
         The whole piece's effects, after every note. The limiter is always on (ceiling{' '}
         <span data-testid="mx-limiter">{mix.limiter.ceilingDb} dBFS</span>).
       </p>
+      {parts && (
+        <fieldset className="sd-section" data-section="mix-level">
+          <legend>Level</legend>
+          <label className="sd-row">
+            <span className="sd-label">Level normalisation</span>
+            <select
+              aria-label="Level normalisation"
+              data-testid="mx-normalise"
+              value={normaliseOf(mix)}
+              onChange={(e) =>
+                edit(setNormalise(e.target.value as 'all' | 'part'), 'Level normalisation')
+              }
+            >
+              <option value="part">by part</option>
+              <option value="all">whole mix</option>
+            </select>
+            <span />
+          </label>
+          <p className="sd-hint sd-wide">
+            By part: a part joining doesn't lower the others. Whole mix: every line shares one
+            level.
+          </p>
+        </fieldset>
+      )}
       {MIX_SECTIONS.map(([section, title]) => (
         <fieldset key={section} className="sd-section" data-section={`mix-${section}`}>
           <legend>
@@ -753,7 +780,7 @@ export function SoundDrawer() {
           role="tabpanel"
           aria-labelledby="sound-tab-master"
         >
-          <Master mix={piece.mix} view={piece.view} />
+          <Master mix={piece.mix} view={piece.view} parts={hasParts(piece)} />
         </div>
       ) : (
         <div

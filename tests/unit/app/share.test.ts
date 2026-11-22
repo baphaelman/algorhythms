@@ -209,6 +209,25 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
     ]);
   });
 
+  it("mix.normalise (revision 10): links omit the default 'part'; 'all' round-trips", async () => {
+    const piece = withOpening(newPiece({ seed: 9 }));
+    piece.voices[0].part = 'Melody';
+    const p = parsed(piece);
+    expect(p.mix.normalise).toBe('part');
+    // An older link without the field opens as 'part'.
+    const { normalise: _, ...oldMix } = p.mix;
+    expect((await open(await encodeShareLink({ ...p, mix: oldMix }, BASE))).mix.normalise).toBe(
+      'part',
+    );
+    expect(packPiece(p)).not.toHaveProperty(['mix', 'normalise']);
+    const all = parsed({ ...p, mix: { ...p.mix, normalise: 'all' } });
+    const link = await encodeShareLink(all, BASE);
+    const back = await open(link);
+    expect(back.mix.normalise).toBe('all');
+    expect(back).toEqual(all);
+    expect(await encodeShareLink(back, BASE)).toBe(link);
+  });
+
   it('nextId counts up within the same width', () => {
     expect(nextId('kd0041')).toBe('kd0042');
     expect(nextId('m00009')).toBe('m00010');

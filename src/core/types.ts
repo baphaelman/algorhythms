@@ -754,11 +754,11 @@ export interface MixSettings {
   /** How voices with `pan: 'auto'` are placed: spread by pool index, or by current pitch. */
   panAuto: 'index' | 'pitch';
   /**
-   * Sum normalisation (§8.4, revision 10, proposed; not in the schema yet, which passes it
-   * through): 'all' scales every line by 1/√(Σ life weights); 'part' scales each part's lines by
-   * 1/√(that part's Σ life weights) times a static share √(N_p / Σ N), N_p = the part's peak
-   * lines (FlatScore.partLines), so with every part at its peak the levels are those of 'all'.
-   * Voices with no part form one group. Absent: 'all'.
+   * Sum normalisation (§8.4, revision 10): 'all' scales every line by 1/√(Σ life weights); 'part'
+   * scales each part's lines by 1/√(that part's Σ life weights) times a static share
+   * √(N_p / Σ N), N_p = the part's peak lines (FlatScore.partLines), so with every part at its
+   * peak the levels are those of 'all'. Voices with no part form one group; a piece without
+   * parts sounds the same either way. @default 'part' (absent means 'part').
    */
   normalise?: 'all' | 'part';
 }

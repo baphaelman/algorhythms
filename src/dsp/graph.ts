@@ -230,6 +230,12 @@ export class Graph {
    * hot-swap keeps each part's g_n.
    */
   private normPart = false;
+  /**
+   * Blocks left of a smooth switch from per-part to 'all' while playing: voices keep their group
+   * rows, every group glides to the shared g_n, then they move to row 0 (10 time constants).
+   */
+  private normFadeOff = 0;
+  private readonly normFadeBlocks: number = 0;
   private readonly partGroups = new Map<string, number>();
   private readonly voiceGroup = new Int32Array(DSP_MAX_VOICES);
   private distinctGroups = 1;
@@ -328,6 +334,7 @@ export class Graph {
     this.tone = new Tone(sampleRate);
     this.limiter = new Limiter(sampleRate);
     this.normCoeff = 1 - pmath.exp(-CONTROL_PERIOD / (NORM_SMOOTHING * sampleRate));
+    this.normFadeBlocks = Math.ceil((10 * NORM_SMOOTHING * sampleRate) / BLOCK_FRAMES);
     this.seekFadeFrames = Math.round(SEEK_FADE * sampleRate);
     this.swapFadeFrames = Math.round(SWAP_FADE * sampleRate);
     const blockSeconds = BLOCK_FRAMES / sampleRate;
@@ -765,22 +772,35 @@ export class Graph {
     this.voiceGroup.set(p.groups);
     this.distinctGroups = p.distinctGroups;
     this.partShare.set(p.partShare);
-    this.updateNormMode();
+    this.updateNormMode(false);
   }
 
   /**
    * Points each voice at its g_n row: its group's when normalising per part, else row 0. Turning
-   * per-part on starts every group from the shared g_n; turning it off keeps group 0's.
+   * per-part on starts every group from the shared g_n; turning it off keeps group 0's, or, for a
+   * mix edit while playing (`fade`), first glides every group to the shared g_n (normFadeOff).
    */
-  private updateNormMode(): void {
+  private updateNormMode(fade: boolean): void {
     const on = this.mix.normPart && this.distinctGroups > 1;
     if (on && !this.normPart) {
       for (let g = 1; g < DSP_MAX_VOICES; g++) this.gnVal[g] = this.gnVal[0];
       this.groupQuiet.fill(0);
     }
-    this.normPart = on;
+    if (on) this.normFadeOff = 0;
+    else if (this.normPart && (this.normFadeOff > 0 || (fade && this.playing))) {
+      if (this.normFadeOff === 0) this.normFadeOff = this.normFadeBlocks;
+    } else this.normFadeOff = 0;
+    this.normPart = on || this.normFadeOff > 0;
     for (let i = 0; i < DSP_MAX_VOICES; i++)
-      this.voices[i].gnOff = on ? this.voiceGroup[i] * GN_ROW : 0;
+      this.voices[i].gnOff = this.normPart ? this.voiceGroup[i] * GN_ROW : 0;
+  }
+
+  /** Ends a fade from per-part to 'all' (normFadeOff): every voice moves to row 0. */
+  private endNormFade(): void {
+    this.normFadeOff = 0;
+    this.normPart = false;
+    if (this.voiceCount > 0) this.gnVal[0] = this.gnVal[this.voiceGroup[0]];
+    for (let i = 0; i < DSP_MAX_VOICES; i++) this.voices[i].gnOff = 0;
   }
 
   private updateSolo(data: VoiceData[]): void {
@@ -809,7 +829,7 @@ export class Graph {
     this.ctx.sendReverb = Math.max(0, m.sendReverb);
     this.ctx.sendDelay = Math.max(0, m.sendDelay);
     this.ctx.panByPitch = m.panByPitch;
-    this.updateNormMode();
+    this.updateNormMode(!immediate);
     if (immediate) {
       this.retRev = m.reverbReturn;
       this.retDly = m.delayReturn;
@@ -861,6 +881,7 @@ export class Graph {
 
   /** Re-initialises g_n to 1/√(Σ life × line weights) at the current position (after a jump). */
   private resetNorm(): void {
+    if (this.normFadeOff > 0) this.endNormFade();
     if (this.normPart) {
       this.sumGroups(this.pieceFrame, 0);
       const nG = this.partGroups.size;
@@ -925,13 +946,19 @@ export class Graph {
     const share = this.partShare;
     const sums = this.groupSum;
     const nG = this.partGroups.size;
+    const fading = this.normFadeOff > 0;
     for (let g = 0; g < nG; g++) gn[g * GN_ROW] = val[g];
     for (let k = 1; k <= TICKS_PER_BLOCK; k++) {
       if (this.playing) {
         this.sumGroups(this.pieceFrame + k * CONTROL_PERIOD, k);
+        let all = 0;
+        if (fading) {
+          for (let g = 0; g < nG; g++) all += sums[g];
+          all = 1 / Math.sqrt(all > 1 ? all : 1);
+        }
         for (let g = 0; g < nG; g++) {
           const sum = sums[g];
-          const target = share[g] / Math.sqrt(sum > 1 ? sum : 1);
+          const target = fading ? all : share[g] / Math.sqrt(sum > 1 ? sum : 1);
           if (this.groupQuiet[g] === 1) {
             // A part new to this graph (load or hot-swap) starts at its own level.
             val[g] = target;
@@ -941,6 +968,8 @@ export class Graph {
       }
       for (let g = 0; g < nG; g++) gn[g * GN_ROW + k] = val[g];
     }
+    // The rows have met the shared g_n: switch to row 0 at the block boundary.
+    if (fading && this.playing && --this.normFadeOff === 0) this.endNormFade();
   }
 
   /** Clears the unison-lock state (on load). */
