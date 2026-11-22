@@ -41,7 +41,7 @@ export const LIVE_DURATION: Seconds = 1e7;
 
 /**
  * The live setup from `piece` at time `at`: the voices sounding there (else every voice that ever
- * sounds, else the first), each with its range, the timbre in force at `at`, its pitch there (else
+ * sounds, else the whole pool), each with its range, the timbre in force at `at`, its pitch there (else
  * its first pitch, else the middle of its range) and its mix settings; the piece's mix, timbres,
  * tuning, seed and key at `at`.
  *
@@ -57,7 +57,8 @@ export function liveSetupFrom(piece: Piece, score: CompiledScore, at: Seconds): 
   const compiled = score.voices;
   let pick = compiled.filter((v) => lifeAt(v, at) !== null);
   if (pick.length === 0) pick = compiled.filter((v) => v.lives.length > 0);
-  if (pick.length === 0) pick = compiled.slice(0, 1);
+  // Nothing ever sounds (an empty piece): the whole pool, so chords can be played (M7-c).
+  if (pick.length === 0) pick = compiled.slice();
   const part = (i: number): string => compiled[i]?.part ?? '';
   const correction = partCorrection(
     score,

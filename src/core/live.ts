@@ -23,7 +23,13 @@
 
 import { DEFAULT_GLIDE } from './defaults';
 import { easeCodeOf, bezierOf, easeSlope0 } from './ease';
-import { carriedVelocity, CHECK_SAMPLES, MAX_OVERSHOOT, type OvershootLimits } from './interrupt';
+import {
+  carriedVelocity,
+  CHECK_SAMPLES,
+  FREE_LIMITS,
+  MAX_OVERSHOOT,
+  type OvershootLimits,
+} from './interrupt';
 import { drawTimings, MIN_GLIDE, sharedEnd, type TimedVoice } from './compiler/glide';
 import { foldIntoRange } from './compiler/range';
 import { exp2, log2 } from './math';
@@ -87,6 +93,12 @@ export const LIVE_ATTACK: Seconds = 0.012;
 /** Shortest and longest glide the mod wheel sets (s), exponentially in between. */
 export const MOD_GLIDE_MIN: Seconds = 0.02;
 export const MOD_GLIDE_MAX: Seconds = 4;
+/**
+ * Changes of H within this of a press's first change (s) belong to that press (§9): they are
+ * re-planned from the state before it, starting where it started (LiveEngine, dsp/live.ts
+ * `rewind`), and a take records the press as one moment.
+ */
+export const MERGE_WINDOW: Seconds = 0.015;
 /** Longest live glide accepted from the panel (s). */
 export const LIVE_GLIDE_MAX: Seconds = 30;
 
@@ -242,9 +254,30 @@ export interface LiveView {
   levelTarget: number;
 }
 
-/** The voices sorted by committed destination, ties by pool index (§7.2). */
+/**
+ * The voices sorted by committed destination, ties by pool index (§7.2), as the compiler orders
+ * its logical voices: voices on one path (same pitch, velocity and destination) are one line
+ * there, the lowest-index one standing for it and the others its phantoms, which follow every
+ * line with that destination (compiler/lines.ts `expand`). So a voice doubled on a line ranks
+ * after a single line heading to the same pitch, and a take voices the same way.
+ */
 function byDest(voices: readonly LiveVoiceView[]): LiveVoiceView[] {
-  return [...voices].sort((a, b) => a.dest - b.dest || a.index - b.index);
+  const phantom = new Set<number>();
+  for (const v of voices) {
+    for (const u of voices) {
+      if (
+        u.index < v.index &&
+        u.dest === v.dest &&
+        Math.abs(u.pitch - v.pitch) <= 1e-9 &&
+        Math.abs(u.velocity - v.velocity) <= 1e-9
+      ) {
+        phantom.add(v.index);
+        break;
+      }
+    }
+  }
+  const rank = (v: LiveVoiceView): number => (phantom.has(v.index) ? 1 : 0);
+  return [...voices].sort((a, b) => a.dest - b.dest || rank(a) - rank(b) || a.index - b.index);
 }
 
 /** A MomentEnv over `sorted` (env voice v = sorted[v]), all targeted and active. */
@@ -381,26 +414,47 @@ export interface LiveUpdate {
   moves: LiveMove[];
   /** New shared level and its ramp, or null to keep it. */
   level: { gain: number; over: Seconds } | null;
+  /** Every voice's target (view order), or null when nothing was voiced (hold, fade, none). */
+  targets: Pitch[] | null;
+  /** Decided from silence (the voices step to their targets). */
+  silent: boolean;
 }
 
 /**
- * Overshoot limits of a move to x (§7.5): L = min(1 semitone, gap to the nearest other target
- * above / below) under `ordered`. Unlike the compiler (plan.ts), which also takes the gap between
- * the committed destinations and counts doubled targets as a gap of 0, equal targets do not limit
- * here: from a unison every limit would be 0, so a chord pressed key by key would clamp every
- * re-target to a C⁰ join, where §9 wants the carried velocity to keep it smooth.
+ * Overshoot limits (§7.5) of every voice's move, by the compiler's rule (plan.ts step 4), so a
+ * recorded take plays back as it was played (§15 M7): under `ordered`, L = min(1 semitone, gap to
+ * each pitch-order neighbour, the gap being the smaller of the two moves' start-destination and
+ * target differences). The compiler plans lines, not stacked voices: voices with the same
+ * destination and target are one participant there, so they are here.
  */
-function limitsOf(x: Pitch, all: readonly Pitch[], ordered: boolean): OvershootLimits {
-  let up = MAX_OVERSHOOT;
-  let down = MAX_OVERSHOOT;
-  if (ordered) {
-    for (const y of all) {
-      const g = y - x;
-      if (g > 1e-9 && g < up) up = g;
-      if (g < -1e-9 && -g < down) down = -g;
-    }
-  }
-  return { up, down };
+export function liveLimits(
+  voices: readonly LiveVoiceView[],
+  targets: readonly Pitch[],
+  ordered: boolean,
+): OvershootLimits[] {
+  if (!ordered) return voices.map(() => FREE_LIMITS);
+  const parts: { pre: Pitch; to: Pitch }[] = [];
+  const partOf = voices.map((v, i) => {
+    const to = targets[i];
+    let k = parts.findIndex((p) => p.pre === v.dest && p.to === to);
+    if (k < 0) k = parts.push({ pre: v.dest, to }) - 1;
+    return k;
+  });
+  const order = parts
+    .map((_, i) => i)
+    .sort((a, b) => parts[a].to - parts[b].to || parts[a].pre - parts[b].pre);
+  const rank = new Map<number, number>();
+  order.forEach((p, r) => rank.set(p, r));
+  const gap = (a: number, b: number): number =>
+    Math.min(Math.abs(parts[a].pre - parts[b].pre), Math.abs(parts[a].to - parts[b].to));
+  return partOf.map((k) => {
+    const r = rank.get(k) as number;
+    let up = MAX_OVERSHOOT;
+    let down = MAX_OVERSHOOT;
+    if (r + 1 < order.length) up = Math.min(up, gap(k, order[r + 1]));
+    if (r > 0) down = Math.min(down, gap(k, order[r - 1]));
+    return { up, down };
+  });
 }
 
 /** Raw m₀ = v·d − (p₁ − p₀)·e′(0) of a move (0 when holding). */
@@ -432,10 +486,33 @@ export function liveMoves(
 ): LiveMove[] {
   const target = new Map<number, Pitch>();
   voices.forEach((v, i) => target.set(v.index, targets[i]));
-  const sorted = byDest(voices);
-  const movers = sorted.filter((v) => Math.abs((target.get(v.index) ?? v.dest) - v.dest) > 1e-9);
+  const all = byDest(voices).filter(
+    (v) => Math.abs((target.get(v.index) ?? v.dest) - v.dest) > 1e-9,
+  );
+  if (all.length === 0) return [];
+  // Voices on one path going to one target move as one line, as in the compiler: one timing draw
+  // and one crossing check per line (stagger is stratified over lines, not doubled voices).
+  const lines: LiveVoiceView[][] = [];
+  for (const v of all) {
+    const to = target.get(v.index);
+    const line = lines.find(
+      (l) =>
+        l[0].dest === v.dest &&
+        target.get(l[0].index) === to &&
+        Math.abs(l[0].pitch - v.pitch) <= 1e-9 &&
+        Math.abs(l[0].velocity - v.velocity) <= 1e-9,
+    );
+    if (line) line.push(v);
+    else lines.push([v]);
+  }
+  lines.sort(
+    (a, b) =>
+      a[0].dest - b[0].dest ||
+      (target.get(a[0].index) as Pitch) - (target.get(b[0].index) as Pitch) ||
+      a[0].index - b[0].index,
+  );
+  const movers = lines.map((l) => l[0]);
   const n = movers.length;
-  if (n === 0) return [];
   const glide: Glide = {
     length: s.glide,
     jitter: 0,
@@ -453,6 +530,9 @@ export function liveMoves(
   const dur = start.map((o) => Math.max(MIN_GLIDE, end - o));
   const q = movers.map((v) => target.get(v.index) as Pitch);
   const ordered = s.assign !== 'free';
+  const limits = liveLimits(voices, targets, ordered);
+  const limitOf = new Map<number, OvershootLimits>();
+  voices.forEach((v, i) => limitOf.set(v.index, limits[i]));
   const scale = movers.map((v, i) => {
     const raw = rawM0(v, dur[i], q[i], s.ease);
     if (raw === 0) return 1;
@@ -461,21 +541,27 @@ export function liveMoves(
       dur[i],
       q[i],
       s.ease,
-      limitsOf(q[i], targets, ordered),
+      limitOf.get(v.index) as OvershootLimits,
     );
     return c.m0 / raw;
   });
   if (ordered && n > 1) enforceOrder(movers, q, start, dur, scale, s.ease);
   const share = 1 / Math.sqrt(n);
-  return movers.map((v, i) => ({
-    voice: v.index,
-    delay: start[i],
-    dur: dur[i],
-    p1: q[i],
-    ease: s.ease,
-    scale: scale[i],
-    share,
-  }));
+  const out: LiveMove[] = [];
+  lines.forEach((l, i) => {
+    for (const v of l) {
+      out.push({
+        voice: v.index,
+        delay: start[i],
+        dur: dur[i],
+        p1: q[i],
+        ease: s.ease,
+        scale: scale[i],
+        share,
+      });
+    }
+  });
+  return out;
 }
 
 /**
@@ -575,20 +661,24 @@ export function liveUpdate(
   seed: number,
 ): LiveUpdate {
   const silent = isSilent(view);
+  const none: LiveUpdate = { moves: [], level: null, targets: null, silent };
   if (held.length === 0) {
     if (s.release === 'fade') {
-      return view.levelTarget > 0
-        ? { moves: [], level: { gain: 0, over: s.releaseFade } }
-        : { moves: [], level: null };
+      return view.levelTarget > 0 ? { ...none, level: { gain: 0, over: s.releaseFade } } : none;
     }
-    if (s.release === 'hold' || silent) return { moves: [], level: null };
+    if (s.release === 'hold' || silent) return none;
   }
   const targets = liveTargets(view.voices, held, s);
-  if (!targets) return { moves: [], level: null };
+  if (!targets) return none;
   if (silent) {
-    return { moves: stepMoves(view.voices, targets, s), level: { gain: 1, over: LIVE_ATTACK } };
+    return {
+      moves: stepMoves(view.voices, targets, s),
+      level: { gain: 1, over: LIVE_ATTACK },
+      targets,
+      silent,
+    };
   }
   const moves = liveMoves(view.voices, targets, s, seed);
   const level = view.levelTarget < 1 ? { gain: 1, over: LIVE_ATTACK } : null;
-  return { moves, level };
+  return { moves, level, targets, silent };
 }
