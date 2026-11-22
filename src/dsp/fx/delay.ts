@@ -58,6 +58,18 @@ export class PingPongDelay {
 
   /** Sets the delay time (seconds) and feedback (0..0.95); `immediate` skips smoothing. */
   setParams(time: number, feedback: number, immediate = false): void {
+    this.params[0] = time;
+    this.params[1] = feedback;
+    this.applyParams(immediate);
+  }
+
+  /** Inputs of applyParams: time, feedback (see Reverb.params). */
+  readonly params = new Float64Array(2);
+
+  /** setParams with the values in `params`. */
+  applyParams(immediate = false): void {
+    const time = this.params[0];
+    const feedback = this.params[1];
     this.timeTarget = Math.max(1, Math.min(MAX_TIME, Math.max(0, time)) * this.sampleRate);
     this.fbTarget = Math.max(0, Math.min(0.95, feedback));
     if (immediate) {

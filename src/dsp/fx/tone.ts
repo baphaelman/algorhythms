@@ -88,6 +88,16 @@ export class Tone {
 
   /** Sets the tilt (dB/oct) and low-pass cutoff (Hz); `immediate` skips smoothing. */
   setParams(tilt: number, lowpassHz: number, immediate = false): void {
+    this.params[0] = tilt;
+    this.params[1] = lowpassHz;
+    this.applyParams(immediate);
+  }
+
+  readonly params = new Float64Array(2);
+
+  applyParams(immediate = false): void {
+    const tilt = this.params[0];
+    const lowpassHz = this.params[1];
     this.tiltTarget = Number.isFinite(tilt) ? Math.max(-6, Math.min(6, tilt)) : 0;
     const on = !(lowpassHz >= LP_MAX * this.nyq || !(lowpassHz > 0));
     this.cutTarget = on ? Math.max(20, lowpassHz) : LP_MAX * this.nyq;
@@ -160,12 +170,13 @@ export class Tone {
   }
 
   /**
-   * Filters one stereo block in place. With constant settings this touches only booleans: it is
-   * called once per block and runs interpreted (boxing every double it reads) until V8 tiers it up.
+   * Filters one stereo block in place. With constant settings this touches only booleans. Keep
+   * tilt 0's literal gm1 = 0 and norm = 1 (updateTilt): computing them, or moving more double
+   * work into every block, made the no-GC plain run allocate ~0.8 MB a minute (cause not pinned
+   * down).
    */
   process(L: Float64Array, R: Float64Array): void {
-    if (this.tiltMoving) this.advanceTilt();
-    else this.tiltRamp = false;
+    this.advanceTilt();
     this.tiltBlock(L, 0);
     this.tiltBlock(R, 1);
     if (this.lpMoving) this.lowpassMovingBlock(L, R);
@@ -177,6 +188,10 @@ export class Tone {
 
   /** Advances tilt's one-pole; tiltBlock ramps the gains across the block. */
   private advanceTilt(): void {
+    if (!this.tiltMoving) {
+      this.tiltRamp = false;
+      return;
+    }
     this.gm1From = this.gm1;
     this.normFrom = this.norm;
     const d = this.tiltTarget - this.tiltCur;

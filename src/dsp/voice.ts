@@ -111,7 +111,7 @@ import * as pmath from './pmath';
 
 /** pmath's registers (allocation-free calls on the audio thread). */
 const PR = pmath.R;
-const { EXP_C, LN2: EXP_LN2, LOG2E, VIEW: BITS } = pmath;
+const { LOG2E, POW2 } = pmath;
 
 /** Control ticks per block. */
 export const TICKS_PER_BLOCK = BLOCK_FRAMES / CONTROL_PERIOD;
@@ -307,6 +307,138 @@ function timbreMix(
     rem -= gn + gp;
   }
   return n;
+}
+
+/**
+ * `sumPartials` entries (`VoiceContext.partBuf`): ratio, phase, phase increment and its change
+ * per frame, amplitude and its change per frame. The head holds the role gain and its change.
+ */
+const PE_RATIO = 0;
+const PE_PH = 1;
+const PE_INC = 2;
+const PE_DINC = 3;
+const PE_AMP = 4;
+const PE_DAMP = 5;
+const PE_STRIDE = 6;
+const PB_G0 = 0;
+const PB_DG = 1;
+const PB_HEAD = 2;
+const MAX_SUM_PARTIALS = Math.max(MAX_PARTIALS, MAX_STRIKE_PARTIALS);
+
+/**
+ * Adds `n` sine partials (entries in `pb`, see PE_*) over one control period into `mb`, read
+ * from the sine table at their own phase (plus ratio × `mod` under FM), times their amplitude and
+ * the role gain; writes the phases back. Two partials share each pass, so `mb` is loaded and
+ * stored once per pair: the sums are formed in the same order as one partial at a time, so the
+ * result is bit for bit the same. Doubles stay in typed arrays (no boxing across the call).
+ */
+function sumPartials(
+  sine: Float64Array,
+  mb: Float64Array,
+  mod: Float64Array,
+  pb: Float64Array,
+  n: number,
+  fm: boolean,
+): void {
+  const TS = SINE_TABLE_SIZE;
+  const K = CONTROL_PERIOD;
+  const g0 = pb[PB_G0];
+  const dg = pb[PB_DG];
+  let j = 0;
+  for (; j + 1 < n; j += 2) {
+    const o1 = PB_HEAD + j * PE_STRIDE;
+    const o2 = o1 + PE_STRIDE;
+    const r1 = pb[o1 + PE_RATIO];
+    const r2 = pb[o2 + PE_RATIO];
+    let p1 = pb[o1 + PE_PH];
+    let p2 = pb[o2 + PE_PH];
+    let i1 = pb[o1 + PE_INC];
+    let i2 = pb[o2 + PE_INC];
+    const d1 = pb[o1 + PE_DINC];
+    const d2 = pb[o2 + PE_DINC];
+    let a1 = pb[o1 + PE_AMP];
+    let a2 = pb[o2 + PE_AMP];
+    const da1 = pb[o1 + PE_DAMP];
+    const da2 = pb[o2 + PE_DAMP];
+    let g = g0;
+    if (fm) {
+      for (let i = 0; i < K; i++) {
+        p1 += i1;
+        if (p1 >= 1) p1 -= Math.floor(p1);
+        i1 += d1;
+        p2 += i2;
+        if (p2 >= 1) p2 -= Math.floor(p2);
+        i2 += d2;
+        const m = mod[i];
+        let u1 = p1 + r1 * m;
+        u1 -= Math.floor(u1);
+        let u2 = p2 + r2 * m;
+        u2 -= Math.floor(u2);
+        const x1 = u1 * TS;
+        const k1 = x1 | 0;
+        const s1 = sine[k1];
+        const x2 = u2 * TS;
+        const k2 = x2 | 0;
+        const s2 = sine[k2];
+        let acc = mb[i] + (s1 + (sine[k1 + 1] - s1) * (x1 - k1)) * a1 * g;
+        acc += (s2 + (sine[k2 + 1] - s2) * (x2 - k2)) * a2 * g;
+        mb[i] = acc;
+        a1 += da1;
+        a2 += da2;
+        g += dg;
+      }
+    } else {
+      for (let i = 0; i < K; i++) {
+        p1 += i1;
+        if (p1 >= 1) p1 -= Math.floor(p1);
+        i1 += d1;
+        p2 += i2;
+        if (p2 >= 1) p2 -= Math.floor(p2);
+        i2 += d2;
+        const x1 = p1 * TS;
+        const k1 = x1 | 0;
+        const s1 = sine[k1];
+        const x2 = p2 * TS;
+        const k2 = x2 | 0;
+        const s2 = sine[k2];
+        let acc = mb[i] + (s1 + (sine[k1 + 1] - s1) * (x1 - k1)) * a1 * g;
+        acc += (s2 + (sine[k2 + 1] - s2) * (x2 - k2)) * a2 * g;
+        mb[i] = acc;
+        a1 += da1;
+        a2 += da2;
+        g += dg;
+      }
+    }
+    pb[o1 + PE_PH] = p1;
+    pb[o2 + PE_PH] = p2;
+  }
+  if (j < n) {
+    const o = PB_HEAD + j * PE_STRIDE;
+    const ratio = pb[o + PE_RATIO];
+    let ps = pb[o + PE_PH];
+    let pinc = pb[o + PE_INC];
+    const dpinc = pb[o + PE_DINC];
+    let a = pb[o + PE_AMP];
+    const da = pb[o + PE_DAMP];
+    let g = g0;
+    for (let i = 0; i < K; i++) {
+      ps += pinc;
+      if (ps >= 1) ps -= Math.floor(ps);
+      pinc += dpinc;
+      let u = ps;
+      if (fm) {
+        u += ratio * mod[i];
+        u -= Math.floor(u);
+      }
+      const pos = u * TS;
+      const i0 = pos | 0;
+      const s0 = sine[i0];
+      mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
+      a += da;
+      g += dg;
+    }
+    pb[o + PE_PH] = ps;
+  }
 }
 
 /** Index of the last record whose `field` is ≤ t, or −1. Binary search; allocation-free. */
@@ -923,6 +1055,9 @@ export class VoiceContext {
   readonly mixBuf = new Float64Array(CONTROL_PERIOD);
   /** Scratch for FM: the modulator's phase offset per frame, in cycles. */
   readonly modBuf = new Float64Array(CONTROL_PERIOD);
+  /** Scratch for `sumPartials`: its entries, and the partial index of each. */
+  readonly partBuf = new Float64Array(PB_HEAD + MAX_SUM_PARTIALS * PE_STRIDE);
+  readonly partIdx = new Int32Array(MAX_SUM_PARTIALS);
   /** Scratch for the crossfade gain law: each role's coherence row at its mip position. */
   readonly cohBuf = new Float64Array(4 * COH_STRIDE);
 
@@ -1487,6 +1622,7 @@ export class Voice {
    */
   render(ctx: VoiceContext, frame0: number, audible: boolean): void {
     const K = CONTROL_PERIOD;
+    const P2 = POW2;
     const st = this.st;
     const d = this.data;
     const inv = this.invRate;
@@ -1738,14 +1874,23 @@ export class Voice {
             if (!rising || (pa === pa && v >= 1)) {
               const y = ((-((rising ? tp : ta) - attack) * ARTICULATION_DECAY) / decay) * LOG2E;
               if (y >= -1022) {
-                // e = 2^y: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+                // e = 2^y: pmath.exp2R's body, written out (see pmath.ts, "Audio thread").
                 const eN = Math.floor(y);
-                const eZ = (y - eN) * EXP_LN2;
-                let eA = EXP_C[13];
-                for (let q = 12; q >= 0; q--) eA = eA * eZ + EXP_C[q];
-                BITS.setUint32(0, (eN + 1023) << 20);
-                BITS.setUint32(4, 0);
-                tail = eA * BITS.getFloat64(0);
+                const eZ = (y - eN) * 0.6931471805599453; // LN2
+                let eA = 1.6059043836821616e-10 * eZ + 2.08767569878681e-9;
+                eA = eA * eZ + 2.505210838544172e-8;
+                eA = eA * eZ + 2.7557319223985894e-7;
+                eA = eA * eZ + 0.0000027557319223985893;
+                eA = eA * eZ + 0.0000248015873015873;
+                eA = eA * eZ + 0.0001984126984126984;
+                eA = eA * eZ + 0.001388888888888889;
+                eA = eA * eZ + 0.008333333333333333;
+                eA = eA * eZ + 0.041666666666666664;
+                eA = eA * eZ + 0.16666666666666666;
+                eA = eA * eZ + 0.5;
+                eA = eA * eZ + 1;
+                eA = eA * eZ + 1;
+                tail = eA * P2[eN + 1022];
               }
             }
             if (rising) {
@@ -1875,22 +2020,53 @@ export class Voice {
         st[S_MOD] = p * 100 + own;
         const oct = ctx.refOct + (p - 69) / 12 + (own + st[S_CORR]) / 1200;
         if (oct === oct && oct < 40 && oct > -40) {
-          // o = 2^oct: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
+          // o = 2^oct and the loudness tilt l = 2^ly: pmath.exp2R's body, written out (see
+          // pmath.ts, "Audio thread"), the two Horner chains interleaved so they overlap.
           const oN = Math.floor(oct);
-          const oZ = (oct - oN) * EXP_LN2;
-          let oA = EXP_C[13];
-          for (let q = 12; q >= 0; q--) oA = oA * oZ + EXP_C[q];
-          BITS.setUint32(0, (oN + 1023) << 20);
-          BITS.setUint32(4, 0);
-          let inc = MIP_BASE_HZ * (oA * BITS.getFloat64(0)) * ctx.invSampleRate;
+          const oZ = (oct - oN) * 0.6931471805599453; // LN2
+          const ly = -(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE * LOG2E;
+          const lN = Math.floor(ly);
+          const lZ = (ly - lN) * 0.6931471805599453; // LN2
+          let oA = 1.6059043836821616e-10 * oZ + 2.08767569878681e-9;
+          let lA = 1.6059043836821616e-10 * lZ + 2.08767569878681e-9;
+          oA = oA * oZ + 2.505210838544172e-8;
+          lA = lA * lZ + 2.505210838544172e-8;
+          oA = oA * oZ + 2.7557319223985894e-7;
+          lA = lA * lZ + 2.7557319223985894e-7;
+          oA = oA * oZ + 0.0000027557319223985893;
+          lA = lA * lZ + 0.0000027557319223985893;
+          oA = oA * oZ + 0.0000248015873015873;
+          lA = lA * lZ + 0.0000248015873015873;
+          oA = oA * oZ + 0.0001984126984126984;
+          lA = lA * lZ + 0.0001984126984126984;
+          oA = oA * oZ + 0.001388888888888889;
+          lA = lA * lZ + 0.001388888888888889;
+          oA = oA * oZ + 0.008333333333333333;
+          lA = lA * lZ + 0.008333333333333333;
+          oA = oA * oZ + 0.041666666666666664;
+          lA = lA * lZ + 0.041666666666666664;
+          oA = oA * oZ + 0.16666666666666666;
+          lA = lA * lZ + 0.16666666666666666;
+          oA = oA * oZ + 0.5;
+          lA = lA * lZ + 0.5;
+          oA = oA * oZ + 1;
+          lA = lA * lZ + 1;
+          oA = oA * oZ + 1;
+          lA = lA * lZ + 1;
+          const loud = lA * P2[lN + 1022];
+          let inc = MIP_BASE_HZ * (oA * P2[oN + 1022]) * ctx.invSampleRate;
           if (inc > 0.5) inc = 0.5;
           st[S_OWN_INC] = inc;
           // The group's phase pull, accumulated into θ.
           inc += st[S_DINC];
           st[S_THETA] += st[S_DINC] * K;
           st[S_CUR_INC] = inc > 0.5 ? 0.5 : inc < 0 ? 0 : inc;
-          // Mip index and crossfade weight per role (formant timbres use finer mips).
+          // Mip index and crossfade weight per role (formant timbres use finer mips), for the
+          // roles that sound this tick (only those are read).
+          const rG0 = this.roleG0;
+          const rG1 = this.roleG1;
           for (let r = 0; r < 4; r++) {
+            if (rG0[r] === 0 && rG1[r] === 0) continue;
             const mpo = this.roleMpo[r];
             const mpos = oct * mpo;
             let m = Math.floor(mpos);
@@ -1912,15 +2088,6 @@ export class Voice {
           // Amplitude (§8.4).
           const gn = this.isGhost ? st[S_GN_FROZEN] : ctx.gn[k + 1];
           const accent = tp[TP_ACCENT];
-          const ly = -(p - LOUDNESS_PITCH) * LOUDNESS_SLOPE * LOG2E;
-          // l = 2^ly: pmath.exp2R's body, inline (see pmath.ts, "Audio thread").
-          const lN = Math.floor(ly);
-          const lZ = (ly - lN) * EXP_LN2;
-          let lA = EXP_C[13];
-          for (let q = 12; q >= 0; q--) lA = lA * lZ + EXP_C[q];
-          BITS.setUint32(0, (lN + 1023) << 20);
-          BITS.setUint32(4, 0);
-          const loud = lA * BITS.getFloat64(0);
           const raw =
             VOICE_BASE_GAIN *
             d.gain *
@@ -1964,7 +2131,14 @@ export class Voice {
             st[S_PREV_INC] = st[S_CUR_INC];
             st[S_PREV_GL] = st[S_CUR_GL];
             st[S_PREV_GR] = st[S_CUR_GR];
-            if (this.fresh) this.roleG0.set(this.roleG1);
+            if (this.fresh) {
+              const G0 = this.roleG0;
+              const G1 = this.roleG1;
+              G0[0] = G1[0];
+              G0[1] = G1[1];
+              G0[2] = G1[2];
+              G0[3] = G1[3];
+            }
             this.fresh = false;
           }
         } else ok = false;
@@ -1972,7 +2146,11 @@ export class Voice {
 
       if (!ok) {
         st[S_CUR_AMP] = 0;
-        this.roleG1.fill(0);
+        const G1 = this.roleG1;
+        G1[0] = 0;
+        G1[1] = 0;
+        G1[2] = 0;
+        G1[3] = 0;
         this.fresh = true;
       }
       // The phase advances whenever the voice runs, whether or not it is heard (muted, or not the
@@ -1983,7 +2161,13 @@ export class Voice {
       st[S_PREV_INC] = st[S_CUR_INC];
       st[S_PREV_GL] = st[S_CUR_GL];
       st[S_PREV_GR] = st[S_CUR_GR];
-      this.roleG0.set(this.roleG1);
+      // Typed-array set/fill are builtin calls; four copies are cheaper per tick.
+      const G0 = this.roleG0;
+      const G1 = this.roleG1;
+      G0[0] = G1[0];
+      G0[1] = G1[1];
+      G0[2] = G1[2];
+      G0[3] = G1[3];
     }
     if (!this.isGhost) {
       // Publish this block's end state to the next group pass.
@@ -2095,11 +2279,48 @@ export class Voice {
     const mixSlot = this.mixSlot;
     const wNew = this.mixNew;
     const wPrev = this.mixPrev;
+    const G1 = this.roleG1;
+    const R = this.roleTab;
+
+    // The steady case: the entry in force is fully faded in, its slot has no replacement fade,
+    // its parameters are already in tp and its table is on a role. timbreMix then gives that
+    // one slot weight exactly 1 (the entries before it get nothing), so this is the general
+    // path's result without its loops.
+    const s0 = d.timbreSlot[ti];
+    if (!this.fresh && s0 >= 0 && s0 < slots.length) {
+      const S = slots[s0];
+      const o = ti * TIMBRE_STRIDE;
+      let fade = T[o + TIMBRE_FADE];
+      if (fade < MIN_TIMBRE_FADE && T[o + TIMBRE_T] > 0) fade = MIN_TIMBRE_FADE;
+      const tab = S.data;
+      if (
+        tab !== null &&
+        S.fadeLen === 0 &&
+        this.tpSlot === s0 &&
+        this.tpVersion === S.version &&
+        (!(fade > 0) || t - T[o + TIMBRE_T] >= fade)
+      ) {
+        let role = -1;
+        for (let r = 0; r < 4 && role < 0; r++) if (R[r] === tab) role = r;
+        if (role >= 0) {
+          this.mixN = 1;
+          mixSlot[0] = s0;
+          wNew[0] = 1;
+          wPrev[0] = 0;
+          G1[0] = 0;
+          G1[1] = 0;
+          G1[2] = 0;
+          G1[3] = 0;
+          G1[role] = 1;
+          return 1;
+        }
+      }
+    }
+
     MIX_IN[0] = t;
     MIX_IN[1] = ctx.renderFrame0 + (k + 1) * CONTROL_PERIOD;
     const n = timbreMix(d, slots, ti, mixSlot, wNew, wPrev);
     this.mixN = n;
-    const G1 = this.roleG1;
     for (let r = 0; r < 4; r++) G1[r] = 0;
     if (n === 0) return 0;
 
@@ -2152,7 +2373,6 @@ export class Voice {
     }
 
     // Tables: each slot's current tables, plus its old ones during a replacement fade.
-    const R = this.roleTab;
     const G0 = this.roleG0;
     if (this.fresh) {
       for (let r = 0; r < 4; r++) {
@@ -2480,9 +2700,14 @@ export class Voice {
     const dInc = (st[S_CUR_INC] - inc0) * invK;
     const nyq = 0.5 * ctx.sampleRate;
     const f1 = st[S_CUR_INC] * ctx.sampleRate;
+    // Partials near Nyquist: fade = (fadeTop − f·ratio) / fadeSpan, clamped to [0, 1].
+    const fadeTop = PARTIAL_FADE_END * nyq;
+    const fadeSpan = (PARTIAL_FADE_END - PARTIAL_FADE_START) * nyq;
     const ph = ctx.phaseBuf;
     const mb = ctx.mixBuf;
     const mod = ctx.modBuf;
+    const pb = ctx.partBuf;
+    const pIdx = ctx.partIdx;
     const N = WAVETABLE_SIZE;
     const phase0 = st[S_PHASE];
     let phase = phase0;
@@ -2567,10 +2792,10 @@ export class Voice {
         const rowLo = this.roleMip[r] * P;
         const rowHi = rowLo + P;
         const w = this.roleW[r];
+        let np = 0;
         for (let q = 0; q < P; q++) {
           const ratio = R[q];
-          let fade =
-            (PARTIAL_FADE_END * nyq - f1 * ratio) / ((PARTIAL_FADE_END - PARTIAL_FADE_START) * nyq);
+          let fade = (fadeTop - f1 * ratio) / fadeSpan;
           if (fade > 1) fade = 1;
           else if (!(fade > 0)) fade = 0;
           const aLo = A[rowLo + q];
@@ -2586,40 +2811,20 @@ export class Voice {
             xs[xo + XR_PART + q] = ps;
             continue;
           }
-          let pinc = inc0 * ratio;
-          const dpinc = dInc * ratio;
-          let a = a0;
-          const da = (a1 - a0) * invK;
-          let g = g0;
-          if (fm) {
-            for (let i = 0; i < K; i++) {
-              ps += pinc;
-              if (ps >= 1) ps -= Math.floor(ps);
-              pinc += dpinc;
-              let u = ps + ratio * mod[i];
-              u -= Math.floor(u);
-              const pos = u * TS;
-              const i0 = pos | 0;
-              const s0 = sine[i0];
-              mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
-              a += da;
-              g += dg;
-            }
-          } else {
-            for (let i = 0; i < K; i++) {
-              ps += pinc;
-              if (ps >= 1) ps -= Math.floor(ps);
-              pinc += dpinc;
-              const pos = ps * TS;
-              const i0 = pos | 0;
-              const s0 = sine[i0];
-              mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
-              a += da;
-              g += dg;
-            }
-          }
-          xs[xo + XR_PART + q] = ps;
+          const po = PB_HEAD + np * PE_STRIDE;
+          pb[po + PE_RATIO] = ratio;
+          pb[po + PE_PH] = ps;
+          pb[po + PE_INC] = inc0 * ratio;
+          pb[po + PE_DINC] = dInc * ratio;
+          pb[po + PE_AMP] = a0;
+          pb[po + PE_DAMP] = (a1 - a0) * invK;
+          pIdx[np++] = q;
         }
+        pb[PB_G0] = g0;
+        pb[PB_DG] = dg;
+        sumPartials(sine, mb, mod, pb, np, fm);
+        for (let j = 0; j < np; j++)
+          xs[xo + XR_PART + pIdx[j]] = pb[PB_HEAD + j * PE_STRIDE + PE_PH];
       } else {
         // Wavetable carrier, read at the (modulated) carrier phase.
         const tab = this.roleTab[r] as Float32Array;
@@ -2627,23 +2832,36 @@ export class Voice {
         const hi = lo + WAVETABLE_STRIDE;
         const w = this.roleW[r];
         let g = g0;
-        for (let i = 0; i < K; i++) {
-          let u = ph[i];
-          if (fm) {
-            u += mod[i];
+        if (fm) {
+          for (let i = 0; i < K; i++) {
+            let u = ph[i] + mod[i];
             u -= Math.floor(u);
+            const pos = u * N;
+            const ix = pos | 0;
+            const fr = pos - ix;
+            const j0 = lo + ix;
+            const a0 = tab[j0];
+            const s0 = a0 + (tab[j0 + 1] - a0) * fr;
+            const j1 = hi + ix;
+            const a1 = tab[j1];
+            const s1 = a1 + (tab[j1 + 1] - a1) * fr;
+            mb[i] += (s0 + (s1 - s0) * w) * g;
+            g += dg;
           }
-          const pos = u * N;
-          const ix = pos | 0;
-          const fr = pos - ix;
-          const j0 = lo + ix;
-          const a0 = tab[j0];
-          const s0 = a0 + (tab[j0 + 1] - a0) * fr;
-          const j1 = hi + ix;
-          const a1 = tab[j1];
-          const s1 = a1 + (tab[j1 + 1] - a1) * fr;
-          mb[i] += (s0 + (s1 - s0) * w) * g;
-          g += dg;
+        } else {
+          for (let i = 0; i < K; i++) {
+            const pos = ph[i] * N;
+            const ix = pos | 0;
+            const fr = pos - ix;
+            const j0 = lo + ix;
+            const a0 = tab[j0];
+            const s0 = a0 + (tab[j0 + 1] - a0) * fr;
+            const j1 = hi + ix;
+            const a1 = tab[j1];
+            const s1 = a1 + (tab[j1 + 1] - a1) * fr;
+            mb[i] += (s0 + (s1 - s0) * w) * g;
+            g += dg;
+          }
         }
       }
       if (e !== null && e.nStrike > 0) {
@@ -2659,10 +2877,10 @@ export class Voice {
         const eA = st[S_ENV_A];
         const eB = st[S_ENV_B];
         const eX = st[S_ENV_X];
+        let np = 0;
         for (let q = 0; q < P; q++) {
           const ratio = SR[q];
-          let fade =
-            (PARTIAL_FADE_END * nyq - f1 * ratio) / ((PARTIAL_FADE_END - PARTIAL_FADE_START) * nyq);
+          let fade = (fadeTop - f1 * ratio) / fadeSpan;
           if (fade > 1) fade = 1;
           else if (!(fade > 0)) fade = 0;
           let env = eA;
@@ -2687,24 +2905,20 @@ export class Voice {
             xs[xo + XR_SPH + q] = ps;
             continue;
           }
-          let pinc = inc0 * ratio;
-          const dpinc = dInc * ratio;
-          let a = a0;
-          const da = (a1 - a0) * invK;
-          let g = g0;
-          for (let i = 0; i < K; i++) {
-            ps += pinc;
-            if (ps >= 1) ps -= Math.floor(ps);
-            pinc += dpinc;
-            const pos = ps * TS;
-            const i0 = pos | 0;
-            const s0 = sine[i0];
-            mb[i] += (s0 + (sine[i0 + 1] - s0) * (pos - i0)) * a * g;
-            a += da;
-            g += dg;
-          }
-          xs[xo + XR_SPH + q] = ps;
+          const po = PB_HEAD + np * PE_STRIDE;
+          pb[po + PE_RATIO] = ratio;
+          pb[po + PE_PH] = ps;
+          pb[po + PE_INC] = inc0 * ratio;
+          pb[po + PE_DINC] = dInc * ratio;
+          pb[po + PE_AMP] = a0;
+          pb[po + PE_DAMP] = (a1 - a0) * invK;
+          pIdx[np++] = q;
         }
+        pb[PB_G0] = g0;
+        pb[PB_DG] = dg;
+        sumPartials(sine, mb, mod, pb, np, false);
+        for (let j = 0; j < np; j++)
+          xs[xo + XR_SPH + pIdx[j]] = pb[PB_HEAD + j * PE_STRIDE + PE_PH];
       }
       if (e !== null && e.noiseLevel > 0) {
         noiseLevel += g1 * e.noiseLevel;

@@ -34,21 +34,38 @@ export class MixState {
   ceilingDb = -1;
   panByPitch = false;
 
-  /** Copies every field of a MixSettings. */
+  /**
+   * Copies every field of a MixSettings (a non-finite value keeps the old one). Written out, not
+   * through a helper: a helper that V8 does not inline returns boxed doubles (160 B per edit in
+   * some no-GC 'fx' runs).
+   */
   set(mix: MixSettings): void {
-    this.reverbSize = num(mix.reverb.size, this.reverbSize);
-    this.reverbDecay = num(mix.reverb.decay, this.reverbDecay);
-    this.reverbDamping = num(mix.reverb.damping, this.reverbDamping);
-    this.reverbPreDelay = num(mix.reverb.preDelay, this.reverbPreDelay);
-    this.reverbReturn = num(mix.reverb.returnLevel, this.reverbReturn);
-    this.delayTime = num(mix.delay.time, this.delayTime);
-    this.delayFeedback = num(mix.delay.feedback, this.delayFeedback);
-    this.delayReturn = num(mix.delay.returnLevel, this.delayReturn);
-    this.sendReverb = num(mix.sends.reverb, this.sendReverb);
-    this.sendDelay = num(mix.sends.delay, this.sendDelay);
-    this.toneTilt = num(mix.tone.tilt, this.toneTilt);
-    this.toneLowpassHz = num(mix.tone.lowpassHz, this.toneLowpassHz);
-    this.ceilingDb = num(mix.limiter.ceilingDb, this.ceilingDb);
+    let x = mix.reverb.size;
+    if (Number.isFinite(x)) this.reverbSize = x;
+    x = mix.reverb.decay;
+    if (Number.isFinite(x)) this.reverbDecay = x;
+    x = mix.reverb.damping;
+    if (Number.isFinite(x)) this.reverbDamping = x;
+    x = mix.reverb.preDelay;
+    if (Number.isFinite(x)) this.reverbPreDelay = x;
+    x = mix.reverb.returnLevel;
+    if (Number.isFinite(x)) this.reverbReturn = x;
+    x = mix.delay.time;
+    if (Number.isFinite(x)) this.delayTime = x;
+    x = mix.delay.feedback;
+    if (Number.isFinite(x)) this.delayFeedback = x;
+    x = mix.delay.returnLevel;
+    if (Number.isFinite(x)) this.delayReturn = x;
+    x = mix.sends.reverb;
+    if (Number.isFinite(x)) this.sendReverb = x;
+    x = mix.sends.delay;
+    if (Number.isFinite(x)) this.sendDelay = x;
+    x = mix.tone.tilt;
+    if (Number.isFinite(x)) this.toneTilt = x;
+    x = mix.tone.lowpassHz;
+    if (Number.isFinite(x)) this.toneLowpassHz = x;
+    x = mix.limiter.ceilingDb;
+    if (Number.isFinite(x)) this.ceilingDb = x;
     this.panByPitch = mix.panAuto === 'pitch';
   }
 
@@ -104,10 +121,6 @@ export class MixState {
         return false;
     }
   }
-}
-
-function num(x: number, fallback: number): number {
-  return typeof x === 'number' && Number.isFinite(x) ? x : fallback;
 }
 
 /**

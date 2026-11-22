@@ -509,14 +509,18 @@ export class Graph {
     ctx.revIn.fill(0);
     ctx.dlyIn.fill(0);
     const mode = this.renderMode;
+    const voices = this.voices;
+    const ghosts = this.ghosts;
+    const pieceFrame = this.pieceFrame;
+    const stem = mode === RenderMode.Voice ? this.stemVoice : -1;
     for (let i = 0; i < DSP_MAX_VOICES; i++) {
-      const v = this.voices[i];
+      const v = voices[i];
       if (!v.enabled) continue;
       // In a voice stem, the other voices run silently: the unison lock couples them.
-      v.render(ctx, this.pieceFrame, mode !== RenderMode.Voice || i === this.stemVoice);
+      v.render(ctx, pieceFrame, stem < 0 || i === stem);
     }
     for (let i = 0; i < MAX_GHOSTS; i++) {
-      const g = this.ghosts[i];
+      const g = ghosts[i];
       if (!g.enabled) continue;
       if (mode !== RenderMode.Voice || g.index === this.stemVoice) {
         for (let k = 1; k <= TICKS_PER_BLOCK; k++) g.computeLife(g.frame + k * CONTROL_PERIOD, k);
@@ -698,16 +702,21 @@ export class Graph {
 
   private applyMix(immediate: boolean): void {
     const m = this.mix;
-    this.reverb.setParams(
-      m.reverbSize,
-      m.reverbDecay,
-      m.reverbDamping,
-      m.reverbPreDelay,
-      immediate,
-    );
-    this.delay.setParams(m.delayTime, m.delayFeedback, immediate);
-    this.tone.setParams(m.toneTilt, m.toneLowpassHz, immediate);
-    this.limiter.setCeilingDb(m.ceilingDb);
+    // Through the FX's param arrays, not double arguments (those would be boxed per edit).
+    const rp = this.reverb.params;
+    rp[0] = m.reverbSize;
+    rp[1] = m.reverbDecay;
+    rp[2] = m.reverbDamping;
+    rp[3] = m.reverbPreDelay;
+    this.reverb.applyParams(immediate);
+    this.delay.params[0] = m.delayTime;
+    this.delay.params[1] = m.delayFeedback;
+    this.delay.applyParams(immediate);
+    this.tone.params[0] = m.toneTilt;
+    this.tone.params[1] = m.toneLowpassHz;
+    this.tone.applyParams(immediate);
+    this.limiter.params[0] = m.ceilingDb;
+    this.limiter.applyParams();
     this.ctx.sendReverb = Math.max(0, m.sendReverb);
     this.ctx.sendDelay = Math.max(0, m.sendDelay);
     this.ctx.panByPitch = m.panByPitch;

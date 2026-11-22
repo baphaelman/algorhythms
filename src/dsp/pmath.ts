@@ -47,8 +47,16 @@ export const EXP_C = new Float64Array(14);
 EXP_C[0] = 1;
 for (let k = 1; k < 14; k++) EXP_C[k] = EXP_C[k - 1]! / k;
 
+/** POW2[n + 1022] = 2^n for n ∈ [−1022, 1023], exact (the exponent bits). */
+export const POW2 = new Float64Array(2046);
+for (let n = -1022; n <= 1023; n++) {
+  VIEW.setUint32(0, (n + 1023) << 20);
+  VIEW.setUint32(4, 0);
+  POW2[n + 1022] = VIEW.getFloat64(0);
+}
+
 /** 1/(2k + 1), k = 0..11: atanh z / z; truncation < 1e-19 for |z| ≤ 0.1716 (as core/math.ts). */
-const ATANH_C = new Float64Array(12);
+export const ATANH_C = new Float64Array(12);
 for (let k = 0; k < 12; k++) ATANH_C[k] = 1 / (2 * k + 1);
 
 /** (−1)^k π^(2k+1)/(2k+1)!, k = 0..8: sin(πu) on |u| ≤ ½, error < 1e-14 (as core/ease.ts). */
@@ -83,11 +91,21 @@ export function exp2R(): void {
   }
   const n = Math.floor(y);
   const z = (y - n) * LN2;
-  let acc = EXP_C[13]!;
-  for (let k = 12; k >= 0; k--) acc = acc * z + EXP_C[k]!;
-  VIEW.setUint32(0, (n + 1023) << 20); // 2^n, n ∈ [−1022, 1023]
-  VIEW.setUint32(4, 0);
-  R[0] = acc * VIEW.getFloat64(0);
+  // Horner over EXP_C, written out (tests/dsp/pmath.test.ts checks the literals).
+  let acc = 1.6059043836821616e-10 * z + 2.08767569878681e-9;
+  acc = acc * z + 2.505210838544172e-8;
+  acc = acc * z + 2.7557319223985894e-7;
+  acc = acc * z + 0.0000027557319223985893;
+  acc = acc * z + 0.0000248015873015873;
+  acc = acc * z + 0.0001984126984126984;
+  acc = acc * z + 0.001388888888888889;
+  acc = acc * z + 0.008333333333333333;
+  acc = acc * z + 0.041666666666666664;
+  acc = acc * z + 0.16666666666666666;
+  acc = acc * z + 0.5;
+  acc = acc * z + 1;
+  acc = acc * z + 1;
+  R[0] = acc * POW2[n + 1022]; // 2^n, n ∈ [−1022, 1023]
 }
 
 /** R[0] ← e^R[0]. */
@@ -127,8 +145,18 @@ export function log2R(): void {
   // ln m = 2·atanh z, z = (m − 1)/(m + 1); m = 1 gives exactly 0.
   const z = (m - 1) / (m + 1);
   const z2 = z * z;
-  let acc = ATANH_C[11]!;
-  for (let k = 10; k >= 0; k--) acc = acc * z2 + ATANH_C[k]!;
+  // Horner over ATANH_C, written out (tests/dsp/pmath.test.ts checks the literals).
+  let acc = 0.043478260869565216 * z2 + 0.047619047619047616;
+  acc = acc * z2 + 0.05263157894736842;
+  acc = acc * z2 + 0.058823529411764705;
+  acc = acc * z2 + 0.06666666666666667;
+  acc = acc * z2 + 0.07692307692307693;
+  acc = acc * z2 + 0.09090909090909091;
+  acc = acc * z2 + 0.1111111111111111;
+  acc = acc * z2 + 0.14285714285714285;
+  acc = acc * z2 + 0.2;
+  acc = acc * z2 + 0.3333333333333333;
+  acc = acc * z2 + 1;
   R[0] = e + (2 * z * acc) / LN2;
 }
 
