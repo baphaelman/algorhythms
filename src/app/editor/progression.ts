@@ -5,11 +5,13 @@
  * chord names and end drag, a new progression's chords and Freeze into chord moments. Pure.
  */
 
+import { diatonicChords, type DiatonicChord } from '../../core/chord-spec';
 import { parseChord } from '../../core/chords';
 import { momentGlide, sanitizeGlide } from '../../core/compiler/glide';
 import { defaultGlide } from '../../core/defaults';
 import { harmonyLabel } from '../../core/harmony';
 import { progressionChords, progressionStarts } from '../../core/moments/progression';
+import { scaleIntervals } from '../../core/scales';
 import type {
   ChordMoment,
   HarmonyChange,
@@ -18,6 +20,7 @@ import type {
   Piece,
   ProgressionChord,
   ProgressionMoment,
+  ScaleName,
   Seconds,
 } from '../../core/types';
 import { formatNum, parseNum } from '../ui/inspector/fields';
@@ -50,9 +53,68 @@ export function progressionSpacing(
   return beat ? roundUs(Math.ceil(raw / beat - 1e-6) * beat) : roundUs(raw);
 }
 
-/** A new progression's chords: I vi IV V, each `len` s (`progressionSpacing`). */
-export function newProgressionChords(len: Seconds): ProgressionChord[] {
-  return ['I', 'vi', 'IV', 'V'].map((notes) => ({ notes, len }));
+/**
+ * A new progression's default degrees (0-based) in each 7-note scale: the tonic first, then a
+ * common order for the mode, all major or minor triads of the key. Locrian's tonic is
+ * diminished, so it starts on ♭II.
+ */
+const MODE_DEGREES: Readonly<Partial<Record<ScaleName, readonly number[]>>> = {
+  major: [0, 5, 3, 4], // I vi IV V
+  ionian: [0, 5, 3, 4],
+  minor: [0, 5, 2, 6], // i ♭VI ♭III ♭VII
+  aeolian: [0, 5, 2, 6],
+  dorian: [0, 3, 6, 0], // i IV ♭VII i
+  phrygian: [0, 1, 2, 0], // i ♭II ♭III i
+  lydian: [0, 1, 4, 0], // I II V I
+  mixolydian: [0, 6, 3, 0], // I ♭VII IV I
+  locrian: [1, 6, 3, 1], // ♭II ♭vii iv ♭II
+  'harmonic-minor': [0, 5, 3, 4], // i ♭VI iv V
+  'melodic-minor': [0, 3, 4, 0], // i IV V i
+};
+
+/**
+ * The defaults for scales without diatonic chips: the scale's own triads (pentatonic i/♭III,
+ * I/vi), then the nearest triads by fifths, which hold one note outside the scale.
+ */
+const OTHER_SCALE_CHORDS: Readonly<Partial<Record<ScaleName, readonly string[]>>> = {
+  'pentatonic-major': ['I', 'vi', 'V', 'I'],
+  'pentatonic-minor': ['i', '♭III', '♭VII', 'i'],
+  blues: ['i', '♭III', '♭VII', 'i'],
+  'whole-tone': ['I', 'II', '♭VII', 'I'],
+  chromatic: ['I', 'vi', 'IV', 'V'],
+};
+
+const plainTriad = (d: DiatonicChord): boolean => d.quality.id === 'maj' || d.quality.id === 'min';
+
+/**
+ * A new progression's four chord symbols in `key`: the key's own major and minor triads as the
+ * picker's chips name them (Roman numerals on the major-scale ruler), never diminished. Major
+ * keeps I vi IV V.
+ */
+export function defaultProgressionSymbols(key: Key): string[] {
+  const name = typeof key.scale === 'string' ? key.scale : null;
+  const chips = diatonicChords(key).filter(plainTriad);
+  if (chips.length > 0) {
+    const byDegree = new Map(chips.map((d) => [d.degree, d.numeral]));
+    const want = (name && MODE_DEGREES[name]) ?? [0, 5, 3, 4];
+    const fill = chips.map((d) => d.numeral);
+    const out = want.map((d) => byDegree.get(d));
+    if (out.every((x) => x !== undefined)) return out as string[];
+    // A custom 7-note scale: the chips in degree order, from the first plain triad.
+    return [0, 1, 2, 3].map((k) => fill[k % fill.length]);
+  }
+  const fixed = name ? OTHER_SCALE_CHORDS[name] : undefined;
+  if (fixed) return fixed.slice();
+  // A custom scale: the tonic triad (minor when the scale has a minor 3rd but no major one),
+  // then the major- and minor-scale neighbours.
+  const iv = scaleIntervals(key.scale);
+  const minor = iv.includes(3) && !iv.includes(4);
+  return minor ? ['i', '♭VI', '♭VII', 'i'] : ['I', 'IV', 'V', 'I'];
+}
+
+/** A new progression's chords in `key` (`defaultProgressionSymbols`), each `len` s. */
+export function newProgressionChords(len: Seconds, key: Key): ProgressionChord[] {
+  return defaultProgressionSymbols(key).map((notes) => ({ notes, len }));
 }
 
 /** `chords` with `notes` appended, `len` s long. */

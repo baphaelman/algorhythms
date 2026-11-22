@@ -190,11 +190,12 @@ export function defaultMoment<T extends MomentType>(
       break;
     }
     case 'progression':
-      // I vi IV V, each the default spacing: glide, then Next's hold (owner notes 2026-11-22).
+      // The key's own chords (I vi IV V in major), each the default spacing: glide, then Next's
+      // hold (owner notes 2026-11-22).
       m = {
         ...base,
         type: 'progression',
-        chords: newProgressionChords(progressionSpacing(piece)),
+        chords: newProgressionChords(progressionSpacing(piece), key),
         voicing: 'even',
         assign: 'ordered',
       };

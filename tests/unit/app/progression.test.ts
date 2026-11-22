@@ -198,6 +198,13 @@ describe('share, schema, palette, key carry', () => {
     expect(m.chords.map((c) => c.notes)).toEqual(['I', 'vi', 'IV', 'V']);
     // The default spacing: glide 0.5 s + a bar (2 s), in whole beats.
     expect(m.chords.every((c) => c.len === 2.5)).toBe(true);
+    // The key in effect at the insert time picks the chords: A dorian from 1 s.
+    const d = withProg([['I', 8]]);
+    d.moments.unshift({ id: 'k', type: 'key', at: 1, key: { tonic: 'A', scale: 'dorian' } });
+    const md = defaultMoment('progression', 2, 'y', d, compile(d));
+    expect(md.chords.map((c) => c.notes)).toEqual(['i', 'IV', '♭VII', 'i']);
+    const m0 = defaultMoment('progression', 0.5, 'z', d, compile(d));
+    expect(m0.chords.map((c) => c.notes)).toEqual(['I', 'vi', 'IV', 'V']);
   });
 
   it('key carry transposes letter chords and keeps numerals', () => {
