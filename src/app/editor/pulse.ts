@@ -25,7 +25,39 @@ export const PULSE_MODES: readonly (readonly [PulseMode, string])[] = [
   ['down', 'Down'],
   ['updown', 'Up-down'],
   ['random', 'Random'],
+  ['order', 'Custom order'],
 ];
+
+/** The order a pulse gets when switched to mode 'order' (revision 10). */
+export const DEFAULT_ORDER: readonly number[] = [1, 2, 3, 4];
+/** Longest order the editor accepts, and the highest entry (the voice pool's size). */
+export const MAX_ORDER = 32;
+
+/** An order as typed: `1 3 2 4`. */
+export function formatOrder(order: readonly number[] | undefined): string {
+  return (order ?? DEFAULT_ORDER).join(' ');
+}
+
+/**
+ * A typed order (`1 3 2 4`, spaces or commas): whole numbers 1…MAX_ORDER, at least one and at
+ * most MAX_ORDER of them.
+ */
+export function parseOrder(
+  text: string,
+): { ok: true; order: number[] } | { ok: false; error: string } {
+  const parts = text.split(/[\s,]+/).filter((x) => x !== '');
+  if (parts.length === 0) return { ok: false, error: 'Type the notes to hit, such as 1 3 2 4.' };
+  if (parts.length > MAX_ORDER) return { ok: false, error: `At most ${MAX_ORDER} steps.` };
+  const order: number[] = [];
+  for (const p of parts) {
+    if (!/^\d+$/.test(p)) return { ok: false, error: `“${p}” is not a whole number.` };
+    const v = Number(p);
+    if (v < 1 || v > MAX_ORDER)
+      return { ok: false, error: `Use 1 to ${MAX_ORDER} (1 is the lowest note); “${p}” is not.` };
+    order.push(v);
+  }
+  return { ok: true, order };
+}
 
 /** The beat value `step` matches at `beat` seconds a beat, or null. */
 export function beatValueOf(step: Seconds, beat: Seconds | null): number | null {

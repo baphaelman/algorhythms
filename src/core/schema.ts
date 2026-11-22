@@ -352,10 +352,17 @@ const MOMENT_SCHEMAS = {
       .default(D.pulse.floor)
       .describe('Level between hits, relative to the voice level.'),
     mode: z
-      .enum(['together', 'up', 'down', 'updown', 'random'])
+      .enum(['together', 'up', 'down', 'updown', 'random', 'order'])
       .default(D.pulse.mode)
       .describe(
         'together: every targeted voice hits; the others one voice per step, in pitch order.',
+      ),
+    order: z
+      .array(z.number().int().positive())
+      .min(1)
+      .optional()
+      .describe(
+        "mode 'order': voices to hit, one per step, cycling; 1 = the lowest targeted voice, an index past the count wraps.",
       ),
     strike: z
       .boolean()
@@ -609,6 +616,8 @@ function checkPiece(
       type?: string;
       count?: number;
       fixed?: { tick: number; voice: string }[];
+      mode?: unknown;
+      order?: unknown;
     }[];
   },
   ctx: z.RefinementCtx,
@@ -646,6 +655,13 @@ function checkPiece(
         code: 'custom',
         path: ['moments', i, 'count'],
         message: `The chord count ${m.count} exceeds the pool of ${p.voices.length} voices.`,
+      });
+    }
+    if (m.type === 'pulse' && m.mode === 'order' && m.order === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['moments', i, 'order'],
+        message: "A pulse in mode 'order' needs an order, such as [1, 3, 2, 4].",
       });
     }
     // Frozen walk notes: one per (tick, voice), on pool voices.

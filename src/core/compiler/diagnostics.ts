@@ -37,7 +37,8 @@ export const DIAGNOSTIC_CODES: Readonly<
   'walk-invalid': { level: 'error', meaning: 'A walk needs grid > 0 and until > at.' },
   'pulse-invalid': {
     level: 'error',
-    meaning: 'A pulse needs step > 0, until > at and a non-empty pattern of numbers.',
+    meaning:
+      "A pulse needs step > 0, until > at, a non-empty pattern of numbers and, in mode 'order', an order of whole numbers ≥ 1.",
   },
   'tune-invalid': {
     level: 'error',
