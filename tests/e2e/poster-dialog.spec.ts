@@ -11,6 +11,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { clickExportForDownload, expectUncovered } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -54,6 +55,21 @@ async function openHud(page: Page): Promise<void> {
 const pick = (page: Page, testId: string, value: string) =>
   page.getByTestId(testId).selectOption(value);
 
+/** Look selects whose chosen option's text does not fit (text + padding + arrow > width). */
+const clippedSelects = (page: Page) =>
+  dialog(page).evaluate((d) => {
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    return [...d.querySelectorAll<HTMLSelectElement>('.look select')]
+      .filter((s) => {
+        const cs = getComputedStyle(s);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const text = ctx.measureText(s.selectedOptions[0]?.text ?? '').width;
+        const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        return text + pad + 18 > s.clientWidth;
+      })
+      .map((s) => `${s.dataset.testid}: ${s.selectedOptions[0]?.text}`);
+  });
+
 const lastRequest = (page: Page) =>
   page.evaluate(async () =>
     (await (window as unknown as HookWindow).__algorhythms.exportRun()).lastPosterRequest(),
@@ -83,10 +99,7 @@ async function decodePng(
 }
 
 async function download(page: Page) {
-  const [dl] = await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.getByTestId('export-run').click(),
-  ]);
+  const dl = await clickExportForDownload(page);
   return { name: dl.suggestedFilename(), bytes: readFileSync(await dl.path()), dl };
 }
 
@@ -121,9 +134,9 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   for (const t of ['look-future', 'look-follow-at', 'look-playhead', 'look-heads']) {
     await expect(page.getByTestId(t)).toHaveCount(0);
   }
-  await expect(page.getByTestId('look-background')).toHaveValue('off');
+  await expect(page.getByTestId('look-background')).not.toBeChecked();
   await expect(page.getByTestId('look-guides')).toHaveValue('off');
-  await expect(page.getByTestId('look-moments')).toHaveValue('all');
+  await expect(page.getByTestId('look-moments')).toHaveValue('labels');
   // A poster's HUD is off by default (it would show end-of-piece values).
   await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
   await openHud(page);
@@ -152,7 +165,7 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 
   // Transparent 1:1: an empty corner has alpha 0.
   await choose(page, 'export-psize', '1:1');
-  await pick(page, 'look-background', 'on');
+  await page.getByTestId('look-background').check();
   const clear = await decodePng(page, (await download(page)).bytes);
   expect(clear).toMatchObject({ width: 2160, height: 2160, cornerAlpha: 0 });
   expect(clear.inked).toBeGreaterThan(100);
@@ -183,6 +196,10 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await page.getByTestId('hud-title').check();
   await page.getByTestId('hud-key').check();
   await page.keyboard.press('Escape');
+  // Closed, and Export gets the click (CI v61 WebKit: the open checklist covered it).
+  await expect(page.getByTestId('look-hud')).toHaveCount(0);
+  await page.getByTestId('export-run').scrollIntoViewIfNeeded();
+  await expectUncovered(page, 'export-run');
   await download(page);
   const req = (await lastRequest(page))!;
   expect(req.options).toMatchObject({ size: '1:1', title: false, theme: 'dark' });
@@ -347,6 +364,36 @@ async function comparePreview(page: Page) {
   });
 }
 
+/** A hash of the preview's pixels. */
+const previewHash = (page: Page) =>
+  page.getByTestId('preview-canvas').evaluate((c: HTMLCanvasElement) => {
+    const a = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let h = 0;
+    for (let i = 0; i < a.length; i++) h = (Math.imul(h, 31) + a[i]) | 0;
+    return h;
+  });
+
+test('Beat lines: Every beat draws more than Bars and beats; reaches the poster', async ({
+  page,
+}) => {
+  await openExport(page);
+  await pickPoster(page);
+  let n = await drawn(page);
+  await expect(page.getByTestId('look-beats')).toHaveValue('off');
+  const off = await previewHash(page);
+  await pick(page, 'look-beats', 'auto');
+  n = await drawn(page, n);
+  const auto = await previewHash(page);
+  await pick(page, 'look-beats', 'every');
+  await drawn(page, n);
+  const every = await previewHash(page);
+  expect(new Set([off, auto, every]).size).toBe(3);
+  const cmp = await comparePreview(page);
+  expect(cmp.bad / cmp.total).toBeLessThan(0.002);
+  await download(page);
+  expect((await lastRequest(page))!.options.look!.beats).toBe('every');
+});
+
 test('the poster preview draws the export’s poster; transparent on a checkerboard; A4', async ({
   page,
 }) => {
@@ -360,7 +407,7 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   expect(first).toMatchObject({ cornerAlpha: 255, title: true });
   expect(first.width / first.height).toBeCloseTo(16 / 9, 1);
 
-  await pick(page, 'look-background', 'on');
+  await page.getByTestId('look-background').check();
   n = await drawn(page, n);
   const clear = await comparePreview(page);
   expect(clear.cornerAlpha).toBe(0);
@@ -374,6 +421,55 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   const a4 = await comparePreview(page);
   expect(a4.height / a4.width).toBeCloseTo(3508 / 2480, 1);
   expect(a4.bad / a4.total).toBeLessThan(0.002);
+});
+
+test('the open HUD checklist never covers the Export button (desktop and phone)', async ({
+  page,
+}) => {
+  for (const [w, h] of [
+    [1280, 800],
+    [375, 640],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await openExport(page);
+    await pickPoster(page);
+    await openHud(page);
+    for (const t of ['look-hud', 'look-reset', 'export-run']) {
+      await page.getByTestId(t).scrollIntoViewIfNeeded();
+      await expectUncovered(page, t, `${w}: ${t} not covered`);
+    }
+    // Escape still closes only the checklist and refocuses its button.
+    await page.getByTestId('hud-none').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('look-hud')).toHaveCount(0);
+    await expect(page.getByTestId('look-hud-button')).toBeFocused();
+    // Also with nothing focused (macOS WebKit does not focus a clicked button or checkbox).
+    await openHud(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('look-hud')).toHaveCount(0);
+    await expect(dialog(page)).toBeVisible();
+    await expect(page.getByTestId('look-hud-button')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
+  }
+});
+
+test('phone: every Look dropdown shows its chosen option in full', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 640 });
+  await openExport(page);
+  await pickPoster(page);
+  await openLook(page);
+  expect(await clippedSelects(page)).toEqual([]);
+  // The longest options too.
+  for (const [t, v] of [
+    ['look-guides', 'labels'],
+    ['look-moments', 'all'],
+    ['look-colors', 'pitch'],
+  ] as const) {
+    await pick(page, t, v);
+  }
+  expect(await clippedSelects(page)).toEqual([]);
 });
 
 test('owner samples: the Poster dialog and the default poster', async ({ page, browserName }) => {

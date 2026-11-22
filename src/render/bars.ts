@@ -23,12 +23,21 @@ export interface BarGrid {
   bar: Seconds;
 }
 
-/** The grid for `bpm` and `meter` at `pps` px per second (defaults for missing/invalid input). */
-export function barGrid(bpm: number | undefined, meter: number | undefined, pps: number): BarGrid {
+/**
+ * The grid for `bpm` and `meter` at `pps` px per second (defaults for missing/invalid input).
+ * `every`: every beat and bar whatever the zoom (no BEAT_MIN_PX / BAR_MIN_PX thinning).
+ */
+export function barGrid(
+  bpm: number | undefined,
+  meter: number | undefined,
+  pps: number,
+  every = false,
+): BarGrid {
   const b = bpm !== undefined && Number.isFinite(bpm) && bpm > 0 ? bpm : DEFAULT_BPM;
   const m = meter !== undefined && Number.isInteger(meter) && meter >= 1 ? meter : DEFAULT_METER;
   const beat = 60 / b;
   let bar = beat * m;
+  if (every) return { beat: m > 1 ? beat : 0, bar };
   if (pps > 0) while (bar * pps < BAR_MIN_PX) bar *= 2;
   return { beat: pps > 0 && beat * pps >= BEAT_MIN_PX && m > 1 ? beat : 0, bar };
 }

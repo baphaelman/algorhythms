@@ -100,6 +100,7 @@ export {
   pieceLook,
   type Look,
   type LookContext,
+  type LookBeats,
   type LookFuture,
   type LookLineWidth,
 } from './look';

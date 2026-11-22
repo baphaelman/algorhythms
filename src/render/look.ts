@@ -13,6 +13,15 @@ import type { HudItem, MomentLabels, MomentTimes, ScoreStyle, ThemeName } from '
 
 export type LookFuture = 'hidden' | 'dimmed' | 'full';
 export type LookLineWidth = 'thin' | 'normal' | 'bold';
+/** Beat lines: none, bars and beats thinned with zoom (as the editor), or every beat. */
+export type LookBeats = 'off' | 'auto' | 'every';
+
+/** A stored `beats` value: the three names, or the old boolean (true → 'auto'). */
+export function lookBeats(v: unknown): LookBeats | undefined {
+  if (v === true) return 'auto';
+  if (v === false) return 'off';
+  return v === 'off' || v === 'auto' || v === 'every' ? v : undefined;
+}
 
 export interface Look {
   theme: ThemeName;
@@ -22,8 +31,11 @@ export interface Look {
   guides: boolean;
   /** The guides' Hz labels (with `guides`). */
   guideLabels: boolean;
-  /** Beat and bar lines (the piece's tempo and meter, or 60 bpm 4/4). */
-  beats: boolean;
+  /**
+   * Beat and bar lines (the piece's tempo and meter, or 60 bpm 4/4): 'auto' thins them with
+   * zoom as the editor does, 'every' draws every beat however dense (bars stronger).
+   */
+  beats: LookBeats;
   /** Ticks of unlabelled moments. */
   markers: boolean;
   /** Section lines and labels (labelled moments). */
@@ -69,7 +81,7 @@ export const PLAYER_LOOK: Look = {
   transparent: false,
   guides: true,
   guideLabels: true,
-  beats: false,
+  beats: 'off',
   markers: true,
   sections: true,
   future: 'dimmed',
@@ -88,14 +100,14 @@ export const PLAYER_LOOK: Look = {
 
 /**
  * The owner's export defaults (2026-11-22): no octave guides or beats, nothing ahead of the
- * playhead; markers, section labels and the rest as the player draws.
+ * playhead, section labels without the unlabelled-moment ticks; the rest as the player draws.
  */
 export const EXPORT_LOOK: Look = {
   ...PLAYER_LOOK,
   guides: false,
   guideLabels: false,
-  beats: false,
-  markers: true,
+  beats: 'off',
+  markers: false,
   sections: true,
   future: 'hidden',
 };
@@ -147,7 +159,9 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
   if (!look.guideLabels) style.guideLabels = false;
   if (!look.markers) style.markers = false;
   if (!look.sections) style.sections = false;
-  if (look.beats) style.bars = barsOf(ctx);
+  const beats = lookBeats(look.beats) ?? 'off';
+  if (beats !== 'off')
+    style.bars = { ...barsOf(ctx), ...(beats === 'every' ? { every: true } : {}) };
   if (!look.levelOpacity) style.levelOpacity = false;
   if (!look.pulseMarks) style.pulseMarks = false;
   if (!look.dots) style.dots = false;

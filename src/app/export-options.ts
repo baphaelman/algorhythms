@@ -7,7 +7,13 @@
 
 import type { LineColors, Piece, Seconds } from '../core/types';
 import { DEFAULT_HUD, HUD_ITEMS } from '../render/hud';
-import { EXPORT_LOOK, type Look, type LookFuture, type LookLineWidth } from '../render/look';
+import {
+  EXPORT_LOOK,
+  lookBeats,
+  type Look,
+  type LookFuture,
+  type LookLineWidth,
+} from '../render/look';
 import type { PosterSize } from '../render/poster';
 import type { HudItem } from '../render/types';
 import type { VideoAspect, VideoCameraMode, VideoSize } from '../render/video';
@@ -518,7 +524,6 @@ const LOOK_FLAGS = [
   'transparent',
   'guides',
   'guideLabels',
-  'beats',
   'markers',
   'sections',
   'levelOpacity',
@@ -538,6 +543,8 @@ function parseLook(r: Record<string, unknown>): LookForm {
     const v = r[k];
     if (isBool(v)) l[k] = v;
   }
+  const beats = lookBeats(r.beats);
+  if (beats) l.beats = beats;
   if (oneOf(LOOK_FUTURES, r.future)) l.future = r.future;
   if (typeof r.futureOpacity === 'number' && Number.isFinite(r.futureOpacity)) {
     l.futureOpacity = Math.min(1, Math.max(0, r.futureOpacity));

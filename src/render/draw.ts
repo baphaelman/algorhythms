@@ -222,12 +222,12 @@ export function drawScore(
 /** Beat lines (faint) and bar lines (stronger) across the plot area; no allocation. */
 function drawBars(
   g: CanvasRenderingContext2D,
-  bars: { bpm?: number; meter?: number },
+  bars: { bpm?: number; meter?: number; every?: boolean },
   view: View,
   C: ScoreStyle['tokens'],
   aheadHidden: boolean,
 ): void {
-  const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps);
+  const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps, bars.every === true);
   const { tL, padT, padB, height: H } = view;
   const tR = aheadHidden ? Math.min(view.tR, view.t) : view.tR;
   const y0 = padT - 6;

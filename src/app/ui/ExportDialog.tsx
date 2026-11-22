@@ -336,6 +336,24 @@ function LookSelect({
   disabled?: boolean;
 }) {
   const id = useId();
+  if (control.toggle) {
+    // A two-way choice: a switch (checkbox role="switch": Space toggles, aria-checked).
+    return (
+      <label className="look-switch">
+        <span>{control.label}</span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={control.value(form) === 'on'}
+          disabled={disabled}
+          data-testid={`look-${control.id}`}
+          onChange={(e) =>
+            patch(control.apply(useExportUi.getState().form, e.target.checked ? 'on' : 'off'))
+          }
+        />
+      </label>
+    );
+  }
   return (
     <>
       <label htmlFor={id}>{control.label}</label>
@@ -359,7 +377,9 @@ function LookSelect({
 /**
  * The HUD control: a button with the readout count that opens a checklist (None / Default and
  * one checkbox per readout, with a sample). Not modal: Tab leaves it, Escape or a click outside
- * closes it and Escape returns focus to the button.
+ * closes it and Escape returns focus to the button. Opens in place (pushes the rows below down),
+ * so it never covers the Export button. Escape is caught on the document while open: WebKit on
+ * macOS does not focus a clicked checkbox, so focus may be outside the picker.
  */
 function HudPicker({ form, kind, labelId }: { form: ExportForm; kind: LookKind; labelId: string }) {
   const open = useExportUi((s) => s.hudOpen);
@@ -379,22 +399,26 @@ function HudPicker({ form, kind, labelId }: { form: ExportForm; kind: LookKind; 
         useExportUi.setState({ hudOpen: false });
       }
     };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Close the checklist, not the dialog.
+      e.preventDefault();
+      e.stopPropagation();
+      useExportUi.setState({ hudOpen: false });
+      button.current?.focus();
+    };
     document.addEventListener('pointerdown', away);
-    return () => document.removeEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc, true);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc, true);
+    };
   }, [open]);
 
   return (
     <div
       className="hud-picker"
       ref={wrap}
-      onKeyDown={(e) => {
-        if (e.key !== 'Escape' || !open) return;
-        // Close the checklist, not the dialog.
-        e.preventDefault();
-        e.stopPropagation();
-        useExportUi.setState({ hudOpen: false });
-        button.current?.focus();
-      }}
       onBlur={(e) => {
         const next = e.relatedTarget as Node | null;
         if (open && next && wrap.current && !wrap.current.contains(next)) {
@@ -569,6 +593,7 @@ function ExportPreview({
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
   const t = useExportUi((s) => s.previewT);
   const box = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [avail, setAvail] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const draws = useRef(0);
@@ -590,6 +615,26 @@ function ExportPreview({
     return () => {
       ro.disconnect();
       removeEventListener('resize', measure);
+    };
+  }, []);
+
+  // Narrow screens: the sticky preview sits over the scrolling options, so keep scrolled-to
+  // controls (focus, scrollIntoView) clear of it.
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    const dlg = el?.closest('dialog');
+    if (!el || !dlg) return;
+    const pad = () => {
+      dlg.style.scrollPaddingTop = matchMedia(WIDE).matches ? '' : `${el.offsetHeight}px`;
+    };
+    pad();
+    const ro = new ResizeObserver(pad);
+    ro.observe(el);
+    addEventListener('resize', pad);
+    return () => {
+      ro.disconnect();
+      removeEventListener('resize', pad);
+      dlg.style.scrollPaddingTop = '';
     };
   }, []);
 
@@ -629,7 +674,7 @@ function ExportPreview({
         (transparent ? ', transparent background' : '');
 
   return (
-    <div className="export-preview" data-testid="export-preview">
+    <div className="export-preview" data-testid="export-preview" ref={wrap}>
       <div className="preview-box" ref={box}>
         <canvas
           ref={canvas}
