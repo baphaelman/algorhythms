@@ -7,6 +7,7 @@
 
 import { Graph, GraphEvent } from '../../dsp/graph';
 import { BLOCK_FRAMES } from '../../dsp/constants';
+import { LiveInput } from '../../dsp/live';
 import {
   ANCHOR_REASONS,
   ENGINE_PROCESSOR,
@@ -14,6 +15,8 @@ import {
   type EngineOutMessage,
   type EngineProcessorOptions,
 } from './engine-protocol';
+
+const EMPTY = new Float64Array(0);
 
 class EngineProcessor extends AudioWorkletProcessor {
   private readonly graph = new Graph(sampleRate);
@@ -39,6 +42,9 @@ class EngineProcessor extends AudioWorkletProcessor {
   private readonly meterMsg = { type: 'meter' as const, peakL: 0, peakR: 0, rms: 0 };
   private readonly posMsg = { type: 'pos' as const, frame: 0, time: 0 };
   private readonly endedMsg = { type: 'ended' as const };
+  private readonly liveMsg = { type: 'liveApplied' as const, seq: 0, frame: 0, time: 0 };
+  /** Live mode (§9), from `liveStart` on. */
+  private live: LiveInput | null = null;
 
   constructor(options?: AudioWorkletNodeOptions) {
     super(options);
@@ -101,6 +107,20 @@ class EngineProcessor extends AudioWorkletProcessor {
         case 'mix':
           g.setMix(msg.mix);
           break;
+        case 'liveStart':
+          this.live = new LiveInput(g, msg.voices);
+          g.clearLoop();
+          g.play(0);
+          this.live.queue(0, EMPTY, 0, NaN, 0);
+          break;
+        case 'live':
+          if (this.live && !this.live.queue(msg.seq, msg.moves, msg.n, msg.gain, msg.over)) {
+            this.post({ type: 'error', message: 'live queue full' });
+          }
+          break;
+        case 'liveBend':
+          this.live?.setBend(msg.semitones);
+          break;
       }
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -131,7 +151,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       return true;
     }
     const g = this.graph;
+    const live = this.live;
     try {
+      if (live !== null) live.beforeBlock(currentFrame);
       g.process(left, right);
     } catch (e) {
       this.failed = true;
@@ -143,6 +165,15 @@ class EngineProcessor extends AudioWorkletProcessor {
     if (out.length === 1)
       for (let i = 0; i < BLOCK_FRAMES; i++) left[i] = 0.5 * (left[i] + right[i]);
 
+    if (live !== null && live.appliedCount > 0) {
+      const m = this.liveMsg;
+      m.frame = live.appliedFrame;
+      m.time = live.appliedTime;
+      for (let k = 0; k < live.appliedCount; k++) {
+        m.seq = live.appliedSeq[k];
+        this.port.postMessage(m);
+      }
+    }
     if ((g.events & GraphEvent.Anchor) !== 0) this.postAnchor(currentTime);
     if ((g.events & GraphEvent.Ended) !== 0) this.port.postMessage(this.endedMsg);
 

@@ -82,6 +82,8 @@ export class AudioEngine {
   onEnded: (() => void) | null = null;
   /** Called on worklet errors. */
   onError: ((message: string) => void) | null = null;
+  /** Live mode: message `seq` applied at context frame `frame`, live time `time` (§9). */
+  onLiveApplied: ((seq: number, frame: number, time: number) => void) | null = null;
 
   private readonly tables = new TableBuilder();
   /**
@@ -301,6 +303,30 @@ export class AudioEngine {
     this.post({ type: 'param', path, value });
   }
 
+  /**
+   * Live mode (§9; LiveEngine): the loaded score's first `voices` voices become live voices and
+   * the transport plays from 0. `onLiveApplied` then reports seq 0 at the first block.
+   */
+  startLive(voices: number): void {
+    this.post({ type: 'liveStart', voices });
+  }
+
+  /** Posts live moves (`moves` is transferred: it is detached afterwards). */
+  postLive(
+    seq: number,
+    moves: Float64Array<ArrayBuffer>,
+    n: number,
+    gain: number,
+    over: number,
+  ): void {
+    this.post({ type: 'live', seq, moves, n, gain, over }, [moves.buffer]);
+  }
+
+  /** Live pitch bend, semitones. */
+  bendLive(semitones: number): void {
+    this.post({ type: 'liveBend', semitones });
+  }
+
   /** Replaces the whole mix. */
   setMix(mix: MixSettings): void {
     this.post({ type: 'mix', mix: structuredClone(mix) });
@@ -416,6 +442,9 @@ export class AudioEngine {
         break;
       case 'error':
         this.onError?.(msg.message);
+        break;
+      case 'liveApplied':
+        this.onLiveApplied?.(msg.seq, msg.frame, msg.time);
         break;
     }
   }
