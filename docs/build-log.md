@@ -2528,3 +2528,4 @@ On 3099519. PLAN §12 "Export look (revision 13)", "Poster export (revision 12)"
 ## CI: sharded e2e (2026-11-22)
 - v57 functional e2e took 8.6 (chromium), 9.6 (firefox), 9.4 min (WebKit) per job, so each browser now runs 3 `--shard`s (~1 min servers + ~3 min tests + setup ≈ 4–5 min) plus one `timing` job (@perf/@latency, `--workers=1`, unsharded, alone on its runner). 12 e2e jobs (4 on macOS); deploy `needs` the whole matrices, so every entry must pass. Shards split per test (fullyParallel); chromium 1/3–3/3 list 215/215/214 = the full 644, disjoint.
 - Expected wall time ≈ 5 min (check job 4.9, chromium timing 4.2 + setup), was 13.8.
+- poster.spec: PNG-vs-drawScore stays exact on Chromium/Firefox; WebKit allows max ≤ 1 and ≤ 0.01 % bytes differing (CI: 167 bytes off by 1 in tide-pools 16:9).
