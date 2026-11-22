@@ -6,16 +6,22 @@
  */
 
 import type { LineColors, Piece, Seconds } from '../core/types';
+import { DEFAULT_HUD, HUD_ITEMS } from '../render/hud';
+import { EXPORT_LOOK, type Look, type LookFuture, type LookLineWidth } from '../render/look';
+import type { PosterSize } from '../render/poster';
+import type { HudItem } from '../render/types';
 import type { VideoAspect, VideoCameraMode, VideoSize } from '../render/video';
+import type { PosterOptions } from './poster-export';
 import type { VideoOptions } from './video-export';
 
-export type ExportFormat = 'wav' | 'stems' | 'midi' | 'video';
+export type ExportFormat = 'wav' | 'stems' | 'midi' | 'video' | 'poster';
 
 export const EXPORT_FORMATS: readonly { id: ExportFormat; label: string }[] = [
   { id: 'wav', label: 'WAV' },
   { id: 'stems', label: 'Stems' },
   { id: 'midi', label: 'MIDI' },
   { id: 'video', label: 'Video (MP4)' },
+  { id: 'poster', label: 'Poster' },
 ];
 
 /** 32 means 32-bit float. */
@@ -113,10 +119,86 @@ export interface ExportForm {
   videoSize: VideoSize;
   videoFps: 30 | 60;
   videoCamera: VideoCameraMode;
-  videoTheme: ExportVideoTheme;
-  videoHud: boolean;
-  videoThickness: boolean;
+  /** Follow: playhead place across the frame, % (10..90); null = by the future (`followAtOf`). */
+  videoFollowAt: number | null;
+  /** HUD readouts of a video, in `HUD_ITEMS` order. */
+  videoHud: readonly HudItem[];
+  posterFormat: PosterFormat;
+  posterSize: PosterSize;
+  posterTitle: boolean;
+  /** HUD readouts of a poster (default none: it would show end-of-piece values). */
+  posterHud: readonly HudItem[];
+  /** The Look shared by video and poster (§12 "Export look"). */
+  look: LookForm;
 }
+
+export type PosterFormat = 'png' | 'svg';
+
+/** The dialog's Look: `Look` with a 'current' theme, no HUD (per format) and no unset ink. */
+export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'lineInk'> {
+  theme: ExportVideoTheme;
+  /** Colour of 'ink' lines and the 'custom' fallback (#rrggbb); null = the theme's ink. */
+  lineInk: string | null;
+}
+
+/** EXPORT_LOOK as the dialog holds it (theme: current). */
+export const DEFAULT_LOOK_FORM: LookForm = (() => {
+  const { hud: _h, lineInk: _i, theme: _t, ...rest } = EXPORT_LOOK;
+  return { ...rest, theme: 'current', lineInk: null };
+})();
+
+export const POSTER_FORMATS: readonly { id: PosterFormat; label: string }[] = [
+  { id: 'png', label: 'PNG' },
+  { id: 'svg', label: 'SVG' },
+];
+
+export const POSTER_SIZES: readonly { id: PosterSize; label: string }[] = [
+  { id: '16:9', label: '16:9' },
+  { id: '1:1', label: '1:1' },
+  { id: 'a4', label: 'A4 portrait' },
+];
+
+export const LOOK_FUTURES: readonly { id: LookFuture; label: string }[] = [
+  { id: 'hidden', label: 'Hidden' },
+  { id: 'dimmed', label: 'Dimmed' },
+  { id: 'full', label: 'Full' },
+];
+
+export const LOOK_COLORS: readonly { id: LineColors; label: string }[] = [
+  { id: 'pitch', label: 'By pitch' },
+  { id: 'ink', label: 'Ink' },
+  { id: 'custom', label: 'Custom' },
+];
+
+export const LOOK_WIDTHS: readonly { id: LookLineWidth; label: string }[] = [
+  { id: 'thin', label: 'Thin' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'bold', label: 'Bold' },
+];
+
+/** Each HUD readout's name and a one-line sample, in `HUD_ITEMS` order. */
+export const HUD_CHOICES: readonly { id: HudItem; label: string; sample: string }[] = (() => {
+  const info: Record<HudItem, [string, string]> = {
+    formula: ['Formula', 'f(n) = 440·2^((n−69)/12)'],
+    notes: ['Notes sounding / pool', 'notes 5 / 8'],
+    time: ['Time / length', 't 01:23.4 / 03:00.0'],
+    chord: ['Chord', 'Dm7'],
+    key: ['Key and follow mode', 'd dorian · following'],
+    hz: ['Hz range', '146.8–587.3 Hz'],
+    spread: ['Spread', 'spread 19 st · octave + 5th'],
+    range: ['Lowest and highest note', 'range D3 – A4'],
+    names: ['Sounding notes', 'names D3 F3 A3×2 C4'],
+    gaps: ['Gaps between lines', 'gaps 3 4 5'],
+    title: ['Piece name', 'the piece’s name'],
+  };
+  return HUD_ITEMS.map((id) => ({ id, label: info[id][0], sample: info[id][1] }));
+})();
+
+/** The Follow camera's default playhead place, %: far right when nothing is drawn ahead. */
+export const FOLLOW_AT_HIDDEN = 80;
+export const FOLLOW_AT_SHOWN = 35;
+export const FOLLOW_AT_MIN = 10;
+export const FOLLOW_AT_MAX = 90;
 
 export const DEFAULT_EXPORT_FORM: ExportForm = {
   format: 'wav',
@@ -131,9 +213,13 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoSize: '1080',
   videoFps: 30,
   videoCamera: 'follow',
-  videoTheme: 'current',
-  videoHud: true,
-  videoThickness: true,
+  videoFollowAt: null,
+  videoHud: DEFAULT_HUD,
+  posterFormat: 'png',
+  posterSize: '16:9',
+  posterTitle: true,
+  posterHud: [],
+  look: DEFAULT_LOOK_FORM,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -181,6 +267,8 @@ export function exportFileName(piece: Piece, form: ExportForm, files = 1): strin
       return files > 1 ? `${base}-midi.zip` : `${base}.mid`;
     case 'video':
       return `${base}.mp4`;
+    case 'poster':
+      return `${base}.${form.posterFormat}`;
   }
 }
 
@@ -241,29 +329,218 @@ export function midiOptions(form: ExportForm, piece: Piece): MidiRequest {
   return req;
 }
 
-/** What the video export takes from the app beyond the form. */
+/** What the video and poster exports take from the app beyond the form. */
 export interface VideoContext {
   /** The editor's zoom window now (s); Follow uses it. */
   window: Seconds;
   /** The app's theme now (for 'current'). */
   dark: boolean;
-  colors: LineColors;
+}
+
+/** The Follow camera's playhead place, %: the user's, else by the future setting. */
+export function followAtOf(form: Pick<ExportForm, 'videoFollowAt' | 'look'>): number {
+  const v = form.videoFollowAt;
+  if (v === null || !Number.isFinite(v)) {
+    return form.look.future === 'hidden' ? FOLLOW_AT_HIDDEN : FOLLOW_AT_SHOWN;
+  }
+  return Math.min(FOLLOW_AT_MAX, Math.max(FOLLOW_AT_MIN, v));
+}
+
+/** A readout list in `HUD_ITEMS` order, unknown and repeated items dropped. */
+export function hudInOrder(items: readonly unknown[]): HudItem[] {
+  return HUD_ITEMS.filter((it) => items.includes(it));
+}
+
+/** The renderer's Look for a video or poster export of this form. */
+export function lookOf(form: ExportForm, kind: 'video' | 'poster', dark: boolean): Look {
+  const { theme, lineInk, ...rest } = form.look;
+  const look: Look = {
+    ...rest,
+    theme: theme === 'current' ? (dark ? 'dark' : 'light') : theme,
+    transparent: kind === 'poster' && form.look.transparent,
+    hud: hudInOrder(kind === 'poster' ? form.posterHud : form.videoHud),
+  };
+  if (lineInk) look.lineInk = lineInk;
+  return look;
 }
 
 export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
+  const look = lookOf(form, 'video', ctx.dark);
   const o: VideoOptions = {
     aspect: form.videoAspect,
     size: form.videoSize,
     fps: form.videoFps,
     camera: form.videoCamera,
-    theme: form.videoTheme === 'current' ? (ctx.dark ? 'dark' : 'light') : form.videoTheme,
-    hud: form.videoHud,
-    thickness: form.videoThickness,
-    colors: ctx.colors,
+    theme: look.theme,
+    hud: look.hud.length > 0,
+    thickness: look.thickness,
+    colors: look.colors,
     customColors: piece.voices.map((v) => v.color),
+    look,
   };
-  if (form.videoCamera === 'follow') o.window = ctx.window;
+  if (form.videoCamera === 'follow') {
+    o.window = ctx.window;
+    o.followAt = followAtOf(form) / 100;
+  }
   return o;
+}
+
+export function posterOptions(
+  form: ExportForm,
+  piece: Piece,
+  ctx: Pick<VideoContext, 'dark'>,
+): PosterOptions {
+  const look = lookOf(form, 'poster', ctx.dark);
+  return {
+    size: form.posterSize,
+    theme: look.theme,
+    transparent: look.transparent,
+    title: form.posterTitle,
+    thickness: look.thickness,
+    colors: look.colors,
+    customColors: piece.voices.map((v) => v.color),
+    look,
+  };
+}
+
+/** The poster's pixel size, "3840 × 2160 px" (as `posterSize`, without importing the renderer). */
+export function posterPixels(size: PosterSize): string {
+  const [w, h] = size === '1:1' ? [2160, 2160] : size === 'a4' ? [2480, 3508] : [3840, 2160];
+  return `${w} × ${h} px`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Remembered choices (per viewer)
+// ---------------------------------------------------------------------------------------------
+
+/** localStorage key of the remembered Look and video/poster choices. */
+export const EXPORT_PREFS_KEY = 'algorhythms.export';
+
+/** The form fields remembered per viewer. */
+const REMEMBERED = [
+  'videoAspect',
+  'videoSize',
+  'videoFps',
+  'videoCamera',
+  'videoFollowAt',
+  'videoHud',
+  'posterFormat',
+  'posterSize',
+  'posterTitle',
+  'posterHud',
+  'look',
+] as const satisfies readonly (keyof ExportForm)[];
+
+export type ExportPrefs = Partial<Pick<ExportForm, (typeof REMEMBERED)[number]>>;
+
+/** Storage as the prefs use it (localStorage, or a stub in tests). */
+export type PrefsStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+function storageOf(s?: PrefsStorage | null): PrefsStorage | null {
+  if (s !== undefined) return s;
+  return globalThis.localStorage ?? null;
+}
+
+/** Saves the remembered fields; false when storage is missing or throws. */
+export function saveExportPrefs(form: ExportForm, storage?: PrefsStorage | null): boolean {
+  try {
+    const st = storageOf(storage);
+    if (!st) return false;
+    const o: Record<string, unknown> = {};
+    for (const k of REMEMBERED) o[k] = form[k];
+    st.setItem(EXPORT_PREFS_KEY, JSON.stringify(o));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The remembered fields that are valid; {} when nothing is stored or storage throws. */
+export function loadExportPrefs(storage?: PrefsStorage | null): ExportPrefs {
+  let raw: unknown;
+  try {
+    const text = storageOf(storage)?.getItem(EXPORT_PREFS_KEY);
+    if (!text) return {};
+    raw = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  return parsePrefs(raw);
+}
+
+const oneOf = <T>(list: readonly { id: T }[], v: unknown): v is T => list.some((o) => o.id === v);
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Validates stored prefs field by field (unknown or bad values are left out). */
+export function parsePrefs(raw: unknown): ExportPrefs {
+  if (!raw || typeof raw !== 'object') return {};
+  const r = raw as Record<string, unknown>;
+  const p: ExportPrefs = {};
+  if (oneOf(VIDEO_ASPECTS, r.videoAspect)) p.videoAspect = r.videoAspect;
+  if (oneOf(VIDEO_SIZES, r.videoSize)) p.videoSize = r.videoSize;
+  if (oneOf(VIDEO_FPS, r.videoFps)) p.videoFps = r.videoFps;
+  if (oneOf(VIDEO_CAMERAS, r.videoCamera)) p.videoCamera = r.videoCamera;
+  if (r.videoFollowAt === null) p.videoFollowAt = null;
+  else if (typeof r.videoFollowAt === 'number' && Number.isFinite(r.videoFollowAt)) {
+    p.videoFollowAt = Math.min(FOLLOW_AT_MAX, Math.max(FOLLOW_AT_MIN, r.videoFollowAt));
+  }
+  if (Array.isArray(r.videoHud)) p.videoHud = hudInOrder(r.videoHud);
+  if (oneOf(POSTER_FORMATS, r.posterFormat)) p.posterFormat = r.posterFormat;
+  if (oneOf(POSTER_SIZES, r.posterSize)) p.posterSize = r.posterSize;
+  if (isBool(r.posterTitle)) p.posterTitle = r.posterTitle;
+  if (Array.isArray(r.posterHud)) p.posterHud = hudInOrder(r.posterHud);
+  if (r.look && typeof r.look === 'object') p.look = parseLook(r.look as Record<string, unknown>);
+  return p;
+}
+
+const LOOK_FLAGS = [
+  'transparent',
+  'guides',
+  'guideLabels',
+  'beats',
+  'markers',
+  'sections',
+  'levelOpacity',
+  'thickness',
+  'pulseMarks',
+  'dots',
+  'rings',
+  'hzLabels',
+  'playhead',
+] as const satisfies readonly (keyof LookForm)[];
+
+/** A stored Look over the defaults: each valid field kept, the rest default. */
+function parseLook(r: Record<string, unknown>): LookForm {
+  const l: LookForm = { ...DEFAULT_LOOK_FORM };
+  if (oneOf(VIDEO_THEMES, r.theme)) l.theme = r.theme;
+  for (const k of LOOK_FLAGS) {
+    const v = r[k];
+    if (isBool(v)) l[k] = v;
+  }
+  if (oneOf(LOOK_FUTURES, r.future)) l.future = r.future;
+  if (typeof r.futureOpacity === 'number' && Number.isFinite(r.futureOpacity)) {
+    l.futureOpacity = Math.min(1, Math.max(0, r.futureOpacity));
+  }
+  if (oneOf(LOOK_COLORS, r.colors)) l.colors = r.colors;
+  if (r.lineInk === null || (typeof r.lineInk === 'string' && HEX.test(r.lineInk))) {
+    l.lineInk = r.lineInk;
+  }
+  if (oneOf(LOOK_WIDTHS, r.lineWidth)) l.lineWidth = r.lineWidth;
+  return l;
+}
+
+/**
+ * Reset to defaults: the Look, the playhead place and the open format's HUD (video: today's;
+ * poster: none).
+ */
+export function resetLook(form: ExportForm): ExportForm {
+  return {
+    ...form,
+    look: DEFAULT_LOOK_FORM,
+    videoFollowAt: null,
+    ...(form.format === 'poster' ? { posterHud: [] } : { videoHud: DEFAULT_HUD }),
+  };
 }
 
 const CODEC_NAMES: [string, string][] = [

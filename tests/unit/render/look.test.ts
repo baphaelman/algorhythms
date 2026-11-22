@@ -143,14 +143,14 @@ describe('lookStyle', () => {
     expect(videoStyle({ theme: 'light', ...MARKS })).toEqual(today);
   });
 
-  it('EXPORT_LOOK: guides, beats, markers and labels off, future hidden; the rest as the player', () => {
+  it('EXPORT_LOOK: guides and beats off, future hidden; markers, labels and the rest as the player', () => {
     expect(EXPORT_LOOK).toEqual({
       ...PLAYER_LOOK,
       guides: false,
       guideLabels: false,
       beats: false,
-      markers: false,
-      sections: false,
+      markers: true,
+      sections: true,
       future: 'hidden',
     });
     const s = lookStyle(EXPORT_LOOK);
@@ -158,10 +158,10 @@ describe('lookStyle', () => {
       futureOpacity: 0,
       aheadHidden: true,
       guides: false,
-      markers: false,
-      sections: false,
       hud: true,
     });
+    expect(s).not.toHaveProperty('markers');
+    expect(s).not.toHaveProperty('sections');
     expect(s).not.toHaveProperty('bars');
   });
 

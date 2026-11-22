@@ -58,11 +58,13 @@ export interface VideoCameraOptions {
   window?: Seconds;
   /** Pitch range for the whole video; default the piece's used range, padded (`pitchExtent`). */
   pitchRange?: [number, number];
+  /** Follow: the playhead's place across the frame, 0..1. @default SMOOTH_X (0.35) */
+  followAt?: number;
 }
 
 /**
  * The camera at time t, from t alone (no state between frames). Follow: Smooth follow, the
- * playhead at 35 % with `start` in [0, duration − window]. Whole: the piece fitted. The vertical
+ * playhead at `followAt` (35 %) with `start` in [0, duration − window]. Whole: the piece fitted. The vertical
  * framing is the same for every frame.
  */
 export function videoCamera(
@@ -77,7 +79,13 @@ export function videoCamera(
   if (mode === 'whole' || opts.window === undefined) return { start: 0, window: whole, pitchRange };
   const window = Math.min(whole, videoWindow(opts.window, opts.aspect));
   const tc = Math.min(Math.max(t, 0), D);
-  return { start: followStart('smooth', 0, tc, window, D), window, pitchRange };
+  const f = opts.followAt;
+  if (f === undefined || !Number.isFinite(f)) {
+    return { start: followStart('smooth', 0, tc, window, D), window, pitchRange };
+  }
+  const x = Math.min(1, Math.max(0, f));
+  const start = Math.min(Math.max(0, D - window), Math.max(0, tc - x * window));
+  return { start, window, pitchRange };
 }
 
 export interface VideoStyleOptions {
@@ -173,6 +181,8 @@ export interface VideoFrameOptions {
   /** Follow window as seen at 16:9 (see `videoCamera`). */
   window?: Seconds;
   pitchRange?: [number, number];
+  /** Follow: the playhead's place across the frame, 0..1 (see `videoCamera`). */
+  followAt?: number;
   /** From `videoStyle`. */
   style: ScoreStyle;
 }

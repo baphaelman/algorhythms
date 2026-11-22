@@ -87,16 +87,16 @@ export const PLAYER_LOOK: Look = {
 };
 
 /**
- * The owner's export defaults (2026-11-22): no octave guides, beats, markers or section labels,
- * nothing ahead of the playhead; the rest as the player draws.
+ * The owner's export defaults (2026-11-22): no octave guides or beats, nothing ahead of the
+ * playhead; markers, section labels and the rest as the player draws.
  */
 export const EXPORT_LOOK: Look = {
   ...PLAYER_LOOK,
   guides: false,
   guideLabels: false,
   beats: false,
-  markers: false,
-  sections: false,
+  markers: true,
+  sections: true,
   future: 'hidden',
 };
 
