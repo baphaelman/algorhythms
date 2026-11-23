@@ -54,9 +54,11 @@ export function withCameraKeys(piece: Piece, keys: readonly CameraKey[]): Piece 
   return { ...piece, camera: { mode: 'keys', keys: [...keys] } };
 }
 
-/** The piece's own keys ([] when none). */
+const NO_KEYS: readonly CameraKey[] = [];
+
+/** The piece's own keys (none: one shared empty list, so a selector's value holds). */
 export const keysOf = (piece: Pick<Piece, 'camera'>): readonly CameraKey[] =>
-  piece.camera?.keys ?? [];
+  piece.camera?.keys ?? NO_KEYS;
 
 /** Index of the key within KEY_GAP of t, or −1. */
 export function keyNear(keys: readonly CameraKey[], t: Seconds): number {

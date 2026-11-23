@@ -62,7 +62,7 @@ import type { PosterOptions } from './poster-export';
 import { youtubeDescription } from './youtube-description';
 import { loudnessKey } from './youtube-preset';
 
-export { canSaveToDisk, pickStemsFile, posterFileName, videoSizes, videoSupport };
+export { autoKeysOf, canSaveToDisk, pickStemsFile, posterFileName, videoSizes, videoSupport };
 
 /** The piece as it sounds now. */
 export interface ExportSource {
