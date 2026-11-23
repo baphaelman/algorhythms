@@ -7,6 +7,7 @@
 
 import type { LineColors, Piece, Seconds } from '../core/types';
 import { DEFAULT_HUD, HUD_ITEMS } from '../render/hud';
+import { parseHudPos, type HudLayout } from '../render/hud-layout';
 import {
   EXPORT_LOOK,
   LINE_SCALE_MAX,
@@ -175,6 +176,11 @@ export interface ExportForm {
   posterPieceRange: boolean;
   /** HUD readouts of a poster (default none: it would show end-of-piece values). */
   posterHud: readonly HudItem[];
+  /**
+   * Where each readout sits, shared by video and poster (§12 "Exports you can shape"); {} =
+   * today's two columns, a readout without a position takes its slot there.
+   */
+  hudLayout: HudLayout;
   /** The Look shared by video and poster (§12 "Export look"). */
   look: LookForm;
 }
@@ -185,7 +191,7 @@ export type PosterFormat = 'png' | 'svg';
 export type LookColors = 'app' | LineColors;
 
 /** The dialog's Look: `Look` with a 'current' theme, no HUD (per format) and no unset ink. */
-export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'lineInk' | 'colors'> {
+export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'hudLayout' | 'lineInk' | 'colors'> {
   theme: ExportVideoTheme;
   /** 'app' = as the app draws now (owner, 2026-11-22). */
   colors: LookColors;
@@ -336,6 +342,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   posterTitle: true,
   posterPieceRange: false,
   posterHud: [],
+  hudLayout: {},
   look: DEFAULT_LOOK_FORM,
 };
 
@@ -676,6 +683,7 @@ export function lookOf(form: ExportForm, kind: 'video' | 'poster', app: LookAppC
     transparent: kind === 'poster' && form.look.transparent,
     colors: colors === 'app' ? app.colors : colors,
     hud: hudInOrder(kind === 'poster' ? form.posterHud : form.videoHud),
+    hudLayout: form.hudLayout,
   };
   if (lineInk && colors !== 'app') look.lineInk = lineInk;
   return look;
@@ -743,8 +751,10 @@ export const EXPORT_PREFS_KEY = 'algorhythms.export';
 /**
  * Version of the stored prefs. 2: line colours gained 'app' (the default). A record without it
  * predates that: its 'pitch' was the old default, not a choice, so it loads as 'app'.
+ * 3: `hudLayout` (placed readouts). An older record's ordered lists load with an empty layout:
+ * each readout in its default slot, the list's two columns as before.
  */
-export const EXPORT_PREFS_VERSION = 2;
+export const EXPORT_PREFS_VERSION = 3;
 
 /** The form fields remembered per viewer. */
 const REMEMBERED = [
@@ -762,6 +772,7 @@ const REMEMBERED = [
   'posterTitle',
   'posterPieceRange',
   'posterHud',
+  'hudLayout',
   'look',
 ] as const satisfies readonly (keyof ExportForm)[];
 
@@ -842,12 +853,29 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (isBool(r.posterTitle)) p.posterTitle = r.posterTitle;
   if (isBool(r.posterPieceRange)) p.posterPieceRange = r.posterPieceRange;
   if (Array.isArray(r.posterHud)) p.posterHud = hudInOrder(r.posterHud);
+  if (typeof r.v === 'number' && r.v >= 3) {
+    if (r.hudLayout && typeof r.hudLayout === 'object') p.hudLayout = parseHudLayout(r.hudLayout);
+  } else if (Array.isArray(r.videoHud) || Array.isArray(r.posterHud)) {
+    // Before v3 the lists' order was the layout: empty = their default slots.
+    p.hudLayout = {};
+  }
   if (r.look && typeof r.look === 'object') {
     p.look = parseLook(r.look as Record<string, unknown>);
     // Before v2 'pitch' was the unchosen default (ink and custom were real choices).
     if (!(typeof r.v === 'number' && r.v >= 2) && p.look.colors === 'pitch') p.look.colors = 'app';
   }
   return p;
+}
+
+/** A stored layout: each known readout with a valid position. */
+export function parseHudLayout(raw: object): HudLayout {
+  const r = raw as Record<string, unknown>;
+  const out: HudLayout = {};
+  for (const it of HUD_ITEMS) {
+    const pos = parseHudPos(r[it]);
+    if (pos) out[it] = pos;
+  }
+  return out;
 }
 
 const LOOK_FLAGS = [
@@ -894,14 +922,15 @@ function parseLook(r: Record<string, unknown>): LookForm {
 }
 
 /**
- * Reset to defaults: the Look, the playhead place and the open format's HUD (video: today's;
- * poster: none).
+ * Reset to defaults: the Look, the playhead place, the HUD layout and the open format's HUD
+ * (video: today's; poster: none).
  */
 export function resetLook(form: ExportForm): ExportForm {
   return {
     ...form,
     look: DEFAULT_LOOK_FORM,
     videoFollowAt: null,
+    hudLayout: {},
     ...(form.format === 'poster' ? { posterHud: [] } : { videoHud: DEFAULT_HUD }),
   };
 }

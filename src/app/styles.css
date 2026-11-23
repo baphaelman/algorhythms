@@ -1556,3 +1556,81 @@ dialog.dialog.export.has-preview {
   width: 8ch;
   font-variant-numeric: tabular-nums;
 }
+
+/* HUD readouts placed on the export preview (§12 "Exports you can shape"). */
+.export-preview .preview-stage {
+  position: relative;
+}
+
+.export-preview .hud-overlay {
+  position: absolute;
+  inset: 1px;
+}
+
+.export-preview .hud-overlay.disabled {
+  pointer-events: none;
+}
+
+.export-preview .hud-box {
+  position: absolute;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.export-preview .hud-box:hover,
+.export-preview .hud-box:focus-visible,
+.export-preview .hud-box.dragging {
+  outline: 1.5px solid var(--accent);
+}
+
+.export-preview .hud-box.dragging {
+  cursor: grabbing;
+}
+
+.export-preview .hud-x {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  font: 12px/1 var(--f-mono);
+  visibility: hidden;
+  cursor: pointer;
+}
+
+.export-preview .hud-box:hover .hud-x,
+.export-preview .hud-box:focus-within .hud-x {
+  visibility: visible;
+}
+
+.export-preview .hud-guide {
+  position: absolute;
+  pointer-events: none;
+  background: var(--accent);
+}
+
+.export-preview .hud-guide.v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.export-preview .hud-guide.h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.dialog .hud-hint {
+  display: block;
+  padding: 0 0 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}

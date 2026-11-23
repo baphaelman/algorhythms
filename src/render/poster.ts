@@ -20,8 +20,8 @@
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
 import { HUD_ROW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
-import { DEFAULT_MONO, drawScore, keyName, type Ctx2D } from './draw';
-import { drawHud, hudItems, hudRows, hudTop } from './hud';
+import { DEFAULT_MONO, drawScore, hudPlacement, keyName, type Ctx2D } from './draw';
+import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 import { barSeconds, isWholeSpan, sectionText, type TimeSpan } from './section';
@@ -324,6 +324,19 @@ export function drawPoster(
   const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);
   if (opts.title) drawTitleBlock(ctx, compiled, tInfo, style, view);
   return view;
+}
+
+/**
+ * Where `drawPoster` put each HUD readout (`view` is what it returned): the Export dialog's
+ * overlay.
+ */
+export function posterHudPlacement(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: PosterDrawOptions,
+  view: View,
+): HudPlacement {
+  return hudPlacement(ctx, compiled, withTitle(opts.style, opts.title), view);
 }
 
 /** Type of the rows' time labels: the HUD's. */

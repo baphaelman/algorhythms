@@ -4,6 +4,7 @@
  */
 
 import type { CompiledScore, LineColors, MomentId, Seconds } from '../core/types';
+import type { HudLayout } from './hud-layout';
 
 /** The colour tokens of one theme (the prototype's `--paper`, `--ink`, ...; §11.5). */
 export interface ThemeTokens {
@@ -114,6 +115,12 @@ export interface ScoreStyle {
    * in order (left column first, then right; as many rows as needed, the bottom band grows).
    */
   hud: boolean | readonly HudItem[];
+  /**
+   * Where each readout sits on the frame (§12 "Exports you can shape"). Absent = today's two
+   * columns as the player draws them; present (even {}), each readout is a placed box, those
+   * without a position in their default slot.
+   */
+  hudLayout?: HudLayout;
   /** The piece's name, for the `title` readout. */
   pieceName?: string;
   /** Extra px in the bottom band below the HUD rows (the poster's title block). @default 0 */

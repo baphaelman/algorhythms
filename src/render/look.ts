@@ -8,6 +8,7 @@
 import type { LineColors, Piece } from '../core/types';
 import { DEFAULT_FUTURE_OPACITY } from './camera';
 import { DEFAULT_HUD } from './hud';
+import type { HudLayout } from './hud-layout';
 import { tokensOf } from './palettes';
 import type { HudItem, MomentLabels, MomentTimes, ScoreStyle, ThemeName } from './types';
 
@@ -67,6 +68,8 @@ export interface Look {
   lineWidth: LookLineWidth | number;
   /** The HUD readouts in order (left column first); [] = no HUD. */
   hud: readonly HudItem[];
+  /** Where each readout sits (§12 "Exports you can shape"); absent = today's two columns. */
+  hudLayout?: HudLayout;
 }
 
 /** Line width factor per option. */
@@ -165,6 +168,7 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
     playhead: look.playhead,
     thickness: look.thickness,
   };
+  if (look.hudLayout) style.hudLayout = look.hudLayout;
   if (look.future === 'hidden') style.aheadHidden = true;
   if (!look.guides) style.guides = false;
   if (!look.guideLabels) style.guideLabels = false;

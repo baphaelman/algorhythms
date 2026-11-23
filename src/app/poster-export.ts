@@ -6,6 +6,7 @@
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece } from '../core/types';
 import { drawScore, type Ctx2D } from '../render/draw';
+import type { HudPlacement } from '../render/hud';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import {
@@ -18,6 +19,7 @@ import {
   type PosterDrawOptions,
   type PosterInfo,
   type PosterSize,
+  posterHudPlacement,
 } from '../render/poster';
 import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
@@ -107,9 +109,10 @@ export function previewPoster(
   compiled: CompiledScore,
   opts: PosterOptions,
   scale: number,
-): void {
+): HudPlacement {
   const o = posterDrawOptions(piece, opts, supportsOklch());
-  drawPoster(ctx, compiled, posterInfo(piece), o, scale);
+  const view = drawPoster(ctx, compiled, posterInfo(piece), o, scale);
+  return posterHudPlacement(ctx, compiled, o, view);
 }
 
 /** The poster as an SVG document. */
