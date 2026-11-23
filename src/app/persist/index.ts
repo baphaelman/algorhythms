@@ -11,6 +11,7 @@ import type { Piece } from '../../core/types';
 import { downloadBlob } from '../download';
 import { select } from '../editor/history';
 import { PIECE_KEY_ID, requestPieceKeyFocus } from '../editor/piece-key';
+import { likeTheVideo } from '../editor/video-template';
 import { loadInfo, loadPiece, pushNotice, runOpen, usePlayer } from '../store';
 import { Autosaver } from './autosave';
 import { idbLibrary } from './idb';
@@ -226,6 +227,14 @@ export function newPieceNow(): void {
     loadNewPiece();
     select([PIECE_KEY_ID]);
     requestPieceKeyFocus();
+  });
+}
+
+/** New → "Like the video" (PLAN.md §6.4): the video's template, as a new piece. */
+export function newVideoPieceNow(): void {
+  runOpen(() => {
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+    loadPiece(likeTheVideo({ seed, now: new Date().toISOString() }), { source: 'new' });
   });
 }
 

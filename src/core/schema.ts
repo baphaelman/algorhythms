@@ -425,6 +425,12 @@ const MOMENT_SCHEMAS = {
       .describe(
         'The tonic the notes are written in: the tune sounds moved by the smallest interval (−6…+5, a tritone down) to the tonic at `at` (absent: absolute pitches).',
       ),
+    fit: z
+      .looseObject({ seed: z.number().int().describe('Seeds the melody.') })
+      .optional()
+      .describe(
+        'The notes are a melody fitted to the chords under the tune; the editor redraws them when the chords or key there change (absent: hand-written notes). Playback ignores it.',
+      ),
   }),
   progression: z.looseObject({
     type: z.literal('progression'),

@@ -1,7 +1,14 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { PALETTE } from '../editor/shortcuts';
 import { COMPOSITIONS, ORIGINALS } from '../examples';
-import { canLinkFiles, linkToFile, newPieceNow, openMyPieces, saveAsFile } from '../persist';
+import {
+  canLinkFiles,
+  linkToFile,
+  newPieceNow,
+  newVideoPieceNow,
+  openMyPieces,
+  saveAsFile,
+} from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
 import { openCompose } from '../compose';
 import { openExport } from './ExportDialog';
@@ -127,6 +134,17 @@ export function Menu() {
                 }}
               >
                 Empty
+              </button>
+              <button
+                type="button"
+                data-testid="new-video-piece"
+                title="One note blooms into chords, gathers and blooms again"
+                onClick={() => {
+                  close();
+                  newVideoPieceNow();
+                }}
+              >
+                Like the video
               </button>
               <button
                 type="button"

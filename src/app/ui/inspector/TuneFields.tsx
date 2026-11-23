@@ -4,7 +4,8 @@
  * scale step and remove; "Add note" appends one. Each edit is one undo entry. R9-8: a text field
  * takes the notes typed ("F#5 2, E5 1, D5 1"), committed on Enter or blur once valid; a row and
  * the score's tune dot share the dot selection (picking a row selects its dot, and the other way
- * round). "Random melody" replaces the notes with a fresh roll (owner, 2026-11-21).
+ * round). "New melody" replaces the notes with a fresh melody fitted to the chords, and "Fit to
+ * chords" keeps it fitted when they change (M10b-5).
  */
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -17,6 +18,9 @@ import {
   auditionTuneAfterEdit,
 } from '../../audition';
 import { updateMoment } from '../../editor/actions';
+import { edit } from '../../editor/history';
+import { fitTune } from '../../editor/melody-fit';
+import { momentSeed } from '../../../core/rng';
 import { randomU32 } from '../../editor/ops';
 import { clearDots, selectDots, useDotSelection } from '../../editor/dot-selection';
 import {
@@ -30,7 +34,6 @@ import {
   melodyOptions,
   melodyVoice,
   type MelodyOption,
-  randomMelody,
   removeTuneNote,
   followKeyPatch,
   setTuneLen,
@@ -232,6 +235,16 @@ export function TuneOptions({ m }: { m: TuneMoment }) {
         }}
       />
       <CheckField
+        label="Fit to chords"
+        checked={m.fit !== undefined}
+        testId="tune-fit"
+        title="Redraw the melody when the chords under it change (editing a note turns this off)"
+        onChange={(on) => {
+          if (!on) updateMoment(m.id, { fit: undefined }, 'Stop fitting to chords');
+          else edit((p) => fitTune(p, m.id, momentSeed(p.seed, m.id)), 'Fit to chords');
+        }}
+      />
+      <CheckField
         label="Re-strike repeats"
         checked={m.strike !== false}
         testId="tune-strike"
@@ -413,21 +426,26 @@ export function TuneNotes({ m, piece }: { m: TuneMoment; piece: Piece }) {
         <button
           type="button"
           data-testid="tune-random"
-          title="Replace the notes with a new random melody, as long as the tune"
+          title="A new melody that fits the chords, as long as the tune"
           onClick={() => {
             // A new seed each press; a roll equal to the current notes is rolled again.
             const same = JSON.stringify(m.notes);
-            let notes = randomMelody(piece, compiled, m, randomU32());
-            for (let i = 0; i < 4 && JSON.stringify(notes) === same; i++)
-              notes = randomMelody(piece, compiled, m, randomU32());
-            if (!write(shiftTuneNotes(notes, shift), 'Random melody')) return;
-            const melody = notes.flatMap((n) =>
-              n.rest ? [] : [{ pitch: n.pitch + shift, len: n.len }],
+            let next = fitTune(piece, m.id, randomU32());
+            const notesOf = (p: Piece): TuneNote[] =>
+              (p.moments.find((x) => x.id === m.id) as TuneMoment | undefined)?.notes ?? [];
+            for (let i = 0; i < 4 && JSON.stringify(notesOf(next)) === same; i++)
+              next = fitTune(piece, m.id, randomU32());
+            if (!edit(() => next, 'New melody')) return;
+            const tune = usePlayer.getState().piece.moments.find((x) => x.id === m.id);
+            if (tune?.type !== 'tune') return;
+            const now = tuneShiftIn(usePlayer.getState().compiled, tune);
+            const melody = tune.notes.flatMap((n) =>
+              n.rest ? [] : [{ pitch: n.pitch + now, len: n.len }],
             );
             auditionMelodyAfterEdit(m.id, melody, m.at);
           }}
         >
-          Random melody
+          New melody
         </button>
       </div>
     </fieldset>

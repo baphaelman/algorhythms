@@ -4593,6 +4593,22 @@ This is the *input* form: fields with defaults are optional here.
                   "Bb",
                   "B"
                 ]
+              },
+              "fit": {
+                "description": "The notes are a melody fitted to the chords under the tune; the editor redraws them when the chords or key there change (absent: hand-written notes). Playback ignores it.",
+                "type": "object",
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "Seeds the melody."
+                  }
+                },
+                "required": [
+                  "seed"
+                ],
+                "additionalProperties": {}
               }
             },
             "required": [

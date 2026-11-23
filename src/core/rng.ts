@@ -51,6 +51,8 @@ export const enum Purpose {
   PulsePick = 16,
   /** Random tune melody (core/tune-gen.ts): rhythm cells and steps. */
   TuneGen = 17,
+  /** Melody that fits the chords (core/melody.ts): rhythm, contour and anchors. */
+  Melody = 18,
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -56,6 +56,7 @@ import {
   useEditor,
 } from '../../../src/app/editor/history';
 import { defaultMoment, withChordFill } from '../../../src/app/editor/new-moment';
+import { melodyLength } from '../../../src/app/editor/melody-fit';
 import { copyMoments, moveMomentsBy, newMomentIds } from '../../../src/app/editor/ops';
 import { loadPiece, usePlayer } from '../../../src/app/store';
 import example from '../../../examples/tidewater-hymn.algorhythms.json';
@@ -319,15 +320,13 @@ describe('default moments', () => {
     }
   }
 
-  it('a new tune is a random melody of two bars, in key, seeded by the id', () => {
+  it('a new tune is a fitted melody over the chord block, in key, seeded by the id', () => {
     const p = examplePiece();
     const s = compile(p);
     const m = defaultMoment('tune', 30, 'zzzzzz', p, s);
+    expect(m.fit).toBeDefined();
     expect(m.notes.length).toBeGreaterThan(2);
-    const bpm = p.view?.gridBpm;
-    const meter = typeof p.view?.meter === 'number' ? p.view.meter : 4;
-    const total = typeof bpm === 'number' && bpm > 0 ? (2 * meter * 60) / bpm : 4;
-    expect(m.notes.reduce((a, n) => a + n.len, 0)).toBeCloseTo(total, 5);
+    expect(m.notes.reduce((a, n) => a + n.len, 0)).toBeCloseTo(melodyLength(p, s, 30), 5);
     const key = keyAt(s, 30);
     for (const n of m.notes) expect(isScaleTone(n.pitch!, key)).toBe(true);
     expect(defaultMoment('tune', 30, 'zzzzzz', p, s).notes).toEqual(m.notes);

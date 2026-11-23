@@ -18,7 +18,8 @@ import {
 import { chordDefaultAt } from '../../core/suggest';
 import { pitchClasses } from '../../core/voicing';
 import { momentSeed } from '../../core/rng';
-import { randomMelody, writtenInAt } from './tune';
+import { writtenInAt } from './tune';
+import { fittedNotes, harmonyScore, melodyLength } from './melody-fit';
 import { newProgressionChords, progressionSpacing } from './progression';
 import { timbreOptions } from './voices';
 import type {
@@ -181,9 +182,10 @@ export function defaultMoment<T extends MomentType>(
     }
     case 'tune': {
       // With more than one line sounding the melody goes on top (`line: 'high'`; a product call,
-      // build log "Tune: Melody on"). A random melody from that line's note, two bars (4 s
-      // without a tempo), seeded by the piece seed and the id (build log "Tune: random melody").
+      // build log "Tune: Melody on"). A melody fitted to the chords (M10b-5) over the Chords
+      // block at `at` (2 bars without one), seeded by the piece seed and the id.
       const high = n > 1;
+      const seed = momentSeed(piece.seed, id);
       const tune: TuneMoment = {
         ...base,
         type: 'tune',
@@ -191,8 +193,12 @@ export function defaultMoment<T extends MomentType>(
         ...(high ? { line: 'high' as const } : {}),
         // Revision 10: new tunes follow the key (inspector "Follow key").
         writtenIn: writtenInAt(score, base.at),
+        fit: { seed },
       };
-      tune.notes = randomMelody(piece, score, tune, momentSeed(piece.seed, id));
+      const hs = piece.moments.some((x) => x.type === 'tune' && x.fit)
+        ? harmonyScore(piece)
+        : score;
+      tune.notes = fittedNotes(piece, hs, tune, seed, melodyLength(piece, score, at));
       m = tune;
       break;
     }
