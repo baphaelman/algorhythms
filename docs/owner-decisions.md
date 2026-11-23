@@ -55,6 +55,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 
 ## Decided by the integrator (veto if wrong)
 - **Video bitrate (2026-11-23, M11):** the Quality presets set a bitrate *cap*; browsers spend far less on these frames and more bits barely improve them, so M11 gates decoded quality (≥ 40 dB PSNR) instead of "≥ 70 % of the target bitrate".
+- **Video true peak (2026-11-23, M11):** a video's audio is limited to −1.5 dBTP (AAC) or −2 dBTP (Opus) so it stays ≤ −1 dBTP after decoding; the WAV keeps −1.
 - **Rows (M10b, 2026-11-22).** A chord block with Notes: 1 sounds the chord's root (the row model voiced the middle tone). The Texture button adds an Arpeggio by default; Wander, Pulse and Hold are one click away.
 - **Next offers only chord cards (M10a, 2026-11-22).** Its split, walk, thin, collapse and level suggestions go; note counts and textures return as chord-block and texture choices in M10b. Cards add seventh chords when four or more lines sound, triads otherwise.
 - **Export look details (rev 13).** With nothing drawn ahead of the playhead, a following video puts the playhead 80 % across (35 % when the future shows), as an option ("Playhead at"). Posters default to no HUD (it would show end-of-piece values) but keep the title block. Still fixed, not options: type sizes and font, dot and ring sizes, the pitch-colour gradient.

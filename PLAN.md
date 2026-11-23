@@ -950,7 +950,7 @@ The owner will post pieces on YouTube. A review of the gallery's best videos (Cr
 **Audio**
 - **Loudness.** A **Loudness** control (segmented: Off / −14 LUFS / −16 LUFS) applies to the WAV mix and the video's audio.
   - **Off** is today's behaviour: peaks ≤ −1 dBFS.
-  - **Otherwise:** render, measure the integrated loudness (ITU-R BS.1770-4: K-weighting, 400 ms blocks, absolute and relative gating), apply one gain, then run the limiter with a true-peak ceiling of −1 dBTP (4× oversampled peak detection).
+  - **Otherwise:** render, measure the integrated loudness (ITU-R BS.1770-4: K-weighting, 400 ms blocks, absolute and relative gating), apply one gain, then run the limiter with a true-peak ceiling of −1 dBTP (4× oversampled peak detection). A video's audio is limited lower, to −1.5 dBTP for AAC and −2 for Opus, so it still decodes at or below −1 dBTP after lossy coding (integrator, 2026-11-23: Crease's AAC decoded at −0.90 from a −1 ceiling).
   - **Display:** the dialog shows the piece's measured loudness and the gain it will apply. Measured on demand in a worker and cached per piece version.
   - **Warning:** shown when reaching the target would need more than 6 dB of limiting.
   - Stems and MIDI are unchanged in M11.
@@ -1244,7 +1244,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - a custom background (solid and gradient) and a custom colour for every listed element draw the same in the preview, the video frame and the poster (PNG and SVG); a saved scheme reapplies exactly; with every colour on its default, exports draw exactly as before;
   - the Export dialog works by keyboard alone, and its preview stays in sync with every control.
 - **Ready for YouTube (revision 16, owner 2026-11-23):** loudness, glue and width; 1440p and 4K, quality and AAC; glow, vignette and guide lines; title card, fades and the end card; thumbnail; description with chapters; the YouTube and Shorts presets (§12 "Ready for YouTube"). *Accept when:*
-  - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled), on Crease, Night Sleeper and one example;
+  - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled; for a video, measured after decoding), on Crease, Night Sleeper and one example;
   - with glue 0 and width 1 every render golden is unchanged; with glue or width on, the stems plus the FX return still sum to the mix (the §12 tolerance);
   - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with a decoded quality of at least 40 dB PSNR against the rendered frames on a dense piece (integrator call 2026-11-23: browser encoders spend far less than the target on these frames and more bits barely raise quality, so the target is a cap, not a goal); its audio is AAC wherever the browser offers it;
   - glow, vignette, guide lines and minimum line opacity draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
