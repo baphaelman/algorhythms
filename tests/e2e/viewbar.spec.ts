@@ -64,27 +64,44 @@ test('1280×800: Add and Next share a row; all suggestions show whole', async ({
 });
 
 for (const w of [1280, 1920]) {
-  test(`${w} px: Add and Next fill the row (PLAN §11.2), every card whole`, async ({ page }) => {
+  test(`${w} px: Add and Next fill the editor column (PLAN §11.2), every card whole`, async ({
+    page,
+  }) => {
     await open(page, w, 900);
     const g = await page.locator('.viewbar').evaluate((bar) => {
-      const r = (q: string) => bar.querySelector(q)!.getBoundingClientRect();
+      const r = (q: string) => document.querySelector(q)!.getBoundingClientRect();
       const add = r('[data-testid="palette"]');
       const next = r('[data-testid="suggestions"]');
+      const stage = r('.stage');
+      const lane = r('.timeline .slot.lane');
       const cards = [...bar.querySelectorAll<HTMLElement>('[data-testid="suggestions"] button')];
-      return {
-        fill: (add.width + next.width) / bar.getBoundingClientRect().width,
-        cut: cards.filter((c) => {
+      const cut = (): number =>
+        cards.filter((c) => {
           const b = c.getBoundingClientRect();
           return b.bottom > next.bottom || b.right > next.right || c.scrollWidth > c.clientWidth;
-        }).length,
+        }).length;
+      return {
+        // Left and right edges against the score's and the lane's (not the window's).
+        edges: [
+          add.left - stage.left,
+          add.left - lane.left,
+          next.right - stage.right,
+          next.right - lane.right,
+        ],
+        sameRow: Math.abs(add.top - next.top),
+        fill: (add.width + next.width) / stage.width,
+        cut: cut(),
         cards: cards.length,
         font: parseFloat(getComputedStyle(cards[0]!).fontSize),
       };
     });
     expect(g.cards).toBeGreaterThan(0);
-    expect(g.fill).toBeGreaterThanOrEqual(0.95);
+    for (const d of g.edges) expect(Math.abs(d)).toBeLessThanOrEqual(2);
+    expect(g.sameRow).toBeLessThan(4);
+    expect(g.fill).toBeGreaterThanOrEqual(0.98);
     expect(g.cut).toBe(0);
-    expect(g.font).toBeGreaterThanOrEqual(w >= 1920 ? 14 : 12);
+    // Compact at 1280 (the column is 944 px), growing with it.
+    expect(g.font).toBeGreaterThanOrEqual(w >= 1920 ? 14 : 11);
   });
 }
 
