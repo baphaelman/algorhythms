@@ -25,6 +25,7 @@ import type { HudPlacement } from '../render/hud';
 import { resetContext } from '../render/poster';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
+  bookendsAt,
   bookendsOn,
   drawVideoFrame,
   drawVideoFrameAt,
@@ -558,7 +559,8 @@ export function frameOptions(
 
 /**
  * The Export dialog's preview of a video with an opening and ending: the frame at video time τ
- * (lead-in, title card, end card and fades included) as the export draws it.
+ * (lead-in, title card, end card and fades included) as the export draws it. The HUD's boxes
+ * are the music frame's (none once the end card has taken over).
  */
 export function previewVideoMoment(
   ctx: Ctx2D,
@@ -567,9 +569,13 @@ export function previewVideoMoment(
   opts: VideoOptions,
   tau: Seconds,
   scale: number,
-): void {
+): HudPlacement {
   resetContext(ctx);
-  drawVideoMoment(ctx, compiled, frameOptions(piece, opts, compiled), tau, scale);
+  const fo = frameOptions(piece, opts, compiled);
+  const view = drawVideoMoment(ctx, compiled, fo, tau, scale);
+  const st = bookendsAt(fo.bookends, videoSpan(compiled.duration, fo.section), tau, fo.length);
+  const place = hudPlacement(ctx, compiled, fo.style, view);
+  return st.end >= 1 ? { ...place, boxes: [] } : place;
 }
 
 /** Frame k as the export draws it, on the main thread (tests). */

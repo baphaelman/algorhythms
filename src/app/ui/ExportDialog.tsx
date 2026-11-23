@@ -6,8 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
-  type ReactNode,
 } from 'react';
 import { create } from 'zustand';
 import { evalSegment } from '../../core/segment';
@@ -15,7 +15,7 @@ import { formatTime, type HudPlacement } from '../../render/hud';
 import { hudPosText, posOfBox } from '../../render/hud-layout';
 import { sectionText, type TimeSpan } from '../../render/section';
 import { tokensOf } from '../../render/palettes';
-import { videoSize } from '../../render/video';
+import { videoSize, type VideoSize } from '../../render/video';
 import type { HudItem } from '../../render/types';
 import { downloadBlob } from '../download';
 import {
@@ -46,8 +46,11 @@ import {
   VIDEO_ASPECTS,
   VIDEO_CAMERAS,
   VIDEO_FPS,
+  VIDEO_QUALITIES,
   VIDEO_SIZES,
   VIDEO_THEMES,
+  aacNote,
+  bookendsOf,
   codecLabel,
   defaultCustomSpan,
   exportFileName,
@@ -92,6 +95,15 @@ import {
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
 import { ColoursGroup } from './ColoursGroup';
+import { Radios, Switch } from './export-controls';
+import {
+  BookendsGroup,
+  LoudnessField,
+  PitchGuidesRow,
+  PresetField,
+  PreviewActions,
+} from './ExportYoutube';
+import { applyPreset } from '../youtube-preset';
 import {
   cameraOf,
   currentTime,
@@ -129,6 +141,10 @@ interface ExportUi {
   previewPlaying: boolean;
   /** Where the preview last drew the HUD readouts (layout px); null before the first draw. */
   hudPlace: HudPlacement | null;
+  /** The size classes this browser encodes, by `sizesKey` (aspect and fps). */
+  sizes: Record<string, VideoSize[]>;
+  /** The Opening & ending group is expanded. */
+  bookendsOpen: boolean;
 }
 
 const RUN_LABEL: Record<ExportForm['format'], string> = {
@@ -152,7 +168,14 @@ const useExportUi = create<ExportUi>()(() => ({
   previewT: 0,
   previewPlaying: false,
   hudPlace: null,
+  sizes: {},
+  bookendsOpen: false,
 }));
+
+const sizesKey = (f: Pick<ExportForm, 'videoAspect' | 'videoFps'>) =>
+  `${f.videoAspect} ${f.videoFps}`;
+/** The key of the sizes YouTube's preset picks from (16:9, 60 fps). */
+const YOUTUBE_SIZES = sizesKey({ videoAspect: '16:9', videoFps: 60 });
 
 const videoKey = (f: ExportForm) => `${f.videoAspect} ${f.videoSize} ${f.videoFps}`;
 
@@ -187,41 +210,91 @@ function sectionNow(form: ExportForm = useExportUi.getState().form): TimeSpan {
   return sectionOf(form, ctx) ?? { start: 0, end: ctx.duration ?? 0 };
 }
 
+/**
+ * The preview's clock (see `previewClock`): its range on the score's clock, from the section's
+ * start less the lead-in; the section alone before the runtime loads.
+ */
+function clockNow(form: ExportForm = useExportUi.getState().form): {
+  from: number;
+  to: number;
+  span: TimeSpan;
+} {
+  const { runtime } = useExportUi.getState();
+  if (form.format === 'video' && runtime) {
+    const { piece, compiled } = usePlayer.getState();
+    return runtime.previewClock({ piece, compiled }, form, videoContext());
+  }
+  const span = sectionNow(form);
+  return { from: span.start, to: span.end, span };
+}
+
 /** A piece's identity for the Section's memory (it survives edits, not a different piece). */
 function pieceKey(): string {
   const { piece } = usePlayer.getState();
   return `${piece.meta.created}|${piece.seed}`;
 }
 
-/** The Section chosen per piece, for the session (integrator call: not remembered on disk). */
-const sections = new Map<string, Pick<ExportForm, 'section' | 'sectionSpan'>>();
+/** What the dialog keeps per piece for the session: the Section and the title card's text. */
+type PerPiece = Pick<ExportForm, 'section' | 'sectionSpan' | 'videoTitle' | 'videoSubtitle'>;
+const PER_PIECE = ['section', 'sectionSpan', 'videoTitle', 'videoSubtitle'] as const;
 
-/** The piece's remembered Section, else Whole. */
-function sectionFor(key: string): Pick<ExportForm, 'section' | 'sectionSpan'> {
-  return sections.get(key) ?? { section: 'whole', sectionSpan: null };
+/** Per piece, for the session (integrator call: not remembered on disk). */
+const sections = new Map<string, PerPiece>();
+
+/** The piece's remembered Section and title, else Whole and the piece's name. */
+function sectionFor(key: string): PerPiece {
+  return (
+    sections.get(key) ?? {
+      section: 'whole',
+      sectionSpan: null,
+      videoTitle: null,
+      videoSubtitle: '',
+    }
+  );
 }
+
+/** The preview plays a silent stretch (lead-in, end card): clock time `v` at wall time `at`. */
+let silent: { v: number; at: number } | null = null;
+
+const silentNow = (q: { v: number; at: number }) => q.v + (performance.now() - q.at) / 1000;
 
 /** The editor's playhead when the dialog opened, and whether the preview has moved it since. */
 let openPlayhead = 0;
 let previewMoved = false;
 
-/** Plays the video preview from its time, with sound, through the app's player. */
+/**
+ * Plays the video preview from its time: the section with sound through the app's player, the
+ * lead-in and end card silently on a wall clock.
+ */
 function playPreview(): void {
   const s = useExportUi.getState();
   if (s.previewPlaying || s.run.status === 'running') return;
   previewMoved = true;
-  // Only the section plays: from the preview time, or its start when at (or past) its end.
-  const span = sectionNow(s.form);
-  const from = s.previewT >= span.end - 0.05 || s.previewT < span.start ? span.start : s.previewT;
+  // Only the video's span plays: from the preview time, or its start when at (or past) its end.
+  const c = clockNow(s.form);
+  const from = s.previewT >= c.to - 0.05 || s.previewT < c.from ? c.from : s.previewT;
   useExportUi.setState({ previewT: from });
-  seekTo(from);
-  play();
-  useExportUi.setState({ previewPlaying: usePlayer.getState().transport.status === 'playing' });
+  if (from >= c.span.start && from < c.span.end - 0.05) {
+    silent = null;
+    seekTo(from);
+    play();
+    useExportUi.setState({ previewPlaying: usePlayer.getState().transport.status === 'playing' });
+  } else {
+    silent = { v: from, at: performance.now() };
+    useExportUi.setState({ previewPlaying: true });
+  }
 }
 
 /** Pauses the video preview where it is. */
 function pausePreview(): void {
   if (!useExportUi.getState().previewPlaying) return;
+  if (silent) {
+    const v = silentNow(silent);
+    silent = null;
+    const c = clockNow();
+    useExportUi.setState({ previewPlaying: false, previewT: Math.min(c.to, v) });
+    return;
+  }
   pause();
   useExportUi.setState({ previewPlaying: false, previewT: currentTime() });
 }
@@ -234,6 +307,7 @@ function togglePreview(): void {
 
 /** Stops the preview and puts the editor's playhead back where it was when the dialog opened. */
 function restorePlayhead(): void {
+  silent = null;
   useExportUi.setState({ previewPlaying: false });
   if (!previewMoved) return;
   previewMoved = false;
@@ -256,12 +330,14 @@ export function openExport(): void {
   // The remembered Look and video/poster choices (none if storage is unavailable), and this
   // piece's Section (Whole for a piece not exported this session).
   const form = running ? s.form : { ...s.form, ...loadExportPrefs(), ...sectionFor(pieceKey()) };
+  const b = form.format === 'video' ? bookendsOf(form, usePlayer.getState().piece) : undefined;
   const span = sectionNow(form);
   const t0 = now > 0 ? now : duration / 3;
   useExportUi.setState({
     open: true,
     previewPlaying: false,
     hudOpen: false,
+    bookendsOpen: s.bookendsOpen || b !== undefined,
     previewT: Math.min(Math.max(t0, span.start), span.end),
     run: running ? s.run : IDLE,
     form,
@@ -283,17 +359,44 @@ function patch(p: Partial<ExportForm>): void {
   useExportUi.setState((s) => ({ form: { ...s.form, ...p }, run: IDLE }));
   const { form } = useExportUi.getState();
   saveExportPrefs(form);
-  if ('section' in p || 'sectionSpan' in p) {
-    sections.set(pieceKey(), { section: form.section, sectionSpan: form.sectionSpan });
-    // The preview time stays inside the section.
-    const span = sectionNow(form);
-    const { previewT, previewPlaying } = useExportUi.getState();
-    const t = Math.min(Math.max(previewT, span.start), span.end);
-    if (t !== previewT) {
-      useExportUi.setState({ previewT: t });
-      if (previewPlaying) seekTo(t);
+  if (PER_PIECE.some((k) => k in p)) {
+    const keep = {} as Record<string, unknown>;
+    for (const k of PER_PIECE) keep[k] = form[k];
+    sections.set(pieceKey(), keep as PerPiece);
+  }
+  // The preview time stays inside the video's clock (the section, lead-in and end card).
+  const c = clockNow(form);
+  const { previewT, previewPlaying } = useExportUi.getState();
+  const t = Math.min(Math.max(previewT, c.from), c.to);
+  if (t !== previewT) {
+    useExportUi.setState({ previewT: t });
+    if (previewPlaying && !silent) seekTo(Math.min(Math.max(t, c.span.start), c.span.end));
+  }
+}
+
+/** Applies a video preset (YouTube waits for the sizes this browser encodes at 16:9 60 fps). */
+async function choosePreset(preset: 'youtube' | 'shorts'): Promise<void> {
+  let sizes: VideoSize[] | undefined = useExportUi.getState().sizes[YOUTUBE_SIZES];
+  const { runtime } = useExportUi.getState();
+  if (preset === 'youtube' && !sizes && runtime) {
+    sizes = await runtime.videoSizes({ aspect: '16:9', fps: 60 }).catch(() => undefined);
+    if (sizes) {
+      const list = sizes;
+      useExportUi.setState((s) => ({ sizes: { ...s.sizes, [YOUTUBE_SIZES]: list } }));
     }
   }
+  const form = applyPreset(useExportUi.getState().form, preset, sizes);
+  const { videoAspect, videoSize, videoFps, videoQuality, loudness, videoEndCard } = form;
+  patch({
+    videoAspect,
+    videoSize,
+    videoFps,
+    videoQuality,
+    loudness,
+    videoEndCard,
+    videoTitleCard: form.videoTitleCard,
+  });
+  if (preset === 'youtube') useExportUi.setState({ bookendsOpen: true });
 }
 
 /** The open format's readouts and the field that holds them. */
@@ -441,81 +544,6 @@ function estimateFor(
   }
 }
 
-/** A group of radio buttons drawn as a segmented control (the Generate panel's look). */
-function Radios<T extends string | number>({
-  legend,
-  name,
-  value,
-  options,
-  disabled,
-  testId,
-  onChange,
-}: {
-  legend: string;
-  name: string;
-  value: T;
-  options: readonly { id: T; label: string }[];
-  disabled?: boolean;
-  testId: string;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <fieldset className="field" disabled={disabled}>
-      <legend>{legend}</legend>
-      <div className="seg radios" data-testid={testId}>
-        {options.map((o) => (
-          <label key={o.id} className={value === o.id ? 'on' : undefined}>
-            <input
-              type="radio"
-              name={name}
-              value={String(o.id)}
-              checked={value === o.id}
-              onChange={() => onChange(o.id)}
-            />
-            <span>{o.label}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-/** A yes/no choice as a switch (checkbox role="switch": Space toggles, aria-checked), label left. */
-function Switch({
-  checked,
-  disabled,
-  testId,
-  label,
-  className,
-  onChange,
-  children,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  testId: string;
-  label: string;
-  className?: string;
-  onChange: (v: boolean) => void;
-  children?: ReactNode;
-}) {
-  return (
-    <label className={className ? `look-switch ${className}` : 'look-switch'}>
-      <span className="switch-text">
-        <span>{label}</span>
-        {children}
-      </span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        disabled={disabled}
-        data-testid={testId}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-    </label>
-  );
-}
-
 /** Segmented buttons in the Look grid: a label, then a radio group drawn as one bar. */
 function LookSegmentsRow({
   control,
@@ -615,7 +643,9 @@ function LookSliderRow({
   const text = control.text(value);
   return (
     <>
-      <label htmlFor={id}>{control.label}</label>
+      <label htmlFor={id} title={control.hint}>
+        {control.label}
+      </label>
       <div className="field-row look-range">
         <input
           id={id}
@@ -783,6 +813,7 @@ function LookPanel({
             )}
           </Fragment>
         ))}
+        <PitchGuidesRow form={form} disabled={disabled} onLook={patchLook} />
         <HudSection form={form} kind={kind} />
       </div>
       <ColoursGroup
@@ -827,6 +858,38 @@ const WIDE = '(min-width: 900px)';
 /** The preview's box (CSS px): the column's width, at most this tall. */
 function previewMaxHeight(wide: boolean): number {
   return wide ? Math.min(440, innerHeight * 0.62) : Math.min(170, innerHeight * 0.27);
+}
+
+/** Whether the screen is wide (the preview beside the options). */
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (on) => {
+      const mq = matchMedia(WIDE);
+      mq.addEventListener('change', on);
+      return () => mq.removeEventListener('change', on);
+    },
+    () => matchMedia(WIDE).matches,
+  );
+}
+
+/**
+ * Thumbnail and Copy description: under the preview on wide screens, at the top of the options
+ * on narrow ones (the sticky preview stays small).
+ */
+function VideoActions({ form, runtime }: { form: ExportForm; runtime: Runtime | null }) {
+  const t = useExportUi((s) => s.previewT);
+  const running = useExportUi((s) => s.run.status === 'running');
+  const span = sectionNow(form);
+  return (
+    <PreviewActions
+      form={form}
+      runtime={runtime}
+      time={Math.min(Math.max(span.start, t), span.end)}
+      disabled={running}
+      context={videoContext}
+      onPatch={patch}
+    />
+  );
 }
 
 /** Snap distance while dragging a readout, CSS px. */
@@ -1024,6 +1087,7 @@ function ExportPreview({
   // The app's theme and line colours feed 'Current' and 'As in the app'.
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
   const t = useExportUi((s) => s.previewT);
+  const wide = useWide();
   const playing = useExportUi((s) => s.previewPlaying);
   const running = useExportUi((s) => s.run.status === 'running');
   const box = useRef<HTMLDivElement>(null);
@@ -1096,16 +1160,41 @@ function ExportPreview({
     if (!playing) return;
     let raf = 0;
     const tick = () => {
+      const c = clockNow();
+      if (silent) {
+        // The lead-in or end card: a wall clock; the music starts at the section's start.
+        const v = silentNow(silent);
+        if (v >= c.to) {
+          silent = null;
+          useExportUi.setState({ previewPlaying: false, previewT: c.to });
+          return;
+        }
+        if (silent.v < c.span.start && v >= c.span.start) {
+          silent = null;
+          seekTo(c.span.start);
+          play();
+          useExportUi.setState({ previewT: c.span.start });
+        } else useExportUi.setState({ previewT: v });
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const now = currentTime();
-      const span = sectionNow();
+      const span = c.span;
       if (usePlayer.getState().transport.status !== 'playing') {
         useExportUi.setState({ previewPlaying: false, previewT: now });
         return;
       }
-      // Only the section plays: stop at its end (or if the player left it, e.g. a loop's wrap).
+      // Only the section plays: stop at its end (or if the player left it, e.g. a loop's wrap);
+      // an end card (or ring-out) after it runs on silently.
       if (now >= span.end - 1e-3 || now < span.start - 0.05) {
         pause();
         const at = Math.min(Math.max(now, span.start), span.end);
+        if (now >= span.end - 1e-3 && c.to > span.end + 0.05) {
+          silent = { v: at, at: performance.now() };
+          useExportUi.setState({ previewT: at });
+          raf = requestAnimationFrame(tick);
+          return;
+        }
         useExportUi.setState({ previewPlaying: false, previewT: at });
         return;
       }
@@ -1123,8 +1212,17 @@ function ExportPreview({
   const dpr = Math.min(2, devicePixelRatio || 1);
   const pxW = Math.round(cssW * dpr);
   const pxH = Math.max(1, Math.round((px.height * pxW) / px.width));
-  const span = sectionNow(form);
-  const time = Math.min(Math.max(span.start, t), span.end);
+  // The video's clock: the section, less the lead-in before it, plus the end card after it.
+  const clock = useMemo(
+    () => clockNow(form),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form, compiled, runtime],
+  );
+  const v = Math.min(Math.max(clock.from, t), clock.to);
+  const span = clock.span;
+  const time = Math.min(Math.max(span.start, v), span.end);
+  const bookends = kind === 'video' && bookendsOf(form, piece) !== undefined;
+  const shown = bookends ? v - clock.from : v;
 
   useEffect(() => {
     if (!runtime || avail.w === 0) return;
@@ -1141,7 +1239,7 @@ function ExportPreview({
       const t0 = performance.now();
       const place =
         kind === 'video'
-          ? runtime.previewVideo(g, src, form, videoContext(), time, scale)
+          ? runtime.previewVideo(g, src, form, videoContext(), v, scale)
           : runtime.previewPosterOf(g, src, form, videoContext(), scale);
       const prev = useExportUi.getState().hudPlace;
       if (!prev || JSON.stringify(prev) !== JSON.stringify(place)) {
@@ -1161,7 +1259,7 @@ function ExportPreview({
         run?.();
       });
     }
-  }, [runtime, piece, compiled, form, kind, time, pxW, pxH, px.width, appView, avail.w]);
+  }, [runtime, piece, compiled, form, kind, v, pxW, pxH, px.width, appView, avail.w]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -1173,7 +1271,7 @@ function ExportPreview({
   const transparent = kind === 'poster' && form.look.transparent;
   const what =
     kind === 'video'
-      ? `Preview of the video frame at ${formatTime(time)}, ${form.videoAspect}`
+      ? `Preview of the video frame at ${formatTime(shown)}, ${form.videoAspect}`
       : `Preview of the poster, ${POSTER_SIZES.find((p) => p.id === posterPreset(form))?.label ?? posterPixels(form)}` +
         (form.posterRows > 1 ? `, ${form.posterRows} rows` : '') +
         (transparent ? ', transparent background' : '');
@@ -1189,6 +1287,7 @@ function ExportPreview({
             className={transparent ? 'checker' : undefined}
             data-testid="preview-canvas"
             data-t={kind === 'video' ? time.toFixed(3) : undefined}
+            data-tau={bookends ? shown.toFixed(3) : undefined}
             style={{ width: `${cssW}px`, height: `${cssH}px` }}
           />
           <HudOverlay form={form} kind={kind} disabled={running} />
@@ -1215,20 +1314,35 @@ function ExportPreview({
           <input
             id={`${id}-t`}
             type="range"
-            min={span.start}
-            max={Math.max(span.start + 0.1, span.end)}
+            min={clock.from}
+            max={Math.max(clock.from + 0.1, clock.to)}
             step={0.1}
-            value={time}
+            value={v}
+            aria-valuetext={formatTime(shown)}
             data-testid="preview-time"
             onChange={(e) => {
-              const v = Number(e.target.value);
-              useExportUi.setState({ previewT: v });
-              if (useExportUi.getState().previewPlaying) seekTo(v);
+              const x = Number(e.target.value);
+              useExportUi.setState({ previewT: x });
+              if (!useExportUi.getState().previewPlaying) return;
+              // Playing: the music follows the slider; the lead-in and end card run silently.
+              if (x >= span.start && x < span.end - 0.05) {
+                if (silent) {
+                  silent = null;
+                  seekTo(x);
+                  play();
+                } else seekTo(x);
+              } else {
+                if (!silent) pause();
+                silent = { v: x, at: performance.now() };
+              }
             }}
           />
-          <output htmlFor={`${id}-t`}>{formatTime(time)}</output>
+          <output htmlFor={`${id}-t`} data-testid="preview-time-value">
+            {formatTime(shown)}
+          </output>
         </div>
       )}
+      {kind === 'video' && wide && <VideoActions form={form} runtime={runtime} />}
     </div>
   );
 }
@@ -1746,6 +1860,7 @@ export function ExportDialog() {
   const compiled = usePlayer((s) => s.compiled);
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
+  const wide = useWide();
 
   useEffect(() => {
     const d = dialog.current;
@@ -1797,6 +1912,29 @@ export function ExportDialog() {
         }
       });
   }, [wantVideo, runtime, vkey]);
+  // The size classes this browser encodes at the chosen aspect and fps, and at YouTube's.
+  const skey = sizesKey(form);
+  const sizes = useExportUi((s) => s.sizes);
+  useEffect(() => {
+    if (!wantVideo || !runtime) return;
+    for (const key of new Set([skey, YOUTUBE_SIZES])) {
+      if (useExportUi.getState().sizes[key]) continue;
+      const [aspect, fps] = key.split(' ');
+      void runtime
+        .videoSizes({ aspect: aspect as ExportForm['videoAspect'], fps: Number(fps) as 30 | 60 })
+        .then(
+          (list) => useExportUi.setState((s) => ({ sizes: { ...s.sizes, [key]: list } })),
+          () => undefined,
+        );
+    }
+  }, [wantVideo, runtime, skey]);
+  const sizeList = sizes[skey];
+  const sizeOptions = VIDEO_SIZES.filter((o) =>
+    sizeList
+      ? sizeList.includes(o.id) || o.id === form.videoSize
+      : o.id === '720' || o.id === '1080' || o.id === form.videoSize,
+  );
+  const bookendsOpen = useExportUi((s) => s.bookendsOpen);
   const videoState = useExportUi((s) => s.video);
   const support = form.format === 'video' && videoState.key === vkey ? videoState.support : null;
 
@@ -1858,6 +1996,16 @@ export function ExportDialog() {
             )}
 
             <div className="export-options">
+              {isVideo && !wide && <VideoActions form={form} runtime={runtime} />}
+              {isVideo && (
+                <PresetField
+                  form={form}
+                  sizes={sizes[YOUTUBE_SIZES]}
+                  disabled={running}
+                  spanLength={sectionNow(form).end - sectionNow(form).start}
+                  onPreset={(p) => void choosePreset(p)}
+                />
+              )}
               {(isVideo || isPoster) && <SectionField form={form} disabled={running} />}
 
               {(form.format === 'wav' || form.format === 'stems') && (
@@ -1881,6 +2029,15 @@ export function ExportDialog() {
                     onChange={(sampleRate) => patch({ sampleRate })}
                   />
                 </>
+              )}
+              {form.format === 'wav' && (
+                <LoudnessField
+                  form={form}
+                  runtime={runtime}
+                  disabled={running}
+                  context={videoContext}
+                  onChange={(loudness) => patch({ loudness })}
+                />
               )}
 
               {form.format === 'stems' && (
@@ -1968,9 +2125,10 @@ export function ExportDialog() {
                       legend="Size"
                       name={`${id}-vsize`}
                       value={form.videoSize}
-                      options={VIDEO_SIZES}
+                      options={sizeOptions}
                       disabled={running}
                       testId="export-vsize"
+                      hint="1440p and 4K get YouTube's better encoding, even for viewers at 1080p. Only the sizes this browser can encode are shown."
                       onChange={(videoSize) => patch({ videoSize })}
                     />
                     <Radios
@@ -1984,6 +2142,25 @@ export function ExportDialog() {
                     />
                   </div>
                   <Radios
+                    legend="Quality"
+                    name={`${id}-quality`}
+                    value={form.videoQuality}
+                    options={VIDEO_QUALITIES}
+                    disabled={running}
+                    testId="export-quality"
+                    hint="The bitrate cap: High is YouTube's recommended upload rate, Standard 0.6×, Max 1.5×."
+                    onChange={(videoQuality) => patch({ videoQuality })}
+                  />
+                  {aacNote(support) && (
+                    <small
+                      className="export-hint"
+                      title={aacNote(support) ?? undefined}
+                      data-testid="export-aac"
+                    >
+                      Audio is Opus here (no AAC encoder).
+                    </small>
+                  )}
+                  <Radios
                     legend="Camera"
                     name={`${id}-camera`}
                     value={form.videoCamera}
@@ -1996,6 +2173,13 @@ export function ExportDialog() {
                   {form.videoCamera === 'follow' && (
                     <WindowField form={form} duration={compiled.duration} disabled={running} />
                   )}
+                  <LoudnessField
+                    form={form}
+                    runtime={runtime}
+                    disabled={running}
+                    context={videoContext}
+                    onChange={(loudness) => patch({ loudness })}
+                  />
                 </>
               )}
 
@@ -2051,6 +2235,15 @@ export function ExportDialog() {
                   />
                   <LookPanel form={form} kind={isPoster ? 'poster' : 'video'} disabled={running} />
                 </>
+              )}
+              {isVideo && (
+                <BookendsGroup
+                  form={form}
+                  open={bookendsOpen}
+                  disabled={running}
+                  onToggle={(o) => useExportUi.setState({ bookendsOpen: o })}
+                  onPatch={patch}
+                />
               )}
 
               <div className="export-status" aria-live="polite" data-testid="export-status">

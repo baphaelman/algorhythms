@@ -8,7 +8,12 @@
 import { flatten, type FlatScore } from '../core/flat';
 import type { CompiledScore, MixSettings, Timbre } from '../core/types';
 import { BLOCK_FRAMES } from '../dsp/constants';
-import { normalize, type NormalizeReport } from '../dsp/loudness';
+import {
+  measureLoudness,
+  normalize,
+  type LoudnessMeasure,
+  type NormalizeReport,
+} from '../dsp/loudness';
 import { createLoadedGraph, exportFrameCount } from './offline';
 import { WavEncoder, wavHeader, type WavBitDepth } from './wav';
 
@@ -255,6 +260,29 @@ function renderSpan(
   }
   onProgress?.(1);
   return { left, right };
+}
+
+/**
+ * Measures what a loudness-normalised export would start from (§12 "Ready for YouTube" →
+ * Display): the same render (span and cut fades included), measured, not encoded.
+ */
+export function measureExport(
+  input: WavExportInput,
+  options: Pick<WavExportOptions, 'sampleRate' | 'span'>,
+  onProgress?: (fraction: number) => void,
+): LoudnessMeasure {
+  const flat = 'layout' in input.score ? input.score : flatten(input.score);
+  const sampleRate = options.sampleRate;
+  const all = exportFrameCount(flat, input.mix, sampleRate);
+  const graph = createLoadedGraph({
+    score: flat,
+    mix: input.mix,
+    timbres: input.timbres,
+    sampleRate,
+  });
+  graph.play(0);
+  const mix = renderSpan(graph, spanFrames(all, sampleRate, options.span), onProgress);
+  return measureLoudness(mix, sampleRate);
 }
 
 /** Renders a whole WAV file into one buffer (tests and small exports). */

@@ -65,13 +65,15 @@ describe('look-controls', () => {
       pulse: true,
       heads: ['dots', 'rings', 'hz'],
       width: 1,
+      glow: 0,
+      vignette: 0,
     });
   });
 
   it('continuous values are sliders, yes/no switches, small sets segments; no dropdowns', () => {
     const by = (t: LookControl['type']) =>
       LOOK_CONTROLS.filter((c) => c.type === t).map((c) => c.id);
-    expect(by('slider')).toEqual(['future', 'follow-at', 'width']);
+    expect(by('slider')).toEqual(['future', 'follow-at', 'width', 'glow', 'vignette']);
     expect(by('toggle')).toEqual(['playhead', 'level', 'thickness', 'pulse']);
     expect(by('segments')).toEqual(['guides', 'beats', 'moments']);
     expect(by('flags')).toEqual(['heads']);
@@ -228,6 +230,25 @@ describe('look-controls', () => {
       expect(ids('video')).toContain(id);
     }
     expect(ids('poster')).not.toContain('background'); // in the Colours group
+  });
+
+  it('Glow and Vignette: 0..100 % over 0..1; 0 leaves the field out (all-off draws as before)', () => {
+    const f = DEFAULT_EXPORT_FORM;
+    for (const id of ['glow', 'vignette'] as const) {
+      const c = slider(id);
+      expect(c.kinds).toEqual(['video', 'poster']);
+      expect([c.min, c.max, c.step]).toEqual([0, 100, 1]);
+      const on = c.apply(f, 35).look!;
+      expect(on[id]).toBe(0.35);
+      expect(c.value({ ...f, look: on })).toBe(35);
+      expect(c.text(35)).toBe('35 %');
+      expect(c.text(0)).toBe('Off');
+      const off = c.apply({ ...f, look: on }, 0).look!;
+      expect(id in off).toBe(false);
+      expect(off).toEqual(f.look);
+      expect(c.apply(f, 140).look![id]).toBe(1);
+      expect(c.apply(f, NaN)).toEqual({});
+    }
   });
 
   it('hudSummary counts readouts', () => {

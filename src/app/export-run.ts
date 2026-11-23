@@ -4,21 +4,27 @@
  * dynamic `import()` and the main bundle does not carry it.
  */
 
-import { exportWav } from '../audio/export-client';
+import { exportWav, measureInWorker } from '../audio/export-client';
 import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/stems-client';
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
-import { wavExportSize } from '../audio/wav-export';
+import { LOUDNESS_CEILING, wavExportSize } from '../audio/wav-export';
 import type { CompiledScore, Piece, Seconds } from '../core/types';
+import { normalizePlan, type LoudnessMeasure } from '../dsp/loudness';
+import { videoSpan } from '../render/video';
 import type { TimeSpan } from '../render/section';
 import type { Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
+  bookendsOf,
   exportFileName,
+  fileBase,
   midiOptions,
   posterOptions,
+  sectionOf,
   stemsOptions,
   videoOptions,
+  wavLoudness,
   wavOptions,
   type ExportForm,
   type LookAppContext,
@@ -30,11 +36,16 @@ import {
   blobSink,
   estimateVideoBytes,
   etaText,
+  exportThumbnail,
   exportVideo,
   fileSink,
   previewVideoFrame,
+  previewVideoMoment,
   videoAudioFrames,
+  videoAudioSpan,
+  videoSizes,
   videoSupport,
+  videoTimeline,
   type VideoOptions,
   type VideoPhase,
   type VideoResult,
@@ -44,7 +55,10 @@ import {
 import { posterFileName, previewPoster, renderPosterPng, renderPosterSvg } from './poster-export';
 import type { PosterOptions } from './poster-export';
 
-export { canSaveToDisk, pickStemsFile, posterFileName, videoSupport };
+import { youtubeDescription } from './youtube-description';
+import { loudnessKey } from './youtube-preset';
+
+export { canSaveToDisk, pickStemsFile, posterFileName, videoSizes, videoSupport };
 
 /** The piece as it sounds now. */
 export interface ExportSource {
@@ -117,6 +131,7 @@ export async function runWav(
     mix: src.piece.mix,
     timbres: src.piece.timbres,
     ...wavOptions(form),
+    ...wavLoudness(form),
     signal: hooks.signal,
     onProgress: (f) => hooks.onProgress?.(f),
   });
@@ -255,7 +270,7 @@ export async function runPoster(
 
 /** What the dialog's preview last drew (tests compare it with a direct render). */
 export type PreviewRequest =
-  | { kind: 'video'; options: VideoOptions; t: Seconds; scale: number }
+  | { kind: 'video'; options: VideoOptions; t: Seconds; tau?: Seconds; scale: number }
   | { kind: 'poster'; options: PosterOptions; scale: number };
 
 let lastPreview: PreviewRequest | null = null;
@@ -266,20 +281,144 @@ export function lastPreviewRequest(): PreviewRequest | null {
 }
 
 /**
- * The dialog's preview of a video export: the frame at t, drawn by the export's own code with
- * the options `runVideo` would use, on a canvas `scale` times the video's pixels.
+ * The preview's clock (§12 "Ready for YouTube"): the time slider's range on the score's clock.
+ * From the section's start less the lead-in, for the video's length (lead-in, the music with
+ * its ring-out, the end card); without an opening or ending, the section itself.
+ */
+export function previewClock(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+): { from: Seconds; to: Seconds; lead: Seconds; span: TimeSpan } {
+  const section = sectionOf(form, ctx);
+  const span = videoSpan(src.compiled.duration, section);
+  const bookends = bookendsOf(form, src.piece);
+  if (!bookends) return { from: span.start, to: span.end, lead: 0, span };
+  const tl = videoTimeline(src.compiled, src.piece.mix, { section, bookends });
+  const lead = tl.lead / VIDEO_SAMPLE_RATE;
+  const from = span.start - lead;
+  return { from, to: from + tl.total / VIDEO_SAMPLE_RATE, lead, span };
+}
+
+/**
+ * The dialog's preview of a video export: the frame at v on the preview's clock (the score's
+ * time, less the lead-in before the section's start; see `previewClock`), drawn by the export's
+ * own code with the options `runVideo` would use, on a canvas `scale` times the video's pixels.
+ * With an opening or ending it is the video's moment τ = v − clock start.
  */
 export function previewVideo(
   g: Ctx2D,
   src: ExportSource,
   form: ExportForm,
   ctx: VideoContext,
-  t: Seconds,
+  v: Seconds,
   scale: number,
 ): HudPlacement {
   const options = videoOptions(form, src.piece, ctx);
-  lastPreview = { kind: 'video', options, t, scale };
-  return previewVideoFrame(g, src.piece, src.compiled, options, t, scale);
+  if (!options.bookends) {
+    lastPreview = { kind: 'video', options, t: v, scale };
+    return previewVideoFrame(g, src.piece, src.compiled, options, v, scale);
+  }
+  const clock = previewClock(src, form, ctx);
+  const tau = v - clock.from;
+  const t = Math.min(clock.span.end, Math.max(clock.span.start, v));
+  lastPreview = { kind: 'video', options, t, tau, scale };
+  return previewVideoMoment(g, src.piece, src.compiled, options, tau, scale);
+}
+
+/**
+ * The thumbnail JPEG (§12 "Ready for YouTube" → Thumbnail): the frame at score time `at` or
+ * the whole-piece view, the title large; under 2 MB.
+ */
+export async function runThumbnail(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  at: Seconds | 'whole',
+): Promise<ExportOutput> {
+  const options = videoOptions(form, src.piece, ctx);
+  const blob = await exportThumbnail(src.piece, options, at);
+  return { name: `${fileBase(src.piece)}-thumbnail.jpg`, blob, bytes: blob.size, files: 1 };
+}
+
+/** The YouTube description for the form's section (and the share link, if given). */
+export function descriptionOf(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  shareLink?: string,
+): string {
+  const section = sectionOf(form, ctx);
+  return youtubeDescription(src.piece, src.compiled, {
+    ...(section ? { section } : {}),
+    ...(shareLink ? { shareLink } : {}),
+  });
+}
+
+/** Measurements by `loudnessKey` (this session), and those running. */
+const measured = new Map<string, LoudnessMeasure>();
+const measuring = new Map<string, Promise<LoudnessMeasure>>();
+
+/**
+ * What the Loudness display measures: the WAV's whole render, or the video's audio (its
+ * section's span). Measured at 48 kHz.
+ */
+export function loudnessTarget(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: SectionContext,
+): { key: string; span?: ReturnType<typeof videoAudioSpan> } {
+  const section = form.format === 'video' ? sectionOf(form, ctx) : undefined;
+  const span = section ? videoAudioSpan(src.compiled.duration, section) : undefined;
+  return { key: loudnessKey(src.piece, section), ...(span ? { span } : {}) };
+}
+
+/** The gain and limiting a target calls for (`normalizePlan`, ceiling −1 dBTP). */
+export function loudnessPlan(m: LoudnessMeasure, target: number) {
+  return normalizePlan(m, target, LOUDNESS_CEILING);
+}
+
+/** The cached measurement for `key`, if any. */
+export function cachedLoudness(key: string): LoudnessMeasure | undefined {
+  return measured.get(key);
+}
+
+/**
+ * Measures the export's loudness in a worker, once per piece version and span (cached; a
+ * second call while measuring shares the first).
+ */
+export function measureExportLoudness(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: SectionContext,
+  onProgress?: (fraction: number) => void,
+): Promise<LoudnessMeasure> {
+  const { key, span } = loudnessTarget(src, form, ctx);
+  const done = measured.get(key);
+  if (done) return Promise.resolve(done);
+  let p = measuring.get(key);
+  if (!p) {
+    p = measureInWorker({
+      score: src.compiled,
+      mix: src.piece.mix,
+      timbres: src.piece.timbres,
+      sampleRate: VIDEO_SAMPLE_RATE,
+      ...(span ? { span } : {}),
+      onProgress,
+    }).then(
+      (m) => {
+        measured.set(key, m);
+        measuring.delete(key);
+        return m;
+      },
+      (e: unknown) => {
+        measuring.delete(key);
+        throw e;
+      },
+    );
+    measuring.set(key, p);
+  }
+  return p;
 }
 
 /** The dialog's preview of a poster export (as `previewVideo`; the whole poster). */

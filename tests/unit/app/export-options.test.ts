@@ -38,6 +38,8 @@ import {
   stemsOptions,
   videoOptions,
   voiceNames,
+  VIDEO_SIZES,
+  wavLoudness,
   wavOptions,
   windowSnaps,
   windowText,
@@ -46,6 +48,7 @@ import {
 } from '../../../src/app/export-options';
 import { videoCamera, videoWindow } from '../../../src/render/video';
 import { generate } from '../../../src/core/generate';
+import { newPiece } from '../../../src/core/defaults';
 import type { Piece } from '../../../src/core/types';
 import { DEFAULT_HUD, HUD_ITEMS } from '../../../src/render/hud';
 import { EXPORT_LOOK } from '../../../src/render/look';
@@ -726,3 +729,36 @@ describe('remembered choices', () => {
     expect(parsePrefs(3)).toEqual({});
   });
 });
+
+describe('Ready for YouTube form fields (Y4)', () => {
+  it('Loudness: off by default; a target goes to the video and WAV options, remembered', () => {
+    const p = newPieceForY4();
+    const ctx = { window: 20, duration: 60, dark: false, colors: 'pitch' as const };
+    expect(DEFAULT_EXPORT_FORM.loudness).toBe('off');
+    expect('loudness' in videoOptions({ ...DEFAULT_EXPORT_FORM, format: 'video' }, p, ctx)).toBe(
+      false,
+    );
+    expect(wavLoudness(DEFAULT_EXPORT_FORM)).toEqual({});
+    const f = { ...DEFAULT_EXPORT_FORM, format: 'video' as const, loudness: -16 as const };
+    expect(videoOptions(f, p, ctx).loudness).toBe(-16);
+    expect(wavLoudness({ loudness: -14 })).toEqual({ loudness: -14 });
+    expect(parsePrefs({ loudness: -14 })).toEqual({ loudness: -14 });
+    expect(parsePrefs({ loudness: -20 })).toEqual({});
+    expect(parsePrefs({ loudness: 'off' })).toEqual({ loudness: 'off' });
+  });
+
+  it('every size class is listed small to large; thumbnail and description choices are kept', () => {
+    expect(VIDEO_SIZES.map((s) => s.id)).toEqual(['720', '1080', '1440', '2160']);
+    expect(VIDEO_SIZES.at(-1)!.label).toBe('4K');
+    expect(parsePrefs({ videoSize: '2160' })).toEqual({ videoSize: '2160' });
+    expect(parsePrefs({ thumbnailAt: 'whole', descriptionLink: true })).toEqual({
+      thumbnailAt: 'whole',
+      descriptionLink: true,
+    });
+    expect(parsePrefs({ thumbnailAt: 'middle', descriptionLink: 1 })).toEqual({});
+  });
+});
+
+function newPieceForY4() {
+  return newPiece({ seed: 3 });
+}
