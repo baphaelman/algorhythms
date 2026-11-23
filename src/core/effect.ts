@@ -19,7 +19,7 @@
 import { defaultGlide } from './defaults';
 import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
-import { decisionTime, momentGlide, sanitizeGlide } from './compiler/glide';
+import { momentGlide, pieceDecisionTime, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
 import { bringsIn, establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
@@ -280,12 +280,12 @@ const kills = (m: Moment): boolean =>
 export function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
   const byId = new Map<string, Moment>();
   for (const m of piece.moments) if (m && !m.muted) byId.set(m.id, m);
-  // Moments decided by t (a land moment decides at its lead-in start, revision 9).
-  const defaults = sanitizeGlide(piece.defaults?.glide, defaultGlide());
+  // Moments decided by t (a land moment decides at its lead-in start, revision 9, or after the
+  // earlier moments it waits for: build log "Land always arrives").
   const decided = new Map<string, boolean>();
   const isDecided = (m: Moment): boolean => {
     let d = decided.get(m.id);
-    if (d === undefined) decided.set(m.id, (d = decisionTime(m, defaults) <= t));
+    if (d === undefined) decided.set(m.id, (d = pieceDecisionTime(piece, m) <= t));
     return d;
   };
   const scheduled = (id: string | undefined): boolean => {
@@ -591,7 +591,7 @@ function stateFor(
     if (!st) cache.set(t, (st = readState(piece, score, t)));
     return st;
   };
-  const t = decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
+  const t = pieceDecisionTime(piece, m);
   if (!(t < m.at)) return read(m.at);
   const st = read(t);
   if (st.active.length === 0) return read(m.at);

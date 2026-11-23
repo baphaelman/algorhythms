@@ -107,7 +107,7 @@ export const DIAGNOSTIC_CODES: Readonly<
   'land-overtaken': {
     level: 'info',
     meaning:
-      "A land moment's glide starts before an earlier moment, which is then decided after it and moves its lines elsewhere before they arrive (revision 9).",
+      'Two land moments set one line at one marker: the one deciding first keeps it, the other leaves it (build log "Land always arrives"). Also a safety net if an earlier moment ever moves a land moment\'s line before it arrives.',
   },
   'merge-nothing': {
     level: 'info',

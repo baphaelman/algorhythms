@@ -211,8 +211,9 @@ describe('land: key and silence', () => {
 });
 
 describe('land: no-effect, effect checks and freezing read the decision time', () => {
-  // A chord at 9 (non-land) moves 60 → 64 by 9.5. A land unison on 64 at 10 (lead 2) decides at 8,
-  // before that chord: it moves the line, so it has an effect.
+  // A chord at 9 (non-land) moves 60 → 64 by 9.5. A land unison on 64 at 10 (lead 2) would
+  // decide at 8; the chord decides inside its lead-in with an earlier marker, so it waits for it
+  // (build log "Land always arrives") and finds the line on 64: no effect, landed or not.
   const base = (): Piece =>
     piece({
       start: [60],
@@ -228,11 +229,11 @@ describe('land: no-effect, effect checks and freezing read the decision time', (
         },
       ],
     });
-  const unison = (land: boolean): Moment =>
+  const unison = (land: boolean, at = 10): Moment =>
     ({
       id: 'u',
       type: 'unison',
-      at: 10,
+      at,
       pitch: 64,
       octaves: false,
       glide: { land, length: 2 },
@@ -241,15 +242,18 @@ describe('land: no-effect, effect checks and freezing read the decision time', (
   it('momentEffectAt and the compiler agree', () => {
     const p = base();
     const s = compile(p);
-    expect(momentEffectAt(p, s, unison(true)).effect).toBe(true);
-    expect(momentEffectAt(p, s, unison(false)).effect).toBe(false);
-    for (const land of [true, false]) {
-      const q = { ...p, moments: [...p.moments, unison(land)] };
-      const noEffect = compile(q).diagnostics.some(
-        (d) => d.code === 'no-effect' && d.momentId === 'u',
-      );
-      expect(noEffect).toBe(!land);
-    }
+    // At 10 or 10.5 the landed unison waits for the chord (no effect, as unlanded); at 8.75 the
+    // chord's marker is later, so the unison decides first and moves the line.
+    for (const at of [10, 10.5, 8.75])
+      for (const land of [true, false]) {
+        const u = unison(land, at);
+        const q = { ...p, moments: [...p.moments, u] };
+        const noEffect = compile(q).diagnostics.some(
+          (d) => d.code === 'no-effect' && d.momentId === 'u',
+        );
+        expect(momentEffectAt(p, s, u).effect, `${at} ${land}`).toBe(!noEffect);
+        expect(noEffect, `${at} ${land}`).toBe(at > 9);
+      }
   });
 
   it('freezeChord sees a land chord where it decides', () => {
@@ -258,8 +262,8 @@ describe('land: no-effect, effect checks and freezing read the decision time', (
       glide: { length: 2, jitter: 0, stagger: 1 },
       moments: [
         chord(10),
-        // Decided at 8.5, after the chord (7): it must not shape the frozen chord.
-        { id: 'x', type: 'shift', at: 8.5, by: 7, unit: 'semitones' },
+        // A later marker, decided at 8.5, after the chord (7): it must not shape the frozen chord.
+        { id: 'x', type: 'shift', at: 10.5, by: 7, unit: 'semitones', glide: { land: true } },
       ],
     });
     const f = freezeChord(p, compile(p), 'c')!;
@@ -269,6 +273,21 @@ describe('land: no-effect, effect checks and freezing read the decision time', (
       moments: [chord(10)],
     });
     expect(f.notes).toEqual(freezeChord(alone, compile(alone), 'c')!.notes);
+  });
+
+  it('freezeChord of a land chord that waits keeps what the compiler gives it', () => {
+    // x (at 8.5) decides inside the chord's lead-in (7–10): the chord waits for it.
+    const p = piece({
+      start: START,
+      glide: { length: 2, jitter: 0, stagger: 1 },
+      moments: [chord(10), { id: 'x', type: 'shift', at: 8.5, by: 7, unit: 'semitones' }],
+    });
+    (p.moments[1] as { voicing: string }).voicing = 'nearest';
+    const s = compile(p);
+    const f = freezeChord(p, s, 'c')!;
+    expect([...(f.notes as { pitches: number[] }).pitches].sort((a, b) => a - b)).toEqual(
+      chordAt(s, 12),
+    );
   });
 });
 
