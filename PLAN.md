@@ -729,6 +729,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 ```
 - **Top bar:** transport, time, the playing chord · key · active/pool voices, title, Voices, Menu.
 - **View bar:** the zoom slider with `−`/`+`, the window length, Fit, and the Follow toggle (§10). The bottom scrubber is gone; the **time ruler** above the score replaces it.
+- **Add and Next fill their row (owner 2026-11-23):** the Add palette and the Next cards share the view bar's first row and together stretch to its full width, buttons and cards growing (larger text and padding) to fill it; they shrink back to the compact sizes only when the window is too narrow, and never wrap a Next card.
 - **Rows, all on the shared time axis (§10), with labels in a left gutter:**
   - **Time:** the ruler; click or drag to seek.
   - **Lines:** the score canvas.
