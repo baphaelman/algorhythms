@@ -20,11 +20,13 @@ const read = (dir: string): [string, string][] =>
 
 /**
  * Owner, 2026-11-22: Sunday Lane ships whole (about 2,530 characters). 2026-11-23: Night Sleeper,
- * added at the owner's request with its six custom timbres (about 3,380).
+ * added at the owner's request with its six custom timbres (about 3,380). Crease, same day, the
+ * same way.
  */
 const LONG_OK = new Set([
   'examples/compositions/sunday-lane.algorhythms.json',
   'examples/compositions/night-sleeper.algorhythms.json',
+  'examples/compositions/crease.algorhythms.json',
 ]);
 
 const pieces: [string, string][] = ['examples', 'examples/compositions'].flatMap((dir) =>

@@ -42,7 +42,7 @@ function describe(path: string, json: unknown, group: ExampleGroup): Example {
 }
 
 /** Compositions pinned to the top of their group, in this order (owner, 2026-11-23). */
-export const PINNED: readonly string[] = ['night-sleeper'];
+export const PINNED: readonly string[] = ['crease', 'night-sleeper'];
 
 function pinRank(id: string): number {
   const i = PINNED.indexOf(id);

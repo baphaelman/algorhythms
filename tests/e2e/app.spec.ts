@@ -306,9 +306,10 @@ test('the examples gallery loads each example, stopped', async ({ page }) => {
   const list = page.getByRole('list', { name: 'Originals' });
   await expect(list.getByRole('button')).toHaveCount(5);
   const comps = page.getByRole('list', { name: 'Compositions' }).getByRole('button');
-  await expect(comps).toHaveCount(11);
+  await expect(comps).toHaveCount(12);
   // Pinned at the top (owner, 2026-11-23).
-  await expect(comps.first()).toContainText('Night Sleeper');
+  await expect(comps.first()).toContainText('Crease');
+  await expect(comps.nth(1)).toContainText('Night Sleeper');
   await list.getByRole('button', { name: /Clockwork Heron/ }).click();
   await expect(page.getByTestId('menu-panel')).toBeHidden();
   await expect(page.getByTestId('title')).toHaveText('Clockwork Heron');
