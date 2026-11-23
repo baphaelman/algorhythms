@@ -52,7 +52,15 @@ function makeLayer(target: Ctx2D, w: number, h: number): Layer | null {
   }
 }
 
-const filterOk = new WeakMap<object, boolean>();
+/** Detection results per context type (its constructor): the probe runs once for each. */
+const filterOk = new Map<unknown, boolean>();
+let filterForced: boolean | null = null;
+
+/** Test seam: force `canFilter`'s answer (null: detect for real); clears the cached results. */
+export function forceCanFilter(v: boolean | null): void {
+  filterForced = v;
+  filterOk.clear();
+}
 
 /**
  * Whether `g` applies canvas `filter` (no in older Safari and Playwright's WebKit, where the
@@ -60,7 +68,9 @@ const filterOk = new WeakMap<object, boolean>();
  * drawn under `blur(1px)` must spread to its neighbour. Draws on `g`, so callers clear after.
  */
 export function canFilter(g: CanvasRenderingContext2D): boolean {
-  let ok = filterOk.get(g);
+  if (filterForced !== null) return filterForced;
+  const type = Object.getPrototypeOf(g)?.constructor ?? g;
+  let ok = filterOk.get(type);
   if (ok === undefined) {
     try {
       const was = g.filter;
@@ -82,7 +92,7 @@ export function canFilter(g: CanvasRenderingContext2D): boolean {
     } catch {
       ok = false;
     }
-    filterOk.set(g, ok);
+    filterOk.set(type, ok);
   }
   return ok;
 }
