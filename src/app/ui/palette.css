@@ -1,7 +1,7 @@
 /*
  * Two groups at the start of the view bar (revision 7 "Add vs Next"), styled apart:
  * "Add at playhead" (Palette.tsx): solid buttons on the bar;
- * "Next at end" (Suggestions.tsx): pill buttons in a tinted, dashed box.
+ * "Next at end" (Suggestions.tsx): pill buttons in a tinted box.
  * They share a row when Next gets ≥ 340 px (build-log "Compact view bar") and together fill it
  * (§11.2 "Add and Next fill their row"): both groups and their buttons grow, and text, padding
  * and height scale with the editor column (--vb-*), at the compact sizes up to 960 px (1280 px
@@ -140,7 +140,7 @@
 
 /* Next-move suggestions (Suggestions.tsx): a second group under the palette. */
 .palette.suggestions {
-  border: 1px dashed color-mix(in srgb, var(--accent) 50%, var(--rule));
+  border: 1px solid transparent; /* keeps the box size */
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 
