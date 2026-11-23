@@ -2876,3 +2876,11 @@ PLAN §12 "Ready for YouTube" (Presets, Loudness display, Video, Look additions,
 
 ## Fix: WebKit glow detection (2026-11-23)
 Playwright's macOS WebKit has no canvas `filter`: setting it only adds a plain property, so `canFilter`'s read-back passed and the glow drew unblurred. It now also checks that a dot under `blur(1px)` spreads, so WebKit takes the ring passes (glow vs no glow 25.6 dB, like Chromium's blur). video-bookends' fallback spec compares rings against the engine's blur only where a real blur exists, else checks that the glow already uses the rings; hud-place's 9:16 and reset checks poll the box (the frame size and the boxes re-lay out in separate steps).
+
+## M11: Export dialog interactions pass (app; 2026-11-23)
+PLAN §12 "UI and interactions", §15 M11 line 5. Checked by keyboard (Chromium, Firefox), at 1280/1440/1920 px and 600 px, light and dark. Issues and fixes:
+- Enter in the Title, Subtitle or Credit field submitted the form, starting an export (Chrome: the save picker). The form now drops Enter from any input; only the Export button submits.
+- Focus fell to the page when the focused control went away: a quick-pick guide note, a guide chip's ×, Reset layout (disables itself), a saved scheme's ×, a swatch's Default. `ui/focus-rescue.ts` moves focus to the nearest control before it (else after); a picked guide focuses its new chip.
+- Wide screens: the preview was 546 px wide at every width (dialog capped at 1040 px; HUD boxes 9 px tall). Dialog now up to 1360 px, preview up to 520 px tall (58 % of the window): 742 px wide at 1280×720, 866 px at 1440 and 1920.
+- Checked, no change needed: tab order (format, preview and its buttons, then the options top to bottom, Close, Export), a visible ring on every stop in both themes, Escape closes and returns focus to Menu, arrows and Enter on segments, Enter on switches, slider keys, no idle redraws, no sideways scroll, the preview on screen while options scroll.
+- Tests: e2e `export-keys.spec` (keyboard-only walk with order and rings; ~45 keyboard actions each redrawing the preview with focus kept; poster controls; HUD boxes across sizes; layout at 4 sizes × 2 themes).

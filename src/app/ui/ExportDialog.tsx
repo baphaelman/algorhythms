@@ -94,6 +94,7 @@ import {
 } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
+import { useFocusRescue } from './focus-rescue';
 import { ColoursGroup } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
 import {
@@ -857,7 +858,7 @@ const WIDE = '(min-width: 900px)';
 
 /** The preview's box (CSS px): the column's width, at most this tall. */
 function previewMaxHeight(wide: boolean): number {
-  return wide ? Math.min(440, innerHeight * 0.62) : Math.min(170, innerHeight * 0.27);
+  return wide ? Math.min(520, innerHeight * 0.58) : Math.min(170, innerHeight * 0.27);
 }
 
 /** Whether the screen is wide (the preview beside the options). */
@@ -1861,6 +1862,7 @@ export function ExportDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
   const wide = useWide();
+  useFocusRescue(dialog, open);
 
   useEffect(() => {
     const d = dialog.current;
@@ -1971,6 +1973,10 @@ export function ExportDialog() {
           onSubmit={(e) => {
             e.preventDefault();
             startExport();
+          }}
+          // Only the Export button starts an export: Enter in a field never submits.
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) e.preventDefault();
           }}
         >
           <h2 id={`${id}-title`}>Export</h2>

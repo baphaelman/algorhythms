@@ -204,6 +204,16 @@ export function PitchGuidesRow({
   const tonic = usePlayer((s) => parsePitchClass(s.piece.key.tonic) ?? 0);
   const [text, setText] = useState('');
   const [bad, setBad] = useState(false);
+  const group = useRef<HTMLDivElement>(null);
+  // A quick pick turns into a chip: focus follows it.
+  const picked = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (picked.current === null) return;
+    group.current
+      ?.querySelector<HTMLElement>(`[data-testid="look-pitch-${picked.current}"]`)
+      ?.focus();
+    picked.current = null;
+  });
   const pg = form.look.pitchGuides ?? { pitches: [], labels: true };
   const set = (pitches: readonly number[]) =>
     onLook({ pitchGuides: { pitches: [...pitches], labels: pg.labels } });
@@ -250,6 +260,7 @@ export function PitchGuidesRow({
         Guide notes
       </span>
       <div
+        ref={group}
         className="pitch-guides"
         role="group"
         aria-labelledby={`${id}-label`}
@@ -277,7 +288,10 @@ export function PitchGuidesRow({
             aria-label={`Add a guide at ${noteName(p)}`}
             title="The key’s tonic"
             data-testid={`look-pitch-pick-${p}`}
-            onClick={() => add([p])}
+            onClick={() => {
+              picked.current = p;
+              add([p]);
+            }}
           >
             + {noteName(p)}
           </button>
