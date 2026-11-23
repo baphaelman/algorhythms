@@ -64,11 +64,22 @@ export function forceCanFilter(v: boolean | null): void {
 
 /**
  * Whether `g` applies canvas `filter` (no in older Safari and Playwright's WebKit, where the
- * setter only adds a plain property, so the read-back alone passes): once per context, a 1 px dot
- * drawn under `blur(1px)` must spread to its neighbour. Draws on `g`, so callers clear after.
+ * setter only adds a plain property, so the read-back alone passes): once per context type, a
+ * 1 px dot drawn under `blur(1px)` must spread to its neighbour; on every call, the property must
+ * still read back (a stubbed or missing `filter` takes the rings). Draws on `g`, so callers clear
+ * after.
  */
 export function canFilter(g: CanvasRenderingContext2D): boolean {
   if (filterForced !== null) return filterForced;
+  try {
+    const was = g.filter;
+    g.filter = 'blur(1px)';
+    const sticks = g.filter === 'blur(1px)';
+    g.filter = was ?? 'none';
+    if (!sticks) return false;
+  } catch {
+    return false;
+  }
   const type = Object.getPrototypeOf(g)?.constructor ?? g;
   let ok = filterOk.get(type);
   if (ok === undefined) {
@@ -80,12 +91,9 @@ export function canFilter(g: CanvasRenderingContext2D): boolean {
       g.globalCompositeOperation = 'source-over';
       g.clearRect(0, 0, 8, 8);
       g.filter = 'blur(1px)';
-      ok = g.filter === 'blur(1px)';
-      if (ok) {
-        g.fillStyle = '#fff';
-        g.fillRect(4, 4, 1, 1);
-        ok = g.getImageData(6, 4, 1, 1).data[3] > 0;
-      }
+      g.fillStyle = '#fff';
+      g.fillRect(4, 4, 1, 1);
+      ok = g.getImageData(6, 4, 1, 1).data[3] > 0;
       g.filter = was ?? 'none';
       g.clearRect(0, 0, 8, 8);
       g.restore();

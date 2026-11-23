@@ -2876,3 +2876,5 @@ PLAN §12 "Ready for YouTube" (Presets, Loudness display, Video, Look additions,
 
 ## Fix: WebKit glow detection (2026-11-23)
 Playwright's macOS WebKit has no canvas `filter`: setting it only adds a plain property, so `canFilter`'s read-back passed and the glow drew unblurred. It now also checks that a dot under `blur(1px)` spreads, so WebKit takes the ring passes (glow vs no glow 25.6 dB, like Chromium's blur). video-bookends' fallback spec compares rings against the engine's blur only where a real blur exists, else checks that the glow already uses the rings; hud-place's 9:16 and reset checks poll the box (the frame size and the boxes re-lay out in separate steps).
+
+**Follow-up (2026-11-23).** The per-type cache (131e2a9) kept `true` for contexts whose `filter` was stubbed later, so video-bookends' fallback spec drew a dead filter. `canFilter` now checks the read-back on every call (cheap) and caches only the pixel probe per type.
