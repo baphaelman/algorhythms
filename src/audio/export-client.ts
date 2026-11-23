@@ -74,6 +74,7 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
           sampleRate: req.sampleRate,
           bitDepth: req.bitDepth,
           chunkSeconds: req.chunkSeconds,
+          ...(req.span ? { span: req.span } : {}),
         },
       };
       w.postMessage(request, transferList(flat));

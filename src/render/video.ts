@@ -13,6 +13,7 @@ import { DEFAULT_FUTURE_OPACITY, MIN_WINDOW, followStart, pitchExtent } from './
 import { drawScore, type Ctx2D } from './draw';
 import { DEFAULT_HUD } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
+import type { TimeSpan } from './section';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 
 export type VideoAspect = '16:9' | '9:16' | '1:1';
@@ -68,6 +69,19 @@ export interface VideoCameraOptions {
   pitchRange?: [number, number];
   /** Follow: the playhead's place across the frame, 0..1. @default SMOOTH_X (0.35) */
   followAt?: number;
+  /**
+   * The section the video shows (§12 rev 15); absent = the whole piece. Whole fits it; Follow
+   * stays inside it, as it stays inside the piece.
+   */
+  section?: TimeSpan;
+}
+
+/** The span a video shows: its section clipped to the piece, else [0, duration]. */
+export function videoSpan(duration: Seconds, section?: TimeSpan): TimeSpan {
+  const D = Math.max(0, duration);
+  if (!section) return { start: 0, end: D };
+  const start = Math.min(Math.max(0, section.start), D);
+  return { start, end: Math.min(Math.max(start, section.end), D) };
 }
 
 /**
@@ -81,19 +95,21 @@ export function videoCamera(
   t: Seconds,
   opts: VideoCameraOptions,
 ): CameraState {
-  const D = Math.max(compiled.duration, 1e-6);
+  const span = videoSpan(compiled.duration, opts.section);
+  const a = span.start;
+  const D = Math.max(span.end - a, 1e-6);
   const pitchRange = opts.pitchRange ?? pitchExtent(compiled);
   const whole = Math.max(MIN_WINDOW, D);
-  if (mode === 'whole' || opts.window === undefined) return { start: 0, window: whole, pitchRange };
+  if (mode === 'whole' || opts.window === undefined) return { start: a, window: whole, pitchRange };
   const window = Math.min(whole, videoWindow(opts.window, opts.aspect));
-  const tc = Math.min(Math.max(t, 0), D);
+  const tc = Math.min(Math.max(t - a, 0), D);
   const f = opts.followAt;
   if (f === undefined || !Number.isFinite(f)) {
-    return { start: followStart('smooth', 0, tc, window, D), window, pitchRange };
+    return { start: a + followStart('smooth', 0, tc, window, D), window, pitchRange };
   }
   const x = Math.min(1, Math.max(0, f));
   const start = Math.min(Math.max(0, D - window), Math.max(0, tc - x * window));
-  return { start, window, pitchRange };
+  return { start: a + start, window, pitchRange };
 }
 
 export interface VideoStyleOptions {
@@ -175,11 +191,11 @@ export function videoFrameCount(durationSeconds: Seconds, fps: number): number {
 }
 
 /**
- * Score time of frame k: k / fps, held at the piece's end through the audio's ring-out (the
- * tail shows the last frame).
+ * Score time of frame k: `start` + k / fps, held at `end` (the piece's end, or the section's)
+ * through the audio's ring-out (the tail shows the last frame).
  */
-export function videoFrameTime(k: number, fps: number, duration: Seconds): Seconds {
-  return Math.min(k / fps, Math.max(0, duration));
+export function videoFrameTime(k: number, fps: number, end: Seconds, start: Seconds = 0): Seconds {
+  return Math.min(start + k / fps, Math.max(start, end));
 }
 
 export interface VideoFrameOptions {
@@ -191,13 +207,15 @@ export interface VideoFrameOptions {
   pitchRange?: [number, number];
   /** Follow: the playhead's place across the frame, 0..1 (see `videoCamera`). */
   followAt?: number;
+  /** The section the video shows (see `videoCamera`); frame 0 is its start. */
+  section?: TimeSpan;
   /** From `videoStyle`. */
   style: ScoreStyle;
 }
 
 /**
- * Clears and draws frame k (t = `videoFrameTime(k, fps)`) on a context whose canvas is
- * `videoSize(aspect, size)` pixels. Returns the frame's view.
+ * Clears and draws frame k (t = `videoFrameTime(k, fps)`, from the section's start) on a context
+ * whose canvas is `videoSize(aspect, size)` pixels. Returns the frame's view.
  */
 export function drawVideoFrame(
   ctx: Ctx2D,
@@ -206,11 +224,12 @@ export function drawVideoFrame(
   k: number,
   fps: number,
 ): View {
-  return drawVideoFrameAt(ctx, compiled, opts, videoFrameTime(k, fps, compiled.duration));
+  const span = videoSpan(compiled.duration, opts.section);
+  return drawVideoFrameAt(ctx, compiled, opts, videoFrameTime(k, fps, span.end, span.start));
 }
 
 /**
- * Clears and draws the frame at score time t (clamped to the piece) on a canvas `scale` times
+ * Clears and draws the frame at score time t (clamped to the section) on a canvas `scale` times
  * `videoSize(aspect, size)` pixels: the same picture, smaller (the Export dialog's preview).
  */
 export function drawVideoFrameAt(
@@ -220,7 +239,8 @@ export function drawVideoFrameAt(
   time: Seconds,
   scale = 1,
 ): View {
-  const t = Math.min(Math.max(0, time), Math.max(0, compiled.duration));
+  const span = videoSpan(compiled.duration, opts.section);
+  const t = Math.min(Math.max(span.start, time), span.end);
   const { width, height, dpr } = videoLayout(opts.aspect, opts.size);
   const cam = videoCamera(opts.camera, compiled, t, opts);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
