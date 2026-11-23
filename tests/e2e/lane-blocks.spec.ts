@@ -131,6 +131,40 @@ test('legacy moments are Chords blocks running to the next block', async ({ page
   await expect(split).toHaveAttribute('aria-pressed', 'true');
 });
 
+test("a selected block's band never takes a press on the next block's marker", async ({ page }) => {
+  await open(page, 'tidewater-hymn');
+  const chord = (id: string, at: number, degrees: number[]) => ({
+    id,
+    type: 'chord',
+    at,
+    notes: { kind: 'degrees', degrees },
+    voicing: 'even',
+    assign: 'ordered',
+    glide: { length: 1, stagger: 0 },
+  });
+  await page.evaluate(
+    (ms) => {
+      const h = window.__algorhythms!;
+      const p = structuredClone(h.store.getState().piece) as unknown as Record<string, unknown> & {
+        view: Record<string, unknown>;
+      };
+      p.moments = ms;
+      p.end = { at: 20, fade: 1 };
+      p.view = { ...p.view, window: 20, gridBpm: 60 };
+      h.actions.loadPiece(p);
+    },
+    [chord('aaaaaa', 2, [0, 2, 4]), chord('cccccc', 8, [1, 3, 5])],
+  );
+  const a = page.locator('.lane-item[data-moment="aaaaaa"]');
+  const c = page.locator('.lane-item[data-moment="cccccc"]');
+  await a.locator('.lane-marker').click();
+  await expect(a).toHaveAttribute('aria-pressed', 'true');
+  // The first band (raised while selected) ends at the second marker's centre: press its left half.
+  const m = (await c.locator('.lane-marker').boundingBox())!;
+  await page.mouse.click(m.x + m.width / 2 - 2, m.y + m.height / 2);
+  await expect(c).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('a piece with parts gets part rows under their group', async ({ page }) => {
   await open(page, 'kite-day');
   const groups = await page.locator('.lane-row[data-group] .lane-row-group').allTextContents();

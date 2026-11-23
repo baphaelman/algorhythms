@@ -131,6 +131,18 @@ const nameOf = (m: Pick<Moment, 'type' | 'label'>): string => m.label?.trim() ||
 const isDot = (type: Moment['type']): boolean => rowOf(type) === null;
 
 /**
+ * A press on a block's band that is also on a marker takes the marker: a band ends at the next
+ * marker's centre, and a selected block (raised) would otherwise cover that marker's left half.
+ */
+function markerUnder(e: PointerEvent): Element | null {
+  if (!(e.target instanceof Element) || !e.target.closest('.lane-band')) return null;
+  return (
+    document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.matches('.lane-marker')) ??
+    null
+  );
+}
+
+/**
  * A press on the lane background: a click clears the selection, a drag pans; with Shift the drag
  * draws a marquee that selects the moments it touches (⌘/Ctrl+Shift: added to the selection).
  */
@@ -691,7 +703,7 @@ class LaneController {
     }
     if (this.drag || this.pan || this.keyPress || (e.pointerType === 'mouse' && e.button !== 0))
       return;
-    const target = e.target instanceof Element ? e.target : null;
+    const target = markerUnder(e) ?? (e.target instanceof Element ? e.target : null);
     this.slop = slopFor(e.pointerType, DRAG_SLOP);
     const mods = touchMods();
     if (target?.closest('[data-piece-key]')) {
