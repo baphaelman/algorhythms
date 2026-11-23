@@ -5,10 +5,11 @@
  * UI, and the Node tests call it directly.
  *
  * Exact sums: pass 1 renders the whole mix (that is `mix.wav`) and records the limiter's per-sample
- * gain g_L. Each voice then gets its own pass: its dry signal → master tone → the limiter's 5 ms
- * delay → × g_L (graph render mode `Voice`, limiter replay). One more pass does the same for the
- * reverb and delay returns (`Fx`). Σ voice stems + FX stem = mix, up to float rounding. Memory:
- * one pass at a time, so one chunk of audio plus g_L (4 bytes per frame) is all that is held.
+ * gain g_L (the glue compressor's gain included). Each voice then gets its own pass: its dry
+ * signal → master tone → width (linear) → the limiter's 5 ms delay → × g_L (graph render mode
+ * `Voice`, limiter replay). One more pass does the same for the reverb and delay returns (`Fx`).
+ * Σ voice stems + FX stem = mix, up to float rounding. Memory: one pass at a time, so one chunk
+ * of audio plus g_L (4 bytes per frame) is all that is held.
  *
  * Output order: `mix.wav`, the voices in pool order, `fx-returns.wav`. A voice that never sounds,
  * or is muted (or not soloed while another voice is), contributes nothing to the mix and gets no

@@ -7,6 +7,7 @@
  * - sends.reverb | sends.delay
  * - tone.tilt | tone.lowpassHz
  * - limiter.ceilingDb
+ * - glue (0..1) | width (0..2) (§12 "Ready for YouTube"; absent: 0 and 1)
  * - panAuto ('index' | 'pitch')
  * - normalise ('all' | 'part'; §8.4 revision 10)
  * - voices.<id or pool index>.gain | .pan ('auto' or −1..1) | .mute | .solo
@@ -36,6 +37,9 @@ export class MixState {
   panByPitch = false;
   /** `mix.normalise` is 'part' (absent means 'part'). */
   normPart = true;
+  /** Master glue 0..1 and stereo width 0..2 (absent: 0 and 1). */
+  glue = 0;
+  width = 1;
 
   /**
    * Copies every field of a MixSettings (a non-finite value keeps the old one). Written out, not
@@ -71,6 +75,10 @@ export class MixState {
     if (Number.isFinite(x)) this.ceilingDb = x;
     this.panByPitch = mix.panAuto === 'pitch';
     this.normPart = mix.normalise !== 'all';
+    x = mix.glue ?? 0;
+    if (Number.isFinite(x)) this.glue = x < 0 ? 0 : x > 1 ? 1 : x;
+    x = mix.width ?? 1;
+    if (Number.isFinite(x)) this.width = x < 0 ? 0 : x > 2 ? 2 : x;
   }
 
   /** Applies one mix path; returns false if the path is not a mix path or the value is invalid. */
@@ -125,6 +133,12 @@ export class MixState {
         return true;
       case 'limiter.ceilingDb':
         this.ceilingDb = value;
+        return true;
+      case 'glue':
+        this.glue = value < 0 ? 0 : value > 1 ? 1 : value;
+        return true;
+      case 'width':
+        this.width = value < 0 ? 0 : value > 2 ? 2 : value;
         return true;
       default:
         return false;

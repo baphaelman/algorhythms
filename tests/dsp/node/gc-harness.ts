@@ -11,8 +11,8 @@
  * struck partials and an FM index envelope) or 'timbre' (the 'lock' workload with seeks, every
  * voice changing timbre every ~1.5 s across every synthesis path, with overlapping fades: timbre
  * moments, M6-b2) or 'fx' (the plain workload with a master FX edit every 0.25 s: tilt, low-pass
- * in and out of bypass, room size and delay-time crossfades and glides) or 'parts' (the 'lock'
- * workload with seeks, its voices in two parts and no part, `mix.normalise: 'part'`).
+ * in and out of bypass, room size and delay-time crossfades and glides, glue on and off, width) or
+ * 'parts' (the 'lock' workload with seeks, its voices in two parts and no part, `mix.normalise: 'part'`).
  * 'live' (M7a; argv[3]: the session file, see `buildLive`).
  * Run as: node --import ./tests/dsp/node/register.mjs tests/dsp/node/gc-harness.ts [plain|all|lock|m6|timbre|fx|parts|live <file>]
  */
@@ -109,12 +109,16 @@ const FX_EDITS: MixSettings[] = [
     reverb: { ...F.reverb, size: 0.15 },
     delay: { ...F.delay, time: 1.2 },
     tone: { tilt: 4, lowpassHz: 600 },
+    glue: 1,
+    width: 0.4,
   },
   {
     ...F,
     reverb: { ...F.reverb, size: 0.9 },
     delay: { ...F.delay, time: 1.195 },
     tone: { tilt: -3, lowpassHz: 24000 },
+    glue: 0.5,
+    width: 2,
   },
 ];
 const editEvery = mode === 'fx' ? Math.round((0.25 * RATE) / BLOCK_FRAMES) : 0;

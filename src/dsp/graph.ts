@@ -1,6 +1,6 @@
 /**
  * The DSP graph (PLAN.md §8): voices → × g_n → dry bus and FX sends → reverb and delay returns →
- * master tone → look-ahead limiter. Pure TypeScript with no DOM or Web Audio, hosted by the
+ * master tone → width → glue → look-ahead limiter. Pure TypeScript with no DOM or Web Audio, hosted by the
  * AudioWorklet (live) and the export worker (WAV). Both call `process()` once per 128-frame block.
  *
  * Transport (§8.3, §8.7): play, pause, seek, loop and hot-swap are requested by method calls and
@@ -38,6 +38,7 @@ import {
   VOICE_BASE_GAIN,
 } from './constants';
 import { PingPongDelay } from './fx/delay';
+import { Glue } from './fx/glue';
 import { Limiter } from './fx/limiter';
 import { Reverb } from './fx/reverb';
 import { Tone } from './fx/tone';
@@ -205,6 +206,11 @@ export class Graph {
   private readonly delay: PingPongDelay;
   private readonly tone: Tone;
   private readonly limiter: Limiter;
+  private readonly glue: Glue;
+  /** The glue's gain per frame of the current block. */
+  private readonly glueGain = new Float64Array(BLOCK_FRAMES);
+  /** Stereo width at the end of the last block (ramped per block to `mix.width`). */
+  private widthCur = 1;
   private readonly revL = new Float64Array(BLOCK_FRAMES);
   private readonly revR = new Float64Array(BLOCK_FRAMES);
   private readonly dlyL = new Float64Array(BLOCK_FRAMES);
@@ -336,6 +342,7 @@ export class Graph {
     this.delay = new PingPongDelay(sampleRate);
     this.tone = new Tone(sampleRate);
     this.limiter = new Limiter(sampleRate);
+    this.glue = new Glue(sampleRate);
     this.normCoeff = 1 - pmath.exp(-CONTROL_PERIOD / (NORM_SMOOTHING * sampleRate));
     this.normFadeBlocks = Math.ceil((10 * NORM_SMOOTHING * sampleRate) / BLOCK_FRAMES);
     this.seekFadeFrames = Math.round(SEEK_FADE * sampleRate);
@@ -380,6 +387,7 @@ export class Graph {
     this.delay.reset();
     this.tone.reset();
     this.limiter.reset();
+    this.glue.reset();
     this.pieceFrame = 0;
     this.prevPieceFrame = 0;
     this.gnVal.fill(1);
@@ -621,7 +629,12 @@ export class Graph {
     this.retDly = this.mix.delayReturn;
 
     this.tone.process(mL, mR);
-    this.limiter.process(mL, mR, outL, outR, BLOCK_FRAMES);
+    this.applyWidth(mL, mR);
+    // Glue (§12): its gain goes through the limiter, so a recorded g_L carries both. Replaying a
+    // g_L (stems) needs neither.
+    const glued =
+      this.limiter.replay === null && this.glue.process(mL, mR, this.glueGain, BLOCK_FRAMES);
+    this.limiter.process(mL, mR, outL, outR, BLOCK_FRAMES, glued ? this.glueGain : null);
 
     let pl = this.meterPeakL;
     let pr = this.meterPeakR;
@@ -648,6 +661,28 @@ export class Graph {
   // -------------------------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------------------------
+
+  /**
+   * Master stereo width (mid/side): side × w, ramped per sample from the last block's width.
+   * Linear, so stems carry it exactly; at width 1 it is skipped (bit-identical).
+   */
+  private applyWidth(mL: Float64Array, mR: Float64Array): void {
+    const from = this.widthCur;
+    const to = this.mix.width;
+    if (from === 1 && to === 1) return;
+    const dw = (to - from) / BLOCK_FRAMES;
+    let w = from;
+    for (let i = 0; i < BLOCK_FRAMES; i++) {
+      w += dw;
+      const l = mL[i];
+      const r = mR[i];
+      const mid = 0.5 * (l + r);
+      const side = 0.5 * (l - r) * w;
+      mL[i] = mid + side;
+      mR[i] = mid - side;
+    }
+    this.widthCur = to;
+  }
 
   private toFrame(t: number): number {
     return Number.isFinite(t) && t > 0 ? Math.round(t * this.sampleRate) : 0;
@@ -844,6 +879,8 @@ export class Graph {
     this.tone.applyParams(immediate);
     this.limiter.params[0] = m.ceilingDb;
     this.limiter.applyParams();
+    this.glue.amount = m.glue;
+    if (immediate) this.widthCur = m.width;
     this.ctx.sendReverb = Math.max(0, m.sendReverb);
     this.ctx.sendDelay = Math.max(0, m.sendDelay);
     this.ctx.panByPitch = m.panByPitch;

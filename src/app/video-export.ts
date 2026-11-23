@@ -15,7 +15,7 @@
 
 import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
-import { spanFrames, type WavSpan } from '../audio/wav-export';
+import { spanFrames, type ExportLoudness, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
 import { pieceLook, type Look } from '../render/look';
@@ -68,6 +68,8 @@ export interface VideoOptions {
    * audio is the mix's render of that span with fades at the cuts. Absent = the whole piece.
    */
   section?: TimeSpan;
+  /** Loudness normalisation of the audio (§12 "Ready for YouTube"). @default 'off' */
+  loudness?: ExportLoudness;
 }
 
 /**
@@ -318,7 +320,8 @@ export async function videoSupport(opts: BitrateOpts): Promise<VideoSupport> {
 
 /**
  * The mix as the WAV export renders it (48 kHz, 32-bit float: the same samples), as interleaved
- * stereo chunks of about a second; with a span, only that span (`WavSpan`). Aborting the signal
+ * stereo chunks of about a second; with a span, only that span (`WavSpan`); normalised with
+ * `loudness` (only after the whole render, then all at once). Aborting the signal
  * stops the render worker.
  */
 export async function* mixChunks(
@@ -327,6 +330,7 @@ export async function* mixChunks(
   signal: AbortSignal,
   onProgress?: (fraction: number) => void,
   span?: WavSpan,
+  loudness: ExportLoudness = 'off',
 ): AsyncGenerator<Float32Array<ArrayBuffer>> {
   const reader = exportWavStream({
     score: compiled,
@@ -337,6 +341,7 @@ export async function* mixChunks(
     signal,
     onProgress,
     ...(span ? { span } : {}),
+    loudness,
   }).getReader();
   let header = true;
   try {
@@ -361,6 +366,7 @@ export async function* mixChunks(
 export async function renderMix(
   piece: Piece,
   section?: TimeSpan,
+  loudness: ExportLoudness = 'off',
 ): Promise<[Float32Array, Float32Array]> {
   const compiled = compile(piece);
   const frames = videoAudioFrames(compiled, piece.mix, section);
@@ -368,7 +374,8 @@ export async function renderMix(
   const l = new Float32Array(frames);
   const r = new Float32Array(frames);
   let at = 0;
-  for await (const c of mixChunks(compiled, piece, new AbortController().signal, undefined, span)) {
+  const signal = new AbortController().signal;
+  for await (const c of mixChunks(compiled, piece, signal, undefined, span, loudness)) {
     for (let i = 0; i < c.length; i += 2, at++) {
       l[at] = c[i];
       r[at] = c[i + 1];
@@ -707,7 +714,14 @@ export async function exportVideo(
         audioFrac = f;
         report(videoDone < frames ? 'video' : 'audio');
       };
-      for await (const data of mixChunks(compiled, piece, stop.signal, onAudio, audioSpan)) {
+      for await (const data of mixChunks(
+        compiled,
+        piece,
+        stop.signal,
+        onAudio,
+        audioSpan,
+        opts.loudness,
+      )) {
         if (stop.signal.aborted) return;
         const n = data.length >> 1;
         const ad = new AudioData({

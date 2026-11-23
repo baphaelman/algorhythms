@@ -126,6 +126,18 @@ describe('stems exact sum', () => {
     expect(dbfs(worst)).toBeLessThanOrEqual(-90);
   }, 90_000);
 
+  it('holds with glue and width on (§12 "Ready for YouTube": glue rides in g_L)', () => {
+    const score = stressScore(8, 10, 1, 9);
+    for (const v of score.voices) v.gain = 3;
+    const mix: MixSettings = { ...FIXTURE_MIX, glue: 1, width: 1.7 };
+    const { worst, minGain } = stemSum(score, mix, 10);
+    expect(minGain, 'glue and limiter engaged').toBeLessThan(0.7);
+    console.info(`stems residual, glue 1 + width 1.7: ${dbfs(worst).toFixed(1)} dBFS`);
+    expect(dbfs(worst)).toBeLessThanOrEqual(-90);
+    const mono = stemSum(stressScore(6, 6, 1, 2), { ...FIXTURE_MIX, glue: 0.5, width: 0 }, 6);
+    expect(dbfs(mono.worst)).toBeLessThanOrEqual(-90);
+  }, 90_000);
+
   it('replaying the recorded g_L reproduces the mix bit for bit', () => {
     const score = stressScore(6, 6, 1, 2);
     for (const v of score.voices) v.gain = 3;

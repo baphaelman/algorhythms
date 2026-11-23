@@ -8,6 +8,7 @@
 import { flatten, type FlatScore } from '../core/flat';
 import type { CompiledScore, MixSettings, Timbre } from '../core/types';
 import { BLOCK_FRAMES } from '../dsp/constants';
+import { normalize, type NormalizeReport } from '../dsp/loudness';
 import { createLoadedGraph, exportFrameCount } from './offline';
 import { WavEncoder, wavHeader, type WavBitDepth } from './wav';
 
@@ -21,7 +22,19 @@ export interface WavExportOptions {
   chunkSeconds?: number;
   /** Only this span of the render (a video section); absent = all of it. */
   span?: WavSpan;
+  /**
+   * Loudness normalisation (§12 "Ready for YouTube"): 'off' (default) is the plain render, peaks
+   * ≤ −1 dBFS; a target renders everything first, then `normalize`s it to that many LUFS
+   * (integrated, of what is exported) with true peaks ≤ −1 dBTP.
+   */
+  loudness?: ExportLoudness;
 }
+
+/** Off, or a target in LUFS. */
+export type ExportLoudness = 'off' | -14 | -16;
+
+/** Export-time true-peak ceiling (dBTP) when normalising. */
+export const LOUDNESS_CEILING = -1;
 
 /**
  * A span of the render (§12 rev 15, video sections): the samples from `start` to `end` of the
@@ -110,6 +123,7 @@ export function* wavExportChunks(
   input: WavExportInput,
   options: WavExportOptions,
   onProgress?: (fraction: number) => void,
+  onLoudness?: (report: NormalizeReport) => void,
 ): Generator<Uint8Array<ArrayBuffer>> {
   const flat = 'layout' in input.score ? input.score : flatten(input.score);
   const sampleRate = options.sampleRate;
@@ -136,6 +150,23 @@ export function* wavExportChunks(
   const right = new Float32Array(chunkFrames);
   const bl = new Float32Array(BLOCK_FRAMES);
   const br = new Float32Array(BLOCK_FRAMES);
+  const target = options.loudness ?? 'off';
+  if (target !== 'off') {
+    // Normalising needs the whole render: render (85 % of the progress), normalise, encode.
+    const mix = renderSpan(graph, { from, to, fadeIn, fadeOut }, (f) => onProgress?.(0.85 * f));
+    const report = normalize(mix, sampleRate, target, LOUDNESS_CEILING);
+    onLoudness?.(report);
+    onProgress?.(0.95);
+    for (let at = 0; at < frames; at += chunkFrames) {
+      const n = Math.min(chunkFrames, frames - at);
+      left.set(mix.left.subarray(at, at + n));
+      right.set(mix.right.subarray(at, at + n));
+      const bytes = encoder.encode(left, right, n);
+      onProgress?.(0.95 + (0.05 * (at + n)) / frames);
+      yield bytes;
+    }
+    return;
+  }
   if (from > 0 || to < all) {
     yield* spanChunks(graph, encoder, { from, to, fadeIn, fadeOut, chunkFrames }, onProgress);
     return;
@@ -192,6 +223,38 @@ function* spanChunks(
       }
     }
   }
+}
+
+/**
+ * Renders the frames [from, to) of the graph's render from t = 0 into new buffers, with the cut
+ * fades: the same samples `wavExportChunks` encodes.
+ */
+function renderSpan(
+  graph: ReturnType<typeof createLoadedGraph>,
+  o: { from: number; to: number; fadeIn: number; fadeOut: number },
+  onProgress?: (fraction: number) => void,
+): { left: Float32Array; right: Float32Array } {
+  const { from, to, fadeIn, fadeOut } = o;
+  const len = to - from;
+  const left = new Float32Array(len);
+  const right = new Float32Array(len);
+  const bl = new Float32Array(BLOCK_FRAMES);
+  const br = new Float32Array(BLOCK_FRAMES);
+  const every = Math.max(1, Math.round(48000 / BLOCK_FRAMES));
+  for (let f = 0, b = 0; f < to; f += BLOCK_FRAMES, b++) {
+    graph.process(bl, br);
+    const a = Math.max(f, from);
+    const e = Math.min(f + BLOCK_FRAMES, to);
+    for (let x = a; x < e; x++) {
+      const k = x - from;
+      const g = fadeIn > 0 || fadeOut > 0 ? spanGain(k, len, fadeIn, fadeOut) : 1;
+      left[k] = bl[x - f] * g;
+      right[k] = br[x - f] * g;
+    }
+    if (b % every === 0) onProgress?.(Math.min(1, (f + BLOCK_FRAMES) / to));
+  }
+  onProgress?.(1);
+  return { left, right };
 }
 
 /** Renders a whole WAV file into one buffer (tests and small exports). */

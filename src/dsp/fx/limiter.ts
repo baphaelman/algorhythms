@@ -7,10 +7,15 @@
  * gain applied to sample n − D is a minimum over a window that contains n − D, so the output never
  * exceeds the ceiling, and the gain moves smoothly (no clicks) both ways.
  *
- * Stems (§12): the per-sample gain g_L can be recorded (capture) and replayed (replay mode applies
- * the recorded curve instead of computing one), so any linear part of the mix pushed through the
- * same delay and × g_L sums exactly to the mix. The applied gain is rounded to float32 in every
- * mode, so a recorded Float32Array reproduces it bit for bit.
+ * Glue (§12 "Ready for YouTube"): an optional per-sample gain `pre` (the glue compressor's) is
+ * applied with the limiter's own: the detector sees x · pre, the delay line keeps x and its pre
+ * gain, and the output is x · round32(pre · g). With no `pre` (gain 1) every operation gives the
+ * same bits as without it.
+ *
+ * Stems (§12): the per-sample gain g_L (glue included) can be recorded (capture) and replayed
+ * (replay mode applies the recorded curve instead of computing one), so any linear part of the mix
+ * pushed through the same delay and × g_L sums exactly to the mix. The applied gain is rounded to
+ * float32 in every mode, so a recorded Float32Array reproduces it bit for bit.
  */
 
 import * as pmath from '../pmath';
@@ -25,6 +30,8 @@ export class Limiter {
   readonly delay: number = 0;
   private readonly dL: Float64Array;
   private readonly dR: Float64Array;
+  /** The `pre` gain of each delayed frame. */
+  private readonly dG: Float64Array;
   private dPos = 0;
   // Sliding minimum over D + 1 frames: a monotonic deque in a ring.
   private readonly window: number = 0;
@@ -54,6 +61,7 @@ export class Limiter {
     const D = this.delay;
     this.dL = new Float64Array(D);
     this.dR = new Float64Array(D);
+    this.dG = new Float64Array(D).fill(1);
     this.window = D + 1;
     this.dqCap = D + 2;
     this.dqVal = new Float64Array(this.dqCap);
@@ -86,6 +94,7 @@ export class Limiter {
   reset(): void {
     this.dL.fill(0);
     this.dR.fill(0);
+    this.dG.fill(1);
     this.dPos = 0;
     this.dqHead = 0;
     this.dqSize = 0;
@@ -97,17 +106,22 @@ export class Limiter {
     this.cursor = 0;
   }
 
-  /** Limits `frames` stereo samples from inL/inR into outL/outR. Allocation-free. */
+  /**
+   * Limits `frames` stereo samples from inL/inR into outL/outR, after the per-sample gain `pre`
+   * (null: 1). Allocation-free.
+   */
   process(
     inL: Float64Array,
     inR: Float64Array,
     outL: Float32Array,
     outR: Float32Array,
     frames: number,
+    pre: Float64Array | null = null,
   ): void {
     const D = this.delay;
     const dL = this.dL;
     const dR = this.dR;
+    const dG = this.dG;
     const replay = this.replay;
     const capture = this.capture;
     const cap = this.dqCap;
@@ -128,12 +142,15 @@ export class Limiter {
     for (let i = 0; i < frames; i++) {
       const xl = inL[i];
       const xr = inR[i];
+      const gp = pre !== null ? pre[i] : 1;
       let g: number;
       if (replay !== null) {
         g = cursor < replay.length ? replay[cursor] : 1;
       } else {
-        const al = xl < 0 ? -xl : xl;
-        const ar = xr < 0 ? -xr : xr;
+        const yl = xl * gp;
+        const yr = xr * gp;
+        const al = yl < 0 ? -yl : yl;
+        const ar = yr < 0 ? -yr : yr;
         const peak = al > ar ? al : ar;
         const req = peak > ceiling ? ceiling / peak : 1;
         // Sliding minimum over the last D + 1 values: drop larger values from the back, append,
@@ -158,7 +175,7 @@ export class Limiter {
         boxSum += env - box[boxPos];
         box[boxPos] = env;
         boxPos = boxPos + 1 === D ? 0 : boxPos + 1;
-        g = Math.fround(boxSum / D);
+        g = Math.fround(dG[dPos] * (boxSum / D));
       }
       if (capture !== null && cursor < capture.length) capture[cursor] = g;
       cursor++;
@@ -166,6 +183,7 @@ export class Limiter {
       outR[i] = dR[dPos] * g;
       dL[dPos] = xl;
       dR[dPos] = xr;
+      dG[dPos] = gp;
       dPos = dPos + 1 === D ? 0 : dPos + 1;
     }
     this.dqHead = head;

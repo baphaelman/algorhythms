@@ -454,6 +454,7 @@ const MIX_SECTIONS: readonly (readonly [MixSection, string])[] = [
   ['delay', 'Delay'],
   ['sends', 'Sends'],
   ['tone', 'Tone'],
+  ['bus', 'Glue and width'],
 ];
 
 /** A master slider; the delay time shows beats with a tempo and snaps with Snap to beats. */
@@ -471,7 +472,10 @@ function MixRow({
   const value = mixValue(mix, ctl.path);
   const isDelay = ctl === DELAY_TIME;
   const text = isDelay ? formatDelay(value, view) : formatMix(ctl, value);
-  const label = ctl.section === 'sends' ? ctl.label : `${title} ${ctl.label.toLowerCase()}`;
+  const label =
+    ctl.section === 'sends' || ctl.section === 'bus'
+      ? ctl.label
+      : `${title} ${ctl.label.toLowerCase()}`;
   return (
     <label className="sd-row">
       <span className="sd-label">{ctl.label}</span>
@@ -492,8 +496,8 @@ function MixRow({
 }
 
 /**
- * Master FX (§8.6): reverb, delay, default sends and auto pan, tone; each with a Reset to the
- * defaults. Applies to the whole piece; heard live (the engine smooths every change).
+ * Master FX (§8.6): reverb, delay, default sends and auto pan, tone, glue and width; each with a
+ * Reset to the defaults. Applies to the whole piece; heard live (the engine smooths every change).
  */
 function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; parts: boolean }) {
   return (
@@ -563,6 +567,12 @@ function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; pa
           )}
           {section === 'sends' && (
             <p className="sd-hint sd-wide">Notes can override these in the Notes drawer.</p>
+          )}
+          {section === 'bus' && (
+            <p className="sd-hint sd-wide">
+              Glue gently compresses the whole mix before the limiter (about 2:1 at full), taming
+              the loudest moments. Width spreads the stereo image: mono at 0, as mixed at 100 %.
+            </p>
           )}
         </fieldset>
       ))}
