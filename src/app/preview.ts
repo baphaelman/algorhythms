@@ -12,7 +12,8 @@
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, Moment, MomentType, Piece, Seconds } from '../core/types';
 import { extendEnd } from './editor/end';
-import { laneItems, type LaneItem } from './editor/lane';
+import { laneBlocks, laneItems, type LaneBlock, type LaneItem } from './editor/lane';
+import { rowsOf } from './editor/rows';
 import { insertMoments } from './editor/ops';
 import { addTimeIn, defaultMoment } from './editor/new-moment';
 import { PROBE_ID, addTime } from './editor/palette-effects';
@@ -30,6 +31,8 @@ export interface PreviewGhost {
    * the lane lays out real moments (id `PROBE_ID`); null if it cannot be laid out.
    */
   lane: LaneItem | null;
+  /** Its block on its row (PLAN §6.4); null for a dot or if it cannot be laid out. */
+  block: LaneBlock | null;
 }
 
 /** What the preview is doing (read by the score loop, and by tests through the debug hook). */
@@ -89,7 +92,13 @@ export function startMomentPreview(
   previewState.count++;
   previewState.from = moment.at;
   previewState.drag = drag;
-  previewState.ghost = { score, from: moment.at, lane };
+  let block: LaneBlock | null;
+  try {
+    block = laneBlocks(rowsOf(built, score)).find((b) => b.id === PROBE_ID) ?? null;
+  } catch {
+    block = null;
+  }
+  previewState.ghost = { score, from: moment.at, lane, block };
   if (typeof document !== 'undefined') document.addEventListener('keydown', onEscape, true);
   return true;
 }

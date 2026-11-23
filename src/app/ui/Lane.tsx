@@ -51,25 +51,31 @@ import {
 } from '../editor/history';
 import {
   clampLanePx,
-  curveAt,
   dragDt,
   endDragDelta,
   endDragPatch,
   endDragSpan,
   gridStep,
+  laneBlocks,
   laneItems,
-  laneLayout,
-  laneRowOf,
+  laneRowsLayout,
   levelCurve,
   nudgeDt,
   revealPan,
   revealScroll,
   splitLanePx,
   spokenTime,
+  CHAINED_ROWS,
+  DOT_H,
+  MARKER_HALF,
+  ROW_PAD,
+  type LaneBlock,
   type LaneItem,
-  type LaneRow,
+  type LanePlace,
+  type LaneRowsLayout,
   type LevelPoint,
 } from '../editor/lane';
+import { PIECE_KEY, rowOf, rowsOf, type RowsView } from '../editor/rows';
 import { loadLaneSplit, saveLaneSplit } from '../lane-split';
 import { useProgressionFocus } from '../progression-focus';
 import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor/ops';
@@ -89,43 +95,15 @@ import {
 import { wheelIntent } from '../wheel';
 import './lane.css';
 
-/**
- * Row geometry (px; lane.css reads `--mom-h`, `--trans-h`, `--pins-h`, `--level-h` and
- * `--effects-h`). Moments
- * and Transitions each hold `n` sub-rows (revision 7 stacking, at least MIN_SUBROWS): a marker and
- * name per Moments sub-row, a bar per Transitions sub-row; a moment uses the same sub-row index in
- * both. Pins: `p` sub-rows of PIN_H (none without pins). Level: the curve's box, plus a
- * LEVEL_SUB_H strip per extra sub-row of colliding level markers. Effects: `e` sub-rows of
- * EFFECT_H (none without timbre changes).
- */
-const MIN_SUBROWS = 2;
-/** The Key row on top (lane.css `--key-h`): the piece key at 0:00 (M4.5-39). */
-const KEY_H = 18;
-const MOM_TOP = KEY_H + 2;
-const ROW_H = 20;
-const BAR_H = 14;
-const PIN_H = 12;
-/** Pins and Level items' height (lane.css `[data-lane]`). */
-const SMALL_H = 12;
-/** Moments row height, Transitions row height and the first bar's top for `n` sub-rows. */
-const momH = (n: number): number => n * ROW_H + 4;
-const transH = (n: number): number => n * BAR_H + 4;
-const transTop = (n: number): number => KEY_H + momH(n) + 2;
-const pinsH = (p: number): number => (p > 0 ? p * PIN_H + 4 : 0);
-/** Level: the curve's box, and the row for `l` sub-rows of markers. */
-const LEVEL_H = 28;
+/** Block height (px; lane.css `.lane-item`); rows and sub-rows are laid out by `laneRowsLayout`. */
+const BLOCK_H = 14;
+/** The level curve's box (px) at the top of the first Level row. */
+const LEVEL_H = 24;
 const LEVEL_PAD = 3;
-const LEVEL_SUB_H = 14;
-const levelH = (l: number): number => LEVEL_H + 4 + Math.max(0, l - 1) * LEVEL_SUB_H;
-/** Effects sub-row height (lane.css `[data-lane='effects']` items are this tall). */
-const EFFECT_H = 16;
-const effectsH = (e: number): number => (e > 0 ? e * EFFECT_H + 4 : 0);
 /** The divider between the score and the lanes (lane.css `.lane-divider`). */
 const DIVIDER_H = 10;
 /** Keyboard step (px) for the divider; Shift or Page keys move further. */
 const DIVIDER_STEP = 16;
-/** Half the marker's width: an item's box starts this far left of its time. */
-const MARKER_HALF = 5;
 /** Horizontal travel (px) before a press becomes a drag. */
 const DRAG_SLOP = 3;
 /** Bars narrower than this (px) hide their end handle, so the marker stays clickable. */
@@ -147,6 +125,8 @@ usePlayer.subscribe((s, prev) => {
 const pieceNow = (): Piece => usePlayer.getState().piece;
 const momentOf = (p: Piece, id: MomentId): Moment | undefined => p.moments.find((m) => m.id === id);
 const nameOf = (m: Pick<Moment, 'type' | 'label'>): string => m.label?.trim() || m.type;
+/** Note and pin moments are dots, not blocks (PLAN §6.4). */
+const isDot = (type: Moment['type']): boolean => rowOf(type) === null;
 
 /**
  * A press on the lane background: a click clears the selection, a drag pans; with Shift the drag
@@ -197,6 +177,15 @@ interface Drag {
   snaps?: SnapSet;
 }
 
+/** A block's label and where its block is (px, before the camera's offset). */
+interface StickyLabel {
+  label: HTMLElement;
+  x: number;
+  w: number;
+  row: string;
+  chained: boolean;
+}
+
 /** A press on the piece key at 0:00: a click selects it; a drag does nothing (it can't move). */
 interface KeyPress {
   pointerId: number;
@@ -217,8 +206,10 @@ class LaneController {
   private divDrag: { pointerId: number; y0: number; h0: number } | null = null;
   /** The preview's would-be moment (owner 2026-11-21), drawn ghosted; hidden when none. */
   ghostEl: HTMLElement | null = null;
+  /** The piece key's band at 0:00 (not a moment). */
+  pieceKeyEl: HTMLElement | null = null;
   private ghost: LaneItem | null = null;
-  private ghostRow = 0;
+  private ghostBlock: LaneBlock | null = null;
   private lastGhost: PreviewGhost | null = null;
   private keyPress: KeyPress | null = null;
   /** This press's drag threshold (larger for a finger) and its long-press timer (§11.3b). */
@@ -235,6 +226,16 @@ class LaneController {
   levelFill: SVGPolygonElement | null = null;
   levelSvg: SVGSVGElement | null = null;
   items: LaneItem[] = [];
+  /** The row model (PLAN §6.4), its blocks by moment id, and the laid-out rows. */
+  private rowsView: RowsView = { rows: [], dots: [] };
+  private blocks = new Map<MomentId, LaneBlock>();
+  private L: LaneRowsLayout | null = null;
+  /** Row elements by row key (laid out without React: a preview can add a row). */
+  rowsEl: HTMLElement | null = null;
+  private rowEls = new Map<string, HTMLElement>();
+  /** Each row header's right edge (px), and the labels kept clear of it (`stick`). */
+  private gutter = new Map<string, number>();
+  private labels = new Map<HTMLElement, StickyLabel>();
   curve: LevelPoint[] = [];
   readonly els = new Map<MomentId, HTMLElement>();
   private view: View | null = null;
@@ -243,17 +244,6 @@ class LaneController {
   private dirty = true;
   /** x of the score canvas's left edge relative to the track's padding box (0 when aligned). */
   private axisLeft = 0;
-  private rowOf = new Map<MomentId, number>();
-  /**
-   * Sub-rows shown: Moments/Transitions (≥ MIN_SUBROWS; 0 until the first layout), Pins, Level,
-   * Effects.
-   */
-  private subRows = 0;
-  private pinRows = 0;
-  private levelRows = 1;
-  private effectRows = 0;
-  /** The level curve's full-height value (≥ 1.2), for markers on the envelope. */
-  private levelPeak = 1.2;
   /** Each placed item's top (px in the track), for scrolling it into view. */
   private yOf = new Map<MomentId, number>();
   /** Preview times of moved items, and the preview end of an end drag. */
@@ -264,8 +254,17 @@ class LaneController {
   private raf = 0;
   private flip = false;
 
-  setItems(items: LaneItem[], curve: LevelPoint[]): void {
+  /** Drops a removed item's element. */
+  forget(id: MomentId): void {
+    const el = this.els.get(id);
+    if (el) this.labels.delete(el);
+    this.els.delete(id);
+  }
+
+  setItems(items: LaneItem[], rows: RowsView, curve: LevelPoint[]): void {
     this.items = items;
+    this.rowsView = rows;
+    this.blocks = new Map(laneBlocks(rows).map((b) => [b.id, b]));
     this.curve = curve;
     this.invalidate();
   }
@@ -415,102 +414,133 @@ class LaneController {
     if (offset !== this.offset) {
       this.offset = offset;
       inner.style.transform = `translateX(${offset.toFixed(2)}px)`;
+      for (const s of this.labels.values()) this.stick(s);
     }
     if (!this.dirty && view.pps === this.pps) return;
     this.dirty = false;
     this.pps = view.pps;
     const pps = view.pps;
-    if (!this.drag?.started) {
-      // The ghost is stacked with the real items, so it shows the sub-row it would take (and
-      // what it would push down).
-      const all = this.ghost ? [...this.items, this.ghost] : this.items;
-      const { rows, count } = laneLayout(all, pps);
-      this.rowOf = new Map(this.items.map((it, i) => [it.id, rows[i]]));
-      this.ghostRow = this.ghost ? rows[this.items.length] : 0;
-      this.setRows(
-        Math.max(MIN_SUBROWS, count.main),
-        count.pins,
-        Math.max(1, count.level),
-        count.effects,
-      );
+    if (!this.drag?.started || !this.L) {
+      // The ghost is stacked with the real blocks, so it shows the row and sub-row it would take
+      // (and what it would push down); a row of its type shows while it is there.
+      this.L = laneRowsLayout(this.rowsView, pps, this.ghost ? this.ghostBlock : null);
+      this.setRows(this.L);
     }
     this.placeLevel(pps);
+    const key = this.pieceKeyEl;
+    if (key) this.placeBlock(key, this.blocks.get(PIECE_KEY), 0, pps, this.L.blocks.get(PIECE_KEY));
     for (const it of this.items) this.place(it, pps);
-    if (this.ghost && this.ghostEl) this.place(this.ghost, pps, this.ghostEl, this.ghostRow);
+    if (this.ghost && this.ghostEl) this.place(this.ghost, pps, this.ghostEl, true);
   }
 
   /** Shows the preview's lane item (or hides it), as `place` lays out real ones. */
   private setGhost(g: PreviewGhost | null): void {
     this.lastGhost = g;
-    this.ghost = g?.lane ?? null;
+    // A preview without a block (a dot type) shows on the score only.
+    this.ghost = g?.block ? g.lane : null;
+    this.ghostBlock = g?.block ?? null;
     this.dirty = true;
     const el = this.ghostEl;
     if (!el) return;
     const it = this.ghost;
-    el.hidden = !it;
-    if (!it) {
+    const b = this.ghostBlock;
+    el.hidden = !it || !b;
+    if (!it || !b) {
       delete el.dataset.at;
       delete el.dataset.row;
+      delete el.dataset.sub;
+      delete el.dataset.part;
       return;
     }
     el.dataset.type = it.type;
-    el.dataset.lane = laneRowOf(it.type);
+    el.dataset.row = b.row;
+    if (b.part !== undefined) el.dataset.part = b.part;
+    else delete el.dataset.part;
     el.dataset.at = String(it.at);
     el.dataset.handle = 'false';
     const label = el.querySelector('.lane-label');
-    const barLabel = el.querySelector('.lane-bar-text');
-    if (label) label.textContent = it.text;
-    if (barLabel) barLabel.textContent = barText(it);
-    const art = el.querySelector<HTMLElement>('.lane-art');
+    const detail = el.querySelector('.lane-detail');
+    if (label) label.textContent = b.label;
+    if (detail) detail.textContent = b.detail ?? '';
+    const art = el.querySelector<HTMLElement>('.lane-bar .lane-art');
     if (art) paintArt(art, it.art);
+    const chords = el.querySelector<HTMLElement>('.lane-band .lane-art');
+    if (chords) paintChords(chords, b);
   }
 
-  /**
-   * Grows or shrinks the rows: `n` Moments/Transitions sub-rows, `p` Pins sub-rows (0 hides the
-   * Pins row), `l` Level sub-rows and `e` Effects sub-rows (0 hides the Effects row).
-   */
-  private setRows(n: number, p: number, l: number, e: number): void {
+  /** Writes the rows (headers, tops, heights) and the track's height. */
+  private setRows(L: LaneRowsLayout): void {
     const track = this.track;
-    const same =
-      n === this.subRows && p === this.pinRows && l === this.levelRows && e === this.effectRows;
-    if (same || !track) return;
-    this.subRows = n;
-    this.pinRows = p;
-    this.levelRows = l;
-    this.effectRows = e;
-    track.style.setProperty('--mom-h', `${momH(n)}px`);
-    track.style.setProperty('--trans-h', `${transH(n)}px`);
-    track.style.setProperty('--pins-h', `${pinsH(p)}px`);
-    track.style.setProperty('--level-h', `${levelH(l)}px`);
-    track.style.setProperty('--effects-h', `${effectsH(e)}px`);
-    track.dataset.subrows = String(n);
-    track.dataset.pinRows = String(p);
-    track.dataset.levelRows = String(l);
-    track.dataset.effectRows = String(e);
+    const host = this.rowsEl;
+    if (!track || !host) return;
+    const h = `${L.height}px`;
+    if (track.style.getPropertyValue('--lane-h') !== h) track.style.setProperty('--lane-h', h);
+    const chords = L.rows.find((r) => r.row === 'chords');
+    track.dataset.subrows = String(chords?.subRows ?? 1);
+    const keep = new Set<string>();
+    let prev: HTMLElement | null = null;
+    for (const r of L.rows) {
+      keep.add(r.key);
+      let el = this.rowEls.get(r.key);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'lane-row';
+        el.setAttribute('aria-hidden', 'true');
+        el.dataset.testid = 'lane-row';
+        el.setAttribute('data-testid', 'lane-row');
+        el.dataset.row = r.row;
+        if (r.part !== undefined) el.dataset.part = r.part;
+        const name = document.createElement('span');
+        name.className = 'lane-row-name';
+        el.append(name);
+        this.rowEls.set(r.key, el);
+      }
+      const name = el.firstElementChild as HTMLElement;
+      const text = r.group ? `${r.group} ${r.title}` : r.title;
+      if (name.textContent !== text) {
+        // A part row's header: the group's name (first row of the group) and the part's.
+        name.replaceChildren();
+        if (r.group) {
+          const g = document.createElement('span');
+          g.className = 'lane-row-group';
+          g.textContent = r.group;
+          name.append(g, ` ${r.title}`);
+        } else name.textContent = r.title;
+      }
+      if (r.group) el.dataset.group = '';
+      else delete el.dataset.group;
+      el.style.top = `${r.top}px`;
+      el.style.height = `${r.height}px`;
+      el.dataset.subRows = String(r.subRows);
+      // Keep DOM order = row order.
+      const at: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
+      if (at !== el) host.insertBefore(el, at);
+      prev = el;
+    }
+    for (const [k, el] of this.rowEls) {
+      if (!keep.has(k)) {
+        el.remove();
+        this.rowEls.delete(k);
+      }
+    }
+    this.gutter.clear();
+    for (const [k, el] of this.rowEls) {
+      const name = el.firstElementChild as HTMLElement;
+      this.gutter.set(k, name.offsetLeft + name.offsetWidth);
+    }
   }
 
-  /** Top (px in the track) of the Pins, Level and Effects rows. */
-  private pinsTop(): number {
-    const n = Math.max(MIN_SUBROWS, this.subRows);
-    return KEY_H + momH(n) + transH(n);
-  }
-
-  private levelTop(): number {
-    return this.pinsTop() + pinsH(this.pinRows);
-  }
-
-  private effectsTop(): number {
-    return this.levelTop() + levelH(this.levelRows);
-  }
-
-  /** The level curve in seconds × pps; full height is the larger of 1.2 (headroom) and the peak. */
+  /** The level curve in the first Level row; full height is the larger of 1.2 and the peak. */
   private placeLevel(pps: number): void {
     const { levelLine, levelFill, levelSvg } = this;
+    if (!levelLine || !levelFill || !levelSvg) return;
+    const row = this.L?.rows.find((r) => r.row === 'level');
+    levelSvg.style.display = row ? '' : 'none';
+    if (!row) return;
+    levelSvg.style.top = `${row.top + ROW_PAD}px`;
     const c = this.curve;
     let peak = 1.2;
     for (const p of c) if (p.v > peak) peak = p.v;
-    this.levelPeak = peak;
-    if (!levelLine || !levelFill || !levelSvg) return;
     const h = LEVEL_H - 2 * LEVEL_PAD;
     const line = c
       .map((p) => `${(p.t * pps).toFixed(2)},${(LEVEL_PAD + (1 - p.v / peak) * h).toFixed(2)}`)
@@ -524,55 +554,75 @@ class LaneController {
     levelSvg.style.width = `${((last?.t ?? 0) * pps).toFixed(2)}px`;
   }
 
-  private place(it: LaneItem, pps: number, el = this.els.get(it.id), fixedRow?: number): void {
-    if (!el) return;
-    const at = this.previewAt.get(it.id) ?? it.at;
-    const row = fixedRow ?? this.rowOf.get(it.id) ?? this.rowOfCopy(it.id, this.rowOf);
-    if (fixedRow !== undefined) el.dataset.row = String(row);
-    const lane: LaneRow = laneRowOf(it.type);
-    let y: number;
-    let barTop: number;
-    if (lane === 'pins') {
-      y = this.pinsTop() + 2 + row * PIN_H;
-      barTop = 3;
-    } else if (lane === 'effects') {
-      // The fade bar runs through the marker and the preset name.
-      y = this.effectsTop() + 2 + row * EFFECT_H;
-      barTop = 2;
-    } else if (lane === 'level') {
-      const top = this.levelTop() + 2;
-      if (row === 0) {
-        // On the envelope at its time.
-        const v = curveAt(this.curve, at);
-        const cy = top + LEVEL_PAD + (1 - v / this.levelPeak) * (LEVEL_H - 2 * LEVEL_PAD);
-        y = Math.round(cy - SMALL_H / 2);
-      } else {
-        y = top + LEVEL_H + (row - 1) * LEVEL_SUB_H + 1;
-      }
-      barTop = 0;
-    } else {
-      y = MOM_TOP + row * ROW_H;
-      barTop = transTop(Math.max(MIN_SUBROWS, this.subRows)) + row * BAR_H - y;
-    }
-    this.yOf.set(it.id, y);
+  /** A block's band (its extent on the row, from its marker at `at`) and place. */
+  private placeBlock(
+    el: HTMLElement,
+    b: LaneBlock | undefined,
+    at: Seconds,
+    pps: number,
+    p: LanePlace | undefined,
+    origAt = at,
+  ): number {
+    const y = p?.top ?? 0;
     el.style.transform = `translate(${(at * pps).toFixed(2)}px, ${y}px)`;
-    const bar = el.firstElementChild as HTMLElement | null;
+    if (p && el.dataset.sub !== String(p.sub)) el.dataset.sub = String(p.sub);
+    const band = el.querySelector<HTMLElement>(':scope > .lane-band');
+    if (!band || !b) return 0;
+    const w = Math.max(0, (b.end - b.start) * pps);
+    band.style.left = `${(MARKER_HALF + (b.start - origAt) * pps).toFixed(2)}px`;
+    band.style.width = `${w.toFixed(2)}px`;
+    const label = el.querySelector<HTMLElement>(':scope > .lane-text');
+    if (label && p) {
+      const s = { label, x: at * pps, w, row: p.row, chained: CHAINED_ROWS.has(b.row) };
+      this.labels.set(el, s);
+      this.stick(s);
+    }
+    return w;
+  }
+
+  /**
+   * Keeps a block's label readable: clipped to the block on chained rows (a short chord's name
+   * never covers the next), and pushed right of its row's header while the block's start is
+   * under it (so a block that began off-screen still shows its name).
+   */
+  private stick(s: StickyLabel): void {
+    const room = s.w - 2 * MARKER_HALF - 4;
+    const start = s.x + this.offset + MARKER_HALF + 4;
+    const want = (this.gutter.get(s.row) ?? 0) + 4 - start;
+    const shift = Math.round(Math.max(0, Math.min(want, room - 24)));
+    const tf = shift > 0 ? `translateX(${shift}px)` : '';
+    if (s.label.style.transform !== tf) s.label.style.transform = tf;
+    const max = s.chained ? `${Math.max(0, room - shift).toFixed(0)}px` : '';
+    if (s.label.style.maxWidth !== max) s.label.style.maxWidth = max;
+  }
+
+  private place(it: LaneItem, pps: number, el = this.els.get(it.id), ghost = false): void {
+    if (!el || !this.L) return;
+    const at = this.previewAt.get(it.id) ?? it.at;
+    const dot = isDot(it.type);
+    const p = ghost
+      ? this.L.ghost
+      : ((dot ? this.L.dots.get(it.id) : this.L.blocks.get(it.id)) ?? this.placeOfCopy(it.id));
+    const b = ghost ? (this.ghostBlock ?? undefined) : this.blocks.get(it.id);
+    this.placeBlock(el, b, at, pps, p, it.at);
+    if (p) this.yOf.set(it.id, p.top);
+    const bar = el.querySelector<HTMLElement>(':scope > .lane-bar');
     if (!bar) return;
-    // Level moments have no bar: their ramp is the envelope.
+    // Key changes and dots have no bar; a chord block's bar is its glide strip under the block.
     const span = this.previewEnd?.id === it.id ? this.previewEnd : it;
-    const w = lane === 'level' ? 0 : Math.max(0, (span.end - span.start) * pps);
+    const w = dot || it.type === 'key' ? 0 : Math.max(0, (span.end - span.start) * pps);
     bar.style.left = `${(MARKER_HALF + (span.start - it.at) * pps).toFixed(2)}px`;
-    bar.style.top = `${barTop}px`;
     bar.style.width = `${w.toFixed(2)}px`;
-    const handle = fixedRow === undefined && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
+    const handle = !ghost && !dot && it.endEdit !== 'none' && w >= MIN_HANDLE_BAR;
     if (el.dataset.handle !== String(handle)) el.dataset.handle = String(handle);
   }
 
-  /** A copy made mid-drag sits on its original's rows. */
-  private rowOfCopy(id: MomentId, rows: Map<MomentId, number>): number {
+  /** A copy made mid-drag sits on its original's row. */
+  private placeOfCopy(id: MomentId): LanePlace | undefined {
     const d = this.drag;
     const i = d ? d.newIds.indexOf(id) : -1;
-    return i >= 0 && d ? (rows.get(d.ids[i]) ?? 0) : 0;
+    if (i < 0 || !d || !this.L) return undefined;
+    return this.L.blocks.get(d.ids[i]) ?? this.L.dots.get(d.ids[i]);
   }
 
   /** Pans the (paused) view so item `id` is visible: Tab focus onto an off-screen item. */
@@ -594,8 +644,7 @@ class LaneController {
     const y = this.yOf.get(id);
     const it = this.items.find((x) => x.id === id);
     if (y === undefined || !it) return;
-    const lane = laneRowOf(it.type);
-    const h = lane === 'main' ? ROW_H : lane === 'effects' ? EFFECT_H : SMALL_H;
+    const h = isDot(it.type) ? DOT_H : BLOCK_H;
     const top = (this.track?.clientTop ?? 0) + y;
     const next = revealScroll(top, h, sc.scrollTop, sc.clientHeight);
     if (next !== sc.scrollTop) sc.scrollTop = next;
@@ -811,7 +860,7 @@ class LaneController {
     for (const [id, item] of this.els) {
       // The marker and the bar, not the item's whole box (it spans both rows).
       for (const part of item.querySelectorAll<HTMLElement>(
-        '.lane-marker, .lane-bar, .lane-label',
+        '.lane-marker, .lane-band, .lane-bar, .lane-label',
       )) {
         const b = part.getBoundingClientRect();
         if (b.width > 0 || b.height > 0)
@@ -1112,8 +1161,12 @@ class LaneController {
     ghost: HTMLElement | null,
     divider: HTMLElement | null,
     marquee: HTMLElement | null = null,
+    rows: HTMLElement | null = null,
+    pieceKey: HTMLElement | null = null,
   ): () => void {
     this.marqueeEl = marquee;
+    this.rowsEl = rows;
+    this.pieceKeyEl = pieceKey;
     this.scroller = scroller;
     this.divider = divider;
     if (divider) {
@@ -1184,6 +1237,9 @@ class LaneController {
       }
       this.divDrag = null;
       this.track = null;
+      this.rowsEl = null;
+      this.rowEls.clear();
+      this.L = null;
       this.scroller = null;
       this.divider = null;
     };
@@ -1215,10 +1271,8 @@ function pulseMask(art: Extract<LaneItem['art'], { kind: 'pulse' }>): {
 const tuneTop = (top: number): string => `calc(${(top * 0.7).toFixed(2)}% + 1px)`;
 
 /** A pulse's accent cycle or a tune's notes, drawn inside its bar (R9-7). */
-function BarArt({ art, id }: { art: LaneItem['art']; id?: MomentId }) {
-  // The inspector's focused progression chord (cheap: one selector, a class on one span).
-  const focus = useProgressionFocus((s) => (id !== undefined && s.id === id ? s.k : -1));
-  if (!art) return null;
+function BarArt({ art }: { art: LaneItem['art'] }) {
+  if (!art || art.kind === 'progression') return null;
   if (art.kind === 'pulse') {
     const { url, size } = pulseMask(art);
     return (
@@ -1227,22 +1281,6 @@ function BarArt({ art, id }: { art: LaneItem['art']; id?: MomentId }) {
         aria-hidden="true"
         style={{ maskImage: url, WebkitMaskImage: url, maskSize: size, WebkitMaskSize: size }}
       />
-    );
-  }
-  if (art.kind === 'progression') {
-    return (
-      <span className="lane-art lane-progression" aria-hidden="true">
-        {art.chords.map((c, i) => (
-          <span
-            key={i}
-            data-testid="lane-prog-chord"
-            className={i === focus ? 'on' : undefined}
-            style={{ left: `${c.left}%`, width: `${c.width}%` }}
-          >
-            {c.name}
-          </span>
-        ))}
-      </span>
     );
   }
   return (
@@ -1254,9 +1292,54 @@ function BarArt({ art, id }: { art: LaneItem['art']; id?: MomentId }) {
   );
 }
 
+/** A progression's chords as blocks of their own inside its band, in % of the band. */
+function chordBoxes(b: LaneBlock): { left: number; width: number; label: string }[] {
+  const len = b.end - b.start;
+  if (!b.chords || !(len > 1e-6)) return [];
+  return b.chords.map((c) => ({
+    left: ((c.start - b.start) / len) * 100,
+    width: (Math.max(0, c.end - c.start) / len) * 100,
+    label: c.label,
+  }));
+}
+
+/** A progression's chord blocks (revision 10; §6.4: one block per chord, one moment). */
+function BandArt({ block, id }: { block: LaneBlock | undefined; id: MomentId }) {
+  // The inspector's focused progression chord (cheap: one selector, a class on one span).
+  const focus = useProgressionFocus((s) => (s.id === id ? s.k : -1));
+  if (!block?.chords) return null;
+  return (
+    <span className="lane-art lane-progression" aria-hidden="true">
+      {chordBoxes(block).map((c, i) => (
+        <span
+          key={i}
+          data-testid="lane-prog-chord"
+          className={i === focus ? 'on' : undefined}
+          style={{ left: `${c.left}%`, width: `${c.width}%` }}
+        >
+          {c.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** `BandArt` written into the lane ghost's band (the ghost is laid out without React). */
+function paintChords(el: HTMLElement, b: LaneBlock): void {
+  el.className = b.chords ? 'lane-art lane-progression' : 'lane-art';
+  el.replaceChildren();
+  for (const c of chordBoxes(b)) {
+    const d = document.createElement('span');
+    d.style.left = `${c.left}%`;
+    d.style.width = `${c.width}%`;
+    d.textContent = c.label;
+    el.append(d);
+  }
+}
+
 /** `BarArt` written into the lane ghost's art slot (the ghost is laid out without React). */
 function paintArt(el: HTMLElement, art: LaneItem['art']): void {
-  el.className = art ? `lane-art lane-${art.kind}` : 'lane-art';
+  el.className = art && art.kind !== 'progression' ? `lane-art lane-${art.kind}` : 'lane-art';
   el.replaceChildren();
   const st = el.style;
   st.maskImage = st.webkitMaskImage = st.maskSize = st.webkitMaskSize = '';
@@ -1264,14 +1347,6 @@ function paintArt(el: HTMLElement, art: LaneItem['art']): void {
     const { url, size } = pulseMask(art);
     st.maskImage = st.webkitMaskImage = url;
     st.maskSize = st.webkitMaskSize = size;
-  } else if (art?.kind === 'progression') {
-    for (const c of art.chords) {
-      const d = document.createElement('span');
-      d.style.left = `${c.left}%`;
-      d.style.width = `${c.width}%`;
-      d.textContent = c.name;
-      el.append(d);
-    }
   } else if (art?.kind === 'tune') {
     for (const n of art.notes) {
       const d = document.createElement('span');
@@ -1281,14 +1356,6 @@ function paintArt(el: HTMLElement, art: LaneItem['art']): void {
       el.append(d);
     }
   }
-}
-
-/** A span's length as shown on its bar. */
-function barText(it: LaneItem): string {
-  // A progression's bar carries its chord names instead.
-  if (it.art?.kind === 'progression') return '';
-  const len = it.end - it.start;
-  return len > 1e-3 ? `${len.toFixed(1)} s` : '';
 }
 
 /** Moments with a `no-effect` diagnostic (revision 6) and its message. */
@@ -1319,8 +1386,7 @@ function landText(it: LaneItem): string | undefined {
 }
 
 /**
- * The lane item's tooltip: its name (the Pins and Level rows show it only on hover, focus or
- * selection), where its notes arrive when it lands at the marker, its part, then the no-effect
+ * The lane item's tooltip: its name (dots show it only on hover, focus or selection), where its notes arrive when it lands at the marker, its part, then the no-effect
  * reason; undefined when none.
  */
 function itemTitle(
@@ -1375,6 +1441,8 @@ export function Lane() {
       ),
     [piece, compiled],
   );
+  const rowsView = useMemo(() => rowsOf(piece, compiled), [piece, compiled]);
+  const blocks = useMemo(() => new Map(laneBlocks(rowsView).map((b) => [b.id, b])), [rowsView]);
   const curve = useMemo(() => levelCurve(compiled), [compiled]);
   const ctl = useMemo(() => new LaneController(), []);
   const scroller = useRef<HTMLDivElement>(null);
@@ -1385,9 +1453,10 @@ export function Lane() {
   const ghost = useRef<HTMLDivElement>(null);
   const divider = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
   const keyText = keyName(piece.key);
 
-  useLayoutEffect(() => ctl.setItems(items, curve));
+  useLayoutEffect(() => ctl.setItems(items, rowsView, curve));
   useEffect(
     () =>
       scroller.current && track.current && inner.current
@@ -1398,6 +1467,8 @@ export function Lane() {
             ghost.current,
             divider.current,
             marqueeRef.current,
+            rowsRef.current,
+            pieceKeyEl.current,
           )
         : undefined,
     [ctl],
@@ -1562,22 +1633,7 @@ export function Lane() {
           aria-describedby="lane-help"
           onKeyDown={onKeyDown}
         >
-          <div className="lane-row" data-row="key" aria-hidden="true" />
-          <div className="lane-row" data-row="moments" aria-hidden="true">
-            <span className="lane-row-name">Moments</span>
-          </div>
-          <div className="lane-row" data-row="transitions" aria-hidden="true">
-            <span className="lane-row-name">Transitions</span>
-          </div>
-          <div className="lane-row" data-row="pins" aria-hidden="true">
-            <span className="lane-row-name">Pins</span>
-          </div>
-          <div className="lane-row" data-row="level" aria-hidden="true">
-            <span className="lane-row-name">Level</span>
-          </div>
-          <div className="lane-row" data-row="effects" aria-hidden="true">
-            <span className="lane-row-name">Effects</span>
-          </div>
+          <div ref={rowsRef} className="lane-rows" />
           <div
             ref={marqueeRef}
             className="lane-marquee"
@@ -1600,6 +1656,7 @@ export function Lane() {
               className="lane-item lane-piece-key"
               data-piece-key=""
               data-type="key"
+              data-row="key"
               data-testid="lane-piece-key"
               data-selected={selected.has(PIECE_KEY_ID) || undefined}
               title="The piece's key: edit it in the inspector. It stays at 0:00."
@@ -1608,8 +1665,11 @@ export function Lane() {
               aria-label={`Piece key ${keyText} at 0 s, fixed`}
               tabIndex={0}
             >
+              <span className="lane-band" />
               <span className="lane-marker" />
-              <span className="lane-label">{keyText}</span>
+              <span className="lane-text">
+                <span className="lane-label">{keyText}</span>
+              </span>
             </div>
             <div
               ref={ghost}
@@ -1618,52 +1678,68 @@ export function Lane() {
               aria-hidden="true"
               hidden
             >
+              <span className="lane-band">
+                <span className="lane-art" aria-hidden="true" />
+              </span>
               <span className="lane-bar">
                 <span className="lane-art" aria-hidden="true" />
-                <span className="lane-bar-text" />
               </span>
               <span className="lane-marker" />
-              <span className="lane-label" />
+              <span className="lane-text">
+                <span className="lane-label" />
+                <span className="lane-detail" />
+              </span>
             </div>
-            {items.map((it) => (
-              <div
-                key={it.id}
-                ref={(el) => {
-                  if (el) ctl.els.set(it.id, el);
-                  else ctl.els.delete(it.id);
-                }}
-                className="lane-item"
-                data-moment={it.id}
-                data-type={it.type}
-                data-lane={laneRowOf(it.type)}
-                data-selected={selected.has(it.id) || undefined}
-                data-muted={it.muted || undefined}
-                data-land={it.land || undefined}
-                data-no-effect={noEffect.has(it.id) || undefined}
-                title={itemTitle(
-                  laneRowOf(it.type) !== 'main' ? it.text : undefined,
-                  partOfMoment.get(it.id),
-                  noEffect.get(it.id),
-                  landText(it),
-                )}
-                role="button"
-                aria-pressed={selected.has(it.id)}
-                aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}
-                tabIndex={it.id === tabId ? 0 : -1}
-                onFocus={() => {
-                  setFocusId(it.id);
-                  ctl.reveal(it.id);
-                }}
-              >
-                <span className="lane-bar">
-                  <BarArt art={it.art} id={it.id} />
-                  <span className="lane-bar-text">{barText(it)}</span>
-                  {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
-                </span>
-                <span className="lane-marker" />
-                <span className="lane-label">{it.text}</span>
-              </div>
-            ))}
+            {items.map((it) => {
+              const b = blocks.get(it.id);
+              const dot = isDot(it.type);
+              return (
+                <div
+                  key={it.id}
+                  ref={(el) => {
+                    if (el) ctl.els.set(it.id, el);
+                    else ctl.forget(it.id);
+                  }}
+                  className="lane-item"
+                  data-moment={it.id}
+                  data-type={it.type}
+                  data-row={b?.row ?? 'chords'}
+                  data-part={b?.part}
+                  data-dot={dot || undefined}
+                  data-selected={selected.has(it.id) || undefined}
+                  data-muted={it.muted || undefined}
+                  data-land={it.land || undefined}
+                  data-no-effect={noEffect.has(it.id) || undefined}
+                  title={itemTitle(
+                    dot ? it.text : undefined,
+                    partOfMoment.get(it.id),
+                    noEffect.get(it.id),
+                    landText(it),
+                  )}
+                  role="button"
+                  aria-pressed={selected.has(it.id)}
+                  aria-label={itemLabel(it) + (noEffect.has(it.id) ? ', no effect' : '')}
+                  tabIndex={it.id === tabId ? 0 : -1}
+                  onFocus={() => {
+                    setFocusId(it.id);
+                    ctl.reveal(it.id);
+                  }}
+                >
+                  <span className="lane-band">
+                    <BandArt block={b} id={it.id} />
+                  </span>
+                  <span className="lane-bar">
+                    <BarArt art={it.art} />
+                    {it.endEdit !== 'none' && <span className="lane-end" data-end-handle="" />}
+                  </span>
+                  <span className="lane-marker" />
+                  <span className="lane-text">
+                    <span className="lane-label">{dot ? it.text : (b?.label ?? it.text)}</span>
+                    {b?.detail && <span className="lane-detail">{b.detail}</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
