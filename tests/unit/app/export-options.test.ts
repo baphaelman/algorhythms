@@ -9,6 +9,9 @@ import {
   exportFileName,
   fileBase,
   followAtOf,
+  followWindowOf,
+  followWindowRange,
+  followWindowToSlider,
   formatBytes,
   loadExportPrefs,
   lookOf,
@@ -19,12 +22,15 @@ import {
   resetLook,
   sanitizeFileName,
   saveExportPrefs,
+  sliderToFollowWindow,
   stemsOptions,
   videoOptions,
   voiceNames,
   wavOptions,
+  windowText,
   type ExportForm,
 } from '../../../src/app/export-options';
+import { videoCamera, videoWindow } from '../../../src/render/video';
 import { generate } from '../../../src/core/generate';
 import type { Piece } from '../../../src/core/types';
 import { DEFAULT_HUD, HUD_ITEMS } from '../../../src/render/hud';
@@ -306,6 +312,57 @@ describe('look', () => {
     ).toMatchObject({ followAt: 0.6, window: 9 });
   });
 
+  it('Window: null is the editor’s zoom; a set window is what the chosen aspect shows', () => {
+    const ctx = { window: 12, duration: 100, dark: false, colors: 'pitch' as const };
+    expect(DEFAULT_EXPORT_FORM.videoWindow).toBeNull();
+    // Null: the editor's 16:9 window as before; shown scaled to the aspect.
+    expect(videoOptions(form(), piece('x'), ctx).window).toBe(12);
+    expect(followWindowOf(form({ videoAspect: '9:16' }), ctx)).toBeCloseTo(videoWindow(12, '9:16'));
+    // Set: the renderer's 16:9 window makes the frame show exactly that many seconds.
+    for (const aspect of ['16:9', '9:16', '1:1'] as const) {
+      const o = videoOptions(form({ videoAspect: aspect, videoWindow: 20 }), piece('x'), ctx);
+      expect(videoWindow(o.window!, aspect)).toBeCloseTo(20, 9);
+    }
+    // Clamped to [2 s, the piece]; Whole piece sends none.
+    expect(followWindowOf(form({ videoWindow: 500 }), ctx)).toBe(100);
+    expect(followWindowOf(form({ videoWindow: 0.5 }), ctx)).toBe(2);
+    expect(followWindowOf(form({ videoWindow: 500 }), { window: 12 })).toBe(500);
+    expect(
+      'window' in videoOptions(form({ videoCamera: 'whole', videoWindow: 9 }), piece('x'), ctx),
+    ).toBe(false);
+  });
+
+  it('Window slider: log scale from 2 s to the whole piece', () => {
+    expect(followWindowRange(100)).toEqual([2, 100]);
+    expect(followWindowRange(1)).toEqual([2, 2]);
+    expect(followWindowToSlider(2, 100)).toBe(0);
+    expect(followWindowToSlider(100, 100)).toBe(1);
+    expect(followWindowToSlider(Math.sqrt(200), 100)).toBeCloseTo(0.5, 9);
+    expect(followWindowToSlider(5, 1)).toBe(1);
+    for (const x of [0, 0.25, 0.5, 1]) {
+      expect(followWindowToSlider(sliderToFollowWindow(x, 180), 180)).toBeCloseTo(x, 9);
+    }
+    expect(sliderToFollowWindow(-1, 180)).toBeCloseTo(2, 9);
+    expect(sliderToFollowWindow(2, 180)).toBeCloseTo(180, 9);
+    expect(windowText(4.04)).toBe('4.0 s');
+    expect(windowText(12.6)).toBe('13 s');
+  });
+
+  it('Window reaches the camera: a frame shows the chosen seconds at every aspect', () => {
+    const p = piece('x');
+    const compiled = { duration: 60 } as Parameters<typeof videoCamera>[1];
+    for (const aspect of ['16:9', '9:16', '1:1'] as const) {
+      const o = videoOptions(form({ videoAspect: aspect, videoWindow: 7 }), p, {
+        window: 12,
+        duration: 60,
+        dark: false,
+        colors: 'pitch',
+      });
+      const cam = videoCamera('follow', compiled, 30, { ...o, pitchRange: [40, 80] });
+      expect(cam.window).toBeCloseTo(7, 9);
+    }
+  });
+
   it('Reset restores the Look, the playhead place and the open format’s HUD', () => {
     const changed = form({
       format: 'video',
@@ -417,6 +474,7 @@ describe('remembered choices', () => {
       videoFps: 60,
       videoCamera: 'whole',
       videoFollowAt: 60,
+      videoWindow: 24,
       videoHud: ['chord', 'gaps'],
       posterFormat: 'svg',
       posterSize: 'a4',
@@ -472,6 +530,7 @@ describe('remembered choices', () => {
         videoAspect: '4:3',
         videoFps: 60,
         videoFollowAt: 200,
+        videoWindow: 0.5,
         videoHud: ['nope', 'chord'],
         posterSize: 'a3',
         look: { guides: 'yes', beats: true, future: 'later', lineInk: 'red', lineWidth: 'bold' },
@@ -479,6 +538,7 @@ describe('remembered choices', () => {
     ).toEqual({
       videoFps: 60,
       videoFollowAt: 90,
+      videoWindow: 2,
       videoHud: ['chord'],
       look: { ...DEFAULT_LOOK_FORM, beats: 'auto', lineWidth: 'bold' },
     });

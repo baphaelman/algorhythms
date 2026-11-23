@@ -505,11 +505,11 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await chooseSegment(page, 'look-moments', 'Both');
   await setSwitch(page, 'look-heads-rings', false);
   await setSwitch(page, 'look-heads-hz', false);
-  // Switches: a click toggles; so does Space.
+  // Switches: a click toggles; so does Enter (Space plays the video preview).
   await setSwitch(page, 'look-playhead', false);
   await chooseSegment(page, 'look-beats', 'Every beat');
   await page.getByTestId('look-pulse').focus();
-  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
   await expect(page.getByTestId('look-pulse')).not.toBeChecked();
   await expect(page.getByRole('switch', { name: 'Pulse marks' })).not.toBeChecked();
   await openHud(page);
@@ -748,6 +748,185 @@ test('the preview starts at the editor’s playhead', async ({ page }) => {
   await expect(page.getByTestId('preview-time')).toHaveValue('12.5');
 });
 
+/** The player's transport status and playhead (s). */
+const transport = (page: Page) =>
+  page.evaluate(() => {
+    const h = (window as unknown as HookWindow).__algorhythms as unknown as {
+      store: { getState(): { transport: { status: string } } };
+    };
+    return { status: h.store.getState().transport.status };
+  });
+const previewT = async (page: Page) => Number(await canvasOf(page).getAttribute('data-t'));
+const playBtn = (page: Page) => page.getByTestId('preview-play');
+const seekEditor = (page: Page, t: number) =>
+  page.evaluate(
+    (at) =>
+      (
+        (window as unknown as HookWindow).__algorhythms as unknown as {
+          actions: { seek(t: number): void };
+        }
+      ).actions.seek(at),
+    t,
+  );
+
+test('the preview plays: the time follows the playhead and redraws; the slider seeks', async ({
+  page,
+}) => {
+  await seekEditor(page, 4);
+  await openExport(page);
+  await pickVideo(page);
+  const n = await drawn(page);
+  await expect(playBtn(page)).toHaveAccessibleName('Play preview');
+  await expect(playBtn(page)).toHaveAttribute('aria-keyshortcuts', 'Space');
+  await expect(playBtn(page)).toHaveAttribute('title', /Space/);
+  await tap(page, 'preview-play');
+  await expect(playBtn(page)).toHaveAccessibleName('Pause preview');
+  await expect.poll(async () => (await transport(page)).status).toBe('playing');
+  // The time moves on from 4 s and the canvas redraws with it.
+  await expect.poll(() => previewT(page), { timeout: 10_000 }).toBeGreaterThan(4.3);
+  await expect
+    .poll(async () => Number(await canvasOf(page).getAttribute('data-draws')))
+    .toBeGreaterThan(n + 5);
+  const ms = await page.evaluate(
+    () =>
+      (
+        (window as unknown as HookWindow).__algorhythms as unknown as {
+          exportPreview: { lastMs: number; maxMs: number };
+        }
+      ).exportPreview,
+  );
+  console.log(
+    `preview redraw while playing: last ${ms.lastMs.toFixed(2)} ms, max ${ms.maxMs.toFixed(2)} ms`,
+  );
+
+  // Dragging the slider seeks the player.
+  await page.getByTestId('preview-time').fill('20');
+  await expect.poll(() => previewT(page)).toBeGreaterThanOrEqual(20);
+  await expect.poll(() => previewT(page), { timeout: 10_000 }).toBeGreaterThan(20.2);
+  await expect.poll(() => previewT(page)).toBeLessThan(30);
+
+  await tap(page, 'preview-play');
+  await expect(playBtn(page)).toHaveAccessibleName('Play preview');
+  await expect.poll(async () => (await transport(page)).status).not.toBe('playing');
+  const stopped = await previewT(page);
+  await page.waitForTimeout(300);
+  expect(await previewT(page)).toBe(stopped);
+});
+
+test('the preview stops at the piece’s end', async ({ page }) => {
+  await loadShortPiece(page, 2);
+  await openExport(page);
+  await pickVideo(page);
+  await drawn(page);
+  await page.getByTestId('preview-time').fill('1.5');
+  await tap(page, 'preview-play');
+  await expect(playBtn(page)).toHaveAccessibleName('Play preview', { timeout: 10_000 });
+  await expect.poll(async () => (await transport(page)).status).not.toBe('playing');
+});
+
+test('Space anywhere in the dialog plays and pauses the preview; the control does not act', async ({
+  page,
+}) => {
+  await openExport(page);
+  await pickVideo(page);
+  await drawn(page);
+  const playing = () => playBtn(page).getAttribute('data-playing');
+  const spaceToggles = async () => {
+    await page.keyboard.press('Space');
+    await expect.poll(playing).toBe('true');
+    await expect.poll(async () => (await transport(page)).status).toBe('playing');
+    await page.keyboard.press('Space');
+    await expect.poll(playing).toBe('false');
+    await expect.poll(async () => (await transport(page)).status).not.toBe('playing');
+  };
+  // A switch keeps its state.
+  const sw = page.getByTestId('look-thickness');
+  await sw.focus();
+  const on = await sw.isChecked();
+  await spaceToggles();
+  expect(await sw.isChecked()).toBe(on);
+  await expect(sw).toBeFocused();
+  // A segment (radio) keeps its choice.
+  const seg = dialog(page).getByTestId('export-aspect').getByLabel('9:16', { exact: true });
+  await seg.focus();
+  await spaceToggles();
+  await expect(seg).not.toBeChecked();
+  // The Play button toggles once per press.
+  await playBtn(page).focus();
+  await spaceToggles();
+  // A slider.
+  await page.getByTestId('preview-time').focus();
+  await spaceToggles();
+  // Other formats: Space keeps the browser's (a focused switch toggles; nothing plays).
+  await choose(page, 'export-format', 'Stems');
+  const mono = page.getByTestId('export-mono');
+  await mono.focus();
+  const was = await mono.isChecked();
+  await page.keyboard.press('Space');
+  await expect.poll(() => mono.isChecked()).toBe(!was);
+  expect((await transport(page)).status).not.toBe('playing');
+});
+
+test('closing the dialog stops the preview and returns the editor’s playhead', async ({ page }) => {
+  await seekEditor(page, 7);
+  await expect(page.getByTestId('time')).toHaveText(/^00:07\.0/);
+  for (const close of ['Escape', 'button'] as const) {
+    await openExport(page);
+    await pickVideo(page);
+    await drawn(page);
+    await page.getByTestId('preview-time').fill('30');
+    await tap(page, 'preview-play');
+    await expect.poll(async () => (await transport(page)).status).toBe('playing');
+    await expect.poll(() => previewT(page)).toBeGreaterThan(30);
+    if (close === 'Escape') await page.keyboard.press('Escape');
+    else await tap(page, 'export-close');
+    await expect(dialog(page)).toBeHidden();
+    await expect.poll(async () => (await transport(page)).status).not.toBe('playing');
+    await expect(page.getByTestId('time')).toHaveText(/^00:07\.0/);
+  }
+});
+
+test('Follow’s Window slider sets the seconds shown; the preview and the export use it', async ({
+  page,
+}) => {
+  await setZoom(page, 10);
+  await openExport(page);
+  await pickVideo(page);
+  let n = await drawn(page);
+  const slider = page.getByTestId('export-window');
+  const value = page.getByTestId('export-window-value');
+  // Starts at the editor's zoom (10 s at 16:9); no way back shown yet.
+  await expect(value).toHaveText('10 s');
+  await expect(page.getByTestId('export-window-reset')).toHaveCount(0);
+  const before = (await previewReq(page))!;
+  expect(before.kind === 'video' && before.options.window).toBe(10);
+
+  await guarded(page, 'fill export-window', () => slider.fill('0'));
+  await expect(value).toHaveText('2.0 s');
+  n = await drawn(page, n);
+  const narrow = (await previewReq(page))!;
+  expect(narrow.kind === 'video' && narrow.options.window).toBeCloseTo(2, 6);
+
+  // At 9:16 the label is what that frame shows; the renderer gets the 16:9 equivalent.
+  await guarded(page, 'fill export-window', () => slider.fill('600'));
+  const shown = await value.innerText();
+  await choose(page, 'export-aspect', '9:16');
+  await expect(value).toHaveText(shown);
+  await drawn(page, n);
+  const req = (await previewReq(page))!;
+  const w16 = req.kind === 'video' ? req.options.window! : 0;
+  const secs = Number(/[\d.]+/.exec(shown)![0]);
+  expect(w16).toBeGreaterThan(secs * 1.5); // a 9:16 frame shows about 0.47× the 16:9 window
+
+  // Hidden with Whole piece; back to the editor's zoom.
+  await choose(page, 'export-camera', 'Whole piece');
+  await expect(slider).toHaveCount(0);
+  await choose(page, 'export-camera', 'Follow');
+  await tap(page, 'export-window-reset');
+  await choose(page, 'export-aspect', '16:9');
+  await expect(value).toHaveText('10 s');
+});
+
 test('the preview stays in view while the options scroll (desktop and phone)', async ({ page }) => {
   for (const [w, h] of [
     [1280, 800],
@@ -860,11 +1039,12 @@ test('HUD: expands in place, one switch per readout; each reaches the export; ke
   );
   expect(new Set(ys).size).toBe(HUD_ITEMS.length);
 
-  // Keyboard, without Tab (macOS WebKit does not tab to buttons): focus + Enter / Space.
+  // Keyboard, without Tab (macOS WebKit does not tab to buttons): focus + Enter (Space plays the
+  // video preview).
   await tap(page, 'hud-none');
   await expect(button).toHaveText(/None/);
   await page.getByTestId('hud-chord').focus();
-  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
   await expect(page.getByTestId('hud-chord')).toBeChecked();
   await setSwitch(page, 'hud-names', true);
   await expect(button).toHaveText(/2 readouts/);
@@ -883,13 +1063,13 @@ test('HUD: expands in place, one switch per readout; each reaches the export; ke
     expect(opts.look!.hud, it).toEqual([it]);
   }
 
-  // The row collapses it (Enter on the focused row), and expands it again (Space).
+  // The row collapses it (Enter on the focused row), and expands it again.
   await button.focus();
   await page.keyboard.press('Enter');
   await expect(button).toHaveAttribute('aria-expanded', 'false');
   await expect(list).toBeHidden();
   await expect(dialog(page)).toBeVisible();
-  await page.keyboard.press('Space');
+  await page.keyboard.press('Enter');
   await expect(list).toBeVisible();
   // Default restores today's list.
   await tap(page, 'hud-default');

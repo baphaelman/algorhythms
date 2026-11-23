@@ -69,7 +69,7 @@ import {
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
-import { isSpace, spaceKey, type SpaceHeld } from './space-key';
+import { dialogSpace, isSpace, spaceKey, type SpaceHeld } from './space-key';
 import { wheelIntent } from './wheel';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
@@ -641,11 +641,12 @@ export function attachKeys(): () => void {
     // ⌘/Ctrl/Alt+Space belong to the system; a release always ends the hold.
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
     const dialog = document.querySelector('dialog[open]') !== null;
-    const out = spaceKey(e, space, { editor: editorLayout(), dialog });
+    const own = dialog ? dialogSpace() : null;
+    const out = spaceKey(e, space, { editor: editorLayout(), dialog, dialogPlay: own !== null });
     if (!out.consume) return;
     e.preventDefault();
     e.stopPropagation();
-    if (out.toggle) togglePlay();
+    if (out.toggle) (own ?? togglePlay)();
   };
   const onBlur = (): void => {
     space.down = false;

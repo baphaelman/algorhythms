@@ -52,6 +52,14 @@ export function videoWindow(window: Seconds, aspect: VideoAspect): Seconds {
   return Math.max(MIN_WINDOW, (window * LAYOUT_W[aspect]) / LAYOUT_W['16:9']);
 }
 
+/**
+ * The 16:9-equivalent window (what `videoWindow` and `VideoCameraOptions.window` take) for a
+ * frame of `aspect` that shows `shown` seconds; inverse of `videoWindow` above MIN_WINDOW.
+ */
+export function videoWindowAt16x9(shown: Seconds, aspect: VideoAspect): Seconds {
+  return (shown * LAYOUT_W['16:9']) / LAYOUT_W[aspect];
+}
+
 export interface VideoCameraOptions {
   aspect: VideoAspect;
   /** Follow: the editor's zoom window (s), as seen at 16:9; scaled by `videoWindow`. */
