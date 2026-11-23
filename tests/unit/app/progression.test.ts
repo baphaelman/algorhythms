@@ -179,8 +179,8 @@ describe('share, schema, palette, key carry', () => {
     expect(back.ok && back.piece).toEqual(r.piece);
   });
 
-  it('palette entry O, and a default progression with an effect', () => {
-    expect(PALETTE.find((e) => e.type === 'progression')?.key).toBe('O');
+  it('no progression on the palette (§6.4: typed into a chord block), and a default progression with an effect', () => {
+    expect(PALETTE.find((e) => e.type === 'progression')).toBeUndefined();
     expect(
       momentTypeForKey({
         key: 'o',
@@ -189,7 +189,7 @@ describe('share, schema, palette, key carry', () => {
         altKey: false,
         shiftKey: false,
       }),
-    ).toBe('progression');
+    ).toBeNull();
     const keys = PALETTE.flatMap((e) => (e.key ? [e.key] : []));
     expect(new Set(keys).size).toBe(keys.length);
     const p = withProg([]);

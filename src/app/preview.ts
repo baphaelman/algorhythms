@@ -15,7 +15,8 @@ import { extendEnd } from './editor/end';
 import { laneBlocks, laneItems, type LaneBlock, type LaneItem } from './editor/lane';
 import { rowsOf } from './editor/rows';
 import { insertMoments } from './editor/ops';
-import { addTimeIn, defaultMoment } from './editor/new-moment';
+import { addTimeIn } from './editor/new-moment';
+import { paletteMoment } from './editor/row-palette';
 import { PROBE_ID, addTime } from './editor/palette-effects';
 import { usePlayer } from './store';
 
@@ -56,7 +57,7 @@ export function startPreview(type: MomentType, t: Seconds = addTime(), drag = fa
   const { piece, compiled } = usePlayer.getState();
   let m: Moment;
   try {
-    m = defaultMoment(type, Math.max(0, addTimeIn(piece, t)), PROBE_ID, piece, compiled);
+    m = paletteMoment(type, Math.max(0, addTimeIn(piece, t)), PROBE_ID, piece, compiled);
   } catch {
     return false;
   }

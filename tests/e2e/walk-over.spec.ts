@@ -41,6 +41,12 @@ const stepPcs = (page: Page): Promise<number[]> =>
     ),
   ]);
 
+/** Opens the texture block's More (the walk's fields), if closed. */
+async function openMore(page: Page): Promise<void> {
+  const more = page.getByTestId('inspector').getByTestId('insp-texture-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
+}
+
 test('Walk over: Chord steps on chord tones; Key drops the field; undo', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('./?example=tidewater-hymn');
@@ -78,6 +84,7 @@ test('Walk over: Chord steps on chord tones; Key drops the field; undo', async (
   });
   await seek(page, 0);
   await page.evaluate(() => (window.__algorhythms as unknown as Hook).editor.select(['walk1']));
+  await openMore(page);
   const sw = page.getByTestId('inspector').getByTestId('insp-walk-over');
   const key = sw.getByRole('button', { name: 'Key' });
   const chord = sw.getByRole('button', { name: 'Chord' });

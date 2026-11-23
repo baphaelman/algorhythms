@@ -108,6 +108,7 @@ test(
     await expect(keyChords.first()).toBeVisible();
     const uiChord = await timeClicks(page, 8, (i) => keyChords.nth(i % 2 === 0 ? 1 : 3).click());
     await page.evaluate((id) => window.__algorhythms!.actions.select([id]), ids.walk);
+    await insp.getByTestId('insp-texture-more').locator('summary').click();
     const chip = insp.getByTestId('insp-walk-steps').getByRole('button', { name: '+3' });
     await expect(chip).toBeEnabled();
     const uiWalk = await timeClicks(page, 8, () => chip.click());

@@ -98,6 +98,17 @@ export function ChordNotes({ m, piece }: { m: ChordMoment; piece: Piece }) {
           max={pool}
           testId="insp-chord-count"
         />
+        {m.count !== undefined && (
+          <button
+            type="button"
+            className="link"
+            data-testid="insp-chord-count-clear"
+            title="As many notes as sound now"
+            onClick={() => updateMoment(m.id, { count: undefined }, 'Notes as now')}
+          >
+            as now
+          </button>
+        )}
       </fieldset>
       {notes && notes.length > 0 ? (
         <ol className="insp-note-list" data-testid="insp-chord-note-list">

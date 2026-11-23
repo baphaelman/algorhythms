@@ -57,30 +57,38 @@ const key = (k: string, mods: Record<string, unknown> = {}) => ({
 });
 
 describe('key mapping', () => {
-  it('maps the palette letters of §11.3', () => {
+  it("maps the rows' palette letters (§6.4: C T M L S K)", () => {
     const expected = {
       c: 'chord',
-      u: 'unison',
-      s: 'split',
-      m: 'merge',
-      t: 'shift',
-      p: 'spread',
-      w: 'walk',
-      k: 'key',
+      t: 'pulse',
+      m: 'tune',
       l: 'level',
-      r: 'pulse',
-      e: 'tune',
-      b: 'timbre',
-      o: 'progression',
+      s: 'timbre',
+      k: 'key',
     };
     for (const [k, type] of Object.entries(expected)) {
       expect(momentTypeForKey(key(k))).toBe(type);
       expect(editorKey(key(k))).toEqual({ kind: 'add', type });
     }
-    expect(PALETTE).toHaveLength(13);
-    const keyed = PALETTE.filter((e) => e.key);
-    expect(keyed).toHaveLength(13);
-    expect(new Set(keyed.map((e) => e.key)).size).toBe(13);
+    expect(PALETTE.map((e) => e.name)).toEqual([
+      'Chord',
+      'Texture',
+      'Melody',
+      'Level',
+      'Sound',
+      'Key',
+    ]);
+    expect(PALETTE.map((e) => e.row)).toEqual([
+      'chords',
+      'texture',
+      'melody',
+      'level',
+      'sound',
+      'key',
+    ]);
+    // The old letters add nothing (M10 acceptance: no unison, split, merge, … button).
+    for (const l of ['u', 'p', 'w', 'r', 'e', 'o', 'b', 'i'])
+      expect(momentTypeForKey(key(l))).toBeNull();
     // Note and pin left the palette (§11.3 rev 14); N + click still adds a note point.
     expect(PALETTE.some((e) => e.type === 'note' || e.type === 'pin')).toBe(false);
     expect(momentTypeForKey(key('n'))).toBeNull();

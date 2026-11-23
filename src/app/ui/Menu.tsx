@@ -268,7 +268,7 @@ export function Menu() {
                 <dt>
                   <kbd>{e.key}</kbd>
                 </dt>
-                <dd>Add {e.name} at the playhead</dd>
+                <dd>Add a {e.name.toLowerCase()} at the pointer or the playhead</dd>
               </Fragment>
             ))}
             <dt>

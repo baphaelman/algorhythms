@@ -27,7 +27,16 @@ import { formatNum } from './fields';
 
 const round6 = (t: number): number => Math.round(t * 1e6) / 1e6;
 
-export function PulseFields({ m, piece }: { m: PulseMoment; piece: Piece }) {
+export function PulseFields({
+  m,
+  piece,
+  region: showRegion = true,
+}: {
+  m: PulseMoment;
+  piece: Piece;
+  /** Show the region (false: the texture inspector shows its length). */
+  region?: boolean;
+}) {
   const beat = tuneBeat(piece.view);
   const region = fieldSetter<number>(m.id, 'Edit pulse region', (x, v) => ({
     until: round6(x.at + v),
@@ -39,16 +48,18 @@ export function PulseFields({ m, piece }: { m: PulseMoment; piece: Piece }) {
   const picked = beatValueOf(m.step, beat);
   return (
     <>
-      <NumberField
-        label="Region"
-        unit="s"
-        value={len}
-        set={region}
-        min={0.05}
-        step={0.5}
-        slider={{ min: 1, max: Math.max(30, Math.ceil(len / 10) * 10) }}
-        testId="insp-pulse-region"
-      />
+      {showRegion && (
+        <NumberField
+          label="Region"
+          unit="s"
+          value={len}
+          set={region}
+          min={0.05}
+          step={0.5}
+          slider={{ min: 1, max: Math.max(30, Math.ceil(len / 10) * 10) }}
+          testId="insp-pulse-region"
+        />
+      )}
       {beat !== null && (
         <Chips
           legend="Step"

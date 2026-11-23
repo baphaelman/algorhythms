@@ -4,10 +4,12 @@
  * actions. None: a hint. Every change goes through the M4b editor actions (undoable).
  */
 
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import type { Moment, MomentId, Piece } from '../../core/types';
 import { deleteMoments, freezeMoments, setPieceKey, updateMoment } from '../editor/actions';
 import { canFreeze, isFrozen } from '../editor/freeze';
+import { rowOf } from '../editor/rows';
+import { PALETTE } from '../editor/shortcuts';
 import { isPieceKey, pieceKeyMoment, takePieceKeyFocus } from '../editor/piece-key';
 import {
   beginGesture,
@@ -29,22 +31,23 @@ import { KeyFields, TypeFields } from './inspector/TypeFields';
 import { Overrides } from './inspector/Overrides';
 import './inspector.css';
 
+/** The heading: the block's row (§6.4); note and pin are dots. */
 const TYPE_NAMES: Record<Moment['type'], string> = {
   chord: 'Chord',
-  unison: 'Unison',
-  split: 'Split',
-  merge: 'Merge',
-  shift: 'Shift',
-  spread: 'Spread',
-  walk: 'Walk',
+  unison: 'Chord',
+  split: 'Chord',
+  merge: 'Chord',
+  shift: 'Chord',
+  spread: 'Chord',
+  progression: 'Chord',
+  walk: 'Texture',
+  pulse: 'Texture',
   note: 'Note',
   pin: 'Pin',
-  key: 'Key change',
+  key: 'Key',
   level: 'Level',
-  pulse: 'Pulse',
-  tune: 'Tune',
-  progression: 'Progression',
-  timbre: 'Timbre',
+  tune: 'Melody',
+  timbre: 'Sound',
 };
 
 /** The Freeze button's tooltip (§11.3). */
@@ -143,11 +146,15 @@ function Empty() {
   return (
     <div className="insp-empty">
       <h2>No moment selected</h2>
-      <p>
-        Select a moment on the lane to edit it here, or add one at the playhead with a key:{' '}
-        <kbd>C</kbd> chord, <kbd>U</kbd> unison, <kbd>S</kbd> split, <kbd>M</kbd> merge,{' '}
-        <kbd>T</kbd> shift, <kbd>P</kbd> spread, <kbd>W</kbd> walk, <kbd>R</kbd> pulse, <kbd>E</kbd>{' '}
-        tune, <kbd>O</kbd> progression, <kbd>K</kbd> key, <kbd>L</kbd> level, <kbd>B</kbd> timbre.
+      <p data-testid="insp-empty-keys">
+        Select a block to edit it, or add one:{' '}
+        {PALETTE.map((e, i) => (
+          <Fragment key={e.type}>
+            {i > 0 && ', '}
+            <kbd>{e.key}</kbd> {e.name.toLowerCase()}
+          </Fragment>
+        ))}
+        .
       </p>
       <BarFields />
     </div>
@@ -313,7 +320,8 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
       <Overrides m={m} piece={piece} keyAt={key} />
 
       {m.type !== 'key' && <TargetField m={m} piece={piece} />}
-      {pitched && <GlideFields m={m} piece={piece} />}
+      {/* A Chords block shows its Transition under Arrive → Custom. */}
+      {pitched && rowOf(m.type) !== 'chords' && <GlideFields m={m} piece={piece} />}
       {seeded && <SeedField m={m} piece={piece} />}
 
       <div className="insp-actions">

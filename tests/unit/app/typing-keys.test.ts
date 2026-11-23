@@ -76,8 +76,8 @@ describe('musical typing: shortcut gating', () => {
         expect(typingAction(e, true), l).not.toBeNull();
       }
     }
-    // The palette letters (S W T U K among them) are editor shortcuts with the mode off.
-    for (const l of ['C', 'U', 'S', 'M', 'T', 'P', 'W', 'R', 'E', 'O', 'K', 'L', 'B']) {
+    // The palette letters are editor shortcuts with the mode off.
+    for (const l of ['C', 'T', 'M', 'L', 'S', 'K']) {
       expect(editorKey(key(l)), l).not.toBeNull();
       expect(typingAction(key(l), false), l).toBeNull();
     }

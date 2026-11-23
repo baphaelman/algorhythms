@@ -533,6 +533,7 @@ export function Chips<T extends string | number>({
   onPick,
   className,
   testId,
+  hint,
 }: {
   legend: string;
   options: readonly (readonly [T, string])[];
@@ -540,12 +541,20 @@ export function Chips<T extends string | number>({
   onPick: (v: T) => void;
   className?: string;
   testId?: string;
+  /** A chip's tooltip. */
+  hint?: (v: T) => string;
 }) {
   return (
     <fieldset className={className ? `chips ${className}` : 'chips'} data-testid={testId}>
       <legend>{legend}</legend>
       {options.map(([v, text]) => (
-        <button key={v} type="button" aria-pressed={pressed(v)} onClick={() => onPick(v)}>
+        <button
+          key={v}
+          type="button"
+          aria-pressed={pressed(v)}
+          title={hint?.(v)}
+          onClick={() => onPick(v)}
+        >
           {text}
         </button>
       ))}

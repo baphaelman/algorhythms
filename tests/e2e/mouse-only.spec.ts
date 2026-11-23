@@ -2,8 +2,8 @@
  * M4 manual checks on the M4.5 editor (PLAN.md §15 M4 and M4.5 "M4 checks still pass"; audit gap
  * 6): a piece built with the mouse alone from New → Empty. A chord dragged from the palette (the
  * first moment, so at 0:00), its
- * chord changed in the inspector, a split (palette click at the playhead) and a walk (palette
- * drag), a dot dragged, a loop region, Play, Export WAV. The score changes at each step; undo
+ * chord changed in the inspector, a second chord (palette click at the playhead) and a texture
+ * (palette drag, then Wander), a dot dragged, a loop region, Play, Export WAV. The score changes at each step; undo
  * walks back through them and redo forward again. Then, playing, edit → swap latency of inspector
  * clicks (the `edit-latency.spec` hooks). Chromium only.
  *
@@ -181,30 +181,40 @@ test(
       .not.toBe(notes0);
     await step();
 
-    // 4. A split: click the ruler at ~10 s to seek, then the palette's split (adds at the playhead).
+    // 4. A second chord: click the ruler at ~10 s to seek, then the palette's Chord (adds at the
+    // playhead).
     let ax = await axis(page);
     await page.mouse.click(ax.x(10), ax.middle);
     await expect.poll(() => shownTime(page)).toBeCloseTo(10, 0);
     before = await moments(page);
-    await page.getByTestId('palette').locator('[data-moment="split"]').click();
+    await page.getByTestId('palette').locator('[data-moment="chord"]').click();
     await expect.poll(async () => (await added(page, before)).length).toBe(1);
     const [split] = await added(page, before);
-    expect(split.type).toBe('split');
+    expect(split.type).toBe('chord');
     expect(Math.abs(split.at - 10)).toBeLessThan(0.5);
     await step();
 
-    // 5. A walk, dragged from the palette to ~15 s.
+    // 5. A texture (an Arpeggio pulse), dragged from the palette to ~15 s.
     before = await moments(page);
-    await dropFromPalette(page, 'walk', 15);
+    await dropFromPalette(page, 'pulse', 15);
     await expect.poll(async () => (await added(page, before)).length).toBe(1);
     const [walk] = await added(page, before);
-    expect(walk.type).toBe('walk');
+    expect(walk.type).toBe('pulse');
     expect(Math.abs(walk.at - 15)).toBeLessThan(0.5);
     await step();
+    // Its texture: Wander (a walk, same id).
+    await page
+      .getByTestId('insp-texture')
+      .getByRole('button', { name: 'Wander', exact: true })
+      .click();
+    await expect
+      .poll(async () => (await moments(page)).find((m) => m.id === walk.id)?.type)
+      .toBe('walk');
+    await step();
 
-    // 6. Drag one of the split's dots up: it edits the split (an override), adds nothing.
+    // 6. Drag one of the second chord's dots up: it edits that chord, adds nothing.
     await clickLane(page, split.id);
-    const dot = page.getByTestId('arrival-dot').last();
+    const dot = page.getByTestId('chord-dot').last();
     await expect(dot).toBeVisible();
     const b = (await dot.boundingBox())!;
     const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
@@ -305,6 +315,7 @@ test(
         .click(),
     );
     await clickLane(page, walk.id);
+    await page.getByTestId('insp-texture-more').locator('summary').click();
     const chip = page
       .getByTestId('inspector')
       .getByTestId('insp-walk-steps')

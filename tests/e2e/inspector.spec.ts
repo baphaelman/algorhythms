@@ -261,6 +261,12 @@ const walkSteps = (page: Page): Promise<string> =>
     return JSON.stringify(h.store.getState().compiled.walkSteps.map((s) => [s.t, s.voice, s.to]));
   });
 
+/** Opens a texture block's More (its detailed walk or pulse fields). */
+async function openMore(insp: Locator): Promise<void> {
+  const more = insp.getByTestId('insp-texture-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
+}
+
 const canUndo = (page: Page): Promise<boolean> =>
   page.evaluate(
     () => (window.__algorhythms as unknown as EditorHook).editor.state.getState().canUndo,
@@ -269,7 +275,8 @@ const canUndo = (page: Page): Promise<boolean> =>
 test('walk: density and allowed steps change the score; each undoes', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [WALK]);
-  await expect(insp.getByRole('heading')).toContainText('Walk');
+  await expect(insp.getByRole('heading')).toContainText('Texture');
+  await openMore(insp);
   const steps = insp.getByTestId('insp-walk-steps');
   await expect(steps.getByRole('button')).toHaveText(['−3', '−2', '−1', '+1', '+2', '+3']);
   await expect(steps.getByRole('button', { name: '+3' })).toHaveAttribute('aria-pressed', 'false');
@@ -316,7 +323,8 @@ const walkSegments = (page: Page): Promise<string> =>
 test('walk: grid, step glide and bass leap change the score; each undoes', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [WALK]);
-  await expect(insp.getByRole('heading')).toContainText('Walk');
+  await expect(insp.getByRole('heading')).toContainText('Texture');
+  await openMore(insp);
   const steps0 = await walkSteps(page);
   const segs0 = await walkSegments(page);
   const set = async (field: Locator, v: string) => {
@@ -362,6 +370,7 @@ test('walk: grid, step glide and bass leap change the score; each undoes', async
 test('a slider drag is one undo entry', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await hook(page, 'select', [WALK]);
+  await openMore(insp);
   const slider = insp.getByTestId('insp-walk-density-slider');
   await slider.scrollIntoViewIfNeeded();
   const box = (await slider.boundingBox())!;
@@ -629,8 +638,13 @@ test('shift: the By slider snaps to +1 octave (7 scale steps); one undo restores
   page,
 }) => {
   await seek(page, 10);
-  await page.keyboard.press('t');
+  // A chord block, then Notes: Relative (moved: a shift by +2 steps).
+  await page.keyboard.press('c');
   const insp = page.getByTestId('inspector');
+  await insp
+    .getByTestId('insp-notes-mode')
+    .getByRole('button', { name: 'Relative', exact: true })
+    .click();
   const slider = insp.getByTestId('insp-shift-by');
   await slider.scrollIntoViewIfNeeded();
   const id = await page.evaluate(() => {
@@ -672,7 +686,7 @@ test('shift: the By slider snaps to +1 octave (7 scale steps); one undo restores
   expect(await by()).toBe(-4);
 });
 
-test('a pulse moment is labelled "Pulse" in the inspector', async ({ page }) => {
+test('a pulse moment is a "Texture" block, Pulse, in the inspector', async ({ page }) => {
   await page.evaluate(() => {
     const h = window.__algorhythms as unknown as {
       store: { getState(): { piece: { moments: unknown[] } } };
@@ -693,10 +707,13 @@ test('a pulse moment is labelled "Pulse" in the inspector', async ({ page }) => 
     h.actions.setPiece({ ...p, moments: [...p.moments, pulse] }, { now: true });
   });
   await hook(page, 'select', ['pulse1']);
-  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Pulse');
+  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Texture');
+  await expect(
+    page.getByTestId('insp-texture').getByRole('button', { name: 'Pulse', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('a tune moment is labelled "Tune" in the inspector', async ({ page }) => {
+test('a tune moment is labelled "Melody" in the inspector', async ({ page }) => {
   await page.evaluate(() => {
     const h = window.__algorhythms as unknown as {
       store: { getState(): { piece: { moments: unknown[] } } };
@@ -715,5 +732,5 @@ test('a tune moment is labelled "Tune" in the inspector', async ({ page }) => {
     h.actions.setPiece({ ...p, moments: [...p.moments, tune] }, { now: true });
   });
   await hook(page, 'select', ['tune1']);
-  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Tune');
+  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Melody');
 });

@@ -77,37 +77,63 @@ test('a no-effect moment is dimmed on the lane, with the reason as tooltip and i
   );
 });
 
-test('the palette greys out merge on a unison and enables it elsewhere', async ({ page }) => {
-  await openUnison(page);
+/** Opens an empty piece (nothing sounds), no grid. */
+async function openSilent(page: Page): Promise<void> {
+  await page.goto('./?example=tidewater-hymn');
+  await expect(page.getByTestId('play')).toBeVisible();
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as Record<string, unknown> & {
+      view: Record<string, unknown>;
+    };
+    const view = { ...p.view };
+    delete view.gridBpm;
+    p.view = view;
+    p.moments = [];
+    h.actions.loadPiece(p);
+  });
+  await page.locator('body').click({ position: { x: 2, y: 2 } });
+}
+
+test('the palette greys out Texture over silence and enables it once a chord sounds', async ({
+  page,
+}) => {
+  await openSilent(page);
   const palette = page.getByTestId('palette');
-  const merge = palette.locator('[data-moment="merge"]');
-  await seek(page, 5);
-  await expect(merge).toHaveAttribute('aria-disabled', 'true');
-  await expect(merge).toHaveAttribute(
+  const texture = palette.locator('[data-moment="pulse"]');
+  await seek(page, 0);
+  await expect(texture).toHaveAttribute('aria-disabled', 'true');
+  await expect(texture).toHaveAttribute(
     'title',
-    /merge: No effect here: only one note is sounding \(drag to another time\)/,
+    /Texture: No effect here: .*\(drag to another time\)/,
   );
   await expect(palette.locator('[data-moment="chord"]')).not.toHaveAttribute('aria-disabled');
 
-  // Disabled for click and shortcut at the playhead.
+  // Disabled for click, shortcut and hover preview at the playhead.
   const n = await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length);
-  await merge.click({ force: true }); // aria-disabled: Playwright would wait
-  await page.keyboard.press('m');
+  await texture.click({ force: true }); // aria-disabled: Playwright would wait
+  await page.keyboard.press('t');
   expect(
     await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length),
   ).toBe(n);
+  const count = (await previewOf(page)).count;
+  await texture.hover();
+  await page.waitForTimeout(600);
+  expect((await previewOf(page)).count).toBe(count);
 
-  // Before the unison the voices are apart: merge is enabled again.
-  await seek(page, 1);
-  await expect(merge).not.toHaveAttribute('aria-disabled');
-  await expect(merge).toHaveAttribute('title', /Fold notes together/);
+  // A chord sounds: Texture is enabled again.
+  await page.mouse.move(2, 400);
+  await page.keyboard.press('c');
+  await expect(texture).not.toHaveAttribute('aria-disabled');
+  await expect(texture).toHaveAttribute('title', /How the chords play \(T\)/);
 });
 
 test('hovering an enabled item previews it and leaves the piece and history alone', async ({
   page,
 }) => {
   await openUnison(page);
-  await seek(page, 1);
+  // On the unison (one note): a chord has an effect there.
+  await seek(page, 6);
   await expect
     .poll(() => page.evaluate(() => window.__algorhythms!.store.getState().transport.audio))
     .toBe('ready');
@@ -122,7 +148,7 @@ test('hovering an enabled item previews it and leaves the piece and history alon
   // Silent (owner 2026-11-21): shown on the score, the engine not playing.
   await expect
     .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.preview))
-    .toBeCloseTo(1, 3);
+    .toBeCloseTo(6, 3);
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
 
   // Leaving the item stops it.
@@ -133,13 +159,4 @@ test('hovering an enabled item previews it and leaves the piece and history alon
     .toBe(true);
   expect(await page.evaluate(() => window.__algorhythms!.store.getState().piece)).toEqual(piece);
   expect(await editorState(page)).toEqual(before);
-
-  // A disabled item does not preview.
-  await seek(page, 5);
-  const merge = page.getByTestId('palette').locator('[data-moment="merge"]');
-  await expect(merge).toHaveAttribute('aria-disabled', 'true');
-  const count = (await previewOf(page)).count;
-  await merge.hover();
-  await page.waitForTimeout(600);
-  expect((await previewOf(page)).count).toBe(count);
 });

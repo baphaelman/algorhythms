@@ -139,14 +139,14 @@ async function dragBy(page: Page, from: { x: number; y: number }, dx: number, al
   if (alt) await page.keyboard.up('Alt');
 }
 
-test('palette: greyed with no sounding line; hover shows a tune ghost with its notes; E adds one', async ({
+test('palette: greyed with no sounding line; hover shows a tune ghost with its notes; M adds one', async ({
   page,
 }) => {
   await open(page, null, true);
   const btn = page.getByTestId('palette').locator('[data-moment="tune"]');
   await expect(btn).toHaveAttribute('data-no-effect', 'true');
-  await expect(btn).toHaveAttribute('title', /tune: No effect here: .+/);
-  await expect(btn).toHaveAttribute('aria-keyshortcuts', 'E');
+  await expect(btn).toHaveAttribute('title', /Melody: No effect here: .+/);
+  await expect(btn).toHaveAttribute('aria-keyshortcuts', 'M');
 
   await open(page, 60);
   await seek(page, 10);
@@ -170,7 +170,7 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   await expect(ghost).toBeHidden();
 
   await page.locator('body').click({ position: { x: 2, y: 2 } });
-  await page.keyboard.press('e');
+  await page.keyboard.press('m');
   const added = (await hook(page).moments()).find((m) => m.type === 'tune' && m.id !== 'tune1')!;
   expect(added.at).toBeCloseTo(10, 3);
   expect(added.notes!.length).toBeGreaterThan(2);
@@ -180,7 +180,7 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   expect(ghostWidth).toBeCloseTo(total * pps, -1);
   expect((added as { fit?: unknown }).fit).toBeDefined();
   for (const n of added.notes!) expect([0, 2, 4, 5, 7, 9, 11]).toContain(n.pitch % 12);
-  await expect(inspector(page).getByRole('heading')).toContainText('Tune');
+  await expect(inspector(page).getByRole('heading')).toContainText('Melody');
 });
 
 test('lane: the region spans the notes; moving and the end (last note) snap to beats, Alt is free', async ({
@@ -216,7 +216,7 @@ test('inspector: notes in beats with a tempo; ▲/▼, lengths, add, remove, gli
   await open(page, 120);
   await hook(page).select(['tune1']);
   const insp = inspector(page);
-  await expect(insp.getByRole('heading')).toContainText('Tune');
+  await expect(insp.getByRole('heading')).toContainText('Melody');
   const rows = insp.getByTestId('tune-note');
   await expect(rows).toHaveCount(3);
   await expect(rows.getByTestId('tune-note-name')).toHaveText(['C4', 'D4', 'E4']);

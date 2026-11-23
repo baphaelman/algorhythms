@@ -62,6 +62,7 @@ test('Custom order: type an order, see an error for bad input, undo', async ({ p
   });
   await seek(page, 0);
   await page.evaluate(() => (window.__algorhythms as unknown as Hook).editor.select(['pulse1']));
+  await page.getByTestId('insp-texture-more').locator('summary').click();
   const insp = page.getByTestId('inspector');
   await expect(insp.getByTestId('insp-pulse-order')).toHaveCount(0);
 

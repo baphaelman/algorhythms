@@ -180,7 +180,7 @@ describe('editor letters', () => {
   });
 
   it('do not add a type with no effect at the playhead', () => {
-    h.state.noEffect.add('merge');
+    h.state.noEffect.add('tune');
     const e = press('m');
     expect(fns.addMoment).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(true);

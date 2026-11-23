@@ -32,6 +32,7 @@ import {
   useEditor,
 } from './history';
 import { addTimeIn, defaultMoment } from './new-moment';
+import { paletteMoment } from './row-palette';
 import { stepNoteTo } from './note-points';
 import { freezeWalk } from '../../core/moments/walk';
 import { NOTE_MATCH, noteChanges, withNoteChanges } from '../../core/moments/note';
@@ -95,7 +96,7 @@ const LABELS: Record<MomentType, string> = {
 let cached: { piece: Piece; score: CompiledScore } | null = null;
 
 /** The compiled score of `piece`: the store's when current, else compiled now (and cached). */
-function scoreOf(piece: Piece): CompiledScore {
+export function scoreOf(piece: Piece): CompiledScore {
   if (cached?.piece === piece) return cached.score;
   const s = usePlayer.getState();
   // The store's `compiled` lags `piece` by up to a frame; only trust it when nothing is pending.
@@ -127,7 +128,7 @@ export function addMoment(type: MomentType, at: Seconds): MomentId {
   }
   const piece = usePlayer.getState().piece;
   const [id] = newMomentIds(piece, 1);
-  const m = defaultMoment(type, t, id, piece, scoreOf(piece));
+  const m = paletteMoment(type, t, id, piece, scoreOf(piece));
   edit((p) => insertMoments(p, [m]), `Add ${LABELS[type]}`);
   select([id]);
   if (type === 'key') offerKeyCarry(id, keyBefore(usePlayer.getState().piece, id));
