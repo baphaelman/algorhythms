@@ -11,12 +11,18 @@ import { newPiece } from '../../../src/core/defaults';
 import { parsePiece } from '../../../src/core/schema';
 import type { ChordMoment, Moment, Piece } from '../../../src/core/types';
 import {
+  ART_SUB_H,
   CHORD_SUB_H,
   DOT_H,
-  LEVEL_MIN_H,
+  LABEL_GAP,
+  LABEL_INSET,
+  LEVEL_CURVE_H,
+  MARKER_HALF,
   ROW_PAD,
   SUB_H,
   blockBoxPx,
+  blockLabelPx,
+  labelRoomPx,
   laneBlocks,
   laneRowsLayout,
   rowKey,
@@ -83,7 +89,7 @@ describe('rows shown', () => {
     expect(layout(p).ghost).toBeUndefined();
   });
 
-  it('row heights: sub-rows × height + padding; Level keeps room for its curve; tops add up', () => {
+  it('row heights: sub-rows × height + padding; the first Level row has a curve band; tops add up', () => {
     const p = base([
       chord('c1', 0),
       chord('c2', 1, { target: { rank: [0, 0] } }),
@@ -95,8 +101,10 @@ describe('rows shown', () => {
     // c1 (all) runs to the end; c2 (another target) overlaps it → two sub-rows.
     expect(chords.subRows).toBe(2);
     expect(chords.height).toBe(2 * CHORD_SUB_H + 2 * ROW_PAD);
-    expect(texture.height).toBe(SUB_H + 2 * ROW_PAD);
-    expect(level.height).toBe(LEVEL_MIN_H);
+    expect(texture.height).toBe(ART_SUB_H + 2 * ROW_PAD);
+    expect(level.height).toBe(LEVEL_CURVE_H + ART_SUB_H + 2 * ROW_PAD);
+    // The level block sits under the curve's band, never across it.
+    expect(L.blocks.get('l1')?.top).toBe(level.top + ROW_PAD + LEVEL_CURVE_H);
     for (let i = 1; i < L.rows.length; i++)
       expect(L.rows[i].top).toBe(L.rows[i - 1].top + L.rows[i - 1].height);
     expect(L.height).toBe(level.top + level.height);
@@ -155,6 +163,24 @@ describe('blocks', () => {
     const [a, z] = blockBoxPx(l, 100);
     expect(a).toBe(100);
     expect(z - a).toBeGreaterThan(30);
+  });
+
+  it('label room: up to the next marker less a gap; own-end rows keep the reserved label', () => {
+    // A chord from 1 s to 2 s at 100 px/s: the next marker's left edge is at 200 - MARKER_HALF.
+    const c: LaneBlock = { id: 'c', row: 'chords', start: 1, end: 2, label: 'Cmaj7' };
+    const room = labelRoomPx(c, 1, 100);
+    expect(100 + LABEL_INSET + room).toBe(200 - MARKER_HALF - LABEL_GAP);
+    // Narrower than a character: Lane.tsx hides it.
+    expect(labelRoomPx({ ...c, end: 1.1 }, 1, 100)).toBeLessThan(0);
+    // A level point block: its stacking box reserves the label, so the label fits it.
+    const l: LaneBlock = { id: 'l', row: 'level', start: 1, end: 1, label: '55%' };
+    const r = labelRoomPx(l, 1, 100);
+    expect(r).toBeGreaterThanOrEqual(3 * 6);
+    expect(100 + LABEL_INSET + r).toBeLessThanOrEqual(blockBoxPx(l, 100)[1] - MARKER_HALF);
+    expect(100 + LABEL_INSET + r).toBeLessThan(100 + blockLabelPx(l));
+    // A long texture block: its end, not the estimate, bounds the label.
+    const t: LaneBlock = { id: 't', row: 'texture', start: 1, end: 5, label: 'Walk' };
+    expect(labelRoomPx(t, 1, 100)).toBe(500 - MARKER_HALF - LABEL_GAP - 100 - LABEL_INSET);
   });
 
   it('chained blocks that touch share a sub-row', () => {

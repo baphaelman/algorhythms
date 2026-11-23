@@ -220,8 +220,8 @@ test('the Level row reflects a level moment', async ({ page }) => {
   const after = await yAt(12);
   expect(mid).toBeGreaterThan(before + 2);
   expect(after).toBeGreaterThan(mid + 2);
-  // Half the level: halfway down the curve's height.
-  expect(after - before).toBeGreaterThan(6);
+  // Half the level: about 0.5 / 1.2 of the curve's 12 px drawing height (its own 16 px band).
+  expect(after - before).toBeGreaterThan(4);
 
   // Removing the moment removes the Level row (it shows only with a block, PLAN §6.4) and its
   // curve.
