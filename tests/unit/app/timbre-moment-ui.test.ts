@@ -121,11 +121,11 @@ describe('a new timbre moment', () => {
     expect(newTimbrePreset(p, compile(p), 0)).toBe(names[1]);
   });
 
-  it('is on the palette with the B key, and the palette checks its effect', () => {
-    expect(PALETTE.find((e) => e.type === 'timbre')?.key).toBe('B');
+  it('is on the palette as Sound with the S key, and the palette checks its effect', () => {
+    expect(PALETTE.find((e) => e.type === 'timbre')?.key).toBe('S');
     expect(
       momentTypeForKey({
-        key: 'b',
+        key: 's',
         metaKey: false,
         ctrlKey: false,
         altKey: false,

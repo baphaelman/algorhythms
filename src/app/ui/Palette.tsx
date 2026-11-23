@@ -7,8 +7,9 @@ import { PREVIEW_DELAY_MS, startPreview, stopPreview } from '../preview';
 import './palette.css';
 
 /**
- * The moment palette, "Add" (PLAN.md §11.3): a click adds that moment exactly at the playhead
- * line (revision 7: no grid snap); dragging a button
+ * The moment palette, "Add" (PLAN.md §11.3, §6.4): one button per row (Chord, Texture, Melody,
+ * Level, Sound, Key). A click adds that row's block exactly at the playhead line (revision 7: no
+ * grid snap); dragging a button
  * onto the score or the lane adds it at the drop time (../palette-drop.ts).
  *
  * Revision 6: a type that would change nothing at the playhead is greyed out with the reason as
@@ -60,6 +61,7 @@ export function Palette() {
             key={e.type}
             type="button"
             data-moment={e.type}
+            data-row={e.row}
             data-no-effect={off || undefined}
             aria-disabled={off || undefined}
             title={

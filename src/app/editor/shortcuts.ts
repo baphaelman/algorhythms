@@ -1,9 +1,8 @@
 /**
- * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the thirteen letters
- * add a moment at the pointer's time or the playhead (../palette-drop `shortcutTime`; R pulse and E tune, R9-7; B timbre, M6; O progression, revision
- * 10: P was taken), Delete/Backspace delete the selection, Escape clears it, `\` toggles the loop
- * region (revision 6). `note` and `pin` left the palette (owner 2026-11-22): note points and pin
- * moments in files still edit.
+ * The moment palette's entries and the editor's global keys (PLAN.md §11.3, §6.4): the six row
+ * letters (C T M L S K, M10b) add a block at the pointer's time or the playhead
+ * (../palette-drop `shortcutTime`), Delete/Backspace delete the selection, Escape clears it, `\`
+ * toggles the loop region (revision 6). Older moment types in files still show and edit.
  */
 
 import { clearDots } from './dot-selection';
@@ -11,9 +10,13 @@ import type { MomentId, MomentType, Seconds } from '../../core/types';
 import { currentTime } from '../store';
 import { addMoment, deleteMoments } from './actions';
 import { select, useEditor } from './history';
+import { ROW_PALETTE } from './row-palette';
+import type { RowName } from './rows';
 
 export interface PaletteEntry {
   type: MomentType;
+  /** The row it adds a block to (§6.4). */
+  row?: RowName;
   /** Shortcut letter, upper case for display. */
   key?: string;
   /** Short name on the button. */
@@ -24,27 +27,15 @@ export interface PaletteEntry {
   hint: string;
 }
 
-export const PALETTE: readonly PaletteEntry[] = [
-  { type: 'chord', key: 'C', name: 'chord', icon: '◆', hint: 'Glide to a chord' },
-  { type: 'unison', key: 'U', name: 'unison', icon: '◇', hint: 'Converge on one pitch' },
-  { type: 'split', key: 'S', name: 'split', icon: '⑂', hint: 'Bring in more notes' },
-  { type: 'merge', key: 'M', name: 'merge', icon: '⋎', hint: 'Fold notes together' },
-  { type: 'shift', key: 'T', name: 'shift', icon: '⇅', hint: 'Transpose by scale steps' },
-  { type: 'spread', key: 'P', name: 'spread', icon: '⇔', hint: 'Widen or narrow the spacing' },
-  { type: 'walk', key: 'W', name: 'walk', icon: '▭', hint: 'Random steps over a region' },
-  { type: 'pulse', key: 'R', name: 'pulse', icon: '┇', hint: 'A repeating volume rhythm' },
-  { type: 'tune', key: 'E', name: 'tune', icon: '♪', hint: 'A melody on one line' },
-  {
-    type: 'progression',
-    key: 'O',
-    name: 'prog',
-    icon: '⁞',
-    hint: 'A chord progression, typed like “IV 2, V 2”',
-  },
-  { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
-  { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade notes' },
-  { type: 'timbre', key: 'B', name: 'timbre', icon: '◐', hint: 'Crossfade notes to another sound' },
-];
+/** The rows' palette (§6.4, M10b): Chord, Texture, Melody, Level, Sound, Key; C T M L S K. */
+export const PALETTE: readonly PaletteEntry[] = ROW_PALETTE.map((e) => ({
+  type: e.type,
+  row: e.row,
+  key: e.key,
+  name: e.name,
+  icon: e.icon,
+  hint: e.hint,
+}));
 
 const BY_KEY: ReadonlyMap<string, MomentType> = new Map(
   PALETTE.flatMap((e) => (e.key ? [[e.key.toLowerCase(), e.type] as const] : [])),

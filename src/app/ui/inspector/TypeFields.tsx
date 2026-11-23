@@ -2,22 +2,15 @@
 
 import { FLAT_NAMES, SCALE_NAMES, SHARP_NAMES } from '../../../core/scales';
 import type {
-  ChordMoment,
   Key,
   KeyMoment,
   LevelMoment,
-  MergeMoment,
-  MergeWhich,
   Moment,
   Piece,
   PinMoment,
   PitchClass,
   ScaleName,
-  ShiftMoment,
-  SplitMoment,
-  SpreadMoment,
   TimbreMoment,
-  UnisonMoment,
   WalkMoment,
 } from '../../../core/types';
 import { updateMoment } from '../../editor/actions';
@@ -27,7 +20,6 @@ import {
   Chips,
   NumberField,
   SelectField,
-  ShiftSlider,
   Slider,
   TextField,
   fieldSetter,
@@ -37,23 +29,16 @@ import {
   formatIntList,
   formatNum,
   formatPitch,
-  mergeCountBounds,
   parseIntList,
   parsePitch,
-  shiftOctave,
-  soundingBefore,
-  splitCountBounds,
   stepChips,
   toggleStep,
 } from './fields';
-import { usePlayer } from '../../store';
-import { ChordNotes } from './ChordNotes';
 import { NoteFields } from './NoteFields';
-import { NoteSetField } from './NoteSetField';
 import { WalkSteps } from './WalkSteps';
-import { PulseFields } from './PulseFields';
 import { ProgressionFields } from './ProgressionFields';
-import { AssignField, RegisterFields } from './ChordSettings';
+import { ChordBlockFields } from './ChordBlock';
+import { TextureFields } from './TextureBlock';
 import { MelodyOn, TuneNotes, TuneOptions } from './TuneFields';
 import { KeyCarryBanner } from './KeyCarryBanner';
 import { offerKeyCarry } from '../../editor/key-carry';
@@ -85,19 +70,15 @@ const pitchProps = {
 export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
   switch (m.type) {
     case 'chord':
-      return <ChordFields m={m} ctx={ctx} />;
     case 'unison':
-      return <UnisonFields m={m} />;
     case 'split':
-      return <SplitFields m={m} ctx={ctx} />;
     case 'merge':
-      return <MergeFields m={m} />;
     case 'shift':
-      return <ShiftFields m={m} ctx={ctx} />;
     case 'spread':
-      return <SpreadFields m={m} />;
+      return <ChordBlockFields m={m} piece={ctx.piece} keyAt={ctx.keyAt} />;
     case 'walk':
-      return <WalkFields m={m} ctx={ctx} />;
+    case 'pulse':
+      return <TextureFields m={m} piece={ctx.piece} />;
     case 'note':
       return <NoteFields m={m} keyAt={ctx.keyAt} />;
     case 'pin':
@@ -106,8 +87,6 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
       return <KeyFields m={m} />;
     case 'level':
       return <LevelFields m={m} />;
-    case 'pulse':
-      return <PulseFields m={m} piece={ctx.piece} />;
     case 'tune':
       return (
         <>
@@ -117,214 +96,18 @@ export function TypeFields({ m, ctx }: { m: Moment; ctx: Ctx }) {
         </>
       );
     case 'progression':
-      return <ProgressionFields m={m} piece={ctx.piece} />;
+      return (
+        <>
+          <ChordBlockFields m={m} piece={ctx.piece} keyAt={ctx.keyAt} />
+          <details className="insp-advanced" data-testid="insp-prog-more">
+            <summary>Progression</summary>
+            <ProgressionFields m={m} piece={ctx.piece} />
+          </details>
+        </>
+      );
     case 'timbre':
       return <TimbreFields m={m} piece={ctx.piece} />;
   }
-}
-
-function ChordFields({ m, ctx }: { m: ChordMoment; ctx: Ctx }) {
-  return (
-    <>
-      <NoteSetField
-        value={m.notes}
-        keyAtMoment={ctx.keyAt}
-        momentId={m.id}
-        voicing={m.voicing}
-        // New notes replace a frozen chord: there is nothing left to unfreeze to. A per-voice
-        // (`byVoice`) freeze set assign to free; the chord gets its own back.
-        onChange={(notes, l) =>
-          updateMoment(
-            m.id,
-            m.byVoice
-              ? {
-                  notes,
-                  frozenFrom: undefined,
-                  byVoice: undefined,
-                  assign: m.frozenFrom?.assign ?? 'ordered',
-                }
-              : { notes, frozenFrom: undefined },
-            l,
-          )
-        }
-        onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
-      />
-      <ChordNotes m={m} piece={ctx.piece} />
-      <AssignField m={m} />
-      <RegisterFields m={m} />
-    </>
-  );
-}
-
-function UnisonFields({ m }: { m: UnisonMoment }) {
-  const pitch = field<number>(m.id, 'pitch', 'Edit pitch');
-  const mode = typeof m.pitch === 'number' ? 'pitch' : m.pitch;
-  return (
-    <>
-      <SelectField
-        label="Pitch"
-        value={mode}
-        options={[
-          ['center', 'Centre of the notes'],
-          ['tonic', 'Tonic of the key'],
-          ['pitch', 'A fixed pitch'],
-        ]}
-        onChange={(v) =>
-          updateMoment(m.id, { pitch: v === 'pitch' ? 60 : v }, 'Change unison pitch')
-        }
-      />
-      {typeof m.pitch === 'number' && (
-        <NumberField label="Note" value={m.pitch} set={pitch} {...pitchProps} />
-      )}
-      <CheckField
-        label="Nearest octaves"
-        checked={m.octaves}
-        onChange={(octaves) => updateMoment(m.id, { octaves }, 'Toggle octaves')}
-      />
-    </>
-  );
-}
-
-function SplitFields({ m, ctx }: { m: SplitMoment; ctx: Ctx }) {
-  const count = field<number>(m.id, 'count', 'Edit count');
-  const compiled = usePlayer((s) => s.compiled);
-  const bounds = splitCountBounds(soundingBefore(compiled, m.at), ctx.piece.voices.length, m.count);
-  return (
-    <>
-      <NumberField
-        label="Notes after"
-        value={m.count}
-        set={count}
-        integer
-        step={1}
-        {...bounds}
-        testId="insp-split-count"
-      />
-      <NoteSetField
-        value={m.notes ?? { kind: 'current' }}
-        keyAtMoment={ctx.keyAt}
-        momentId={m.id}
-        voicing={m.voicing}
-        onChange={(notes, l) =>
-          updateMoment(m.id, { notes: notes.kind === 'current' ? undefined : notes }, l)
-        }
-        onVoicing={(voicing) => updateMoment(m.id, { voicing }, 'Change voicing')}
-      />
-    </>
-  );
-}
-
-const WHICH: readonly (readonly [MergeWhich, string])[] = [
-  ['top', 'Top'],
-  ['bottom', 'Bottom'],
-  ['inner', 'Inner'],
-  ['outer', 'Outer'],
-  ['random', 'Random'],
-];
-
-function MergeFields({ m }: { m: MergeMoment }) {
-  const count = field<number>(m.id, 'count', 'Edit count');
-  const fade = field<number>(m.id, 'fade', 'Edit fade');
-  const compiled = usePlayer((s) => s.compiled);
-  const bounds = mergeCountBounds(soundingBefore(compiled, m.at), m.count);
-  return (
-    <>
-      <NumberField
-        label="Notes after"
-        value={m.count}
-        set={count}
-        integer
-        step={1}
-        {...bounds}
-        testId="insp-merge-count"
-      />
-      <SelectField
-        label="Which die"
-        value={m.which}
-        options={WHICH}
-        onChange={(which) => updateMoment(m.id, { which }, 'Change merge')}
-      />
-      {/* A line that merges into a survivor crossfades into it; `fade` is for a line with none. */}
-      <NumberField
-        label="Fade (when no line survives)"
-        unit="s"
-        value={m.fade}
-        set={fade}
-        min={0}
-        max={60}
-        step={0.1}
-        slider={{ min: 0, max: 10 }}
-        testId="insp-merge-fade"
-      />
-    </>
-  );
-}
-
-function ShiftFields({ m, ctx }: { m: ShiftMoment; ctx: Ctx }) {
-  const by = field<number>(m.id, 'by', 'Edit shift');
-  return (
-    <>
-      <ShiftSlider
-        label="By"
-        value={m.by}
-        set={by}
-        octave={shiftOctave(m.unit, ctx.keyAt)}
-        testId="insp-shift-by"
-      />
-      <SelectField
-        label="Unit"
-        value={m.unit}
-        options={[
-          ['scaleSteps', 'Scale steps'],
-          ['semitones', 'Semitones'],
-        ]}
-        onChange={(unit) => updateMoment(m.id, { unit }, 'Change shift unit')}
-      />
-    </>
-  );
-}
-
-function SpreadFields({ m }: { m: SpreadMoment }) {
-  const factor = field<number>(m.id, 'factor', 'Edit spread');
-  const around = field<number>(m.id, 'around', 'Edit centre');
-  const mode = typeof m.around === 'number' ? 'pitch' : m.around;
-  return (
-    <>
-      <NumberField
-        label="Factor"
-        unit="×"
-        value={m.factor}
-        set={factor}
-        min={0}
-        max={8}
-        step={0.05}
-        testId="insp-spread-factor"
-      />
-      <SelectField
-        label="Around"
-        value={mode}
-        options={[
-          ['mean', 'Mean pitch'],
-          ['median', 'Median pitch'],
-          ['pitch', 'A fixed pitch'],
-        ]}
-        onChange={(v) => updateMoment(m.id, { around: v === 'pitch' ? 60 : v }, 'Change centre')}
-      />
-      {typeof m.around === 'number' && (
-        <NumberField label="Centre" value={m.around} set={around} {...pitchProps} />
-      )}
-      <SelectField
-        label="Snap"
-        value={m.snap}
-        options={[
-          ['scale', 'To the scale'],
-          ['chromatic', 'To semitones'],
-          ['none', 'None'],
-        ]}
-        onChange={(snap) => updateMoment(m.id, { snap }, 'Change snap')}
-      />
-    </>
-  );
 }
 
 /** The walk's step basis (revision 10): scale steps or chord tones. */
@@ -333,7 +116,16 @@ const WALK_OVER = [
   ['chord', 'Chord'],
 ] as const;
 
-function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
+/** A walk's fields (the texture inspector's More); `region` false leaves the region out. */
+export function WalkFields({
+  m,
+  piece,
+  region: showRegion = true,
+}: {
+  m: WalkMoment;
+  piece: Piece;
+  region?: boolean;
+}) {
   const region = fieldSetter<number>(m.id, 'Edit walk region', (x, v) => ({ until: x.at + v }));
   const grid = field<number>(m.id, 'grid', 'Edit grid');
   const density = fieldSetter<number>(m.id, 'Edit density', (_x, v) => ({ density: v / 100 }));
@@ -359,16 +151,18 @@ function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
           </button>
         </div>
       )}
-      <NumberField
-        label="Region"
-        unit="s"
-        value={m.until - m.at}
-        set={region}
-        min={0.05}
-        step={0.5}
-        slider={{ min: 1, max: Math.max(60, Math.ceil((m.until - m.at) / 10) * 10) }}
-        testId="insp-walk-region"
-      />
+      {showRegion && (
+        <NumberField
+          label="Region"
+          unit="s"
+          value={m.until - m.at}
+          set={region}
+          min={0.05}
+          step={0.5}
+          slider={{ min: 1, max: Math.max(60, Math.ceil((m.until - m.at) / 10) * 10) }}
+          testId="insp-walk-region"
+        />
+      )}
       <NumberField
         label="Grid"
         unit="s"
@@ -470,7 +264,7 @@ function WalkFields({ m, ctx }: { m: WalkMoment; ctx: Ctx }) {
           </>
         )}
       </fieldset>
-      <WalkSteps m={m} piece={ctx.piece} />
+      <WalkSteps m={m} piece={piece} />
     </>
   );
 }

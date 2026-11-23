@@ -249,11 +249,11 @@ describe('moving regions', () => {
 });
 
 describe('defaults and the palette', () => {
-  it('the palette lists pulse (R) and tune (E)', () => {
+  it('the palette lists Texture (a pulse, T) and Melody (a tune, M)', () => {
     expect(PALETTE.map((e) => e.type)).toEqual(expect.arrayContaining(['pulse', 'tune']));
     expect(
       momentTypeForKey({
-        key: 'r',
+        key: 't',
         metaKey: false,
         ctrlKey: false,
         altKey: false,
@@ -262,7 +262,7 @@ describe('defaults and the palette', () => {
     ).toBe('pulse');
     expect(
       momentTypeForKey({
-        key: 'e',
+        key: 'm',
         metaKey: false,
         ctrlKey: false,
         altKey: false,

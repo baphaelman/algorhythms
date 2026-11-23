@@ -12,7 +12,8 @@ import { create } from 'zustand';
 import { momentEffectAt, momentEffectsAt, type MomentEffect } from '../../core/effect';
 import type { CompiledScore, MomentType, Piece, Seconds } from '../../core/types';
 import { usePlayer } from '../store';
-import { addTimeIn, defaultMoment } from './new-moment';
+import { addTimeIn } from './new-moment';
+import { paletteMoment } from './row-palette';
 import { playheadTime } from './shortcuts';
 
 /** Id of the throwaway moments built for effect checks and previews. */
@@ -39,11 +40,11 @@ const EXTRA_TYPES: readonly MomentType[] = ['pulse', 'tune', 'progression', 'tim
 export function paletteEffects(piece: Piece, score: CompiledScore, t: Seconds): PaletteEffects {
   const at = effectTime(score, t);
   const out = momentEffectsAt(piece, score, at, (type, x) =>
-    defaultMoment(type, x, PROBE_ID, piece, score),
+    paletteMoment(type, x, PROBE_ID, piece, score),
   );
   for (const type of EXTRA_TYPES) {
     if (out[type]) continue;
-    out[type] = momentEffectAt(piece, score, defaultMoment(type, at, PROBE_ID, piece, score));
+    out[type] = momentEffectAt(piece, score, paletteMoment(type, at, PROBE_ID, piece, score));
   }
   return out;
 }
@@ -63,7 +64,7 @@ export function addTime(): Seconds {
 export function playheadEffect(type: MomentType, at: Seconds = playheadTime()): MomentEffect {
   const { piece, compiled } = usePlayer.getState();
   const t = effectTime(compiled, addTimeIn(piece, at));
-  return momentEffectAt(piece, compiled, defaultMoment(type, t, PROBE_ID, piece, compiled));
+  return momentEffectAt(piece, compiled, paletteMoment(type, t, PROBE_ID, piece, compiled));
 }
 
 interface PaletteEffectsState {

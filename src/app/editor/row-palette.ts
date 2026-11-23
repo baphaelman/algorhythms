@@ -8,15 +8,19 @@ import type {
   CompiledScore,
   Moment,
   MomentId,
+  MomentOf,
+  MomentType,
   NoteSet,
   Piece,
   Seconds,
 } from '../../core/types';
 import { defaultMoment, withChordFill } from './new-moment';
-import { rowsOf, textureMoment, textureUntil, type RowName } from './rows';
+import { rowsOf, setArrive, textureMoment, textureUntil, type RowName } from './rows';
 
 export interface RowPaletteEntry {
   row: RowName;
+  /** The moment type a new block on this row is (Texture: an Arpeggio pulse). */
+  type: MomentType;
   /** Shortcut letter (upper case for display). */
   key: string;
   name: string;
@@ -26,12 +30,40 @@ export interface RowPaletteEntry {
 }
 
 export const ROW_PALETTE: readonly RowPaletteEntry[] = [
-  { row: 'chords', key: 'C', name: 'Chord', icon: '◆', hint: 'A chord, until the next one' },
-  { row: 'texture', key: 'T', name: 'Texture', icon: '┇', hint: 'How the chords play' },
-  { row: 'melody', key: 'M', name: 'Melody', icon: '♪', hint: 'A melody on one line' },
-  { row: 'level', key: 'L', name: 'Level', icon: '◢', hint: 'Fade notes' },
-  { row: 'sound', key: 'S', name: 'Sound', icon: '◐', hint: 'Crossfade to another sound' },
-  { row: 'key', key: 'K', name: 'Key', icon: '♯', hint: 'Change key or scale' },
+  {
+    row: 'chords',
+    type: 'chord',
+    key: 'C',
+    name: 'Chord',
+    icon: '◆',
+    hint: 'A chord, until the next one',
+  },
+  {
+    row: 'texture',
+    type: 'pulse',
+    key: 'T',
+    name: 'Texture',
+    icon: '┇',
+    hint: 'How the chords play',
+  },
+  {
+    row: 'melody',
+    type: 'tune',
+    key: 'M',
+    name: 'Melody',
+    icon: '♪',
+    hint: 'A melody on one line',
+  },
+  { row: 'level', type: 'level', key: 'L', name: 'Level', icon: '◢', hint: 'Fade notes' },
+  {
+    row: 'sound',
+    type: 'timbre',
+    key: 'S',
+    name: 'Sound',
+    icon: '◐',
+    hint: 'Crossfade to another sound',
+  },
+  { row: 'key', type: 'key', key: 'K', name: 'Key', icon: '♯', hint: 'Change key or scale' },
 ];
 
 const BY_KEY: ReadonlyMap<string, RowName> = new Map(
@@ -58,9 +90,9 @@ export const fallbackChordNotes: ChordNotesAt = (piece, score, at) =>
   defaultMoment('chord', at, '__probe', piece, score).notes;
 
 /**
- * A new block on `row` at `at` with id `id`. Chord: `chordNotes`' notes, Land, filled to its
- * size (`withChordFill`). Texture: an Arpeggio to the end of the chord block under it. The rest:
- * today's defaults.
+ * A new block on `row` at `at` with id `id`. Chord: M10a's theory default (`defaultMoment`), or
+ * `chordNotes`' notes when given, set to Land and filled to its size (`withChordFill`). Texture:
+ * an Arpeggio to the end of the chord block under it. The rest: today's defaults.
  */
 export function newBlock(
   row: RowName,
@@ -68,10 +100,16 @@ export function newBlock(
   id: MomentId,
   piece: Piece,
   score: CompiledScore,
-  chordNotes: ChordNotesAt = fallbackChordNotes,
+  chordNotes?: ChordNotesAt,
 ): Moment {
   switch (row) {
     case 'chords': {
+      if (!chordNotes)
+        return setArrive(
+          defaultMoment('chord', at, id, piece, score),
+          'land',
+          piece.defaults.glide,
+        );
       const m: ChordMoment = {
         id,
         at,
@@ -96,4 +134,25 @@ export function newBlock(
     case 'key':
       return defaultMoment('key', at, id, piece, score);
   }
+}
+
+const ROW_OF_TYPE: ReadonlyMap<MomentType, RowName> = new Map(
+  ROW_PALETTE.map((e) => [e.type, e.row] as const),
+);
+
+/**
+ * What the palette, its shortcuts, drops and previews add for `type`: the row's new block for a
+ * palette type (Chord lands; `pulse` is the Texture row's Arpeggio), else `defaultMoment`.
+ */
+export function paletteMoment<T extends MomentType>(
+  type: T,
+  at: Seconds,
+  id: MomentId,
+  piece: Piece,
+  score: CompiledScore,
+): MomentOf<T> {
+  const row = ROW_OF_TYPE.get(type);
+  return (
+    row ? newBlock(row, at, id, piece, score) : defaultMoment(type, at, id, piece, score)
+  ) as MomentOf<T>;
 }
