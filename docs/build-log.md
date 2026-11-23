@@ -2754,3 +2754,6 @@ PLAN §6.4, §11.3 "Add a moment", §15 M10.
 
 ## Lane marker under a selected band (app; 2026-11-23)
 - touch-edit failed on Firefox/WebKit: a block's band ends at the next marker's centre, and a selected (raised) block's band covered that marker's left half, so integer-pixel taps there selected the previous block (real for mouse and touch). `Lane.onDown` now prefers a `.lane-marker` under the press over a band; regression test in lane-blocks. touch-edit:239 (score readout tap) flakes on Chromium at baseline too; not touched.
+
+## Add and Next fill their row (app; 2026-11-23)
+PLAN §11.2. `palette.css`: the Add palette (flex-grow 1; 0 under 1200 px, so narrow windows give Next the room) and the Next cards (flex-grow 3, basis 340 px kept) stretch to fill the row; their buttons grow evenly; text, padding and height scale with the window (`--vb-font` clamp(11px, 5px + 0.55vw, 16px), `--vb-pad`, `--vb-btn-h`); cards back to weight 500. kite-day, macOS Chromium: fill 99.5 % at 1280 (12 px, 6 px padding; cards' natural 497 px in a 688 px box) to 99.8 % at 2560 (16 px); 1024 keeps all four cards. Test: `viewbar.spec.ts` checks ≥ 95 % fill and whole cards at 1280 and 1920.

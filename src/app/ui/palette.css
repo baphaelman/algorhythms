@@ -2,8 +2,17 @@
  * Two groups at the start of the view bar (revision 7 "Add vs Next"), styled apart:
  * "Add at playhead" (Palette.tsx): solid buttons on the bar;
  * "Next at end" (Suggestions.tsx): pill buttons in a tinted, dashed box.
- * They share a row when Next gets ≥ 340 px (build-log "Compact view bar").
+ * They share a row when Next gets ≥ 340 px (build-log "Compact view bar") and together fill it
+ * (§11.2 "Add and Next fill their row"): both groups and their buttons grow, and text, padding
+ * and height scale with the window (--vb-*), back to the compact sizes only on narrow windows.
  */
+
+.viewbar {
+  --vb-font: clamp(11px, calc(5px + 0.55vw), 16px);
+  --vb-pad: clamp(4px, 0.47vw, 10px);
+  --vb-btn-h: clamp(26px, calc(10px + 1.25vw), 36px);
+  --vb-gap: clamp(2px, 0.25vw, 6px);
+}
 
 .palette {
   display: inline-flex;
@@ -12,7 +21,7 @@
   gap: 4px;
   flex: 0 1 auto;
   box-sizing: border-box;
-  height: 36px;
+  height: calc(var(--vb-btn-h) + 10px);
   padding: 0 6px;
   border-radius: 4px;
 }
@@ -22,18 +31,28 @@
   gap: 1px;
 }
 
-/*
- * Thirteen moment types (R9-7, M6 timbre, rev 10 progression; no note or pin, rev 14) and four suggestions fit one row at
- * 1280 px.
- */
+/* Add takes a quarter of the row's leftover width, Next the rest (all of it on narrow windows,
+   where its cards need it); the buttons share it. */
 .palette.palette-add {
+  flex: 1 1 auto;
+  gap: var(--vb-gap);
   height: auto;
-  min-height: 36px;
+  min-height: calc(var(--vb-btn-h) + 10px);
+}
+
+@media (max-width: 1199px) {
+  .palette.palette-add {
+    flex-grow: 0;
+  }
 }
 
 .palette.palette-add button {
-  gap: 2px;
-  padding: 0 2px;
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 4px;
+  height: var(--vb-btn-h);
+  padding: 0 var(--vb-pad);
+  font-size: var(--vb-font);
 }
 
 .app[data-layout='player'] .palette {
@@ -43,7 +62,7 @@
 .palette-label {
   flex: none;
   margin-right: 4px;
-  font: 600 12px/1 var(--f-mono);
+  font: 600 max(12px, var(--vb-font))/1 var(--f-mono);
   color: var(--ink);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -123,22 +142,18 @@
   border-color: var(--accent);
 }
 
-/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, set tight (narrow
-   spaces, padding and gaps), the numeral smaller and dimmer, so four fit at 1280 px with ~15 %
-   to spare for wider fallback fonts (Linux); the best fit gets an accent edge and a ★. */
+/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, narrow spaces
+   around "·", the numeral smaller and dimmer; the best fit gets an accent edge and a ★. */
 .suggestions button[data-job] {
-  gap: 2px;
-  padding: 0 4px;
+  gap: 0.25em;
   font-family: var(--f-sans);
-  font-size: 11px;
-  font-weight: 400;
   letter-spacing: -0.01em;
 }
 .suggest-sep {
   word-spacing: -0.15em;
 }
 .suggest-num {
-  font-size: 10px;
+  font-size: 0.86em;
   color: var(--ink-2);
 }
 
@@ -147,7 +162,7 @@
 }
 
 .suggest-best {
-  font-size: 9px;
+  font-size: 0.8em;
   color: var(--accent);
 }
 
@@ -157,15 +172,24 @@
 }
 
 /* One line, fixed height: a change of suggestions never reflows the score. Next joins Add's row
-   when ≥ 340 px are left (flex-basis), growing to its content; a pill that doesn't fit wraps onto
-   a clipped second line, so it is hidden whole rather than cut. */
+   when ≥ 340 px are left (flex-basis) and grows to fill it, its cards stretching evenly; a card
+   that doesn't fit wraps onto a clipped second line, so it is hidden whole rather than cut. */
 .palette.suggestions {
-  flex: 1 1 340px;
-  max-width: max-content;
+  flex: 3 1 340px;
   align-content: flex-start;
   overflow: hidden;
-  gap: 2px;
-  padding: 4px 4px;
+  gap: var(--vb-gap);
+  padding: 4px;
+}
+
+.suggestions button {
+  flex: 1 0 auto;
+  justify-content: center;
+  height: var(--vb-btn-h);
+  padding: 0 var(--vb-pad);
+  font-size: var(--vb-font);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .suggestions .palette-label {
