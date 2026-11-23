@@ -5691,6 +5691,113 @@ This is the *input* form: fields with defaults are optional here.
         }
       },
       "additionalProperties": {}
+    },
+    "camera": {
+      "description": "The video camera (M11.5); absent = Follow.",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "follow",
+            "auto",
+            "keys"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Seconds from the start of the piece."
+              },
+              "window": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Seconds the view shows."
+              },
+              "place": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "The playhead's place across the view."
+              },
+              "pitch": {
+                "type": "number",
+                "description": "Pitch at the view's vertical centre."
+              },
+              "range": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Semitones shown top to bottom."
+              },
+              "ease": {
+                "description": "Ease to the next key; absent = 'smootherstep'.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "smootherstep",
+                      "smoothstep",
+                      "cosine",
+                      "linear",
+                      "expo"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "bezier"
+                      },
+                      "x1": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "y1": {
+                        "type": "number"
+                      },
+                      "x2": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "y2": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "x1",
+                      "y1",
+                      "x2",
+                      "y2"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "required": [
+              "at",
+              "window",
+              "place",
+              "pitch",
+              "range"
+            ],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": {}
     }
   },
   "required": [

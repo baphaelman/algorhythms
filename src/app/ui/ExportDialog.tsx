@@ -44,7 +44,7 @@ import {
   RATES,
   SECTION_KINDS,
   VIDEO_ASPECTS,
-  VIDEO_CAMERAS,
+  videoCameras,
   VIDEO_FPS,
   VIDEO_QUALITIES,
   VIDEO_SIZES,
@@ -1950,7 +1950,8 @@ export function ExportDialog() {
   const isPoster = form.format === 'poster';
   const toDisk = (form.format === 'stems' || isVideo) && runtime?.canSaveToDisk() === true;
   const videoBlocked = isVideo && support?.ok !== true;
-  const cameraHint = VIDEO_CAMERAS.find((c) => c.id === form.videoCamera)?.hint;
+  const cameras = videoCameras(piece);
+  const cameraHint = cameras.find((c) => c.id === form.videoCamera)?.hint;
   const mpe = form.midiMode === 'mpe';
   const notes = form.midiMode === 'notesOnly';
   const hint = MIDI_MODES.find((m) => m.id === form.midiMode)?.hint;
@@ -2170,7 +2171,7 @@ export function ExportDialog() {
                     legend="Camera"
                     name={`${id}-camera`}
                     value={form.videoCamera}
-                    options={VIDEO_CAMERAS}
+                    options={cameras}
                     disabled={running}
                     testId="export-camera"
                     onChange={(videoCamera) => patch({ videoCamera })}

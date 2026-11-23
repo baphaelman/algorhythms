@@ -828,6 +828,39 @@ export interface ViewSettings {
   loop?: LoopRegion;
 }
 
+/**
+ * The piece's camera (§15 M11.5): how a video (and the editor's Camera toggle while playing)
+ * frames the piece. `follow` = Smooth follow as before; `auto` = keys made from the piece (C2);
+ * `keys` = the stored keys. Absent = Follow.
+ */
+export type CameraMode = 'follow' | 'auto' | 'keys';
+
+/**
+ * One camera key (M11.5): the view at time `at`, eased to the next key; held before the first
+ * and after the last. Evaluate with render/camera-path.ts `cameraPathAt`.
+ */
+export interface CameraKey {
+  /** Score time of the key, s (≥ 0). */
+  at: Seconds;
+  /** Seconds the view shows (any view width; ≥ 2 s when drawn). */
+  window: Seconds;
+  /** The playhead's place across the view, 0..1; the view may start before 0 (blank paper). */
+  place: number;
+  /** Pitch at the view's vertical centre (fractional MIDI). */
+  pitch: Pitch;
+  /** Semitones shown top to bottom (> 0). */
+  range: number;
+  /** Ease from this key to the next. @default 'smootherstep' */
+  ease?: EaseRef;
+}
+
+/** `Piece.camera` (M11.5). */
+export interface PieceCamera {
+  mode: CameraMode;
+  /** Sorted by `at` (the schema checks). Absent or empty with mode `keys` = Follow. */
+  keys?: CameraKey[];
+}
+
 /** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
 export interface LoopRegion {
   start: Seconds;
@@ -876,6 +909,8 @@ export interface Piece {
   end: { at?: Seconds; fade: Seconds };
   /** View settings. */
   view: ViewSettings;
+  /** The video camera (M11.5); absent = Follow, and the piece behaves exactly as before. */
+  camera?: PieceCamera;
 }
 
 // ---------------------------------------------------------------------------------------------

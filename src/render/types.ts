@@ -37,6 +37,11 @@ export interface CameraState {
   window: Seconds;
   /** Overrides the vertical auto-fit: the pitch range [low, high] to show. */
   pitchRange?: [number, number];
+  /**
+   * `start` is not clamped (the camera path, M11.5): it may lie before 0, on blank paper, or
+   * past the end. The window is still clamped.
+   */
+  free?: boolean;
 }
 
 /**

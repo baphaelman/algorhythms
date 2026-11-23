@@ -17,10 +17,10 @@ export function rulerStep(pps: number, minPx = MIN_TICK_PX): Seconds {
   return STEPS[STEPS.length - 1]!;
 }
 
-/** Tick times (multiples of `step`) within [start, start + window]. */
+/** Tick times (multiples of `step`) within [start, start + window], none before 0 (blank paper). */
 export function tickTimes(start: Seconds, window: Seconds, step: Seconds): Seconds[] {
   const out: Seconds[] = [];
-  const k0 = Math.ceil(start / step - 1e-9);
+  const k0 = Math.max(0, Math.ceil(start / step - 1e-9));
   const end = start + window + 1e-9;
   for (let k = k0; k * step <= end; k++) out.push(Math.round(k * step * 1000) / 1000 + 0);
   return out;

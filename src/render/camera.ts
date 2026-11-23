@@ -281,7 +281,7 @@ export function hudLines(padB: number, rows = 3): number {
 }
 
 /**
- * Resolves camera `cam` (window and start clamped to the piece) on a canvas of `size` CSS px, with
+ * Resolves camera `cam` (window and start clamped to the piece; start kept with `free`) on a canvas of `size` CSS px, with
  * the playhead at time `t`. `hud` reserves room for the heads-up display at the bottom (a row
  * count, or true = 3), `extra` px more below it (`scorePads`).
  */
@@ -296,7 +296,8 @@ export function cameraAt(
   const { width: W, height: H } = size;
   const D = Math.max(score.duration, 1e-6);
   const window = clampWindow(cam.window, D);
-  const start = clampStart(cam.start, window, D);
+  const start =
+    cam.free === true && Number.isFinite(cam.start) ? cam.start : clampStart(cam.start, window, D);
   const pps = W / window;
   const { padT, padB } = scorePads(H, hud, extra);
   const padL = Math.max(16, W * 0.025);

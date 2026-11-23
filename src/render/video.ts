@@ -8,7 +8,7 @@
  * proportions and 720p is the same picture as 1080p, only smaller.
  */
 
-import type { CompiledScore, LineColors, MomentId, Piece, Seconds } from '../core/types';
+import type { CameraKey, CompiledScore, LineColors, MomentId, Piece, Seconds } from '../core/types';
 import {
   DEFAULT_FUTURE_OPACITY,
   MIN_WINDOW,
@@ -16,6 +16,7 @@ import {
   pitchExtent,
   pitchExtentIn,
 } from './camera';
+import { cameraPathAt } from './camera-path';
 import { drawScore, type Ctx2D } from './draw';
 import { layerFor } from './layer';
 import { DEFAULT_HUD } from './hud';
@@ -26,7 +27,11 @@ import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from '.
 export type VideoAspect = '16:9' | '9:16' | '1:1';
 /** The frame's short side, px (§12: 1440 and 2160 = 4K added in M11). */
 export type VideoSize = '720' | '1080' | '1440' | '2160';
-export type VideoCameraMode = 'follow' | 'whole';
+/**
+ * `keys`: the piece's camera path (`VideoCameraOptions.keys`, M11.5); `auto`: keys made from the
+ * piece (TODO(C2): until then, as `keys` when keys are given, else Follow).
+ */
+export type VideoCameraMode = 'follow' | 'whole' | 'keys' | 'auto';
 
 /**
  * Output pixel size: the short side is the size class (1080-class 1920×1080, 1080×1920, 1080×1080;
@@ -85,6 +90,8 @@ export interface VideoCameraOptions {
    * stays inside it, as it stays inside the piece.
    */
   section?: TimeSpan;
+  /** `keys`/`auto`: the camera keys (`cameraPathAt`); none = Follow. */
+  keys?: readonly CameraKey[];
 }
 
 /** The span a video shows: its section clipped to the piece, else [0, duration]. */
@@ -98,7 +105,9 @@ export function videoSpan(duration: Seconds, section?: TimeSpan): TimeSpan {
 /**
  * The camera at time t, from t alone (no state between frames). Follow: Smooth follow, the
  * playhead at `followAt` (35 %) with `start` in [0, duration − window]. Whole: the piece fitted. The vertical
- * framing is the same for every frame.
+ * framing is the same for every frame. Keys (and Auto): the camera path at t (`cameraPathAt`;
+ * the start may be < 0; window and pitch from the keys, a `pitchRange` option ignored); without
+ * keys, Follow.
  */
 export function videoCamera(
   mode: VideoCameraMode,
@@ -106,6 +115,10 @@ export function videoCamera(
   t: Seconds,
   opts: VideoCameraOptions,
 ): CameraState {
+  if ((mode === 'keys' || mode === 'auto') && opts.keys) {
+    const cam = cameraPathAt(opts.keys, t);
+    if (cam) return cam;
+  }
   const span = videoSpan(compiled.duration, opts.section);
   const a = span.start;
   const D = Math.max(span.end - a, 1e-6);
@@ -220,6 +233,8 @@ export interface VideoFrameOptions {
   followAt?: number;
   /** The section the video shows (see `videoCamera`); frame 0 is its start. */
   section?: TimeSpan;
+  /** `keys`/`auto`: the camera keys (see `videoCamera`). */
+  keys?: readonly CameraKey[];
   /** From `videoStyle`. */
   style: ScoreStyle;
   /** Opening and ending (§12 "Ready for YouTube"); absent or all off = the video as before. */

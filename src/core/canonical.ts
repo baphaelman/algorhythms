@@ -4,10 +4,12 @@
  * Stored numbers are rounded to what is audible, so pieces stay small and share links round-trip
  * exactly: the app canonicalises every piece it loads or edits, and a decoded link is already
  * canonical. Rules (by field):
- * - **times** (`at`, `until`, glide length and stagger, ramps, fades, the end, the loop): 1 ms;
+ * - **times** (`at`, `until`, glide length and stagger, ramps, fades, the end, the loop, camera
+ *   key times and windows): 1 ms;
  * - **step durations** (tune `len`, pulse `step`, walk `grid`): 1 µs, since they add up over
  *   many steps;
- * - **levels** (gains, pan, sends, pulse accents and floor, weights, jitter, density): 3
+ * - **levels** (gains, pan, sends, pulse accents and floor, weights, jitter, density, a camera
+ *   key's playhead place): 3
  *   significant digits;
  * - **other known numbers** (pitches, factors, ticks, béziers, Hz): 12 significant digits, which
  *   only removes float noise such as 0.30000000000000004.
@@ -148,6 +150,18 @@ const PIECE: Spec = obj({
     pick: (m) => (typeof m.type === 'string' && MOMENT_SPECS.get(m.type)) || UNKNOWN_MOMENT,
   }),
   end: obj({ at: roundTime, fade: roundTime }),
+  camera: obj({
+    keys: each(
+      obj({
+        at: roundTime,
+        window: roundTime,
+        place: roundLevel,
+        pitch: roundOther,
+        range: roundOther,
+        ease,
+      }),
+    ),
+  }),
   view: obj({
     window: roundOther,
     gridBpm: roundOther,
