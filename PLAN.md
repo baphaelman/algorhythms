@@ -1160,6 +1160,9 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 
 **M11. Exports you can shape (next after M10; owner 2026-11-23)**
 - Poster and video exports become truly customisable, and the Export dialog's UI and interactions are fixed. The details are gathered from the owner before M11 starts.
+- **Viewing window (owner):** both exports take a section: a poster can zoom in on one stretch of the piece, and a video can export one section of the song (a start and end time), not only the whole piece.
+- **HUD layout (owner):** the owner places each readout where it goes on the frame, instead of ticking readouts into a list in a fixed order.
+- More notes may follow; spec details are written when M11 starts.
 
 **Later, in no order:**
 - camera moments;

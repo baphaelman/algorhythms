@@ -28,7 +28,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - (none parked)
 
 ## Answered
-- **Next milestone after M10 (2026-11-23):** truly customisable poster and video exports, with the Export dialog's UI and interactions fixed (PLAN §15 M11). Specifics to be gathered from the owner.
+- **Next milestone after M10 (2026-11-23):** truly customisable poster and video exports, with the Export dialog's UI and interactions fixed (PLAN §15 M11). Owner notes so far: a viewing window for both (poster zooms in on a section; video exports a section of the song); the HUD lets the owner place each readout, not just tick it into a list.
 - **Editor overhaul (2026-11-22, PLAN rev 14, M10).** Demo: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv. (1) Option B: rows of blocks. (2) Ship the theory-aware Next first, in today's editor. (3) One card per job, with much less text; the chord picker also marks good fits, more lightly. (4) Note and pin leave the palette.
 - **Poster rows and dimensions (2026-11-23, live in v69).** Rows slider (sheet-music systems) and Width/Height sliders; calls in PLAN §12 Poster export.
 - **Playable video preview + Window (2026-11-23, live in v68).** The Export dialog's video preview plays (button, Space anywhere in the dialog), with sound, from the preview time; Follow gets a Window slider (seconds shown, starts at the editor's zoom). Calls in PLAN §12.
