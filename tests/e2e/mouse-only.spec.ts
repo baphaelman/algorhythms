@@ -166,7 +166,7 @@ test(
     // From silence it brings in a triad: three lines, a chord name.
     await expect.poll(() => linesAt(page, chord.at + 2)).toBe(3);
     const label = page.getByTestId('lane').locator(`[data-moment="${chord.id}"] .lane-label`);
-    await expect(label).toHaveText(/^[A-G]/);
+    await expect(label).toHaveText(/(^|· )[A-G]/); // a numeral symbol reads "i · Am"
     await expect(label).not.toContainText('unison');
     await step();
 

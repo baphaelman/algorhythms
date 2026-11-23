@@ -78,7 +78,7 @@ export function DiatonicChips({
             key={d.degree}
             type="button"
             aria-pressed={on}
-            aria-label={`${d.numeral} ${d.symbol}${fit ? ', fits here' : ''}`}
+            aria-label={`${d.numeral} ${d.symbol}`}
             title={fit ? 'Fits here' : undefined}
             data-numeral={d.numeral}
             data-fit={fit}
