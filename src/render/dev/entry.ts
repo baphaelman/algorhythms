@@ -263,13 +263,16 @@ function hashPixels(g: OffscreenCanvasRenderingContext2D, w: number, h: number):
 
 /**
  * Video frames on an OffscreenCanvas: per frame k, the pixel hash and the count of non-paper
- * pixels; frame `png` (if any) as a PNG data URL.
+ * pixels; frame `png` (if any) as a PNG data URL (the last one; `pngs`: each). A frame drawn again
+ * is compared with its first draw: `repeats` has the differing pixels' count and box.
  */
 async function videoFrames(json: unknown, o: VideoOptions, frames: number[], png: number) {
   const { score, canvas, g, opts } = videoSetup(json, o);
   const out: { k: number; hash: string; inked: number }[] = [];
+  const repeats: { k: number; n: number; box: number[] }[] = [];
+  const first = new Map<number, Uint8ClampedArray>();
+  const pngs: string[] = [];
   const { width: w, height: h } = canvas;
-  let url = '';
   for (const k of frames) {
     drawVideoFrame(g, score, opts, k, o.fps);
     const d = g.getImageData(0, 0, w, h).data;
@@ -278,16 +281,36 @@ async function videoFrames(json: unknown, o: VideoOptions, frames: number[], png
       if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) inked++;
     }
     out.push({ k, hash: hashPixels(g, w, h), inked });
+    const f = first.get(k);
+    if (!f) first.set(k, d);
+    else {
+      let n = 0;
+      const box = [w, h, -1, -1];
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] === f[i] && d[i + 1] === f[i + 1] && d[i + 2] === f[i + 2]) continue;
+        n++;
+        const x = (i >> 2) % w;
+        const y = Math.floor((i >> 2) / w);
+        box[0] = Math.min(box[0], x);
+        box[1] = Math.min(box[1], y);
+        box[2] = Math.max(box[2], x);
+        box[3] = Math.max(box[3], y);
+      }
+      repeats.push({ k, n, box });
+    }
     if (k === png) {
       const blob = await canvas.convertToBlob({ type: 'image/png' });
-      url = await new Promise<string>((res) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result as string);
-        r.readAsDataURL(blob);
-      });
+      pngs.push(
+        await new Promise<string>((res) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.readAsDataURL(blob);
+        }),
+      );
     }
   }
-  return { frames: out, png: url, duration: score.duration, width: w, height: h };
+  const url = pngs[pngs.length - 1] ?? '';
+  return { frames: out, png: url, pngs, repeats, duration: score.duration, width: w, height: h };
 }
 
 /** Frame cost (ms) over `n` frames spread across the piece, raster flushed with one pixel read. */

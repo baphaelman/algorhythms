@@ -25,7 +25,7 @@ import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { drawGhost, ghostOf, type Reach } from './ghost';
 import { drawHud, hudItems, hudRows } from './hud';
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
-import { outlineFrame, outlinePath } from './outline';
+import { CutSink, outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
 import { sampleInto, samples, stableScale, type Samples } from './sampling';
 import {
@@ -425,8 +425,11 @@ function traceWeighted(
 const EVENT_EPS = 1e-6;
 /** Device pixel ratio of the frame being drawn. */
 let DPR = 1;
-/** How far a piece reaches past a merge or split under the clip: two device px. */
+/** How far a piece reaches past a merge or split before the cut: two device px. */
 let SEAM_LAP = 2;
+/** Seam cuts; their round ends are flattened to within this many device px. */
+const CUT = new CutSink();
+const CUT_TOL = 0.05;
 
 function isEvent(events: readonly number[], t: Seconds): boolean {
   for (const e of events) if (Math.abs(e - t) <= EVENT_EPS) return true;
@@ -569,22 +572,10 @@ function tracePiece(
     sum = 0;
     cnt = 0;
   }
-  // The piece's box, widened by its half-width: seam clips reach no further than the shape.
+  // How far past a seam the shape is traced before the cut: beyond its half-width.
   let maxU = 0;
-  let bx0 = Infinity;
-  let bx1 = -Infinity;
-  let by0 = Infinity;
-  let by1 = -Infinity;
-  for (let k = 0; k < n; k++) {
-    if (SU[k] > maxU) maxU = SU[k];
-    if (SX[k] < bx0) bx0 = SX[k];
-    if (SX[k] > bx1) bx1 = SX[k];
-    if (SY[k] < by0) by0 = SY[k];
-    if (SY[k] > by1) by1 = SY[k];
-  }
+  for (let k = 0; k < n; k++) if (SU[k] > maxU) maxU = SU[k];
   const margin = maxU + 1;
-  by0 -= margin;
-  by1 += margin;
   for (let i = 0; i < ns; i++) {
     const al = LA[i];
     if (al < minA) continue;
@@ -596,29 +587,26 @@ function tracePiece(
     const seamL = first ? !capStart : LA[i - 1] >= minA;
     const seamR = last ? !capEnd : LA[i + 1] >= minA;
     g.globalAlpha = al;
+    g.beginPath();
     if (!seamL && !seamR) {
-      g.beginPath();
       outlinePath(g, SX, SY, SNX, SNY, SH, a0, a1, capStart && first, capEnd && last);
       g.fill();
       continue;
     }
-    // Seams are cut along device-pixel columns, the shape reaching past them under a clip, so
-    // neighbours tile exactly: anti-aliased ends side by side would leave hairline gaps.
-    const xa = seamL ? snap(SX[a0]) : bx0 - margin;
-    const xb = seamR ? snap(SX[a1]) : bx1 + margin;
+    // Seams are cut along device-pixel columns, the shape traced past them and cut there, so
+    // neighbours tile exactly: anti-aliased ends side by side would leave hairline gaps. The cut
+    // is the path's own edge, not a clip (see CutSink).
+    const xa = seamL ? snap(SX[a0]) : -Infinity;
+    const xb = seamR ? snap(SX[a1]) : Infinity;
     let k0 = a0;
     if (seamL) while (k0 > 0 && SX[k0] > xa - margin) k0--;
     let k1 = a1;
     if (seamR) while (k1 < n - 1 && SX[k1] < xb + margin) k1++;
     const e0 = seamL && k0 === 0 && !capStart ? SEAM_LAP : 0;
     const e1 = seamR && k1 === n - 1 && !capEnd ? SEAM_LAP : 0;
-    g.save();
-    g.beginPath();
-    g.rect(xa, by0, xb - xa, by1 - by0);
-    g.clip();
-    g.beginPath();
+    CUT.reset(xa, xb, CUT_TOL / DPR);
     outlinePath(
-      g,
+      CUT,
       SX,
       SY,
       SNX,
@@ -631,8 +619,8 @@ function tracePiece(
       e0,
       e1,
     );
+    CUT.emit(g);
     g.fill();
-    g.restore();
   }
 }
 
@@ -821,14 +809,15 @@ function drawLines(
     }
     g.restore();
   }
-  if (future) clipX(g, view, xc, Infinity);
   if (future && !gh) {
+    clipX(g, view, xc, Infinity);
     const a = Math.max(t, tL);
     for (const v of voices) {
       if (v.segments.length === 0) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       traceWeighted(g, view, v, a, tR, LW, futureA, maxStep, tolerance, sf);
     }
+    g.restore();
   }
   if (future && gh) {
     const a0 = Math.max(t, tL);
@@ -848,9 +837,9 @@ function drawLines(
         if (b > a) traceWeighted(ctx, view, v, a, b, LW, al, maxStep, tolerance, sf);
       },
       reachOf(view, LW, maxStep, tolerance),
+      xc,
     );
   }
-  if (future) g.restore();
   if (hl) {
     // Selected segments on top, thicker; the future part stays visible even with no ghost.
     const hlA = Math.max(style.futureOpacity, 0.6);
@@ -864,8 +853,8 @@ function drawLines(
       });
     }
     g.restore();
-    clipX(g, view, xc, Infinity);
     if (!hg) {
+      clipX(g, view, xc, Infinity);
       for (const v of voices) {
         if (v.segments.length === 0) continue;
         g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
@@ -873,8 +862,8 @@ function drawLines(
           if (b > t) traceWeighted(g, view, v, Math.max(t, a), b, HW, hlA, maxStep, tolerance, sf);
         });
       }
-    }
-    if (hg) {
+      g.restore();
+    } else {
       drawGhost(
         g,
         hg,
@@ -892,9 +881,9 @@ function drawLines(
             if (b1 > a1) traceWeighted(ctx, view, v, a1, b1, HW, al, maxStep, tolerance, sf);
           }),
         reachOf(view, HW, maxStep, tolerance),
+        xc,
       );
     }
-    g.restore();
   }
   // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
   for (const v of style.pulseMarks === false ? NO_VOICES : voices) {

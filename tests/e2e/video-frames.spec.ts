@@ -50,6 +50,10 @@ interface VideoOptions {
 interface FramesResult {
   frames: { k: number; hash: string; inked: number }[];
   png: string;
+  /** PNG data URL of each frame drawn at the `png` index. */
+  pngs: string[];
+  /** Frames drawn again: pixels that differ from the first draw, and their box [x0, y0, x1, y1]. */
+  repeats: { k: number; n: number; box: number[] }[];
   duration: number;
   width: number;
   height: number;
@@ -98,6 +102,24 @@ test.describe('video frames', () => {
       expect([r.width, r.height]).toEqual(SIZES[aspect]);
       const by = (i: number) => r.frames[i];
       for (const f of r.frames) expect(f.inked, `frame ${f.k}`).toBeGreaterThan(5000);
+      if (by(3).hash !== by(0).hash) {
+        // For the report: both draws of frame 1500 and where they differ.
+        const a = `video-${aspect.replace(':', 'x')}-${browserName}`;
+        for (const [i, u] of r.pngs.entries()) {
+          await info.attach(`${a}-1500-${i}.png`, {
+            body: Buffer.from(u.slice(u.indexOf(',') + 1), 'base64'),
+            contentType: 'image/png',
+          });
+        }
+        await info.attach(`${a}-repeats.json`, {
+          body: JSON.stringify(r.repeats),
+          contentType: 'application/json',
+        });
+        console.log(
+          `[${browserName}] ${aspect} repeated frames differ:`,
+          JSON.stringify(r.repeats),
+        );
+      }
       expect(by(3).hash).toBe(by(0).hash); // same k, same pixels
       expect(by(1).hash).not.toBe(by(0).hash); // the frames move
       // Tail frames past the end show the piece's last frame.
