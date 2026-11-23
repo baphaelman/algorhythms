@@ -89,6 +89,9 @@ describe('layout edits', () => {
     // Untouched layout: the readout takes its default slot.
     expect(addReadout({}, others, 'chord', 40)).toEqual({});
     expect(removeReadout({ chord: { anchor: 'tl', x: 0, y: 0 } }, null, 'chord')).toEqual({});
+    // Already placed (the other format shares the layout): stays where it is.
+    const kept = { ...removed, chord: { anchor: 'tl' as const, x: 0.3, y: 0.3 } };
+    expect(addReadout(kept, others, 'chord', 40)).toBe(kept);
   });
 });
 

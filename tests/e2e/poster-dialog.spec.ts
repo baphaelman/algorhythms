@@ -180,7 +180,7 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
     title: true,
     transparent: false,
   });
-  expect(req.options.look).toEqual({ ...EXPORT_LOOK, theme: 'light', hud: [] });
+  expect(req.options.look).toEqual({ ...EXPORT_LOOK, theme: 'light', hud: [], hudLayout: {} });
   const img = await decodePng(page, png.bytes);
   expect(img).toMatchObject({ width: 3840, height: 2160, cornerAlpha: 255 });
 

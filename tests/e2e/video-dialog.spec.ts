@@ -485,7 +485,7 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
     return (await lastRequest(page))!.options;
   };
   const def = await exportNow();
-  expect(def.look).toEqual({ ...EXPORT_LOOK, theme: 'light' });
+  expect(def.look).toEqual({ ...EXPORT_LOOK, theme: 'light', hudLayout: {} });
   expect(def.followAt).toBe(0.8);
 
   // Ahead: 0 hidden, 100 full, between dimmed at that opacity. The playhead default moves to

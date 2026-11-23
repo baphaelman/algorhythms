@@ -843,6 +843,8 @@ function HudOverlay({
       className={disabled ? 'hud-overlay disabled' : 'hud-overlay'}
       ref={layer}
       data-testid="hud-overlay"
+      data-width={W}
+      data-height={H}
     >
       {place.boxes.map((b) => {
         const label = readoutLabel(b.item);

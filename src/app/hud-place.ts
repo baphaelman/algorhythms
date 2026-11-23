@@ -98,7 +98,8 @@ export function removeReadout(
 
 /**
  * The layout once `item` (about `w` px wide) is added back: at a free spot when readouts have
- * been placed; an untouched layout ({}) stays as it is (the item takes its default slot).
+ * been placed and it has no position; an untouched layout ({}) stays as it is (the item takes
+ * its default slot).
  */
 export function addReadout(
   layout: HudLayout,
@@ -106,7 +107,8 @@ export function addReadout(
   item: HudItem,
   w: number,
 ): HudLayout {
-  if (!placement || Object.keys(layout).length === 0) return layout;
+  // Placed already (by the other format: video and poster share the layout): it stays there.
+  if (!placement || Object.keys(layout).length === 0 || layout[item]) return layout;
   const others = placement.boxes.filter((b) => b.item !== item);
   const pos = freeSpot(Math.max(HUD_MIN_W, w), HUD_BOX_H, placement, placement.margin, others);
   return { ...fixLayout(layout, { ...placement, boxes: others }), [item]: pos };
