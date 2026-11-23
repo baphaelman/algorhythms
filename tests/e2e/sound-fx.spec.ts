@@ -157,3 +157,37 @@ test('level normalisation: only with parts; by part by default; one undo entry',
   expect(await norm()).toBe('part');
   await expect(sel).toHaveValue('part');
 });
+
+test('glue and width (§12 "Ready for YouTube"): sliders, one undo entry each, Reset', async ({
+  page,
+}) => {
+  await openSound(page, 'tidewater-hymn', 'master');
+  type Bus = { glue?: number; width?: number };
+  const bus = async (): Promise<Bus> => {
+    const m = (await piece(page)).mix as unknown as Bus;
+    return { glue: m.glue, width: m.width };
+  };
+  expect(await bus()).toEqual({ glue: undefined, width: undefined });
+  await expect(page.getByTestId('mx-glue-out')).toHaveText('off');
+  await expect(page.getByTestId('mx-width-out')).toHaveText('100 %');
+  await expect(page.getByTestId('mx-bus-reset')).toBeDisabled();
+
+  await drag(page, 'mx-glue', 0.8);
+  const g = (await bus()).glue!;
+  expect(g).toBeGreaterThan(0.6);
+  expect(g).toBeLessThanOrEqual(1);
+  expect((await editor(page)).undoLabel).toBe('Glue');
+  await drag(page, 'mx-width', 0.9);
+  const w = (await bus()).width!;
+  expect(w).toBeGreaterThan(1.5);
+  await expect(page.getByTestId('mx-width-out')).toHaveText(`${Math.round(w * 100)} %`);
+  expect((await editor(page)).undoLabel).toBe('Width');
+
+  await blurAndUndo(page);
+  expect(await bus()).toEqual({ glue: g, width: undefined });
+  await page.getByTestId('mx-bus-reset').click();
+  expect(await bus()).toEqual({ glue: undefined, width: undefined });
+  await expect(page.getByTestId('mx-bus-reset')).toBeDisabled();
+  await blurAndUndo(page);
+  expect((await bus()).glue).toBe(g);
+});

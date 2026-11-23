@@ -779,6 +779,13 @@ export interface MixSettings {
    * parts sounds the same either way. @default 'part' (absent means 'part').
    */
   normalise?: 'all' | 'part';
+  /**
+   * Master glue compressor before the limiter (§12 "Ready for YouTube"), 0..1: about 2:1 with a
+   * slow attack and release at 1. @default 0 (off; absent means 0)
+   */
+  glue?: number;
+  /** Master stereo width (mid/side), 0..2: 0 mono, 1 as mixed, 2 wider. @default 1 */
+  width?: number;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -5577,6 +5577,18 @@ This is the *input* form: fields with defaults are optional here.
             "all",
             "part"
           ]
+        },
+        "glue": {
+          "description": "Master glue compressor before the limiter, 0..1 (about 2:1 at 1); absent = 0, off.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "description": "Master stereo width (mid/side), 0..2: 0 mono, 1 as mixed (absent), 2 wider.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
         }
       },
       "additionalProperties": {}

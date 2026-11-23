@@ -6,6 +6,7 @@
 
 import { flatten, transferList } from '../core/flat';
 import type { CompiledScore, MixSettings, Timbre } from '../core/types';
+import type { NormalizeReport } from '../dsp/loudness';
 import type { ExportReply, ExportRequest } from './export.worker';
 import type { WavExportOptions } from './wav-export';
 
@@ -19,6 +20,8 @@ export interface ExportWavRequest extends WavExportOptions {
   onProgress?: (fraction: number) => void;
   /** Aborting terminates the render; the promise rejects with an AbortError. */
   signal?: AbortSignal;
+  /** With `loudness` on: what normalising measured and did (before the audio chunks). */
+  onLoudness?: (report: NormalizeReport) => void;
 }
 
 function abortError(): DOMException {
@@ -51,6 +54,9 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
             controller.enqueue(msg.data);
             req.onProgress?.(msg.progress);
             break;
+          case 'loudness':
+            req.onLoudness?.(msg.report);
+            break;
           case 'done':
             stop();
             controller.close();
@@ -75,6 +81,7 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
           bitDepth: req.bitDepth,
           chunkSeconds: req.chunkSeconds,
           ...(req.span ? { span: req.span } : {}),
+          ...(req.loudness && req.loudness !== 'off' ? { loudness: req.loudness } : {}),
         },
       };
       w.postMessage(request, transferList(flat));

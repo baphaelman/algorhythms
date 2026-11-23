@@ -645,6 +645,15 @@ export const MixSchema = z.looseObject({
     .enum(['all', 'part'])
     .default(M.normalise ?? 'part')
     .describe("Sum normalisation (§8.4): per part, or the whole mix ('all')."),
+  glue: unitInterval
+    .optional()
+    .describe('Master glue compressor before the limiter, 0..1 (about 2:1 at 1); absent = 0, off.'),
+  width: z
+    .number()
+    .min(0)
+    .max(2)
+    .optional()
+    .describe('Master stereo width (mid/side), 0..2: 0 mono, 1 as mixed (absent), 2 wider.'),
 });
 
 const V = DEFAULT_VIEW;

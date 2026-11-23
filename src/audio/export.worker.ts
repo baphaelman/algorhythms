@@ -6,6 +6,7 @@
 
 import type { FlatScore } from '../core/flat';
 import type { MixSettings, Timbre } from '../core/types';
+import type { NormalizeReport } from '../dsp/loudness';
 import { wavExportChunks, wavExportSize, type WavExportOptions } from './wav-export';
 
 /** Start an export. */
@@ -20,6 +21,7 @@ export interface ExportRequest {
 export type ExportReply =
   | { type: 'size'; bytes: number; frames: number }
   | { type: 'chunk'; data: Uint8Array<ArrayBuffer>; progress: number }
+  | { type: 'loudness'; report: NormalizeReport }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
@@ -34,7 +36,13 @@ self.onmessage = (event: MessageEvent<ExportRequest>) => {
     const { bytes, frames } = wavExportSize(input, options);
     reply({ type: 'size', bytes, frames });
     let progress = 0;
-    for (const data of wavExportChunks(input, options, (f) => (progress = f))) {
+    const chunks = wavExportChunks(
+      input,
+      options,
+      (f) => (progress = f),
+      (report) => reply({ type: 'loudness', report }),
+    );
+    for (const data of chunks) {
       reply({ type: 'chunk', data, progress }, [data.buffer]);
     }
     reply({ type: 'done' });

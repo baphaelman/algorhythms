@@ -258,3 +258,44 @@ describe('level normalisation (§8.4 revision 10)', () => {
     expect(useEditor.getState().canUndo).toBe(false);
   });
 });
+
+describe('glue and width (§12 "Ready for YouTube")', () => {
+  it('absent reads 0 and 1; setting the absent value leaves them out; Reset removes them', () => {
+    const p = base();
+    expect(p.mix.glue).toBeUndefined();
+    expect(mixValue(p.mix, ['glue'])).toBe(0);
+    expect(mixValue(p.mix, ['width'])).toBe(1);
+    expect(isSectionDefault(p.mix, 'bus')).toBe(true);
+    expect(setMixAt(['glue'], 0)(p)).toBe(p);
+    const glued = setMixAt(['width'], 1.4)(setMixAt(['glue'], 0.6)(p));
+    expect(glued.mix.glue).toBe(0.6);
+    expect(glued.mix.width).toBe(1.4);
+    expect(glued.mix.reverb).toBe(p.mix.reverb);
+    expect(isSectionDefault(glued.mix, 'bus')).toBe(false);
+    expect('glue' in setMixAt(['glue'], 0)(glued).mix).toBe(false);
+    const reset = resetSection('bus')(glued);
+    expect(reset.mix).toEqual(p.mix);
+    expect(MixSchema.parse(glued.mix)).toMatchObject({ glue: 0.6, width: 1.4 });
+    expect(MixSchema.safeParse({ ...glued.mix, width: 2.5 }).success).toBe(false);
+    expect(MixSchema.safeParse({ ...glued.mix, glue: -0.1 }).success).toBe(false);
+  });
+
+  it('round-trips a piece through the schema, and leaves pieces without them unchanged', () => {
+    const p = base();
+    const json = JSON.parse(JSON.stringify({ ...p, mix: { ...p.mix, glue: 0.5, width: 0.25 } }));
+    const parsed = parsePiece(json);
+    expect(parsed.ok && parsed.piece.mix).toMatchObject({ glue: 0.5, width: 0.25 });
+    const plain = parsePiece(JSON.parse(JSON.stringify(p)));
+    expect(plain.ok && 'glue' in plain.piece.mix).toBe(false);
+    expect(plain.ok && 'width' in plain.piece.mix).toBe(false);
+  });
+
+  it('formats', () => {
+    const glue = MIX_CONTROLS.find((c) => c.id === 'glue')!;
+    const width = MIX_CONTROLS.find((c) => c.id === 'width')!;
+    expect(formatMix(glue, 0)).toBe('off');
+    expect(formatMix(glue, 0.5)).toBe('0.5');
+    expect(formatMix(width, 0)).toBe('mono');
+    expect(formatMix(width, 1.5)).toBe('150 %');
+  });
+});

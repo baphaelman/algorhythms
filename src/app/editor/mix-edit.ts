@@ -12,8 +12,11 @@ import type { Recipe } from './history';
 import { beatStep } from './snap';
 import { rawValueOf, roundFor, sameValue, type SliderControl } from './timbre-edit';
 
-/** The Master section's groups; each has its own Reset. */
-export type MixSection = 'reverb' | 'delay' | 'sends' | 'tone';
+/** The Master section's groups; each has its own Reset ('bus': glue and width). */
+export type MixSection = 'reverb' | 'delay' | 'sends' | 'tone' | 'bus';
+
+/** The optional top-level master numbers (§12 "Ready for YouTube") and their absent values. */
+const BUS_DEFAULTS = { glue: 0, width: 1 } as const;
 
 export interface MixControl extends SliderControl {
   section: MixSection;
@@ -48,6 +51,8 @@ export const MIX_CONTROLS: readonly MixControl[] = [
   m('send-dly', 'Delay send', 'sends', ['sends', 'delay'], 0, 1, 0.005, '', 'sqrt'),
   m('tone-tilt', 'Tilt', 'tone', ['tone', 'tilt'], -6, 6, 0.1, ' dB/oct'),
   m('tone-lowpass', 'Low-pass', 'tone', ['tone', 'lowpassHz'], 200, 20000, 1, ' Hz', 'log'),
+  m('glue', 'Glue', 'bus', ['glue'], 0, 1, 0.01),
+  m('width', 'Width', 'bus', ['width'], 0, 2, 0.01),
 ];
 
 /** The delay-time control (beats with a tempo). */
@@ -62,12 +67,25 @@ export function mixValue(mix: MixSettings, path: readonly string[]): number {
       root,
     );
   const v = read(mix);
-  return typeof v === 'number' ? v : (read(defaultMix()) as number);
+  if (typeof v === 'number') return v;
+  if (path.length === 1 && path[0] in BUS_DEFAULTS)
+    return BUS_DEFAULTS[path[0] as keyof typeof BUS_DEFAULTS];
+  return read(defaultMix()) as number;
 }
 
-/** A recipe setting the mix number at `path` (a two-level path); same piece when unchanged. */
+/**
+ * A recipe setting the mix number at `path` (two levels, or glue/width at the top; those are
+ * left out again at their absent value); same piece when unchanged.
+ */
 export function setMixAt(path: readonly string[], value: number): Recipe {
   return (p) => {
+    if (path.length === 1) {
+      const key = path[0] as keyof typeof BUS_DEFAULTS;
+      if (mixValue(p.mix, path) === value) return p;
+      const mix = { ...p.mix, [key]: value };
+      if (value === BUS_DEFAULTS[key]) delete mix[key];
+      return { ...p, mix };
+    }
     const [group, key] = path as [keyof MixSettings, string];
     const old = p.mix[group] as unknown as Record<string, number>;
     if (old[key] === value) return p;
@@ -90,6 +108,8 @@ export function setNormalise(v: 'all' | 'part'): Recipe {
 
 /** Whether a section holds the defaults (Sends also covers `panAuto`). */
 export function isSectionDefault(mix: MixSettings, section: MixSection): boolean {
+  if (section === 'bus')
+    return (mix.glue ?? BUS_DEFAULTS.glue) === 0 && (mix.width ?? BUS_DEFAULTS.width) === 1;
   const d = defaultMix();
   return sameValue(mix[section], d[section]) && (section !== 'sends' || mix.panAuto === d.panAuto);
 }
@@ -98,6 +118,10 @@ export function isSectionDefault(mix: MixSettings, section: MixSection): boolean
 export function resetSection(section: MixSection): Recipe {
   return (p) => {
     if (isSectionDefault(p.mix, section)) return p;
+    if (section === 'bus') {
+      const { glue: _g, width: _w, ...mix } = p.mix;
+      return { ...p, mix };
+    }
     const d = defaultMix();
     const mix = { ...p.mix, [section]: d[section] };
     if (section === 'sends') mix.panAuto = d.panAuto;
@@ -165,8 +189,10 @@ export function formatDelay(time: number, view: Pick<ViewSettings, 'gridBpm'>): 
   return named ? `${named.name} · ${b} · ${s}` : `${b} · ${s}`;
 }
 
-/** A master value for display (Hz above 1 kHz as kHz). */
+/** A master value for display (Hz above 1 kHz as kHz; glue off, width as a percentage). */
 export function formatMix(ctl: MixControl, value: number): string {
+  if (ctl.id === 'glue') return value === 0 ? 'off' : trim(value, 2);
+  if (ctl.id === 'width') return value === 0 ? 'mono' : `${Math.round(value * 100)} %`;
   if (ctl.unit === ' Hz' && value >= 1000) return `${trim(value / 1000, 2)} kHz`;
   const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 3;
   return `${trim(value, digits)}${ctl.unit}`;
