@@ -87,6 +87,8 @@ vi.mock('../../../src/app/editor/actions', () => ({
 vi.mock('../../../src/app/editor/palette-effects', () => ({
   playheadEffect: (type: string) => ({ effect: !h.state.noEffect.has(type) }),
 }));
+// No pointer over the timeline: shortcuts add at the playhead (./palette-drop `shortcutTime`).
+vi.mock('../../../src/app/palette-drop', () => ({ shortcutTime: () => 12.3 }));
 vi.mock('../../../src/app/hover', () => ({ clearHover: vi.fn(), setHover: vi.fn() }));
 vi.mock('../../../src/app/loop', () => ({ currentPps: () => 100 }));
 vi.mock('../../../src/app/audition', () => ({

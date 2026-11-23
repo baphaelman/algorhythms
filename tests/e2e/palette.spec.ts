@@ -1,6 +1,7 @@
 /**
- * M4f moment palette and editor keys (PLAN.md §11.3): palette clicks and the ten letters add at
- * the playhead, ⌘/Ctrl+letter does not, Delete removes the selection, undo restores it.
+ * M4f moment palette and editor keys (PLAN.md §11.3): palette clicks and the letters add at the
+ * playhead (letters at the time under the pointer over the score, owner 2026-11-23), ⌘/Ctrl+letter
+ * does not, Delete removes the selection, undo restores it.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -122,10 +123,58 @@ test('letters add each type; modified letters do not', async ({ page }) => {
   // I no longer adds a pin (§11.3 rev 14).
   const n = (await moments(page)).length;
   await page.keyboard.press('i');
-  for (const combo of ['Control+c', 'Meta+c', 'Alt+u', 'Shift+s']) {
+  for (const combo of ['Control+c', 'Meta+c', 'Shift+s']) {
     await page.keyboard.press(combo);
   }
   expect(await moments(page)).toHaveLength(n);
+});
+
+test('a letter adds at the time under the pointer over the score, else at the playhead', async ({
+  page,
+}) => {
+  await openNoGrid(page); // playhead at 10 s, no grid: snaps only to note changes within 8 px
+  await page.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  );
+  const s = await page.evaluate(() => window.__algorhythms!.frameStats);
+  const box = (await page.locator('#score').boundingBox())!;
+  const pps = box.width / s.window;
+  const xAt = (t: number) => box.x + (t - s.start) * pps;
+  const t = Math.round((s.start + s.window * 0.8) * 10) / 10;
+  expect(Math.abs(t - 10) * pps).toBeGreaterThan(100); // well away from the playhead
+  const y = box.y + box.height / 2;
+  const addWith = async (combo: string): Promise<M> => {
+    const before = await moments(page);
+    await page.keyboard.press(combo);
+    const added = (await moments(page)).filter((m) => !before.some((b) => b.id === m.id));
+    expect(added).toHaveLength(1);
+    return added[0];
+  };
+
+  await page.mouse.move(xAt(t), y);
+  const snapped = await addWith('c');
+  expect(snapped.type).toBe('chord');
+  expect(Math.abs(snapped.at - t)).toBeLessThanOrEqual(8 / pps + 1e-3); // a drop's snap reach
+  // Its lane marker sits under the pointer.
+  const marker = (await page
+    .locator(`.lane-item[data-moment="${snapped.id}"] .lane-marker`)
+    .boundingBox())!;
+  expect(Math.abs(marker.x + marker.width / 2 - xAt(snapped.at))).toBeLessThan(3);
+  await page.keyboard.press('Delete');
+
+  // Alt: free time, exactly under the pointer (to a pixel).
+  const t2 = t - 1.37;
+  await page.mouse.move(xAt(t2), y);
+  const free = await addWith('Alt+c');
+  expect(free.type).toBe('chord');
+  expect(Math.abs(free.at - t2)).toBeLessThanOrEqual(1 / pps + 1e-3);
+  await page.keyboard.press('Delete');
+
+  // The pointer over the inspector: at the playhead.
+  const insp = (await page.getByTestId('inspector').boundingBox())!;
+  await page.mouse.move(insp.x + insp.width / 2, insp.y + insp.height / 2);
+  const atHead = await addWith('c');
+  expect(atHead.at).toBeCloseTo(10, 3);
 });
 
 test('Delete removes the selection, undo restores it, Escape clears it', async ({ page }) => {

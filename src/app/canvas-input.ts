@@ -35,7 +35,14 @@ import { keyAt } from '../core/query';
 import type { Key, MomentId, Pitch, Seconds } from '../core/types';
 import { HOVER_RADIUS_PX, nearestLine, pitchToY, timeToX, xToTime, type View } from '../render';
 import { auditionMoment, auditionTuneAfterEdit, holdNote, stopAudition } from './audition';
-import { addPointDrag, octaveDots, stepNote, updateMoment, type PitchDrag } from './editor/actions';
+import {
+  addMoment,
+  addPointDrag,
+  octaveDots,
+  stepNote,
+  updateMoment,
+  type PitchDrag,
+} from './editor/actions';
 import { cachedArrivals } from './editor/arrival-points';
 import { dragPitch } from './editor/chord-notes';
 import { clearDots, currentDots, selectDots } from './editor/dot-selection';
@@ -48,14 +55,9 @@ import { isDoublePress, noteFrom, type Press } from './editor/note-points';
 import { playheadEffect } from './editor/palette-effects';
 import { insertTuneNote, tuneBeat, tuneNoteStarts, tuneShiftIn } from './editor/tune';
 import { sectionOwner } from './editor/section';
-import {
-  addAtPlayhead,
-  clearSelection,
-  deleteSelection,
-  editorKey,
-  takesText,
-} from './editor/shortcuts';
+import { clearSelection, deleteSelection, editorKey, takesText } from './editor/shortcuts';
 import { attachClipboard, onClipboardKey } from './clipboard';
+import { shortcutTime } from './palette-drop';
 import { clearHover, setHover } from './hover';
 import {
   DOUBLE_TAP_PX,
@@ -592,8 +594,10 @@ export function attachKeys(): () => void {
         if (toggleLoop()) e.preventDefault();
       } else if (ek.kind === 'add') {
         e.preventDefault();
-        // Revision 6: a type with no effect at the playhead is not added (the palette greys it).
-        if (playheadEffect(ek.type).effect) addAtPlayhead(ek.type);
+        // At the pointer's time or the playhead (§11.3). Revision 6: a type with no effect there
+        // is not added.
+        const t = shortcutTime(e.altKey);
+        if (playheadEffect(ek.type, t).effect) addMoment(ek.type, t);
       } else if (ek.kind === 'delete' ? deleteSelection() : clearSelection()) {
         e.preventDefault();
       }

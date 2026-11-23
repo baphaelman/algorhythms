@@ -1,6 +1,6 @@
 /**
  * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the thirteen letters
- * add a moment at the playhead (R pulse and E tune, R9-7; B timbre, M6; O progression, revision
+ * add a moment at the pointer's time or the playhead (../palette-drop `shortcutTime`; R pulse and E tune, R9-7; B timbre, M6; O progression, revision
  * 10: P was taken), Delete/Backspace delete the selection, Escape clears it, `\` toggles the loop
  * region (revision 6). `note` and `pin` left the palette (owner 2026-11-22): note points and pin
  * moments in files still edit.
@@ -52,11 +52,19 @@ const BY_KEY: ReadonlyMap<string, MomentType> = new Map(
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'> & {
   repeat?: boolean;
+  code?: string;
 };
 
-/** The moment type a key press adds, or null (any modifier or an auto-repeat disqualifies it). */
+/**
+ * The moment type a key press adds, or null (⌘, Ctrl, Shift or an auto-repeat disqualifies it).
+ * Alt is allowed (adds at a free time); it is read from `code`, since macOS Alt+C types "ç".
+ */
 export function momentTypeForKey(e: KeyLike): MomentType | null {
-  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.repeat) return null;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.repeat) return null;
+  if (e.altKey) {
+    const m = /^Key([A-Z])$/.exec(e.code ?? '');
+    return m?.[1] ? (BY_KEY.get(m[1].toLowerCase()) ?? null) : null;
+  }
   return BY_KEY.get(e.key.toLowerCase()) ?? null;
 }
 
@@ -113,8 +121,8 @@ export function takesText(target: unknown): boolean {
 }
 
 /**
- * The editor action for a keydown, or null. Ignored in text fields, with ⌘/Ctrl/Alt held (Shift
- * too for letters), and on auto-repeat for letters. Dialog and layout checks are the caller's.
+ * The editor action for a keydown, or null. Ignored in text fields, with ⌘/Ctrl/Alt held (letters:
+ * ⌘/Ctrl/Shift; Alt+letter adds at a free time), and on auto-repeat for letters. Dialog and layout checks are the caller's.
  */
 export function editorKey(e: KeyLike & { target?: unknown }): EditorKey | null {
   if (takesText(e.target)) return null;

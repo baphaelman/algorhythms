@@ -89,10 +89,21 @@ describe('key mapping', () => {
   });
 
   it('ignores modified, shifted and repeated letters', () => {
-    for (const mod of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey', 'repeat']) {
+    for (const mod of ['metaKey', 'ctrlKey', 'shiftKey', 'repeat']) {
       expect(editorKey(key('c', { [mod]: true }))).toBeNull();
     }
     expect(editorKey(key('C', { shiftKey: true }))).toBeNull();
+  });
+
+  it('maps Alt+letter by its code (adds at a free time; macOS Alt+C types "ç")', () => {
+    expect(editorKey(key('ç', { altKey: true, code: 'KeyC' }))).toEqual({
+      kind: 'add',
+      type: 'chord',
+    });
+    expect(momentTypeForKey(key('ł', { altKey: true, code: 'KeyL' }))).toBe('level');
+    expect(momentTypeForKey(key('c', { altKey: true }))).toBeNull(); // no code: unknown key
+    expect(momentTypeForKey(key('x', { altKey: true, code: 'KeyX' }))).toBeNull();
+    expect(momentTypeForKey(key('c', { altKey: true, metaKey: true, code: 'KeyC' }))).toBeNull();
   });
 
   it('maps Delete, Backspace and Escape, not with ⌘/Ctrl/Alt', () => {
