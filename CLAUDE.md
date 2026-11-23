@@ -15,7 +15,7 @@ The integrator continues the work with a fresh agent.
 
 ## Roles
 - The **owner** decides product questions (PLAN.md §2, §16).
-- The **integrator** (the main Claude session) assigns milestones and verifies their acceptance criteria. It does not write code.
+- The **integrator** (the main Claude session) assigns milestones and verifies their acceptance criteria. It does not write code. It never starts a new milestone until it has mapped it out (scope, builder split, open questions) and the owner approves.
 - **Builder agents** write all the code, each within the directories its task gives it.
 
 ## Naming

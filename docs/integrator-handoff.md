@@ -13,6 +13,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
   - keep the pieces cohesive;
   - push;
   - report to the owner at milestones.
+- **Never start a new milestone until you have mapped it out and the owner approves (owner rule, 2026-11-23).** The map: scope from PLAN, builder split and order, open questions, acceptance. Launch no builders for it before their yes. Fixes the owner asks for "now" and work inside the current milestone are exempt.
 - You may edit PLAN.md (you own it), the CLAUDE.md status table, this file and the build log.
 - **Builders default to Opus at medium effort** (owner instruction, 2026-11-20).
   - Go lower (Sonnet, low effort) only for tiny mechanical fixes.
