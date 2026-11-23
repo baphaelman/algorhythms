@@ -100,12 +100,15 @@ export function LoudnessField({
   runtime,
   disabled,
   context,
+  videoAudio,
   onChange,
 }: {
   form: ExportForm;
   runtime: Runtime | null;
   disabled: boolean;
   context: () => VideoContext;
+  /** A video's audio codec (it sets the true-peak ceiling); absent for a WAV. */
+  videoAudio?: string;
   onChange: (loudness: ExportForm['loudness']) => void;
 }) {
   const id = useId();
@@ -147,7 +150,7 @@ export function LoudnessField({
       : null;
   const plan =
     cur?.measure && on && runtime
-      ? runtime.loudnessPlan(cur.measure, form.loudness as number)
+      ? runtime.loudnessPlan(cur.measure, form.loudness as number, videoAudio)
       : null;
   const targetText = on ? lufsText(form.loudness as number) : '';
   return (
@@ -204,6 +207,16 @@ export function PitchGuidesRow({
   const tonic = usePlayer((s) => parsePitchClass(s.piece.key.tonic) ?? 0);
   const [text, setText] = useState('');
   const [bad, setBad] = useState(false);
+  const group = useRef<HTMLDivElement>(null);
+  // A quick pick turns into a chip: focus follows it.
+  const picked = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (picked.current === null) return;
+    group.current
+      ?.querySelector<HTMLElement>(`[data-testid="look-pitch-${picked.current}"]`)
+      ?.focus();
+    picked.current = null;
+  });
   const pg = form.look.pitchGuides ?? { pitches: [], labels: true };
   const set = (pitches: readonly number[]) =>
     onLook({ pitchGuides: { pitches: [...pitches], labels: pg.labels } });
@@ -250,6 +263,7 @@ export function PitchGuidesRow({
         Guide notes
       </span>
       <div
+        ref={group}
         className="pitch-guides"
         role="group"
         aria-labelledby={`${id}-label`}
@@ -277,7 +291,10 @@ export function PitchGuidesRow({
             aria-label={`Add a guide at ${noteName(p)}`}
             title="The key’s tonic"
             data-testid={`look-pitch-pick-${p}`}
-            onClick={() => add([p])}
+            onClick={() => {
+              picked.current = p;
+              add([p]);
+            }}
           >
             + {noteName(p)}
           </button>

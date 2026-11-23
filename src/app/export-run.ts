@@ -42,6 +42,7 @@ import {
   previewVideoFrame,
   previewVideoMoment,
   videoAudioFrames,
+  videoLoudnessCeiling,
   videoAudioSpan,
   videoSizes,
   videoSupport,
@@ -373,9 +374,16 @@ export function loudnessTarget(
   return { key: loudnessKey(src.piece, section), ...(span ? { span } : {}) };
 }
 
-/** The gain and limiting a target calls for (`normalizePlan`, ceiling −1 dBTP). */
-export function loudnessPlan(m: LoudnessMeasure, target: number) {
-  return normalizePlan(m, target, LOUDNESS_CEILING);
+/**
+ * The gain and limiting a target calls for (`normalizePlan`); a video's audio codec (`'opus'`,
+ * `'mp4a…'`) lowers the ceiling.
+ */
+export function loudnessPlan(m: LoudnessMeasure, target: number, videoAudio?: string) {
+  return normalizePlan(
+    m,
+    target,
+    videoAudio !== undefined ? videoLoudnessCeiling(videoAudio) : LOUDNESS_CEILING,
+  );
 }
 
 /** The cached measurement for `key`, if any. */

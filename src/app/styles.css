@@ -1414,7 +1414,7 @@ dialog.dialog.export {
  * options scroll. Narrow screens: sticky at the top of the dialog, the options scrolling under it.
  */
 dialog.dialog.export.has-preview {
-  width: min(1040px, calc(100vw - 32px));
+  width: min(1360px, calc(100vw - 32px));
 }
 
 .export-preview {

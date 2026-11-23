@@ -33,6 +33,8 @@ export interface WavExportOptions {
    * (integrated, of what is exported) with true peaks ≤ −1 dBTP.
    */
   loudness?: ExportLoudness;
+  /** The true-peak ceiling (dBTP) when normalising. @default LOUDNESS_CEILING */
+  ceiling?: number;
 }
 
 /** Off, or a target in LUFS. */
@@ -159,7 +161,7 @@ export function* wavExportChunks(
   if (target !== 'off') {
     // Normalising needs the whole render: render (85 % of the progress), normalise, encode.
     const mix = renderSpan(graph, { from, to, fadeIn, fadeOut }, (f) => onProgress?.(0.85 * f));
-    const report = normalize(mix, sampleRate, target, LOUDNESS_CEILING);
+    const report = normalize(mix, sampleRate, target, options.ceiling ?? LOUDNESS_CEILING);
     onLoudness?.(report);
     onProgress?.(0.95);
     for (let at = 0; at < frames; at += chunkFrames) {

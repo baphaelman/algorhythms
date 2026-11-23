@@ -243,7 +243,9 @@ test('Glow, Vignette and guide notes change the preview', async ({ page }) => {
   await input.press('Enter');
   await expect(input).toHaveAttribute('aria-invalid', 'true');
   await page.getByTestId('look-pitch-72').click();
-  expect((await lastPreview(page))!.options.look!.pitchGuides!.pitches).toEqual([69]);
+  await expect
+    .poll(async () => (await lastPreview(page))!.options.look!.pitchGuides!.pitches)
+    .toEqual([69]);
 });
 
 test('Opening & ending: the title card at its time, the end card the whole piece', async ({
