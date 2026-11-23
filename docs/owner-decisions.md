@@ -3,6 +3,7 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
+- **Look at posters (M9, live in v63).** Menu → Export → Poster: PNG and SVG, 16:9 4K / square / A4, transparent background, title block. Check the defaults (labels only, no HUD, colours as in the app) and whether long glides look smooth at 4K. On a Mac, a transparent PNG from Safari: do translucent lines look right? Details: `docs/m9-acceptance.md` "Owner steps".
 - **Watch a video export (M8, live in v57).** Menu → Export → Video (MP4). Does a Chrome export (H.264 + Opus sound) play in QuickTime and on your iPhone? Is 9:16 readable on a phone? Are the defaults right (16:9 1080p30, Follow at your zoom, current theme, HUD and thickness on)? Details: `docs/m8-acceptance.md` "Owner steps".
 ### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
 Try these in the newest preview; the integrator adds to this list as work lands:
