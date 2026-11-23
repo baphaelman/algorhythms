@@ -217,12 +217,14 @@ test('the divider drags the split, persists across reload, and resets on double-
   const d = await box(div);
   await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2);
   await page.mouse.down();
-  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 20, { steps: 4 });
-  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 - 40, { steps: 4 });
+  // Down: the default lane is near its content height (the lane never grows past its rows), so
+  // the first drag shrinks it; "way up" below covers growing.
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 + 20, { steps: 4 });
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 + 40, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await box(sc)).height).toBeGreaterThan(h0 + 30);
+  await expect.poll(async () => (await box(sc)).height).toBeLessThan(h0 - 30);
   const h1 = (await box(sc)).height;
-  expect((await box(page.getByTestId('stage'))).height).toBeLessThan(stage0 - 30);
+  expect((await box(page.getByTestId('stage'))).height).toBeGreaterThan(stage0 + 30);
 
   // Way up: the score keeps at least a quarter of the timeline and its 200 px minimum.
   const d1 = await box(div);
@@ -234,6 +236,7 @@ test('the divider drags the split, persists across reload, and resets on double-
   const stageUp = (await box(page.getByTestId('stage'))).height;
   expect(stageUp).toBeGreaterThanOrEqual(timeline.height * 0.25 - 1);
   expect(stageUp).toBeGreaterThanOrEqual(199);
+  await expect.poll(async () => (await box(sc)).height).toBeGreaterThan(h1 + 30);
   // Drag back to h1; it survives a reload.
   const d2 = await box(div);
   const hNow = (await box(sc)).height;
