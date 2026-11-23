@@ -63,6 +63,31 @@ test('1280×800: Add and Next share a row; all suggestions show whole', async ({
   expect(await hidden()).toBe(0);
 });
 
+for (const w of [1280, 1920]) {
+  test(`${w} px: Add and Next fill the row (PLAN §11.2), every card whole`, async ({ page }) => {
+    await open(page, w, 900);
+    const g = await page.locator('.viewbar').evaluate((bar) => {
+      const r = (q: string) => bar.querySelector(q)!.getBoundingClientRect();
+      const add = r('[data-testid="palette"]');
+      const next = r('[data-testid="suggestions"]');
+      const cards = [...bar.querySelectorAll<HTMLElement>('[data-testid="suggestions"] button')];
+      return {
+        fill: (add.width + next.width) / bar.getBoundingClientRect().width,
+        cut: cards.filter((c) => {
+          const b = c.getBoundingClientRect();
+          return b.bottom > next.bottom || b.right > next.right || c.scrollWidth > c.clientWidth;
+        }).length,
+        cards: cards.length,
+        font: parseFloat(getComputedStyle(cards[0]!).fontSize),
+      };
+    });
+    expect(g.cards).toBeGreaterThan(0);
+    expect(g.fill).toBeGreaterThanOrEqual(0.95);
+    expect(g.cut).toBe(0);
+    expect(g.font).toBeGreaterThanOrEqual(w >= 1920 ? 14 : 12);
+  });
+}
+
 test('View popover: opens, toggles theme and HUD, closes on Escape and outside press', async ({
   page,
 }) => {
