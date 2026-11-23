@@ -225,20 +225,23 @@ function AbsoluteFields({
   );
 }
 
+/** The value of the open drag (module-level: setters are rebuilt per render; one pointer). */
+let held: number | null = null;
+
 /** A setter that commits typed values, and a drag once when it ends (one rewrite). */
 function commitOnEnd(commit: (v: number) => void): Setter<number> {
-  let last: number | null = null;
   return {
     commit,
     begin() {
-      last = null;
+      held = null;
     },
     drag(v) {
-      last = v;
+      held = v;
     },
     end(cancel = false) {
-      if (!cancel && last !== null) commit(last);
-      last = null;
+      const v = held;
+      held = null;
+      if (!cancel && v !== null) commit(v);
     },
   };
 }

@@ -55,17 +55,12 @@ test('New → Empty: silent, the key selected with its Tonic focused; first chor
     )
     .toEqual({ tonic: 'D', scale: 'dorian' });
 
-  // Silence: the transitional moments are greyed out at the playhead.
+  // Silence: Texture is greyed out at the playhead.
   const palette = page.getByTestId('palette');
-  for (const type of ['shift', 'split', 'merge', 'walk']) {
-    const b = palette.locator(`[data-moment="${type}"]`);
-    await expect(b, type).toHaveAttribute('aria-disabled', 'true');
-    await expect(b, type).toHaveAttribute(
-      'title',
-      /No effect here: no note is sounding; start with a chord or a unison/,
-    );
-  }
-  for (const type of ['chord', 'unison'])
+  const texture = palette.locator('[data-moment="pulse"]');
+  await expect(texture).toHaveAttribute('aria-disabled', 'true');
+  await expect(texture).toHaveAttribute('title', /Texture: No effect here: /);
+  for (const type of ['chord'])
     await expect(palette.locator(`[data-moment="${type}"]`), type).not.toHaveAttribute(
       'aria-disabled',
     );
@@ -85,13 +80,13 @@ test('New → Empty: silent, the key selected with its Tonic focused; first chor
 
   // The second goes at the playhead.
   await seek(page, 5);
-  await expect(palette.locator('[data-moment="split"]')).not.toHaveAttribute('aria-disabled');
-  await palette.locator('[data-moment="split"]').click();
+  await expect(texture).not.toHaveAttribute('aria-disabled');
+  await texture.click();
   await expect
     .poll(async () => (await piece(page)).moments.map((m) => [m.type, m.at]))
     .toEqual([
       ['chord', 0],
-      ['split', 5],
+      ['pulse', 5],
     ]);
 });
 

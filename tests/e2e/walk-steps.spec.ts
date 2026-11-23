@@ -83,12 +83,19 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 
+/** Opens the texture block's More (the walk's fields), if closed. */
+async function openMore(page: Page): Promise<void> {
+  const more = page.getByTestId('inspector').getByTestId('insp-texture-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
+}
+
 test('▲ on a generated walk freezes it and moves one note; one undo; save and load', async ({
   page,
 }) => {
   const a = h(page);
   const insp = page.getByTestId('inspector');
   await a.select([WALK]);
+  await openMore(page);
   const before = await a.steps();
   expect(before.length).toBeGreaterThan(3);
   await expect(insp.getByTestId('walk-step')).toHaveCount(before.length);
@@ -160,6 +167,7 @@ test('▲ on a generated walk freezes it and moves one note; one undo; save and 
   });
   await expect.poll(() => a.fixed()).toEqual(saved);
   await a.select([WALK]);
+  await openMore(page);
   await expect(insp.getByTestId('insp-walk-frozen')).toBeVisible();
   await expect.poll(async () => (await a.steps()).find(isTop)?.to).toBe(moved);
 });
@@ -169,6 +177,7 @@ test('walk step dots and rows select each other', async ({ page }) => {
   const insp = page.getByTestId('inspector');
   await expect(page.getByTestId('walk-dots')).toHaveCount(0);
   await a.select([WALK]);
+  await openMore(page);
   const dots = page.getByTestId('walk-dot');
   await expect(dots).toHaveCount((await a.steps()).length);
   // The walk starts at 1:39; Fit shows the whole piece.
@@ -203,5 +212,6 @@ test('walk step dots and rows select each other', async ({ page }) => {
   await a.select([CHORD]);
   await expect(page.getByTestId('walk-dots')).toHaveCount(0);
   await a.select([WALK]);
+  await openMore(page);
   await expect(insp.locator('[data-testid=walk-step].on')).toHaveCount(0);
 });

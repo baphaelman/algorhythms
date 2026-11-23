@@ -70,13 +70,13 @@ for (const target of ['lane', 'score'] as const) {
     const box = (await el.boundingBox())!;
     await page
       .getByTestId('palette')
-      .locator('[data-moment="walk"]')
+      .locator('[data-moment="pulse"]')
       .dragTo(el, { targetPosition: { x: x - box.x, y: box.height / 2 } });
 
     const after = await moments(page);
     const added = after.filter((m) => !before.some((b) => b.id === m.id));
     expect(added).toHaveLength(1);
-    expect(added[0].type).toBe('walk');
+    expect(added[0].type).toBe('pulse');
     expect(added[0].at).toBeCloseTo(6, 6);
     await expect(item(page, added[0].id)).toHaveAttribute('aria-pressed', 'true');
 

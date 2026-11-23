@@ -112,6 +112,8 @@ async function expectBar(page: Page, id: string, lands: boolean): Promise<Geo> {
 }
 
 const landBox = (page: Page) => page.getByTestId('insp-land');
+const arriveChip = (page: Page, name: string) =>
+  page.getByTestId('insp-arrive-mode').getByRole('button', { name, exact: true });
 
 test('the Transition toggle writes glide.land; the bar ends at the marker, and flips back', async ({
   page,
@@ -180,10 +182,10 @@ test('a land moment that waits for an earlier one: its bar and note start where 
     'title',
     /the glide starts at 12 s/,
   );
+  // A chord block that lands shows Arrive: Land (its Transition sits under Custom).
   await select(page, ['b']);
-  await expect(page.getByTestId('insp-land-note')).toContainText(
-    'the glide starts at 12 s, after an earlier moment',
-  );
+  await expect(arriveChip(page, 'Land')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('insp-transition')).toHaveCount(0);
 });
 
 test('with land in the piece defaults the toggle shows on, and an override turns one moment off', async ({
@@ -191,11 +193,12 @@ test('with land in the piece defaults the toggle shows on, and an override turns
 }) => {
   await open(page, true);
   await select(page, ['c1']);
-  await expect(landBox(page)).toBeChecked();
+  await expect(arriveChip(page, 'Land')).toHaveAttribute('aria-pressed', 'true');
   await expectBar(page, 'c1', true);
   await expectBar(page, 'c2', true);
 
-  await landBox(page).uncheck();
+  // Arrive → Custom stops landing and shows the Transition.
+  await arriveChip(page, 'Custom').click();
   expect((await moment(page, 'c1')).glide?.land).toBe(false);
   await expect(landBox(page)).not.toBeChecked();
   await expectBar(page, 'c1', false);

@@ -33,17 +33,17 @@ test('hovering a palette item shows a ghost lane item at the playhead; Escape cl
 }) => {
   await open(page);
   await seek(page, 50);
-  const unison = page.getByTestId('palette').locator('[data-moment="unison"]');
+  const chord = page.getByTestId('palette').locator('[data-moment="chord"]');
   // The palette's effects follow the playhead within a poll.
-  await expect(unison).not.toHaveAttribute('data-no-effect', /.*/);
+  await expect(chord).not.toHaveAttribute('data-no-effect', /.*/);
   const ghost = page.getByTestId('lane-ghost');
   await expect(ghost).toBeHidden();
   const n0 = await page.getByTestId('lane').locator('[data-moment]').count();
-  await unison.hover();
+  await chord.hover();
   await expect(ghost).toBeVisible();
-  await expect(ghost).toHaveAttribute('data-type', 'unison');
+  await expect(ghost).toHaveAttribute('data-type', 'chord');
   expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(50, 3);
-  await expect(ghost.locator('.lane-label')).toHaveText('unison');
+  await expect(ghost.locator('.lane-label')).not.toHaveText('');
   // Drawn at the playhead, on a sub-row, with its transition bar.
   const head = (await page.getByTestId('playhead').boundingBox())!;
   expect(
@@ -140,7 +140,7 @@ test('a drop adds the moment and the ghost goes', async ({ page }) => {
   const score = (await page.locator('#score').boundingBox())!;
   await page
     .getByTestId('palette')
-    .locator('[data-moment="unison"]')
+    .locator('[data-moment="chord"]')
     .dragTo(page.locator('#score'), {
       targetPosition: { x: score.width * 0.6, y: score.height / 2 },
     });

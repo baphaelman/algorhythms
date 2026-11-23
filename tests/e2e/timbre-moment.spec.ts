@@ -62,15 +62,15 @@ async function inRow(page: Page, sel: string, row: string): Promise<boolean> {
   return y >= r.y && y <= r.y + r.height;
 }
 
-test('the palette fits one row at 1280 px with the timbre entry', async ({ page }) => {
+test('the palette fits one row at 1280 px with the Sound entry', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('play')).toBeVisible();
   const buttons = page.getByTestId('palette').getByRole('button');
-  await expect(buttons).toHaveCount(13);
+  await expect(buttons).toHaveCount(6);
   await expect(page.getByTestId('palette').locator('[data-moment="timbre"]')).toHaveAttribute(
     'aria-keyshortcuts',
-    'B',
+    'S',
   );
   const tops = await buttons.evaluateAll((els) =>
     els.map((e) => Math.round(e.getBoundingClientRect().top)),
@@ -97,7 +97,7 @@ test('add a timbre change, edit preset and fade, see it on the Effects row, undo
   expect(before).not.toContain(added.preset);
   expect(await H(page).undoLabel()).toBe('Add timbre change');
   const insp = page.getByTestId('inspector');
-  await expect(insp.getByRole('heading')).toContainText('Timbre');
+  await expect(insp.getByRole('heading')).toContainText('Sound');
 
   // Its own row, under Level, labelled with the preset; the bar spans the fade.
   await expect(effects).toBeVisible();

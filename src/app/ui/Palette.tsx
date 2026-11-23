@@ -61,7 +61,7 @@ export function Palette() {
             key={e.type}
             type="button"
             data-moment={e.type}
-            data-row={e.row}
+            data-palette-row={e.row}
             data-no-effect={off || undefined}
             aria-disabled={off || undefined}
             title={

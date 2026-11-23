@@ -145,8 +145,8 @@ test('palette: greyed from silence with the reason; hover shows a pulse ghost; c
   await open(page, null, true);
   const btn = page.getByTestId('palette').locator('[data-moment="pulse"]');
   await expect(btn).toHaveAttribute('data-no-effect', 'true');
-  await expect(btn).toHaveAttribute('title', /pulse: No effect here: .+/);
-  await expect(btn).toHaveAttribute('aria-keyshortcuts', 'R');
+  await expect(btn).toHaveAttribute('title', /Texture: No effect here: .+/);
+  await expect(btn).toHaveAttribute('aria-keyshortcuts', 'T');
 
   await open(page, null);
   await seek(page, 10);
@@ -156,22 +156,24 @@ test('palette: greyed from silence with the reason; hover shows a pulse ghost; c
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-type', 'pulse');
   expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(10, 3);
-  // The ghost draws the accent cycle in its bar, 4 s long.
+  // The ghost draws the accent cycle in its bar.
   await expect(ghost.locator('.lane-art.lane-pulse')).toHaveCount(1);
   const { pps } = await axis(page);
-  expect((await ghost.locator('.lane-bar').boundingBox())!.width).toBeCloseTo(4 * pps, -1);
+  const ghostLen = (await ghost.locator('.lane-bar').boundingBox())!.width / pps;
   await page.mouse.move(5, 5);
   await expect(ghost).toBeHidden();
 
   await btn.click();
   const added = (await hook(page).moments()).find((m) => m.type === 'pulse' && m.id !== 'pulse1')!;
   expect(added.at).toBeCloseTo(10, 3);
-  expect(added.until).toBeCloseTo(14, 3);
-  await expect(inspector(page).getByRole('heading')).toContainText('Pulse');
-  // The R key adds one too.
+  // Texture's default (§6.4): an Arpeggio to the end of the chord block under it, as the ghost.
+  expect(added.mode).toBe('updown');
+  expect(Math.abs(added.until! - added.at - ghostLen)).toBeLessThan(0.2);
+  await expect(inspector(page).getByRole('heading')).toContainText('Texture');
+  // The T key adds one too.
   await seek(page, 2);
   await page.locator('body').click({ position: { x: 2, y: 2 } });
-  await page.keyboard.press('r');
+  await page.keyboard.press('t');
   expect((await hook(page).moments()).filter((m) => m.type === 'pulse')).toHaveLength(3);
 });
 
@@ -228,9 +230,9 @@ test('palette drop lands on a beat', async ({ page }) => {
   await page.mouse.up();
   const added = (await hook(page).moments()).find((m) => m.type === 'pulse' && m.id !== 'pulse1')!;
   expect(added.at).toBeCloseTo(11, 6);
-  // Two 4/4 bars of eighths at 60 bpm.
+  // Eighths at 60 bpm, to the end of the chord block under it (§6.4 Texture default).
   expect(added.step).toBeCloseTo(0.5, 6);
-  expect(added.until).toBeCloseTo(19, 6);
+  expect(added.until).toBeCloseTo(16, 6);
 });
 
 test('inspector: every field edits the pulse, one undo entry each; a share link keeps them', async ({
@@ -240,7 +242,8 @@ test('inspector: every field edits the pulse, one undo entry each; a share link 
   await open(page, 60);
   await hook(page).select(['pulse1']);
   const insp = inspector(page);
-  await expect(insp.getByRole('heading')).toContainText('Pulse');
+  await expect(insp.getByRole('heading')).toContainText('Texture');
+  await insp.getByTestId('insp-texture-more').locator('summary').click();
   // No transition for a pulse; together has no seed.
   await expect(insp.getByTestId('insp-transition')).toHaveCount(0);
   await expect(insp.getByTestId('insp-seed')).toHaveCount(0);
@@ -250,7 +253,7 @@ test('inspector: every field edits the pulse, one undo entry each; a share link 
   await region.fill('6');
   await region.press('Enter');
   expect((await pulseOf(page)).until).toBeCloseTo(10, 6);
-  expect(await hook(page).undoLabel()).toBe('Edit pulse region');
+  expect(await hook(page).undoLabel()).toBe('Edit texture length');
 
   // Beat values (a tempo: 1 s a beat): 1/8 is pressed; 1/16 writes 0.25 s.
   const beats = insp.getByTestId('insp-pulse-beats');

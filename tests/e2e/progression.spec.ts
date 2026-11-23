@@ -1,5 +1,6 @@
 /**
- * Progression (PLAN.md §6.2 `progression`, revision 10): add one from the palette, type its
+ * Progression (PLAN.md §6.2 `progression`, revision 10): a progression moment from a file (the
+ * palette no longer adds one, §6.4) edits under its chord block's "Progression" fold: type its
  * chords, see each chord's name on the lane bar, follow the HUD chord while playing, then Freeze
  * it into chord moments (one undo entry). Chromium only.
  */
@@ -81,16 +82,43 @@ async function open(page: Page): Promise<void> {
   });
 }
 
+/** Adds progression `chords` (each `len` s) at `at` (as one undo entry) and selects it. */
+async function addProgression(
+  page: Page,
+  at: number,
+  chords: string[],
+  len: number,
+  count?: number,
+): Promise<void> {
+  await page.evaluate(
+    ({ at, chords, len, count }) => {
+      const h = window.__algorhythms!;
+      const p = structuredClone(h.store.getState().piece) as unknown as { moments: object[] };
+      p.moments.push({
+        id: 'prog01',
+        type: 'progression',
+        at,
+        chords: chords.map((notes) => ({ notes, len })),
+        voicing: 'even',
+        assign: 'ordered',
+        ...(count ? { count } : {}),
+      });
+      h.actions.setPiece(p);
+      h.actions.select(['prog01']);
+    },
+    { at, chords, len, count },
+  );
+}
+
 test('add a progression, type chords, lane names, HUD while playing, Freeze', async ({ page }) => {
   await open(page);
-  await seek(page, 2);
-  await page.getByTestId('palette').locator('[data-moment="progression"]').click();
+  await addProgression(page, 2, ['I', 'vi', 'IV', 'V'], 2.5);
   const added = (await H(page).moments()).find((m) => m.type === 'progression')!;
   expect(added.at).toBeCloseTo(2, 3);
-  expect(added.chords!.map((c) => c.notes)).toEqual(['I', 'vi', 'IV', 'V']);
 
   const insp = page.getByTestId('inspector');
   await expect(insp.locator('[data-moment-type="progression"]')).toBeVisible();
+  await insp.getByTestId('insp-prog-more').locator('summary').click();
   const text = insp.getByTestId('prog-text');
   await text.fill('I 1, IV 1, V 1, I 1');
   await text.press('Enter');
@@ -188,12 +216,9 @@ test('owner notes: on New → Empty, chords match, default spacing, the chord li
   await page.getByTestId('new-piece').click();
   await expect.poll(async () => (await H(page).moments()).length).toBe(0);
 
-  await page.getByTestId('palette').locator('[data-moment="progression"]').click();
+  // A dorian's own chords as unit tests' default progression has them (progression.test.ts).
+  await addProgression(page, 0, ['i', 'IV', '♭VII', 'i'], 5.8, 3);
   const prog = (await H(page).moments()).find((m) => m.type === 'progression')!;
-  expect(prog.at).toBe(0);
-  // No tempo: glide 3 s + stagger 0.8 s, then Next's 2 s hold.
-  // A dorian's own chords, as the chips name them.
-  expect(prog.chords).toEqual(['i', 'IV', '♭VII', 'i'].map((notes) => ({ notes, len: 5.8 })));
 
   // Every chord, the first included: three notes in a close voicing around the middle.
   for (let k = 0; k < 4; k++) {
@@ -203,6 +228,7 @@ test('owner notes: on New → Empty, chords match, default spacing, the chord li
   }
 
   const insp = page.getByTestId('inspector');
+  await insp.getByTestId('insp-prog-more').locator('summary').click();
   const rows = insp.getByTestId('prog-chord');
   const bar = page.locator(`.lane-item[data-moment="${prog.id}"]`);
   await expect(rows).toHaveCount(4);

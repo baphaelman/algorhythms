@@ -135,9 +135,9 @@ test.beforeEach(async ({ page }) => {
 
 test('a palette drag shows ghost lines at the drop time; Escape clears them', async ({ page }) => {
   const n0 = await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length);
-  const unison = page.getByTestId('palette').locator('[data-moment="unison"]');
+  const chordBtn = page.getByTestId('palette').locator('[data-moment="chord"]');
   const box = (await page.locator('#score').boundingBox())!;
-  const ub = (await unison.boundingBox())!;
+  const ub = (await chordBtn.boundingBox())!;
   await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
   await page.mouse.down();
   const x = box.x + box.width * 0.5;
@@ -168,10 +168,10 @@ test('a palette drag shows ghost lines at the drop time; Escape clears them', as
 
 test('dragging out of the score cancels the drag preview', async ({ page }) => {
   const n0 = await page.evaluate(() => window.__algorhythms!.store.getState().piece.moments.length);
-  const unison = page.getByTestId('palette').locator('[data-moment="unison"]');
+  const chordBtn = page.getByTestId('palette').locator('[data-moment="chord"]');
   const score = page.locator('#score');
   const box = (await score.boundingBox())!;
-  const ub = (await unison.boundingBox())!;
+  const ub = (await chordBtn.boundingBox())!;
   await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
   await page.mouse.down();
   const x = box.x + box.width * 0.5;
@@ -197,7 +197,7 @@ test('a palette drop still adds the moment, and the ghost goes', async ({ page }
   const box = (await page.locator('#score').boundingBox())!;
   await page
     .getByTestId('palette')
-    .locator('[data-moment="unison"]')
+    .locator('[data-moment="chord"]')
     .dragTo(page.locator('#score'), {
       targetPosition: { x: box.width * 0.6, y: box.height / 2 },
     });
@@ -211,8 +211,8 @@ test('hovering the palette previews on the score and makes no sound', async ({ p
   await seek(page, 1);
   await waitForSilence(page);
   const before = (await hook(page)).count;
-  await page.getByTestId('palette').locator('[data-moment="unison"]').hover();
-  await expect.poll(async () => (await hook(page)).preview).toBe('unison');
+  await page.getByTestId('palette').locator('[data-moment="chord"]').hover();
+  await expect.poll(async () => (await hook(page)).preview).toBe('chord');
   await expect.poll(async () => (await hook(page)).ghostAt).toBeCloseTo(1, 3);
   expect(await peakRms(page, 1200)).toBeLessThan(0.0005);
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);

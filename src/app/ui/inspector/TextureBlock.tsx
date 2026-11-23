@@ -55,7 +55,12 @@ export function TextureFields({ m, piece }: { m: WalkMoment | PulseMoment; piece
         // Today's testids, so the region field keeps its name.
         testId={m.type === 'walk' ? 'insp-walk-region' : 'insp-pulse-region'}
       />
-      <details className="insp-advanced" data-testid="insp-texture-more">
+      {/* Open when a frozen walk has its badge and Unfreeze there. */}
+      <details
+        className="insp-advanced"
+        data-testid="insp-texture-more"
+        open={m.type === 'walk' && m.fixed !== undefined}
+      >
         <summary>More</summary>
         {m.type === 'walk' ? (
           <WalkFields m={m} piece={piece} region={false} />

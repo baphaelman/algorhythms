@@ -134,8 +134,8 @@ test('a ruler click past the end puts the playhead there; Add extends the piece'
   await page.getByTestId('palette').locator('[data-moment="chord"]').click();
   await expect.poll(async () => (await state(page)).moments).toBe(3);
   const s = await state(page);
-  // The chord's glide plus the 4 s tail: the end moved out from 30 s.
-  expect(s.endAt).toBeGreaterThan(t + 4);
+  // A palette chord lands on its marker (§6.4): the 4 s tail after it; the end moved out from 30 s.
+  expect(s.endAt).toBeGreaterThanOrEqual(t + 4 - 1e-3);
   expect(s.duration).toBeCloseTo(s.endAt!, 3);
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await state(page)).endAt).toBe(30);

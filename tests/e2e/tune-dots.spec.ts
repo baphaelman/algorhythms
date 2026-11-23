@@ -274,7 +274,7 @@ test('typed notes: beats with a tempo, errors inline, Enter or blur, undo, share
   expect(await tuneOf(fresh)).toEqual(m);
 });
 
-test('typed notes in seconds without a tempo; the merge Fade says when it applies', async ({
+test('typed notes in seconds without a tempo; a merge edits as a chord block', async ({
   page,
 }) => {
   await open(page, null);
@@ -298,8 +298,10 @@ test('typed notes in seconds without a tempo; the merge Fade says when it applie
   await page.keyboard.press('ArrowLeft');
   expect(await lens(page)).toEqual([0.65, 0.35]);
 
+  // A merge is a Chords block (§6.4): its Notes: n, no merge Fade.
   await H(page).select(['merge1']);
-  await expect(page.getByTestId('inspector')).toContainText('Fade (when no line survives)');
+  await expect(page.getByTestId('inspector').getByRole('heading')).toContainText('Chord');
+  await expect(page.getByTestId('insp-chord-count-slider')).toBeVisible();
 });
 
 /** Screen point for piece time `t` and pitch `p` (pitch from the tune dots' C4 and E4). */

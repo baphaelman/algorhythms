@@ -42,8 +42,30 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 test('palette click adds a moment at the playhead', async ({ page }) => {
   await openNoGrid(page);
   const palette = page.getByTestId('palette');
-  await expect(palette.getByRole('button')).toHaveCount(13);
-  await expect(palette.locator('[data-moment="pin"], [data-moment="note"]')).toHaveCount(0);
+  // The rows' palette (§6.4, M10 acceptance): six short labels, explanations in tooltips only.
+  await expect(palette.getByRole('button')).toHaveText([
+    /Chord$/,
+    /Texture$/,
+    /Melody$/,
+    /Level$/,
+    /Sound$/,
+    /Key$/,
+  ]);
+  await expect(palette.getByRole('button').first()).toHaveAttribute('title', /\(C\)$/);
+  for (const [i, k] of ['C', 'T', 'M', 'L', 'S', 'K'].entries())
+    await expect(palette.getByRole('button').nth(i)).toHaveAttribute('aria-keyshortcuts', k);
+  for (const gone of [
+    'note',
+    'pin',
+    'unison',
+    'split',
+    'merge',
+    'shift',
+    'spread',
+    'walk',
+    'progression',
+  ])
+    await expect(palette.locator(`[data-moment="${gone}"]`)).toHaveCount(0);
   const before = await moments(page);
   await palette.locator('[data-moment="chord"]').click();
   const ms = (await moments(page)).filter((m) => !before.some((b) => b.id === m.id));
@@ -98,15 +120,11 @@ test('letters add each type; modified letters do not', async ({ page }) => {
   await openNoGrid(page);
   const keys: [string, string][] = [
     ['c', 'chord'],
-    ['u', 'unison'],
-    ['s', 'split'],
-    ['m', 'merge'],
-    ['t', 'shift'],
-    ['p', 'spread'],
-    ['w', 'walk'],
-    ['k', 'key'],
+    ['t', 'pulse'],
+    ['m', 'tune'],
     ['l', 'level'],
-    ['b', 'timbre'],
+    ['s', 'timbre'],
+    ['k', 'key'],
   ];
   for (const [k, type] of keys) {
     const before = await moments(page);
@@ -120,9 +138,9 @@ test('letters add each type; modified letters do not', async ({ page }) => {
     await page.keyboard.press('Delete');
     expect(await moments(page)).toHaveLength(before.length);
   }
-  // I no longer adds a pin (§11.3 rev 14).
+  // The old letters add nothing (I pin, §11.3 rev 14; U P W R E O B, §6.4).
   const n = (await moments(page)).length;
-  await page.keyboard.press('i');
+  for (const k of ['i', 'u', 'p', 'w', 'r', 'e', 'o', 'b']) await page.keyboard.press(k);
   for (const combo of ['Control+c', 'Meta+c', 'Shift+s']) {
     await page.keyboard.press(combo);
   }
