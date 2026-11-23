@@ -76,6 +76,7 @@ Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mj
 | Interference | Experiment. 12 sine lines, one part each (so they never merge), a few cents apart: they beat. `spread` (snap off) widens it; `shift` by 0 scale steps snaps the cluster into a chord; `spread` 0 gathers it | 18 | 860 |
 | Switchyard | Rhythm experiment. Four pulses with cycle lengths 4, 8, 10, 16 phase against the bar; one opening voicing, then `shift` by scale steps planes all parts at once; the solo is a walk inside a random pulse | 62 | 1,260 |
 | Little Round | A three-voice round: one tune pasted onto three parts two bars apart; entries are births that swoop up out of the line below; custom colours show the braid | 33 | 842 |
+| Moonwater | E minor, 6/8 at 156 eighths a minute: flute lead over a four-voice marimba arpeggio (one `together` pulse per voice, order 0 1 2 3 2 1) and an organ bass. Intro, A, A′, B, A′, outro (40 bars, 1′32″). Hand voicings, as in §1; ported from a gallery piece (2026-11-22) | 69 | 1,370 |
 
 **What works well**
 - Numerals with `close` voicing in a register give good voice leading for free, and a `key` moment carries them.
