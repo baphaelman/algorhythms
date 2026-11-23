@@ -82,106 +82,134 @@ test('a video of a 45 s section of a 3-minute piece: length, first frame, audio,
   await expect(page.getByTestId('section-summary')).toContainText('2:00–2:45');
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))));
 
-  const r = await page.evaluate(async () => {
-    const h = (window as unknown as HookWindow).__algorhythms;
-    const run = await h.exportRun();
-    const m = await h.videoExport();
-    const opts = run.lastPreviewRequest()!.options as Parameters<typeof m.exportVideo>[1];
-    const piece = h.store.getState().piece as Parameters<typeof m.exportVideo>[0];
-    const sink = m.blobSink();
-    const result = await m.exportVideo(piece, opts, sink);
-    const blob = sink.blob();
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const el = document.createElement('video');
-    el.muted = true;
-    el.preload = 'auto';
-    const once = (type: string) =>
-      new Promise<void>((resolve, reject) => {
-        el.addEventListener(type, () => resolve(), { once: true });
-        el.addEventListener('error', () => reject(new Error(el.error?.message ?? 'media')), {
-          once: true,
-        });
-      });
-    const url = URL.createObjectURL(blob);
-    const loaded = once('loadeddata');
-    el.src = url;
-    document.body.append(el);
-    await loaded;
-    const W = 1280;
-    const H = 720;
-    const c = document.createElement('canvas');
-    c.width = W;
-    c.height = H;
-    const g = c.getContext('2d', { willReadFrequently: true })!;
-    const seeked = once('seeked');
-    el.currentTime = 0.5 / 30;
-    await seeked;
-    await new Promise((res) => requestAnimationFrame(() => setTimeout(res, 50)));
-    g.drawImage(el, 0, 0, W, H);
-    const got = g.getImageData(0, 0, W, H).data;
-    const psnr = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
-      let se = 0;
-      for (let i = 0; i < a.length; i += 4) {
-        for (let j = 0; j < 3; j++) se += (a[i + j] - b[i + j]) ** 2;
-      }
-      return 10 * Math.log10((255 * 255) / Math.max(se / ((a.length / 4) * 3), 1e-9));
-    };
-    const first = psnr(got, m.referenceFrame(piece, opts, 0).data);
-    const later = psnr(got, m.referenceFrame(piece, opts, 60).data);
-    const duration = el.duration;
-    el.remove();
-    URL.revokeObjectURL(url);
-
-    // Audio: the decoded track against the span's offline render; the cuts' first and last 5 ms.
-    const decoded = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(bytes.buffer);
-    const [wl, wr] = await m.renderMix(piece, opts.section);
-    const dl = decoded.getChannelData(0);
-    const dr = decoded.getChannelData(1);
-    const n = Math.min(dl.length, wl.length);
-    const span = 2 * 48000;
-    const a = new Float32Array(span);
-    const b = new Float32Array(span + 960);
-    const mid = Math.floor(n / 2);
-    for (let i = 0; i < span; i++) a[i] = wl[mid + i] + wr[mid + i];
-    for (let i = 0; i < span + 960; i++) b[i] = dl[mid - 480 + i] + dr[mid - 480 + i];
-    const lag = m.xcorrLag(a, b, 0, 960) - 480;
-    const rmsDb = (x: Float32Array, y: Float32Array, from: number, to: number) => {
-      let e = 0;
-      for (let i = from; i < to; i++) e += x[i] * x[i] + y[i] * y[i];
-      return 10 * Math.log10(e / (2 * Math.max(1, to - from)) + 1e-20);
-    };
-    const end = Math.round(45 * 48000);
-    return {
-      frames: result.frames,
-      duration,
-      first,
-      later,
-      lag,
-      wavSeconds: wl.length / 48000,
-      // The render's own level at the cuts is 0 (the fade); the decoded track's too, up to AAC.
-      startDb: rmsDb(dl, dr, 0, 240),
-      endDb: rmsDb(dl, dr, end - 240, end),
-      renderStartDb: rmsDb(wl, wr, 0, 240),
-      renderEndDb: rmsDb(wl, wr, end - 240, end),
-      bodyDb: rmsDb(dl, dr, 48000, n - 48000),
-      renderStart: Math.max(Math.abs(wl[0]), Math.abs(wr[0])),
-      renderEnd: Math.max(Math.abs(wl[end - 1] ?? 0), Math.abs(wr[end - 1] ?? 0)),
-    };
+  // The engine's audio codec, and Opus too where it prefers AAC (Linux Chromium has no AAC).
+  const codecs = await page.evaluate(async () => {
+    const m = await (window as unknown as HookWindow).__algorhythms.videoExport();
+    const s = await m.videoSupport({ aspect: '16:9', size: '720', fps: 30 });
+    if (!s.ok) throw new Error(s.reason);
+    const opus = await AudioEncoder.isConfigSupported({
+      codec: 'opus',
+      sampleRate: 48000,
+      numberOfChannels: 2,
+      bitrate: 192_000,
+    }).then(
+      (x) => x.supported === true,
+      () => false,
+    );
+    return s.audio === 'opus' || !opus ? [s.audio] : [s.audio, 'opus'];
   });
-  console.log('[m11] 45 s section video', JSON.stringify(r));
-  expect(r.frames).toBe(45 * 30);
-  expect(Math.abs(r.duration - 45)).toBeLessThanOrEqual(1 / 30);
-  expect(r.first).toBeGreaterThan(38);
-  expect(r.later).toBeLessThan(r.first - 4);
-  expect(r.lag).toBe(0);
-  expect(r.wavSeconds).toBeCloseTo(45, 2);
-  expect(r.renderStart).toBeLessThan(1e-6);
-  expect(r.renderEnd).toBeLessThan(1e-3);
-  // No click: the decoded cuts are as quiet as the render's own fades there (AAC aside).
-  expect(r.startDb).toBeLessThan(Math.max(r.renderStartDb, -90) + 6);
-  expect(r.endDb).toBeLessThan(Math.max(r.renderEndDb, -90) + 6);
-  expect(r.startDb).toBeLessThan(r.bodyDb - 20);
-  expect(r.endDb).toBeLessThan(r.bodyDb - 20);
+  for (const audio of codecs) {
+    const r = await page.evaluate(async (audio) => {
+      const h = (window as unknown as HookWindow).__algorhythms;
+      const run = await h.exportRun();
+      const m = await h.videoExport();
+      const opts = run.lastPreviewRequest()!.options as Parameters<typeof m.exportVideo>[1];
+      const piece = h.store.getState().piece as Parameters<typeof m.exportVideo>[0];
+      const sink = m.blobSink();
+      const result = await m.exportVideo(piece, opts, sink, { codecs: { audio } });
+      const blob = sink.blob();
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const el = document.createElement('video');
+      el.muted = true;
+      el.preload = 'auto';
+      const once = (type: string) =>
+        new Promise<void>((resolve, reject) => {
+          el.addEventListener(type, () => resolve(), { once: true });
+          el.addEventListener('error', () => reject(new Error(el.error?.message ?? 'media')), {
+            once: true,
+          });
+        });
+      const url = URL.createObjectURL(blob);
+      const loaded = once('loadeddata');
+      el.src = url;
+      document.body.append(el);
+      await loaded;
+      const W = 1280;
+      const H = 720;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      const seeked = once('seeked');
+      el.currentTime = 0.5 / 30;
+      await seeked;
+      await new Promise((res) => requestAnimationFrame(() => setTimeout(res, 50)));
+      g.drawImage(el, 0, 0, W, H);
+      const got = g.getImageData(0, 0, W, H).data;
+      const psnr = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
+        let se = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          for (let j = 0; j < 3; j++) se += (a[i + j] - b[i + j]) ** 2;
+        }
+        return 10 * Math.log10((255 * 255) / Math.max(se / ((a.length / 4) * 3), 1e-9));
+      };
+      const first = psnr(got, m.referenceFrame(piece, opts, 0).data);
+      const later = psnr(got, m.referenceFrame(piece, opts, 60).data);
+      const duration = el.duration;
+      el.remove();
+      URL.revokeObjectURL(url);
+
+      // Audio: the decoded track against the span's offline render; the cuts' first and last 5 ms.
+      const decoded = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(bytes.buffer);
+      const [wl, wr] = await m.renderMix(piece, opts.section);
+      const dl = decoded.getChannelData(0);
+      const dr = decoded.getChannelData(1);
+      const n = Math.min(dl.length, wl.length);
+      // Lag at three places, on first differences: the raw mix is bass-heavy, so its correlation
+      // peak is broad and lossy coding (Opus) moves it by a sample or by a bass period.
+      const span = 48000;
+      const diff = (x: Float32Array, y: Float32Array, at: number, len: number) => {
+        const out = new Float32Array(len);
+        for (let i = 0; i < len; i++)
+          out[i] = x[at + i + 1] + y[at + i + 1] - x[at + i] - y[at + i];
+        return out;
+      };
+      const lags = [0.25, 0.5, 0.75].map((f) => {
+        const at = Math.floor(n * f);
+        return m.xcorrLag(diff(wl, wr, at, span), diff(dl, dr, at - 480, span + 960), 0, 960) - 480;
+      });
+      const rmsDb = (x: Float32Array, y: Float32Array, from: number, to: number) => {
+        let e = 0;
+        for (let i = from; i < to; i++) e += x[i] * x[i] + y[i] * y[i];
+        return 10 * Math.log10(e / (2 * Math.max(1, to - from)) + 1e-20);
+      };
+      const end = Math.round(45 * 48000);
+      return {
+        frames: result.frames,
+        duration,
+        first,
+        later,
+        lags,
+        wavSeconds: wl.length / 48000,
+        decodedSeconds: dl.length / 48000,
+        // The render's own level at the cuts is 0 (the fade); the decoded track's too, up to AAC.
+        startDb: rmsDb(dl, dr, 0, 240),
+        endDb: rmsDb(dl, dr, end - 240, end),
+        renderStartDb: rmsDb(wl, wr, 0, 240),
+        renderEndDb: rmsDb(wl, wr, end - 240, end),
+        bodyDb: rmsDb(dl, dr, 48000, n - 48000),
+        renderStart: Math.max(Math.abs(wl[0]), Math.abs(wr[0])),
+        renderEnd: Math.max(Math.abs(wl[end - 1] ?? 0), Math.abs(wr[end - 1] ?? 0)),
+      };
+    }, audio);
+    console.log(`[m11] 45 s section video (${audio})`, JSON.stringify(r));
+    expect(r.frames).toBe(45 * 30);
+    expect(Math.abs(r.duration - 45)).toBeLessThanOrEqual(1 / 30);
+    expect(r.first).toBeGreaterThan(38);
+    expect(r.later).toBeLessThan(r.first - 4);
+    // In samples; ±1 allows for lossy coding. A pre-skip cut twice or not at all is 312.
+    for (const lag of r.lags) expect(Math.abs(lag), audio).toBeLessThanOrEqual(1);
+    // The edit list's duration is in movie ticks (ms): Opus's 6.5 ms pre-skip rounds to 7.
+    expect(Math.abs(r.decodedSeconds - 45), audio).toBeLessThanOrEqual(0.001);
+    expect(r.wavSeconds).toBeCloseTo(45, 2);
+    expect(r.renderStart).toBeLessThan(1e-6);
+    expect(r.renderEnd).toBeLessThan(1e-3);
+    // No click: the decoded cuts are as quiet as the render's own fades there (AAC aside).
+    expect(r.startDb).toBeLessThan(Math.max(r.renderStartDb, -90) + 6);
+    expect(r.endDb).toBeLessThan(Math.max(r.renderEndDb, -90) + 6);
+    expect(r.startDb).toBeLessThan(r.bodyDb - 20);
+    expect(r.endDb).toBeLessThan(r.bodyDb - 20);
+  }
 });
 
 test('a HUD layout made at 16:9 keeps each readout on its corner at 9:16 and 1:1', async ({
@@ -471,10 +499,27 @@ test('a video exported at −14 LUFS measures −14 ± 0.5 LUFS with a true peak
       const d = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(bytes);
       const ch = { left: d.getChannelData(0), right: d.getChannelData(1) };
       const meas = measureLoudness(ch, 48000) as { lufs: number; truePeakDb: number };
-      return { audio: res.audio, seconds: d.duration, lufs: meas.lufs, tp: meas.truePeakDb, ms };
+      const aac = await AudioEncoder.isConfigSupported({
+        codec: 'mp4a.40.2',
+        sampleRate: 48000,
+        numberOfChannels: 2,
+        bitrate: 192_000,
+      }).then(
+        (x) => x.supported === true,
+        () => false,
+      );
+      return {
+        audio: res.audio,
+        aac,
+        seconds: d.duration,
+        lufs: meas.lufs,
+        tp: meas.truePeakDb,
+        ms,
+      };
     });
     console.log(`[m11] ${example} video at −14`, JSON.stringify(r));
-    expect(r.audio).toMatch(browserName === 'chromium' ? /mp4a/ : /mp4a|opus/);
+    // AAC where the engine offers it (PLAN §12), else Opus (normalised to its −2 dBTP ceiling).
+    expect(r.audio).toBe(r.aac ? 'mp4a.40.2' : 'opus');
     expect(Math.abs(r.lufs + 14), example).toBeLessThanOrEqual(0.5);
     expect(r.tp, example).toBeLessThanOrEqual(-1);
   }

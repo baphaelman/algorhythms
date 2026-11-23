@@ -646,7 +646,11 @@ export class Mp4Muxer {
     const len = t.kind === 'audio' ? this.audio?.length : undefined;
     let capped = false;
     if (len !== undefined && Number.isFinite(len) && len >= 0) {
-      const max = Math.round((len * t.timescale) / (this.audio?.sampleRate ?? t.timescale));
+      // Pre-skip the edit list leaves in (priming 0: the export's Opus) is still dropped by the
+      // decoder, so it lengthens the edit; else the decoded track ends that much short.
+      const preSkip = Math.max(0, this.opusPreSkipTicks() - priming);
+      const max =
+        Math.round((len * t.timescale) / (this.audio?.sampleRate ?? t.timescale)) + preSkip;
       if (max < shownTicks) {
         shownTicks = max;
         capped = true;
@@ -660,6 +664,13 @@ export class Mp4Muxer {
       edits.push({ duration: shown, mediaTime });
     }
     return { deltas, offsets, mediaDuration, edits, duration: empty + shown };
+  }
+
+  /** The OpusHead pre-skip in track ticks (0 for AAC or without a description). */
+  private opusPreSkipTicks(): number {
+    const a = this.audio;
+    if (a?.kind !== 'opus' || !this.at?.description) return 0;
+    return Math.round((parseOpusHead(this.at.description).preSkip * this.at.timescale) / 48000);
   }
 
   private primingTicks(): number {
