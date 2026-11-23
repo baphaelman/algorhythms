@@ -323,15 +323,23 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
         compiled: Parameters<typeof m.previewVideoFrame>[2];
       };
       const live = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;
-      const draw = (o: typeof req.options, scale: number, w: number, hh: number) => {
+      // `opaque`: the export's own context (alpha: false), at frame k's time. Linux engines draw
+      // text differently on an opaque canvas (~40 dB against a transparent one).
+      const draw = (
+        o: typeof req.options,
+        scale: number,
+        w: number,
+        hh: number,
+        opaque = false,
+      ) => {
         const c = new OffscreenCanvas(w, hh);
-        const g = c.getContext('2d')!;
-        m.previewVideoFrame(g as never, piece, compiled, o, req.t, scale);
+        const g = c.getContext('2d', { alpha: !opaque })!;
+        m.previewVideoFrame(g as never, piece, compiled, o, opaque ? k / o.fps : req.t, scale);
         return url(g.getImageData(0, 0, w, hh));
       };
       const k = Math.round(req.t * req.options.fps);
       const frame = await url(m.referenceFrame(piece, req.options, k));
-      const full = await draw(req.options, 1, 1920, 1080);
+      const full = await draw(req.options, 1, 1920, 1080, true);
       const { colours: _c, glow: _g, vignette: _v, pitchGuides: _p, ...plain } = req.options.look!;
       const noFx = { ...plain, colours: req.options.look!.colours };
       return {

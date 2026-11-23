@@ -2898,3 +2898,6 @@ PLAN §12 "UI and interactions", §15 M11 line 5. Checked by keyboard (Chromium,
 
 ## M11: minimum line opacity (render + app; 2026-11-23)
 `Look.minLineOpacity` / `ScoreStyle.minLineOpacity` (0..1; 0 or absent = no field, goldens unchanged); Look slider `look-min-opacity` after Vignette (generic `LOOK_CONTROLS`, no dialog file touched). `opacityIn(…, floor)` lifts level × pulse to the floor (scaled down below level 0.05, so a line silenced by its level still vanishes); life fades still apply; hit marks and the editor's silent traces unchanged. Remembered in prefs without a version bump (missing = 0). Tests: `level.test` (canvas + SVG ≥ floor between hits, 0 identical), `min-line-opacity.spec` (preview = export frame; frame and poster PNG brighter) on chromium-dev/prod, firefox-dev.
+
+## Fix: m11-acceptance video "atExport" check on Linux (2026-11-23)
+CI Linux got 39.7 dB (no codec involved: two canvas renders). The test drew the scale-1 preview on a transparent canvas at `req.t`, while `referenceFrame` draws on the export's opaque (`alpha: false`) context at frame k's time; Linux Chromium/Firefox render text differently on opaque canvases (likely cause; can't run Linux locally). The test now draws on an opaque canvas at `k / fps`: 138 dB on macOS chromium/firefox/webkit; the controls (2 / 27 dB) keep their margins. Not an app bug.
