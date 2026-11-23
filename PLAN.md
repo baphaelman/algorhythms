@@ -766,7 +766,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Octaves before merges (owner 2026-11-21):** a chord or degrees moment (with or without `count`, Nearest voicing included) that would rest two lines on one pitch moves the extra line to the nearest free octave of a chord tone within its range; it merges only when the range has no free pitch left. Explicit pitch lists and hand edits stay literal: their unisons merge as written.
 - **Shift-drag moves by octaves (owner 2026-11-21; replaces "Shift = chromatic" in Note points and Every dot is draggable):** dragging a dot or a note point vertically with Shift held moves it in whole octaves from where it started (all selected dots by the same octaves). While Shift is held the score shows faint guide lines at each octave of the start pitch within the line's range and a label at the dot ("+1 oct", "−2 oct"), and pressing or releasing Shift mid-drag switches live. Shift+▲/▼ steps a selected dot or note point by an octave. Integrator call: chromatic moves to Alt, which now means "free" on both axes (pitch chromatic, time off the grid). Shift-click on a dot still adds or removes it from the selection when the pointer does not move.
 - **One sound for all notes (owner 2026-11-21):** the Notes drawer header gets an "All notes" timbre menu. Picking a timbre sets it on every note in the pool as one undo entry; the menu shows "Mixed" when the notes differ, and per-note menus stay as they are.
-- **Drag preview and auditioning (owner 2026-11-21):** dragging a moment from the palette over the score or lane shows, live, what it would do if dropped there (ghost lines from the drop time, the same preview hover uses); leaving the score or pressing Escape cancels it. Hover previews (palette, suggestions, context menu) are silent. Sound plays only for edits inside an open moment: picking a chord, quality, bass, voicing or degrees in the inspector plays the moment's resulting notes once (about 1.5 s); dragging a note or note point, or stepping it with ▲/▼, sounds that note at its snapped pitch as it moves and stops on release. Integrator calls: auditions play only while the transport is stopped (during playback the edit is heard through the hot-swap), use the note's own timbre and level, and selecting a moment plays what it moves to, its resulting notes once, not the transition (owner, later the same day).
+- **Drag preview and auditioning (owner 2026-11-21):** dragging a moment from the palette over the score or lane shows, live, what it would do if dropped there (ghost lines from the drop time, the same preview hover uses); leaving the score or pressing Escape cancels it. Hover previews (palette, suggestions, context menu) are silent. **Revised (owner, 2026-11-23, revision 17; M13):** hovering an Add or Next card sounds what it would do (M13 "Hover to hear"). Otherwise sound plays only for edits inside an open moment: picking a chord, quality, bass, voicing or degrees in the inspector plays the moment's resulting notes once (about 1.5 s); dragging a note or note point, or stepping it with ▲/▼, sounds that note at its snapped pitch as it moves and stops on release. Integrator calls: auditions play only while the transport is stopped (during playback the edit is heard through the hot-swap), use the note's own timbre and level, and selecting a moment plays what it moves to, its resulting notes once, not the transition (owner, later the same day).
 - **Key changes carry forward to fixed notes (owner 2026-11-21):** a `key` moment lasts until the next `key` moment, as before; key-relative moments in that span (degrees, Roman numerals, scale-step shifts, walks, `snap: 'scale'`, tonic targets) follow it automatically. Fixed notes in the span (pitch lists, named chords, frozen chords and walks, note points, pins and unisons on a numeric pitch, per-voice pitch overrides) do not; when a key moment is added or its tonic or scale is edited and its span holds any, the inspector asks inline, not modally: "N moments until m:ss use fixed notes. Move them to <key>?" with Move / Keep. Move remaps each fixed pitch by scale degree (same degree and octave in the new key, chromatic notes keep their offset, the tonic moves the shorter way, ties down as in §7.8, lines' ranges fold by octave with a diagnostic) and joins the key edit's undo entry. The check covers only that key moment's span. Next-move suggestions write their chords and targets key-relative wherever the existing schema can say it (degrees, tonic), so they follow key changes without asking.
 - **Space always plays and pauses (owner 2026-11-21):** a Space press toggles the transport whatever has focus: a button, chip, checkbox, select, slider, a lane or score element, the palette, the drawer or the inspector. Focused controls never take Space for themselves (no button click, no checkbox or chip toggle, no select opening). Integrator calls: the only exception is typing in a text field (text, search and number inputs, textarea, contenteditable), where Space types; Space held with a pointer drag still pans (rev 7) and does not toggle on release; controls that used Space (the degree picker's chips) use Enter instead.
 - **The piece's key is a fixed key moment at 0:00 (owner 2026-11-21):** the lane shows a `key` moment at 0:00 for the piece's key. It can be selected and edited in the inspector (tonic, scale, with the key carry-forward prompt), but not deleted, moved or copied. Integrator call: it stands for `piece.key`, with no schema change, and later `key` moments work as before.
@@ -783,7 +783,7 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
   - Schema: files whose moments or start produce stacked lines compile with merges; `wobble` is read and ignored with an `info` diagnostic. Goldens and examples change; the examples keep their loudness balance through weights.
 - **Context-aware moments (revision 6, owner 2026-11-20):**
   - A moment with a `no-effect` diagnostic is drawn dimmed on the Moments row, with the reason as its tooltip and in the inspector.
-  - The palette reads the state at the playhead: a moment type that would have no effect there is greyed out with the reason (merge when all voices share one pitch or one voice is active, split at the pool size, unison when already a unison, and so on). Hovering an enabled one previews it silently on the score from the playhead (no sound, no undo entry; owner 2026-11-21: hover makes no sound).
+  - The palette reads the state at the playhead: a moment type that would have no effect there is greyed out with the reason (merge when all voices share one pitch or one voice is active, split at the pool size, unison when already a unison, and so on). Hovering an enabled one previews it silently on the score from the playhead (no sound, no undo entry; owner 2026-11-21: hover makes no sound; **revised in revision 17:** Add and Next cards sound on hover, see M13).
   - Later (after these): **next-move suggestions**: after the selected moment, 3–4 suggested moves drawn from the Generate composer's grammar, each one click to add and hover to preview. **Replaced by the theory-aware Next below (revision 14).**
 - **Theory-aware Next (revision 14, owner 2026-11-22; M10a; ships in today's editor before §6.4):** Next suggests chords the way a musician would. Reference implementation: `rankNext`, `pickCards`, `bestBetween`, `pickerScores` and the tables in `docs/design/moments-rethought.html`.
   - **Jobs.** Every chord the key offers has a job: **Home** (I; i), **Near home** (vi, iii; ♭III in minor), **Lift** (IV, ii; iv, ii°, ♭VI in minor), **Tension** (V, vii°; v, V, ♭VII in minor), **Surprise** (borrowed and applied chords: iv, ♭VI, ♭VII, V/V, V/vi, V/IV in major; IV, ♭II in minor). The scale's third picks the major or minor family. A modal key's own chords keep a function job (Dorian IV is Lift, Mixolydian ♭VII is Tension). Pentatonic and blues keys are judged against their parent scale. Whole-tone, chromatic and locrian keys keep the old composer grammar.
@@ -976,6 +976,7 @@ The owner will post pieces on YouTube. A review of the gallery's best videos (Cr
 - **Look additions** (video and poster; the Controls rules apply):
   - **Glow:** a 0–100 % slider: soft light around the lines, drawn from the lines only. It needs a fallback where canvas `filter` is unsupported.
   - **Vignette:** 0–100 %.
+  - **Minimum line opacity:** 0–100 %, default 0. Sounding lines are drawn at least this bright, so gated or pulsed parts stay bold between hits (Calling Changes, revision 17).
   - **Guide lines at pitches:** note names typed or picked, each drawn as a faint horizontal line with an optional label. Crease needed a silent voice to draw its crease.
   - No film grain: compression smears it.
   - All default to off.
@@ -1246,7 +1247,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled), on Crease, Night Sleeper and one example;
   - with glue 0 and width 1 every render golden is unchanged; with glue or width on, the stems plus the FX return still sum to the mix (the §12 tolerance);
   - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with a decoded quality of at least 40 dB PSNR against the rendered frames on a dense piece (integrator call 2026-11-23: browser encoders spend far less than the target on these frames and more bits barely raise quality, so the target is a cap, not a goal); its audio is AAC wherever the browser offers it;
-  - glow, vignette and guide lines draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
+  - glow, vignette, guide lines and minimum line opacity draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
   - the title card, fades, lead-in and end card appear at their times; the end card shows the whole-piece view and lasts its length to within one frame;
   - the thumbnail is 1280×720 JPEG under 2 MB; the copied description has chapters only when YouTube's rules allow them;
   - choosing YouTube or Shorts sets every option listed, and changing one shows Custom.
@@ -1255,10 +1256,42 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 - The video camera moves with the music, as the gallery's per-frame cameras do (Crease, Night Sleeper): it starts tight on the first note, opens as the chord widens, leans in where lines meet, and pulls back over the whole piece at the end.
 - **Keyframes** in the Export dialog: time, window (seconds shown), playhead position, and pitch centre and range, eased between keys and edited on the preview's timeline.
 - **Auto camera:** keys made from the piece. The pitch range follows the sounding lines, smoothed, and the camera leans in at one-point crossings and pulls back at the end. You can edit the result.
+- **Openings:** the camera may start before 0, on blank paper, so the first notes appear at the playhead's place instead of entering from the left edge (Murmuration, revision 17).
 - This replaces "camera moments" in Later. Whether keys are stored in the piece is decided with the owner when M11.5 starts, along with the rest of the spec.
 
 **M12. Compose for me, directed (after M11; owner 2026-11-23)**
 - "Compose for me" asks the user what to compose before it starts (§11.3 "Compose for me, directed"), then builds it with the theory-aware rows. The questions and defaults are specified with the owner when M12 starts.
+
+**M13. Composer's toolkit (after M12; owner 2026-11-23)**
+These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, Crease, Murmuration and Calling Changes (gallery notes, "Findings"). Integrator calls, except "Hover to hear". The owner may veto any.
+- **Bug, fix now (ahead of M13):** a walk with `over: 'chord'` reads the last chord moment of *any* part, and its held note isn't re-snapped when the chord changes. A one-line bass chord collapses every walk onto one pitch class, and a G was held into D against F♯. It should read the harmony of the chords that sound (the Chords row), and re-snap a held step at each chord change.
+- **Hover to hear (owner; reverts "hover previews are silent", 2026-11-21).**
+  - **What plays:** hovering an Add or Next card (or focusing it by keyboard) after a 250 ms dwell plays what it would do from the playhead. That is the moment's transition from the notes sounding there, at its real glide length (capped at 2 s, keeping its shape), and then the result held for about 1.5 s.
+    - For a chord, you hear the move into the chord, then the chord.
+    - Moments that set no pitches play the sounding notes as they would sound after them: a level, a timbre, or a texture for 2 s.
+  - **Card label:** each card also names its result, such as the chord it lands on ("→ D minor add 9"), so "wider" with snap-to-key or a fold never surprises.
+  - **Stopping:** leaving the card stops the sound with a 50 ms fade. Moving to another card plays that one. It plays only while the transport is stopped, as auditions do.
+  - **Setting:** "Hover sound" in the view bar's settings, on by default and remembered.
+- **Upside down and wider/closer:**
+  - **Cross at one point:** a switch (stagger 0, jitter 0, one length), so every line passes the axis at the same instant.
+  - **Where a fold lands:** the inspector names the key and chord a fold lands in. It offers the axis that keeps the key (the tonic in dorian; the 2nd degree in major) and the one that lifts it a whole step (a semitone above that).
+  - **Negative widths other than −1:** they burst the chord through one point. The inspector shows the landing chord and when the crossing falls.
+  - **Preview:** the snapped chord's name shows before you commit.
+- **Next:**
+  - offer the closed loop "down a third, down a third, fold, up a third" where the voicing allows it;
+  - fitted melodies avoid the note a semitone above a held chord tone (lydian rubs).
+- **Shift sequence:** a chord block can plane through a typed sequence of shifts with lengths ("−2 −1 −1 +1 +1 +1 +1"), written once like a tune. A doo-wop round took 52 separate shift moments.
+- **Walks:**
+  - **Glide to next tick:** a step glides the whole tick, so walks draw curves.
+  - **Walks blocked by neighbours:** walks may step past a neighbour by a minimum spacing. Today a step must fall strictly between its neighbours, so close lines stand still.
+- **Sound:**
+  - **Roll:** a glide option for struck timbres that re-strikes every n s while moving.
+  - **Per-hit syllables:** a pulse pattern may pick the timbre or vowel per hit ("dm-ba-dm-ba").
+  - **Harmonic phases:** wavetable harmonics are Schroeder-phased (or a timbre `phase` option), lowering the crest factor of formant voices by about 3 dB a line. Goldens are re-recorded, with an A/B listen.
+  - **Noise-only timbre:** the tone off, with the noise's own centre frequency, for percussion.
+  - **One line louder:** a per-line gain offset ("top line +n dB") that part-level moments don't overwrite.
+  - **Fades by default:** an establishing chord from silence fades in (default 0.5 s); tune rests and comebacks fade (about 0.2 s out, 50 ms in) instead of cutting in 20 ms; and `level` with `over: 0` gets a minimum 30 ms ramp. Each is an option.
+- *Accept when:* each item has a test that fails before it, and the gallery pieces that worked around these (Crease, Night Sleeper, Murmuration, Calling Changes) can drop their workarounds and still render within 0.5 dB per section.
 
 **Later, in no order:**
 - the Drift texture;
@@ -1324,6 +1357,11 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 17 (2026-11-23): composer's toolkit (M13), hover to hear
+- **M13:** the composers' unaddressed findings, with the `over: 'chord'` walk bug to fix now.
+- **Hover to hear (owner):** Add and Next cards sound their result on hover, reverting "hover previews are silent" (2026-11-21).
+- **M11 and M11.5:** a minimum line opacity in the Look; a camera that can start before 0.
 
 ### Revision 16 (2026-11-23): ready for YouTube (owner; M11), camera path (M11.5)
 - **Ready for YouTube (§12, §8.8):** LUFS normalisation with a true-peak ceiling, glue and width on the master; 1440p and 4K, quality presets, AAC; glow, vignette, guide lines; title card, fades, end card on the whole-piece view; thumbnail; description with chapters; YouTube and Shorts presets.
