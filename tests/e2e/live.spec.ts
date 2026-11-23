@@ -28,7 +28,9 @@
  * The log lists each note: post, plan (call → decided), applied (call → stamp back), and slip
  * (wall − context time since the call: within about a callback, as currentTime steps by one).
  * A note late to the ear with a small engine latency and a slip as large is an audio-render stall
- * (the context clock stopped while the wall clock ran), not main-thread work.
+ * (the context clock stopped while the wall clock ran), not main-thread work. Such a note
+ * (`isAudioStall`, live-stall.ts) is replayed up to twice and the gate applies to the replay; more
+ * than 3 stalled notes, or a stall on the last replay, fails as an unreliable runner clock.
  * What the heard gate covers per engine (measured 2026-11-22):
  * - Chromium: baseLatency = the callback (512 frames); getOutputTimestamp trails currentTime by
  *   outputLatency + 0…1 callback, so the gate includes the reported device output latency;
@@ -39,6 +41,14 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import {
+  BEYOND_LIMIT_MS,
+  beyondMs,
+  isAudioStall,
+  MAX_REPLAYS,
+  MAX_STALLED_NOTES,
+  type NoteTiming,
+} from './live-stall';
 
 interface LiveHookShape {
   live: {
@@ -121,21 +131,10 @@ test(
     expect(await liveRms(page)).toBeLessThan(1e-4);
 
     const notes = [60, 64, 67, 72, 55, 62, 69, 57, 65, 60, 71, 52];
-    const results: {
-      engineMs: number;
-      totalMs: number;
-      deviceMs: number;
-      callbackMs: number;
-      lagMs: number;
-      frame: number;
-      receivedFrame: number;
-      postMs: number;
-      planMs: number;
-      appliedMs: number;
-      slipMs: number;
-    }[] = [];
-    for (const [i, p] of notes.entries()) {
-      const r = await page.evaluate(
+    type Timing = NoteTiming & { lagMs: number; appliedMs: number };
+    /** Plays `p` (after releasing `prev`) and measures it. */
+    const play = (p: number, prev: number | null) =>
+      page.evaluate(
         async ({ p, prev }) => {
           const h = (window as unknown as { __algorhythms: LiveHookShape }).__algorhythms;
           const live = h.live.engine();
@@ -174,11 +173,41 @@ test(
             slipMs,
           };
         },
-        { p, prev: i > 0 ? notes[i - 1] : null },
+        { p, prev },
       );
-      expect(r).not.toBeNull();
+    const line = (r: Timing, i: number, mark = '') =>
+      `#${i} p${notes[i]}: post ${r.postMs.toFixed(2)} plan ${r.planMs.toFixed(2)} applied ${r.appliedMs.toFixed(1)} ` +
+      `slip ${r.slipMs.toFixed(1)} engine ${r.engineMs.toFixed(1)} beyond ${beyondMs(r).toFixed(1)} ms${mark}`;
+    // Each note's gated attempt. A note late only because the audio clock stalled (isAudioStall:
+    // slip explains the lateness, our code was fast) is replayed, up to MAX_REPLAYS times; the gate
+    // applies to the replay. Every attempt is logged.
+    const results: Timing[] = [];
+    const attempts: string[] = [];
+    let stalledNotes = 0;
+    for (const [i, p] of notes.entries()) {
+      const prev = i > 0 ? notes[i - 1] : null;
+      let r: Timing | null = null;
+      for (let k = 0; k <= MAX_REPLAYS; k++) {
+        if (k > 0) {
+          // Replay the same transition: back to the previous key (or none), then prev → p.
+          // (Releasing and pressing p again would merge into one press and post nothing.)
+          if (prev !== null) expect(await play(prev, p)).not.toBeNull();
+          else
+            await page.evaluate((p) => {
+              const h = (window as unknown as { __algorhythms: LiveHookShape }).__algorhythms;
+              h.live.engine().noteOff(p);
+            }, p);
+          await page.waitForTimeout(120);
+        }
+        r = await play(p, prev);
+        expect(r).not.toBeNull();
+        await page.waitForTimeout(120);
+        if (!isAudioStall(r!) || k === MAX_REPLAYS) break;
+        attempts.push(line(r!, i, ' (audio stall, replayed)'));
+        if (k === 0) stalledNotes++;
+      }
+      attempts.push(line(r!, i));
       results.push(r!);
-      await page.waitForTimeout(120);
     }
     // Sound: the last note is held (release 'hold').
     const rms = await liveRms(page);
@@ -186,7 +215,7 @@ test(
     const med = (xs: number[]) => sorted(xs)[Math.floor(xs.length / 2)];
     const engine = results.map((r) => r.engineMs);
     const total = results.map((r) => r.totalMs);
-    const beyond = results.map((r) => r.totalMs - r.deviceMs);
+    const beyond = results.map(beyondMs);
     const callback = results.map((r) => r.callbackMs);
     const lag = results.map((r) => r.lagMs);
     const post = results.map((r) => r.postMs);
@@ -198,16 +227,15 @@ test(
         `beyond device latency median ${med(beyond).toFixed(1)} / max ${Math.max(...beyond).toFixed(1)} ms; ` +
         `call → post median ${med(post).toFixed(2)} / max ${Math.max(...post).toFixed(2)} ms; rms ${rms.toFixed(4)}`,
     );
-    // Per note: main-thread call → post and call → decided, call → stamp received, the clock
+    // Per attempt: main-thread call → post and call → decided, call → stamp received, the clock
     // slip (wall − context time since the call: an audio-render stall), engine and beyond device.
-    const perNote = results
-      .map(
-        (r, i) =>
-          `#${i} p${notes[i]}: post ${r.postMs.toFixed(2)} plan ${r.planMs.toFixed(2)} applied ${r.appliedMs.toFixed(1)} ` +
-          `slip ${r.slipMs.toFixed(1)} engine ${r.engineMs.toFixed(1)} beyond ${(r.totalMs - r.deviceMs).toFixed(1)} ms`,
-      )
-      .join('\n');
+    const perNote = attempts.join('\n');
     console.info(perNote);
+    // A clock that stalls on many notes, or again on a note's last replay, is the runner's fault,
+    // but must not pass: replays are for the odd stall.
+    const unreliable = `the runner's audio clock is unreliable (stalled on ${stalledNotes} of ${notes.length} notes):\n${perNote}`;
+    expect(stalledNotes, unreliable).toBeLessThanOrEqual(MAX_STALLED_NOTES);
+    expect(results.filter(isAudioStall).length, unreliable).toBe(0);
     expect(rms).toBeGreaterThan(0.005);
     // Main thread: every press posts its message within 5 ms of the call.
     expect(Math.max(...post), `main-thread call → post per note:\n${perNote}`).toBeLessThanOrEqual(
@@ -220,7 +248,9 @@ test(
       // At most one callback late: the message missed the callback in progress. (frame equals
       // receivedFrame, so anything later is the message's delivery to the audio thread.)
       expect(r.engineMs, 'message delivery to the worklet').toBeLessThanOrEqual(10 + r.callbackMs);
-      expect(r.totalMs - r.deviceMs).toBeLessThanOrEqual(10);
+      expect(beyondMs(r), `key → heard beyond device latency:\n${perNote}`).toBeLessThanOrEqual(
+        BEYOND_LIMIT_MS,
+      );
     }
 
     // Release and leave: the live context closes, playback gets a new 'playback' engine.
