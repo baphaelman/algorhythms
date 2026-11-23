@@ -18,7 +18,14 @@ import {
 } from '../render/look';
 import type { PosterSize } from '../render/poster';
 import type { HudItem } from '../render/types';
-import type { VideoAspect, VideoCameraMode, VideoSize } from '../render/video';
+import { MIN_WINDOW } from '../render/camera';
+import {
+  videoWindow as videoWindowOf,
+  videoWindowAt16x9,
+  type VideoAspect,
+  type VideoCameraMode,
+  type VideoSize,
+} from '../render/video';
 import type { PosterOptions } from './poster-export';
 import type { VideoOptions } from './video-export';
 
@@ -93,7 +100,7 @@ export const VIDEO_FPS: readonly { id: 30 | 60; label: string }[] = [
 ];
 
 export const VIDEO_CAMERAS: readonly { id: VideoCameraMode; label: string; hint: string }[] = [
-  { id: 'follow', label: 'Follow', hint: 'Follows the playhead at the editor’s current zoom.' },
+  { id: 'follow', label: 'Follow', hint: 'Follows the playhead; Window sets how much it shows.' },
   {
     id: 'whole',
     label: 'Whole piece',
@@ -129,6 +136,11 @@ export interface ExportForm {
   videoCamera: VideoCameraMode;
   /** Follow: playhead place across the frame, % (10..90); null = by the future (`followAtOf`). */
   videoFollowAt: number | null;
+  /**
+   * Follow: seconds the frame shows at the chosen aspect (≥ MIN_WINDOW, at most the piece when
+   * used); null = the editor's zoom, scaled to the aspect (`videoWindow`).
+   */
+  videoWindow: number | null;
   /** HUD readouts of a video, in `HUD_ITEMS` order. */
   videoHud: readonly HudItem[];
   posterFormat: PosterFormat;
@@ -228,6 +240,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoFps: 30,
   videoCamera: 'follow',
   videoFollowAt: null,
+  videoWindow: null,
   videoHud: DEFAULT_HUD,
   posterFormat: 'png',
   posterSize: '16:9',
@@ -345,8 +358,48 @@ export function midiOptions(form: ExportForm, piece: Piece): MidiRequest {
 
 /** What the video and poster exports take from the app beyond the form. */
 export interface VideoContext extends LookAppContext {
-  /** The editor's zoom window now (s); Follow uses it. */
+  /** The editor's zoom window now (s), as seen at 16:9; Follow uses it unless the form sets one. */
   window: Seconds;
+  /** The piece's length (s): caps the form's Follow window. */
+  duration?: Seconds;
+}
+
+/** The Follow window slider's range, seconds shown: 2 s to the whole piece. */
+export function followWindowRange(duration: Seconds): [Seconds, Seconds] {
+  const d = Number.isFinite(duration) ? duration : 0;
+  return [MIN_WINDOW, Math.max(MIN_WINDOW, d)];
+}
+
+/** Seconds the Follow frame shows: the form's window, else the editor's zoom at this aspect. */
+export function followWindowOf(
+  form: Pick<ExportForm, 'videoWindow' | 'videoAspect'>,
+  ctx: Pick<VideoContext, 'window' | 'duration'>,
+): Seconds {
+  const w = form.videoWindow;
+  const shown = w !== null && Number.isFinite(w) ? w : videoWindowOf(ctx.window, form.videoAspect);
+  if (ctx.duration === undefined) return Math.max(MIN_WINDOW, shown);
+  const [lo, hi] = followWindowRange(ctx.duration);
+  return Math.min(hi, Math.max(lo, shown));
+}
+
+/** Slider position 0..1 (log scale) for a Follow window; 0 = 2 s, 1 = the whole piece. */
+export function followWindowToSlider(window: Seconds, duration: Seconds): number {
+  const [lo, hi] = followWindowRange(duration);
+  if (hi <= lo) return 1;
+  const w = Math.min(hi, Math.max(lo, window));
+  return (Math.log(w) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+}
+
+/** Follow window for a slider position 0..1; inverse of `followWindowToSlider`. */
+export function sliderToFollowWindow(x: number, duration: Seconds): Seconds {
+  const [lo, hi] = followWindowRange(duration);
+  const k = Math.min(1, Math.max(0, x));
+  return Math.exp(Math.log(lo) + (Math.log(hi) - Math.log(lo)) * k);
+}
+
+/** "12 s", "4.5 s" (under 10 s, one decimal). */
+export function windowText(window: Seconds): string {
+  return window < 10 ? `${window.toFixed(1)} s` : `${Math.round(window)} s`;
 }
 
 /** The Follow camera's playhead place, %: the user's, else by the future setting. */
@@ -402,7 +455,11 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
     look,
   };
   if (form.videoCamera === 'follow') {
-    o.window = ctx.window;
+    // The renderer takes the window as seen at 16:9; the form's is what this aspect shows.
+    o.window =
+      form.videoWindow === null
+        ? ctx.window
+        : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
     o.followAt = followAtOf(form) / 100;
   }
   return o;
@@ -447,6 +504,7 @@ const REMEMBERED = [
   'videoFps',
   'videoCamera',
   'videoFollowAt',
+  'videoWindow',
   'videoHud',
   'posterFormat',
   'posterSize',
@@ -508,6 +566,11 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (r.videoFollowAt === null) p.videoFollowAt = null;
   else if (typeof r.videoFollowAt === 'number' && Number.isFinite(r.videoFollowAt)) {
     p.videoFollowAt = Math.min(FOLLOW_AT_MAX, Math.max(FOLLOW_AT_MIN, r.videoFollowAt));
+  }
+  if (r.videoWindow === null) p.videoWindow = null;
+  else if (typeof r.videoWindow === 'number' && Number.isFinite(r.videoWindow)) {
+    // The piece's cap applies where it is known (`followWindowOf`).
+    p.videoWindow = Math.max(MIN_WINDOW, r.videoWindow);
   }
   if (Array.isArray(r.videoHud)) p.videoHud = hudInOrder(r.videoHud);
   if (oneOf(POSTER_FORMATS, r.posterFormat)) p.posterFormat = r.posterFormat;

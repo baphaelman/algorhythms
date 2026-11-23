@@ -1440,3 +1440,9 @@ dialog.dialog.export.has-preview {
     scroll-behavior: auto !important;
   }
 }
+
+/* Export dialog: Follow's Window, back to the editor's zoom. */
+.dialog .window-reset {
+  margin-top: 6px;
+  font-size: 12px;
+}

@@ -32,12 +32,16 @@ import {
   VIDEO_THEMES,
   codecLabel,
   exportFileName,
+  followWindowOf,
+  followWindowToSlider,
   formatBytes,
   hudInOrder,
   loadExportPrefs,
   posterPixels,
   resetLook,
   saveExportPrefs,
+  sliderToFollowWindow,
+  windowText,
   type ExportForm,
   type LookForm,
   type VideoContext,
@@ -55,7 +59,8 @@ import {
   type LookSlider,
 } from '../look-controls';
 import type { VideoSupport } from '../video-export';
-import { cameraOf, currentTime, pushNotice, usePlayer } from '../store';
+import { setDialogSpace } from '../space-key';
+import { cameraOf, currentTime, pause, play, pushNotice, seekTo, usePlayer } from '../store';
 
 /** The lazily loaded engine room (it pulls in the DSP graph, so it is not in the main chunk). */
 type Runtime = typeof import('../export-run');
@@ -79,6 +84,8 @@ interface ExportUi {
   hudOpen: boolean;
   /** The video preview's score time (s); set when the dialog opens. */
   previewT: number;
+  /** The video preview is playing (through the app's player). */
+  previewPlaying: boolean;
 }
 
 const RUN_LABEL: Record<ExportForm['format'], string> = {
@@ -100,6 +107,7 @@ const useExportUi = create<ExportUi>()(() => ({
   video: { key: '', support: null },
   hudOpen: false,
   previewT: 0,
+  previewPlaying: false,
 }));
 
 const videoKey = (f: ExportForm) => `${f.videoAspect} ${f.videoSize} ${f.videoFps}`;
@@ -115,7 +123,49 @@ function appDark(): boolean {
 
 /** What the video and poster take from the app now: the editor's zoom, theme and line colours. */
 function videoContext(): VideoContext {
-  return { window: cameraOf().window, dark: appDark(), colors: usePlayer.getState().view.colors };
+  const { view, compiled } = usePlayer.getState();
+  return {
+    window: cameraOf().window,
+    duration: compiled.duration,
+    dark: appDark(),
+    colors: view.colors,
+  };
+}
+
+/** The editor's playhead when the dialog opened, and whether the preview has moved it since. */
+let openPlayhead = 0;
+let previewMoved = false;
+
+/** Plays the video preview from its time, with sound, through the app's player. */
+function playPreview(): void {
+  const s = useExportUi.getState();
+  if (s.previewPlaying || s.run.status === 'running') return;
+  previewMoved = true;
+  seekTo(s.previewT);
+  play();
+  useExportUi.setState({ previewPlaying: usePlayer.getState().transport.status === 'playing' });
+}
+
+/** Pauses the video preview where it is. */
+function pausePreview(): void {
+  if (!useExportUi.getState().previewPlaying) return;
+  pause();
+  useExportUi.setState({ previewPlaying: false, previewT: currentTime() });
+}
+
+/** Play/Pause preview, and Space anywhere in the dialog while the video preview shows. */
+function togglePreview(): void {
+  if (useExportUi.getState().previewPlaying) pausePreview();
+  else playPreview();
+}
+
+/** Stops the preview and puts the editor's playhead back where it was when the dialog opened. */
+function restorePlayhead(): void {
+  useExportUi.setState({ previewPlaying: false });
+  if (!previewMoved) return;
+  previewMoved = false;
+  pause();
+  seekTo(openPlayhead);
 }
 
 let controller: AbortController | null = null;
@@ -128,8 +178,11 @@ export function openExport(): void {
   // The preview starts at the editor's playhead, or a third in when it is at the start.
   const now = currentTime();
   const { duration } = usePlayer.getState().compiled;
+  openPlayhead = now;
+  previewMoved = false;
   useExportUi.setState({
     open: true,
+    previewPlaying: false,
     hudOpen: false,
     previewT: now > 0 ? now : duration / 3,
     run: running ? s.run : IDLE,
@@ -141,6 +194,7 @@ export function openExport(): void {
 /** Closes the dialog; a running export is cancelled. */
 function closeExport(): void {
   cancelExport();
+  restorePlayhead();
   useExportUi.setState({ open: false });
 }
 
@@ -172,6 +226,7 @@ function isAbort(e: unknown): boolean {
 export function startExport(): void {
   const { runtime, form, run } = useExportUi.getState();
   if (!runtime || run.status === 'running') return;
+  pausePreview();
   const src = { piece: usePlayer.getState().piece, compiled: usePlayer.getState().compiled };
   const ac = new AbortController();
   controller = ac;
@@ -655,8 +710,11 @@ function exportPixels(form: ExportForm, kind: LookKind): { width: number; height
     : videoSize(form.videoAspect, form.videoSize);
 }
 
-/** Counters of the preview's measure and scroll-padding callbacks and draws (debug hook). */
-export const previewStats = { measures: 0, pads: 0, draws: 0 };
+/**
+ * Counters of the preview's measure and scroll-padding callbacks and draws, and the last and
+ * longest draw (ms; debug hook).
+ */
+export const previewStats = { measures: 0, pads: 0, draws: 0, lastMs: 0, maxMs: 0 };
 
 /** Wide screens show the preview beside the options (styles.css uses the same width). */
 const WIDE = '(min-width: 900px)';
@@ -685,12 +743,15 @@ function ExportPreview({
   // The app's theme and line colours feed 'Current' and 'As in the app'.
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
   const t = useExportUi((s) => s.previewT);
+  const playing = useExportUi((s) => s.previewPlaying);
+  const running = useExportUi((s) => s.run.status === 'running');
   const box = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [avail, setAvail] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const draws = useRef(0);
   const frame = useRef(0);
+  const job = useRef<(() => void) | null>(null);
   const id = useId();
 
   // The space the preview may take: the column's width, a share of the screen's height. State
@@ -737,6 +798,35 @@ function ExportPreview({
     };
   }, []);
 
+  // Video: Space anywhere in the dialog plays and pauses the preview (space-key.ts); leaving
+  // video (or closing) stops it.
+  useEffect(() => {
+    if (kind !== 'video') return;
+    const off = setDialogSpace(togglePreview);
+    return () => {
+      off();
+      pausePreview();
+    };
+  }, [kind]);
+
+  // Playing: the time follows the playhead every frame (the draw below runs once per frame); the
+  // player stopping (the end, or anything else) stops the preview.
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    const tick = () => {
+      const now = currentTime();
+      if (usePlayer.getState().transport.status !== 'playing') {
+        useExportUi.setState({ previewPlaying: false, previewT: now });
+        return;
+      }
+      if (useExportUi.getState().previewT !== now) useExportUi.setState({ previewT: now });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
   const px = exportPixels(form, kind);
   const aspect = px.width / px.height;
   const cssW = Math.max(1, Math.floor(Math.min(avail.w, avail.h * aspect)));
@@ -748,8 +838,9 @@ function ExportPreview({
 
   useEffect(() => {
     if (!runtime || avail.w === 0) return;
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => {
+    // The latest change replaces the pending draw's job; the frame already asked for stays (a
+    // change every frame, as while playing, must not keep pushing the draw back).
+    job.current = () => {
       const c = canvas.current;
       const g = c?.getContext('2d');
       if (!c || !g) return;
@@ -757,14 +848,31 @@ function ExportPreview({
       if (c.height !== pxH) c.height = pxH;
       const scale = pxW / px.width;
       const src = { piece, compiled };
+      const t0 = performance.now();
       if (kind === 'video') runtime.previewVideo(g, src, form, videoContext(), time, scale);
       else runtime.previewPosterOf(g, src, form, videoContext(), scale);
+      previewStats.lastMs = performance.now() - t0;
+      previewStats.maxMs = Math.max(previewStats.maxMs, previewStats.lastMs);
       draws.current++;
       previewStats.draws++;
       c.dataset.draws = String(draws.current);
-    });
-    return () => cancelAnimationFrame(frame.current);
+    };
+    if (frame.current === 0) {
+      frame.current = requestAnimationFrame(() => {
+        frame.current = 0;
+        const run = job.current;
+        job.current = null;
+        run?.();
+      });
+    }
   }, [runtime, piece, compiled, form, kind, time, pxW, pxH, px.width, appView, avail.w]);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+    },
+    [],
+  );
 
   const transparent = kind === 'poster' && form.look.transparent;
   const what =
@@ -788,6 +896,19 @@ function ExportPreview({
       </div>
       {kind === 'video' && (
         <div className="field-row preview-time">
+          <button
+            type="button"
+            className="preview-play"
+            aria-label={playing ? 'Pause preview' : 'Play preview'}
+            aria-keyshortcuts="Space"
+            title={`${playing ? 'Pause' : 'Play'} preview (Space)`}
+            disabled={running}
+            data-testid="preview-play"
+            data-playing={playing}
+            onClick={togglePreview}
+          >
+            {playing ? 'Pause' : 'Play'}
+          </button>
           <label htmlFor={`${id}-t`} className="visually-hidden">
             Preview time
           </label>
@@ -799,10 +920,67 @@ function ExportPreview({
             step={0.1}
             value={time}
             data-testid="preview-time"
-            onChange={(e) => useExportUi.setState({ previewT: Number(e.target.value) })}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              useExportUi.setState({ previewT: v });
+              if (useExportUi.getState().previewPlaying) seekTo(v);
+            }}
           />
           <output htmlFor={`${id}-t`}>{formatTime(time)}</output>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Follow's Window (PLAN.md §12 "Video export"): seconds the frame shows at the chosen aspect, log
+ * scale from 2 s to the whole piece; it starts at the editor's zoom, to which a button returns.
+ */
+function WindowField({
+  form,
+  duration,
+  disabled,
+}: {
+  form: ExportForm;
+  duration: number;
+  disabled: boolean;
+}) {
+  const id = useId();
+  const shown = followWindowOf(form, { window: cameraOf().window, duration });
+  const text = windowText(shown);
+  return (
+    <div className="field">
+      <label htmlFor={`${id}-w`}>Window</label>
+      <div className="field-row look-range">
+        <input
+          id={`${id}-w`}
+          type="range"
+          min={0}
+          max={1000}
+          step={1}
+          value={Math.round(followWindowToSlider(shown, duration) * 1000)}
+          disabled={disabled}
+          aria-valuetext={text}
+          data-testid="export-window"
+          onChange={(e) =>
+            patch({ videoWindow: sliderToFollowWindow(Number(e.target.value) / 1000, duration) })
+          }
+        />
+        <output htmlFor={`${id}-w`} data-testid="export-window-value">
+          {text}
+        </output>
+      </div>
+      {form.videoWindow !== null && (
+        <button
+          type="button"
+          className="window-reset"
+          disabled={disabled}
+          data-testid="export-window-reset"
+          onClick={() => patch({ videoWindow: null })}
+        >
+          Editor’s zoom
+        </button>
       )}
     </div>
   );
@@ -1066,6 +1244,9 @@ export function ExportDialog() {
                     onChange={(videoCamera) => patch({ videoCamera })}
                   />
                   <small className="export-hint">{cameraHint}</small>
+                  {form.videoCamera === 'follow' && (
+                    <WindowField form={form} duration={compiled.duration} disabled={running} />
+                  )}
                 </>
               )}
 

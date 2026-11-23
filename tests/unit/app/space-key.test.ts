@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { isSpace, spaceKey, typesSpace, type SpaceHeld } from '../../../src/app/space-key';
+import {
+  dialogSpace,
+  isSpace,
+  setDialogSpace,
+  spaceKey,
+  typesSpace,
+  type SpaceHeld,
+} from '../../../src/app/space-key';
 
 const el = (tagName: string, type = '', isContentEditable = false) => ({
   tagName: tagName.toUpperCase(),
@@ -119,5 +126,39 @@ describe('spaceKey', () => {
     spaceKey(down(), held, EDITOR);
     expect(spaceKey(up(), held, ctx)).toEqual({ consume: true, toggle: false });
     expect(held.down).toBe(false);
+  });
+
+  it('a dialog with its own play/pause takes Space from any control but a text field', () => {
+    for (const editor of [true, false]) {
+      const ctx = { editor, dialog: true, dialogPlay: true };
+      for (const t of [el('input', 'checkbox'), el('button'), el('input', 'radio'), BODY]) {
+        const held = fresh();
+        expect(spaceKey(down(t), held, ctx)).toEqual({ consume: true, toggle: true });
+        expect(spaceKey(down(t, true), held, ctx)).toEqual({ consume: true, toggle: false });
+        // The release is cancelled too (browsers activate buttons and switches on keyup).
+        expect(spaceKey(up(t), held, ctx)).toEqual({ consume: true, toggle: false });
+        expect(held.down).toBe(false);
+      }
+      const held = fresh();
+      expect(spaceKey(down(el('input', 'text')), held, ctx)).toEqual({
+        consume: false,
+        toggle: false,
+      });
+      expect(spaceKey(up(el('textarea')), held, ctx)).toEqual({ consume: false, toggle: false });
+    }
+  });
+});
+
+describe('setDialogSpace', () => {
+  it('registers one toggle; unregistering a replaced one keeps the newer', () => {
+    const a = () => undefined;
+    const b = () => undefined;
+    const offA = setDialogSpace(a);
+    expect(dialogSpace()).toBe(a);
+    const offB = setDialogSpace(b);
+    offA();
+    expect(dialogSpace()).toBe(b);
+    offB();
+    expect(dialogSpace()).toBeNull();
   });
 });
