@@ -19,11 +19,11 @@
 import { defaultGlide } from './defaults';
 import { pitchClassOf, scalePcs } from './scales';
 import { foldIntoRange, sanitizeRange } from './compiler/range';
-import { momentGlide, pieceDecisionTime, sanitizeGlide } from './compiler/glide';
+import { decisionTimesWith, momentGlide, pieceDecisionTime, sanitizeGlide } from './compiler/glide';
 import { pointMomentPlan } from './moments/dispatch';
 import { bringsIn, establishPlan, isEstablishing } from './moments/establish';
 import { noteIsNoop } from './moments/note';
-import { IntentKind, type MomentEnv } from './moments/types';
+import { IntentKind, type Intent, type MomentEnv } from './moments/types';
 import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
 import { isRest, tuneRestrikes, tuneShift } from './moments/tune';
@@ -276,8 +276,17 @@ const EMPTY_CONTEXT: EffectContext = { targeted: [], active: [], births: 0, deat
 const kills = (m: Moment): boolean =>
   m.type === 'merge' || ((m.type === 'chord' || m.type === 'progression') && m.count !== undefined);
 
-/** The state at t from a compiled score (no recompile); see `momentEffectAt`. */
-export function readState(piece: Piece, score: CompiledScore, t: Seconds): StateAt {
+/**
+ * The state at t from a compiled score (no recompile); see `momentEffectAt`. `decides`: when each
+ * moment of the piece decides, if not as in `score` (a new moment makes a later land moment wait
+ * for it, `landOrder`): a moment it puts after t has not yet birthed or moved its lines.
+ */
+export function readState(
+  piece: Piece,
+  score: CompiledScore,
+  t: Seconds,
+  decides?: (m: Moment) => Seconds,
+): StateAt {
   const byId = new Map<string, Moment>();
   for (const m of piece.moments) if (m && !m.muted) byId.set(m.id, m);
   // Moments decided by t (a land moment decides at its lead-in start, revision 9, or after the
@@ -285,8 +294,14 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   const decided = new Map<string, boolean>();
   const isDecided = (m: Moment): boolean => {
     let d = decided.get(m.id);
-    if (d === undefined) decided.set(m.id, (d = pieceDecisionTime(piece, m) <= t));
+    if (d === undefined)
+      decided.set(m.id, (d = (decides ? decides(m) : pieceDecisionTime(piece, m)) <= t));
     return d;
+  };
+  /** The moment of a segment that `decides` puts after t (none without `decides`). */
+  const undecided = (id: string | undefined): boolean => {
+    const m = decides && id !== undefined ? byId.get(id) : undefined;
+    return m !== undefined && !isDecided(m);
   };
   const scheduled = (id: string | undefined): boolean => {
     const m = id === undefined ? undefined : byId.get(id);
@@ -301,7 +316,24 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
   const dormant: number[] = [];
   score.voices.forEach((v, i) => {
     for (const l of v.level) if (l.t <= t) level[i] = l.gain;
-    const life = lifeAt(v, t);
+    const segs = v.segments;
+    let life = lifeAt(v, t);
+    // Born by a moment that now decides after t: not born yet.
+    if (life && undecided(segs[segmentIndexAt(v, life.born)]?.momentId)) life = null;
+    // A birth decided by t that starts later (a staggered split or count): the compiler counts
+    // the newborn as active from its moment's decision (compile.ts `Status.Active`).
+    let j = life ? segmentIndexAt(v, t) : -1;
+    if (!life) {
+      const next = v.lives.find((l) => l.born > t);
+      const k = next ? segmentIndexAt(v, next.born) : -1;
+      const m = k >= 0 ? byId.get(segs[k].momentId ?? '') : undefined;
+      // A land moment that found nothing sounding births at its marker (compile.ts SUB_LANDED).
+      const late = m !== undefined && next!.born >= m.at && pieceDecisionTime(piece, m) < m.at;
+      if (next && m && !late && scheduled(m.id)) {
+        life = next;
+        j = k;
+      }
+    }
     if (!life) {
       dormant.push(i);
       return;
@@ -310,14 +342,13 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
     // Fading out (a merge, or a line that arrived on another's pitch, revision 8). A merge's
     // crossfade ends where the line meets the merged one: it is active until then.
     if (end < score.duration && !life.crossOut && t >= end - (life.fadeOut ?? 0)) return;
-    const segs = v.segments;
     // Dying: the life ends before the piece does, and its last move belongs to a moment at ≤ t
     // that kills (a merge, or a chord with `count`).
     if (end < score.duration) {
-      let j = segmentIndexAt(v, end);
-      while (j >= 0 && segs[j].t0 >= end) j--;
-      for (; j >= 0 && segs[j].t0 >= life.born; j--) {
-        const id = segs[j].momentId;
+      let k = segmentIndexAt(v, end);
+      while (k >= 0 && segs[k].t0 >= end) k--;
+      for (; k >= 0 && segs[k].t0 >= life.born; k--) {
+        const id = segs[k].momentId;
         if (id === undefined) continue;
         const m = byId.get(id);
         if (m && kills(m) && isDecided(m)) return;
@@ -326,10 +357,10 @@ export function readState(piece: Piece, score: CompiledScore, t: Seconds): State
     }
     // Where it is heading: the segment at t, then the moves already scheduled by moments at ≤ t
     // (staggered starts after t); holds are transparent.
-    let j = segmentIndexAt(v, t);
     if (j < 0) return;
     const at = segs[j];
-    let d = at.curve ? at.curve.p1 : at.p1;
+    // A move by a moment that now decides after t has not started: the line heads where it was.
+    let d = undecided(at.momentId) ? at.p0 : at.curve ? at.curve.p1 : at.p1;
     for (j++; j < segs.length && segs[j].t0 < end; j++) {
       const s = segs[j];
       const hold = s.p0 === s.p1 && !s.m0 && !s.curve;
@@ -511,7 +542,7 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
   const after = Float64Array.from(st.dest);
   const deaths: { voice: number; to: Pitch }[] = [];
   const births: { voice: number; parent: number }[] = [];
-  for (const it of plan.intents) {
+  for (const it of partBirths(piece, plan.intents, dormant, partAt)) {
     const r = ranges[it.voice] ?? [0, 127];
     const to = Number.isFinite(it.to) ? foldIntoRange(it.to, r[0], r[1]).p : st.dest[it.voice];
     if (it.kind === IntentKind.Death) {
@@ -525,6 +556,38 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
   return changesPitch({ before: st.dest, after, deaths, births })
     ? { effect: true }
     : no(noEffectReason(m, ctx(births.length, deaths.length)));
+}
+
+/**
+ * A forked note is born in its parent line's part, else dropped (as compile.ts `partBirths`): a
+ * birth on a voice of another part moves to a free voice of the parent's part.
+ */
+function partBirths(
+  piece: Piece,
+  intents: readonly Intent[],
+  free: readonly number[],
+  partAt: (v: number) => string,
+): readonly Intent[] {
+  if (new Set(piece.voices.map(partOf)).size < 2) return intents;
+  const used = new Set<number>();
+  for (const it of intents) if (it.kind === IntentKind.Birth) used.add(it.voice);
+  const out: Intent[] = [];
+  for (const it of intents) {
+    if (it.kind !== IntentKind.Birth || (it.parent ?? -1) < 0) {
+      out.push(it);
+      continue;
+    }
+    const want = partAt(it.parent!);
+    if (it.voice < piece.voices.length && partOf(piece.voices[it.voice]) === want) {
+      out.push(it);
+      continue;
+    }
+    const u = free.find((v) => !used.has(v) && partOf(piece.voices[v]) === want);
+    if (u === undefined) continue;
+    used.add(u);
+    out.push({ ...it, voice: u });
+  }
+  return out;
 }
 
 /** The moment env of `m` on state `st` (as the compiler's); errors and `note-not-sounding` go to `errors`. */
@@ -586,12 +649,20 @@ function stateFor(
   m: Moment,
   cache: Map<Seconds, StateAt>,
 ): StateAt {
+  // A new moment can make a later land moment wait for it (`landOrder`): read the score with the
+  // decision times the compiler will use.
+  const times = piece.moments.includes(m) ? null : decisionTimesWith(piece, m);
+  const decides =
+    times && piece.moments.some((x) => times.has(x) && times.get(x) !== pieceDecisionTime(piece, x))
+      ? (x: Moment): Seconds => times.get(x) ?? pieceDecisionTime(piece, x)
+      : undefined;
   const read = (t: Seconds): StateAt => {
+    if (decides) return readState(piece, score, t, decides);
     let st = cache.get(t);
     if (!st) cache.set(t, (st = readState(piece, score, t)));
     return st;
   };
-  const t = pieceDecisionTime(piece, m);
+  const t = times?.get(m) ?? pieceDecisionTime(piece, m);
   if (!(t < m.at)) return read(m.at);
   const st = read(t);
   if (st.active.length === 0) return read(m.at);

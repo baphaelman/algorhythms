@@ -382,6 +382,17 @@ export function pieceDecisionTime(
   return t ?? decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
 }
 
+/**
+ * When each moment of `piece` and `m` decides if `m` is added (`pieceDecisionTime` for all of
+ * them): a land moment can then wait for `m` (`landOrder`).
+ */
+export function decisionTimesWith(
+  piece: Pick<Piece, 'defaults' | 'moments' | 'voices' | 'seed'>,
+  m: Moment,
+): Map<Moment, Seconds> {
+  return decisionTimes(piece, [...(Array.isArray(piece.moments) ? piece.moments : []), m]);
+}
+
 function decisionTimes(
   piece: Pick<Piece, 'defaults' | 'voices' | 'seed'>,
   ms: readonly Moment[],

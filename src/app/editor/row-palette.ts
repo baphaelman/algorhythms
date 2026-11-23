@@ -14,6 +14,7 @@ import type {
   Piece,
   Seconds,
 } from '../../core/types';
+import { momentEffectAt } from '../../core/effect';
 import { defaultMoment, withChordFill } from './new-moment';
 import { rowsOf, setArrive, textureMoment, textureUntil, type RowName } from './rows';
 
@@ -104,12 +105,20 @@ export function newBlock(
 ): Moment {
   switch (row) {
     case 'chords': {
-      if (!chordNotes)
-        return setArrive(
-          defaultMoment('chord', at, id, piece, score),
-          'land',
-          piece.defaults.glide,
+      if (!chordNotes) {
+        // The best chord that changes something where it lands, else the best (§11.3).
+        const land = (m: ChordMoment): ChordMoment => setArrive(m, 'land', piece.defaults.glide);
+        return land(
+          defaultMoment(
+            'chord',
+            at,
+            id,
+            piece,
+            score,
+            (m) => momentEffectAt(piece, score, land(withChordFill(m, piece, score, at))).effect,
+          ),
         );
+      }
       const m: ChordMoment = {
         id,
         at,
