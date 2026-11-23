@@ -11,7 +11,6 @@ import {
 import { create } from 'zustand';
 import { formatTime } from '../../render/hud';
 import { tokensOf } from '../../render/palettes';
-import { posterSize } from '../../render/poster';
 import { videoSize } from '../../render/video';
 import type { HudItem } from '../../render/types';
 import { downloadBlob } from '../download';
@@ -23,6 +22,10 @@ import {
   HUD_CHOICES,
   MIDI_MODES,
   POSTER_FORMATS,
+  POSTER_MAX_AREA,
+  POSTER_MAX_ROWS,
+  POSTER_MAX_SIDE,
+  POSTER_MIN_SIDE,
   POSTER_SIZES,
   RATES,
   VIDEO_ASPECTS,
@@ -36,8 +39,12 @@ import {
   followWindowToSlider,
   formatBytes,
   hudInOrder,
+  clampPosterDims,
   loadExportPrefs,
+  posterCapped,
   posterPixels,
+  posterPreset,
+  posterSideMax,
   resetLook,
   saveExportPrefs,
   sliderToFollowWindow,
@@ -706,7 +713,7 @@ function LookPanel({
 /** The export's pixel size (the renderers' own). */
 function exportPixels(form: ExportForm, kind: LookKind): { width: number; height: number } {
   return kind === 'poster'
-    ? posterSize(form.posterSize)
+    ? { width: form.posterWidth, height: form.posterHeight }
     : videoSize(form.videoAspect, form.videoSize);
 }
 
@@ -878,7 +885,8 @@ function ExportPreview({
   const what =
     kind === 'video'
       ? `Preview of the video frame at ${formatTime(time)}, ${form.videoAspect}`
-      : `Preview of the poster, ${POSTER_SIZES.find((p) => p.id === form.posterSize)?.label}` +
+      : `Preview of the poster, ${POSTER_SIZES.find((p) => p.id === posterPreset(form))?.label ?? posterPixels(form)}` +
+        (form.posterRows > 1 ? `, ${form.posterRows} rows` : '') +
         (transparent ? ', transparent background' : '');
 
   return (
@@ -983,6 +991,119 @@ function WindowField({
         </button>
       )}
     </div>
+  );
+}
+
+/** A slider field with its value shown beside it (Rows, Width, Height). */
+function RangeField({
+  label,
+  min,
+  max,
+  value,
+  text,
+  disabled,
+  testId,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  text: string;
+  disabled: boolean;
+  testId: string;
+  onChange: (v: number) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="field-row look-range">
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={value}
+          disabled={disabled}
+          aria-valuetext={text}
+          data-testid={testId}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
+        <output htmlFor={id} data-testid={`${testId}-value`}>
+          {text}
+        </output>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The poster's Rows, Width and Height sliders and the size quick picks (PLAN.md §12 "Rows and
+ * dimensions"). Each side's slider stops where the other side's length reaches the area cap.
+ */
+function PosterSizeFields({ form, disabled }: { form: ExportForm; disabled: boolean }) {
+  const id = useId();
+  const w = form.posterWidth;
+  const h = form.posterHeight;
+  return (
+    <>
+      <RangeField
+        label="Rows"
+        min={1}
+        max={POSTER_MAX_ROWS}
+        value={form.posterRows}
+        text={form.posterRows === 1 ? '1 row' : `${form.posterRows} rows`}
+        disabled={disabled}
+        testId="export-prows"
+        onChange={(posterRows) => patch({ posterRows })}
+      />
+      <Radios
+        legend="Size"
+        name={`${id}-psize`}
+        value={posterPreset(form) ?? ''}
+        options={POSTER_SIZES}
+        disabled={disabled}
+        testId="export-psize"
+        onChange={(p) => {
+          const o = POSTER_SIZES.find((x) => x.id === p);
+          if (o) patch({ posterWidth: o.width, posterHeight: o.height });
+        }}
+      />
+      <RangeField
+        label="Width"
+        min={POSTER_MIN_SIDE}
+        max={posterSideMax(h)}
+        value={w}
+        text={`${w} px`}
+        disabled={disabled}
+        testId="export-pwidth"
+        onChange={(v) => {
+          const d = clampPosterDims(v, h, 'height');
+          patch({ posterWidth: d.width, posterHeight: d.height });
+        }}
+      />
+      <RangeField
+        label="Height"
+        min={POSTER_MIN_SIDE}
+        max={posterSideMax(w)}
+        value={h}
+        text={`${h} px`}
+        disabled={disabled}
+        testId="export-pheight"
+        onChange={(v) => {
+          const d = clampPosterDims(w, v, 'width');
+          patch({ posterWidth: d.width, posterHeight: d.height });
+        }}
+      />
+      {posterCapped(w, h) && (
+        <small className="export-hint" data-testid="export-pcap">
+          Capped at {(POSTER_MAX_AREA / 1e6).toFixed(1)} million pixels, the largest image every
+          browser can draw (Safari’s limit). {POSTER_MAX_SIDE} px is the most for one side.
+        </small>
+      )}
+    </>
   );
 }
 
@@ -1252,26 +1373,16 @@ export function ExportDialog() {
 
               {isPoster && (
                 <>
-                  <div className="field-pair">
-                    <Radios
-                      legend="File"
-                      name={`${id}-pformat`}
-                      value={form.posterFormat}
-                      options={POSTER_FORMATS}
-                      disabled={running}
-                      testId="export-pformat"
-                      onChange={(posterFormat) => patch({ posterFormat })}
-                    />
-                    <Radios
-                      legend="Size"
-                      name={`${id}-psize`}
-                      value={form.posterSize}
-                      options={POSTER_SIZES}
-                      disabled={running}
-                      testId="export-psize"
-                      onChange={(posterSize) => patch({ posterSize })}
-                    />
-                  </div>
+                  <Radios
+                    legend="File"
+                    name={`${id}-pformat`}
+                    value={form.posterFormat}
+                    options={POSTER_FORMATS}
+                    disabled={running}
+                    testId="export-pformat"
+                    onChange={(posterFormat) => patch({ posterFormat })}
+                  />
+                  <PosterSizeFields form={form} disabled={running} />
                   <div className="field">
                     <Switch
                       checked={form.posterTitle}
@@ -1325,7 +1436,7 @@ export function ExportDialog() {
                 )}
                 {!running && isPoster && (
                   <p className="export-size" data-testid="export-size">
-                    {posterPixels(form.posterSize)}, {form.posterFormat.toUpperCase()}
+                    {posterPixels(form)}, {form.posterFormat.toUpperCase()}
                   </p>
                 )}
                 {!running && form.format === 'wav' && estimate === null && runtime === null && (

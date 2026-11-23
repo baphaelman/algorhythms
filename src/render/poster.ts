@@ -9,21 +9,38 @@
  * ink) over "m:ss · key" (10.5 px, secondary ink) at the left inset, and "AlgoRhythms" (9.5 px,
  * secondary ink) right-aligned on the second line's baseline; the block is centred vertically in
  * the band.
+ *
+ * Rows (owner, 2026-11-23): the piece cut in time into rows stacked like systems in sheet music
+ * (`posterRows`). Each row is a `drawScore` call on its own sub-rectangle (offset by `origin`, no
+ * clip), one pitch range and one time scale for all; a row shorter than the longest is drawn
+ * narrower, so it ends at its break. The HUD and title block are drawn once, in the bottom band
+ * a one-row poster has.
  */
 
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
-import { HUD_ROW, hudLines } from './camera';
+import { HUD_ROW, cameraAt, cameraScore, hudLines } from './camera';
 import { DEFAULT_MONO, drawScore, keyName, type Ctx2D } from './draw';
-import { hudItems, hudRows, hudTop } from './hud';
+import { drawHud, hudItems, hudRows, hudTop } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
+import { DEFAULT_METER } from './bars';
 import { videoCamera } from './video';
 
 export type PosterSize = '16:9' | '1:1' | 'a4';
 
-/** Output pixels: 16:9 3840×2160, 1:1 2160×2160, A4 portrait at 300 dpi 2480×3508. */
-export function posterSize(kind: PosterSize): { width: number; height: number } {
+/** A poster's pixel size. */
+export interface PosterDims {
+  width: number;
+  height: number;
+}
+
+/**
+ * Output pixels of a preset: 16:9 3840×2160, 1:1 2160×2160, A4 portrait at 300 dpi 2480×3508.
+ * Explicit dimensions pass through.
+ */
+export function posterSize(kind: PosterSize | PosterDims): PosterDims {
+  if (typeof kind === 'object') return { width: kind.width, height: kind.height };
   if (kind === '16:9') return { width: 3840, height: 2160 };
   if (kind === '1:1') return { width: 2160, height: 2160 };
   return { width: 2480, height: 3508 };
@@ -37,7 +54,11 @@ export function posterSize(kind: PosterSize): { width: number; height: number } 
 export const POSTER_DPR = 4.5;
 
 /** The layout size (CSS-like px) and pixel ratio `drawScore` is called with. */
-export function posterLayout(kind: PosterSize): { width: number; height: number; dpr: number } {
+export function posterLayout(kind: PosterSize | PosterDims): {
+  width: number;
+  height: number;
+  dpr: number;
+} {
   const p = posterSize(kind);
   return { width: p.width / POSTER_DPR, height: p.height / POSTER_DPR, dpr: POSTER_DPR };
 }
@@ -132,12 +153,68 @@ export interface PosterInfo {
 }
 
 export interface PosterDrawOptions {
-  size: PosterSize;
+  size: PosterSize | PosterDims;
   /** From `posterStyle` (its `title` must match `title` here). */
   style: ScoreStyle;
   /** Draw the title block. */
   title: boolean;
   pitchRange?: [number, number];
+  /** Rows the piece is cut into, 1..POSTER_MAX_ROWS. @default 1 */
+  rows?: number;
+  /** The piece's bar grid (`view.gridBpm`, `view.meter`): row breaks snap to its bar lines. */
+  grid?: { bpm: number; meter?: number };
+}
+
+/** Most rows a poster takes. */
+export const POSTER_MAX_ROWS = 8;
+/** Gap between rows, layout px. */
+export const ROW_GAP = 8;
+
+/** One row of a poster: the time it shows. */
+export interface PosterRow {
+  start: number;
+  end: number;
+}
+
+/**
+ * The piece cut into `rows` rows of equal length; with a bar grid, each break moves to the
+ * nearest bar line (unless that would leave a row empty or reorder breaks: then no break snaps).
+ * The rows cover [0, duration] with no gaps or overlaps.
+ */
+export function posterRows(
+  duration: number,
+  rows: number,
+  grid?: { bpm: number; meter?: number },
+): PosterRow[] {
+  const D = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  const n = Number.isFinite(rows) ? Math.min(POSTER_MAX_ROWS, Math.max(1, Math.round(rows))) : 1;
+  if (n === 1 || !(D > 0)) return [{ start: 0, end: D }];
+  const even: number[] = [];
+  for (let k = 1; k < n; k++) even.push((k * D) / n);
+  let breaks = even;
+  const meter =
+    grid?.meter !== undefined && Number.isInteger(grid.meter) && grid.meter >= 1
+      ? grid.meter
+      : DEFAULT_METER;
+  const bar = grid && Number.isFinite(grid.bpm) && grid.bpm > 0 ? (60 / grid.bpm) * meter : 0;
+  if (bar > 0) {
+    const snapped = even.map((b) => Math.round(b / bar) * bar);
+    const eps = 1e-9;
+    let ok = true;
+    for (let k = 0; k < snapped.length; k++) {
+      const prev = k === 0 ? 0 : snapped[k - 1];
+      if (!(snapped[k] > prev + eps) || !(snapped[k] < D - eps)) ok = false;
+    }
+    if (ok) breaks = snapped;
+  }
+  const out: PosterRow[] = [];
+  let a = 0;
+  for (const b of breaks) {
+    out.push({ start: a, end: b });
+    a = b;
+  }
+  out.push({ start: a, end: D });
+  return out;
 }
 
 /** `m:ss` of a duration, rounded to the second. */
@@ -193,9 +270,106 @@ export function drawPoster(
   ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
   const style = withTitle(opts.style, opts.title);
   const cam = posterCamera(compiled, opts.pitchRange);
+  const rows = posterRows(compiled.duration, opts.rows ?? 1, opts.grid);
+  if (rows.length > 1) {
+    const view = drawRows(ctx, compiled, cam, style, rows, { width, height }, dpr);
+    if (opts.title) drawTitleBlock(ctx, compiled, info, style, view);
+    return view;
+  }
   const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);
   if (opts.title) drawTitleBlock(ctx, compiled, info, style, view);
   return view;
+}
+
+/** Type of the rows' time labels: the HUD's. */
+const ROW_LABEL_PX = 10.5;
+
+/**
+ * The rows of a poster (see the file comment). Returns the one-row poster's view, which places
+ * the HUD and the title block.
+ */
+function drawRows(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  cam: CameraState,
+  style: ScoreStyle,
+  rows: readonly PosterRow[],
+  size: { width: number; height: number },
+  dpr: number,
+): View {
+  const g = ctx as CanvasRenderingContext2D;
+  const { width: W, height: H } = size;
+  const items = hudItems(style);
+  const hud = hudRows(items);
+  const full = cameraAt(
+    cameraScore(compiled),
+    cam,
+    compiled.duration,
+    size,
+    hud > 0 ? hud : style.reserveHud === true,
+    style.hudExtra ?? 0,
+  );
+  const pitchRange: [number, number] = [full.pLo, full.pHi];
+  const band = hud > 0 || style.reserveHud === true ? full.padB : 0;
+  const n = rows.length;
+  const rowH = Math.max(1, (H - band - ROW_GAP * (n - 1)) / n);
+  let span = 0;
+  for (const r of rows) span = Math.max(span, r.end - r.start);
+  const rowStyle: ScoreStyle = { ...style, hud: false };
+  delete rowStyle.reserveHud;
+  delete rowStyle.hudExtra;
+  const MONO = style.fontMono ?? DEFAULT_MONO;
+
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = style.tokens.paper;
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < n; i++) {
+    const r = rows[i];
+    // Rows start on whole device pixels.
+    const y = Math.round(i * (rowH + ROW_GAP) * dpr) / dpr;
+    const len = r.end - r.start;
+    const s: ScoreStyle = { ...rowStyle, markerTimes: rowMarkers(compiled, style, r, i === n - 1) };
+    const view = drawScore(
+      ctx,
+      compiled,
+      { start: r.start, window: len, pitchRange },
+      s,
+      compiled.duration,
+      { width: (W * len) / span, height: rowH },
+      dpr,
+      { x: 0, y },
+    );
+    if (i > 0) {
+      g.globalAlpha = 1;
+      g.font = `${ROW_LABEL_PX}px ${MONO}`;
+      g.fillStyle = style.tokens.ink2;
+      g.textAlign = 'left';
+      g.textBaseline = 'alphabetic';
+      g.fillText(posterLength(r.start), full.padL, view.padT - 4);
+    }
+  }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (hud > 0) drawHud(g, compiled, style, full, MONO, items);
+  return full;
+}
+
+/**
+ * Marker times for one row: the markers in [start, end) (the last row also takes its end) at
+ * their times, the rest out of every view (−∞), so a marker on a break shows only in the row it
+ * starts.
+ */
+function rowMarkers(
+  compiled: CompiledScore,
+  style: ScoreStyle,
+  row: PosterRow,
+  last: boolean,
+): MomentTimes {
+  const out: Record<string, number> = {};
+  for (const s of compiled.momentSpans) {
+    const t = style.markerTimes?.[s.id] ?? s.start;
+    out[s.id] = t >= row.start && (t < row.end || (last && t <= row.end)) ? t : -Infinity;
+  }
+  return out;
 }
 
 /** Line heights of the title block, layout px. */

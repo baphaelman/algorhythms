@@ -144,7 +144,11 @@ export interface ExportForm {
   /** HUD readouts of a video, in `HUD_ITEMS` order. */
   videoHud: readonly HudItem[];
   posterFormat: PosterFormat;
-  posterSize: PosterSize;
+  /** Poster pixels (POSTER_MIN_SIDE..POSTER_MAX_SIDE each, area ≤ POSTER_MAX_AREA). */
+  posterWidth: number;
+  posterHeight: number;
+  /** Rows the piece is cut into, 1..POSTER_MAX_ROWS. */
+  posterRows: number;
   posterTitle: boolean;
   /** HUD readouts of a poster (default none: it would show end-of-piece values). */
   posterHud: readonly HudItem[];
@@ -177,11 +181,69 @@ export const POSTER_FORMATS: readonly { id: PosterFormat; label: string }[] = [
   { id: 'svg', label: 'SVG' },
 ];
 
-export const POSTER_SIZES: readonly { id: PosterSize; label: string }[] = [
-  { id: '16:9', label: '16:9' },
-  { id: '1:1', label: '1:1' },
-  { id: 'a4', label: 'A4 portrait' },
+/** Quick picks of the poster's size: each sets Width and Height (as `posterSize`). */
+export const POSTER_SIZES: readonly {
+  id: PosterSize;
+  label: string;
+  width: number;
+  height: number;
+}[] = [
+  { id: '16:9', label: '16:9', width: 3840, height: 2160 },
+  { id: '1:1', label: '1:1', width: 2160, height: 2160 },
+  { id: 'a4', label: 'A4 portrait', width: 2480, height: 3508 },
 ];
+
+/** Width and Height slider range, px. */
+export const POSTER_MIN_SIDE = 1000;
+export const POSTER_MAX_SIDE = 8000;
+/** Largest canvas every browser draws (Safari: 4096², 16.7 M px). */
+export const POSTER_MAX_AREA = 16_777_216;
+/** Rows slider range (as the renderer's POSTER_MAX_ROWS). */
+export const POSTER_MAX_ROWS = 8;
+
+/** Largest side allowed next to a side `other` px long: the slider's max. */
+export function posterSideMax(other: number): number {
+  return Math.min(POSTER_MAX_SIDE, Math.floor(POSTER_MAX_AREA / Math.max(1, other)));
+}
+
+const side = (v: number, max = POSTER_MAX_SIDE) =>
+  Math.min(max, Math.max(POSTER_MIN_SIDE, Math.round(v)));
+
+/**
+ * Width and height in range, whole px, within the area cap: `keep` stays (in range) and the
+ * other side gives way.
+ */
+export function clampPosterDims(
+  width: number,
+  height: number,
+  keep: 'width' | 'height' = 'width',
+): { width: number; height: number } {
+  let w = side(Number.isFinite(width) ? width : POSTER_SIZES[0].width);
+  let h = side(Number.isFinite(height) ? height : POSTER_SIZES[0].height);
+  if (keep === 'width') h = Math.min(h, posterSideMax(w));
+  else w = Math.min(w, posterSideMax(h));
+  return { width: w, height: h };
+}
+
+/** The area cap holds a side below POSTER_MAX_SIDE and that side is at its cap. */
+export function posterCapped(width: number, height: number): boolean {
+  const mw = posterSideMax(height);
+  const mh = posterSideMax(width);
+  return (mw < POSTER_MAX_SIDE && width >= mw) || (mh < POSTER_MAX_SIDE && height >= mh);
+}
+
+/** The quick pick matching the form's size, if any. */
+export function posterPreset(
+  form: Pick<ExportForm, 'posterWidth' | 'posterHeight'>,
+): PosterSize | undefined {
+  return POSTER_SIZES.find((p) => p.width === form.posterWidth && p.height === form.posterHeight)
+    ?.id;
+}
+
+/** Rows clamped to 1..POSTER_MAX_ROWS, whole. */
+export function clampRows(v: number): number {
+  return Number.isFinite(v) ? Math.min(POSTER_MAX_ROWS, Math.max(1, Math.round(v))) : 1;
+}
 
 export const LOOK_FUTURES: readonly { id: LookFuture; label: string }[] = [
   { id: 'hidden', label: 'Hidden' },
@@ -243,7 +305,9 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoWindow: null,
   videoHud: DEFAULT_HUD,
   posterFormat: 'png',
-  posterSize: '16:9',
+  posterWidth: 3840,
+  posterHeight: 2160,
+  posterRows: 1,
   posterTitle: true,
   posterHud: [],
   look: DEFAULT_LOOK_FORM,
@@ -468,7 +532,8 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
 export function posterOptions(form: ExportForm, piece: Piece, ctx: LookAppContext): PosterOptions {
   const look = lookOf(form, 'poster', ctx);
   return {
-    size: form.posterSize,
+    size: { width: form.posterWidth, height: form.posterHeight },
+    rows: form.posterRows,
     theme: look.theme,
     transparent: look.transparent,
     title: form.posterTitle,
@@ -479,10 +544,9 @@ export function posterOptions(form: ExportForm, piece: Piece, ctx: LookAppContex
   };
 }
 
-/** The poster's pixel size, "3840 × 2160 px" (as `posterSize`, without importing the renderer). */
-export function posterPixels(size: PosterSize): string {
-  const [w, h] = size === '1:1' ? [2160, 2160] : size === 'a4' ? [2480, 3508] : [3840, 2160];
-  return `${w} × ${h} px`;
+/** The poster's pixel size, "3840 × 2160 px". */
+export function posterPixels(form: Pick<ExportForm, 'posterWidth' | 'posterHeight'>): string {
+  return `${form.posterWidth} × ${form.posterHeight} px`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -507,7 +571,9 @@ const REMEMBERED = [
   'videoWindow',
   'videoHud',
   'posterFormat',
-  'posterSize',
+  'posterWidth',
+  'posterHeight',
+  'posterRows',
   'posterTitle',
   'posterHud',
   'look',
@@ -574,7 +640,19 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   }
   if (Array.isArray(r.videoHud)) p.videoHud = hudInOrder(r.videoHud);
   if (oneOf(POSTER_FORMATS, r.posterFormat)) p.posterFormat = r.posterFormat;
-  if (oneOf(POSTER_SIZES, r.posterSize)) p.posterSize = r.posterSize;
+  // Size: explicit pixels, else an old record's preset (`posterSize`); both sides or neither.
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const preset = POSTER_SIZES.find((s) => s.id === r.posterSize);
+  if (num(r.posterWidth) || num(r.posterHeight) || preset) {
+    const base = preset ?? POSTER_SIZES[0];
+    const dims = clampPosterDims(
+      num(r.posterWidth) ? r.posterWidth : base.width,
+      num(r.posterHeight) ? r.posterHeight : base.height,
+    );
+    p.posterWidth = dims.width;
+    p.posterHeight = dims.height;
+  }
+  if (num(r.posterRows)) p.posterRows = clampRows(r.posterRows);
   if (isBool(r.posterTitle)) p.posterTitle = r.posterTitle;
   if (Array.isArray(r.posterHud)) p.posterHud = hudInOrder(r.posterHud);
   if (r.look && typeof r.look === 'object') {

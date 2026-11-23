@@ -442,3 +442,64 @@ test('EXPORT_LOOK poster: differs from the default one; saved for review', async
     writeFileSync(join(dir, 'look-poster.png'), Buffer.from(r.look, 'base64'));
   }
 });
+
+test('rows and explicit pixels: PNG and SVG follow them; 1 row is the poster as before', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  const r = await page.evaluate(
+    async ({ j, look }) => {
+      const h = (window as unknown as HookWindow).__algorhythms;
+      const m = await h.poster();
+      const piece = h.parsePiece(j).piece;
+      const base = { theme: 'light', transparent: false, title: true, thickness: true, look };
+      const b64 = async (b: Blob) => {
+        const bytes = new Uint8Array(await b.arrayBuffer());
+        let s = '';
+        for (let i = 0; i < bytes.length; i += 0x8000)
+          s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return btoa(s);
+      };
+      const dims = async (b: Blob) => {
+        const bmp = await createImageBitmap(b);
+        return [bmp.width, bmp.height];
+      };
+      const px = (width: number, height: number) => ({ width, height });
+      const opts = (size: Poster.PosterOptions['size'], rows?: number): Poster.PosterOptions => ({
+        ...base,
+        theme: 'light',
+        size,
+        ...(rows !== undefined ? { rows } : {}),
+      });
+      const preset = await m.renderPosterPng(piece, opts('16:9'));
+      const one = await m.renderPosterPng(piece, opts(px(3840, 2160), 1));
+      const four = await m.renderPosterPng(piece, opts(px(3840, 2160), 4));
+      const odd = await m.renderPosterPng(piece, opts(px(5000, 1200), 2));
+      const svg = m.renderPosterSvg(piece, opts(px(3000, 3000), 4));
+      return {
+        preset: await b64(preset),
+        one: await b64(one),
+        four: await b64(four),
+        fourDims: await dims(four),
+        oddDims: await dims(odd),
+        svgHead: svg.slice(0, 300),
+        svgNested: /<clipPath id="[^"]+" clip-path=/.test(svg),
+        svgEnd: svg.trimEnd().endsWith('</svg>'),
+      };
+    },
+    { j: json('kite-day'), look: { ...EXPORT_LOOK, theme: 'light' as const, hud: [] } },
+  );
+  expect(r.one).toBe(r.preset);
+  expect(r.four).not.toBe(r.one);
+  expect(r.fourDims).toEqual([3840, 2160]);
+  expect(r.oddDims).toEqual([5000, 1200]);
+  expect(r.svgHead).toMatch(/<svg[^>]*width="3000"[^>]*height="3000"/);
+  expect(r.svgNested).toBe(false);
+  expect(r.svgEnd).toBe(true);
+  if (OUT && browserName === 'chromium') {
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(join(OUT, 'kite-day-rows1.png'), Buffer.from(r.one, 'base64'));
+    writeFileSync(join(OUT, 'kite-day-rows4.png'), Buffer.from(r.four, 'base64'));
+  }
+});

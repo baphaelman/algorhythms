@@ -5,6 +5,13 @@ import {
   EXPORT_PREFS_KEY,
   EXPORT_PREFS_VERSION,
   HUD_CHOICES,
+  POSTER_MAX_AREA,
+  POSTER_MAX_ROWS,
+  POSTER_MAX_SIDE,
+  POSTER_MIN_SIDE,
+  POSTER_SIZES,
+  clampPosterDims,
+  clampRows,
   codecLabel,
   exportFileName,
   fileBase,
@@ -17,8 +24,11 @@ import {
   lookOf,
   midiOptions,
   parsePrefs,
+  posterCapped,
   posterOptions,
   posterPixels,
+  posterPreset,
+  posterSideMax,
   resetLook,
   sanitizeFileName,
   saveExportPrefs,
@@ -405,12 +415,15 @@ describe('poster', () => {
     const p = piece('Kite Day');
     expect(DEFAULT_EXPORT_FORM).toMatchObject({
       posterFormat: 'png',
-      posterSize: '16:9',
+      posterWidth: 3840,
+      posterHeight: 2160,
+      posterRows: 1,
       posterTitle: true,
       posterHud: [],
     });
     expect(posterOptions(form({ format: 'poster' }), p, { dark: true, colors: 'pitch' })).toEqual({
-      size: '16:9',
+      size: { width: 3840, height: 2160 },
+      rows: 1,
       theme: 'dark',
       transparent: false,
       title: true,
@@ -421,19 +434,57 @@ describe('poster', () => {
     });
     expect(exportFileName(p, form({ format: 'poster' }))).toBe('Kite-Day.png');
     expect(exportFileName(p, form({ format: 'poster', posterFormat: 'svg' }))).toBe('Kite-Day.svg');
-    expect(posterPixels('16:9')).toBe('3840 × 2160 px');
-    expect(posterPixels('1:1')).toBe('2160 × 2160 px');
-    expect(posterPixels('a4')).toBe('2480 × 3508 px');
-    for (const s of ['16:9', '1:1', 'a4'] as const) {
-      const { width, height } = posterSize(s);
-      expect(posterPixels(s)).toBe(`${width} × ${height} px`);
+    expect(posterPixels({ posterWidth: 3840, posterHeight: 2160 })).toBe('3840 × 2160 px');
+    // The quick picks are the renderer's presets.
+    for (const s of POSTER_SIZES) {
+      expect(posterSize(s.id)).toEqual({ width: s.width, height: s.height });
+      expect(posterPreset({ posterWidth: s.width, posterHeight: s.height })).toBe(s.id);
     }
+    expect(posterPreset({ posterWidth: 3000, posterHeight: 2160 })).toBeUndefined();
+  });
+
+  it('caps width × height at the area every browser draws', () => {
+    expect(POSTER_MAX_AREA).toBe(4096 * 4096);
+    expect(posterSideMax(1000)).toBe(POSTER_MAX_SIDE);
+    expect(posterSideMax(2160)).toBe(7767);
+    expect(posterSideMax(8000)).toBe(2097);
+    // Range and whole pixels.
+    expect(clampPosterDims(500, 9000.4)).toEqual({ width: POSTER_MIN_SIDE, height: 8000 });
+    expect(clampPosterDims(1234.6, 1000)).toEqual({ width: 1235, height: 1000 });
+    expect(clampPosterDims(NaN, NaN)).toEqual({ width: 3840, height: 2160 });
+    // The kept side stays; the other gives way.
+    expect(clampPosterDims(8000, 8000, 'width')).toEqual({ width: 8000, height: 2097 });
+    expect(clampPosterDims(8000, 8000, 'height')).toEqual({ width: 2097, height: 8000 });
+    for (const [w, h] of [
+      [8000, 8000],
+      [5000, 4000],
+      [7000, 2400],
+    ]) {
+      const d = clampPosterDims(w, h);
+      expect(d.width * d.height).toBeLessThanOrEqual(POSTER_MAX_AREA);
+    }
+    expect(posterCapped(3840, 2160)).toBe(false);
+    expect(posterCapped(8000, 2097)).toBe(true);
+    expect(posterCapped(7767, 2160)).toBe(true);
+    expect(posterCapped(7000, 2160)).toBe(false);
+    expect(posterCapped(8000, 1000)).toBe(false); // the side limit, not the area
+    for (const s of POSTER_SIZES) expect(posterCapped(s.width, s.height)).toBe(false);
+  });
+
+  it('rows: whole, 1..8', () => {
+    expect(clampRows(0)).toBe(1);
+    expect(clampRows(3.4)).toBe(3);
+    expect(clampRows(20)).toBe(POSTER_MAX_ROWS);
+    expect(clampRows(NaN)).toBe(1);
+    const o = posterOptions(form({ posterRows: 4 }), piece('x'), { dark: false, colors: 'pitch' });
+    expect(o.rows).toBe(4);
   });
 
   it('passes size, title, transparency and the HUD', () => {
     const o = posterOptions(
       form({
-        posterSize: 'a4',
+        posterWidth: 2480,
+        posterHeight: 3508,
         posterTitle: false,
         posterHud: ['title', 'key'],
         look: { ...DEFAULT_LOOK_FORM, transparent: true, theme: 'light' },
@@ -441,7 +492,12 @@ describe('poster', () => {
       piece('x'),
       { dark: true, colors: 'pitch' },
     );
-    expect(o).toMatchObject({ size: 'a4', title: false, transparent: true, theme: 'light' });
+    expect(o).toMatchObject({
+      size: { width: 2480, height: 3508 },
+      title: false,
+      transparent: true,
+      theme: 'light',
+    });
     expect(o.look!.hud).toEqual(['key', 'title']);
   });
 });
@@ -477,7 +533,9 @@ describe('remembered choices', () => {
       videoWindow: 24,
       videoHud: ['chord', 'gaps'],
       posterFormat: 'svg',
-      posterSize: 'a4',
+      posterWidth: 5000,
+      posterHeight: 3000,
+      posterRows: 6,
       posterTitle: false,
       posterHud: ['title'],
       look: {
@@ -514,6 +572,27 @@ describe('remembered choices', () => {
     expect(parsePrefs({ v: 2, look: { colors: 'app' } }).look!.colors).toBe('app');
   });
 
+  it('loads an old record’s size preset, and clamps stored pixels and rows', () => {
+    expect(parsePrefs({ posterSize: 'a4' })).toEqual({ posterWidth: 2480, posterHeight: 3508 });
+    expect(parsePrefs({ posterSize: '1:1' })).toEqual({ posterWidth: 2160, posterHeight: 2160 });
+    // Pixels win over a preset; a missing side comes from it (or 16:9).
+    expect(parsePrefs({ posterSize: '1:1', posterWidth: 3000 })).toEqual({
+      posterWidth: 3000,
+      posterHeight: 2160,
+    });
+    expect(parsePrefs({ posterHeight: 1200 })).toEqual({ posterWidth: 3840, posterHeight: 1200 });
+    expect(parsePrefs({ posterWidth: 9000, posterHeight: 9000 })).toEqual({
+      posterWidth: 8000,
+      posterHeight: 2097,
+    });
+    expect(parsePrefs({ posterWidth: 10, posterHeight: 'x' })).toEqual({
+      posterWidth: 1000,
+      posterHeight: 2160,
+    });
+    expect(parsePrefs({ posterRows: 0 })).toEqual({ posterRows: 1 });
+    expect(parsePrefs({ posterRows: 12 })).toEqual({ posterRows: 8 });
+  });
+
   it('works without storage, or with storage that throws', () => {
     expect(loadExportPrefs(null)).toEqual({});
     expect(saveExportPrefs(form(), null)).toBe(false);
@@ -533,6 +612,7 @@ describe('remembered choices', () => {
         videoWindow: 0.5,
         videoHud: ['nope', 'chord'],
         posterSize: 'a3',
+        posterRows: 'two',
         look: { guides: 'yes', beats: true, future: 'later', lineInk: 'red', lineWidth: 'bold' },
       }),
     ).toEqual({

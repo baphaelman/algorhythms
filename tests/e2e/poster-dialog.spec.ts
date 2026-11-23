@@ -174,7 +174,12 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
   );
   const req = (await lastRequest(page))!;
   expect(req.format).toBe('png');
-  expect(req.options).toMatchObject({ size: '16:9', title: true, transparent: false });
+  expect(req.options).toMatchObject({
+    size: { width: 3840, height: 2160 },
+    rows: 1,
+    title: true,
+    transparent: false,
+  });
   expect(req.options.look).toEqual({ ...EXPORT_LOOK, theme: 'light', hud: [] });
   const img = await decodePng(page, png.bytes);
   expect(img).toMatchObject({ width: 3840, height: 2160, cornerAlpha: 255 });
@@ -217,7 +222,11 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await expectUncovered(page, 'export-run');
   await download(page);
   const req = (await lastRequest(page))!;
-  expect(req.options).toMatchObject({ size: '1:1', title: false, theme: 'dark' });
+  expect(req.options).toMatchObject({
+    size: { width: 2160, height: 2160 },
+    title: false,
+    theme: 'dark',
+  });
   expect(req.options.look).toMatchObject({
     theme: 'dark',
     guides: true,
@@ -436,6 +445,66 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   const a4 = await comparePreview(page);
   expect(a4.height / a4.width).toBeCloseTo(3508 / 2480, 1);
   expect(a4.bad / a4.total).toBeLessThan(0.002);
+});
+
+test('Rows slider redraws the preview; Width/Height sliders and quick picks set the PNG size; cap', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openExport(page);
+  await pickPoster(page);
+  let n = await drawn(page);
+  const canvas = page.getByTestId('preview-canvas');
+  await expect(page.getByTestId('export-prows')).toHaveValue('1');
+  const one = await previewHash(page);
+  await setRange(page, 'export-prows', 4);
+  await expect(page.getByTestId('export-prows-value')).toHaveText('4 rows');
+  n = await drawn(page, n);
+  expect(await previewHash(page)).not.toBe(one);
+  await expect(canvas).toHaveAttribute('aria-label', 'Preview of the poster, 16:9, 4 rows');
+  const rows = await comparePreview(page);
+  expect(rows.bad / rows.total).toBeLessThan(0.002);
+
+  // Width and Height: no quick pick matches; the preview takes the new aspect.
+  await setRange(page, 'export-pwidth', 3000);
+  await setRange(page, 'export-pheight', 1500);
+  await expect(page.getByTestId('export-pwidth-value')).toHaveText('3000 px');
+  await expect(page.getByTestId('export-size')).toHaveText('3000 × 1500 px, PNG');
+  for (const l of ['16:9', '1:1', 'A4 portrait']) {
+    await expect(dialog(page).getByLabel(l, { exact: true })).not.toBeChecked();
+  }
+  await drawn(page, n);
+  const wide = await comparePreview(page);
+  expect(wide.width / wide.height).toBeCloseTo(2, 1);
+  const png = await download(page);
+  expect(await decodePng(page, png.bytes)).toMatchObject({ width: 3000, height: 1500 });
+  expect((await lastRequest(page))!.options).toMatchObject({
+    size: { width: 3000, height: 1500 },
+    rows: 4,
+  });
+
+  // The area cap: Width stops where width × height reaches Safari's canvas limit.
+  await expect(page.getByTestId('export-pcap')).toHaveCount(0);
+  await setRange(page, 'export-pheight', 4000);
+  await expect(page.getByTestId('export-pwidth')).toHaveAttribute('max', '4194');
+  await setRange(page, 'export-pwidth', 4194);
+  await expect(page.getByTestId('export-pcap')).toContainText('16.8 million pixels');
+
+  // A quick pick sets both sliders.
+  await choose(page, 'export-psize', '1:1');
+  await expect(page.getByTestId('export-pwidth')).toHaveValue('2160');
+  await expect(page.getByTestId('export-pheight')).toHaveValue('2160');
+  await expect(page.getByTestId('export-pcap')).toHaveCount(0);
+  const sq = await decodePng(page, (await download(page)).bytes);
+  expect(sq).toMatchObject({ width: 2160, height: 2160 });
+
+  // Remembered after reload.
+  await page.reload();
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openExport(page);
+  await pickPoster(page);
+  await expect(page.getByTestId('export-prows')).toHaveValue('4');
+  await expect(dialog(page).getByLabel('1:1', { exact: true })).toBeChecked();
 });
 
 test('the expanded HUD never covers the Export button (desktop and phone)', async ({ page }) => {

@@ -110,6 +110,9 @@ function markersByTime(spans: readonly MomentSpan[], times?: MomentTimes): Marke
  * @param t      playhead time in seconds
  * @param size   canvas size in CSS pixels
  * @param dpr    device pixel ratio; the context is set to scale by it
+ * @param origin where the frame's top-left corner sits on the canvas, CSS px (poster rows). Not
+ *               for frames that use the ghost layer (a dimmed future or a highlight), which
+ *               composites at the canvas origin.
  * @returns the resolved view (for hit-testing the same frame)
  */
 export function drawScore(
@@ -120,6 +123,7 @@ export function drawScore(
   t: Seconds,
   size: { width: number; height: number },
   dpr: number,
+  origin?: { x: number; y: number },
 ): View {
   const g = ctx2d as CanvasRenderingContext2D;
   const { width: W, height: H } = size;
@@ -143,7 +147,7 @@ export function drawScore(
   F.hw = HIGHLIGHT_WIDTH * scale;
   F.hitW = HIT_WIDTH * scale;
 
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.setTransform(dpr, 0, 0, dpr, origin ? origin.x * dpr : 0, origin ? origin.y * dpr : 0);
   DPR = dpr;
   SEAM_LAP = 2 / dpr;
   g.globalAlpha = 1;

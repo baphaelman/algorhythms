@@ -14,6 +14,7 @@ import {
   posterLayout,
   posterSize,
   posterStyle,
+  type PosterDims,
   type PosterDrawOptions,
   type PosterInfo,
   type PosterSize,
@@ -23,7 +24,10 @@ import { videoMarkers } from '../render/video';
 import { fileBase } from './export-options';
 
 export interface PosterOptions {
-  size: PosterSize;
+  /** A preset or explicit pixels. */
+  size: PosterSize | PosterDims;
+  /** Rows the piece is cut into (1..8), breaks on the piece's bar lines. @default 1 */
+  rows?: number;
   theme: 'light' | 'dark';
   /** No background (PNG alpha, no SVG background rect). */
   transparent: boolean;
@@ -59,7 +63,13 @@ export function posterDrawOptions(
     ...videoMarkers(piece),
     ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
   });
-  return { size: opts.size, style, title: opts.title };
+  const o: PosterDrawOptions = { size: opts.size, style, title: opts.title };
+  if (opts.rows !== undefined && opts.rows !== 1) o.rows = opts.rows;
+  const bpm = piece.view.gridBpm;
+  if (bpm !== undefined) {
+    o.grid = piece.view.meter !== undefined ? { bpm, meter: piece.view.meter } : { bpm };
+  }
+  return o;
 }
 
 function posterInfo(piece: Piece): PosterInfo {
