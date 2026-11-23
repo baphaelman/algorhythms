@@ -41,16 +41,24 @@ function describe(path: string, json: unknown, group: ExampleGroup): Example {
   };
 }
 
+/** Compositions pinned to the top of their group, in this order (owner, 2026-11-23). */
+export const PINNED: readonly string[] = ['night-sleeper'];
+
+function pinRank(id: string): number {
+  const i = PINNED.indexOf(id);
+  return i < 0 ? PINNED.length : i;
+}
+
 function list(modules: Record<string, unknown>, group: ExampleGroup): Example[] {
   return Object.entries(modules)
     .map(([path, json]) => describe(path, json, group))
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort((a, b) => pinRank(a.id) - pinRank(b.id) || a.title.localeCompare(b.title));
 }
 
 /** The original examples, sorted by title. */
 export const ORIGINALS: readonly Example[] = list(originals, 'originals');
 
-/** The compositions, sorted by title. */
+/** The compositions: the pinned ones first, then by title. */
 export const COMPOSITIONS: readonly Example[] = list(compositions, 'compositions');
 
 /** Every example: originals first, then compositions. */

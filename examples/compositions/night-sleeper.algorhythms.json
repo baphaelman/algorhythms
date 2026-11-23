@@ -1,0 +1,1432 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Night Sleeper",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-23T00:00:00.000Z",
+    "modified": "2026-11-23T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 2311,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "Eb", "scale": "lydian" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": -0.5,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v2",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": -0.25,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v3",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": 0,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v4",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": 0.25,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v5",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": 0.5,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v6",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": -0.65,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v7",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": 0.65,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v8",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": -0.1,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v9",
+      "part": "Choir",
+      "timbre": "ooh",
+      "pan": 0.1,
+      "gain": 1.21,
+      "range": [38, 80],
+      "sends": { "reverb": 0.55, "delay": 0 },
+      "color": "#a5b6ff"
+    },
+    {
+      "id": "v10",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": 0.35,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v11",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": -0.35,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v12",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": 0.15,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v13",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": -0.15,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v14",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": 0.55,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v15",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": -0.55,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v16",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": 0,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v17",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": 0.45,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v18",
+      "part": "Box",
+      "timbre": "celesta",
+      "pan": -0.45,
+      "gain": 3.08,
+      "range": [66, 104],
+      "sends": { "reverb": 0.6, "delay": 0.3 },
+      "color": "#ff6474"
+    },
+    {
+      "id": "v19",
+      "part": "Voice",
+      "timbre": "croon",
+      "pan": 0.05,
+      "gain": 3.3,
+      "range": [62, 88],
+      "sends": { "reverb": 0.45, "delay": 0 },
+      "color": "#f7c56a"
+    },
+    {
+      "id": "v20",
+      "part": "Bass",
+      "timbre": "hum",
+      "pan": 0,
+      "gain": 2.64,
+      "range": [26, 55],
+      "sends": { "reverb": 0.25, "delay": 0 },
+      "color": "#4cc29a"
+    },
+    {
+      "id": "v21",
+      "part": "Upright",
+      "timbre": "upright",
+      "pan": 0.1,
+      "gain": 2.2,
+      "range": [26, 48],
+      "sends": { "reverb": 0.2, "delay": 0 },
+      "color": "#c4834a"
+    },
+    {
+      "id": "v22",
+      "part": "Toll",
+      "timbre": "bell",
+      "pan": -0.2,
+      "gain": 3.08,
+      "range": [48, 72],
+      "sends": { "reverb": 0.7, "delay": 0 },
+      "color": "#d9a441"
+    },
+    {
+      "id": "v23",
+      "part": "Whistle",
+      "timbre": "steam",
+      "pan": 0.5,
+      "gain": 2.2,
+      "range": [58, 92],
+      "sends": { "reverb": 0.9, "delay": 0.35 },
+      "color": "#d4dae8"
+    },
+    {
+      "id": "v24",
+      "part": "Whistle",
+      "timbre": "steam",
+      "pan": 0.6,
+      "gain": 2.2,
+      "range": [58, 92],
+      "sends": { "reverb": 0.9, "delay": 0.35 },
+      "color": "#d4dae8"
+    },
+    {
+      "id": "v25",
+      "part": "Whistle",
+      "timbre": "steam",
+      "pan": 0.7,
+      "gain": 2.2,
+      "range": [58, 92],
+      "sends": { "reverb": 0.9, "delay": 0.35 },
+      "color": "#d4dae8"
+    },
+    {
+      "id": "v26",
+      "part": "Whistle",
+      "timbre": "steam",
+      "pan": 0.8,
+      "gain": 2.2,
+      "range": [58, 92],
+      "sends": { "reverb": 0.9, "delay": 0.35 },
+      "color": "#d4dae8"
+    }
+  ],
+  "moments": [
+    {
+      "id": "ns0001",
+      "type": "chord",
+      "at": 0,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [63] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 },
+      "count": 1,
+      "label": "One note"
+    },
+    {
+      "id": "ns0002",
+      "type": "chord",
+      "at": 0,
+      "target": { "parts": ["Bass", "Upright"] },
+      "notes": { "kind": "pitches", "pitches": [39, 39] },
+      "assign": "ordered",
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 },
+      "count": 2
+    },
+    {
+      "id": "ns0003",
+      "type": "chord",
+      "at": 0,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [87] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 },
+      "count": 1
+    },
+    {
+      "id": "ns0004",
+      "type": "chord",
+      "at": 0,
+      "target": { "part": "Voice" },
+      "notes": { "kind": "pitches", "pitches": [79] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 },
+      "count": 1
+    },
+    {
+      "id": "ns0005",
+      "type": "chord",
+      "at": 0,
+      "target": { "part": "Toll" },
+      "notes": { "kind": "pitches", "pitches": [63] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 },
+      "count": 1
+    },
+    {
+      "id": "ns0006",
+      "type": "chord",
+      "at": 0,
+      "target": { "part": "Whistle" },
+      "notes": { "kind": "pitches", "pitches": [68, 70, 73, 80] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 },
+      "count": 4
+    },
+    {
+      "id": "ns0007",
+      "type": "level",
+      "at": 0.001,
+      "target": { "parts": ["Choir", "Box", "Voice", "Bass", "Upright", "Toll", "Whistle"] },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "ns0008",
+      "type": "level",
+      "at": 0.01,
+      "target": { "part": "Choir" },
+      "gain": 0.3,
+      "over": 4,
+      "label": "Breath"
+    },
+    {
+      "id": "ns0009",
+      "type": "level",
+      "at": 2.222,
+      "target": { "part": "Upright" },
+      "gain": 2.2,
+      "over": 2
+    },
+    {
+      "id": "ns0010",
+      "type": "pulse",
+      "at": 2.222,
+      "target": { "part": "Upright" },
+      "until": 84.444,
+      "step": 0.1852,
+      "strike": true,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55],
+      "decay": 1,
+      "floor": 0.04,
+      "label": "Rail joints"
+    },
+    {
+      "id": "ns0011",
+      "type": "level",
+      "at": 4.444,
+      "target": { "part": "Bass" },
+      "gain": 0.5,
+      "over": 4
+    },
+    {
+      "id": "ns0012",
+      "type": "level",
+      "at": 4.444,
+      "target": { "part": "Box" },
+      "gain": 0.8,
+      "over": 0.02
+    },
+    {
+      "id": "ns0013",
+      "type": "pulse",
+      "at": 4.444,
+      "target": { "part": "Box" },
+      "until": 8.889,
+      "step": 0.5556,
+      "strike": true,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0.55, 0, 0, 0.7, 0],
+      "decay": 1.8,
+      "floor": 0.04
+    },
+    {
+      "id": "ns0014",
+      "type": "chord",
+      "at": 6.667,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [55, 63, 67] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.6,
+        "jitter": 0,
+        "length": 3.2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "center-out"
+      },
+      "count": 3,
+      "label": "Bloom"
+    },
+    {
+      "id": "ns0015",
+      "type": "chord",
+      "at": 8.889,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [79, 87, 91] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01, "ease": "smootherstep", "land": true },
+      "count": 3
+    },
+    {
+      "id": "ns0016",
+      "type": "pulse",
+      "at": 8.889,
+      "target": { "part": "Box" },
+      "until": 13.333,
+      "step": 0.2778,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 2],
+      "pattern": [1, 0.55, 0.75, 0.55],
+      "decay": 1.4,
+      "floor": 0.04,
+      "restart": 2.2222
+    },
+    {
+      "id": "ns0017",
+      "type": "level",
+      "at": 8.889,
+      "target": { "part": "Choir" },
+      "gain": 0.5,
+      "over": 4
+    },
+    {
+      "id": "ns0018",
+      "type": "chord",
+      "at": 13.333,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [55, 58, 62, 67, 70] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.8,
+        "jitter": 0,
+        "length": 3.6,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "center-out"
+      },
+      "count": 5
+    },
+    {
+      "id": "ns0019",
+      "type": "chord",
+      "at": 13.333,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [79, 86, 91, 93, 98] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01, "ease": "smootherstep", "land": true },
+      "count": 5
+    },
+    {
+      "id": "ns0020",
+      "type": "pulse",
+      "at": 13.333,
+      "target": { "part": "Box" },
+      "until": 48.889,
+      "step": 0.2778,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 4, 5, 4, 3, 2],
+      "pattern": [1, 0.5, 0.7, 0.55, 0.9, 0.5, 0.7, 0.55],
+      "decay": 1.4,
+      "floor": 0.04,
+      "restart": 2.2222,
+      "label": "Music box"
+    },
+    {
+      "id": "ns0021",
+      "type": "level",
+      "at": 13.333,
+      "target": { "part": "Box" },
+      "gain": 1.2,
+      "over": 3
+    },
+    {
+      "id": "ns0022",
+      "type": "level",
+      "at": 15.536,
+      "target": { "part": "Toll" },
+      "gain": 0.8,
+      "over": 0.015
+    },
+    {
+      "id": "ns0023",
+      "type": "tune",
+      "at": 15.555,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 67, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0024",
+      "type": "spread",
+      "at": 15.556,
+      "target": { "part": "Choir" },
+      "factor": 1.5,
+      "around": "median",
+      "snap": "scale",
+      "glide": {
+        "length": 5,
+        "stagger": 1.2,
+        "jitter": 0,
+        "order": "center-out",
+        "ease": "smootherstep"
+      },
+      "label": "Wider"
+    },
+    {
+      "id": "ns0025",
+      "type": "level",
+      "at": 17.056,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0026",
+      "type": "tune",
+      "at": 17.778,
+      "target": { "part": "Voice" },
+      "notes": [
+        { "pitch": 79, "len": 1.6667 },
+        { "pitch": 81, "len": 0.5556 },
+        { "pitch": 79, "len": 1.1111 },
+        { "pitch": 77, "len": 1.1111 },
+        { "pitch": 74, "len": 1.1111 },
+        { "pitch": 72, "len": 1.1111 },
+        { "pitch": 74, "len": 2.2222 },
+        { "pitch": 77, "len": 0.5556 },
+        { "pitch": 81, "len": 0.5556 },
+        { "pitch": 79, "len": 2.2222 }
+      ],
+      "glide": { "length": 0.045, "stagger": 0, "jitter": 0, "ease": "smoothstep", "land": true },
+      "label": "Voice"
+    },
+    {
+      "id": "ns0027",
+      "type": "level",
+      "at": 17.778,
+      "target": { "part": "Voice" },
+      "gain": 0.8,
+      "over": 0.08
+    },
+    {
+      "id": "ns0028",
+      "type": "level",
+      "at": 29.65,
+      "target": { "part": "Voice" },
+      "gain": 0,
+      "over": 0.35
+    },
+    {
+      "id": "ns0029",
+      "type": "level",
+      "at": 33.313,
+      "target": { "part": "Toll" },
+      "gain": 1,
+      "over": 0.015
+    },
+    {
+      "id": "ns0030",
+      "type": "tune",
+      "at": 33.332,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 63, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0031",
+      "type": "shift",
+      "at": 33.333,
+      "target": { "parts": ["Choir", "Box", "Bass", "Upright"] },
+      "by": -4,
+      "unit": "semitones",
+      "glide": { "length": 3.2, "ease": "smootherstep", "land": true, "stagger": 0, "jitter": 0 },
+      "label": "Down a third"
+    },
+    {
+      "id": "ns0032",
+      "type": "key",
+      "at": 33.333,
+      "key": { "tonic": "B", "scale": "lydian" },
+      "label": "B lydian"
+    },
+    {
+      "id": "ns0033",
+      "type": "level",
+      "at": 33.333,
+      "target": { "part": "Choir" },
+      "gain": 0.6,
+      "over": 3
+    },
+    {
+      "id": "ns0034",
+      "type": "level",
+      "at": 34.833,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0035",
+      "type": "tune",
+      "at": 35.556,
+      "target": { "part": "Voice" },
+      "notes": [
+        { "pitch": 75, "len": 1.6667 },
+        { "pitch": 77, "len": 0.5556 },
+        { "pitch": 75, "len": 2.2222 },
+        { "pitch": 73, "len": 1.1111 },
+        { "pitch": 75, "len": 1.1111 },
+        { "pitch": 70, "len": 1.6667 }
+      ],
+      "glide": { "length": 0.045, "stagger": 0, "jitter": 0, "ease": "smoothstep", "land": true }
+    },
+    {
+      "id": "ns0036",
+      "type": "level",
+      "at": 35.556,
+      "target": { "part": "Voice" },
+      "gain": 0.8,
+      "over": 0.08
+    },
+    {
+      "id": "ns0037",
+      "type": "level",
+      "at": 43.539,
+      "target": { "part": "Voice" },
+      "gain": 0,
+      "over": 0.35
+    },
+    {
+      "id": "ns0038",
+      "type": "level",
+      "at": 46.647,
+      "target": { "part": "Toll" },
+      "gain": 1,
+      "over": 0.015
+    },
+    {
+      "id": "ns0039",
+      "type": "tune",
+      "at": 46.666,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 59, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0040",
+      "type": "shift",
+      "at": 46.667,
+      "target": { "parts": ["Choir", "Box", "Bass", "Upright"] },
+      "by": -4,
+      "unit": "semitones",
+      "glide": { "length": 3.2, "ease": "smootherstep", "land": true, "stagger": 0, "jitter": 0 },
+      "label": "Down a third"
+    },
+    {
+      "id": "ns0041",
+      "type": "key",
+      "at": 46.667,
+      "key": { "tonic": "G", "scale": "lydian" },
+      "label": "G lydian"
+    },
+    {
+      "id": "ns0042",
+      "type": "level",
+      "at": 48.167,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0043",
+      "type": "level",
+      "at": 48.889,
+      "target": { "part": "Box" },
+      "gain": 0,
+      "over": 1.6
+    },
+    {
+      "id": "ns0044",
+      "type": "spread",
+      "at": 52.222,
+      "target": { "part": "Choir" },
+      "factor": -1,
+      "around": "median",
+      "snap": "none",
+      "glide": { "length": 4.4, "stagger": 0, "jitter": 0, "ease": "smootherstep" },
+      "label": "Upside down"
+    },
+    {
+      "id": "ns0045",
+      "type": "level",
+      "at": 52.222,
+      "target": { "part": "Choir" },
+      "gain": 0.7,
+      "over": 2,
+      "label": "Fold"
+    },
+    {
+      "id": "ns0046",
+      "type": "level",
+      "at": 55.536,
+      "target": { "part": "Toll" },
+      "gain": 1,
+      "over": 0.015
+    },
+    {
+      "id": "ns0047",
+      "type": "tune",
+      "at": 55.555,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 63, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0048",
+      "type": "key",
+      "at": 55.556,
+      "key": { "tonic": "B", "scale": "lydian" },
+      "label": "B lydian"
+    },
+    {
+      "id": "ns0049",
+      "type": "chord",
+      "at": 55.556,
+      "target": { "part": "Bass" },
+      "notes": { "kind": "pitches", "pitches": [35] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 4.4, "ease": "smootherstep", "land": true }
+    },
+    {
+      "id": "ns0050",
+      "type": "chord",
+      "at": 55.556,
+      "target": { "part": "Upright" },
+      "notes": { "kind": "pitches", "pitches": [35] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 4.4, "ease": "smootherstep", "land": true }
+    },
+    {
+      "id": "ns0051",
+      "type": "chord",
+      "at": 55.556,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [83, 85, 89, 95, 97] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01, "ease": "smootherstep", "land": true },
+      "count": 5
+    },
+    {
+      "id": "ns0052",
+      "type": "pulse",
+      "at": 55.556,
+      "target": { "part": "Box" },
+      "until": 68.889,
+      "step": 0.2778,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 4, 5, 4, 3, 2],
+      "pattern": [1, 0.5, 0.7, 0.55, 0.9, 0.5, 0.7, 0.55],
+      "decay": 1.4,
+      "floor": 0.04,
+      "restart": 2.2222
+    },
+    {
+      "id": "ns0053",
+      "type": "level",
+      "at": 55.556,
+      "target": { "part": "Bass" },
+      "gain": 0.6,
+      "over": 3
+    },
+    {
+      "id": "ns0054",
+      "type": "level",
+      "at": 56.667,
+      "target": { "part": "Box" },
+      "gain": 1.2,
+      "over": 1.5
+    },
+    {
+      "id": "ns0055",
+      "type": "level",
+      "at": 57.056,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0056",
+      "type": "tune",
+      "at": 57.778,
+      "target": { "part": "Voice" },
+      "notes": [
+        { "pitch": 75, "len": 1.1111 },
+        { "pitch": 80, "len": 1.1111 },
+        { "pitch": 85, "len": 2.2222 },
+        { "pitch": 80, "len": 2.2222 },
+        { "pitch": 75, "len": 1.6667 }
+      ],
+      "glide": { "length": 0.045, "stagger": 0, "jitter": 0, "ease": "smoothstep", "land": true }
+    },
+    {
+      "id": "ns0057",
+      "type": "level",
+      "at": 57.778,
+      "target": { "part": "Voice" },
+      "gain": 0.85,
+      "over": 0.08
+    },
+    {
+      "id": "ns0058",
+      "type": "level",
+      "at": 60,
+      "target": { "part": "Choir" },
+      "gain": 0.6,
+      "over": 3
+    },
+    {
+      "id": "ns0059",
+      "type": "level",
+      "at": 65.761,
+      "target": { "part": "Voice" },
+      "gain": 0,
+      "over": 0.35
+    },
+    {
+      "id": "ns0060",
+      "type": "level",
+      "at": 66.111,
+      "target": { "part": "Whistle" },
+      "gain": 0.45,
+      "over": 2
+    },
+    {
+      "id": "ns0061",
+      "type": "level",
+      "at": 68.869,
+      "target": { "part": "Toll" },
+      "gain": 1.1,
+      "over": 0.015
+    },
+    {
+      "id": "ns0062",
+      "type": "tune",
+      "at": 68.888,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 67, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0063",
+      "type": "shift",
+      "at": 68.889,
+      "target": { "parts": ["Choir", "Box", "Bass", "Upright"] },
+      "by": 4,
+      "unit": "semitones",
+      "glide": { "length": 3, "ease": "smootherstep", "land": true, "stagger": 0, "jitter": 0 },
+      "label": "Up a third, home"
+    },
+    {
+      "id": "ns0064",
+      "type": "key",
+      "at": 68.889,
+      "key": { "tonic": "Eb", "scale": "lydian" },
+      "label": "E♭ lydian"
+    },
+    {
+      "id": "ns0065",
+      "type": "shift",
+      "at": 68.889,
+      "target": { "part": "Whistle" },
+      "by": -1,
+      "unit": "semitones",
+      "glide": { "length": 3, "ease": "smootherstep", "land": true, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0066",
+      "type": "level",
+      "at": 68.889,
+      "target": { "part": "Whistle" },
+      "gain": 0,
+      "over": 5
+    },
+    {
+      "id": "ns0067",
+      "type": "level",
+      "at": 70.389,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0068",
+      "type": "chord",
+      "at": 73.333,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [51, 55, 58, 62, 67, 69, 74] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.6,
+        "jitter": 0,
+        "length": 3,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "center-out"
+      },
+      "count": 7,
+      "label": "Seven"
+    },
+    {
+      "id": "ns0069",
+      "type": "chord",
+      "at": 73.333,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [74, 79, 81, 86, 91, 93, 98] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.3,
+        "jitter": 0,
+        "length": 1.2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "center-out"
+      },
+      "count": 7
+    },
+    {
+      "id": "ns0070",
+      "type": "pulse",
+      "at": 73.333,
+      "target": { "part": "Box" },
+      "until": 84.444,
+      "step": 0.1852,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2],
+      "pattern": [1, 0.45, 0.6, 0.5, 0.65, 0.5, 0.85, 0.5, 0.6, 0.5, 0.65, 0.5],
+      "decay": 1.4,
+      "floor": 0.04,
+      "restart": 2.2222,
+      "label": "Triplets"
+    },
+    {
+      "id": "ns0071",
+      "type": "tune",
+      "at": 73.333,
+      "target": { "part": "Voice" },
+      "notes": [
+        { "pitch": 81, "len": 1.1111 },
+        { "pitch": 84, "len": 1.1111 },
+        { "pitch": 86, "len": 2.2222 },
+        { "pitch": 84, "len": 1.1111 },
+        { "pitch": 81, "len": 1.1111 },
+        { "pitch": 79, "len": 2.2222 },
+        { "pitch": 77, "len": 1.6667 },
+        { "pitch": 74, "len": 0.5556 },
+        { "pitch": 77, "len": 2.2222 },
+        { "pitch": 79, "len": 4.4444 }
+      ],
+      "glide": { "length": 0.045, "stagger": 0, "jitter": 0, "ease": "smoothstep", "land": true }
+    },
+    {
+      "id": "ns0072",
+      "type": "level",
+      "at": 73.333,
+      "target": { "part": "Voice" },
+      "gain": 0.95,
+      "over": 0.08
+    },
+    {
+      "id": "ns0073",
+      "type": "level",
+      "at": 73.333,
+      "target": { "part": "Choir" },
+      "gain": 1.05,
+      "over": 3,
+      "label": "Seven"
+    },
+    {
+      "id": "ns0074",
+      "type": "level",
+      "at": 73.333,
+      "target": { "part": "Box" },
+      "gain": 1.5,
+      "over": 2
+    },
+    {
+      "id": "ns0075",
+      "type": "level",
+      "at": 73.333,
+      "target": { "part": "Bass" },
+      "gain": 0.8,
+      "over": 3
+    },
+    {
+      "id": "ns0076",
+      "type": "pulse",
+      "at": 84.444,
+      "target": { "part": "Box" },
+      "until": 93.333,
+      "step": 0.2778,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 4, 5, 4, 3, 2],
+      "pattern": [1, 0.5, 0.7, 0.55, 0.9, 0.5, 0.7, 0.55],
+      "decay": 1.4,
+      "floor": 0.04,
+      "restart": 2.2222
+    },
+    {
+      "id": "ns0077",
+      "type": "pulse",
+      "at": 84.444,
+      "target": { "part": "Upright" },
+      "until": 102.222,
+      "step": 0.1852,
+      "strike": true,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "decay": 1,
+      "floor": 0.04,
+      "label": "Slowing"
+    },
+    {
+      "id": "ns0078",
+      "type": "chord",
+      "at": 86.667,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [51, 58, 62, 67, 74] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.8,
+        "jitter": 0,
+        "length": 4.2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 5,
+      "label": "Fewer"
+    },
+    {
+      "id": "ns0079",
+      "type": "chord",
+      "at": 86.667,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [79, 86, 91, 93, 98] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.4,
+        "jitter": 0,
+        "length": 2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 5
+    },
+    {
+      "id": "ns0080",
+      "type": "level",
+      "at": 86.667,
+      "target": { "part": "Choir" },
+      "gain": 0.6,
+      "over": 5
+    },
+    {
+      "id": "ns0081",
+      "type": "level",
+      "at": 90.761,
+      "target": { "part": "Voice" },
+      "gain": 0,
+      "over": 0.35
+    },
+    {
+      "id": "ns0082",
+      "type": "chord",
+      "at": 93.333,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [55, 62, 70] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.8,
+        "jitter": 0,
+        "length": 4.2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 3
+    },
+    {
+      "id": "ns0083",
+      "type": "chord",
+      "at": 93.333,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [86, 91, 98] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.4,
+        "jitter": 0,
+        "length": 2,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 3
+    },
+    {
+      "id": "ns0084",
+      "type": "pulse",
+      "at": 93.333,
+      "target": { "part": "Box" },
+      "until": 100,
+      "step": 0.5556,
+      "strike": true,
+      "mode": "order",
+      "order": [1, 2, 3, 2],
+      "pattern": [1, 0.6, 0.8, 0.6],
+      "decay": 2,
+      "floor": 0.04,
+      "restart": 2.2222
+    },
+    {
+      "id": "ns0085",
+      "type": "tune",
+      "at": 93.333,
+      "target": { "part": "Voice" },
+      "notes": [
+        { "pitch": 79, "len": 3.3333 },
+        { "pitch": 77, "len": 1.1111 },
+        { "pitch": 79, "len": 4.4444 },
+        { "pitch": 75, "len": 5.5556 }
+      ],
+      "glide": { "length": 0.045, "stagger": 0, "jitter": 0, "ease": "smoothstep", "land": true }
+    },
+    {
+      "id": "ns0086",
+      "type": "level",
+      "at": 93.333,
+      "target": { "part": "Voice" },
+      "gain": 0.75,
+      "over": 0.08
+    },
+    {
+      "id": "ns0087",
+      "type": "pulse",
+      "at": 100,
+      "target": { "part": "Box" },
+      "until": 106.667,
+      "step": 1.1111,
+      "strike": true,
+      "mode": "together",
+      "pattern": [1, 0.7],
+      "decay": 2.5,
+      "floor": 0.04
+    },
+    {
+      "id": "ns0088",
+      "type": "level",
+      "at": 102.202,
+      "target": { "part": "Toll" },
+      "gain": 0.9,
+      "over": 0.015
+    },
+    {
+      "id": "ns0089",
+      "type": "tune",
+      "at": 102.221,
+      "target": { "part": "Toll" },
+      "notes": [{ "pitch": 63, "len": 2.2222 }],
+      "glide": { "length": 0.01, "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0090",
+      "type": "chord",
+      "at": 102.222,
+      "target": { "part": "Choir" },
+      "notes": { "kind": "pitches", "pitches": [63] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 1,
+        "jitter": 0,
+        "length": 6,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 1,
+      "label": "One note"
+    },
+    {
+      "id": "ns0091",
+      "type": "chord",
+      "at": 102.222,
+      "target": { "part": "Box" },
+      "notes": { "kind": "pitches", "pitches": [87] },
+      "assign": "ordered",
+      "glide": {
+        "stagger": 0.5,
+        "jitter": 0,
+        "length": 2.5,
+        "ease": "smootherstep",
+        "land": true,
+        "order": "outside-in"
+      },
+      "count": 1
+    },
+    {
+      "id": "ns0092",
+      "type": "pulse",
+      "at": 102.222,
+      "target": { "part": "Upright" },
+      "until": 106.667,
+      "step": 0.1852,
+      "strike": true,
+      "mode": "together",
+      "pattern": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "decay": 3,
+      "floor": 0.04
+    },
+    {
+      "id": "ns0093",
+      "type": "chord",
+      "at": 102.222,
+      "target": { "part": "Whistle" },
+      "notes": { "kind": "pitches", "pitches": [67, 70, 72, 75] },
+      "assign": "ordered",
+      "glide": { "stagger": 0, "jitter": 0, "length": 0.01 }
+    },
+    {
+      "id": "ns0094",
+      "type": "level",
+      "at": 103.722,
+      "target": { "part": "Toll" },
+      "gain": 0,
+      "over": 4.5
+    },
+    {
+      "id": "ns0095",
+      "type": "level",
+      "at": 104.444,
+      "target": { "parts": ["Choir", "Bass", "Box"] },
+      "gain": 0,
+      "over": 6.667,
+      "label": "Out"
+    },
+    {
+      "id": "ns0096",
+      "type": "level",
+      "at": 105.556,
+      "target": { "part": "Whistle" },
+      "gain": 0.35,
+      "over": 2
+    },
+    {
+      "id": "ns0097",
+      "type": "level",
+      "at": 107.428,
+      "target": { "part": "Voice" },
+      "gain": 0,
+      "over": 0.35
+    },
+    {
+      "id": "ns0098",
+      "type": "shift",
+      "at": 108.889,
+      "target": { "part": "Whistle" },
+      "by": -1,
+      "unit": "semitones",
+      "glide": { "length": 2.6, "ease": "smoothstep", "stagger": 0, "jitter": 0 }
+    },
+    {
+      "id": "ns0099",
+      "type": "level",
+      "at": 108.889,
+      "target": { "part": "Whistle" },
+      "gain": 0,
+      "over": 3.6
+    }
+  ],
+  "mix": {
+    "reverb": {
+      "size": 0.82,
+      "decay": 4.2,
+      "damping": 0.45,
+      "preDelay": 0.025,
+      "returnLevel": 0.34
+    },
+    "delay": { "time": 0.5556, "feedback": 0.3, "returnLevel": 0.12 },
+    "sends": { "reverb": 0.5, "delay": 0.25 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 113.833, "fade": 0.5 },
+  "view": { "window": 24, "colors": "custom", "hud": true, "gridBpm": 108, "meter": 4 },
+  "timbres": {
+    "croon": {
+      "harmonics": [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+      ],
+      "stretch": 0,
+      "brightness": { "tilt": -5, "track": 0 },
+      "detuneSpread": 0,
+      "accent": 0.05,
+      "noise": { "level": 0.03, "bandwidth": 1.5 },
+      "articulation": { "amount": 0.25, "attack": 0.025, "decay": 0.3, "crisp": true },
+      "vibrato": { "rate": 5.2, "depthCents": 20, "delay": 0.4, "jitter": 0.45 },
+      "formants": [
+        { "hz": 650, "bw": 120, "gain": 1 },
+        { "hz": 1080, "bw": 140, "gain": 0.5 },
+        { "hz": 2650, "bw": 240, "gain": 0.3 },
+        { "hz": 3250, "bw": 320, "gain": 0.16 }
+      ],
+      "drift": { "cents": 3, "rate": 0.35, "amp": 0.05 }
+    },
+    "ooh": {
+      "harmonics": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "stretch": 0,
+      "brightness": { "tilt": -6.5, "track": 0 },
+      "detuneSpread": 4,
+      "accent": 0.15,
+      "articulation": { "amount": 0.1, "attack": 0.15, "decay": 0.8 },
+      "vibrato": { "rate": 5, "depthCents": 10, "delay": 0.45, "jitter": 0.8 },
+      "formants": [
+        { "hz": 330, "bw": 90, "gain": 1 },
+        { "hz": 780, "bw": 110, "gain": 0.4 },
+        { "hz": 2300, "bw": 220, "gain": 0.06 }
+      ],
+      "drift": { "cents": 5, "rate": 0.3, "amp": 0.06 }
+    },
+    "hum": {
+      "harmonics": [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1
+      ],
+      "stretch": 0,
+      "brightness": { "tilt": -7, "track": 0 },
+      "detuneSpread": 0,
+      "accent": 0.1,
+      "articulation": { "amount": 0.1, "attack": 0.2, "decay": 0.8 },
+      "vibrato": { "rate": 4.6, "depthCents": 5, "delay": 0.8, "jitter": 0.5 },
+      "formants": [
+        { "hz": 120, "bw": 170, "gain": 0.9 },
+        { "hz": 300, "bw": 100, "gain": 1 },
+        { "hz": 700, "bw": 140, "gain": 0.2 }
+      ],
+      "drift": { "cents": 3, "rate": 0.3, "amp": 0.04 }
+    },
+    "upright": {
+      "harmonics": [1, 0.6, 0.3, 0.15, 0.08, 0.04],
+      "stretch": 0,
+      "noise": { "level": 0.03, "bandwidth": 1 },
+      "brightness": { "tilt": -4, "track": 0 },
+      "detuneSpread": 0,
+      "accent": 0.05,
+      "articulation": { "amount": 0.8, "attack": 0.006, "decay": 0.7, "crisp": true },
+      "vibrato": { "rate": 5, "depthCents": 0, "delay": 0.5 }
+    },
+    "steam": {
+      "harmonics": [1, 0.3, 0.12, 0.05, 0.02],
+      "stretch": 0,
+      "noise": { "level": 0.45, "bandwidth": 0.22 },
+      "brightness": { "tilt": -1, "track": 0 },
+      "detuneSpread": 9,
+      "accent": 0.2,
+      "articulation": { "amount": 0.3, "attack": 0.08, "decay": 0.4 },
+      "vibrato": { "rate": 5, "depthCents": 0, "delay": 0.5 },
+      "drift": { "cents": 6, "rate": 0.6, "amp": 0.08 }
+    },
+    "celesta": {
+      "harmonics": [1, 0.06],
+      "stretch": 0,
+      "strikePartials": [
+        { "ratio": 4, "amp": 0.3, "decay": 0.3 },
+        { "ratio": 6.27, "amp": 0.14, "decay": 0.12 }
+      ],
+      "brightness": { "tilt": 0, "track": 0.2 },
+      "detuneSpread": 1,
+      "accent": 0,
+      "articulation": { "amount": 0.92, "attack": 0.001, "decay": 1.5, "crisp": true },
+      "vibrato": { "rate": 5, "depthCents": 0, "delay": 0.5 }
+    }
+  }
+}
