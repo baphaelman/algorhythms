@@ -55,7 +55,7 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
 - Verify in `<scratchpad>/verify-head` (detached worktree): lint, typecheck, test, build; add `pnpm test:perf` (run alone) when DSP or compiler code changed. Other unit timeouts under load: rerun alone. `render.spec` 4 ms budget always fails on this box (software raster); CI's guard is 12 ms.
 - E2E here: `PLAYWRIGHT_BROWSERS_PATH=<scratchpad>/pw` (symlinks Chromium 1243 as the 1255 Playwright wants; Firefox 1572 installed there via the "algorhythms" cloud environment, which allows Playwright's download hosts). Audio specs need a sink: `apt-get install -y pulseaudio; pulseaudio --start --exit-idle-time=-1; pactl load-module module-null-sink sink_name=ci_null; pactl set-default-sink ci_null`. WebKit runs only on CI (macOS).
 - CI skips docs-only pushes (`paths` in ci.yml, M4.5-19), so batch doc commits freely.
-- After each push, rebuild and republish the preview artifact (see "Demo links").
+- After each push, rebuild and republish the preview artifact (https://claude.ai/artifact/PkiBVk62JzhoWUaqqDKGgJ; recipe in "Demo links") **right away, before CI finishes**, and send the owner the link (owner 2026-11-23: "always do this"). Send the Pages link once CI is green.
 - Owner: one line per builder return; commit as Claude <noreply@anthropic.com> with per-command `-c` flags (owner, 2026-11-22).
 
 ## Working notes
