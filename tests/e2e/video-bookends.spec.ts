@@ -331,6 +331,15 @@ test('glow without canvas filter (older Safari): the ring passes look like the b
       look: { ...EXPORT_LOOK, theme: 'dark', hud: [] },
     };
     const glow = { ...base, look: { ...base.look, glow: 1 } };
+    // Does this engine really blur (not just keep the property: Playwright's WebKit)? A dot under
+    // blur(2px) must spread 3 px; the app's detection must agree.
+    const probe = new OffscreenCanvas(16, 16).getContext('2d') as OffscreenCanvasRenderingContext2D;
+    probe.filter = 'blur(2px)';
+    probe.fillStyle = '#fff';
+    probe.fillRect(8, 8, 1, 1);
+    const realBlur = probe.getImageData(11, 8, 1, 1).data[3] > 0;
+    const { canFilter } = await import('/src/render/layer.ts' as string);
+    const detected = canFilter(new OffscreenCanvas(16, 16).getContext('2d'));
     const k = 600;
     const plain = m.referenceFrame(piece, base, k).data;
     const filtered = m.referenceFrame(piece, glow, k).data;
@@ -360,14 +369,23 @@ test('glow without canvas filter (older Safari): the ring passes look like the b
     };
     return {
       hasFilter: !!desc,
+      realBlur,
+      detected,
       glowVsPlain: psnr(filtered, plain),
       ringsVsFilter: psnr(rings, filtered),
       ringsVsPlain: psnr(rings, plain),
     };
   });
   console.log(`glow fallback: ${JSON.stringify(r)}`);
-  // The glow changes the frame; the fallback is much closer to the blur than to no glow.
+  // The glow changes the frame on every engine; detection matches what the engine really does.
+  expect(r.detected, 'canFilter agrees with a real blur').toBe(r.realBlur);
   expect(r.glowVsPlain).toBeLessThan(45);
   expect(r.ringsVsPlain).toBeLessThan(45);
-  expect(r.ringsVsFilter).toBeGreaterThanOrEqual(r.glowVsPlain + 6);
+  if (r.realBlur) {
+    // The fallback is much closer to the engine's blur than to no glow.
+    expect(r.ringsVsFilter).toBeGreaterThanOrEqual(r.glowVsPlain + 6);
+  } else {
+    // No real blur (WebKit): the glow already draws the ring passes, so stubbing changes nothing.
+    expect(r.ringsVsFilter).toBeGreaterThanOrEqual(60);
+  }
 });

@@ -54,15 +54,31 @@ function makeLayer(target: Ctx2D, w: number, h: number): Layer | null {
 
 const filterOk = new WeakMap<object, boolean>();
 
-/** Whether `g` applies canvas `filter` (no in older Safari): set and read back once per context. */
+/**
+ * Whether `g` applies canvas `filter` (no in older Safari and Playwright's WebKit, where the
+ * setter only adds a plain property, so the read-back alone passes): once per context, a 1 px dot
+ * drawn under `blur(1px)` must spread to its neighbour. Draws on `g`, so callers clear after.
+ */
 export function canFilter(g: CanvasRenderingContext2D): boolean {
   let ok = filterOk.get(g);
   if (ok === undefined) {
     try {
       const was = g.filter;
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+      g.clearRect(0, 0, 8, 8);
       g.filter = 'blur(1px)';
       ok = g.filter === 'blur(1px)';
+      if (ok) {
+        g.fillStyle = '#fff';
+        g.fillRect(4, 4, 1, 1);
+        ok = g.getImageData(6, 4, 1, 1).data[3] > 0;
+      }
       g.filter = was ?? 'none';
+      g.clearRect(0, 0, 8, 8);
+      g.restore();
     } catch {
       ok = false;
     }
