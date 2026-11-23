@@ -311,9 +311,9 @@ Demo the owner approved: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv (sour
 - **Single notes are hand edits, not blocks:** note points and dot drags (§11.3) are dots on the lines, with no palette button (owner, 2026-11-22).
 - **Parts:** Texture, Melody, Level and Sound get one row per part (the Chords part can arpeggiate while the Bass holds); Key and Chords are shared, and a chord block targets parts as today.
 - **Palette:** Chord, Texture, Melody, Level, Sound, Key. Typing a progression ("IV 2, V 2") fills a run of chord blocks. Labels stay short; explanations go in tooltips (owner: "way less text and information").
-- **Underneath, blocks compile to today's moments** (lowering), so the compiler, sound engine, exports and live mode do not change. File format **version 3**. Version 2 files migrate on open, losslessly: a migrated block lowers to exactly the moment it came from until it is edited, so every example and composition sounds and looks the same. A moment that fits no row (for example a shift aimed at one part, or a pin) stays as it is, as a hand edit.
+- **Blocks are stored as today's moments** (integrator call, 2026-11-22: no new file format). The rows are how the editor shows and edits them: each moment type belongs to one row, and a block's extent runs to the next block on its row. New edits write only `chord` (with `count` for Notes: n), `shift`/`spread` (relative chord blocks; mirror = spread with factor −1), `walk`, `pulse`, `tune`, `level`, `timbre` and `key` moments, plus additive fields where needed. Older types (`unison`, `split`, `merge`, `progression`, `note`, `pin`) still compile exactly as before and show as blocks on their row (note and pin as dots); editing one through its row's inspector may rewrite it as a `chord` moment. So the compiler, sound engine, exports and live mode do not change, and every example and composition sounds and looks the same.
 - **New → "Like the video"** template: one note, bloom to six, two chords, gather to one note, bloom again with Wander, all set to Float.
-- The first M10b builder writes the exact v3 schema and lowering into the build log for the integrator before the UI work starts.
+- The first M10b builder writes the row model (type → row and part, block extents, inspector rewrites, palette defaults) into the build log before the UI work starts.
 
 ---
 
@@ -1150,11 +1150,11 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 
 **M10. Editor overhaul (L)** (revision 14, owner 2026-11-22)
 - **M10a, first, in today's editor:** the theory-aware Next, the Add → Chord default, the chord picker marks, and the palette without note and pin (§11.3).
-- **M10b:** rows and blocks (§6.4): file format v3 with migration and lowering, the lane's rows, per-row inspectors and palette, textures that read the Chords row, melodies that re-fit when the chords change, examples and compositions re-saved, the "Like the video" template.
+- **M10b:** rows and blocks (§6.4): the row model, the lane's rows, per-row inspectors and palette, textures that read the Chords row, melodies that re-fit when the chords change, the "Like the video" template.
 - *Accept when:*
   - in C major, after I–V–vi–IV Next's best fit is I, and after V it is I; in A minor, after i–♭VII–♭VI it is V; each card's moment compiles to the chord it names and follows a later key change;
   - every built-in scale either gets job cards with no two of one job, or falls back to the old grammar, and Next never offers a no-op;
-  - every v2 example and composition opens as v3 and compiles to the same score (render goldens unchanged);
+  - every example and composition compiles to the same score (render goldens unchanged), and each of its moments shows as a block (or a dot) on exactly one row;
   - the "Like the video" template is six chord blocks and one Wander texture, with no split, merge or unison;
   - the palette has no note, pin, split, merge, unison, shift, spread, walk, pulse or progression button.
 
@@ -1225,7 +1225,7 @@ The original questions follow for reference.
 ## 18. Changelog
 
 ### Revision 14 (2026-11-22): editor overhaul (owner chose option B)
-- **Rows and blocks (§6.4, M10b):** a moment is a block on the Key, Chords, Texture, Melody, Level or Sound row, lasting until the next block on its row; unison, split, merge, shift, spread, walk, pulse and progression fold into chord blocks and textures; file format v3, lowered to today's moments.
+- **Rows and blocks (§6.4, M10b):** a moment is a block on the Key, Chords, Texture, Melody, Level or Sound row, lasting until the next block on its row; unison, split, merge, shift, spread, walk, pulse and progression fold into chord blocks and textures; stored as today's moments (no new file format).
 - **Theory-aware Next (§11.3, M10a, first):** one card per chord job (Home, Near home, Lift, Tension, Surprise), little text; Add → Chord picks the best chord for the spot; the chord picker marks the best fits lightly; note and pin leave the palette.
 
 ### Revision 13 (2026-11-22): export look (owner)
