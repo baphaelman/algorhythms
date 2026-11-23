@@ -2765,3 +2765,6 @@ M10 acceptance line 2 (`docs/m10-acceptance.md` gaps 1 and 6). `momentEffectAt` 
 - **Part births.** The check did not apply compile.ts `partBirths`: a fork is born in its parent's part, else dropped. Fix: effect.ts `partBirths`.
 - **Add → Chord fallback:** `chordDefaultAt(…, fits?)` returns the best-ranked chord that `fits` accepts, else the best. `newBlock` passes "the landing, filled chord has an effect", so the button is greyed only when no chord changes anything. Example: little-round at 2 s, where only the Bass tune sounds and F's extra notes have no Bass voice; it now offers the next chord.
 - The compiler is unchanged; the render goldens pass. `KNOWN_NOOPS` is gone. Tests: `theory-next.test` covers the split case, the fallback, and every example and composition × 4 times with no Add → Chord no-op. `next-acceptance` expects no no-op anywhere.
+
+### Firefox lane-rows "uncaught exception: undefined" (2026-11-23)
+- Not the view-bar change. A navigation while the idle warm-up's engine worklet module is still evaluating makes Firefox kill the worklet realm: a "Script terminated by timeout" warning from engine.worklet, then that error. The page sees no error event or rejection, and closing the context on `pagehide` doesn't stop it (reproduced 2–4 in 60–180 navigations). lane-rows (two `load`s per test) now drops that error only after such a warning.

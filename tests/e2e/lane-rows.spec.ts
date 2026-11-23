@@ -12,11 +12,26 @@ const DURATION_END = 40;
 
 // No console errors (React warnings included): a shift moment without `by` once rendered its
 // inspector slider with value NaN.
+// Firefox only: a navigation (`load` twice in one test) while the idle warm-up's worklet module is
+// still evaluating kills the worklet realm, which logs "Script terminated by timeout" (a warning
+// from engine.worklet) and then "uncaught exception: undefined". Neither reaches the page as an
+// error event or a rejection, so the app can't catch it; the check drops that error only after
+// such a warning.
 let consoleErrors: string[] = [];
+let workletKilled = false;
 test.beforeEach(({ page }) => {
   consoleErrors = [];
+  workletKilled = false;
   page.on('console', (m) => {
-    if (m.type() === 'error') consoleErrors.push(m.text());
+    const text = m.text();
+    if (m.type() === 'warning' && /Script terminated by timeout[\s\S]*engine\.worklet/.test(text)) {
+      workletKilled = true;
+    } else if (
+      m.type() === 'error' &&
+      !(workletKilled && /uncaught exception: undefined/.test(text))
+    ) {
+      consoleErrors.push(text);
+    }
   });
 });
 test.afterEach(() => {
