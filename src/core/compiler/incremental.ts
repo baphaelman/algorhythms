@@ -135,6 +135,9 @@ interface State {
   initDiags: number;
   spanStart: number[];
   spanEnd: number[];
+  /** Per compiler moment: when it decides, and the moments a land moment waited for. */
+  eventT: readonly number[];
+  waits: readonly (readonly number[] | undefined)[];
 }
 
 /** How the last `compile` ran, for tests and measurements. */
@@ -427,13 +430,16 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
 
 /**
  * First moment index where the pieces differ, and the earliest event time of a moment from there
- * on (a land moment's lead-in start, revision 9; the glide defaults are equal, `sameSetup`).
+ * on (a land moment's lead-in start, revision 9; the glide defaults are equal, `sameSetup`), and
+ * of a moment below it whose decision `landOrder` moved.
  * Resume before event (t, i) in event order (moment events at one time run in index order).
  */
 function firstChange(
   b: Piece,
   ma: readonly Moment[],
   mb: readonly Moment[],
+  prev: State,
+  c: Compiler,
 ): { k: number; t: Seconds; i: number } {
   const defaults = sanitizeGlide(b.defaults?.glide, defaultGlide());
   const n = Math.min(ma.length, mb.length);
@@ -470,6 +476,20 @@ function firstChange(
       }
     }
   }
+  // A land moment below k that waits for other moments (build log "Land always arrives") may
+  // decide at another time, or after other moments, now: resume before it, old or new.
+  for (let j = 0; j < k && j < c.eventT.length && j < prev.eventT.length; j++) {
+    const ta = prev.eventT[j];
+    const tb = c.eventT[j];
+    const wa = prev.waits[j];
+    const wb = c.landings[j]?.after;
+    if ((ta === tb || (ta !== ta && tb !== tb)) && (wa === wb || same(wa, wb))) continue;
+    const d = ta < tb || tb !== tb ? ta : tb;
+    if (d < t || (d === t && j < i)) {
+      t = d;
+      i = j;
+    }
+  }
   return { k, t, i };
 }
 
@@ -495,7 +515,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       Array.isArray(prev.piece.moments) &&
       sameSetup(prev.piece, piece)
     ) {
-      const { k, t, i } = firstChange(piece, prev.moments, c.moments);
+      const { k, t, i } = firstChange(piece, prev.moments, c.moments, prev, c);
       const cps = prev.checkpoints;
       let ci = cps.length - 1;
       while (ci >= 0 && !(cps[ci].t < t || (cps[ci].t === t && cps[ci].i <= i))) ci--;
@@ -537,6 +557,8 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       initDiags,
       spanStart: c.spanStart,
       spanEnd: c.spanEnd,
+      eventT: c.eventT,
+      waits: c.landings.map((l) => l?.after),
     };
     return score;
   };

@@ -15,6 +15,8 @@
  */
 
 import { defaultGlide, TUNE_GLIDE } from '../defaults';
+import { expandProgressions } from '../moments/progression';
+import { inPartScope, partOf, partScope } from '../parts';
 import { hash32, Purpose, randHashed } from '../rng';
 import type { EaseRef, Glide, GlideArrive, GlideOrder, Moment, Piece, Seconds } from '../types';
 
@@ -189,12 +191,17 @@ export function glides(m: Pick<Moment, 'type'>): boolean {
 
 /** A land moment's lead-in (revision 9): where it starts and decides, and the glide it uses. */
 export interface Landing {
-  /** Decision and earliest start time: `at` − length − stagger, clamped at 0. */
+  /** Decision and earliest start time: `at` − length − stagger, clamped at 0 (and `landOrder`). */
   start: Seconds;
   /** The arrival: `at`. */
   end: Seconds;
-  /** The glide, its length and stagger scaled down when the start was clamped at 0. */
+  /** The glide, its length and stagger scaled down when the start was clamped. */
   glide: Glide;
+  /**
+   * Build log "Land always arrives": the moments (indices) with an earlier marker whose
+   * decisions it waited for (`landOrder`); absent when none.
+   */
+  after?: readonly number[];
 }
 
 /**
@@ -218,14 +225,95 @@ export function landing(at: Seconds, glide: Glide, floor: Seconds = 0): Landing 
   };
 }
 
+/** The next float after t ≥ 0: an event that must run just after one at t (`landOrder`). */
+function justAfter(t: Seconds): Seconds {
+  const step = t * Number.EPSILON;
+  return t + (step > Number.MIN_VALUE ? step : Number.MIN_VALUE);
+}
+
+/**
+ * When each moment decides, and each land moment's lead-in (revision 9; build log "Land always
+ * arrives"). `glideOf[i]`: moment i's merged glide, null when it makes no event (invalid,
+ * muted). `parts`: the pool's parts.
+ *
+ * A land moment (not a tune) decides at its lead-in start, unless moments with an earlier marker
+ * that may move its lines (pitch-moving point moments, not tunes, whose part scopes share a part
+ * with its own) decide inside its lead-in, before its marker. Then it decides just after the last
+ * of them (`after`), reading what they did, and its lead-in starts there, compressed to fit as a
+ * tune note's (`landing` floored there). Markers are taken in order, so a land moment that waits
+ * is waited for by the later ones.
+ */
+export function landOrder(
+  moments: readonly Moment[],
+  glideOf: readonly (Glide | null)[],
+  parts: readonly string[],
+): { eventT: Seconds[]; landings: (Landing | null)[] } {
+  const n = moments.length;
+  const eventT: Seconds[] = Array<Seconds>(n).fill(NaN);
+  const landings: (Landing | null)[] = Array<Landing | null>(n).fill(null);
+  const order: number[] = [];
+  for (let i = 0; i < n; i++) if (glideOf[i]) order.push(i);
+  order.sort((a, b) => moments[a].at - moments[b].at || a - b);
+  /** Pitch-moving point moments that may make another land moment wait, in marker order. */
+  const movers: number[] = [];
+  const scopes = new Map<number, boolean[]>();
+  const reach = (i: number): boolean[] => {
+    let r = scopes.get(i);
+    if (!r) {
+      const sc = partScope(moments[i].target);
+      scopes.set(i, (r = parts.map((q) => inPartScope(sc, q))));
+    }
+    return r;
+  };
+  const share = (i: number, j: number): boolean => {
+    const ri = reach(i);
+    const rj = reach(j);
+    for (let q = 0; q < ri.length; q++) if (ri[q] && rj[q]) return true;
+    return false;
+  };
+  for (const i of order) {
+    const m = moments[i];
+    const g = glideOf[i]!;
+    const moves = glides(m);
+    let land = g.land === true && moves ? landing(m.at, g) : null;
+    if (land && m.type !== 'tune' && land.start < m.at) {
+      const S = land.start;
+      let D = S;
+      let after: number[] | null = null;
+      // Movers in marker order: those inside (S, at) can decide inside the lead-in.
+      for (let q = movers.length - 1; q >= 0; q--) {
+        const j = movers[q];
+        const mj = moments[j];
+        if (mj.at < S) break;
+        if (!(mj.at < m.at)) continue;
+        const E = eventT[j];
+        if (!(E > S || (E === S && j > i)) || !(E < m.at) || !share(i, j)) continue;
+        (after ??= []).push(j);
+        if (E > D) D = E;
+      }
+      if (after) {
+        const F = justAfter(D);
+        const l = landing(m.at, g, F);
+        // at − F can round to the whole lead: still start after them.
+        land = { ...l, start: l.start > F ? l.start : F, after: after.reverse() };
+      }
+    }
+    landings[i] = land;
+    eventT[i] = land ? land.start : m.at;
+    if (moves && m.type !== 'tune') movers.push(i);
+  }
+  return { eventT, landings };
+}
+
 /** True when moment `m` (its glide merged as `glide`) lands with a lead-in before `at`. */
 export function lands(m: Pick<Moment, 'type' | 'at'>, glide: Glide): boolean {
   return glide.land === true && glides(m) && landing(m.at, glide).start < m.at;
 }
 
 /**
- * When the compiler handles moment `m` (§7.1): `at`, or a land moment's lead-in start (its
- * decisions read the state there). `defaults`: the piece's sanitised default glide.
+ * When the compiler handles moment `m` alone (§7.1): `at`, or a land moment's lead-in start (its
+ * decisions read the state there). `defaults`: the piece's sanitised default glide. A land
+ * moment can wait for earlier moments: `pieceDecisionTime` knows the whole piece.
  */
 export function decisionTime(m: Moment, defaults: Glide): Seconds {
   if (!glides(m)) return m.at;
@@ -233,7 +321,93 @@ export function decisionTime(m: Moment, defaults: Glide): Seconds {
   return g.land === true ? landing(m.at, g).start : m.at;
 }
 
-/** `decisionTime` with the piece's own default glide. */
-export function pieceDecisionTime(piece: Pick<Piece, 'defaults'>, m: Moment): Seconds {
-  return decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
+interface Decided {
+  glide: unknown;
+  voices: unknown;
+  seed: number;
+  moments: readonly Moment[];
+  times: Map<Moment, Seconds>;
+}
+const DECIDED = new WeakMap<readonly Moment[], Decided>();
+
+/** Moment types the compiler knows (compile.ts MOMENT_TYPES; progressions are expanded). */
+const KNOWN = new Set<string>([
+  'chord',
+  'unison',
+  'split',
+  'merge',
+  'shift',
+  'spread',
+  'walk',
+  'note',
+  'pin',
+  'key',
+  'level',
+  'pulse',
+  'tune',
+  'timbre',
+]);
+
+/**
+ * When the compiler handles moment `m` of `piece` (§7.1): `decisionTime`, after `landOrder` (a
+ * land moment waiting for earlier moments decides after them). A progression: its first chord.
+ * A moment not in the piece: as if it were added. Cached per moments array (and defaults, voices
+ * and seed, by identity).
+ */
+export function pieceDecisionTime(
+  piece: Pick<Piece, 'defaults' | 'moments' | 'voices' | 'seed'>,
+  m: Moment,
+): Seconds {
+  const ms = Array.isArray(piece.moments) ? piece.moments : [];
+  let d = DECIDED.get(ms);
+  if (
+    !d ||
+    d.glide !== piece.defaults?.glide ||
+    d.voices !== piece.voices ||
+    d.seed !== piece.seed ||
+    d.moments.length !== ms.length ||
+    d.moments.some((x, i) => x !== ms[i])
+  ) {
+    d = {
+      glide: piece.defaults?.glide,
+      voices: piece.voices,
+      seed: piece.seed,
+      moments: ms.slice(),
+      times: decisionTimes(piece, ms),
+    };
+    DECIDED.set(ms, d);
+  }
+  const t =
+    d.times.get(m) ?? (ms.includes(m) ? undefined : decisionTimes(piece, [...ms, m]).get(m));
+  return t ?? decisionTime(m, sanitizeGlide(piece.defaults?.glide, defaultGlide()));
+}
+
+function decisionTimes(
+  piece: Pick<Piece, 'defaults' | 'voices' | 'seed'>,
+  ms: readonly Moment[],
+): Map<Moment, Seconds> {
+  const defaults = sanitizeGlide(piece.defaults?.glide, defaultGlide());
+  const ex = expandProgressions(ms, piece.seed);
+  const moments = ex.moments as Moment[];
+  const glideOf = moments.map((m) =>
+    m &&
+    typeof m === 'object' &&
+    !m.muted &&
+    KNOWN.has(m.type) &&
+    typeof m.at === 'number' &&
+    Number.isFinite(m.at) &&
+    m.at >= 0
+      ? momentGlide(defaults, m)
+      : null,
+  );
+  const parts = [...new Set((Array.isArray(piece.voices) ? piece.voices : []).map(partOf))];
+  const { eventT } = landOrder(moments, glideOf, parts);
+  const out = new Map<Moment, Seconds>();
+  moments.forEach((m, j) => {
+    const o = ex.origins?.[j];
+    if (!o) {
+      if (eventT[j] === eventT[j]) out.set(m, eventT[j]);
+    } else if (o.k === 0 && eventT[j] === eventT[j]) out.set(ms[o.index], eventT[j]);
+  });
+  return out;
 }
