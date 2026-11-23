@@ -21,7 +21,7 @@ import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
 import { HUD_ROW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
 import { fillBackground } from './colours';
-import { DEFAULT_MONO, drawScore, hudPlacement, keyName, type Ctx2D } from './draw';
+import { DEFAULT_MONO, drawScore, drawVignette, hudPlacement, keyName, type Ctx2D } from './draw';
 import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
@@ -374,7 +374,9 @@ function drawRows(
   const rowH = Math.max(1, (H - band - ROW_GAP * (n - 1)) / n);
   let span = 0;
   for (const r of rows) span = Math.max(span, r.end - r.start);
+  // The vignette darkens the whole poster once, after the rows.
   const rowStyle: ScoreStyle = { ...style, hud: false };
+  delete rowStyle.vignette;
   // A gradient spans the whole poster, drawn once below: the rows draw no background.
   if (style.paint?.background && style.tokens.paper !== 'transparent') {
     rowStyle.tokens = { ...style.tokens, paper: 'transparent' };
@@ -411,6 +413,7 @@ function drawRows(
     }
   }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (style.vignette) drawVignette(g, W, H, Math.min(1, style.vignette));
   if (hud > 0) drawHud(g, compiled, style, full, MONO, items);
   return full;
 }

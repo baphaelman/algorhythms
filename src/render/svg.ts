@@ -10,7 +10,8 @@
  * colours are converted to sRGB hex so other SVG tools read them. Consecutive opaque, undashed
  * strokes with identical style are merged into one `<path>`.
  *
- * Not supported: drawImage, patterns, conic gradients, shadows, filters and composite
+ * `filter` takes only `blur(Npx)` (an SVG `feGaussianBlur` over the whole canvas; the glow).
+ * Not supported: drawImage, patterns, conic gradients, shadows, other filters and composite
  * modes other than source-over (drawScore's ghost layer uses drawImage; the poster never needs
  * it). clearRect only clears when it covers the whole canvas.
  */
@@ -59,6 +60,8 @@ interface State {
   globalCompositeOperation: string;
   /** Clip-path id in effect, or ''. */
   clip: string;
+  /** Canvas `filter`: 'none' or `blur(Npx)`. */
+  filter: string;
 }
 
 function initialState(): State {
@@ -79,6 +82,7 @@ function initialState(): State {
     letterSpacing: '0px',
     globalCompositeOperation: 'source-over',
     clip: '',
+    filter: 'none',
   };
 }
 
@@ -131,12 +135,21 @@ function oklchLinear(L: number, C: number, h: number): [number, number, number] 
 }
 
 /**
- * Colour string for SVG: `oklch(L C h [/ a])` becomes sRGB hex, anything else is kept. Out of
+ * Colour string for SVG: `oklch(L C h [/ a])` and `rgb[a](r, g, b[, a])` become sRGB hex (the
+ * alpha returned separately), anything else is kept. Out of
  * gamut, each channel is clipped: that is how Chromium draws these on a canvas (2 dB closer to
  * the PNG than CSS chroma reduction; build log M9-a). The alpha of an OKLCH colour is returned
  * separately.
  */
 export function svgColor(color: string): { color: string; alpha: number } {
+  const rgb =
+    /^\s*rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)\s*$/i.exec(
+      color,
+    );
+  if (rgb) {
+    const a = rgb[4] === undefined ? 1 : Math.min(1, Number(rgb[4]));
+    return { color: hex(+rgb[1] / 255, +rgb[2] / 255, +rgb[3] / 255), alpha: a };
+  }
   const m =
     /^\s*oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([-\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+)(%?))?\s*\)\s*$/i.exec(
       color,
@@ -281,6 +294,12 @@ export class SvgContext {
   }
   set letterSpacing(v: string) {
     this.s.letterSpacing = v;
+  }
+  get filter(): string {
+    return this.s.filter;
+  }
+  set filter(v: string) {
+    this.s.filter = /^blur\(\d+(\.\d+)?px\)$/.test(v) ? v : 'none';
   }
   get globalCompositeOperation(): string {
     return this.s.globalCompositeOperation;
@@ -515,7 +534,25 @@ export class SvgContext {
     let a = '';
     if (alpha < 1) a += ` opacity="${num3(alpha)}"`;
     if (this.s.clip) a += ` clip-path="url(#${this.s.clip})"`;
+    const f = this.filterRef();
+    if (f) a += ` filter="url(#${f})"`;
     return a;
+  }
+
+  /** The id of the current blur's `<filter>` def (over the whole canvas), or ''. */
+  private filterRef(): string {
+    const m = /^blur\((\d+(?:\.\d+)?)px\)$/.exec(this.s.filter);
+    const sd = m ? Number(m[1]) * this.scaleOf() : 0;
+    if (!(sd > 0)) return '';
+    const { width: W, height: H } = this.canvas;
+    const body = `filterUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><feGaussianBlur stdDeviation="${num(sd)}"/>`;
+    let id = this.gradIds.get('filter' + body);
+    if (!id) {
+      id = `f${++this.ids}`;
+      this.gradIds.set('filter' + body, id);
+      this.defs.push(`<filter id="${id}" ${body}</filter>`);
+    }
+    return id;
   }
 
   private push(el: string): void {

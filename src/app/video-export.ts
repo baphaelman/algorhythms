@@ -25,9 +25,14 @@ import type { HudPlacement } from '../render/hud';
 import { resetContext } from '../render/poster';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
+  bookendsOn,
   drawVideoFrame,
   drawVideoFrameAt,
+  drawThumbnail,
+  drawVideoMoment,
+  thumbnailSize,
   videoCamera,
+  videoLength,
   videoFrameCount,
   videoLayout,
   videoMarkers,
@@ -35,6 +40,7 @@ import {
   videoSpan,
   videoStyle,
   type VideoAspect,
+  type VideoBookends,
   type VideoCameraMode,
   type VideoFrameOptions,
   type VideoSize,
@@ -70,6 +76,11 @@ export interface VideoOptions {
   section?: TimeSpan;
   /** Loudness normalisation of the audio (§12 "Ready for YouTube"). @default 'off' */
   loudness?: ExportLoudness;
+  /**
+   * Opening and ending (§12 "Ready for YouTube"): fades, lead-in, title card, end card. The
+   * lead-in delays the audio; silence pads it to the end card's end. Absent = none.
+   */
+  bookends?: VideoBookends;
 }
 
 /**
@@ -95,6 +106,36 @@ export function videoAudioFrames(
     videoAudioSpan(compiled.duration, section),
   );
   return to - from;
+}
+
+/**
+ * A video's audio, in samples at VIDEO_SAMPLE_RATE, with its opening and ending: `lead` silent
+ * samples (the lead-in, rounded to a sample), the `music` (the section's render), then silence
+ * to `total` (the end card's end, when later than the music).
+ */
+export interface VideoTimeline {
+  lead: number;
+  music: number;
+  total: number;
+  /** The bookends as drawn (the lead-in on a whole sample), or undefined when all are off. */
+  bookends?: VideoBookends;
+}
+
+/** The timeline of a video export (see `VideoTimeline`). */
+export function videoTimeline(
+  compiled: CompiledScore,
+  mix: Piece['mix'],
+  opts: Pick<VideoOptions, 'section' | 'bookends'>,
+): VideoTimeline {
+  const sr = VIDEO_SAMPLE_RATE;
+  const music = videoAudioFrames(compiled, mix, opts.section);
+  const b = opts.bookends;
+  if (!bookendsOn(b)) return { lead: 0, music, total: music };
+  const lead = Math.round(Math.max(0, Number.isFinite(b.leadIn) ? (b.leadIn ?? 0) : 0) * sr);
+  const bookends: VideoBookends = { ...b, leadIn: lead / sr };
+  const span = videoSpan(compiled.duration, opts.section);
+  const len = videoLength(bookends, span.end - span.start, music / sr);
+  return { lead, music, total: Math.max(lead + music, Math.ceil(len * sr - 1e-6)), bookends };
 }
 
 /** Where the MP4 goes. `positioned`: the sink takes positioned writes (streaming layout). */
@@ -367,13 +408,14 @@ export async function renderMix(
   piece: Piece,
   section?: TimeSpan,
   loudness: ExportLoudness = 'off',
+  bookends?: VideoBookends,
 ): Promise<[Float32Array, Float32Array]> {
   const compiled = compile(piece);
-  const frames = videoAudioFrames(compiled, piece.mix, section);
+  const tl = videoTimeline(compiled, piece.mix, { section, bookends });
   const span = videoAudioSpan(compiled.duration, section);
-  const l = new Float32Array(frames);
-  const r = new Float32Array(frames);
-  let at = 0;
+  const l = new Float32Array(tl.total);
+  const r = new Float32Array(tl.total);
+  let at = tl.lead;
   const signal = new AbortController().signal;
   for await (const c of mixChunks(compiled, piece, signal, undefined, span, loudness)) {
     for (let i = 0; i < c.length; i += 2, at++) {
@@ -487,7 +529,11 @@ export function xcorrLag(a: Float32Array, b: Float32Array, lo: number, hi: numbe
 // ---------------------------------------------------------------------------------------------
 
 /** The frame options for `drawVideoFrame` (tests draw reference frames with these). */
-export function frameOptions(piece: Piece, opts: VideoOptions): VideoFrameOptions {
+export function frameOptions(
+  piece: Piece,
+  opts: VideoOptions,
+  compiled?: CompiledScore,
+): VideoFrameOptions {
   const style = videoStyle({
     theme: opts.theme,
     hud: opts.hud,
@@ -502,7 +548,28 @@ export function frameOptions(piece: Piece, opts: VideoOptions): VideoFrameOption
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
   if (opts.section) o.section = opts.section;
+  if (bookendsOn(opts.bookends)) {
+    const tl = videoTimeline(compiled ?? compile(piece), piece.mix, opts);
+    if (tl.bookends) o.bookends = tl.bookends;
+    o.length = tl.total / VIDEO_SAMPLE_RATE;
+  }
   return o;
+}
+
+/**
+ * The Export dialog's preview of a video with an opening and ending: the frame at video time τ
+ * (lead-in, title card, end card and fades included) as the export draws it.
+ */
+export function previewVideoMoment(
+  ctx: Ctx2D,
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: VideoOptions,
+  tau: Seconds,
+  scale: number,
+): void {
+  resetContext(ctx);
+  drawVideoMoment(ctx, compiled, frameOptions(piece, opts, compiled), tau, scale);
 }
 
 /** Frame k as the export draws it, on the main thread (tests). */
@@ -510,7 +577,8 @@ export function referenceFrame(piece: Piece, opts: VideoOptions, k: number): Ima
   const { width, height } = videoSize(opts.aspect, opts.size);
   const canvas = new OffscreenCanvas(width, height);
   const g = canvas.getContext('2d', { alpha: false })!;
-  drawVideoFrame(g, compile(piece), frameOptions(piece, opts), k, opts.fps);
+  const compiled = compile(piece);
+  drawVideoFrame(g, compiled, frameOptions(piece, opts, compiled), k, opts.fps);
   return g.getImageData(0, 0, width, height);
 }
 
@@ -557,6 +625,44 @@ export function referenceFrameAt(
   g.textAlign = 'left';
   drawScore(g, compiled, cam, fo.style, tc, lay, lay.dpr * scale);
   return g.getImageData(0, 0, width, height);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Thumbnail
+// ---------------------------------------------------------------------------------------------
+
+/** YouTube's thumbnail limit, bytes (2 MB; decimal, the stricter reading). */
+export const THUMBNAIL_MAX_BYTES = 2_000_000;
+/** JPEG qualities tried in turn until the file fits. */
+export const THUMBNAIL_QUALITIES = [0.92, 0.85, 0.75, 0.65, 0.5, 0.35] as const;
+
+/**
+ * A thumbnail JPEG (§12 "Ready for YouTube"): `thumbnailSize` pixels, the frame at score time
+ * `at` or the whole-piece view, the title large (default: the title card's, else the piece's
+ * name). The quality steps down until it is under THUMBNAIL_MAX_BYTES.
+ */
+export async function exportThumbnail(
+  piece: Piece,
+  opts: VideoOptions,
+  at: Seconds | 'whole',
+  title?: { text: string; subtitle?: string },
+): Promise<Blob> {
+  const { width, height } = thumbnailSize(opts.aspect);
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d', { alpha: false })!;
+  const compiled = compile(piece);
+  const fo = frameOptions(piece, opts, compiled);
+  resetContext(g);
+  drawThumbnail(g, compiled, fo, {
+    at,
+    title: title ?? opts.bookends?.title ?? { text: piece.meta.title },
+  });
+  let blob: Blob | null = null;
+  for (const quality of THUMBNAIL_QUALITIES) {
+    blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+    if (blob.size < THUMBNAIL_MAX_BYTES) return blob;
+  }
+  return blob!;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -653,7 +759,8 @@ export async function exportVideo(
   const compiled = compile(piece);
   const sr = VIDEO_SAMPLE_RATE;
   const audioSpan = videoAudioSpan(compiled.duration, opts.section);
-  const audioFrames = videoAudioFrames(compiled, piece.mix, opts.section);
+  const timeline = videoTimeline(compiled, piece.mix, opts);
+  const audioFrames = timeline.total;
   const duration = audioFrames / sr;
   const frames = videoFrameCount(duration, opts.fps);
   const { width, height } = videoSize(opts.aspect, opts.size);
@@ -714,15 +821,7 @@ export async function exportVideo(
         audioFrac = f;
         report(videoDone < frames ? 'video' : 'audio');
       };
-      for await (const data of mixChunks(
-        compiled,
-        piece,
-        stop.signal,
-        onAudio,
-        audioSpan,
-        opts.loudness,
-      )) {
-        if (stop.signal.aborted) return;
+      const send = async (data: Float32Array<ArrayBuffer>) => {
         const n = data.length >> 1;
         const ad = new AudioData({
           format: 'f32',
@@ -736,7 +835,27 @@ export async function exportVideo(
         ad.close();
         sent += n;
         await drain(enc, 4);
+      };
+      // Silence: the lead-in before the music, the end card after it.
+      const silence = async (until: number) => {
+        while (sent < until && !stop.signal.aborted) {
+          await send(new Float32Array(2 * Math.min(sr, until - sent)));
+        }
+      };
+      await silence(timeline.lead);
+      for await (const data of mixChunks(
+        compiled,
+        piece,
+        stop.signal,
+        onAudio,
+        audioSpan,
+        opts.loudness,
+      )) {
+        if (stop.signal.aborted) return;
+        await send(data);
       }
+      await silence(timeline.total);
+      if (stop.signal.aborted) return;
       await enc.flush();
       if (encErr) throw encErr;
     } finally {
@@ -746,7 +865,7 @@ export async function exportVideo(
 
   const job: FrameJob = {
     compiled,
-    frame: frameOptions(piece, opts),
+    frame: frameOptions(piece, opts, compiled),
     fps: opts.fps,
     frames,
     config: { ...videoConfig(videoCodec, opts), ...hooks.config },

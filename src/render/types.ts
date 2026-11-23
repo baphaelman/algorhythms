@@ -97,6 +97,12 @@ export type HudItem =
   | 'gaps'
   | 'title';
 
+/** Guide lines at pitches (MIDI numbers, fractions allowed), labelled or not. */
+export interface PitchGuides {
+  pitches: readonly number[];
+  labels: boolean;
+}
+
 /** How to paint one frame. Pure data; the app builds it from the piece's view settings and theme. */
 export interface ScoreStyle {
   /** Resolved colour tokens of the current theme. */
@@ -217,6 +223,18 @@ export interface ScoreStyle {
    * moment's lines draw in as it is placed. Absent: the whole score.
    */
   reveal?: Seconds;
+  /**
+   * Glow (§12 "Ready for YouTube"), 0..1: soft light round the lines, from the lines only, in
+   * `paint.glow` or the lines' own colours. Absent or 0: none.
+   */
+  glow?: number;
+  /** Vignette, 0..1: the frame's edges darkened. Absent or 0: none. */
+  vignette?: number;
+  /**
+   * Guide lines at pitches (§12 "Ready for YouTube"): faint horizontal lines in the guides'
+   * colour, each labelled with its note name when `labels`. Absent: none.
+   */
+  pitchGuides?: PitchGuides;
   /**
    * Line thickness by weight, with merges and splits as strands and ropes (§11.3). False draws
    * every line at the base width (video export's thickness off, §12). @default true
