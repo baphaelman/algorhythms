@@ -326,6 +326,10 @@ describe('glow', () => {
       const b = new (Object.getPrototypeOf(a.g).constructor)() as CanvasRenderingContext2D;
       expect(canFilter(b)).toBe(true);
       expect(a.probes()).toBe(1);
+      // A context whose `filter` is stubbed takes the rings, though its type passed the probe.
+      Object.defineProperty(b, 'filter', { get: () => 'none', set: () => undefined });
+      expect(canFilter(b)).toBe(false);
+      expect(canFilter(a.g)).toBe(true);
     });
     it('a filter property that only sticks, or a blur that does not spread: the ring fallback', () => {
       expect(canFilter(fakeCtx(false).g)).toBe(false);
