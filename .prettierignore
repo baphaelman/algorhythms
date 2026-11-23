@@ -14,3 +14,5 @@ pnpm-lock.yaml
 **/*.md
 # Version 1 files kept byte for byte for the schema v2 migration test (M4.5-27).
 tests/golden/v1/
+# The M10 design sketch (owner-approved demo), kept byte for byte as the reference for core/theory.
+docs/design/

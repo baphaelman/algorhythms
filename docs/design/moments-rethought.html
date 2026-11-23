@@ -1,0 +1,1399 @@
+<title>Moments, Rethought</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a reading column for the argument; a full-width panel band for the playable sketch. Colours follow the AlgoRhythms app (paper, ink, ember accent). */
+:root {
+  --paper: #eef1f4; --ink: #151a21; --ink-2: #5e6876; --rule: #d2d8df; --panel: #e3e8ed; --card: #f8fafb;
+  --accent: #c2410c; --on-accent: #ffffff; --wash: rgba(194, 65, 12, 0.07);
+  --home: #0f766e; --soft: #4c63c9; --lift: #a16207; --tension: #c2410c; --colour: #8a3ac0;
+  --line-l: 40;
+  --f-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1217; --ink: #e4e8ee; --ink-2: #8d97a5; --rule: #262c36; --panel: #161b22; --card: #1a2029;
+    --accent: #ff8f5a; --on-accent: #1a0e07; --wash: rgba(255, 143, 90, 0.09);
+    --home: #34d1bf; --soft: #93a5ff; --lift: #f0b845; --tension: #ff8f5a; --colour: #c890ff;
+    --line-l: 66; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1217; --ink: #e4e8ee; --ink-2: #8d97a5; --rule: #262c36; --panel: #161b22; --card: #1a2029;
+  --accent: #ff8f5a; --on-accent: #1a0e07; --wash: rgba(255, 143, 90, 0.09);
+  --home: #34d1bf; --soft: #93a5ff; --lift: #f0b845; --tension: #ff8f5a; --colour: #c890ff;
+  --line-l: 66; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.55 var(--f-sans); }
+.wrap { max-width: 1212px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.read { max-width: 720px; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 4.4vw, 44px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 700; }
+h2 { font-size: 23px; line-height: 1.2; letter-spacing: -0.012em; font-weight: 680; }
+h3 { font-size: 16px; line-height: 1.3; font-weight: 650; }
+p { margin: 0; }
+a { color: var(--accent); }
+.eyebrow { font: 600 11px/1.2 var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.muted { color: var(--ink-2); }
+.num { font: normal 0.78em var(--f-mono); color: var(--ink-2); font-style: normal; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button { font: inherit; color: inherit; }
+
+header.top { padding-block: 44px 28px; display: flex; flex-direction: column; gap: 14px; }
+.lede { font-size: 17px; line-height: 1.55; max-width: 66ch; }
+.pick { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--accent); border-radius: 8px; background: var(--card); max-width: 720px; }
+.pick .eyebrow { color: var(--accent); }
+
+section { border-top: 1px solid var(--rule); padding-block: 32px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.finds { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.find { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.mchip { font: 12px/1 var(--f-mono); padding: 3px 5px; border-radius: 4px; background: var(--panel); white-space: nowrap; }
+
+.tablewrap { overflow-x: auto; }
+table.map { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+table.map th { text-align: left; font: 600 11px/1.2 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+table.map td { padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.map td:first-child { white-space: nowrap; }
+table.map tr.grp td { padding-top: 14px; }
+.planned { font: 10px var(--f-mono); color: var(--ink-2); }
+
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.opt { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.opt.rec { border-color: var(--accent); }
+.opt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tagrec { font: 600 10px/1 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
+.opt dl { margin: 0; display: grid; gap: 8px; }
+.opt dt { font: 600 11px/1.2 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.opt dd { margin: 2px 0 0; font-size: 14px; }
+
+.mock { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 8px; font: 11px/1.2 var(--f-mono); display: flex; flex-direction: column; gap: 4px; }
+.mrow { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 6px; align-items: center; }
+.ml { color: var(--ink-2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.mtrack { display: flex; gap: 2px; height: 22px; min-width: 0; }
+.mb { flex: 1; min-width: 0; border-radius: 3px; background: var(--card); border: 1px solid var(--rule); padding: 0 4px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.mb.job-home, .mb.job-soft, .mb.job-lift, .mb.job-tension, .mb.job-colour { border-bottom: 3px solid var(--jc); line-height: 18px; }
+.mb.k { background: var(--panel); }
+.mb.t { background: color-mix(in srgb, var(--soft) 12%, var(--card)); }
+.mb.m { background: color-mix(in srgb, var(--ink) 10%, var(--card)); }
+.mb.gap { background: transparent; border-style: dashed; }
+.mb.s.on { border-color: var(--accent); }
+.mb.s.again { border-style: dashed; color: var(--ink-2); }
+.mpal { display: flex; flex-wrap: wrap; gap: 4px; }
+.mbtn { border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; background: var(--card); }
+.mbtn.on { border-color: var(--accent); }
+.mmenu { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--card); margin-left: 0; width: max-content; max-width: 100%; }
+.mmenu span { padding: 2px 4px; }
+.mpts { display: flex; gap: 10px; flex-wrap: wrap; color: var(--ink); }
+.msub { margin-left: 18px; padding: 6px; border: 1px dashed var(--accent); border-radius: 5px; display: flex; flex-direction: column; gap: 4px; }
+.mock svg { width: 100%; height: 22px; display: block; color: var(--ink-2); }
+
+.job-home { --jc: var(--home); } .job-soft { --jc: var(--soft); } .job-lift { --jc: var(--lift); }
+.job-tension { --jc: var(--tension); } .job-colour { --jc: var(--colour); }
+.pill { font: 600 10px/1 var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--jc, var(--ink-2)); background: color-mix(in srgb, var(--jc, var(--ink-2)) 14%, transparent); padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--jc); flex: none; display: inline-block; }
+
+/* ---- the sketch ---- */
+.band { background: var(--panel); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.band .wrap { padding-block: 32px; display: flex; flex-direction: column; gap: 14px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.btn { border: 1px solid var(--rule); background: var(--card); border-radius: 6px; padding: 6px 11px; cursor: pointer; line-height: 1.2; }
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; min-width: 92px; }
+.btn.sm { padding: 4px 9px; font-size: 13px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; border-right: 1px solid var(--rule); background: var(--card); padding: 6px 10px; cursor: pointer; font-size: 13px; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); }
+label.inl { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; }
+.note { font-size: 13px; color: var(--ink-2); }
+
+.ws { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: start; }
+@media (max-width: 920px) { .ws { grid-template-columns: minmax(0, 1fr); } }
+.left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.tl { display: grid; grid-template-columns: 66px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; min-width: 0; }
+.tl-labels { border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
+.tl-labels div { font: 600 10px/1 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); padding: 0 8px; display: flex; align-items: center; border-top: 1px solid var(--rule); }
+.tl-labels div:first-child { border-top: 0; }
+.tl-scroll { overflow-x: auto; overflow-y: hidden; min-width: 0; }
+.tl-inner { position: relative; }
+.tl-inner > canvas { display: block; }
+.h-lines { height: 240px; } .h-key { height: 30px; } .h-ch { height: 56px; } .h-tex { height: 30px; } .h-mel { height: 34px; }
+.row { position: relative; border-top: 1px solid var(--rule); }
+.keyband { position: absolute; top: 4px; bottom: 4px; left: 0; background: var(--panel); border-radius: 4px; padding: 0 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.keyband span { font-weight: 400; color: var(--ink-2); font-size: 12px; }
+.blk { position: absolute; top: 4px; bottom: 4px; border: 1px solid var(--rule); border-bottom: 3px solid var(--jc); background: var(--card); border-radius: 5px; padding: 3px 6px; text-align: left; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.blk:hover { border-color: var(--ink-2); border-bottom-color: var(--jc); }
+.blk b { font-size: 13px; line-height: 1.15; white-space: nowrap; }
+.blk i { font: normal 10.5px/1.15 var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.blk.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ins { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 1px solid var(--rule); background: var(--paper); color: var(--ink-2); font: 600 14px/1 var(--f-sans); cursor: pointer; z-index: 2; opacity: 0.5; padding: 0; }
+.row:hover .ins { opacity: 1; }
+.ins:hover, .ins:focus-visible { opacity: 1; border-color: var(--accent); color: var(--accent); }
+.addend { position: absolute; top: 12px; height: 30px; border: 1px dashed var(--ink-2); background: transparent; border-radius: 6px; padding: 0 10px; cursor: pointer; white-space: nowrap; font-size: 13px; color: var(--ink-2); }
+.addend:hover, .addend:focus-visible { border-color: var(--accent); color: var(--accent); }
+.ghost { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.gcover { position: absolute; top: 0; bottom: 0; background: var(--paper); }
+.gblk { position: absolute; top: 4px; bottom: 4px; border: 1.5px dashed var(--accent); border-bottom: 3px solid var(--jc); background: var(--wash); border-radius: 5px; padding: 3px 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.gblk b { font-size: 13px; white-space: nowrap; } .gblk i { font: normal 10.5px var(--f-mono); color: var(--ink-2); font-style: normal; }
+.tex { position: absolute; top: 4px; bottom: 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--card); font-size: 12px; padding: 0 7px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.tex.on { background: color-mix(in srgb, var(--soft) 14%, var(--card)); }
+.tex.hold { color: var(--ink-2); }
+.melbar { position: absolute; top: 4px; bottom: 4px; left: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, var(--card)); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.melbar .btn { padding: 2px 7px; font-size: 12px; }
+.meladd { position: absolute; top: 5px; left: 6px; height: 24px; border: 1px dashed var(--ink-2); background: transparent; border-radius: 5px; padding: 0 9px; font-size: 12px; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+.meladd:hover { border-color: var(--accent); color: var(--accent); }
+.ph { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 4; }
+
+.next { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.next-head { display: grid; gap: 2px; }
+.ngroup { display: flex; flex-direction: column; gap: 8px; }
+.ngroup > .eyebrow { margin-top: 4px; }
+.card { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; min-width: 0; }
+.card:hover, .card:focus-within { border-color: var(--accent); }
+.card.best { border-width: 1.5px; }
+.card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.fit { font-size: 10px; letter-spacing: 2px; color: var(--accent); }
+.fit .off { color: var(--rule); }
+.card-name { font-size: 18px; font-weight: 650; line-height: 1.2; }
+.card.small .card-name { font-size: 15px; }
+.card-sub { font: 12px var(--f-mono); color: var(--ink-2); }
+.card-why { font-size: 13.5px; line-height: 1.4; }
+.card-why2 { font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
+.card-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+.tags { font: 11px var(--f-mono); color: var(--ink-2); }
+
+.insp { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.insp-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.insp-head > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.insp-head h3 { font-size: 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.insp-acts { display: flex; gap: 6px; }
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.flabel { font: 600 11px/1.3 var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.flabel .muted { text-transform: none; letter-spacing: 0; font-family: var(--f-sans); font-weight: 400; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--rule); background: var(--card); border-radius: 6px; padding: 5px 8px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
+.chip:hover { border-color: var(--ink-2); }
+.chip i { font: normal 11px var(--f-mono); color: var(--ink-2); }
+.chip.on { border-color: var(--accent); background: var(--wash); }
+.badge { font: 600 10px/1 var(--f-mono); color: var(--accent); }
+.badge.good { color: var(--ink-2); }
+.stepper { display: inline-flex; align-items: center; gap: 8px; }
+.stepper output { font: 600 18px var(--f-mono); min-width: 1.5ch; text-align: center; }
+.hint { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+.insp-empty { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+.kbd { font: 12px var(--f-mono); border: 1px solid var(--rule); border-radius: 50%; padding: 0 5px; }
+
+.layers { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.layer { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.layer ul, .read ol, .read ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.layer li, .read li { font-size: 14.5px; }
+footer { padding-block: 24px 56px; border-top: 1px solid var(--rule); }
+</style>
+
+<header class="wrap top">
+  <div class="eyebrow">AlgoRhythms · editor overhaul · draft for the owner · 22 Nov 2026</div>
+  <h1>Moments, rethought</h1>
+  <p class="lede">The editor has fifteen kinds of moment, seventeen with the planned mirror and arpeggio. They do seven different jobs. Some are instants, some are regions, some change one line, and four of them set the same thing. Below: three ways to clean that up, a playable sketch of the one I recommend, and a Next that picks chords the way a musician would.</p>
+  <div class="pick">
+    <div class="eyebrow">My pick · option B</div>
+    <p>Every moment becomes a block on one of five rows: <b>Key</b>, <b>Chords</b>, <b>Texture</b>, <b>Melody</b>, and <b>Level and sound</b>. A block lasts until the next block on its row. The chords become a real progression, which is what lets Next reason about them. The smarter Next does not need the overhaul: it can ship first, in today's editor.</p>
+    <p><a href="#try">Jump to the sketch</a></p>
+  </div>
+</header>
+
+<section class="wrap stack">
+  <h2>What's wrong today</h2>
+  <div class="finds">
+    <div class="find">
+      <h3>Four moments set one thing</h3>
+      <p class="muted"><span class="mchip">chord</span>, <span class="mchip">unison</span>, <span class="mchip">split</span> and <span class="mchip">merge</span> all decide which notes sound and how many, and chord already has Notes: n. <span class="mchip">shift</span>, <span class="mchip">spread</span> and the planned <span class="mchip">mirror</span> all reshape the notes already sounding.</p>
+    </div>
+    <div class="find">
+      <h3>"Moment" means four things</h3>
+      <p class="muted">An instant (chord), a region (walk, pulse, tune, progression), a setting (key), or one line (note, pin, tune). The lane shows them all the same way, so a pulse arpeggio and a key change look alike.</p>
+    </div>
+    <div class="find">
+      <h3>Next doesn't know music yet</h3>
+      <p class="muted">It draws related chords at random from a bag of root moves (up a fourth or fifth, the relative chord, a neighbour) and looks only at the chord now sounding. It knows nothing of phrases, cadences or the progression so far. Add → Chord always gives the home chord, or IV when you're already on it.</p>
+    </div>
+  </div>
+  <h3 style="margin-top:8px">Where each moment goes in option B</h3>
+  <div class="tablewrap">
+    <table class="map">
+      <thead><tr><th>Today</th><th>Its real job</th><th>In option B</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td><span class="mchip">chord</span></td><td>Harmony</td><td>A chord block on the Chords row</td></tr>
+        <tr><td><span class="mchip">progression</span></td><td>Harmony</td><td>A run of chord blocks (typing "IV 2, V 2" still fills them)</td></tr>
+        <tr class="grp"><td><span class="mchip">unison</span></td><td>How many lines</td><td>A chord block with Notes: 1</td></tr>
+        <tr><td><span class="mchip">split</span></td><td>How many lines</td><td>The next chord block has more notes; new lines branch off their neighbours</td></tr>
+        <tr><td><span class="mchip">merge</span></td><td>How many lines</td><td>The next chord block has fewer notes; lines fold into their neighbours</td></tr>
+        <tr class="grp"><td><span class="mchip">shift</span></td><td>Reshape the notes</td><td>A chord block set to "same shape, moved" (up a fourth, down a step)</td></tr>
+        <tr><td><span class="mchip">spread</span></td><td>Reshape the notes</td><td>A chord block's Spacing, from Close to Wide</td></tr>
+        <tr><td><span class="mchip">mirror</span> <span class="planned">planned</span></td><td>Reshape the notes</td><td>A chord block set to "same shape, upside down"</td></tr>
+        <tr class="grp"><td><span class="mchip">key</span></td><td>Setting</td><td>The Key row: a band that lasts until the next key</td></tr>
+        <tr class="grp"><td><span class="mchip">walk</span></td><td>Texture</td><td>Texture: Wander</td></tr>
+        <tr><td><span class="mchip">pulse</span></td><td>Texture</td><td>Texture: Pulse (all lines at once) or Arpeggio (one at a time)</td></tr>
+        <tr><td><span class="mchip">arpeggio</span> <span class="planned">planned</span></td><td>Texture</td><td>Texture: Arpeggio, which plays whatever chord is under it</td></tr>
+        <tr><td><span class="mchip">drift</span> <span class="planned">planned</span></td><td>Texture</td><td>Texture: Drift (slow wander off the scale)</td></tr>
+        <tr class="grp"><td><span class="mchip">tune</span></td><td>One line</td><td>The Melody row</td></tr>
+        <tr><td><span class="mchip">note</span> <span class="mchip">pin</span></td><td>One line</td><td>Drag a dot on a line; no palette button</td></tr>
+        <tr class="grp"><td><span class="mchip">level</span></td><td>Expression</td><td>The Level row: draw the volume</td></tr>
+        <tr><td><span class="mchip">timbre</span></td><td>Expression</td><td>The Sound row</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="wrap stack">
+  <h2>Three ways to fix it</h2>
+  <div class="opts">
+    <article class="opt">
+      <div class="opt-head"><h3>A · Tidy the palette</h3></div>
+      <div class="mock" aria-hidden="true">
+        <div class="mpal"><span class="mbtn on">◆ Notes ▾</span><span class="mbtn">⇅ Move ▾</span><span class="mbtn">≋ Pattern ▾</span><span class="mbtn">◢ Sound ▾</span><span class="mbtn">♯ Key</span></div>
+        <div class="mmenu"><span>Chord</span><span>One note</span><span>More notes</span><span>Fewer notes</span></div>
+        <div class="mrow"><span class="ml">Moments</span><div class="mpts"><span>◆ Am7</span><span>⑂ split</span><span>◆ Fmaj7</span><span>⋎ merge</span><span>▭ walk</span></div></div>
+      </div>
+      <dl>
+        <div><dt>What a moment is</dt><dd>Still a point where something changes. The fifteen types are grouped into five families, one button each, and the inspector can switch a moment between types in its family.</dd></div>
+        <div><dt>Good</dt><dd>Small: about 3–4 builder tasks. No file change, so every piece and share link keeps working.</dd></div>
+        <div><dt>Costs</dt><dd>The model stays fuzzy. Split, merge and unison are still separate things under one button, and each new idea (mirror, arpeggio) is one more type.</dd></div>
+        <div><dt>The video's opening</dt><dd>One note, More notes, two chords, One note, Walk: six moments, as today.</dd></div>
+      </dl>
+    </article>
+    <article class="opt rec">
+      <div class="opt-head"><h3>B · Chords, textures, melody</h3><span class="tagrec">Recommended</span></div>
+      <div class="mock" aria-hidden="true">
+        <div class="mrow"><span class="ml">Key</span><div class="mtrack"><span class="mb k">A minor</span></div></div>
+        <div class="mrow"><span class="ml">Chords</span><div class="mtrack"><span class="mb job-home">A·1</span><span class="mb job-home">Am9</span><span class="mb job-lift">Fmaj9</span><span class="mb job-lift">Dm9</span><span class="mb job-tension">E·1</span><span class="mb job-home">Am9</span></div></div>
+        <div class="mrow"><span class="ml">Texture</span><div class="mtrack"><span class="mb t" style="flex:5">Hold</span><span class="mb t" style="flex:1">Wander</span></div></div>
+        <div class="mrow"><span class="ml">Melody</span><div class="mtrack"><span class="mb gap" style="flex:2"></span><span class="mb m" style="flex:4">♪ melody</span></div></div>
+        <div class="mrow"><span class="ml">Level</span><div class="mtrack"><svg viewBox="0 0 120 22" preserveAspectRatio="none"><path d="M0 18 L28 9 L64 6 L92 15 L120 5" fill="none" stroke="currentColor" stroke-width="1.5"></path></svg></div></div>
+      </div>
+      <dl>
+        <div><dt>What a moment is</dt><dd>A block on one of five rows. It lasts until the next block on its row.</dd></div>
+        <div><dt>Good</dt><dd>One place per idea. Chords read like a chord chart, a texture plays whatever chord is under it, and the number of notes is just a number on the chord. Next can reason about the progression because there is one.</dd></div>
+        <div><dt>Costs</dt><dd>A new file version and a migration; about 11–14 builder tasks. Underneath, blocks compile to today's moments, so the compiler, sound engine, exports and live mode stay as they are, and old pieces sound the same.</dd></div>
+        <div><dt>With parts</dt><dd>Texture and Level get one row per part, so the Chords part can arpeggiate while the Bass holds.</dd></div>
+        <div><dt>The video's opening</dt><dd>Six chord blocks set to Float: A (one note), Am9 (six notes), Fmaj9, Dm9, E (one note), Am9 with Wander. Load "Like the video" in the sketch.</dd></div>
+      </dl>
+    </article>
+    <article class="opt">
+      <div class="opt-head"><h3>C · Sections first</h3></div>
+      <div class="mock" aria-hidden="true">
+        <div class="mrow"><span class="ml">Sections</span><div class="mtrack"><span class="mb s" style="flex:2">Intro</span><span class="mb s on" style="flex:4">Verse</span><span class="mb s" style="flex:4">Chorus</span><span class="mb s again" style="flex:4">Verse ↺</span></div></div>
+        <div class="msub">
+          <div class="mrow"><span class="ml">Chords</span><div class="mtrack"><span class="mb job-home">Am</span><span class="mb job-lift">F</span><span class="mb job-soft">C</span><span class="mb job-tension">G</span></div></div>
+          <div class="mrow"><span class="ml">Texture</span><div class="mtrack"><span class="mb t">Arpeggio</span></div></div>
+          <div class="mrow"><span class="ml">Melody</span><div class="mtrack"><span class="mb m">♪ verse tune</span></div></div>
+        </div>
+      </div>
+      <dl>
+        <div><dt>What a moment is</dt><dd>A piece is a list of sections (Intro, Verse, Chorus), each with its own chords, texture and melody. Repeat a section and edit it once.</dd></div>
+        <div><dt>Good</dt><dd>Form and repetition for free. Next can suggest whole sections, such as a chorus that lifts to IV with more notes and a higher melody.</dd></div>
+        <div><dt>Costs</dt><dd>The biggest change: B's work plus about six tasks. Free-form gliding pieces like the video become one long section, so sections add little there.</dd></div>
+        <div><dt>The video's opening</dt><dd>One section holding B's six blocks. Sections can be added on top of B later.</dd></div>
+      </dl>
+    </article>
+  </div>
+</section>
+
+<div class="band" id="try">
+  <div class="wrap">
+    <div class="eyebrow">Playable sketch</div>
+    <h2>Option B with a smarter Next</h2>
+    <p class="read">Hover a Next card to see it on the score, press ▶ Hear to hear it from the chord before, and click to add it. Hover the <span class="kbd">+</span> between two blocks for the best chord in that gap, or <b>+ Chord</b> for today's Add. Select a block to change it; its picker marks the chords that fit that spot.</p>
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Start from">
+        <button type="button" id="pre-pop" data-preset="pop">Pop loop</button>
+        <button type="button" id="pre-video" data-preset="video">Like the video</button>
+        <button type="button" id="pre-empty" data-preset="empty">Empty</button>
+      </div>
+      <label class="inl" for="keysel">Key
+        <select id="keysel"></select>
+      </label>
+      <button type="button" class="btn primary" id="play">▶ Play</button>
+      <span class="note">Sketch sound and voicing: simple stand-ins for the real engine.</span>
+    </div>
+    <div class="legend" aria-label="Chord jobs">
+      <span class="job-home"><i class="dot"></i>Home: rest</span>
+      <span class="job-soft"><i class="dot"></i>Near home: calm, another colour</span>
+      <span class="job-lift"><i class="dot"></i>Lift: moves away</span>
+      <span class="job-tension"><i class="dot"></i>Tension: pulls toward home</span>
+      <span class="job-colour"><i class="dot"></i>Surprise: from outside the key</span>
+    </div>
+    <div class="ws">
+      <div class="left">
+      <div class="tl">
+        <div class="tl-labels" aria-hidden="true">
+          <div class="h-lines">Lines</div><div class="h-key">Key</div><div class="h-ch">Chords</div><div class="h-tex">Texture</div><div class="h-mel">Melody</div>
+        </div>
+        <div class="tl-scroll" id="tlscroll">
+          <div class="tl-inner" id="tlinner">
+            <canvas id="score" class="h-lines" aria-label="The lines: each voice's pitch over time"></canvas>
+            <div class="row h-key" id="row-key"></div>
+            <div class="row h-ch" id="row-ch"><div id="row-ch-real"></div><div class="ghost" id="ghost"></div></div>
+            <div class="row h-tex" id="row-tex"></div>
+            <div class="row h-mel" id="row-mel"></div>
+            <div class="ph" id="ph" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="insp" id="insp"></div>
+      </div>
+      <aside class="next" id="next" aria-label="Next suggestions"></aside>
+    </div>
+  </div>
+</div>
+
+<section class="wrap stack">
+  <h2>How the smarter Next decides</h2>
+  <div class="layers">
+    <div class="layer">
+      <div class="eyebrow">In plain words</div>
+      <p>Chords have jobs. <b>Home</b> feels at rest. <b>Near home</b> is calm, in another colour. <b>Lift</b> moves away. <b>Tension</b> pulls back toward home. <b>Surprise</b> borrows a chord from outside the key.</p>
+      <p>Most music cycles home, away, tension, home, in phrases of four and eight chords. The fourth chord often ends on tension, like a question, and the eighth goes home, like the answer.</p>
+      <p>Next shows one card per job, marks the best fit, and says in one sentence what each card would do.</p>
+    </div>
+    <div class="layer">
+      <div class="eyebrow">For a musician</div>
+      <ul>
+        <li>A transition table from common practice and pop: V→I, IV→V, ii→V, vi→IV; deceptive V→vi; plagal IV→I; borrowed iv, ♭VI, ♭VII; secondary dominants V/V, V/vi, V/IV. In minor: i–iv–V, i–♭VI–♭VII, raised V, Dorian IV.</li>
+        <li>Phrase position: half cadence at chord 4, set-up at 7, authentic cadence at 8, tonic at phrase starts.</li>
+        <li>Loop completion: when the last chords match a known progression (I–V–vi–IV, I–vi–IV–V, vi–IV–I–V, vi–ii–V–I, IV–V–iii–vi, Pachelbel, i–♭VII–♭VI–V, i–♭VI–♭III–♭VII, i–iv–♭VII–♭III), its next chord is boosted, more for longer matches.</li>
+        <li>Voice leading: +12% per tone shared with the chord now sounding. No immediate repeats; A–B–A back-steps are damped.</li>
+        <li>Numerals use the app's major-scale ruler (♭VI in minor), as you ruled on 21 Nov.</li>
+      </ul>
+    </div>
+    <div class="layer">
+      <div class="eyebrow">Elsewhere in the editor</div>
+      <ul>
+        <li>Add → Chord, and its hover preview, gives the best fit between the chord before the playhead and the chord after it. Today it always gives I, or IV when you're on I.</li>
+        <li>The chord picker marks the best fits for that spot (★ best, good), from the chords on both sides.</li>
+        <li>New melodies put chord tones on strong beats, step between them, arch over the phrase, and end phrases on a stable note. They re-fit when the chords change.</li>
+        <li>Arpeggios restart on each bar, so the bass lands on beat 1.</li>
+        <li>Wander steps over chord tones by default, and the lowest line takes the chord's root unless you pick another bass.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="wrap stack">
+  <h2>What I'd build for option B, in order</h2>
+  <ol class="read">
+    <li><b>Theory core:</b> chord jobs, the transition table, loops, phrase position, voice-leading score, with tests. It ships first, in today's editor: Next, the Add → Chord default and the picker marks. About 2–3 tasks.</li>
+    <li><b>File format v3:</b> rows and blocks, compiled into today's moments. Old pieces convert on open and sound the same; the rare moment that fits no row (a shift aimed at one part, a pin) stays as a hand edit on its line. About 2–3 tasks.</li>
+    <li><b>The lane:</b> the five rows, drag and resize blocks, the + gaps. About 2 tasks.</li>
+    <li><b>Inspectors per row,</b> and a palette cut down to Chord, Texture, Melody, Level, Sound and Key. About 2 tasks.</li>
+    <li><b>Textures that read the Chords row:</b> Hold, Wander, Arpeggio, Pulse; Drift later. 1–2 tasks.</li>
+    <li><b>Melody defaults</b> that re-fit to the chords. 1 task.</li>
+    <li><b>Examples and compositions</b> re-saved in v3, plus a "Like the video" template in New. 1 task.</li>
+  </ol>
+</section>
+
+<section class="wrap stack">
+  <h2>Questions for you</h2>
+  <ol class="read">
+    <li><b>Direction:</b> A, B or C? I recommend B, with sections (C) as a later layer.</li>
+    <li><b>Order:</b> ship the smarter Next first, in today's editor, while the overhaul is built? I recommend yes.</li>
+    <li><b>Next's shape:</b> one card per job (Best fit, Tension, Home, Surprise), as in the sketch, or a plain ranked list of chords?</li>
+    <li><b>Single notes:</b> drop note and pin from the palette, so you change one note only by dragging its dot?</li>
+  </ol>
+</section>
+
+<footer class="wrap"><p class="muted">Answer in the chat, or comment on this page. Nothing is built yet.</p></footer>
+
+<script>
+(() => {
+'use strict';
+const BPM = 80, BEAT = 60 / BPM, BAR = 4 * BEAT;
+const mod = (a, n) => ((a % n) + n) % n;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
+const SHARPS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const FLATS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+const KEYS = {
+  'C major': { tonic: 0, mode: 'major', flats: false },
+  'G major': { tonic: 7, mode: 'major', flats: false },
+  'F major': { tonic: 5, mode: 'major', flats: true },
+  'A minor': { tonic: 9, mode: 'minor', flats: false },
+  'E minor': { tonic: 4, mode: 'minor', flats: false },
+  'D minor': { tonic: 2, mode: 'minor', flats: true },
+};
+// [numeral, semitones above the tonic, quality, job]
+const VOCAB = {
+  major: [
+    ['I', 0, 'maj', 'home'], ['ii', 2, 'min', 'lift'], ['iii', 4, 'min', 'soft'], ['IV', 5, 'maj', 'lift'],
+    ['V', 7, 'dom', 'tension'], ['vi', 9, 'min', 'soft'], ['vii°', 11, 'dim', 'tension'],
+    ['iv', 5, 'min', 'colour'], ['bVI', 8, 'maj', 'colour'], ['bVII', 10, 'maj', 'colour'],
+    ['V/V', 2, 'dom', 'colour'], ['V/vi', 4, 'dom', 'colour'], ['V/IV', 0, 'dom', 'colour'],
+  ],
+  minor: [
+    ['i', 0, 'min', 'home'], ['ii°', 2, 'dim', 'lift'], ['bIII', 3, 'maj', 'soft'], ['iv', 5, 'min', 'lift'],
+    ['v', 7, 'min', 'tension'], ['V', 7, 'dom', 'tension'], ['bVI', 8, 'maj', 'lift'], ['bVII', 10, 'dom', 'tension'],
+    ['IV', 5, 'dom', 'colour'], ['bII', 1, 'maj', 'colour'],
+  ],
+};
+const QUAL = { maj: [0, 4, 7, 11, 14], min: [0, 3, 7, 10, 14], dom: [0, 4, 7, 10, 14], dim: [0, 3, 6, 10] };
+const SYM = { maj: ['', 'maj7', 'maj9'], min: ['m', 'm7', 'm9'], dom: ['', '7', '9'], dim: ['°', 'ø7', 'ø7'] };
+const JOBS = { home: 'Home', soft: 'Near home', lift: 'Lift', tension: 'Tension', colour: 'Surprise' };
+const TRANS = {
+  major: {
+    I: { IV: 3, V: 3, vi: 3, ii: 1.5, iii: 0.7, bVII: 0.7, 'V/vi': 0.45, bVI: 0.45, 'V/IV': 0.5, 'V/V': 0.4 },
+    ii: { V: 4, 'vii°': 0.8, IV: 0.8, 'V/V': 0.6, I: 0.4, vi: 0.5 },
+    iii: { vi: 3, IV: 2.2, ii: 1, V: 0.5 },
+    IV: { V: 3, I: 2.5, ii: 1, vi: 1.2, iv: 1.2, bVII: 0.6, iii: 0.5, 'V/V': 0.5 },
+    V: { I: 4, vi: 2.5, IV: 0.9, iii: 0.4, 'V/vi': 0.3 },
+    vi: { IV: 3, ii: 2.5, V: 1.5, iii: 1, I: 1, 'V/V': 0.4 },
+    'vii°': { I: 4, iii: 0.5, vi: 0.4 },
+    iv: { I: 3, V: 1.5, bVII: 0.6 },
+    bVI: { bVII: 2.5, V: 1.5, I: 1, iv: 0.8 },
+    bVII: { I: 3, IV: 1.2, bVI: 0.6 },
+    'V/V': { V: 4.5, I: 0.3 },
+    'V/vi': { vi: 4.5, IV: 0.5 },
+    'V/IV': { IV: 4.5, ii: 0.5 },
+  },
+  minor: {
+    i: { iv: 3, bVI: 3, bVII: 2.5, bIII: 1.5, v: 1.2, V: 1.2, 'ii°': 0.7, IV: 0.6, bII: 0.3 },
+    'ii°': { V: 3.5, v: 1, i: 0.4 },
+    bIII: { bVI: 2.5, bVII: 2, iv: 1.5, i: 0.8 },
+    iv: { V: 2.5, i: 2, bVII: 1.5, v: 1, bVI: 1, bII: 0.5 },
+    v: { i: 2, bVI: 2, iv: 1.2 },
+    V: { i: 4, bVI: 2.5 },
+    bVI: { bVII: 3, iv: 1.5, bIII: 1.5, i: 1.2, V: 1.5, 'ii°': 0.8 },
+    bVII: { bIII: 3, i: 2.5, bVI: 1, V: 0.6 },
+    IV: { i: 2, V: 1.5, bVII: 1 },
+    bII: { V: 3.5, i: 1 },
+  },
+};
+const GENERIC = {
+  home: { home: 0.3, soft: 2.5, lift: 3, tension: 2, colour: 0.6 },
+  soft: { home: 1, soft: 0.8, lift: 3, tension: 1.2, colour: 0.5 },
+  lift: { home: 1.5, soft: 1, lift: 0.8, tension: 3, colour: 0.8 },
+  tension: { home: 4, soft: 2, lift: 0.6, tension: 0.5, colour: 0.4 },
+  colour: { home: 2, soft: 0.8, lift: 1, tension: 1.5, colour: 0.4 },
+};
+const LOOPS = [
+  { name: 'the four-chord pop loop', cyclic: true, major: ['I', 'V', 'vi', 'IV'] },
+  { name: 'the 50s loop', cyclic: true, major: ['I', 'vi', 'IV', 'V'] },
+  { name: 'the “sensitive” loop', cyclic: true, major: ['vi', 'IV', 'I', 'V'] },
+  { name: 'the circle of fifths', cyclic: true, major: ['vi', 'ii', 'V', 'I'] },
+  { name: 'the royal road', cyclic: true, major: ['IV', 'V', 'iii', 'vi'] },
+  { name: 'Pachelbel’s canon', cyclic: true, major: ['I', 'V', 'vi', 'iii', 'IV', 'I', 'IV', 'V'] },
+  { name: 'ii–V–I', cyclic: false, major: ['ii', 'V', 'I'] },
+  { name: 'the Andalusian descent', cyclic: true, minor: ['i', 'bVII', 'bVI', 'V'] },
+  { name: 'the epic minor loop', cyclic: true, minor: ['i', 'bVI', 'bIII', 'bVII'] },
+  { name: 'the minor circle', cyclic: true, minor: ['i', 'iv', 'bVII', 'bIII'] },
+  { name: 'the minor cadence', cyclic: false, minor: ['iv', 'V', 'i'] },
+];
+const TEX = { hold: 'Hold', arp: 'Arpeggio', wander: 'Wander', pulse: 'Pulse' };
+
+const disp = (num) => num.replace(/^b/, '♭');
+const entry = (k, num) => VOCAB[k.mode].find((e) => e[0] === num) || VOCAB[k.mode][0];
+const jobOf = (k, num) => entry(k, num)[3];
+const homeOf = (k) => (k.mode === 'major' ? 'I' : 'i');
+const tensionOf = () => 'V';
+const liftOf = (k) => (k.mode === 'major' ? 'IV' : 'iv');
+const scaleOf = (k) => SCALES[k.mode].map((s) => mod(k.tonic + s, 12));
+
+function chordInfo(k, num, notes) {
+  const [, off, q, job] = entry(k, num);
+  const root = mod(k.tonic + off, 12);
+  const names = num.startsWith('b') || k.flats ? FLATS : SHARPS;
+  const ivs = QUAL[q].slice(0, 3);
+  let ext = 0;
+  if (notes >= 4) { ivs.push(QUAL[q][3]); ext = 1; }
+  if (notes >= 5 && q !== 'dim' && scaleOf(k).includes(mod(root + 14, 12))) { ivs.push(14); ext = 2; }
+  const pcs = (notes === 1 ? [0] : notes === 2 ? ivs.slice(0, 2) : ivs).map((i) => mod(root + i, 12));
+  const name = notes === 1 ? names[root] : names[root] + SYM[q][ext];
+  return { num, root, q, job, pcs, name };
+}
+const nameOf = (k, b) => chordInfo(k, b.num, b.notes).name;
+
+function trans(k, a, b) {
+  const row = TRANS[k.mode][a];
+  if (row && row[b] !== undefined) return row[b];
+  return 0.35 * GENERIC[jobOf(k, a)][jobOf(k, b)];
+}
+
+function moveReason(k, a, b) {
+  const ja = jobOf(k, a), jb = jobOf(k, b), home = homeOf(k);
+  if (b.startsWith('V/')) return `Points hard at ${chordInfo(k, b.slice(2), 3).name}: play that next.`;
+  if ((a === 'V' || a === 'vii°') && b === home) return 'Resolves: the tension goes home.';
+  if (a === 'bVII' && b === home) return 'A bright, rock-style way home.';
+  if (a === 'V' && (b === 'vi' || b === 'bVI')) return 'Deceptive: it sounds like home is coming, then turns. Delays the ending.';
+  if ((a === 'IV' || a === 'iv') && b === home) return 'Plagal: a soft “amen” way home.';
+  if (a === 'IV' && b === 'iv') return 'Borrowed from minor: the same chord turned bittersweet.';
+  if (a === 'ii' && b === 'V') return 'The classic set-up: ii leads straight into tension.';
+  if (a === home && b === 'vi') return 'The relative minor: shares two notes with home, but sadder.';
+  if (b === 'bVI') return k.mode === 'major' ? 'Borrowed from minor: a bold, cinematic turn.' : 'Lifts away, warm and wide.';
+  if (b === 'bVII') return k.mode === 'major' ? 'Borrowed: a bright, open step, common in rock.' : 'Steps down, ready to turn home or to ♭III.';
+  if (b === 'bII') return 'Dark and dramatic: a half step above home.';
+  if (k.mode === 'minor' && b === 'IV') return 'Borrowed from Dorian: a hopeful lift inside minor.';
+  if (k.mode === 'minor' && b === 'V') return 'The raised V: a strong pull home.';
+  if (jb === 'home') return 'Goes home: feels settled.';
+  if (jb === 'tension') return 'Builds tension that wants to go home.';
+  if (jb === 'lift') return ja === 'home' ? 'Lifts away from home.' : 'Keeps moving away from home.';
+  if (jb === 'soft') return 'Stays near home, in a softer colour.';
+  return 'A colour from outside the key.';
+}
+
+function phraseFactor(k, seq, b) {
+  const n = seq.length, slot = n % 8, jb = jobOf(k, b), jl = jobOf(k, seq[n - 1]);
+  if (slot === 3 && jb === 'tension') return [1.6, 'Chord 4 of the phrase: ending on tension asks a question.'];
+  if (slot === 6 && jb === 'tension') return [1.5, 'Sets up the cadence that ends the phrase.'];
+  if (slot === 7 && jb === 'home' && jl === 'tension') return [2, 'Chord 8: closes the phrase (a cadence).'];
+  if (slot === 7 && jb === 'tension') return [1.3, 'Chord 8: a half cadence leaves it open.'];
+  if ((slot === 0 || slot === 4) && jb === 'home') return [1.4, 'A new phrase: starting from home grounds it.'];
+  return [1, null];
+}
+
+function loopMatch(mode, seq, b) {
+  let best = null;
+  for (const L of LOOPS) {
+    const arr = L[mode];
+    if (!arr) continue;
+    const m = arr.length;
+    for (let kk = Math.min(seq.length, m - 1); kk >= 2; kk--) {
+      if (best && best.k >= kk) break;
+      for (let j = 0; j < m; j++) {
+        if (!L.cyclic && (j - kk + 1 < 0 || j + 1 >= m)) continue;
+        let ok = true;
+        for (let q = 0; q < kk && ok; q++) ok = seq[seq.length - 1 - q] === arr[mod(j - q, m)];
+        if (ok && arr[(j + 1) % m] === b) { best = { k: kk, L, arr }; break; }
+      }
+    }
+  }
+  return best;
+}
+
+function rankNext(k, seq) {
+  const n = seq.length, last = seq[n - 1];
+  const lastPcs = chordInfo(k, last, 3).pcs;
+  return VOCAB[k.mode].filter((e) => e[0] !== last).map(([num, , , job]) => {
+    let score = trans(k, last, num);
+    const reasons = [], tags = [];
+    const lm = loopMatch(k.mode, seq, num);
+    if (lm) { score *= 1 + 0.9 * lm.k; reasons.push(`Continues ${lm.L.name} (${lm.arr.map(disp).join('–')}).`); }
+    const [pf, pr] = phraseFactor(k, seq, num);
+    if (pr) { score *= pf; reasons.push(pr); }
+    reasons.push(moveReason(k, last, num));
+    const ct = chordInfo(k, num, 3).pcs.filter((pc) => lastPcs.includes(pc)).length;
+    score *= 1 + 0.12 * ct;
+    if (ct >= 2) tags.push(`smooth: keeps ${ct} notes`);
+    else if (ct === 0) tags.push('bold: no shared notes');
+    if (n >= 2 && seq[n - 2] === num && job !== 'home') score *= 0.6;
+    return { num, job, score, reasons, tags };
+  }).sort((a, b) => b.score - a.score);
+}
+
+function pickCards(ranked) {
+  const out = [ranked[0]];
+  for (const r of ranked) {
+    if (out.length >= 4) break;
+    if (out.some((o) => o.job === r.job)) continue;
+    out.push(r);
+  }
+  if (!out.some((o) => o.job === 'colour')) {
+    const c = ranked.find((r) => r.job === 'colour');
+    if (c) { if (out.length >= 4) out[3] = c; else out.push(c); }
+  }
+  return out;
+}
+
+function bestBetween(k, a, b) {
+  let best = null;
+  for (const [num] of VOCAB[k.mode]) {
+    if (num === a || num === b) continue;
+    const w = (a ? trans(k, a, num) : 1) * (b ? trans(k, num, b) : 1);
+    if (!best || w > best.w) best = { num, w };
+  }
+  return best.num;
+}
+
+function pickerScores(k, blocks, i) {
+  const prev = blocks[i - 1] && blocks[i - 1].num, next = blocks[i + 1] && blocks[i + 1].num;
+  const res = VOCAB[k.mode].map(([num, , , job]) => {
+    let w = 1;
+    if (prev) w *= num === prev ? 0.15 : trans(k, prev, num);
+    if (next) w *= num === next ? 0.15 : trans(k, num, next);
+    if (!prev && !next) w = num === homeOf(k) ? 2 : 1;
+    return { num, job, w };
+  });
+  const sorted = res.slice().sort((a, b) => b.w - a.w);
+  res.forEach((r) => { r.rank = sorted.indexOf(r); });
+  return res;
+}
+
+// ---- voicing and lines -------------------------------------------------------------------
+function nearestOf(pcs, x, lo, hi) {
+  let best = null;
+  for (let p = lo; p <= hi; p++) if (pcs.includes(mod(p, 12)) && (best === null || Math.abs(p - x) < Math.abs(best - x))) best = p;
+  return best === null ? Math.round(x) : best;
+}
+function stepScale(p, d, sc) {
+  let q = Math.round(p);
+  while (!sc.includes(mod(q, 12))) q--;
+  for (; d > 0; d--) { q++; while (!sc.includes(mod(q, 12))) q++; }
+  for (; d < 0; d++) { q--; while (!sc.includes(mod(q, 12))) q--; }
+  return q;
+}
+function resample(a, m) {
+  if (m === a.length) return a.slice();
+  return Array.from({ length: m }, (_, i) => {
+    const x = m === 1 ? (a.length - 1) / 2 : (i * (a.length - 1)) / (m - 1);
+    const lo = Math.floor(x), hi = Math.min(a.length - 1, lo + 1);
+    return a[lo] + (a[hi] - a[lo]) * (x - lo);
+  });
+}
+function voiceChord(info, n, prev) {
+  const { pcs, root } = info;
+  if (n === 1) return [nearestOf([root], prev.length ? (prev[0] + prev[prev.length - 1]) / 2 : 57, 45, 76)];
+  const bass = nearestOf([root], prev.length ? clamp(prev[0], 40, 52) : 45, 38, 55);
+  const m = n - 1;
+  const order = [1, 3, 2, 4, 0].filter((i) => i < pcs.length).map((i) => pcs[i]);
+  const need = order.slice(0, Math.min(m, order.length));
+  const up = prev.length > 1 ? prev.slice(1) : [];
+  let anchors;
+  if (up.length >= 2) anchors = resample(up, m);
+  else {
+    const c = up.length ? up[0] : prev.length ? Math.max(prev[0] + 10, 60) : 62;
+    const step = m > 4 ? 3.5 : 4.5;
+    const base = clamp(c - ((m - 1) * step) / 2, bass + 4, 84 - (m - 1) * step);
+    anchors = Array.from({ length: m }, (_, i) => base + i * step);
+  }
+  const cand = [];
+  for (let p = bass + 3; p <= 86; p++) if (pcs.includes(mod(p, 12))) cand.push(p);
+  const used = new Set(), out = [];
+  for (const a of anchors) {
+    let best = null;
+    for (const p of cand) if (!used.has(p) && (best === null || Math.abs(p - a) < Math.abs(best - a))) best = p;
+    if (best === null) break;
+    used.add(best); out.push(best);
+  }
+  for (const pc of need) {
+    if (out.some((p) => mod(p, 12) === pc)) continue;
+    let bi = -1, bp = null, bc = Infinity;
+    out.forEach((p, i) => {
+      const spare = out.filter((q) => mod(q, 12) === mod(p, 12)).length > 1 || !need.includes(mod(p, 12));
+      if (!spare) return;
+      for (const c of cand) if (mod(c, 12) === pc && !used.has(c) && Math.abs(c - p) < bc) { bc = Math.abs(c - p); bi = i; bp = c; }
+    });
+    if (bi >= 0) { used.delete(out[bi]); out[bi] = bp; used.add(bp); }
+  }
+  out.sort((a, b) => a - b);
+  return [bass, ...out];
+}
+/** Order-preserving match of sorted A into sorted B (|A| ≤ |B|): index in B for each A. */
+function orderMatch(A, B) {
+  const a = A.length, b = B.length, INF = 1e9;
+  const dp = Array.from({ length: a + 1 }, () => new Array(b + 1).fill(INF));
+  const take = Array.from({ length: a + 1 }, () => new Array(b + 1).fill(0));
+  for (let j = 0; j <= b; j++) dp[0][j] = 0;
+  for (let i = 1; i <= a; i++) for (let j = i; j <= b; j++) {
+    const skip = dp[i][j - 1], tk = dp[i - 1][j - 1] + Math.abs(A[i - 1] - B[j - 1]);
+    if (tk <= skip) { dp[i][j] = tk; take[i][j] = 1; } else dp[i][j] = skip;
+  }
+  const idx = new Array(a);
+  for (let i = a, j = b; i > 0;) { if (take[i][j]) { idx[i - 1] = j - 1; i--; j--; } else j--; }
+  return idx;
+}
+function rng32(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const ease = (x) => x * x * x * (x * (x * 6 - 15) + 10);
+function pitchAt(l, t) {
+  let p = l.p0;
+  for (const s of l.segs) {
+    if (t < s.t0) break;
+    if (t >= s.t1) { p = s.p1; continue; }
+    return s.p0 + (s.p1 - s.p0) * ease((t - s.t0) / (s.t1 - s.t0));
+  }
+  return p;
+}
+
+function buildTimeline(doc, k) {
+  const rnd = rng32(2611);
+  const lines = [], spans = [];
+  let active = [], t = 0, ids = 0;
+  const mk = (p, born) => { const l = { id: ids++, p0: p, cur: p, curT: born, born, died: Infinity, fadeIn: 0.25, fadeOut: 0, segs: [], hits: [], wins: [] }; lines.push(l); return l; };
+  const glide = (l, p, t0, d) => { t0 = Math.max(t0, l.curT); if (Math.abs(p - l.cur) < 1e-6) return; l.segs.push({ t0, t1: t0 + d, p0: l.cur, p1: p }); l.cur = p; l.curT = t0 + d; };
+  doc.blocks.forEach((b) => {
+    const dur = b.bars * BAR, t1 = t + dur;
+    const info = chordInfo(k, b.num, b.notes);
+    const prev = active.map((l) => l.cur);
+    const targets = voiceChord(info, b.notes, prev);
+    const float = b.move === 'float';
+    const L = float ? Math.min(2.4, dur * 0.55) : 0.6;
+    const S = float ? Math.min(1.0, dur * 0.25) : 0.06;
+    const g0 = float ? t : Math.max(0, t - 0.35);
+    const len = () => L * (float ? 0.85 + 0.3 * rnd() : 1);
+    const count = Math.max(targets.length, prev.length);
+    const offs = Array.from({ length: count }, (_, i) => (count > 1 ? (S * i) / (count - 1) : 0));
+    for (let i = offs.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [offs[i], offs[j]] = [offs[j], offs[i]]; }
+    let next;
+    if (prev.length === 0) {
+      next = targets.map((p) => mk(p, t));
+    } else if (targets.length >= prev.length) {
+      const idx = orderMatch(prev, targets), taken = new Set(idx), born = [];
+      active.forEach((l, i) => glide(l, targets[idx[i]], g0 + offs[i], len()));
+      targets.forEach((p, j) => {
+        if (taken.has(j)) return;
+        let par = 0;
+        prev.forEach((q, i) => { if (Math.abs(q - p) < Math.abs(prev[par] - p)) par = i; });
+        const st = g0 + offs[par];
+        const nl = mk(prev[par], st);
+        nl.fadeIn = Math.min(1.2, L);
+        glide(nl, p, st, len());
+        born.push(nl);
+      });
+      next = active.concat(born);
+    } else {
+      const idx = orderMatch(targets, prev), keep = new Set(idx);
+      targets.forEach((p, j) => glide(active[idx[j]], p, g0 + offs[j], len()));
+      active.forEach((l, i) => {
+        if (keep.has(i)) return;
+        let tj = 0;
+        targets.forEach((p, j) => { if (Math.abs(p - prev[i]) < Math.abs(targets[tj] - prev[i])) tj = j; });
+        const st = Math.max(g0 + offs[i], l.curT);
+        glide(l, targets[tj], st, len());
+        l.died = Math.max(l.curT, st + 0.6);
+        l.fadeOut = Math.max(0.3, l.died - st);
+      });
+      next = active.filter((_, i) => keep.has(i));
+    }
+    next.sort((x, y) => x.cur - y.cur);
+    const settle = g0 + S + L * 1.15;
+    if (b.texture === 'wander') {
+      const sc = scaleOf(k), beats = b.bars * 4;
+      for (let q = Math.max(1, Math.ceil((settle - t) / BEAT)); q < beats - 1; q++) {
+        const tt = t + q * BEAT;
+        for (let i = next.length >= 3 ? 1 : 0; i < next.length; i++) {
+          if (rnd() < 0.5) continue;
+          const l = next[i];
+          const p = stepScale(l.cur, [-2, -1, -1, 1, 1, 2][Math.floor(rnd() * 6)], sc);
+          const below = i > 0 ? next[i - 1].cur : -Infinity, above = i < next.length - 1 ? next[i + 1].cur : Infinity;
+          if (p <= below || p >= above || p < 43 || p > 86) continue;
+          glide(l, p, tt, 0.22);
+        }
+      }
+    }
+    if (b.texture === 'arp' || b.texture === 'pulse') {
+      next.forEach((l) => l.wins.push({ t0: t, t1, kind: b.texture }));
+      const m = next.length;
+      const cyc = m === 1 ? [0] : [...Array(m).keys(), ...[...Array(m).keys()].slice(1, -1).reverse()];
+      for (let s = 0; s < b.bars * 8; s++) {
+        const tt = t + (s * BEAT) / 2;
+        if (b.texture === 'arp') next[cyc[(s % 8) % cyc.length]].hits.push({ t: tt, a: s % 8 === 0 ? 1 : 0.78 });
+        else { const a = [1, 0.45, 0.7, 0.45][s % 4]; next.forEach((l) => l.hits.push({ t: tt, a })); }
+      }
+    }
+    spans.push({ t0: t, t1, b, info });
+    active = next;
+    t = t1;
+  });
+  active.forEach((l) => { l.died = t + 1.5; l.fadeOut = 1.5; });
+  const melody = doc.melodySeed != null && doc.blocks.length ? makeMelody(doc.blocks, k, doc.melodySeed) : [];
+  return { lines, spans, end: t, melody };
+}
+
+function makeMelody(blocks, k, seed) {
+  const rnd = rng32(seed * 7919 + 17), sc = scaleOf(k);
+  const RHY = [[2, 1, 1], [1, 1, 2], [1, 1, 1, 1], [1.5, 0.5, 2], [2, 2], [3, 1], [1, 0.5, 0.5, 2]];
+  const motif = [RHY[Math.floor(rnd() * RHY.length)], RHY[Math.floor(rnd() * RHY.length)]];
+  const out = [], lastBar = blocks.reduce((a, b) => a + b.bars, 0) - 1;
+  let t = 0, bar = 0, prev = null;
+  blocks.forEach((b) => {
+    const info = chordInfo(k, b.num, 4);
+    for (let j = 0; j < b.bars; j++, bar++) {
+      const pos = bar % 4, ending = pos === 3 || bar === lastBar;
+      const rhythm = ending ? (rnd() < 0.5 ? [2, 2] : [1, 3]) : motif[pos % 2];
+      const arch = [0, 3, 5, 1][pos];
+      let beat = 0;
+      rhythm.forEach((d, q) => {
+        const target = 74 + arch + (rnd() - 0.5) * 3;
+        let p;
+        if (ending && q === rhythm.length - 1) {
+          const stable = info.job === 'home' ? [info.pcs[0], info.pcs[1]] : [info.pcs[0], info.pcs[2]];
+          p = nearestOf(stable, prev === null ? target : prev, 67, 86);
+        } else if (beat === 0 || beat === 2 || prev === null) {
+          p = nearestOf(info.pcs, prev === null ? target : (prev + target) / 2, 67, 86);
+        } else {
+          const dir = target > prev ? 1 : -1;
+          p = stepScale(prev, rnd() < 0.75 ? dir : -dir, sc);
+          if (p < 67 || p > 86) p = stepScale(prev, p < 67 ? 1 : -1, sc);
+        }
+        if (prev !== null && Math.abs(p - prev) > 7) p = nearestOf(info.pcs, prev, 67, 86);
+        out.push({ t: t + j * BAR + beat * BEAT, dur: d * BEAT, p });
+        prev = p;
+        beat += d;
+      });
+    }
+    t += b.bars * BAR;
+  });
+  return out;
+}
+
+// ---- suggestions ---------------------------------------------------------------------------
+const B = (num, o) => Object.assign({ num, notes: 4, move: 'land', texture: 'hold', bars: 1 }, o || {});
+function phraseText(n) {
+  const slot = n % 8;
+  if (slot === 0) return 'chord 1 of a new phrase';
+  if (slot === 3) return 'chord 4: the halfway point';
+  if (slot === 7) return 'chord 8: the end of the phrase';
+  return `chord ${slot + 1} of 8 in the phrase`;
+}
+function buildSuggestions() {
+  const k = key(), bl = state.blocks, n = bl.length, out = [];
+  const home = homeOf(k);
+  if (n === 0) {
+    const away = k.mode === 'major' ? 'vi' : 'bVI';
+    out.push({ group: 'open', title: chordInfo(k, home, 4).name, num: home, job: 'home', why: 'Start at home: everything after is heard against it.', apply: (d) => ({ ...d, blocks: [B(home)] }) });
+    out.push({ group: 'open', title: `${chordInfo(k, home, 1).name}, one note`, num: home, job: 'home', why: 'Start on a single note, as the video does, then bloom into a chord.', apply: (d) => ({ ...d, blocks: [B(home, { notes: 1, move: 'float', bars: 2 })] }) });
+    out.push({ group: 'open', title: chordInfo(k, away, 4).name, num: away, job: jobOf(k, away), why: 'Start away from home, so arriving home later feels earned.', apply: (d) => ({ ...d, blocks: [B(away)] }) });
+    return out;
+  }
+  const last = bl[n - 1], seq = bl.map((b) => b.num);
+  const ranked = rankNext(k, seq), picks = pickCards(ranked), top = ranked[0].score;
+  const follow = (num) => ({ ...last, num, notes: last.notes > 1 ? last.notes : 5 });
+  picks.forEach((r, i) => {
+    const nb = follow(r.num);
+    out.push({ group: 'chord', title: chordInfo(k, r.num, nb.notes).name, num: r.num, job: r.job, best: i === 0, fit: r.score / top, why: r.reasons[0], why2: r.reasons[1], tags: r.tags, apply: (d) => ({ ...d, blocks: [...d.blocks, nb] }) });
+  });
+  const re = (x, num) => ({ ...x, num });
+  if (n >= 4 && n % 4 === 0) {
+    const ph = bl.slice(n - 4);
+    out.push({ group: 'phrase', title: 'Repeat this phrase', sub: ph.map((b) => disp(b.num)).join(' – '), why: 'Repetition is how a listener learns the music.', apply: (d) => ({ ...d, blocks: [...d.blocks, ...ph.map((x) => ({ ...x }))] }) });
+    const endsHome = jobOf(k, seq[n - 1]) === 'home';
+    const X = endsHome ? (ph[1].num !== liftOf(k) ? liftOf(k) : (k.mode === 'major' ? 'ii' : 'ii°')) : (ph[1].num !== tensionOf() ? tensionOf() : liftOf(k));
+    const Y = endsHome ? tensionOf() : home;
+    const ans = [ph[0].num, ph[1].num, X, Y];
+    out.push({
+      group: 'phrase', title: endsHome ? 'Ask a question' : 'Answer it', sub: ans.map(disp).join(' – '),
+      why: endsHome ? 'Same start, but it ends on tension, so the music wants to go on.' : 'Same start, but it ends at home: the phrase sounds complete.',
+      apply: (d) => ({ ...d, blocks: [...d.blocks, ...ans.map((num, i) => re(ph[i], num))] }),
+    });
+  } else if (n >= 3 && jobOf(k, seq[n - 1]) !== 'home') {
+    const cad = seq[n - 1] === 'V' ? [home] : ['V', home];
+    out.push({
+      group: 'phrase', title: 'Wrap up: go home', sub: cad.map(disp).join(' – '),
+      why: cad.length === 1 ? 'Resolves the tension and ends the piece.' : 'A cadence, tension then home: it sounds like an ending.',
+      apply: (d) => ({ ...d, blocks: [...d.blocks, ...cad.map((num, i) => ({ ...follow(num), bars: i === cad.length - 1 ? 2 : last.bars }))] }),
+    });
+  }
+  const bestNum = picks[0].num;
+  if (last.notes >= 4) {
+    const gb = { ...last, num: bestNum, notes: 1, move: 'float', bars: 2, texture: 'hold' };
+    out.push({ group: 'lines', title: `Gather into one note: ${chordInfo(k, bestNum, 1).name}`, why: 'Every line glides into one note, the video’s collapse. Today that is a unison moment.', apply: (d) => ({ ...d, blocks: [...d.blocks, gb] }) });
+  } else {
+    const bn = Math.min(8, Math.max(5, last.notes + 3));
+    const bb = { ...last, num: bestNum, notes: bn, move: 'float', bars: 2 };
+    out.push({ group: 'lines', title: `Bloom into ${chordInfo(k, bestNum, bn).name}, ${bn} notes`, why: 'New lines branch off the old ones as they move, the video’s split. Today that is a split moment.', apply: (d) => ({ ...d, blocks: [...d.blocks, bb] }) });
+  }
+  const from = Math.max(0, n - 4);
+  if (n >= 2 && !bl.slice(from).some((b) => b.texture === 'arp')) {
+    out.push({ group: 'lines', title: n >= 4 ? 'Arpeggiate the last phrase' : 'Arpeggiate these chords', why: 'The chords play one note at a time. The pattern restarts each bar, so the bass lands on beat 1.', apply: (d) => ({ ...d, blocks: d.blocks.map((x, i) => (i >= from ? { ...x, texture: 'arp' } : x)) }) });
+  }
+  if (n >= 2 && state.melodySeed == null) {
+    out.push({ group: 'lines', title: 'Write a melody over these chords', why: 'Chord tones on the strong beats, steps between them, phrases that end on a stable note.', apply: (d) => ({ ...d, melodySeed: 1 }) });
+  }
+  return out;
+}
+
+// ---- state --------------------------------------------------------------------------------
+const PRESETS = {
+  pop: { key: 'C major', blocks: [B('I'), B('V'), B('vi'), B('IV')], melodySeed: null },
+  video: {
+    key: 'A minor', melodySeed: null,
+    blocks: [
+      B('i', { notes: 1, move: 'float', bars: 2 }), B('i', { notes: 6, move: 'float', bars: 2 }),
+      B('bVI', { notes: 6, move: 'float', bars: 2 }), B('iv', { notes: 6, move: 'float', bars: 2 }),
+      B('V', { notes: 1, move: 'float', bars: 2 }), B('i', { notes: 7, move: 'float', bars: 2, texture: 'wander' }),
+    ],
+  },
+  empty: { key: 'C major', blocks: [], melodySeed: null },
+};
+const state = { keyName: 'C major', blocks: [], melodySeed: null, sel: null, preview: null, sugs: [], tl: null, pps: 30, innerW: 800, preset: 'pop' };
+const key = () => KEYS[state.keyName];
+const curDoc = () => ({ blocks: state.blocks, melodySeed: state.melodySeed });
+
+const $ = (id) => document.getElementById(id);
+const $scroll = $('tlscroll'), $inner = $('tlinner'), $score = $('score'), $ph = $('ph');
+const $rowKey = $('row-key'), $rowCh = $('row-ch-real'), $ghost = $('ghost'), $rowTex = $('row-tex'), $rowMel = $('row-mel');
+const $next = $('next'), $insp = $('insp'), $keysel = $('keysel'), $play = $('play'), $try = $('try');
+
+$keysel.innerHTML = Object.keys(KEYS).map((n) => `<option value="${n}">${n}</option>`).join('');
+
+function commit(doc, sel) {
+  stopAudio();
+  state.blocks = doc.blocks;
+  state.melodySeed = doc.melodySeed == null ? null : doc.melodySeed;
+  if (sel !== undefined) state.sel = sel;
+  if (state.sel !== null && state.sel >= state.blocks.length) state.sel = null;
+  state.preview = null;
+  pvSpec = null;
+  renderAll();
+}
+function loadPreset(name) {
+  const p = PRESETS[name];
+  state.keyName = p.key;
+  state.preset = name;
+  $keysel.value = p.key;
+  commit({ blocks: p.blocks.map((b) => ({ ...b })), melodySeed: p.melodySeed }, null);
+}
+
+// ---- rendering ----------------------------------------------------------------------------
+function layout() {
+  const W = $scroll.clientWidth || 800;
+  const pvEnd = state.preview ? state.preview.tl.end : 0;
+  state.innerW = Math.max(W, (Math.max(state.tl.end, pvEnd) + 3 * BAR) * state.pps);
+  $inner.style.width = state.innerW + 'px';
+}
+function renderAll() {
+  const k = key();
+  state.tl = buildTimeline(curDoc(), k);
+  const W = $scroll.clientWidth || 800;
+  state.pps = clamp((W - 4) / (state.tl.end + 4 * BAR), 14, 46);
+  layout();
+  renderRows();
+  renderGhost();
+  renderNext();
+  renderInsp();
+  for (const b of document.querySelectorAll('[data-preset]')) b.setAttribute('aria-pressed', String(b.dataset.preset === state.preset));
+  draw();
+}
+function renderRows() {
+  const k = key(), tl = state.tl, pps = state.pps;
+  $rowKey.innerHTML = `<div class="keyband" style="width:${Math.max(tl.end, 2 * BAR) * pps}px">${state.keyName}<span>a band, not an event: lasts until the next key</span></div>`;
+  let h = '';
+  tl.spans.forEach((s, i) => {
+    const b = s.b;
+    const nl = b.notes === 1 ? 'one note' : `${b.notes} notes`;
+    h += `<button type="button" class="blk job-${s.info.job}${state.sel === i ? ' sel' : ''}" data-blk="${i}" style="left:${s.t0 * pps + 1}px;width:${(s.t1 - s.t0) * pps - 2}px" aria-pressed="${state.sel === i}" title="${s.info.name} (${disp(b.num)}): ${JOBS[s.info.job]}"><b>${s.info.name}</b><i>${disp(b.num)} · ${nl}${b.move === 'float' ? ' · float' : ''}</i></button>`;
+    if (i > 0) h += `<button type="button" class="ins" data-ins="${i}" data-pv="ins:${i}" style="left:${s.t0 * pps}px" aria-label="Insert the best chord here">+</button>`;
+  });
+  h += `<button type="button" class="addend" data-addbest="1" data-pv="add" style="left:${tl.end * pps + 8}px" title="Today's Add → Chord, choosing the best fit">+ Chord</button>`;
+  $rowCh.innerHTML = h;
+  let t = '';
+  for (let i = 0; i < tl.spans.length;) {
+    let j = i;
+    while (j + 1 < tl.spans.length && tl.spans[j + 1].b.texture === tl.spans[i].b.texture) j++;
+    const tx = tl.spans[i].b.texture;
+    t += `<button type="button" class="tex ${tx === 'hold' ? 'hold' : 'on'}" data-blk="${i}" style="left:${tl.spans[i].t0 * pps + 1}px;width:${(tl.spans[j].t1 - tl.spans[i].t0) * pps - 2}px">${TEX[tx]}</button>`;
+    i = j + 1;
+  }
+  $rowTex.innerHTML = t;
+  if (state.melodySeed != null && tl.spans.length) {
+    $rowMel.innerHTML = `<div class="melbar" style="width:${Math.max(tl.end * pps - 2, 300)}px">♪ Melody, fitted to the chords <button type="button" class="btn" data-mel="reroll">Re-roll</button><button type="button" class="btn" data-mel="off">Remove</button></div>`;
+  } else if (tl.spans.length >= 2) {
+    $rowMel.innerHTML = `<button type="button" class="meladd" data-mel="on" data-pv="mel">+ Write a melody over these chords</button>`;
+  } else $rowMel.innerHTML = '';
+}
+function renderGhost() {
+  const pv = state.preview;
+  if (!pv || pv.from >= pv.doc.blocks.length) { $ghost.innerHTML = ''; return; }
+  const pps = state.pps, s0 = pv.tl.spans[pv.from];
+  let h = `<div class="gcover" style="left:${s0.t0 * pps}px;width:${state.innerW - s0.t0 * pps}px"></div>`;
+  for (const s of pv.tl.spans.slice(pv.from)) {
+    h += `<div class="gblk job-${s.info.job}" style="left:${s.t0 * pps + 1}px;width:${(s.t1 - s.t0) * pps - 2}px"><b>${s.info.name}</b><i>${disp(s.b.num)}${s.b.texture !== 'hold' ? ' · ' + TEX[s.b.texture].toLowerCase() : ''}</i></div>`;
+  }
+  $ghost.innerHTML = h;
+}
+function card(s, i) {
+  const small = s.group !== 'chord' && s.group !== 'open';
+  const d = s.fit == null ? 0 : s.fit >= 0.66 ? 3 : s.fit >= 0.33 ? 2 : 1;
+  const fit = d ? `<span class="fit" title="Fit">${'●'.repeat(d)}<span class="off">${'●'.repeat(3 - d)}</span></span>` : '';
+  const pill = s.job ? `<span class="pill job-${s.job}">${s.best ? 'Best fit · ' : ''}${JOBS[s.job]}</span>` : `<span class="pill">${s.group === 'phrase' ? 'Phrase' : 'Lines'}</span>`;
+  return `<div class="card${s.best ? ' best' : ''}${small ? ' small' : ''}" data-card="${i}" data-pv="sug:${i}">
+    <div class="card-top">${pill}${fit}</div>
+    <div class="card-name">${s.title}${s.num && !small ? ` <span class="num">${disp(s.num)}</span>` : ''}</div>
+    ${s.sub ? `<div class="card-sub">${s.sub}</div>` : ''}
+    <p class="card-why">${s.why}</p>${s.why2 ? `<p class="card-why2">${s.why2}</p>` : ''}
+    <div class="card-acts"><button type="button" class="btn sm" data-add="${i}">Add</button><button type="button" class="btn sm" data-hear="${i}">▶ Hear</button>${s.tags && s.tags.length ? `<span class="tags">${s.tags.join(' · ')}</span>` : ''}</div>
+  </div>`;
+}
+function renderNext() {
+  const k = key(), n = state.blocks.length;
+  state.sugs = buildSuggestions();
+  const last = state.blocks[n - 1];
+  let h = n === 0
+    ? `<div class="next-head"><h3>Start</h3><p class="muted">Nothing is sounding yet.</p></div>`
+    : `<div class="next-head"><h3>Next</h3><p class="muted">After <b>${nameOf(k, last)}</b> · ${phraseText(n)}</p></div>`;
+  for (const [g, label] of [['open', 'Start with'], ['chord', 'Next chord'], ['phrase', 'Phrase'], ['lines', 'Lines, texture, melody']]) {
+    const items = state.sugs.map((s, i) => [s, i]).filter(([s]) => s.group === g);
+    if (!items.length) continue;
+    h += `<div class="ngroup"><div class="eyebrow">${label}</div>${items.map(([s, i]) => card(s, i)).join('')}</div>`;
+  }
+  $next.innerHTML = h;
+}
+function seg(field, opts, cur) {
+  return `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-set="${field}:${v}" aria-pressed="${v === cur}">${l}</button>`).join('')}</div>`;
+}
+function renderInsp() {
+  const i = state.sel, k = key();
+  if (i === null || !state.blocks[i]) {
+    $insp.innerHTML = `<p class="insp-empty"><b>Select a chord block</b> to change it. Its picker marks the chords that fit that spot best. Notes, Arrive and Texture replace today's split, merge, unison, walk and pulse.</p>`;
+    return;
+  }
+  const b = state.blocks[i], info = chordInfo(k, b.num, b.notes), sc = pickerScores(k, state.blocks, i);
+  const prev = state.blocks[i - 1], next = state.blocks[i + 1];
+  const where = prev && next ? `between ${nameOf(k, prev)} and ${nameOf(k, next)}` : prev ? `after ${nameOf(k, prev)}` : next ? `before ${nameOf(k, next)}` : 'as the only chord';
+  const why = prev ? (prev.num === b.num ? 'Same chord as before.' : moveReason(k, prev.num, b.num)) : 'The opening chord: everything after is heard against it.';
+  const chips = VOCAB[k.mode].map(([num, , , job]) => {
+    const r = sc.find((x) => x.num === num), ci = chordInfo(k, num, b.notes);
+    const badge = r.rank === 0 ? '<span class="badge">★ best</span>' : r.rank <= 2 ? '<span class="badge good">good</span>' : '';
+    return `<button type="button" class="chip job-${job}${num === b.num ? ' on' : ''}" data-pick="${num}" data-pv="pick:${num}" aria-pressed="${num === b.num}"><span class="dot"></span><b>${ci.name}</b><i>${disp(num)}</i>${badge}</button>`;
+  }).join('');
+  const pn = prev ? prev.notes : 0;
+  const notesHint = b.notes === 1 ? 'One note: today this is a unison moment.' : prev && b.notes > pn ? 'More notes than the chord before: new lines branch off (today’s split).' : prev && b.notes < pn ? 'Fewer notes: lines fold into their neighbours (today’s merge).' : 'How many lines sound.';
+  $insp.innerHTML = `
+    <div class="insp-head">
+      <div><div class="eyebrow">Chord block ${i + 1} of ${state.blocks.length}</div>
+        <h3>${info.name} <span class="num">${disp(b.num)}</span> <span class="pill job-${info.job}">${JOBS[info.job]}</span></h3>
+        <p class="muted">${why}</p></div>
+      <div class="insp-acts"><button type="button" class="btn" data-del="1">Delete</button><button type="button" class="btn" data-close="1">Close</button></div>
+    </div>
+    <div class="field"><div class="flabel">Chord <span class="muted">· marked for this spot, ${where}. Picking one plays it.</span></div><div class="chips">${chips}</div></div>
+    <div class="fields">
+      <div class="field"><div class="flabel">Notes</div><div class="stepper"><button type="button" class="btn" data-set="notes:-1" aria-label="Fewer notes">−</button><output>${b.notes}</output><button type="button" class="btn" data-set="notes:1" aria-label="More notes">+</button></div><div class="hint">${notesHint}</div></div>
+      <div class="field"><div class="flabel">Arrive</div>${seg('move', [['land', 'Land on the bar'], ['float', 'Float in']], b.move)}<div class="hint">${b.move === 'float' ? 'Slow, staggered glides, like the video.' : 'Quick glides that arrive on the bar.'}</div></div>
+      <div class="field"><div class="flabel">Texture</div>${seg('texture', [['hold', 'Hold'], ['arp', 'Arpeggio'], ['wander', 'Wander'], ['pulse', 'Pulse']], b.texture)}<div class="hint">Plays whatever chord is under it.</div></div>
+      <div class="field"><div class="flabel">Length</div>${seg('bars', [['1', '1 bar'], ['2', '2 bars']], String(b.bars))}</div>
+    </div>`;
+}
+
+// ---- the score canvas ---------------------------------------------------------------------
+const P_LO = 36, P_HI = 90;
+const hue = (p) => 222 - clamp((p - 40) / 44, 0, 1) * 200;
+function lifeAlpha(l, t) {
+  let a = 1;
+  if (l.fadeIn > 0 && t < l.born + l.fadeIn) a = Math.min(a, (t - l.born) / l.fadeIn);
+  if (l.died !== Infinity && t > l.died - l.fadeOut) a = Math.min(a, (l.died - t) / l.fadeOut);
+  return clamp(0.15 + 0.85 * a, 0, 1);
+}
+const inWin = (l, t) => l.wins.some((w) => t >= w.t0 && t < w.t1);
+function draw() {
+  const W = state.innerW, H = 240, dpr = window.devicePixelRatio || 1;
+  if ($score.width !== Math.round(W * dpr) || $score.height !== Math.round(H * dpr)) {
+    $score.width = Math.round(W * dpr); $score.height = Math.round(H * dpr);
+    $score.style.width = W + 'px'; $score.style.height = H + 'px';
+  }
+  const ctx = $score.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement);
+  const tok = (n) => css.getPropertyValue(n).trim();
+  const ink = tok('--ink'), ink2 = tok('--ink-2'), rule = tok('--rule'), accent = tok('--accent'), wash = tok('--wash');
+  const Lc = parseFloat(tok('--line-l')) || 45;
+  const pps = state.pps, X = (t) => t * pps, Y = (p) => H - 12 - ((p - P_LO) / (P_HI - P_LO)) * (H - 24);
+  const pv = state.preview, tl = pv ? pv.tl : state.tl;
+  const gT = pv ? pv.lineT : Infinity, gM = pv ? pv.melT : Infinity;
+  ctx.font = '10px ' + tok('--f-mono');
+  ctx.lineWidth = 1;
+  for (let p = 36; p <= 84; p += 12) {
+    const y = Math.round(Y(p)) + 0.5;
+    ctx.strokeStyle = rule; ctx.globalAlpha = 0.8;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = ink2; ctx.globalAlpha = 0.9; ctx.fillText('C' + (p / 12 - 1), 4, y - 3);
+  }
+  ctx.globalAlpha = 0.45; ctx.strokeStyle = rule;
+  for (let t = 0; X(t) < W; t += BAR) { const x = Math.round(X(t)) + 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  ctx.globalAlpha = 0.5; ctx.strokeStyle = ink2;
+  for (const s of tl.spans) { const x = Math.round(X(s.t0)) + 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  if (pv && gT < Infinity) { ctx.globalAlpha = 1; ctx.fillStyle = wash; ctx.fillRect(X(gT), 0, W - X(gT), H); }
+  ctx.lineCap = 'round'; ctx.lineWidth = 2;
+  const dt = 2.5 / pps;
+  for (const l of tl.lines) {
+    const t1 = Math.min(l.died, tl.end + 1.5);
+    let px = null, py = null;
+    for (let t = l.born; ; t += dt) {
+      const tt = Math.min(t, t1), p = pitchAt(l, tt), x = X(tt), y = Y(p);
+      if (px !== null) {
+        const ghost = tt >= gT;
+        ctx.globalAlpha = lifeAlpha(l, tt) * (inWin(l, tt) ? 0.42 : 1) * (ghost ? 0.9 : 1);
+        ctx.strokeStyle = ghost ? accent : `hsl(${hue(p)},70%,${Lc}%)`;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke();
+      }
+      px = x; py = y;
+      if (tt >= t1) break;
+    }
+    for (const h of l.hits) {
+      const p = pitchAt(l, h.t);
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = h.t >= gT ? accent : `hsl(${hue(p)},75%,${Lc}%)`;
+      ctx.beginPath(); ctx.arc(X(h.t), Y(p), 1.3 + 1.9 * h.a, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  let prevEnd = null;
+  for (const nt of tl.melody) {
+    const ghost = nt.t >= gM;
+    ctx.strokeStyle = ctx.fillStyle = ghost ? accent : ink;
+    ctx.globalAlpha = 0.9;
+    const x0 = X(nt.t), x1 = Math.max(x0 + 1, X(nt.t + nt.dur) - 2), y = Y(nt.p);
+    if (prevEnd) { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(prevEnd[0], prevEnd[1]); ctx.lineTo(x0, y); ctx.stroke(); }
+    ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x0, y, 3.2, 0, Math.PI * 2); ctx.fill();
+    prevEnd = [x1, y];
+  }
+  ctx.globalAlpha = 1;
+  if (!tl.spans.length) {
+    ctx.fillStyle = ink2; ctx.font = '14px ' + tok('--f-sans');
+    ctx.fillText('Silence. Pick a way to start in the Next panel.', 40, H / 2);
+  }
+}
+
+// ---- previews -----------------------------------------------------------------------------
+let pvSpec = null, pvTimer = 0;
+function firstDiff(a, b) {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) if (JSON.stringify(a[i]) !== JSON.stringify(b[i])) return i;
+  return n;
+}
+function specDoc(spec) {
+  const k = key(), d = curDoc(), bl = state.blocks;
+  if (spec.startsWith('sug:')) { const s = state.sugs[+spec.slice(4)]; return s ? s.apply(d) : null; }
+  if (spec.startsWith('ins:')) {
+    const i = +spec.slice(4), num = bestBetween(k, bl[i - 1].num, bl[i].num);
+    return { ...d, blocks: [...bl.slice(0, i), { ...bl[i - 1], num }, ...bl.slice(i)] };
+  }
+  if (spec === 'add') return addBestDoc();
+  if (spec === 'mel') return { ...d, melodySeed: 1 };
+  if (spec.startsWith('pick:')) {
+    const i = state.sel;
+    if (i === null) return null;
+    return { ...d, blocks: bl.map((b, j) => (j === i ? { ...b, num: spec.slice(5) } : b)) };
+  }
+  return null;
+}
+function addBestDoc() {
+  const k = key(), bl = state.blocks;
+  if (!bl.length) return { ...curDoc(), blocks: [B(homeOf(k))] };
+  const last = bl[bl.length - 1], num = rankNext(k, bl.map((b) => b.num))[0].num;
+  return { ...curDoc(), blocks: [...bl, { ...last, num, notes: last.notes > 1 ? last.notes : 5 }] };
+}
+function previewOf(doc) {
+  const k = key(), tl = buildTimeline(doc, k);
+  const from = firstDiff(state.blocks, doc.blocks);
+  let lineT = Infinity;
+  if (from < doc.blocks.length) { const s = tl.spans[from]; lineT = s.b.move === 'float' ? s.t0 : Math.max(0, s.t0 - 0.35); }
+  const melChanged = (doc.melodySeed == null ? null : doc.melodySeed) !== state.melodySeed;
+  const melT = melChanged ? 0 : lineT;
+  return { doc, tl, from, lineT, melT };
+}
+function setPreview(spec) {
+  if (spec === pvSpec) return;
+  pvSpec = spec;
+  clearTimeout(pvTimer);
+  if (!spec) { if (state.preview) { state.preview = null; layout(); renderGhost(); draw(); } return; }
+  pvTimer = setTimeout(() => {
+    const doc = specDoc(spec);
+    if (!doc || pvSpec !== spec) return;
+    state.preview = previewOf(doc);
+    layout(); renderGhost(); draw();
+  }, 130);
+}
+
+// ---- sound (a sketch: sine + soft triangle per line, a little reverb) -------------------------
+let AC = null, BUS = null, session = null, raf = 0;
+const hz = (p) => 440 * Math.pow(2, (p - 69) / 12);
+function ensureAudio() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+    const out = AC.createGain(); out.gain.value = 0.85;
+    comp.connect(out); out.connect(AC.destination);
+    BUS = AC.createGain();
+    const dry = AC.createGain(); dry.gain.value = 0.8;
+    const wet = AC.createGain(); wet.gain.value = 0.32;
+    const conv = AC.createConvolver();
+    const len = Math.floor(AC.sampleRate * 2.6), ir = AC.createBuffer(2, len, AC.sampleRate);
+    for (let c = 0; c < 2; c++) { const ch = ir.getChannelData(c); for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.4); }
+    conv.buffer = ir;
+    BUS.connect(dry); dry.connect(comp);
+    BUS.connect(conv); conv.connect(wet); wet.connect(comp);
+  }
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function stopAudio() {
+  if (!session) return;
+  const { sess, nodes } = session, now = AC.currentTime;
+  sess.gain.cancelScheduledValues(now);
+  sess.gain.setValueAtTime(sess.gain.value, now);
+  sess.gain.linearRampToValueAtTime(0, now + 0.12);
+  for (const n of nodes) { try { n.stop(now + 0.2); } catch (e) { /* already stopped */ } }
+  session = null;
+  cancelAnimationFrame(raf);
+  $ph.hidden = true;
+  $play.textContent = '▶ Play';
+}
+function play(doc, from, to) {
+  stopAudio();
+  const ac = ensureAudio(), tl = buildTimeline(doc, key());
+  if (!tl.spans.length) return;
+  if (to == null) to = tl.end + 1.6;
+  const base = ac.currentTime + 0.08, A = (pt) => base + (pt - from);
+  const sess = ac.createGain(); sess.connect(BUS);
+  const nodes = [], LV = 0.11;
+  for (const l of tl.lines) {
+    const st = Math.max(l.born, from), en = Math.min(l.died, to);
+    if (en <= st) continue;
+    const o1 = ac.createOscillator(), o2 = ac.createOscillator();
+    o1.type = 'sine'; o2.type = 'triangle'; o2.detune.value = 5;
+    const g2 = ac.createGain(); g2.gain.value = 0.3;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000; lp.Q.value = 0.4;
+    const env = ac.createGain(), life = ac.createGain();
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(env); env.connect(life); life.connect(sess);
+    let last = A(st) - 0.02;
+    const f0 = hz(pitchAt(l, st));
+    for (const o of [o1, o2]) o.frequency.setValueAtTime(f0, last);
+    for (const s of l.segs) {
+      if (s.t1 <= st || s.t0 >= en) continue;
+      const a = Math.max(A(s.t0), A(st), last + 0.003), b = A(s.t1);
+      if (b - a < 0.01) continue;
+      const N = 32, curve = new Float32Array(N);
+      for (let i = 0; i < N; i++) curve[i] = hz(pitchAt(l, from + (a + ((b - a) * i) / (N - 1) - base)));
+      for (const o of [o1, o2]) {
+        try { o.frequency.setValueCurveAtTime(curve, a, b - a); } catch (e) { o.frequency.linearRampToValueAtTime(curve[N - 1], b); }
+      }
+      last = b;
+    }
+    const inEnd = l.born + l.fadeIn;
+    life.gain.setValueAtTime(0, A(st) - 0.02);
+    life.gain.linearRampToValueAtTime(LV, inEnd > st ? A(inEnd) : A(st) + 0.04);
+    if (l.died <= to) {
+      life.gain.setValueAtTime(LV, Math.max(A(l.died - l.fadeOut), A(st) + 0.05));
+      life.gain.linearRampToValueAtTime(0, A(l.died));
+    } else {
+      life.gain.setValueAtTime(LV, A(to));
+      life.gain.linearRampToValueAtTime(0, A(to) + 0.5);
+    }
+    env.gain.setValueAtTime(1, A(st) - 0.02);
+    for (const w of l.wins) {
+      if (w.t1 <= st || w.t0 >= en) continue;
+      const arp = w.kind === 'arp', floor = arp ? 0.07 : 0.06, tau = arp ? 0.2 : 0.09, boost = arp ? 1.7 : 1.15;
+      env.gain.setTargetAtTime(floor, A(Math.max(w.t0, st)), 0.02);
+      for (const h of l.hits) {
+        if (h.t < w.t0 || h.t >= w.t1 || h.t < st || h.t > en) continue;
+        env.gain.setTargetAtTime(h.a * boost, A(h.t), 0.004);
+        env.gain.setTargetAtTime(floor, A(h.t) + 0.03, tau);
+      }
+      env.gain.setTargetAtTime(1, A(Math.min(w.t1, en)), 0.08);
+    }
+    for (const o of [o1, o2]) { o.start(A(st) - 0.02); o.stop(A(en) + 0.7); nodes.push(o); }
+  }
+  const mel = tl.melody.filter((n) => n.t + n.dur > from && n.t < to);
+  if (mel.length) {
+    const o = ac.createOscillator(), o2 = ac.createOscillator();
+    o.type = 'triangle'; o2.type = 'sine';
+    const lfo = ac.createOscillator(), lg = ac.createGain();
+    lfo.frequency.value = 5.2; lg.gain.value = 7; lfo.connect(lg); lg.connect(o.detune); lg.connect(o2.detune);
+    const mix = ac.createGain(); mix.gain.value = 0.45;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    const g = ac.createGain(); g.gain.value = 0;
+    o.connect(mix); mix.connect(lp); o2.connect(lp); lp.connect(g); g.connect(sess);
+    const fs = hz(mel[0].p);
+    o.frequency.value = fs; o2.frequency.value = fs;
+    for (const n of mel) {
+      const a = A(Math.max(n.t, from)), e = A(Math.min(n.t + n.dur, to));
+      for (const x of [o, o2]) x.frequency.setTargetAtTime(hz(n.p), a - 0.015, 0.018);
+      g.gain.setTargetAtTime(0.17, a, 0.01);
+      g.gain.setTargetAtTime(0.1, a + 0.09, 0.3);
+      g.gain.setTargetAtTime(0, Math.max(a + 0.05, e - 0.07), 0.04);
+    }
+    for (const x of [o, o2, lfo]) { x.start(base - 0.01); x.stop(A(to) + 0.6); nodes.push(x); }
+  }
+  session = { sess, nodes, base, from, to };
+  $play.textContent = '■ Stop';
+  const tick = () => {
+    if (!session) return;
+    const pt = from + (AC.currentTime - base);
+    if (pt > to + 0.15) { stopAudio(); return; }
+    const x = Math.max(0, pt) * state.pps;
+    $ph.hidden = false;
+    $ph.style.transform = `translateX(${x}px)`;
+    if (x > $scroll.scrollLeft + $scroll.clientWidth - 40 || x < $scroll.scrollLeft) $scroll.scrollLeft = Math.max(0, x - 80);
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+/** Plays `doc` from the block before its first change to the block after it. */
+function audition(doc) {
+  const tl = buildTimeline(doc, key());
+  const from = firstDiff(state.blocks, doc.blocks);
+  if (from >= doc.blocks.length) { play(doc, 0, Math.min(tl.end, 4 * BAR) + 1); return; }
+  const a = tl.spans[Math.max(0, from - 1)].t0;
+  const e = tl.spans[Math.min(doc.blocks.length - 1, from + 1)].t1;
+  play(doc, a, Math.min(e, a + 5 * BAR) + 1.2);
+}
+
+// ---- events -------------------------------------------------------------------------------
+$try.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-pv]'); setPreview(el ? el.dataset.pv : null); });
+$try.addEventListener('mouseleave', () => setPreview(null));
+$try.addEventListener('focusin', (e) => { const el = e.target.closest('[data-pv]'); setPreview(el ? el.dataset.pv : null); });
+$try.addEventListener('click', (e) => {
+  const el = e.target.closest('button, [data-card]');
+  if (!el) return;
+  const ds = el.dataset, bl = state.blocks;
+  if (ds.hear !== undefined) { const s = state.sugs[+ds.hear]; if (s) audition(s.apply(curDoc())); return; }
+  if (ds.add !== undefined || ds.card !== undefined) { const s = state.sugs[+(ds.add !== undefined ? ds.add : ds.card)]; if (s) commit(s.apply(curDoc())); return; }
+  if (ds.preset) { loadPreset(ds.preset); return; }
+  if (el.id === 'play') { if (session) stopAudio(); else play(curDoc(), 0, null); return; }
+  if (ds.blk !== undefined) { const i = +ds.blk; state.sel = state.sel === i ? null : i; renderAll(); return; }
+  if (ds.ins !== undefined) { const d = specDoc('ins:' + ds.ins); commit(d, +ds.ins); return; }
+  if (ds.addbest) { commit(addBestDoc()); return; }
+  if (ds.mel) {
+    const seed = ds.mel === 'on' ? 1 : ds.mel === 'reroll' ? (state.melodySeed || 1) + 1 : null;
+    commit({ ...curDoc(), melodySeed: seed });
+    if (seed != null) play(curDoc(), 0, Math.min(state.tl.end, 4 * BAR) + 1);
+    return;
+  }
+  if (ds.pick) {
+    const i = state.sel;
+    const d = { ...curDoc(), blocks: bl.map((b, j) => (j === i ? { ...b, num: ds.pick } : b)) };
+    commit(d);
+    const tl = state.tl, a = tl.spans[Math.max(0, i - 1)].t0;
+    play(curDoc(), a, tl.spans[i].t1 + 1.2);
+    return;
+  }
+  if (ds.set) {
+    const i = state.sel, [f, v] = ds.set.split(':');
+    const b = { ...bl[i] };
+    if (f === 'notes') b.notes = clamp(b.notes + +v, 1, 8);
+    else if (f === 'bars') b.bars = +v;
+    else b[f] = v;
+    commit({ ...curDoc(), blocks: bl.map((x, j) => (j === i ? b : x)) });
+    return;
+  }
+  if (ds.del) { commit({ ...curDoc(), blocks: bl.filter((_, j) => j !== state.sel) }, null); return; }
+  if (ds.close) { state.sel = null; renderAll(); }
+});
+$keysel.addEventListener('change', () => {
+  const from = key(), to = KEYS[$keysel.value];
+  state.keyName = $keysel.value;
+  state.preset = null;
+  const blocks = state.blocks.map((b) => {
+    if (from.mode === to.mode) return b;
+    const off = entry(from, b.num)[1];
+    const same = VOCAB[to.mode].filter((e) => e[1] === off);
+    const pick = same.find((e) => e[3] !== 'colour') || same[0] || VOCAB[to.mode][0];
+    return { ...b, num: pick[0] };
+  });
+  commit({ ...curDoc(), blocks });
+});
+let resizeRaf = 0;
+window.addEventListener('resize', () => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(renderAll); });
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw); } catch (e) { /* older browsers */ }
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+loadPreset('pop');
+})();
+</script>

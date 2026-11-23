@@ -291,7 +291,29 @@ interface WalkNote { tick: number; voice: VoiceId; pitch: Pitch }  // absolute t
 
 ### 6.3 Planned for later milestones
 - **timbre** (M6): `preset`, `fade`. Crossfades the targeted voices to another timbre; no pitch effect.
-- **Later:** **mirror** (reflect around an axis), **arpeggio** (region; voices step through a pattern), **drift** (region; slow microtonal wander off the scale), **camera** (view-only zoom and follow keyframes).
+- **Later:** **drift** (a texture, §6.4: slow microtonal wander off the scale), **camera** (view-only zoom and follow keyframes). Mirror and arpeggio are no longer separate moments: they are a chord block's "upside down" and the Arpeggio texture (§6.4).
+
+### 6.4 Rows and blocks (revision 14, owner 2026-11-22: option B; M10b)
+Demo the owner approved: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv (source: `docs/design/moments-rethought.html`). Today's 15 moment types do seven jobs; four of them (chord, unison, split, merge) set the same thing, and a moment can be an instant, a region, a setting or one line. Revision 14 replaces them with one rule:
+
+**A moment is a block on one of the timeline's rows. It starts at its marker and lasts until the next block on its row** (a texture or melody block ends at its own end).
+
+| Row | Blocks | Replaces |
+|---|---|---|
+| **Key** | a key, as a band | `key` (the piece key is the first band) |
+| **Chords** | a chord block: its notes, **Notes: n**, how it arrives | `chord`, `progression`, `unison` (Notes: 1), `split` (more notes than the block before: new lines branch off their neighbours), `merge` (fewer: lines fold into their neighbours), `shift`, `spread`, mirror |
+| **Texture** | Hold, Wander, Arpeggio, Pulse; Drift later | `walk` (Wander), `pulse` (Pulse: all lines together; Arpeggio: one at a time, the pattern restarting each bar) |
+| **Melody** | a melody | `tune` |
+| **Level**, **Sound** | volume and timbre changes | `level`, `timbre` |
+
+- **Chord blocks.** Notes as today's chord (picker, numerals, degrees, pitches, frozen notes), or **relative** to the block before: "same shape, moved" (by steps or semitones), "wider/closer" (spacing factor) and "upside down" (mirror). **Arrive:** *Land* (default: a quick glide that arrives on the marker, today's `glide.land`), *Float* (the video's slow, staggered glide from the marker) or *Custom* (the Transition sliders). Target and per-note overrides as today.
+- **Textures play the chords under them.** A texture never sets the harmony; it reads the Chords row (Arpeggio and Pulse gate the lines; Wander steps over chord tones by default).
+- **Single notes are hand edits, not blocks:** note points and dot drags (§11.3) are dots on the lines, with no palette button (owner, 2026-11-22).
+- **Parts:** Texture, Melody, Level and Sound get one row per part (the Chords part can arpeggiate while the Bass holds); Key and Chords are shared, and a chord block targets parts as today.
+- **Palette:** Chord, Texture, Melody, Level, Sound, Key. Typing a progression ("IV 2, V 2") fills a run of chord blocks. Labels stay short; explanations go in tooltips (owner: "way less text and information").
+- **Underneath, blocks compile to today's moments** (lowering), so the compiler, sound engine, exports and live mode do not change. File format **version 3**. Version 2 files migrate on open, losslessly: a migrated block lowers to exactly the moment it came from until it is edited, so every example and composition sounds and looks the same. A moment that fits no row (for example a shift aimed at one part, or a pin) stays as it is, as a hand edit.
+- **New → "Like the video"** template: one note, bloom to six, two chords, gather to one note, bloom again with Wander, all set to Float.
+- The first M10b builder writes the exact v3 schema and lowering into the build log for the integrator before the UI work starts.
 
 ---
 
@@ -759,8 +781,19 @@ Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29K
 - **Context-aware moments (revision 6, owner 2026-11-20):**
   - A moment with a `no-effect` diagnostic is drawn dimmed on the Moments row, with the reason as its tooltip and in the inspector.
   - The palette reads the state at the playhead: a moment type that would have no effect there is greyed out with the reason (merge when all voices share one pitch or one voice is active, split at the pool size, unison when already a unison, and so on). Hovering an enabled one previews it silently on the score from the playhead (no sound, no undo entry; owner 2026-11-21: hover makes no sound).
-  - Later (after these): **next-move suggestions**: after the selected moment, 3–4 suggested moves drawn from the Generate composer's grammar, each one click to add and hover to preview.
-- **Add a moment:** from a palette (click or drag), or by shortcut at the playhead: `C` chord, `U` unison, `S` split, `M` merge, `T` shift, `P` spread, `W` walk, `I` pin, `K` key, `L` level. These shortcuts are disabled while musical typing is on (§9).
+  - Later (after these): **next-move suggestions**: after the selected moment, 3–4 suggested moves drawn from the Generate composer's grammar, each one click to add and hover to preview. **Replaced by the theory-aware Next below (revision 14).**
+- **Theory-aware Next (revision 14, owner 2026-11-22; M10a; ships in today's editor before §6.4):** Next suggests chords the way a musician would. Reference implementation: `rankNext`, `pickCards`, `bestBetween`, `pickerScores` and the tables in `docs/design/moments-rethought.html`.
+  - **Jobs.** Every chord the key offers has a job: **Home** (I; i), **Near home** (vi, iii; ♭III in minor), **Lift** (IV, ii; iv, ii°, ♭VI in minor), **Tension** (V, vii°; v, V, ♭VII in minor), **Surprise** (borrowed and applied chords: iv, ♭VI, ♭VII, V/V, V/vi, V/IV in major; IV, ♭II in minor). The scale's third picks the major or minor family. A modal key's own chords keep a function job (Dorian IV is Lift, Mixolydian ♭VII is Tension). Pentatonic and blues keys are judged against their parent scale. Whole-tone, chromatic and locrian keys keep the old composer grammar.
+  - **The progression so far** comes from the compiled harmony timeline (§7.9) before the Next time, each entry read in the key in effect at its time as the closest chord of the family (the bass as root first). Repeats collapse; an entry that matches nothing starts a new sequence.
+  - **Ranking** multiplies: a transition weight (common practice and pop: V→I, IV→V, ii→V, vi→IV, deceptive V→vi, plagal IV→I, borrowed and applied chords; unlisted moves fall back to job-to-job weights); loop completion (when the last k ≥ 2 chords match a known progression such as I–V–vi–IV, I–vi–IV–V, vi–IV–I–V, vi–ii–V–I, IV–V–iii–vi, Pachelbel, i–♭VII–♭VI–V, i–♭VI–♭III–♭VII, i–iv–♭VII–♭III, its next chord gets ×(1 + 0.9k)); phrase position (the new chord's place n in the sequence, counted mod 8: Tension ×1.6 at chord 4, ×1.5 at 7 and ×1.3 at 8; Home ×2 at 8 after Tension, ×1.4 at 1 and 5); shared tones with the current chord (×1.12 each); ×0.6 for an A–B–A return to a non-Home chord. The current chord is never offered. Values as in the demo; a builder may tune them with tests and logs any change.
+  - **Cards (owner: one per job).** Up to four: the best fit first, then the best of each other job in score order, always including a Surprise when the key has one. From silence: Home (the tonic triad) and One note (the tonic).
+  - **Little text (owner: "way less text and information").** A card reads `<Job> · <Chord>` (for example "Tension · G7") with a job-coloured dot, and the best fit is marked. The numeral and a reason of at most six words ("Continues the pop loop", "Resolves home", "Deceptive turn") go in the tooltip only.
+  - **The moment a card adds** is a `chord` moment whose notes are a Roman numeral symbol, so it follows later key changes (`V7`, `IVmaj7`, `♭VII`, `V7/V`): a seventh chord when four or more lines sound, otherwise a triad; voicing Even; Next's time and glides as before, with chord fill (new notes come in as a palette chord's do).
+  - **Next offers only chord cards** (integrator call): the split, walk, thin, collapse and level suggestions are dropped. Note counts and textures come back as chord-block and texture choices in §6.4.
+  - **Add → Chord** (click, shortcut, drag and hover preview) uses the best chord for the spot: the one that best links the harmony before the add time to the next harmony entry after it (transition in × transition out, neither neighbour itself). Today's tonic-or-IV default goes.
+  - **Chord picker marks (owner: "if not so intensely").** In the inspector's From-the-key chips, the best fit for that spot (between the chords before and after the selected moment) gets a small filled dot and the next two a faint dot, with the tooltip "Fits here". No text badges.
+- **Palette without note and pin (owner 2026-11-22):** the palette loses `note` and `pin`, and `I` stops adding a pin. A single note changes by double-clicking or N-clicking its line (note points) or dragging its dot. Files with pin moments still load, show and edit.
+- **Add a moment:** from a palette (click or drag), or by shortcut at the playhead: `C` chord, `U` unison, `S` split, `M` merge, `T` shift, `P` spread, `W` walk, `K` key, `L` level. These shortcuts are disabled while musical typing is on (§9). M10b reassigns them to the rows' palette.
 - **Edit on the lane:**
   - Drag a marker to move the moment; it snaps to the grid when one is enabled, and Alt disables snapping.
   - Drag a span end to change the glide length; Shift-drag changes the stagger.
@@ -1115,9 +1148,19 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - the SVG, rasterised by the browser at the same size, matches the PNG within an anti-aliasing tolerance in Chromium, Firefox and WebKit, and is well-formed XML with text as `<text>`;
   - a 3-minute piece renders in under 2 s at 4K (PNG) on a desktop, and its SVG is under 10 MB.
 
+**M10. Editor overhaul (L)** (revision 14, owner 2026-11-22)
+- **M10a, first, in today's editor:** the theory-aware Next, the Add → Chord default, the chord picker marks, and the palette without note and pin (§11.3).
+- **M10b:** rows and blocks (§6.4): file format v3 with migration and lowering, the lane's rows, per-row inspectors and palette, textures that read the Chords row, melodies that re-fit when the chords change, examples and compositions re-saved, the "Like the video" template.
+- *Accept when:*
+  - in C major, after I–V–vi–IV Next's best fit is I, and after V it is I; in A minor, after i–♭VII–♭VI it is V; each card's moment compiles to the chord it names and follows a later key change;
+  - every built-in scale either gets job cards with no two of one job, or falls back to the old grammar, and Next never offers a no-op;
+  - every v2 example and composition opens as v3 and compiles to the same score (render goldens unchanged);
+  - the "Like the video" template is six chord blocks and one Wander texture, with no split, merge or unison;
+  - the palette has no note, pin, split, merge, unison, shift, spread, walk, pulse or progression button.
+
 **Later, in no order:**
 - camera moments;
-- mirror, arpeggio and drift moments;
+- the Drift texture;
 - Scala tunings;
 - MIDI CC learn;
 - PWA and offline use;
@@ -1180,6 +1223,10 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 14 (2026-11-22): editor overhaul (owner chose option B)
+- **Rows and blocks (§6.4, M10b):** a moment is a block on the Key, Chords, Texture, Melody, Level or Sound row, lasting until the next block on its row; unison, split, merge, shift, spread, walk, pulse and progression fold into chord blocks and textures; file format v3, lowered to today's moments.
+- **Theory-aware Next (§11.3, M10a, first):** one card per chord job (Home, Near home, Lift, Tension, Surprise), little text; Add → Chord picks the best chord for the spot; the chord picker marks the best fits lightly; note and pin leave the palette.
 
 ### Revision 13 (2026-11-22): export look (owner)
 - **Export look (§12):** every visual decision is an export option; export defaults drop the octave guides, beat lines and the future (moment markers stay on); the HUD becomes a checklist of readouts, with new ones (spread, note names, gaps).

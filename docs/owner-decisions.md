@@ -3,7 +3,6 @@
 The owner was away on the evening of 2026-11-21. Technical calls are the integrator's ("no backend stuff, I trust you fully"). This file lists the product, sound and UX questions held for the owner, and the product-visible calls the integrator made, which the owner may veto. The newest entries go at the top of each section.
 
 ## Needs you
-- **Editor overhaul: moments and a theory-aware Next (2026-11-22).** Options A (tidy the palette), B (rows of blocks: Key, Chords, Texture, Melody, Level/Sound; recommended) and C (sections first), with a playable sketch: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv. Four questions at the end of the page. Nothing is built until the owner picks.
 - **Look at posters (M9, live in v63).** Menu → Export → Poster: PNG and SVG, 16:9 4K / square / A4, transparent background, title block. Check the defaults (labels only, no HUD, colours as in the app) and whether long glides look smooth at 4K. On a Mac, a transparent PNG from Safari: do translucent lines look right? Details: `docs/m9-acceptance.md` "Owner steps".
 - **Watch a video export (M8, live in v57).** Menu → Export → Video (MP4). Does a Chrome export (H.264 + Opus sound) play in QuickTime and on your iPhone? Is 9:16 readable on a phone? Are the defaults right (16:9 1080p30, Follow at your zoom, current theme, HUD and thickness on)? Details: `docs/m8-acceptance.md` "Owner steps".
 ### When you're back (owner asleep from 2026-11-21 ~05:00; the integrator keeps building)
@@ -29,6 +28,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - (none parked)
 
 ## Answered
+- **Editor overhaul (2026-11-22, PLAN rev 14, M10).** Demo: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv. (1) Option B: rows of blocks. (2) Ship the theory-aware Next first, in today's editor. (3) One card per job, with much less text; the chord picker also marks good fits, more lightly. (4) Note and pin leave the palette.
 - **Poster rows and dimensions (2026-11-23, in progress).** Rows slider (sheet-music systems) and Width/Height sliders; calls in PLAN §12 Poster export.
 - **Playable video preview + Window (2026-11-23, live in v68).** The Export dialog's video preview plays (button, Space anywhere in the dialog), with sound, from the preview time; Follow gets a Window slider (seconds shown, starts at the editor's zoom). Calls in PLAN §12.
 - **Land chords always land (2026-11-23).** A land moment's lead-in never starts before the previous moment on the same lines; it is compressed instead, so the voices arrive on the marker. Until v64 an earlier moment could silently take the lines (Switchyard's bass at 2:00 ended on A2 instead of E2); v64 added a `land-overtaken` diagnostic.
@@ -49,6 +49,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - 2026-11-22: Sunday Lane ships in Compositions whole, although its link is about 2,530 characters, over the 2,000 limit; Share offers a file instead. The alternatives were dropping the second whistle, the pad and the colours, or cutting sections.
 
 ## Decided by the integrator (veto if wrong)
+- **Next offers only chord cards (M10a, 2026-11-22).** Its split, walk, thin, collapse and level suggestions go; note counts and textures return as chord-block and texture choices in M10b. Cards add seventh chords when four or more lines sound, triads otherwise.
 - **Export look details (rev 13).** With nothing drawn ahead of the playhead, a following video puts the playhead 80 % across (35 % when the future shows), as an option ("Playhead at"). Posters default to no HUD (it would show end-of-piece values) but keep the title block. Still fixed, not options: type sizes and font, dot and ring sizes, the pitch-colour gradient.
 - **Poster defaults (M9, PLAN §12 rev 12).** PNG or SVG of the whole piece, every line at full strength, no playhead or dots. 3840×2160 by default (square 2160² and A4 portrait 2480×3508 as options), current theme, optional transparent background, a title block with the name, length, key and a small AlgoRhythms credit (on by default), thickness on. SVG made in-house, no dependency.
 - **Video export defaults (M8, PLAN §12 rev 11).** MP4 (H.264 + AAC; VP9/Opus fallback), 1920×1080 at 30 fps by default (9:16, 1:1, 720p and 60 fps as options), camera Follow (your current zoom) or Whole piece, current theme, HUD and thickness on. No new dependency: an in-house MP4 writer.
