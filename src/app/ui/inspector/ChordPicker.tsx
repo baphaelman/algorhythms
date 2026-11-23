@@ -5,6 +5,7 @@
  * the moment's voicing) as one undo entry, and auditions the result (../../audition.ts).
  */
 
+import { useMemo } from 'react';
 import {
   CHORD_QUALITIES,
   chordSymbol,
@@ -18,6 +19,7 @@ import {
 } from '../../../core/chord-spec';
 import { parseChord } from '../../../core/chords';
 import { harmonyLabel, spellPc } from '../../../core/harmony';
+import { chordPickerRanks, type ChipRank } from '../../../core/suggest';
 import { noteName, pitchClassOf } from '../../../core/scales';
 import type { Key, MomentId, NoteSet, Voicing } from '../../../core/types';
 import { auditionAfterEdit } from '../../audition';
@@ -39,9 +41,16 @@ const VOICINGS: readonly (readonly [Voicing, string])[] = [
 
 const ROOTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
+/** A chip's fit mark from its rank (§11.3 rev 14): the best fit, then the next two. */
+export function fitOf(rank: number | undefined): 'best' | 'good' | undefined {
+  return rank === undefined ? undefined : rank === 0 ? 'best' : rank <= 2 ? 'good' : undefined;
+}
+
 /**
  * The key's diatonic chords as one-click chips (numeral over the letter chord); the one `reading`
- * names is pressed. Shared with the progression inspector. Nothing for scales without them.
+ * names is pressed. With `ranks` (core/suggest chordPickerRanks), the best fit for the spot gets a
+ * small filled dot and the next two a faint one, "Fits here". Shared with the progression
+ * inspector (unmarked). Nothing for scales without them.
  */
 export function DiatonicChips({
   chords,
@@ -50,6 +59,7 @@ export function DiatonicChips({
   onPick,
   legend = 'From the key',
   testId,
+  ranks,
 }: {
   chords: readonly DiatonicChord[];
   keyIn: Key;
@@ -57,6 +67,7 @@ export function DiatonicChips({
   onPick: (d: DiatonicChord) => void;
   legend?: string;
   testId?: string;
+  ranks?: readonly ChipRank[] | null;
 }) {
   if (chords.length === 0) return null;
   return (
@@ -65,15 +76,19 @@ export function DiatonicChips({
       {chords.map((d) => {
         const on =
           reading?.root === d.root && reading.quality === d.quality.id && reading.bass === 'any';
+        const fit = fitOf(ranks?.find((r) => r.degree === d.degree)?.rank);
         return (
           <button
             key={d.degree}
             type="button"
             aria-pressed={on}
-            aria-label={`${d.numeral} ${d.symbol}`}
+            aria-label={`${d.numeral} ${d.symbol}${fit ? ', fits here' : ''}`}
+            title={fit ? 'Fits here' : undefined}
             data-numeral={d.numeral}
+            data-fit={fit}
             onClick={() => onPick(d)}
           >
+            {fit && <span className="fit-dot" aria-hidden="true" />}
             <b>{d.numeral}</b>
             <small>{spellPc(d.root, key) + d.quality.suffix.replace(/b/g, '♭')}</small>
           </button>
@@ -112,6 +127,12 @@ export function ChordPicker({
   onVoicing: (v: Voicing) => void;
 }) {
   const compiled = usePlayer((s) => s.compiled);
+  const piece = usePlayer((s) => s.piece);
+  const isChord = piece.moments.some((m) => m.id === momentId && m.type === 'chord');
+  const ranks = useMemo(
+    () => (isChord ? chordPickerRanks(piece, compiled, momentId) : null),
+    [isChord, piece, compiled, momentId],
+  );
   const reading: ChordReading | null = value.kind === 'chord' ? readChord(value.symbol, key) : null;
   const compiledLabel = compiled.harmony?.find((h) => h.momentId === momentId && !h.from)?.label;
   const name = chordName(value, key, compiledLabel);
@@ -172,6 +193,7 @@ export function ChordPicker({
         chords={diatonic}
         keyIn={key}
         reading={reading}
+        ranks={ranks}
         onPick={(d) => write(d.symbol, 'Pick chord')}
       />
 

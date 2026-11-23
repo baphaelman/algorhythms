@@ -412,6 +412,7 @@
 }
 
 .chips.diatonic button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -428,6 +429,20 @@
 
 .chips.diatonic button[aria-pressed='true'] small {
   color: inherit;
+}
+
+/* Fit marks (§11.3 rev 14): a corner dot, out of the flow, so no layout shift. */
+.chips.diatonic .fit-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.chips.diatonic [data-fit='good'] .fit-dot {
+  opacity: 0.35;
 }
 
 .insp-other,

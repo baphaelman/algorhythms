@@ -1,8 +1,9 @@
 /**
- * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the fourteen letters
+ * The moment palette's entries and the editor's global keys (PLAN.md §11.3): the thirteen letters
  * add a moment at the playhead (R pulse and E tune, R9-7; B timbre, M6; O progression, revision
- * 10: P was taken; the palette's `note` has no letter), Delete/Backspace delete the selection, Escape clears it, `\` toggles the loop region
- * (revision 6).
+ * 10: P was taken), Delete/Backspace delete the selection, Escape clears it, `\` toggles the loop
+ * region (revision 6). `note` and `pin` left the palette (owner 2026-11-22): note points and pin
+ * moments in files still edit.
  */
 
 import { clearDots } from './dot-selection';
@@ -13,7 +14,7 @@ import { select, useEditor } from './history';
 
 export interface PaletteEntry {
   type: MomentType;
-  /** Shortcut letter, upper case for display; none for `note` (N + click adds one, §11.3). */
+  /** Shortcut letter, upper case for display. */
   key?: string;
   /** Short name on the button. */
   name: string;
@@ -32,7 +33,6 @@ export const PALETTE: readonly PaletteEntry[] = [
   { type: 'spread', key: 'P', name: 'spread', icon: '⇔', hint: 'Widen or narrow the spacing' },
   { type: 'walk', key: 'W', name: 'walk', icon: '▭', hint: 'Random steps over a region' },
   { type: 'pulse', key: 'R', name: 'pulse', icon: '┇', hint: 'A repeating volume rhythm' },
-  { type: 'note', name: 'note', icon: '•', hint: 'Change one note (or double-click a line)' },
   { type: 'tune', key: 'E', name: 'tune', icon: '♪', hint: 'A melody on one line' },
   {
     type: 'progression',
@@ -41,7 +41,6 @@ export const PALETTE: readonly PaletteEntry[] = [
     icon: '⁞',
     hint: 'A chord progression, typed like “IV 2, V 2”',
   },
-  { type: 'pin', key: 'I', name: 'pin', icon: '⊙', hint: 'Move one note' },
   { type: 'key', key: 'K', name: 'key', icon: '♯', hint: 'Change key or scale' },
   { type: 'level', key: 'L', name: 'level', icon: '◢', hint: 'Fade notes' },
   { type: 'timbre', key: 'B', name: 'timbre', icon: '◐', hint: 'Crossfade notes to another sound' },

@@ -15,6 +15,7 @@ import {
   pitchClassOf,
   stepByScale,
 } from '../../core/scales';
+import { chordDefaultAt } from '../../core/suggest';
 import { pitchClasses } from '../../core/voicing';
 import { momentSeed } from '../../core/rng';
 import { randomMelody, writtenInAt } from './tune';
@@ -83,7 +84,13 @@ export function defaultMoment<T extends MomentType>(
   let m: Moment;
   switch (type as MomentType) {
     case 'chord': {
-      // The tonic triad; the IV triad when the sounding notes already all belong to it.
+      // The chord that best fits the spot, by the key's chord theory (§11.3 rev 14).
+      const fit = chordDefaultAt(piece, score, at);
+      if (fit) {
+        m = { ...fit.moment, ...base };
+        break;
+      }
+      // Keys without theory: the tonic triad; the IV triad when the sounding notes already all belong to it.
       const tonic = degreesToPcs([0, 2, 4], key);
       const sounding = active.map((v) => mod(Math.round(v.pitch), 12));
       const onTonic = n > 0 && sounding.every((pc) => tonic.includes(pc));

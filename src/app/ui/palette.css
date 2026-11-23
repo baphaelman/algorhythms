@@ -23,7 +23,7 @@
 }
 
 /*
- * Fifteen moment types (R9-7, M6 timbre, rev 10 progression) and four suggestions fit one row at
+ * Thirteen moment types (R9-7, M6 timbre, rev 10 progression; no note or pin, rev 14) and four suggestions fit one row at
  * 1280 px.
  */
 .palette.palette-add {
@@ -121,6 +121,39 @@
 
 .suggestions button:hover {
   border-color: var(--accent);
+}
+
+/* Theory cards (§11.3 rev 14): a job-coloured dot; the best fit gets an accent edge and a ★. */
+.suggestions .job-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--ink-2);
+}
+.suggestions [data-job='home'] .job-dot {
+  background: var(--job-home);
+}
+.suggestions [data-job='soft'] .job-dot {
+  background: var(--job-soft);
+}
+.suggestions [data-job='lift'] .job-dot {
+  background: var(--job-lift);
+}
+.suggestions [data-job='tension'] .job-dot {
+  background: var(--job-tension);
+}
+.suggestions [data-job='colour'] .job-dot {
+  background: var(--job-colour);
+}
+
+.suggestions button[data-best] {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--rule));
+}
+
+.suggest-best {
+  font-size: 10px;
+  color: var(--accent);
 }
 
 .suggest-none {

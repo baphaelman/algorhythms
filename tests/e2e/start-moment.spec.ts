@@ -57,7 +57,7 @@ test('New → Empty: silent, the key selected with its Tonic focused; first chor
 
   // Silence: the transitional moments are greyed out at the playhead.
   const palette = page.getByTestId('palette');
-  for (const type of ['shift', 'split', 'merge', 'walk', 'note']) {
+  for (const type of ['shift', 'split', 'merge', 'walk']) {
     const b = palette.locator(`[data-moment="${type}"]`);
     await expect(b, type).toHaveAttribute('aria-disabled', 'true');
     await expect(b, type).toHaveAttribute(

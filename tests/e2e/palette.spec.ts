@@ -41,7 +41,8 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 test('palette click adds a moment at the playhead', async ({ page }) => {
   await openNoGrid(page);
   const palette = page.getByTestId('palette');
-  await expect(palette.getByRole('button')).toHaveCount(15);
+  await expect(palette.getByRole('button')).toHaveCount(13);
+  await expect(palette.locator('[data-moment="pin"], [data-moment="note"]')).toHaveCount(0);
   const before = await moments(page);
   await palette.locator('[data-moment="chord"]').click();
   const ms = (await moments(page)).filter((m) => !before.some((b) => b.id === m.id));
@@ -102,7 +103,6 @@ test('letters add each type; modified letters do not', async ({ page }) => {
     ['t', 'shift'],
     ['p', 'spread'],
     ['w', 'walk'],
-    ['i', 'pin'],
     ['k', 'key'],
     ['l', 'level'],
     ['b', 'timbre'],
@@ -119,7 +119,9 @@ test('letters add each type; modified letters do not', async ({ page }) => {
     await page.keyboard.press('Delete');
     expect(await moments(page)).toHaveLength(before.length);
   }
+  // I no longer adds a pin (§11.3 rev 14).
   const n = (await moments(page)).length;
+  await page.keyboard.press('i');
   for (const combo of ['Control+c', 'Meta+c', 'Alt+u', 'Shift+s']) {
     await page.keyboard.press(combo);
   }
