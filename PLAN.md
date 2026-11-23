@@ -1257,7 +1257,10 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 - **Keyframes** in the Export dialog: time, window (seconds shown), playhead position, and pitch centre and range, eased between keys and edited on the preview's timeline.
 - **Auto camera:** keys made from the piece. The pitch range follows the sounding lines, smoothed, and the camera leans in at one-point crossings and pulls back at the end. You can edit the result.
 - **Openings:** the camera may start before 0, on blank paper, so the first notes appear at the playhead's place instead of entering from the left edge (Murmuration, revision 17).
-- This replaces "camera moments" in Later. Whether keys are stored in the piece is decided with the owner when M11.5 starts, along with the rest of the spec.
+- This replaces "camera moments" in Later.
+- **Decided (owner, 2026-11-23):** keys are stored **in the piece** (an optional `camera` field: mode `follow` | `auto` | `keys`, plus the keys), so the camera travels with saving, share links and exports; a piece without one behaves exactly as before (Follow). New videos default to **Auto**; Follow stays one click away. Video only: posters keep Section.
+- **Builders:** C1 camera path (keys, easing, the piece field, start before 0; preview = video frame) → C2 auto camera (keys made from the piece, tuned against the Crease and Night Sleeper gallery cameras) and C3 dialog (Camera Follow / Auto / Keys; key markers on the preview's timeline; drag or scroll on the preview sets the view at that time; keyboard) in parallel → C4 acceptance.
+- **Acceptance:** the preview matches the video frame (±1 px) at and between keys; Auto starts tight on the first note and ends on the whole piece; an opening can start on blank paper with the first note at the playhead's place; a piece's camera survives save, reload and a share link; a piece without a camera exports exactly as before (goldens unchanged).
 
 **M12. Compose for me, directed (after M11; owner 2026-11-23)**
 - "Compose for me" asks the user what to compose before it starts (§11.3 "Compose for me, directed"), then builds it with the theory-aware rows. The questions and defaults are specified with the owner when M12 starts.
