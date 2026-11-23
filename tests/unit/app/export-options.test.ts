@@ -175,7 +175,7 @@ describe('video', () => {
       videoFollowAt: null,
       videoHud: DEFAULT_HUD,
     });
-    const look = { ...EXPORT_LOOK, theme: 'dark' as const };
+    const look = { ...EXPORT_LOOK, theme: 'dark' as const, hudLayout: {} };
     expect(videoOptions(form({ format: 'video' }), p, ctx)).toEqual({
       aspect: '16:9',
       size: '1080',
@@ -240,11 +240,16 @@ describe('look', () => {
       sections: true,
       future: 'hidden',
     });
-    expect(lookOf(form(), 'video', light)).toEqual({ ...EXPORT_LOOK, theme: 'light' });
+    expect(lookOf(form(), 'video', light)).toEqual({
+      ...EXPORT_LOOK,
+      theme: 'light',
+      hudLayout: {},
+    });
     expect(lookOf(form(), 'poster', { dark: true, colors: 'pitch' })).toEqual({
       ...EXPORT_LOOK,
       theme: 'dark',
       hud: [],
+      hudLayout: {},
     });
   });
 
@@ -449,7 +454,7 @@ describe('poster', () => {
       thickness: true,
       colors: 'pitch',
       customColors: p.voices.map((v) => v.color),
-      look: { ...EXPORT_LOOK, theme: 'dark', hud: [] },
+      look: { ...EXPORT_LOOK, theme: 'dark', hud: [], hudLayout: {} },
     });
     expect(exportFileName(p, form({ format: 'poster' }))).toBe('Kite-Day.png');
     expect(exportFileName(p, form({ format: 'poster', posterFormat: 'svg' }))).toBe('Kite-Day.svg');
@@ -658,6 +663,7 @@ describe('remembered choices', () => {
       videoFollowAt: 90,
       videoWindow: 2,
       videoHud: ['chord'],
+      hudLayout: {}, // before v3: the list's default slots
       look: { ...DEFAULT_LOOK_FORM, beats: 'auto', lineWidth: 'bold' },
     });
     // Stored beats: the old booleans load as off / auto; the names as themselves.

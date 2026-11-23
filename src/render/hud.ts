@@ -10,6 +10,16 @@ import { hzOf } from '../core/tuning';
 import type { CompiledScore, Key, Pitch, Seconds } from '../core/types';
 import { HUD_ROW, hudLines } from './camera';
 import { noteLabel } from './hover';
+import {
+  HUD_BASELINE,
+  HUD_BOX_H,
+  HUD_MIN_W,
+  anchorFactors,
+  placeBox,
+  type HudAnchor,
+  type HudLayout,
+  type HudRect,
+} from './hud-layout';
 import { OPACITY_EPS, opacityAt } from './level';
 import type { HudItem, ScoreStyle, View } from './types';
 
@@ -203,8 +213,102 @@ export function hudTop(view: View, lines: number, extra = 0): number {
   return Math.min(H - padB + 22, H - 4 - HUD_ROW * (lines - 1) - extra);
 }
 
+/** A placed readout: its text, its box (layout px) and the anchor its text aligns to. */
+export interface HudBox extends HudRect {
+  item: HudItem;
+  text: string;
+  anchor: HudAnchor;
+}
+
+/** What the Export dialog overlays on its preview: the frame, its margin and each box. */
+export interface HudPlacement {
+  width: number;
+  height: number;
+  /** The margin readouts snap to, in from each side. */
+  margin: number;
+  boxes: HudBox[];
+}
+
+/** The frame's margin for readouts: the score's side padding. */
+export function hudMargin(view: Pick<View, 'padL'>): number {
+  return view.padL;
+}
+
 /**
- * Draws the readouts in two columns from the top of the bottom band; a short canvas keeps the
+ * Today's slots as positions (the default layout): the first ⌈n/2⌉ readouts down the left
+ * (bottom-left anchor at padL), the rest down the right (bottom-right at padR), on the rows
+ * `drawHud` uses.
+ */
+export function defaultHudLayout(items: readonly HudItem[], view: View, extra = 0): HudLayout {
+  const { width: W, height: H, padL, padR } = view;
+  const rows = hudRows(items);
+  const lines = Math.max(1, hudLines(view.padB - extra, rows));
+  const hy = hudTop(view, lines, extra);
+  const out: HudLayout = {};
+  items.forEach((item, k) => {
+    const right = k >= rows;
+    const r = right ? k - rows : k;
+    const bottom = hy + HUD_ROW * r - HUD_BASELINE + HUD_BOX_H;
+    out[item] = { anchor: right ? 'br' : 'bl', x: (right ? -padR : padL) / W, y: (bottom - H) / H };
+  });
+  return out;
+}
+
+/**
+ * Each readout's text and box with the style's layout (default slots where it has none), the
+ * text measured in its font; boxes are clamped inside the frame.
+ */
+export function hudBoxes(
+  g: CanvasRenderingContext2D,
+  compiled: CompiledScore,
+  style: ScoreStyle,
+  view: View,
+  MONO: string,
+  items: readonly HudItem[],
+): HudBox[] {
+  const layout = style.hudLayout ?? {};
+  const defs = defaultHudLayout(items, view, style.hudExtra ?? 0);
+  const colChars = Math.max(4, Math.floor((view.width - view.padL - view.padR - 16) / 2 / CHAR_PX));
+  const out: HudBox[] = [];
+  for (const item of items) {
+    let text = hudText(item, compiled, view, style);
+    const em = emphasised(item);
+    if (LISTS.has(item)) text = cut(text, em ? Math.floor((colChars * 10.5) / 12) : colChars);
+    g.font = em ? `500 12px ${MONO}` : `10.5px ${MONO}`;
+    const w = Math.max(HUD_MIN_W, text ? g.measureText(text).width : 0);
+    const pos = layout[item] ?? defs[item] ?? { anchor: 'bl', x: 0, y: 0 };
+    const { x, y } = placeBox(pos, w, HUD_BOX_H, view);
+    out.push({ item, text, anchor: pos.anchor, x, y, w, h: HUD_BOX_H });
+  }
+  return out;
+}
+
+/** The readouts at their placed boxes, each text aligned to its box's anchor side. */
+function drawPlacedHud(
+  g: CanvasRenderingContext2D,
+  compiled: CompiledScore,
+  style: ScoreStyle,
+  view: View,
+  MONO: string,
+  items: readonly HudItem[],
+): void {
+  const C = style.tokens;
+  g.globalAlpha = 1;
+  for (const b of hudBoxes(g, compiled, style, view, MONO, items)) {
+    if (!b.text) continue;
+    const em = emphasised(b.item);
+    const fx = anchorFactors(b.anchor)[0];
+    g.font = em ? `500 12px ${MONO}` : `10.5px ${MONO}`;
+    g.fillStyle = em ? C.ink : C.ink2;
+    g.textAlign = fx === 0 ? 'left' : fx === 1 ? 'right' : 'center';
+    g.fillText(b.text, b.x + fx * b.w, b.y + HUD_BASELINE);
+  }
+  g.textAlign = 'left';
+}
+
+/**
+ * Draws the readouts: at their placed boxes when the style has a layout, else in two columns
+ * from the top of the bottom band; a short canvas keeps the
  * first rows that fit (bottom-anchored). On a row whose right readout is emphasised (the chord),
  * a left readout that would run into it is left out, as the formula yields to a long chord.
  */
@@ -216,6 +320,10 @@ export function drawHud(
   MONO: string,
   items: readonly HudItem[],
 ): void {
+  if (style.hudLayout) {
+    drawPlacedHud(g, compiled, style, view, MONO, items);
+    return;
+  }
   const C = style.tokens;
   const { width: W, padL, padR } = view;
   const rows = hudRows(items);

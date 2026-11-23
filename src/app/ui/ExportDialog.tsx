@@ -10,11 +10,22 @@ import {
   type ReactNode,
 } from 'react';
 import { create } from 'zustand';
-import { formatTime } from '../../render/hud';
+import { formatTime, type HudPlacement } from '../../render/hud';
+import { hudPosText, posOfBox } from '../../render/hud-layout';
 import { tokensOf } from '../../render/palettes';
 import { videoSize } from '../../render/video';
 import type { HudItem } from '../../render/types';
 import { downloadBlob } from '../download';
+import {
+  NUDGE,
+  NUDGE_BIG,
+  addReadout,
+  dragTarget,
+  moveReadout,
+  nudgeReadout,
+  removeReadout,
+  sampleWidth,
+} from '../hud-place';
 import {
   BEND_RANGES,
   BIT_DEPTHS,
@@ -94,6 +105,8 @@ interface ExportUi {
   previewT: number;
   /** The video preview is playing (through the app's player). */
   previewPlaying: boolean;
+  /** Where the preview last drew the HUD readouts (layout px); null before the first draw. */
+  hudPlace: HudPlacement | null;
 }
 
 const RUN_LABEL: Record<ExportForm['format'], string> = {
@@ -116,6 +129,7 @@ const useExportUi = create<ExportUi>()(() => ({
   hudOpen: false,
   previewT: 0,
   previewPlaying: false,
+  hudPlace: null,
 }));
 
 const videoKey = (f: ExportForm) => `${f.videoAspect} ${f.videoSize} ${f.videoFps}`;
@@ -213,6 +227,33 @@ function cancelExport(): void {
 function patch(p: Partial<ExportForm>): void {
   useExportUi.setState((s) => ({ form: { ...s.form, ...p }, run: IDLE }));
   saveExportPrefs(useExportUi.getState().form);
+}
+
+/** The open format's readouts and the field that holds them. */
+function hudList(form: ExportForm, kind: LookKind): readonly HudItem[] {
+  return kind === 'video' ? form.videoHud : form.posterHud;
+}
+function hudListPatch(kind: LookKind, items: readonly HudItem[]): Partial<ExportForm> {
+  return kind === 'video' ? { videoHud: hudInOrder(items) } : { posterHud: hudInOrder(items) };
+}
+
+/** Turns a readout on (at a free spot once readouts have been placed) or off. */
+function setReadout(kind: LookKind, item: HudItem, on: boolean): void {
+  const { form, hudPlace } = useExportUi.getState();
+  const list = hudList(form, kind);
+  if (on) {
+    const sample = HUD_CHOICES.find((c) => c.id === item)?.sample ?? '';
+    const layout = addReadout(form.hudLayout, hudPlace, item, sampleWidth(item, sample));
+    patch({ ...hudListPatch(kind, [...list, item]), hudLayout: layout });
+  } else {
+    patch({
+      ...hudListPatch(
+        kind,
+        list.filter((h) => h !== item),
+      ),
+      hudLayout: removeReadout(form.hudLayout, hudPlace, item),
+    });
+  }
 }
 
 function patchLook(p: Partial<LookForm>): void {
@@ -572,10 +613,9 @@ function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
   const pieceName = usePlayer((s) => s.piece.meta.title);
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
-  const video = kind === 'video';
-  const hud = video ? form.videoHud : form.posterHud;
-  const setHud = (items: readonly HudItem[]) =>
-    patch(video ? { videoHud: hudInOrder(items) } : { posterHud: hudInOrder(items) });
+  const hud = hudList(form, kind);
+  const setHud = (items: readonly HudItem[]) => patch(hudListPatch(kind, items));
+  const placed = Object.keys(form.hudLayout).length > 0;
 
   useLayoutEffect(() => {
     if (panel.current) panel.current.inert = !open;
@@ -615,7 +655,16 @@ function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
             >
               Default
             </button>
+            <button
+              type="button"
+              data-testid="hud-reset-layout"
+              disabled={!placed}
+              onClick={() => patch({ hudLayout: {} })}
+            >
+              Reset layout
+            </button>
           </div>
+          <small className="hud-hint">Drag readouts in the preview to place them.</small>
           {HUD_CHOICES.map((c) => (
             <Switch
               key={c.id}
@@ -623,7 +672,7 @@ function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
               label={c.label}
               checked={hud.includes(c.id)}
               testId={`hud-${c.id}`}
-              onChange={(on) => setHud(on ? [...hud, c.id] : hud.filter((h) => h !== c.id))}
+              onChange={(on) => setReadout(kind, c.id, on)}
             >
               <small className="hud-sample">
                 {c.id === 'title' ? pieceName || 'Untitled' : c.sample}
@@ -730,6 +779,180 @@ const WIDE = '(min-width: 900px)';
 /** The preview's box (CSS px): the column's width, at most this tall. */
 function previewMaxHeight(wide: boolean): number {
   return wide ? Math.min(440, innerHeight * 0.62) : Math.min(170, innerHeight * 0.27);
+}
+
+/** Snap distance while dragging a readout, CSS px. */
+const SNAP_CSS = 6;
+
+const readoutLabel = (item: HudItem): string =>
+  HUD_CHOICES.find((c) => c.id === item)?.label ?? item;
+
+/**
+ * The HUD readouts over the preview (PLAN.md §12 "Exports you can shape"): a box per readout
+ * where the preview drew it. Drag places it (snapping to the margins, centre lines and other
+ * readouts' edges, guides shown; Alt free); focused, the arrow keys move it (Shift: larger
+ * steps) and Delete removes it, as its × does. Positions are in % of the frame, so the boxes
+ * follow the canvas at any size.
+ */
+function HudOverlay({
+  form,
+  kind,
+  disabled,
+}: {
+  form: ExportForm;
+  kind: LookKind;
+  disabled: boolean;
+}) {
+  const place = useExportUi((s) => s.hudPlace);
+  const layer = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ item: HudItem; px: number; py: number; bx: number; by: number } | null>(
+    null,
+  );
+  const [guides, setGuides] = useState<{ x?: number; y?: number } | null>(null);
+  const [said, setSaid] = useState('');
+  const [dragging, setDragging] = useState<HudItem | null>(null);
+  if (!place || place.boxes.length === 0) return null;
+  const W = place.width;
+  const H = place.height;
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  const posText = (item: HudItem): string => {
+    const b = place.boxes.find((x) => x.item === item);
+    const pos = form.hudLayout[item] ?? (b ? posOfBox(b.x, b.y, b.w, b.h, place) : undefined);
+    return pos ? hudPosText(pos) : '';
+  };
+  /** Sets the layout; saved to the prefs unless mid-drag (saved on release). */
+  const setLayout = (layout: ExportForm['hudLayout'], save = true) => {
+    if (save) patch({ hudLayout: layout });
+    else useExportUi.setState((s) => ({ form: { ...s.form, hudLayout: layout }, run: IDLE }));
+  };
+  const remove = (item: HudItem, refocus: boolean) => {
+    const order = place.boxes.map((b) => b.item);
+    const next = order[order.indexOf(item) + 1] ?? order[order.indexOf(item) - 1];
+    setReadout(kind, item, false);
+    setSaid(`${readoutLabel(item)} removed`);
+    if (refocus) {
+      requestAnimationFrame(() => {
+        const el = next && layer.current?.querySelector<HTMLElement>(`[data-item="${next}"]`);
+        el?.focus();
+      });
+    }
+  };
+
+  return (
+    <div
+      className={disabled ? 'hud-overlay disabled' : 'hud-overlay'}
+      ref={layer}
+      data-testid="hud-overlay"
+    >
+      {place.boxes.map((b) => {
+        const label = readoutLabel(b.item);
+        return (
+          <div
+            key={b.item}
+            className={dragging === b.item ? 'hud-box dragging' : 'hud-box'}
+            data-item={b.item}
+            data-testid={`hud-box-${b.item}`}
+            data-anchor={b.anchor}
+            tabIndex={disabled ? -1 : 0}
+            role="group"
+            aria-roledescription="HUD readout"
+            aria-label={`${label}: ${posText(b.item)}. Arrow keys move it, Shift for larger steps, Delete removes it.`}
+            style={{
+              left: pct(b.x, W),
+              top: pct(b.y, H),
+              width: pct(b.w, W),
+              height: pct(b.h, H),
+            }}
+            onPointerDown={(e) => {
+              if (disabled || e.button !== 0) return;
+              if ((e.target as HTMLElement).closest('button')) return;
+              e.preventDefault();
+              e.currentTarget.focus();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              drag.current = { item: b.item, px: e.clientX, py: e.clientY, bx: b.x, by: b.y };
+              setDragging(b.item);
+            }}
+            onPointerMove={(e) => {
+              const d = drag.current;
+              const el = layer.current;
+              if (!d || d.item !== b.item || !el) return;
+              const cur = useExportUi.getState().hudPlace;
+              if (!cur) return;
+              const k = el.getBoundingClientRect().width / cur.width || 1;
+              const x = d.bx + (e.clientX - d.px) / k;
+              const y = d.by + (e.clientY - d.py) / k;
+              const t = dragTarget(cur, b.item, x, y, SNAP_CSS / k, e.altKey);
+              setGuides(t.guides);
+              const form = useExportUi.getState().form;
+              setLayout(moveReadout(form.hudLayout, cur, b.item, t.x, t.y), false);
+            }}
+            onPointerUp={(e) => {
+              if (!drag.current) return;
+              drag.current = null;
+              setDragging(null);
+              e.currentTarget.releasePointerCapture?.(e.pointerId);
+              setGuides(null);
+              saveExportPrefs(useExportUi.getState().form);
+              setSaid(`${label}: ${posText(b.item)}`);
+            }}
+            onPointerCancel={() => {
+              drag.current = null;
+              setDragging(null);
+              setGuides(null);
+              saveExportPrefs(useExportUi.getState().form);
+            }}
+            onKeyDown={(e) => {
+              if (disabled) return;
+              if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                remove(b.item, true);
+                return;
+              }
+              const step = e.shiftKey ? NUDGE_BIG : NUDGE;
+              const dir: Record<string, [number, number]> = {
+                ArrowLeft: [-step, 0],
+                ArrowRight: [step, 0],
+                ArrowUp: [0, -step],
+                ArrowDown: [0, step],
+              };
+              const v = dir[e.key];
+              if (!v) return;
+              e.preventDefault();
+              const cur = useExportUi.getState().hudPlace;
+              if (!cur) return;
+              const form = useExportUi.getState().form;
+              const layout = nudgeReadout(form.hudLayout, cur, b.item, v[0], v[1]);
+              setLayout(layout);
+              const pos = layout[b.item];
+              if (pos) setSaid(`${label}: ${hudPosText(pos)}`);
+            }}
+          >
+            <button
+              type="button"
+              className="hud-x"
+              tabIndex={-1}
+              aria-label={`Remove ${label}`}
+              title={`Remove ${label}`}
+              data-testid={`hud-x-${b.item}`}
+              disabled={disabled}
+              onClick={() => remove(b.item, false)}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+      {guides?.x !== undefined && (
+        <div className="hud-guide v" style={{ left: pct(guides.x, W) }} data-testid="hud-guide-x" />
+      )}
+      {guides?.y !== undefined && (
+        <div className="hud-guide h" style={{ top: pct(guides.y, H) }} data-testid="hud-guide-y" />
+      )}
+      <div className="visually-hidden" aria-live="polite" data-testid="hud-live">
+        {said}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -857,8 +1080,14 @@ function ExportPreview({
       const scale = pxW / px.width;
       const src = { piece, compiled };
       const t0 = performance.now();
-      if (kind === 'video') runtime.previewVideo(g, src, form, videoContext(), time, scale);
-      else runtime.previewPosterOf(g, src, form, videoContext(), scale);
+      const place =
+        kind === 'video'
+          ? runtime.previewVideo(g, src, form, videoContext(), time, scale)
+          : runtime.previewPosterOf(g, src, form, videoContext(), scale);
+      const prev = useExportUi.getState().hudPlace;
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(place)) {
+        useExportUi.setState({ hudPlace: place });
+      }
       previewStats.lastMs = performance.now() - t0;
       previewStats.maxMs = Math.max(previewStats.maxMs, previewStats.lastMs);
       draws.current++;
@@ -893,15 +1122,18 @@ function ExportPreview({
   return (
     <div className="export-preview" data-testid="export-preview" ref={wrap}>
       <div className="preview-box" ref={box}>
-        <canvas
-          ref={canvas}
-          role="img"
-          aria-label={what}
-          className={transparent ? 'checker' : undefined}
-          data-testid="preview-canvas"
-          data-t={kind === 'video' ? time.toFixed(3) : undefined}
-          style={{ width: `${cssW}px`, height: `${cssH}px` }}
-        />
+        <div className="preview-stage" style={{ width: `${cssW}px`, height: `${cssH}px` }}>
+          <canvas
+            ref={canvas}
+            role="img"
+            aria-label={what}
+            className={transparent ? 'checker' : undefined}
+            data-testid="preview-canvas"
+            data-t={kind === 'video' ? time.toFixed(3) : undefined}
+            style={{ width: `${cssW}px`, height: `${cssH}px` }}
+          />
+          <HudOverlay form={form} kind={kind} disabled={running} />
+        </div>
       </div>
       {kind === 'video' && (
         <div className="field-row preview-time">

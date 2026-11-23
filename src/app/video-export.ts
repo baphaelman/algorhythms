@@ -19,7 +19,8 @@ import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
-import { drawScore, type Ctx2D } from '../render/draw';
+import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
+import type { HudPlacement } from '../render/hud';
 import { resetContext } from '../render/poster';
 import {
   drawVideoFrame,
@@ -413,9 +414,11 @@ export function previewVideoFrame(
   opts: VideoOptions,
   t: Seconds,
   scale: number,
-): void {
+): HudPlacement {
   resetContext(ctx);
-  drawVideoFrameAt(ctx, compiled, frameOptions(piece, opts), t, scale);
+  const fo = frameOptions(piece, opts);
+  const view = drawVideoFrameAt(ctx, compiled, fo, t, scale);
+  return hudPlacement(ctx, compiled, fo.style, view);
 }
 
 /**

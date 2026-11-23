@@ -23,7 +23,7 @@ import type {
 import { barGrid } from './bars';
 import { cameraAt, cameraScore, pitchToY, timeToX } from './camera';
 import { drawGhost, ghostOf, type Reach } from './ghost';
-import { drawHud, hudItems, hudRows } from './hud';
+import { drawHud, hudBoxes, hudItems, hudMargin, hudRows, type HudPlacement } from './hud';
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { CutSink, outlineFrame, outlinePath } from './outline';
 import { lineColor, pitchStops } from './palettes';
@@ -76,6 +76,26 @@ const TRACE_STEPS_MAX = 16;
 const RING_R = 6.5;
 
 export { formatTime, keyName } from './hud';
+
+/**
+ * Where `drawScore` (or a poster) put each HUD readout for this style and view: the frame, its
+ * margin and the boxes, layout px (the Export dialog's draggable overlay).
+ */
+export function hudPlacement(
+  g: Ctx2D,
+  compiled: CompiledScore,
+  style: ScoreStyle,
+  view: View,
+): HudPlacement {
+  const MONO = style.fontMono ?? DEFAULT_MONO;
+  const items = hudItems(style);
+  return {
+    width: view.width,
+    height: view.height,
+    margin: hudMargin(view),
+    boxes: hudBoxes(g as CanvasRenderingContext2D, compiled, style, view, MONO, items),
+  };
+}
 
 /**
  * Per-frame switches read deep in the line painters (set at the top of drawScore, which is

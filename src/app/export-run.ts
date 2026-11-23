@@ -11,6 +11,7 @@ import { exportFrameCount } from '../audio/offline';
 import { wavExportSize } from '../audio/wav-export';
 import type { CompiledScore, Piece, Seconds } from '../core/types';
 import type { Ctx2D } from '../render/draw';
+import type { HudPlacement } from '../render/hud';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
   exportFileName,
@@ -266,10 +267,10 @@ export function previewVideo(
   ctx: VideoContext,
   t: Seconds,
   scale: number,
-): void {
+): HudPlacement {
   const options = videoOptions(form, src.piece, ctx);
   lastPreview = { kind: 'video', options, t, scale };
-  previewVideoFrame(g, src.piece, src.compiled, options, t, scale);
+  return previewVideoFrame(g, src.piece, src.compiled, options, t, scale);
 }
 
 /** The dialog's preview of a poster export (as `previewVideo`; the whole poster). */
@@ -279,10 +280,10 @@ export function previewPosterOf(
   form: ExportForm,
   ctx: LookAppContext,
   scale: number,
-): void {
+): HudPlacement {
   const options = posterOptions(form, src.piece, ctx);
   lastPreview = { kind: 'poster', options, scale };
-  previewPoster(g, src.piece, src.compiled, options, scale);
+  return previewPoster(g, src.piece, src.compiled, options, scale);
 }
 
 const PHASE_LABEL: Record<VideoPhase, string> = {
