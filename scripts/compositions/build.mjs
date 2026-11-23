@@ -21,6 +21,7 @@ const songs = {
   interference: (await load('./interference.ts')).interference,
   switchyard: (await load('./switchyard.ts')).switchyard,
   'little-round': (await load('./little-round.ts')).littleRound,
+  moonwater: (await load('./moonwater.ts')).moonwater,
 };
 for (const [name, make] of Object.entries(songs)) {
   const file = fileURLToPath(

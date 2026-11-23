@@ -1,0 +1,1041 @@
+{
+  "format": "algorhythms",
+  "version": 2,
+  "meta": {
+    "title": "Moonwater",
+    "author": "AlgoRhythms examples",
+    "created": "2026-11-20T00:00:00.000Z",
+    "modified": "2026-11-21T00:00:00.000Z",
+    "license": "CC0-1.0"
+  },
+  "seed": 2611,
+  "tuning": { "referenceHz": 440, "system": { "kind": "12tet" } },
+  "key": { "tonic": "E", "scale": "minor" },
+  "defaults": {
+    "glide": {
+      "length": 3,
+      "jitter": 0.2,
+      "stagger": 0.8,
+      "arrive": "together",
+      "order": "random",
+      "ease": "smootherstep"
+    }
+  },
+  "voices": [
+    {
+      "id": "v1",
+      "part": "Melody",
+      "timbre": "flute",
+      "pan": 0.05,
+      "gain": 1.6,
+      "range": [62, 90],
+      "sends": { "reverb": 0.5, "delay": 0.22 }
+    },
+    {
+      "id": "v2",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": -0.35,
+      "gain": 3.2,
+      "range": [45, 74],
+      "sends": { "reverb": 0.4, "delay": 0.12 }
+    },
+    {
+      "id": "v3",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": -0.12,
+      "gain": 3.2,
+      "range": [45, 74],
+      "sends": { "reverb": 0.4, "delay": 0.12 }
+    },
+    {
+      "id": "v4",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": 0.12,
+      "gain": 3.2,
+      "range": [45, 74],
+      "sends": { "reverb": 0.4, "delay": 0.12 }
+    },
+    {
+      "id": "v5",
+      "part": "Marimba",
+      "timbre": "marimba",
+      "pan": 0.35,
+      "gain": 3.2,
+      "range": [45, 74],
+      "sends": { "reverb": 0.4, "delay": 0.12 }
+    },
+    {
+      "id": "v6",
+      "part": "Bass",
+      "timbre": "organ",
+      "pan": 0,
+      "gain": 1,
+      "range": [28, 53],
+      "sends": { "reverb": 0.2, "delay": 0 }
+    }
+  ],
+  "moments": [
+    {
+      "id": "start0",
+      "type": "chord",
+      "at": 0,
+      "notes": { "kind": "pitches", "pitches": [71, 52, 59, 64, 67, 40] },
+      "voicing": "even",
+      "assign": "ordered",
+      "byVoice": true
+    },
+    {
+      "id": "mw0001",
+      "type": "tune",
+      "at": 0,
+      "target": { "part": "Bass" },
+      "notes": [
+        { "pitch": 40, "len": 4.5154 },
+        { "pitch": 36, "len": 4.6154 },
+        { "pitch": 40, "len": 2.3077 },
+        { "pitch": 36, "len": 2.3077 },
+        { "pitch": 43, "len": 2.3077 },
+        { "pitch": 38, "len": 2.3077 },
+        { "pitch": 40, "len": 2.3077 },
+        { "pitch": 36, "len": 2.3077 },
+        { "pitch": 45, "len": 2.3077 },
+        { "pitch": 35, "len": 2.3077 },
+        { "pitch": 40, "len": 2.3077 },
+        { "pitch": 36, "len": 2.3077 },
+        { "pitch": 43, "len": 2.3077 },
+        { "pitch": 38, "len": 2.3077 },
+        { "pitch": 36, "len": 2.3077 },
+        { "pitch": 45, "len": 2.3077 },
+        { "pitch": 35, "len": 2.3077 },
+        { "pitch": 40, "len": 2.3077 },
+        { "pitch": 36, "len": 1.1538 },
+        { "pitch": 43, "len": 1.1538 },
+        { "pitch": 38, "len": 1.1538 },
+        { "pitch": 45, "len": 1.1538 },
+        { "pitch": 35, "len": 1.1538 },
+        { "pitch": 42, "len": 1.1538 },
+        { "pitch": 40, "len": 1.1538 },
+        { "pitch": 47, "len": 1.1538 },
+        { "pitch": 45, "len": 1.1538 },
+        { "pitch": 52, "len": 1.1538 },
+        { "pitch": 38, "len": 1.1538 },
+        { "pitch": 45, "len": 1.1538 },
+        { "pitch": 43, "len": 1.1538 },
+        { "pitch": 50, "len": 1.1538 },
+        { "pitch": 35, "len": 1.1538 },
+        { "pitch": 42, "len": 1.1538 },
+        { "pitch": 40, "len": 1.1538 },
+        { "pitch": 47, "len": 1.1538 },
+        { "pitch": 36, "len": 1.1538 },
+        { "pitch": 43, "len": 2.3077 },
+        { "pitch": 50, "len": 1.1538 },
+        { "pitch": 38, "len": 1.1538 },
+        { "pitch": 45, "len": 1.1538 },
+        { "pitch": 36, "len": 1.1538 },
+        { "pitch": 43, "len": 1.1538 },
+        { "pitch": 45, "len": 1.1538 },
+        { "pitch": 52, "len": 1.1538 },
+        { "pitch": 35, "len": 1.1538 },
+        { "pitch": 42, "len": 1.1538 },
+        { "pitch": 40, "len": 1.1538 },
+        { "pitch": 47, "len": 1.1538 },
+        { "pitch": 36, "len": 4.6154 },
+        { "pitch": 40, "len": 4.6154 }
+      ],
+      "glide": { "length": 0.25, "ease": "smoothstep" }
+    },
+    {
+      "id": "mw0002",
+      "type": "pulse",
+      "at": 0,
+      "target": { "voices": ["v2"] },
+      "until": 90,
+      "step": 0.384615,
+      "pattern": [1, 0, 0, 0, 0, 0],
+      "decay": 0.5,
+      "floor": 0.06,
+      "mode": "together",
+      "label": "Arpeggio"
+    },
+    {
+      "id": "mw0003",
+      "type": "pulse",
+      "at": 0,
+      "target": { "voices": ["v3"] },
+      "until": 90,
+      "step": 0.384615,
+      "pattern": [0, 0.5, 0, 0, 0, 0.5],
+      "decay": 0.5,
+      "floor": 0.06,
+      "mode": "together"
+    },
+    {
+      "id": "mw0004",
+      "type": "pulse",
+      "at": 0,
+      "target": { "voices": ["v4"] },
+      "until": 90,
+      "step": 0.384615,
+      "pattern": [0, 0, 0.7, 0, 0.6, 0],
+      "decay": 0.5,
+      "floor": 0.06,
+      "mode": "together"
+    },
+    {
+      "id": "mw0005",
+      "type": "pulse",
+      "at": 0,
+      "target": { "voices": ["v5"] },
+      "until": 90,
+      "step": 0.384615,
+      "pattern": [0, 0, 0, 0.85, 0, 0],
+      "decay": 0.5,
+      "floor": 0.06,
+      "mode": "together"
+    },
+    {
+      "id": "mw0006",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Melody" },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "mw0007",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Bass" },
+      "gain": 0,
+      "over": 0
+    },
+    {
+      "id": "mw0008",
+      "type": "level",
+      "at": 0,
+      "target": { "part": "Marimba" },
+      "gain": 0.75,
+      "over": 0,
+      "label": "Intro"
+    },
+    {
+      "id": "mw0009",
+      "type": "chord",
+      "at": 4.615,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0010",
+      "type": "level",
+      "at": 4.615,
+      "target": { "part": "Bass" },
+      "gain": 0.55,
+      "over": 4
+    },
+    {
+      "id": "mw0011",
+      "type": "level",
+      "at": 9.181,
+      "target": { "part": "Melody" },
+      "gain": 0.8,
+      "over": 0.05,
+      "label": "A"
+    },
+    {
+      "id": "mw0012",
+      "type": "tune",
+      "at": 9.191,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 71, "len": 1.1538 },
+        { "pitch": 67, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 71, "len": 0.7692 },
+        { "pitch": 72, "len": 0.3846 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 74, "len": 1.1538 },
+        { "pitch": 71, "len": 0.7692 },
+        { "pitch": 67, "len": 0.3846 },
+        { "pitch": 69, "len": 2.3077 },
+        { "pitch": 71, "len": 1.1538 },
+        { "pitch": 67, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 71, "len": 0.7692 },
+        { "pitch": 72, "len": 0.3846 },
+        { "pitch": 79, "len": 1.1538 },
+        { "pitch": 76, "len": 0.7692 },
+        { "pitch": 74, "len": 0.3846 },
+        { "pitch": 72, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 69, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 75, "len": 1.1538 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 74, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 72, "len": 1.1538 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 74, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 67, "len": 1.1538 },
+        { "pitch": 69, "len": 1.1538 },
+        { "pitch": 66, "len": 1.1538 },
+        { "pitch": 67, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 72, "len": 1.1538 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 72, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 66, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 71, "len": 1.1538 },
+        { "pitch": 64, "len": 2.3077 }
+      ],
+      "glide": { "length": 0.09, "ease": "smoothstep" }
+    },
+    {
+      "id": "mw0013",
+      "type": "chord",
+      "at": 9.231,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0014",
+      "type": "chord",
+      "at": 11.539,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0015",
+      "type": "chord",
+      "at": 13.846,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 59, 62, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0016",
+      "type": "chord",
+      "at": 16.154,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 57, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0017",
+      "type": "level",
+      "at": 18.182,
+      "target": { "part": "Melody" },
+      "gain": 0.28,
+      "over": 0.22
+    },
+    {
+      "id": "mw0018",
+      "type": "chord",
+      "at": 18.462,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0019",
+      "type": "level",
+      "at": 18.482,
+      "target": { "part": "Melody" },
+      "gain": 0.8,
+      "over": 0.08
+    },
+    {
+      "id": "mw0020",
+      "type": "chord",
+      "at": 20.769,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0021",
+      "type": "chord",
+      "at": 23.077,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0022",
+      "type": "chord",
+      "at": 25.385,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [51, 57, 63, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0023",
+      "type": "level",
+      "at": 27.412,
+      "target": { "part": "Melody" },
+      "gain": 0.28,
+      "over": 0.22
+    },
+    {
+      "id": "mw0024",
+      "type": "chord",
+      "at": 27.692,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0025",
+      "type": "level",
+      "at": 27.712,
+      "target": { "part": "Melody" },
+      "gain": 0.8,
+      "over": 0.08
+    },
+    {
+      "id": "mw0026",
+      "type": "chord",
+      "at": 30,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0027",
+      "type": "chord",
+      "at": 32.308,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 59, 62, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0028",
+      "type": "chord",
+      "at": 34.615,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 57, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0029",
+      "type": "level",
+      "at": 36.643,
+      "target": { "part": "Melody" },
+      "gain": 0.28,
+      "over": 0.22
+    },
+    {
+      "id": "mw0030",
+      "type": "chord",
+      "at": 36.923,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0031",
+      "type": "level",
+      "at": 36.943,
+      "target": { "part": "Melody" },
+      "gain": 0.8,
+      "over": 0.08
+    },
+    {
+      "id": "mw0032",
+      "type": "chord",
+      "at": 39.231,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0033",
+      "type": "chord",
+      "at": 41.539,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [51, 57, 63, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0034",
+      "type": "chord",
+      "at": 43.846,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0035",
+      "type": "tune",
+      "at": 46.114,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 79, "len": 1.1538 },
+        { "pitch": 76, "len": 0.7692 },
+        { "pitch": 79, "len": 0.3846 },
+        { "pitch": 81, "len": 1.1538 },
+        { "pitch": 78, "len": 1.1538 },
+        { "pitch": 79, "len": 0.7692 },
+        { "pitch": 78, "len": 0.3846 },
+        { "pitch": 74, "len": 1.1538 },
+        { "pitch": 76, "len": 2.3077 },
+        { "pitch": 81, "len": 1.1538 },
+        { "pitch": 84, "len": 0.7692 },
+        { "pitch": 83, "len": 0.3846 },
+        { "pitch": 81, "len": 0.7692 },
+        { "pitch": 78, "len": 0.3846 },
+        { "pitch": 74, "len": 1.1538 },
+        { "pitch": 79, "len": 1.1538 },
+        { "pitch": 83, "len": 1.1538 },
+        { "pitch": 81, "len": 1.1538 },
+        { "pitch": 78, "len": 0.7692 },
+        { "pitch": 75, "len": 0.3846 }
+      ],
+      "glide": { "length": 0.09, "ease": "smoothstep" }
+    },
+    {
+      "id": "mw0036",
+      "type": "chord",
+      "at": 46.154,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0037",
+      "type": "level",
+      "at": 46.154,
+      "target": { "part": "Melody" },
+      "gain": 0.95,
+      "over": 1.5,
+      "label": "B"
+    },
+    {
+      "id": "mw0038",
+      "type": "level",
+      "at": 46.154,
+      "target": { "part": "Marimba" },
+      "gain": 1,
+      "over": 0.02
+    },
+    {
+      "id": "mw0039",
+      "type": "level",
+      "at": 46.154,
+      "target": { "part": "Bass" },
+      "gain": 0.7,
+      "over": 1.5
+    },
+    {
+      "id": "mw0040",
+      "type": "chord",
+      "at": 48.462,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 57, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0041",
+      "type": "chord",
+      "at": 50.769,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 59, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0042",
+      "type": "chord",
+      "at": 53.077,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0043",
+      "type": "level",
+      "at": 55.105,
+      "target": { "part": "Melody" },
+      "gain": 0.333,
+      "over": 0.22
+    },
+    {
+      "id": "mw0044",
+      "type": "chord",
+      "at": 55.385,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0045",
+      "type": "level",
+      "at": 55.405,
+      "target": { "part": "Melody" },
+      "gain": 0.95,
+      "over": 0.08
+    },
+    {
+      "id": "mw0046",
+      "type": "chord",
+      "at": 57.692,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 57, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0047",
+      "type": "chord",
+      "at": 60,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 59, 62, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0048",
+      "type": "chord",
+      "at": 62.308,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [51, 57, 63, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0049",
+      "type": "level",
+      "at": 64.335,
+      "target": { "part": "Melody" },
+      "gain": 0.333,
+      "over": 0.22
+    },
+    {
+      "id": "mw0050",
+      "type": "tune",
+      "at": 64.575,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 74, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 72, "len": 1.1538 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 74, "len": 0.7692 },
+        { "pitch": 71, "len": 0.3846 },
+        { "pitch": 67, "len": 1.1538 },
+        { "pitch": 69, "len": 1.1538 },
+        { "pitch": 66, "len": 1.1538 },
+        { "pitch": 67, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 72, "len": 1.1538 },
+        { "pitch": 76, "len": 1.1538 },
+        { "pitch": 72, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 66, "len": 0.7692 },
+        { "pitch": 69, "len": 0.3846 },
+        { "pitch": 71, "len": 1.1538 },
+        { "pitch": 64, "len": 2.3077 }
+      ],
+      "glide": { "length": 0.09, "ease": "smoothstep" }
+    },
+    {
+      "id": "mw0051",
+      "type": "chord",
+      "at": 64.615,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0052",
+      "type": "level",
+      "at": 64.615,
+      "target": { "part": "Melody" },
+      "gain": 0.85,
+      "over": 1,
+      "label": "A′"
+    },
+    {
+      "id": "mw0053",
+      "type": "level",
+      "at": 64.615,
+      "target": { "part": "Marimba" },
+      "gain": 0.8,
+      "over": 0.02
+    },
+    {
+      "id": "mw0054",
+      "type": "level",
+      "at": 64.635,
+      "target": { "part": "Melody" },
+      "gain": 0.95,
+      "over": 0.08
+    },
+    {
+      "id": "mw0055",
+      "type": "chord",
+      "at": 66.923,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0056",
+      "type": "chord",
+      "at": 69.231,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 59, 62, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0057",
+      "type": "chord",
+      "at": 71.539,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [50, 57, 62, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0058",
+      "type": "level",
+      "at": 73.566,
+      "target": { "part": "Melody" },
+      "gain": 0.297,
+      "over": 0.22
+    },
+    {
+      "id": "mw0059",
+      "type": "chord",
+      "at": 73.846,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 60, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0060",
+      "type": "level",
+      "at": 73.866,
+      "target": { "part": "Melody" },
+      "gain": 0.85,
+      "over": 0.08
+    },
+    {
+      "id": "mw0061",
+      "type": "chord",
+      "at": 76.154,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 57, 60, 64] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0062",
+      "type": "chord",
+      "at": 78.462,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [51, 57, 63, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0063",
+      "type": "chord",
+      "at": 80.769,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 67] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    },
+    {
+      "id": "mw0064",
+      "type": "level",
+      "at": 82.797,
+      "target": { "part": "Melody" },
+      "gain": 0.297,
+      "over": 0.22
+    },
+    {
+      "id": "mw0065",
+      "type": "tune",
+      "at": 83.037,
+      "target": { "part": "Melody" },
+      "notes": [
+        { "pitch": 71, "len": 2.3077 },
+        { "pitch": 67, "len": 1.1538 },
+        { "pitch": 69, "len": 1.1538 },
+        { "pitch": 71, "len": 4.6154 }
+      ],
+      "glide": { "length": 0.14, "ease": "smoothstep" },
+      "label": "Outro"
+    },
+    {
+      "id": "mw0066",
+      "type": "level",
+      "at": 83.097,
+      "target": { "part": "Melody" },
+      "gain": 0.85,
+      "over": 0.08
+    },
+    { "id": "mw0067", "type": "level", "at": 85.385, "gain": 0, "over": 6.923 },
+    {
+      "id": "mw0068",
+      "type": "chord",
+      "at": 87.692,
+      "target": { "part": "Marimba" },
+      "notes": { "kind": "pitches", "pitches": [52, 59, 64, 66] },
+      "assign": "ordered",
+      "glide": {
+        "length": 0.25,
+        "stagger": 0.05,
+        "jitter": 0.2,
+        "ease": "smoothstep",
+        "land": true
+      }
+    }
+  ],
+  "mix": {
+    "reverb": { "size": 0.8, "decay": 4, "damping": 0.45, "preDelay": 0.02, "returnLevel": 0.36 },
+    "delay": { "time": 1.1538, "feedback": 0.25, "returnLevel": 0.14 },
+    "sends": { "reverb": 0.5, "delay": 0.25 },
+    "tone": { "tilt": 0, "lowpassHz": 20000 },
+    "limiter": { "ceilingDb": -1 },
+    "panAuto": "index"
+  },
+  "end": { "at": 92.308, "fade": 1 },
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 156, "meter": 6 }
+}
