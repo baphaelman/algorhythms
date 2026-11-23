@@ -43,6 +43,7 @@ import {
   type VideoFrameOptions,
 } from '../../../src/render';
 import { SvgContext, asCtx2D } from '../../../src/render/svg';
+import { canFilter, forceCanFilter } from '../../../src/render/layer';
 
 const ROOT = join(import.meta.dirname, '../../..');
 function load(file: string): Piece {
@@ -134,7 +135,10 @@ function drawn(over: Partial<Look>, t = T): Call[] {
 
 const strip = (calls: Call[]) => calls.map(({ self: _s, ...c }) => JSON.stringify(c));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  forceCanFilter(null);
+});
 
 describe('all off draws exactly as before', () => {
   it('the style has no new fields when they are off', () => {
@@ -243,7 +247,6 @@ describe('glow', () => {
   });
   it('with layers: traced into a small layer, blurred, composited per pass at its share', () => {
     const log: Call[] = [];
-    let filterOk = true;
     class FakeCanvas {
       width: number;
       height: number;
@@ -253,10 +256,6 @@ describe('glow', () => {
         this.height = h;
         const r = recorder(log, this);
         this.ctx = r.ctx;
-        if (!filterOk) {
-          // An engine without canvas `filter`: the property doesn't stick.
-          Object.defineProperty(r.ctx, 'filter', { get: () => 'none', set: () => undefined });
-        }
       }
       getContext() {
         return this.ctx;
@@ -264,7 +263,7 @@ describe('glow', () => {
     }
     vi.stubGlobal('OffscreenCanvas', FakeCanvas);
     for (const ok of [true, false]) {
-      filterOk = ok;
+      forceCanFilter(ok);
       log.length = 0;
       const main = recorder(log, { width: 1920, height: 1080 });
       const cam = videoCamera('follow', SCORE, T, { aspect: '16:9', window: 20 });
@@ -291,6 +290,53 @@ describe('glow', () => {
       const lastMainStroke = log.map((c) => c.self === main.ctx && c.op).lastIndexOf('stroke');
       expect(firstComposite).toBeLessThan(lastMainStroke);
     }
+  });
+  describe('canFilter detection', () => {
+    /** A context of its own type whose blur spreads the dot (`spreads`) or doesn't. */
+    function fakeCtx(spreads: boolean, stuck = true) {
+      let probes = 0;
+      class Ctx {
+        private f = 'none';
+        get filter() {
+          return stuck ? this.f : 'none';
+        }
+        set filter(v: string) {
+          this.f = v;
+        }
+        save() {}
+        restore() {}
+        setTransform() {}
+        clearRect() {}
+        fillRect() {}
+        globalAlpha = 1;
+        globalCompositeOperation = 'source-over';
+        fillStyle = '';
+        getImageData() {
+          probes++;
+          return { data: [0, 0, 0, spreads ? 80 : 0] };
+        }
+      }
+      return { g: new Ctx() as unknown as CanvasRenderingContext2D, probes: () => probes };
+    }
+    it('a blur that spreads: the filter path; probed once per context type', () => {
+      const a = fakeCtx(true);
+      expect(canFilter(a.g)).toBe(true);
+      expect(canFilter(a.g)).toBe(true);
+      expect(a.probes()).toBe(1);
+      const b = new (Object.getPrototypeOf(a.g).constructor)() as CanvasRenderingContext2D;
+      expect(canFilter(b)).toBe(true);
+      expect(a.probes()).toBe(1);
+    });
+    it('a filter property that only sticks, or a blur that does not spread: the ring fallback', () => {
+      expect(canFilter(fakeCtx(false).g)).toBe(false);
+      expect(canFilter(fakeCtx(true, false).g)).toBe(false);
+    });
+    it('forceCanFilter overrides detection', () => {
+      forceCanFilter(false);
+      expect(canFilter(fakeCtx(true).g)).toBe(false);
+      forceCanFilter(true);
+      expect(canFilter(fakeCtx(false).g)).toBe(true);
+    });
   });
   it('SVG: the lines again under a Gaussian blur filter', () => {
     const style = posterStyle({ theme: 'dark', look: look({ glow: 1, hud: [] }), ...CTX });
