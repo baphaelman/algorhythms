@@ -2559,3 +2559,9 @@ Report: a one-voice `glide.land` chord ~0.3 s after an earlier chord on its part
 - **Found in a composition:** `switchyard` sw0060 (Bass unison to 40, at 120, stagger 0.8 from the defaults → decides at 118.9) is overtaken by sw0059 (shift +3, at 120, decides 119.65): the bass ends on 45 (40 + 3 scale steps), not 40. Not changed (examples are out of this task's scope).
 - **Product question (owner):** keep the rule and the diagnostic, or let a land moment's lead-in never start before an earlier moment's marker on its lines (as tunes' `floor`)? Not done: it changes PLAN §5's "clamped at 0".
 - **Tests:** `tests/unit/core/land-overtaken.test.ts` (the report, no false positives, equal markers, cancelled staggered moves, matrix, seeded fast-check property "arrives by its marker xor land-overtaken", incremental = full). Goldens unchanged.
+
+## M9 acceptance audit (tests + docs; 2026-11-22)
+On 5e2d4cc (v63, CI run 45081888847 all green; WebKit retried `video-dialog:825` no-download once). `docs/m9-acceptance.md`.
+- **New:** `tests/e2e/poster-long.spec.ts`, opt-in `POSTER_LONG=1` (chromium-dev) / `=all` (every dev project): 4K PNG < 2 s, SVG < 10 MB on the longest composition (lanterns-over-salt-flats 186 s), the one nearest 3 min, Kite Day cut to 180 / 600 s, two looks, three sizes. Worst 16:9 4K PNG: Chromium 107 ms, Firefox 98, Linux WebKit 349; SVG ≤ 0.14 MB.
+- **Measured here** (`pnpm test` 2612 passed): PNG vs `drawScore` 0 bytes off on Chromium, Firefox and Linux WebKit; transparent translucent premul ≤ 2 on all three (Linux WebKit 1.96, so the CI ~64 is macOS-only). SVG vs PNG 44.6–54.1 dB (control ≤ 28.8).
+- **Open:** CI gates the PNG at 10 s, not 2 s; SVG-vs-PNG not gated with HUD rows (35.9 dB) or at 1:1 / A4 / transparent; poster glides sampled at layout scale (9 device px); PLAN §12 Look bullets on dropdowns are stale against "Controls".
