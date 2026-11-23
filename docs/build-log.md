@@ -2674,3 +2674,11 @@ PLAN §11.3 "Theory-aware Next" (rev 14). Port of the demo's tables and ranking 
   - Fewer lines than chord tones: the card sets `count` (as the editor's chord fill would).
 - **Tests:** `theory.test.ts` (families, modal jobs, progression reading, M10 acceptance ranks, reasons ≤ 6 words, cards per scale, between, spots), `suggest.test.ts` rewritten (cards per acceptance, labels, sevenths, each card compiles to its chord and follows a later key moment, every built-in scale, silence, determinism, examples, Add default, picker ranks, composer grammar in locrian/whole-tone). App test `suggestions.test.ts` label updated.
 - **e2e likely affected (not run):** `suggestions.spec.ts` (expects "Open to"), possibly `start-moment.spec.ts`, `snap-beats.spec.ts`, `viewbar.spec.ts` (card widths).
+
+## M10a-2 theory-aware Next in the app (2026-11-23)
+PLAN §11.3 "Theory-aware Next" and "Palette without note and pin".
+- **Next cards** (`Suggestions.tsx`, `palette.css`): a job dot (`--job-*` tokens in `styles.css`, light and dark, from the demo) and the label; the best fit gets an accent edge and a small ★ (`data-best`). `title` = "Best fit. " + `tooltip`; the accessible description (a visually-hidden sibling, so the name stays the label) adds the append time. Composer suggestions (keys without theory) keep their icons.
+- **Add → Chord** (`new-moment.ts`): `chordDefaultAt` when it returns a choice, else the old tonic-or-IV degrees. Click, C, drag-drop and hover preview all go through `defaultMoment`.
+- **Picker marks** (`ChordPicker.tsx`): chord moments only; rank 0 a 4 px accent corner dot, ranks 1–2 the same at 35 % opacity, `title` "Fits here" (absolute, no layout shift). The progression inspector's chips stay unmarked.
+- **Palette**: `note` and `pin` removed, `I` unbound; the inspector's empty-state shortcut list updated. Drops of those types are rejected (palette-drop reads `PALETTE`).
+- **Tests:** unit `theory-next.test.ts`; `shortcuts`/`typing-keys` updated. e2e: `suggestions.spec.ts` (card labels; new: four distinct jobs after I–V–vi–IV, best mark, tooltip, Add → Chord numeral, picker dots), `palette.spec.ts` (13 buttons, `i` adds nothing), `start-moment.spec.ts`, `lane-preview.spec.ts` (pin ghost dropped).

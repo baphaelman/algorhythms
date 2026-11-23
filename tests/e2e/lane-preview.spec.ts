@@ -59,7 +59,7 @@ test('hovering a palette item shows a ghost lane item at the playhead; Escape cl
   expect(Number.isNaN(await ghostAt(page))).toBe(true);
 });
 
-test('level, pin and timbre ghosts land on the Level, Pins and Effects rows', async ({ page }) => {
+test('level and timbre ghosts land on the Level and Effects rows', async ({ page }) => {
   await open(page);
   await seek(page, 50);
   const ghost = page.getByTestId('lane-ghost');
@@ -70,12 +70,10 @@ test('level, pin and timbre ghosts land on the Level, Pins and Effects rows', as
     const y = m.y + m.height / 2;
     return y >= r.y && y <= r.y + r.height;
   };
-  // Tidewater Hymn has no pins or timbre changes: those rows appear only for the ghost's type.
-  await expect(page.locator('[data-row="pins"]')).toBeHidden();
+  // Tidewater Hymn has no timbre changes: that row appears only for the ghost's type.
   await expect(page.locator('[data-row="effects"]')).toBeHidden();
   for (const [type, row] of [
     ['level', 'level'],
-    ['pin', 'pins'],
     ['timbre', 'effects'],
   ] as const) {
     await page.getByTestId('palette').locator(`[data-moment="${type}"]`).hover();
@@ -85,7 +83,6 @@ test('level, pin and timbre ghosts land on the Level, Pins and Effects rows', as
     await escape(page);
     await expect(ghost).toBeHidden();
   }
-  await expect(page.locator('[data-row="pins"]')).toBeHidden();
   await expect(page.locator('[data-row="effects"]')).toBeHidden();
 });
 

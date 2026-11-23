@@ -1,7 +1,9 @@
 /**
- * Next-move suggestions (PLAN.md §11.3 revisions 6–7): the "Next" strip shows 3–4 moves for the
- * end of the piece's last moment, whatever the playhead or selection; a click appends one there
- * (one undo entry, extending an explicit end), and selects it; hovering previews it.
+ * Next-move suggestions (PLAN.md §11.3 revisions 6–7, 14): the "Next" strip shows up to four cards
+ * for the end of the piece's last moment, whatever the playhead or selection; a click appends one
+ * there (one undo entry, extending an explicit end), and selects it; hovering previews it. In a key
+ * with chord theory, one card per job, the best fit marked; Add → Chord and the chord picker use
+ * the same theory.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -99,7 +101,8 @@ test('the strip is a hold after the last moment; click appends there; undo remov
   expect(await stripT(page)).toBe(t);
   const items = strip.locator('[data-suggestion]');
   await expect.poll(() => items.count()).toBeGreaterThanOrEqual(3);
-  await expect(items.first()).toHaveText(/Open to /);
+  const CARD = /^(Home|Near home|Lift|Tension|Surprise|One note) · \S+/;
+  await expect(items.first()).toHaveText(CARD);
 
   const before = await moments(page);
   await items.first().click();
@@ -110,7 +113,7 @@ test('the strip is a hold after the last moment; click appends there; undo remov
   expect((await editorOf(page)).selection).toEqual([added.id]);
   // The strip moves on to the new end.
   await expect.poll(() => stripT(page)).toBeGreaterThan(t);
-  expect((await editorOf(page)).undoLabel).toMatch(/^Open to /);
+  expect((await editorOf(page)).undoLabel).toMatch(CARD);
 
   await page.keyboard.press('ControlOrMeta+z');
   expect(await moments(page)).toEqual(before);
@@ -168,4 +171,90 @@ test('hovering a suggestion previews it silently without touching the piece', as
   await page.mouse.move(2, 400);
   await expect.poll(async () => (await previewOf(page)).label).toBeNull();
   expect(await page.evaluate(() => window.__algorhythms!.store.getState().piece)).toEqual(piece);
+});
+
+/** C major, I–V–vi–IV every 4 s from silence (three close-voiced lines); no grid. */
+async function openLoop(page: Page): Promise<void> {
+  await page.goto('./?example=tidewater-hymn');
+  await expect(page.getByTestId('play')).toBeVisible();
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as Record<string, unknown> & {
+      view: Record<string, unknown>;
+    };
+    const view = { ...p.view };
+    delete view.gridBpm;
+    p.view = view;
+    p.key = { tonic: 'C', scale: 'major' };
+    p.moments = ['I', 'V', 'vi', 'IV'].map((symbol, i) => ({
+      id: `chd00${i}`,
+      type: 'chord',
+      at: 4 * i,
+      notes: { kind: 'chord', symbol },
+      voicing: 'close',
+      register: [52, 72],
+      assign: 'ordered',
+    }));
+    h.actions.loadPiece(p);
+  });
+  await page.locator('body').click({ position: { x: 2, y: 2 } });
+}
+
+const chordNotes = (page: Page, id: string) =>
+  page.evaluate(
+    (id) =>
+      (
+        window.__algorhythms!.store.getState().piece.moments as unknown as {
+          id: string;
+          notes?: { kind: string; symbol?: string };
+        }[]
+      ).find((m) => m.id === id)?.notes,
+    id,
+  );
+
+test('after a progression: one card per job, the best marked, the reason in the tooltip', async ({
+  page,
+}) => {
+  await openLoop(page);
+  const items = page.getByTestId('suggestions').locator('[data-suggestion]');
+  await expect(items).toHaveCount(4);
+  const jobs = await items.evaluateAll((els) => els.map((e) => e.getAttribute('data-job')));
+  expect(new Set(jobs).size).toBe(4);
+  for (const j of jobs) expect(['home', 'soft', 'lift', 'tension', 'colour']).toContain(j);
+  // The loop I–V–vi–IV goes home next: the best card, marked ★, first.
+  await expect(items.first()).toHaveAttribute('data-best', 'true');
+  await expect(items.first()).toHaveText(/^Home · C/);
+  await expect(items.first().locator('.suggest-best')).toBeVisible();
+  await expect(items.locator('.suggest-best')).toHaveCount(1);
+  await expect(items.first().locator('.job-dot')).toBeVisible();
+  // The numeral and the reason: the title and the accessible description.
+  await expect(items.first()).toHaveAttribute('title', /^Best fit\. I — .+/);
+  await expect(items.nth(1)).toHaveAttribute('title', /^[^ ]+ — .+/);
+  await expect(items.nth(1)).toHaveAccessibleDescription(/ — .+Appends at/);
+});
+
+test('Add → Chord picks the chord that fits; the picker marks the best fits', async ({ page }) => {
+  await openLoop(page);
+  // Between I (0 s) and V (4 s): a chord moment with a Roman numeral, not the old degrees default.
+  await seek(page, 2);
+  const before = await moments(page);
+  await page.keyboard.press('c');
+  const added = (await moments(page)).find((m) => !before.some((b) => b.id === m.id))!;
+  expect(added.at).toBeCloseTo(2, 3);
+  const notes = await chordNotes(page, added.id);
+  expect(notes?.kind).toBe('chord');
+  expect(notes?.symbol).toMatch(/^[ivIV♭b#]+/);
+  await page.keyboard.press('Delete');
+
+  // V selected: one filled dot and two faint ones, "Fits here"; no text badges.
+  await page.evaluate(() => window.__algorhythms!.actions.select(['chd001']));
+  const chips = page.getByTestId('insp-chord-picker').locator('.chips.diatonic button');
+  await expect(chips).toHaveCount(7);
+  await expect(chips.locator('.fit-dot')).toHaveCount(3);
+  await expect(page.getByTestId('insp-chord-picker').locator('[data-fit="best"]')).toHaveCount(1);
+  await expect(page.getByTestId('insp-chord-picker').locator('[data-fit="good"]')).toHaveCount(2);
+  await expect(page.getByTestId('insp-chord-picker').locator('[data-fit="best"]')).toHaveAttribute(
+    'title',
+    'Fits here',
+  );
 });

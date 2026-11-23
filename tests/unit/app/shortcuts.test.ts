@@ -57,7 +57,7 @@ const key = (k: string, mods: Record<string, unknown> = {}) => ({
 });
 
 describe('key mapping', () => {
-  it('maps the ten letters of §11.3', () => {
+  it('maps the palette letters of §11.3', () => {
     const expected = {
       c: 'chord',
       u: 'unison',
@@ -66,7 +66,6 @@ describe('key mapping', () => {
       t: 'shift',
       p: 'spread',
       w: 'walk',
-      i: 'pin',
       k: 'key',
       l: 'level',
       r: 'pulse',
@@ -78,13 +77,14 @@ describe('key mapping', () => {
       expect(momentTypeForKey(key(k))).toBe(type);
       expect(editorKey(key(k))).toEqual({ kind: 'add', type });
     }
-    expect(PALETTE).toHaveLength(15);
+    expect(PALETTE).toHaveLength(13);
     const keyed = PALETTE.filter((e) => e.key);
-    expect(keyed).toHaveLength(14);
-    expect(new Set(keyed.map((e) => e.key)).size).toBe(14);
-    // The palette's note point has no letter: N + click adds one on a line (§11.3).
-    expect(PALETTE.find((e) => e.type === 'note')?.key).toBeUndefined();
+    expect(keyed).toHaveLength(13);
+    expect(new Set(keyed.map((e) => e.key)).size).toBe(13);
+    // Note and pin left the palette (§11.3 rev 14); N + click still adds a note point.
+    expect(PALETTE.some((e) => e.type === 'note' || e.type === 'pin')).toBe(false);
     expect(momentTypeForKey(key('n'))).toBeNull();
+    expect(momentTypeForKey(key('i'))).toBeNull();
     expect(momentTypeForKey(key('x'))).toBeNull();
   });
 
