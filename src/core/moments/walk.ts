@@ -11,7 +11,10 @@
  *
  * With `over: 'chord'` (revision 10) and a chord in effect (`env.chord`), a step counts chord tones
  * instead (`stepByChord`), and the bass's drawn leap target moves to the nearest chord tone that
- * keeps the bass's constraints. The draws are the same as over the key.
+ * keeps the bass's constraints. The draws are the same as over the key. At the first tick after
+ * the chord changes (`env.changed`, M13), an eligible voice that does not step and sits off the
+ * new chord moves to its nearest chord tone between its neighbours, so no note is held across a
+ * change against the chord.
  *
  * Draws are keyed by (walk seed, voice, tick index, purpose), so a voice's step at tick 12 depends
  * only on its own state (§7.7). All steps of a tick start at the tick with the same duration
@@ -40,6 +43,8 @@ export interface WalkEnv {
    * (`over: 'chord'`); null to step over the key (also before any chord).
    */
   readonly chord: readonly number[] | null;
+  /** The chord differs from the previous tick's (re-snap held voices). */
+  readonly changed?: boolean;
   readonly seed: number;
   /** Every active voice, sorted by committed destination (ties: pool index). */
   readonly order: readonly number[];
@@ -81,13 +86,14 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
     const v = order[i];
     if (!env.eligible(v)) continue;
     const h = env.hash(v);
-    if (randHashed(env.seed, h, env.tick, Purpose.WalkPick) >= density) continue;
+    const picked = randHashed(env.seed, h, env.tick, Purpose.WalkPick) < density;
+    if (!picked && !env.changed) continue;
     const below = i > 0 ? d[i - 1] : -Infinity;
     const above = i < n - 1 ? d[i + 1] : Infinity;
     const cur = d[i];
     const r = env.range(v);
     let to = NaN;
-    if (v === bassVoice && w.bass) {
+    if (picked && v === bassVoice && w.bass) {
       const a = Math.abs(w.bass.leap[0]);
       const b = Math.abs(w.bass.leap[1]);
       const lo = a < b ? a : b;
@@ -107,11 +113,14 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
           );
         }
       }
-    } else {
+    } else if (picked) {
       const s =
         steps[Math.floor(randHashed(env.seed, h, env.tick, Purpose.WalkStep) * steps.length)];
       const p = env.chord ? stepByChord(cur, s, env.chord) : stepByScale(cur, s, env.key);
       if (p > below && p < above && p >= r[0] && p <= r[1] && p !== cur) to = p;
+    }
+    if (!Number.isFinite(to) && env.changed && env.chord && !onChord(cur, env.chord)) {
+      to = nearestChordTone(cur, env.chord, r, (q) => q > below && q < above);
     }
     if (Number.isFinite(to)) {
       d[i] = to;
@@ -123,6 +132,10 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
 
 /** Pitches within this of an integer count as that integer (on a chord tone). */
 const EPS = 1e-9;
+
+const onChord = (p: Pitch, pcs: readonly number[]): boolean =>
+  Math.abs(p - Math.round(p)) < EPS &&
+  pcs.some((pc) => mod(Math.round(pc), 12) === mod(Math.round(p), 12));
 
 /**
  * Moves `p` by `steps` chord tones (revision 10): +n is the n-th chord tone strictly above p, −n

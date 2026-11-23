@@ -1,6 +1,6 @@
 /**
- * PLAN §6.2 walk, revision 10: `over: 'chord'` steps through the tones of the latest chord at or
- * before each tick (any target), uses the key before any chord, lands the bass leap on a chord
+ * PLAN §6.2 walk, revision 10: `over: 'chord'` steps through the tones of the chords sounding at
+ * each tick (the Chords row, M13 fix; see walk-over-chord-row.test.ts), uses the key before any chord, lands the bass leap on a chord
  * tone, keeps order, and the incremental compile follows edits to earlier chords.
  */
 import { describe, expect, it } from 'vitest';
@@ -48,12 +48,24 @@ const walkId = (p: Piece): string => p.moments.find((m) => m.type === 'walk')!.i
 const stepsOf = (s: CompiledScore, id: string) =>
   s.walkSteps.filter((w) => w.momentId === id && w.from !== w.to);
 
-/** The pcs of the latest chord moment at or before t (what the walk must read). */
+/**
+ * The pcs of the chord blocks sounding at t on the Chords row (M13 fix): a block ends at a later
+ * chord with its target or targeting all, and a chord of 2+ notes ends earlier ones of any target;
+ * a line (one note) only adds its note.
+ */
 function chordAtT(p: Piece, t: number): Set<number> | null {
-  let best: Moment | null = null;
-  for (const m of p.moments) if (m.type === 'chord' && m.at <= t) best = m;
-  if (!best || best.type !== 'chord') return null;
-  return new Set(noteSetPcs(best.notes, p.key));
+  const sounding = new Map<string, { at: number; pcs: number[] }>();
+  for (const m of p.moments) {
+    if (m.type !== 'chord' || m.at > t) continue;
+    const pcs = noteSetPcs(m.notes, p.key) ?? [];
+    const chain = JSON.stringify(m.target ?? 'all');
+    for (const [k, b] of sounding)
+      if (b.at < m.at && (chain === '"all"' || (pcs.length > 1 && b.pcs.length > 1)))
+        sounding.delete(k);
+    sounding.set(chain, { at: m.at, pcs });
+  }
+  if (sounding.size === 0) return null;
+  return new Set([...sounding.values()].flatMap((b) => b.pcs));
 }
 
 describe('stepByChord / nearestChordTone', () => {
