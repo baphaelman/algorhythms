@@ -177,6 +177,14 @@ export type VideoSupport =
 export const VIDEO_SAMPLE_RATE = 48000;
 export const AUDIO_BITRATE = 192_000;
 /**
+ * The video's true-peak ceiling when normalising (dBTP), by audio codec: below the WAV's −1,
+ * because lossy encoders overshoot it. Crease at −14 LUFS, decoded: AAC −0.90 dBTP from a −1
+ * ceiling, −1.41 from −1.5; Opus −0.91 from −1.5.
+ */
+export function videoLoudnessCeiling(audioCodec: string): number {
+  return audioCodec.startsWith('opus') ? -2 : -1.5;
+}
+/**
  * A key frame every half second: YouTube's upload recommendation ("closed GOP, half the frame
  * rate"). It also lifts the delivered bitrate 10–27 % (build log "M11 Y3"): no encoder here
  * spends the target on line art, whatever its rate-control mode.
@@ -373,6 +381,7 @@ export async function* mixChunks(
   onProgress?: (fraction: number) => void,
   span?: WavSpan,
   loudness: ExportLoudness = 'off',
+  ceiling?: number,
 ): AsyncGenerator<Float32Array<ArrayBuffer>> {
   const reader = exportWavStream({
     score: compiled,
@@ -384,6 +393,7 @@ export async function* mixChunks(
     onProgress,
     ...(span ? { span } : {}),
     loudness,
+    ...(ceiling !== undefined ? { ceiling } : {}),
   }).getReader();
   let header = true;
   try {
@@ -856,6 +866,7 @@ export async function exportVideo(
         onAudio,
         audioSpan,
         opts.loudness,
+        videoLoudnessCeiling(audioCodec),
       )) {
         if (stop.signal.aborted) return;
         await send(data);

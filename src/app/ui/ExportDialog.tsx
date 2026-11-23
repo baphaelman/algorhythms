@@ -2184,6 +2184,7 @@ export function ExportDialog() {
                     runtime={runtime}
                     disabled={running}
                     context={videoContext}
+                    videoAudio={support?.ok === true ? support.audio : 'mp4a'}
                     onChange={(loudness) => patch({ loudness })}
                   />
                 </>

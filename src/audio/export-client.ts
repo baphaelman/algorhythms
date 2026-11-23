@@ -85,6 +85,7 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
           chunkSeconds: req.chunkSeconds,
           ...(req.span ? { span: req.span } : {}),
           ...(req.loudness && req.loudness !== 'off' ? { loudness: req.loudness } : {}),
+          ...(req.ceiling !== undefined ? { ceiling: req.ceiling } : {}),
         },
       };
       w.postMessage(request, transferList(flat));

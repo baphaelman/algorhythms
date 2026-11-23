@@ -47,15 +47,20 @@ const draws = (page: Page) =>
     Number(document.querySelector('[data-testid=preview-canvas]')?.getAttribute('data-draws')),
   );
 
-test('the whole dialog by keyboard alone: order, visible focus, Escape', async ({ page }) => {
+test('the whole dialog by keyboard alone: order, visible focus, Escape', async ({
+  page,
+  browserName,
+}) => {
   test.setTimeout(60_000);
+  // macOS WebKit's Tab skips buttons (the system's "Keyboard navigation" off); Option-Tab doesn't.
+  const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
   await page.setViewportSize({ width: 1440, height: 900 });
   await load(page);
   // Menu → Export, by keys.
   await page.getByTestId('menu-button').focus();
   await page.keyboard.press('Enter');
   for (let i = 0; i < 30 && (await focused(page)).id !== 'open-export'; i++) {
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(TAB);
   }
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();
@@ -109,7 +114,7 @@ test('the whole dialog by keyboard alone: order, visible focus, Escape', async (
     });
     if (!s) break;
     stops.push(s);
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(TAB);
   }
   const ids = stops.map((s) => s.id);
   // Every group in order: format, the preview (HUD boxes, play, time, thumbnail, description),
@@ -264,8 +269,8 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
   await step(
     'theme Dark',
     async () => {
-      await radio('export-vtheme', 'Current');
-      await key('ArrowLeft');
+      await radio('export-vtheme', 'Light');
+      await key('ArrowRight');
     },
     'export-vtheme',
   );
@@ -504,7 +509,13 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     'end card',
     async () => {
       await page.getByTestId('vb-end-card').locator('input:checked').focus();
-      await key('ArrowLeft');
+      // WebKit's arrows stop at the ends of a radio group: move away from the end we're at.
+      const last = await page
+        .getByTestId('vb-end-card')
+        .locator('input')
+        .last()
+        .evaluate((el) => (el as HTMLInputElement).checked);
+      await key(last ? 'ArrowLeft' : 'ArrowRight');
     },
     'vb-end-card',
   );
@@ -589,8 +600,9 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
   await step(
     'background Transparent',
     async () => {
-      await dialog(page).getByTestId('look-bg').getByLabel('Theme').focus();
-      await page.keyboard.press('ArrowLeft');
+      // Transparent is last (WebKit's arrows don't wrap from the first).
+      await dialog(page).getByTestId('look-bg').getByLabel('Gradient').focus();
+      await page.keyboard.press('ArrowRight');
     },
     'look-bg',
   );

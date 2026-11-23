@@ -16,8 +16,11 @@ const ROOT = join(import.meta.dirname, '../..');
 const PIECE = JSON.parse(
   readFileSync(join(ROOT, 'examples/compositions/night-sleeper.algorhythms.json'), 'utf8'),
 ) as unknown;
-/** Measured 42–48 dB at 1080p–4K on all three engines; the frame 0.5 s away ~30 dB. */
-const MIN_PSNR = 38;
+/**
+ * §15 M11: at least 40 dB decoded. Measured 42–48 dB at 1080p–4K on all three engines; the frame
+ * 0.5 s away ~30 dB.
+ */
+const MIN_PSNR = 40;
 
 interface HookWindow {
   __algorhythms: {
@@ -183,3 +186,116 @@ for (const [size, fps, seconds] of [
     expect(a.entry.type).toBe(r.aac ? 'mp4a' : 'Opus');
   });
 }
+
+/**
+ * §15 M11, logged rather than gated (about 7 min per engine): the whole of Night Sleeper (a dense
+ * 2-minute piece) as the YouTube preset exports it, 4K60 with a title card and a 10 s end card,
+ * played back here: its size, frame rate, length, AAC, and two decoded frames' PSNR.
+ * Run with M11_LONG=1.
+ */
+test('YouTube preset, 4K60, the whole 2-minute piece (M11_LONG=1)', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(process.env.M11_LONG !== '1', 'long: run with M11_LONG=1');
+  test.setTimeout(3_600_000);
+  const r = await page.evaluate(
+    async ({ json }) => {
+      const h = (window as unknown as HookWindow).__algorhythms;
+      const m = await h.videoExport();
+      const piece = h.parsePiece(json).piece;
+      const opts: VideoExport.VideoOptions = {
+        aspect: '16:9',
+        size: '2160',
+        fps: 60,
+        camera: 'follow',
+        window: 12,
+        theme: 'dark',
+        hud: true,
+        thickness: true,
+        quality: 'high',
+        loudness: -14,
+        bookends: {
+          title: { text: piece.meta.title },
+          endCard: 10,
+          credit: 'Made with AlgoRhythms',
+        },
+      };
+      const support = await m.videoSupport(opts);
+      if (!support.ok) return { skip: support.reason };
+      const sink = m.blobSink();
+      const t0 = performance.now();
+      const res = await m.exportVideo(piece, opts, sink);
+      const wall = (performance.now() - t0) / 1000;
+      const blob = sink.blob();
+      const el = document.createElement('video');
+      el.muted = true;
+      el.preload = 'auto';
+      const once = (type: string) =>
+        new Promise<void>((resolve, reject) => {
+          el.addEventListener(type, () => resolve(), { once: true });
+          el.addEventListener('error', () => reject(new Error(el.error?.message ?? 'error')), {
+            once: true,
+          });
+        });
+      const url = URL.createObjectURL(blob);
+      const loaded = once('loadeddata');
+      el.src = url;
+      document.body.append(el);
+      await loaded;
+      const W = el.videoWidth;
+      const H = el.videoHeight;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      const psnr = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
+        let se = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          for (let j = 0; j < 3; j++) se += (a[i + j] - b[i + j]) ** 2;
+        }
+        return 10 * Math.log10((255 * 255) / Math.max(se / ((a.length / 4) * 3), 1e-9));
+      };
+      const compiled = (await import('/src/core/compiler/compile.ts' as string)).compile(piece);
+      const frameAt = async (k: number) => {
+        const seeked = once('seeked');
+        el.currentTime = (k + 0.5) / 60;
+        await seeked;
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
+        g.drawImage(el, 0, 0, W, H);
+        const got = g.getImageData(0, 0, W, H).data;
+        const ref = new OffscreenCanvas(W, H).getContext('2d')!;
+        m.previewVideoMoment(ref as never, piece, compiled, opts, k / 60, 1);
+        return psnr(got, ref.getImageData(0, 0, W, H).data);
+      };
+      // Mid-GOP frames in the densest stretch and in the end card.
+      const dense = await frameAt(43 * 60 + 15);
+      const card = await frameAt(Math.round(compiled.duration * 60) + 9 * 60 + 15);
+      const duration = el.duration;
+      el.remove();
+      URL.revokeObjectURL(url);
+      return {
+        codecs: `${res.video} + ${res.audio}`,
+        aac: support.aac,
+        frames: res.frames,
+        duration,
+        element: `${W}x${H}`,
+        fps: res.frames / duration,
+        mb: blob.size / 1e6,
+        delivered: res.videoBitrate,
+        wall,
+        dense,
+        card,
+      };
+    },
+    { json: PIECE },
+  );
+  console.log(`video youtube long ${browserName}: ${JSON.stringify(r)}`);
+  test.skip('skip' in r, (r as { skip?: string }).skip);
+  if ('skip' in r) return;
+  expect(r.element).toBe('3840x2160');
+  expect(r.fps).toBeCloseTo(60, 0);
+  expect(r.dense).toBeGreaterThanOrEqual(MIN_PSNR);
+  expect(r.card).toBeGreaterThanOrEqual(MIN_PSNR);
+  if (r.aac) expect(r.codecs).toMatch(/mp4a/);
+});

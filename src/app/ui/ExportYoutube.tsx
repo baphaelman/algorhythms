@@ -100,12 +100,15 @@ export function LoudnessField({
   runtime,
   disabled,
   context,
+  videoAudio,
   onChange,
 }: {
   form: ExportForm;
   runtime: Runtime | null;
   disabled: boolean;
   context: () => VideoContext;
+  /** A video's audio codec (it sets the true-peak ceiling); absent for a WAV. */
+  videoAudio?: string;
   onChange: (loudness: ExportForm['loudness']) => void;
 }) {
   const id = useId();
@@ -147,7 +150,7 @@ export function LoudnessField({
       : null;
   const plan =
     cur?.measure && on && runtime
-      ? runtime.loudnessPlan(cur.measure, form.loudness as number)
+      ? runtime.loudnessPlan(cur.measure, form.loudness as number, videoAudio)
       : null;
   const targetText = on ? lufsText(form.loudness as number) : '';
   return (

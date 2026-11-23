@@ -33,19 +33,26 @@ export function Radios<T extends string | number>({
     <fieldset className="field" disabled={disabled} title={hint}>
       <legend>{legend}</legend>
       <div className={className ? `seg radios ${className}` : 'seg radios'} data-testid={testId}>
-        {options.map((o) => (
-          <label key={o.id} className={value === o.id ? 'on' : undefined}>
-            <input
-              type="radio"
-              name={name}
-              value={String(o.id)}
-              checked={value === o.id}
-              disabled={isDisabled?.(o.id)}
-              onChange={() => onChange(o.id)}
-            />
-            <span>{o.label}</span>
-          </label>
-        ))}
+        {options.map((o) => {
+          const on = value === o.id;
+          // A checked option stays enabled (it can't be chosen anyway): WebKit leaves a group
+          // whose checked radio is disabled out of the Tab order.
+          const off = isDisabled?.(o.id) === true;
+          return (
+            <label key={o.id} className={on ? 'on' : undefined}>
+              <input
+                type="radio"
+                name={name}
+                value={String(o.id)}
+                checked={on}
+                disabled={off && !on}
+                aria-disabled={off && on ? true : undefined}
+                onChange={() => onChange(o.id)}
+              />
+              <span>{o.label}</span>
+            </label>
+          );
+        })}
       </div>
     </fieldset>
   );
