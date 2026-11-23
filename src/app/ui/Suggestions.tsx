@@ -30,8 +30,8 @@ function clock(t: number): string {
 /**
  * Next-move suggestions, "Next" (PLAN.md §11.3, revisions 6–7, 14): up to four cards appended at
  * the end of the piece's last moment (core/suggest.ts). In a key with chord theory, one card per
- * chord job: a job-coloured dot and "<Job> · <Chord>", the best fit marked ★, the numeral and
- * reason in the tooltip. Otherwise the composer's moves with their icons. Its own group, styled
+ * chord job: "<Chord> · <Job> (<numeral>)", the best fit marked ★, a short reason in the
+ * tooltip. Otherwise the composer's moves with their icons. Its own group, styled
  * apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering for
  * 300 ms previews it silently on the score (../preview.ts).
  */
@@ -81,6 +81,8 @@ export function Suggestions() {
       {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => {
         const desc = `${uid}-d${i}`;
+        // A theory card's numeral, set smaller: "G7 · Tension" "(V7)".
+        const num = s.job ? /^(.*) \(([^)]+)\)$/.exec(s.label) : null;
         return (
           <Fragment key={suggestionKey(t, i, s)}>
             <button
@@ -99,14 +101,18 @@ export function Suggestions() {
                 addSuggestion(s);
               }}
             >
-              {s.job ? (
-                <span className="job-dot" aria-hidden="true" />
-              ) : (
+              {!s.job && (
                 <span className="palette-icon" aria-hidden="true">
                   {ICON[s.kind]}
                 </span>
               )}
-              {s.label}
+              {num ? (
+                <>
+                  {num[1]} <span className="suggest-num">({num[2]})</span>
+                </>
+              ) : (
+                s.label
+              )}
               {s.best && (
                 <span className="suggest-best" aria-hidden="true">
                   ★

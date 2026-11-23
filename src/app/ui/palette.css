@@ -123,28 +123,17 @@
   border-color: var(--accent);
 }
 
-/* Theory cards (§11.3 rev 14): a job-coloured dot; the best fit gets an accent edge and a ★. */
-.suggestions .job-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--ink-2);
+/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, the numeral smaller
+   and dimmer, so four fit at 1280 px; the best fit gets an accent edge and a ★. */
+.suggestions button[data-job] {
+  gap: 3px;
+  padding: 0 6px;
+  font-family: var(--f-sans);
+  font-size: 11px;
 }
-.suggestions [data-job='home'] .job-dot {
-  background: var(--job-home);
-}
-.suggestions [data-job='soft'] .job-dot {
-  background: var(--job-soft);
-}
-.suggestions [data-job='lift'] .job-dot {
-  background: var(--job-lift);
-}
-.suggestions [data-job='tension'] .job-dot {
-  background: var(--job-tension);
-}
-.suggestions [data-job='colour'] .job-dot {
-  background: var(--job-colour);
+.suggest-num {
+  font-size: 10px;
+  color: var(--ink-2);
 }
 
 .suggestions button[data-best] {

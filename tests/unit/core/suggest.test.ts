@@ -37,7 +37,7 @@ const withMoment = (p: Piece, m: Moment): Piece => ({
 
 const C: Key = { tonic: 'C', scale: 'major' };
 const Am: Key = { tonic: 'A', scale: 'minor' };
-const LABEL = /^(Home|Near home|Lift|Tension|Surprise) · [A-G]/;
+const LABEL = /^[A-G]\S* · (Home|Near home|Lift|Tension|Surprise) \([♭]?[ivIV]+\S*\)$/;
 
 const symbolOf = (m: Moment): string =>
   m.type === 'chord' && m.notes.kind === 'chord' ? m.notes.symbol : '';
@@ -51,11 +51,11 @@ function entryOf(p: Piece, m: Moment): NonNullable<CompiledScore['harmony']>[num
 describe('suggestNext: theory cards (revision 14)', () => {
   it('M10: after I–V–vi–IV the best card is Home; after V it is Home; i–♭VII–♭VI → V', () => {
     const cases: [Key, string[], RegExp][] = [
-      [C, ['I', 'V', 'vi', 'IV'], /^Home · C$/],
-      [C, ['V'], /^Home · C$/],
-      [C, ['Imaj7', 'V7', 'vi7', 'IVmaj7'], /^Home · Cmaj7$/],
-      [Am, ['i', 'bVII', 'bVI'], /^Tension · E$/],
-      [Am, ['i7', 'bVII7', 'bVImaj7'], /^Tension · E7$/],
+      [C, ['I', 'V', 'vi', 'IV'], /^C · Home \(I\)$/],
+      [C, ['V'], /^C · Home \(I\)$/],
+      [C, ['Imaj7', 'V7', 'vi7', 'IVmaj7'], /^Cmaj7 · Home \(Imaj7\)$/],
+      [Am, ['i', 'bVII', 'bVI'], /^E · Tension \(V\)$/],
+      [Am, ['i7', 'bVII7', 'bVImaj7'], /^E7 · Tension \(V7\)$/],
     ];
     for (const [key, syms, want] of cases) {
       const p = progression(key, syms);
@@ -68,8 +68,9 @@ describe('suggestNext: theory cards (revision 14)', () => {
       for (const x of su) {
         expect(x.kind).toBe('chord');
         expect(x.label).toMatch(LABEL);
-        expect(x.tooltip).toMatch(/^[♭]?[ivIV]+.* — \S/);
-        expect(x.tooltip.split(' — ')[1].split(/\s+/).length).toBeLessThanOrEqual(6);
+        expect(x.tooltip).toMatch(/^[A-Z]\S*( \S+){0,5}$/);
+        const num = /\((.+)\)$/.exec(x.label)![1];
+        expect(` ${x.tooltip} `.includes(` ${num} `) || x.tooltip.includes('—')).toBe(false);
         expect(x.moment).toMatchObject({ id: SUGGEST_ID, at: 4 * syms.length, voicing: 'even' });
         expect(x.moment.seed).toBeTypeOf('number');
       }
@@ -100,7 +101,7 @@ describe('suggestNext: theory cards (revision 14)', () => {
         const chord = parseChord(sym, key);
         if (!chord.ok) throw new Error(sym);
         const e = entryOf(p, x.moment);
-        expect(e.label.endsWith(x.label.split(' · ')[1]), `${x.label}: ${e.label}`).toBe(true);
+        expect(e.label.endsWith(x.label.split(' · ')[0]), `${x.label}: ${e.label}`).toBe(true);
         expect(
           e.pcs.every((pc) => chord.pcs.includes(pc)),
           `${x.label}: ${e.pcs}`,
@@ -156,10 +157,14 @@ describe('suggestNext: theory cards (revision 14)', () => {
 
   it('from silence: Home (the tonic triad) and One note (the tonic)', () => {
     const p = piece({ start: [], moments: [], key: C });
-    expect(suggestNext(p, compile(p), 1).map((x) => x.label)).toEqual(['Home · C', 'One note · C']);
+    expect(suggestNext(p, compile(p), 1).map((x) => x.label)).toEqual([
+      'C · Home (I)',
+      'C · One note',
+    ]);
     const m = piece({ start: [], moments: [], key: Am });
     const su = suggestNext(m, compile(m), 1);
-    expect(su.map((x) => x.label)).toEqual(['Home · Am', 'One note · A']);
+    expect(su.map((x) => x.label)).toEqual(['Am · Home (i)', 'A · One note']);
+    expect(su.map((x) => x.tooltip)).toEqual(['Starts at home', 'The tonic alone']);
     expect(su[0].moment).toMatchObject({ type: 'chord', notes: { kind: 'chord', symbol: 'i' } });
     expect(su[1].moment).toMatchObject({ type: 'unison', pitch: 'tonic' });
     expect(suggestNext(m, compile(m), 1, 1)).toHaveLength(1);

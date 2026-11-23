@@ -101,7 +101,7 @@ test('the strip is a hold after the last moment; click appends there; undo remov
   expect(await stripT(page)).toBe(t);
   const items = strip.locator('[data-suggestion]');
   await expect.poll(() => items.count()).toBeGreaterThanOrEqual(3);
-  const CARD = /^(Home|Near home|Lift|Tension|Surprise|One note) · \S+/;
+  const CARD = /^[A-G]\S* · (Home|Near home|Lift|Tension|Surprise|One note)( \([^)]+\))?/;
   await expect(items.first()).toHaveText(CARD);
 
   const before = await moments(page);
@@ -212,7 +212,7 @@ const chordNotes = (page: Page, id: string) =>
     id,
   );
 
-test('after a progression: one card per job, the best marked, the reason in the tooltip', async ({
+test('after a progression: one card per job, chord first, the best marked, the reason in the tooltip', async ({
   page,
 }) => {
   await openLoop(page);
@@ -223,14 +223,18 @@ test('after a progression: one card per job, the best marked, the reason in the 
   for (const j of jobs) expect(['home', 'soft', 'lift', 'tension', 'colour']).toContain(j);
   // The loop I–V–vi–IV goes home next: the best card, marked ★, first.
   await expect(items.first()).toHaveAttribute('data-best', 'true');
-  await expect(items.first()).toHaveText(/^Home · C/);
+  await expect(items.first()).toHaveText(/^C · Home \(I\)/);
+  await expect(items.nth(1)).toHaveText(
+    /^[A-G]\S* · (Near home|Lift|Tension|Surprise) \([♭]?[ivIV]+\S*\)$/,
+  );
   await expect(items.first().locator('.suggest-best')).toBeVisible();
   await expect(items.locator('.suggest-best')).toHaveCount(1);
-  await expect(items.first().locator('.job-dot')).toBeVisible();
-  // The numeral and the reason: the title and the accessible description.
-  await expect(items.first()).toHaveAttribute('title', /^Best fit\. I — .+/);
-  await expect(items.nth(1)).toHaveAttribute('title', /^[^ ]+ — .+/);
-  await expect(items.nth(1)).toHaveAccessibleDescription(/ — .+Appends at/);
+  // No job dots; the reason alone (≤ 6 words, no numeral) in the title and the description.
+  await expect(items.locator('.job-dot')).toHaveCount(0);
+  await expect(items.first()).toHaveAttribute('title', /^Best fit\. [A-Z]\S*( \S+){0,5}$/);
+  await expect(items.nth(1)).toHaveAttribute('title', /^[A-Z]\S*( \S+){0,5}$/);
+  await expect(items.nth(1)).not.toHaveAttribute('title', / — /);
+  await expect(items.nth(1)).toHaveAccessibleDescription(/^[A-Z][^—]+\. Appends at/);
 });
 
 test('Add → Chord picks the chord that fits; the picker marks the best fits', async ({ page }) => {
