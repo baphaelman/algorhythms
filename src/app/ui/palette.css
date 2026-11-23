@@ -4,14 +4,32 @@
  * "Next at end" (Suggestions.tsx): pill buttons in a tinted, dashed box.
  * They share a row when Next gets ≥ 340 px (build-log "Compact view bar") and together fill it
  * (§11.2 "Add and Next fill their row"): both groups and their buttons grow, and text, padding
- * and height scale with the window (--vb-*), back to the compact sizes only on narrow windows.
+ * and height scale with the editor column (--vb-*), at the compact sizes up to 960 px (1280 px
+ * windows: Add and Next need ~925 px of the column's 944 with Linux's wider sans).
  */
 
 .viewbar {
-  --vb-font: clamp(11px, calc(5px + 0.55vw), 16px);
-  --vb-pad: clamp(4px, 0.47vw, 10px);
-  --vb-btn-h: clamp(26px, calc(10px + 1.25vw), 36px);
-  --vb-gap: clamp(2px, 0.25vw, 6px);
+  /* The editor column: the window less the app's side padding and the inspector. */
+  --vb-over: calc(100vw - 32px - var(--inspector-w) - var(--workspace-gap) - 960px);
+  --vb-font: clamp(11px, calc(11px + 0.0053 * var(--vb-over)), 16px);
+  --vb-pad: clamp(4px, calc(4px + 0.0064 * var(--vb-over)), 10px);
+  --vb-btn-h: clamp(26px, calc(26px + 0.0125 * var(--vb-over)), 36px);
+  --vb-gap: clamp(2px, calc(2px + 0.0045 * var(--vb-over)), 6px);
+}
+
+/* The bar spans under the inspector; Add and Next's row stops at the editor column's edge, as
+   wide as the score and the lane (§11.2). */
+.vb-make {
+  flex: none;
+  width: calc(100% - var(--inspector-w) - var(--workspace-gap));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.app[data-layout='player'] .vb-make {
+  display: none;
 }
 
 .palette {
@@ -172,10 +190,11 @@
 }
 
 /* One line, fixed height: a change of suggestions never reflows the score. Next joins Add's row
-   when ≥ 340 px are left (flex-basis) and grows to fill it, its cards stretching evenly; a card
-   that doesn't fit wraps onto a clipped second line, so it is hidden whole rather than cut. */
+   when 49 em are left (flex-basis: four typical cards with Linux's wider sans) and grows to fill
+   it, its cards stretching evenly; a card that doesn't fit wraps onto a clipped second line, so it
+   is hidden whole rather than cut. */
 .palette.suggestions {
-  flex: 3 1 340px;
+  flex: 3 1 calc(49 * var(--vb-font));
   align-content: flex-start;
   overflow: hidden;
   gap: var(--vb-gap);

@@ -81,8 +81,10 @@ export function ViewBar() {
 
   return (
     <div ref={bar} className="viewbar" data-region="view">
-      <Palette />
-      <Suggestions />
+      <div className="vb-make">
+        <Palette />
+        <Suggestions />
+      </div>
       <div className="vb-row">
         <div className="ctl zoom" role="group" aria-label="Zoom">
           <button
