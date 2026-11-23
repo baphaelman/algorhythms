@@ -11,7 +11,7 @@ import { pitchAt } from '../core/query';
 import type { CompiledVoice, Seconds } from '../core/types';
 import { pitchToY, timeToX, xToTime } from './camera';
 import type { Ctx2D } from './draw';
-import { lineColor } from './palettes';
+import { strokeOf } from './palettes';
 import { bundlesOf, geometryAt, type Bundle, type StrandFrame } from './strands';
 import type { ScoreStyle, View } from './types';
 
@@ -307,7 +307,7 @@ export function drawGhost(
     }
     for (const v of voices) {
       if (v.segments.length === 0 || strands[v.index] !== pass) continue;
-      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      g.strokeStyle = strokeOf(style, gradient, v.index);
       trace(g, v, alpha, -Infinity, Infinity);
     }
     g.restore();
@@ -342,7 +342,7 @@ export function drawGhost(
       if (v.segments.length === 0 || strands[v.index] !== 1) continue;
       // Each box holds a few strands; the others pass elsewhere (most of the layer's paths).
       if (reach && !reach(v, lo, hi, y0, y1)) continue;
-      L.strokeStyle = layerGradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      L.strokeStyle = strokeOf(style, layerGradient, v.index);
       trace(L, v, 1, lo, hi);
     }
     L.restore();

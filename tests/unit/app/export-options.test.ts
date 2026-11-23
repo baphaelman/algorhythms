@@ -1,3 +1,4 @@
+import { DEFAULT_COLOURS } from '../../../src/app/export-colours';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EXPORT_FORM,
@@ -237,7 +238,7 @@ describe('look', () => {
   const light = { dark: false, colors: 'pitch' as const };
   it('defaults to EXPORT_LOOK with the current theme; video HUD today, poster none', () => {
     const { hud: _h, theme: _t, colors: _c, ...rest } = EXPORT_LOOK;
-    expect(DEFAULT_LOOK_FORM).toEqual({ ...rest, theme: 'current', colors: 'app', lineInk: null });
+    expect(DEFAULT_LOOK_FORM).toEqual({ ...rest, theme: 'current', colours: DEFAULT_COLOURS });
     expect(DEFAULT_LOOK_FORM).toMatchObject({
       guides: false,
       beats: 'off',
@@ -270,16 +271,21 @@ describe('look', () => {
     expect(c.look!.colors).toBe('custom');
     expect(c.customColors).toEqual(p.voices.map((x) => x.color));
     expect(c.customColors![0]).toBe('#ff00aa');
-    // A stored ink colour does not apply to 'app'.
-    const appInk = { ...DEFAULT_LOOK_FORM, lineInk: '#00ff00' };
+    // A stored line colour does not apply to 'app'.
+    const appInk = { ...DEFAULT_LOOK_FORM, colours: { ...DEFAULT_COLOURS, one: '#00ff00' } };
     expect('lineInk' in lookOf(form({ look: appInk }), 'video', inkApp)).toBe(false);
     // Overrides win over the app's mode.
-    const pitch = form({ look: { ...DEFAULT_LOOK_FORM, colors: 'pitch' } });
+    const pitch = form({
+      look: { ...DEFAULT_LOOK_FORM, colours: { ...DEFAULT_COLOURS, lines: 'pitch' } },
+    });
     expect(videoOptions(pitch, p, inkApp).look!.colors).toBe('pitch');
-    const ink = form({ look: { ...DEFAULT_LOOK_FORM, colors: 'ink', lineInk: '#00ff00' } });
+    const ink = form({
+      look: { ...DEFAULT_LOOK_FORM, colours: { ...DEFAULT_COLOURS, lines: 'one', one: '#00ff00' } },
+    });
     expect(posterOptions(ink, p, { dark: false, colors: 'custom' }).look).toMatchObject({
       colors: 'ink',
       lineInk: '#00ff00',
+      colours: { lines: { kind: 'one', color: '#00ff00' } },
     });
   });
 
@@ -293,8 +299,7 @@ describe('look', () => {
         future: 'dimmed',
         futureOpacity: 0.5,
         lineWidth: 'bold',
-        colors: 'ink',
-        lineInk: '#ff0000',
+        colours: { ...DEFAULT_COLOURS, lines: 'one', one: '#ff0000' },
         transparent: true,
         dots: false,
       },
@@ -414,11 +419,11 @@ describe('look', () => {
         guides: true,
         theme: 'dark',
         lineWidth: 'thin',
-        colors: 'pitch',
+        colours: { ...DEFAULT_COLOURS, lines: 'pitch', hud: '#ffffff' },
       },
     });
     const r = resetLook(changed);
-    expect(r.look.colors).toBe('app');
+    expect(r.look.colours).toEqual(DEFAULT_COLOURS);
     expect(r).toMatchObject({
       look: DEFAULT_LOOK_FORM,
       videoFollowAt: null,
@@ -593,9 +598,19 @@ describe('remembered choices', () => {
         future: 'dimmed',
         futureOpacity: 0.5,
         lineWidth: 'bold',
-        colors: 'custom',
-        lineInk: '#123abc',
+        colours: {
+          ...DEFAULT_COLOURS,
+          lines: 'part',
+          parts: { Melody: '#123abc' },
+          background: 'gradient',
+          bgFrom: '#000000',
+          bgDir: 'radial',
+          hud: '#eeeeee',
+        },
       },
+      colourSchemes: [
+        { id: 'Mine', name: 'Mine', colours: { ...DEFAULT_COLOURS, playhead: '#ff0000' } },
+      ],
     });
     expect(saveExportPrefs(f, st)).toBe(true);
     expect([...st.data.keys()]).toEqual([EXPORT_PREFS_KEY]);
@@ -604,20 +619,33 @@ describe('remembered choices', () => {
     expect(back).toEqual({ ...f, format: 'wav', bitDepth: 32 }); // WAV/MIDI choices not kept
   });
 
-  it('saves a version; a record from before it loads line colours as in the app', () => {
+  it('saves a version; older records load their line colours into Colours', () => {
     const st = new Mem();
-    saveExportPrefs(form({ look: { ...DEFAULT_LOOK_FORM, colors: 'pitch' } }), st);
+    const pitch = { ...DEFAULT_COLOURS, lines: 'pitch' as const };
+    saveExportPrefs(form({ look: { ...DEFAULT_LOOK_FORM, colours: pitch } }), st);
     expect(JSON.parse(st.data.get(EXPORT_PREFS_KEY)!).v).toBe(EXPORT_PREFS_VERSION);
-    expect(loadExportPrefs(st).look!.colors).toBe('pitch'); // a choice made now is kept
+    expect(EXPORT_PREFS_VERSION).toBe(4);
+    expect(loadExportPrefs(st).look!.colours.lines).toBe('pitch'); // a choice made now is kept
     // No version: 'pitch' was the old unchosen default; ink and custom were real choices.
     expect(parsePrefs({ look: { colors: 'pitch', guides: true } }).look).toEqual({
       ...DEFAULT_LOOK_FORM,
       guides: true,
-      colors: 'app',
     });
-    expect(parsePrefs({ look: { colors: 'ink' } }).look!.colors).toBe('ink');
-    expect(parsePrefs({ look: { colors: 'custom' } }).look!.colors).toBe('custom');
-    expect(parsePrefs({ v: 2, look: { colors: 'app' } }).look!.colors).toBe('app');
+    const lines = (r: object) => parsePrefs(r).look!.colours;
+    expect(lines({ look: { colors: 'ink', lineInk: '#336699' } })).toEqual({
+      ...DEFAULT_COLOURS,
+      lines: 'one',
+      one: '#336699',
+    });
+    expect(lines({ look: { colors: 'custom' } })).toMatchObject({ lines: 'one', one: null });
+    expect(lines({ v: 2, look: { colors: 'app' } }).lines).toBe('app');
+    expect(lines({ v: 3, look: { colors: 'pitch' } }).lines).toBe('pitch');
+    // v4: stored colours; bad values fall back field by field.
+    const c = lines({ v: 4, look: { colours: { lines: 'part', hud: 'red', bg: '#AABBCC' } } });
+    expect(c).toEqual({ ...DEFAULT_COLOURS, lines: 'part', bg: '#aabbcc' });
+    expect(
+      parsePrefs({ v: 4, colourSchemes: [{ name: ' ' }, { name: 'A', colours: {} }] }),
+    ).toEqual({ colourSchemes: [{ id: 'A', name: 'A', colours: DEFAULT_COLOURS }] });
   });
 
   it('remembers the video quality; unknown ones are dropped', () => {

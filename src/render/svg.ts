@@ -2,14 +2,15 @@
  * A recording 2D context that writes SVG (PLAN.md §12 "Poster export"): the subset of
  * `CanvasRenderingContext2D` that `drawScore` uses — paths (moveTo, lineTo, quadratic and cubic
  * curves, arc, rect, closePath), stroke, fill, fillRect, clearRect, clip, fillText, measureText,
- * line styles and dashes, alpha, linear gradients, save/restore and transforms. Pure: no DOM.
+ * line styles and dashes, alpha, linear and radial gradients, save/restore and transforms. Pure:
+ * no DOM.
  *
  * Coordinates are written in device pixels (the transform is applied as points are added, as a
  * canvas does), so the SVG's viewBox is the canvas's pixel size. Text stays `<text>`. OKLCH
  * colours are converted to sRGB hex so other SVG tools read them. Consecutive opaque, undashed
  * strokes with identical style are merged into one `<path>`.
  *
- * Not supported: drawImage, patterns, radial/conic gradients, shadows, filters and composite
+ * Not supported: drawImage, patterns, conic gradients, shadows, filters and composite
  * modes other than source-over (drawScore's ghost layer uses drawImage; the poster never needs
  * it). clearRect only clears when it covers the whole canvas.
  */
@@ -19,7 +20,10 @@ export const MONO_ADVANCE = 0.6;
 
 type Matrix = [number, number, number, number, number, number];
 
-/** A linear gradient made by `SvgContext.createLinearGradient` (structurally a CanvasGradient). */
+/**
+ * A gradient made by `SvgContext.createLinearGradient` or `createRadialGradient` (structurally a
+ * CanvasGradient). Radial: from the circle (x0, y0, r0) to (x1, y1, r1).
+ */
 export class SvgGradient {
   readonly stops: { at: number; color: string }[] = [];
   constructor(
@@ -27,6 +31,7 @@ export class SvgGradient {
     readonly y0: number,
     readonly x1: number,
     readonly y1: number,
+    readonly radial?: { r0: number; r1: number },
   ) {}
   addColorStop(offset: number, color: string): void {
     if (!(offset >= 0 && offset <= 1)) throw new RangeError('offset out of range');
@@ -456,6 +461,18 @@ export class SvgContext {
     return new SvgGradient(x0, y0, x1, y1);
   }
 
+  /** As on a canvas; written as an SVG `radialGradient` (focal circle `fr` when r0 > 0). */
+  createRadialGradient(
+    x0: number,
+    y0: number,
+    r0: number,
+    x1: number,
+    y1: number,
+    r1: number,
+  ): SvgGradient {
+    return new SvgGradient(x0, y0, x1, y1, { r0, r1 });
+  }
+
   /** `fill`/`stroke` attribute for a paint (a gradient becomes a def), with its own alpha. */
   private paint(p: Paint): { ref: string; alpha: number; opaque: boolean } | null {
     if (typeof p === 'string') {
@@ -477,12 +494,19 @@ export class SvgContext {
         return `<stop offset="${num(s.at)}" stop-color="${escapeXml(c.color)}"${op}/>`;
       })
       .join('');
-    const body = `gradientUnits="userSpaceOnUse" x1="${num(x1)}" y1="${num(y1)}" x2="${num(x2)}" y2="${num(y2)}">${stops}`;
-    let id = this.gradIds.get(body);
+    let tag = 'linearGradient';
+    let body = `gradientUnits="userSpaceOnUse" x1="${num(x1)}" y1="${num(y1)}" x2="${num(x2)}" y2="${num(y2)}">${stops}`;
+    if (p.radial) {
+      const k = this.scaleOf();
+      tag = 'radialGradient';
+      const fr = p.radial.r0 > 0 ? ` fr="${num(p.radial.r0 * k)}"` : '';
+      body = `gradientUnits="userSpaceOnUse" cx="${num(x2)}" cy="${num(y2)}" r="${num(p.radial.r1 * k)}" fx="${num(x1)}" fy="${num(y1)}"${fr}>${stops}`;
+    }
+    let id = this.gradIds.get(tag + body);
     if (!id) {
       id = `g${++this.ids}`;
-      this.gradIds.set(body, id);
-      this.defs.push(`<linearGradient id="${id}" ${body}</linearGradient>`);
+      this.gradIds.set(tag + body, id);
+      this.defs.push(`<${tag} id="${id}" ${body}</${tag}>`);
     }
     return { ref: `url(#${id})`, alpha: 1, opaque };
   }

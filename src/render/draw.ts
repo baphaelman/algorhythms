@@ -26,7 +26,8 @@ import { drawGhost, ghostOf, type Reach } from './ghost';
 import { drawHud, hudBoxes, hudItems, hudMargin, hudRows, type HudPlacement } from './hud';
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { CutSink, outlineFrame, outlinePath } from './outline';
-import { lineColor, pitchStops } from './palettes';
+import { fillBackground, stopsAt } from './colours';
+import { lineColor, pitchStops, strokeOf } from './palettes';
 import { sampleInto, samples, stableScale, type Samples } from './sampling';
 import {
   drawnLives,
@@ -172,9 +173,9 @@ export function drawScore(
   SEAM_LAP = 2 / dpr;
   g.globalAlpha = 1;
 
+  const P = style.paint;
   // 1. background
-  g.fillStyle = C.paper;
-  g.fillRect(0, 0, W, H);
+  fillBackground(g, C.paper, P, W, H);
 
   // 2. octave grid
   g.lineWidth = 1;
@@ -185,13 +186,13 @@ export function drawScore(
   for (const n of style.guides === false ? NO_PITCHES : A_PITCHES) {
     if (n < view.pLo || n > view.pHi) continue;
     const y = Math.round(pitchToY(view, n)) + 0.5;
-    g.strokeStyle = C.rule;
+    g.strokeStyle = P?.guides ?? C.rule;
     g.beginPath();
     g.moveTo(0, y);
     g.lineTo(W, y);
     g.stroke();
     if (!guideLabels) continue;
-    g.fillStyle = C.ink2;
+    g.fillStyle = P?.guides ?? C.ink2;
     g.globalAlpha = 0.75;
     g.fillText(
       `A${Math.floor(n / 12) - 1} ${hzOf(n, compiled.referenceHz).toFixed(0)} Hz`,
@@ -201,7 +202,7 @@ export function drawScore(
     g.globalAlpha = 1;
   }
 
-  if (style.bars) drawBars(g, style.bars, view, C, style.aheadHidden === true);
+  if (style.bars) drawBars(g, style.bars, view, C, style.aheadHidden === true, P?.beats);
 
   // 3. moment and section markers
   drawMarkers(g, compiled, style, view, MONO);
@@ -232,7 +233,7 @@ export function drawScore(
 
   // 6. playhead (the editor layout draws a DOM one instead)
   if (style.playhead !== false) {
-    g.strokeStyle = C.rule;
+    g.strokeStyle = P?.playhead ?? C.rule;
     g.lineWidth = 1;
     g.beginPath();
     g.moveTo(Math.round(xH) + 0.5, padT - 6);
@@ -252,6 +253,7 @@ function drawBars(
   view: View,
   C: ScoreStyle['tokens'],
   aheadHidden: boolean,
+  color?: string,
 ): void {
   const { beat, bar } = barGrid(bars.bpm, bars.meter, view.pps, bars.every === true);
   const { tL, padT, padB, height: H } = view;
@@ -263,7 +265,7 @@ function drawBars(
     const step = pass === 0 ? beat : bar;
     if (!(step > 0)) continue;
     // Beats: the faint rule; bars: the secondary ink, light.
-    g.strokeStyle = pass === 0 ? C.rule : C.ink2;
+    g.strokeStyle = color ?? (pass === 0 ? C.rule : C.ink2);
     g.globalAlpha = pass === 0 ? 0.6 : 0.3;
     g.beginPath();
     for (let k = Math.ceil(tL / step - 1e-9); k * step <= tR + 1e-9; k++) {
@@ -299,8 +301,8 @@ function drawMarkers(
   const ls = g as CanvasRenderingContext2D & { letterSpacing?: string };
   if ('letterSpacing' in g) ls.letterSpacing = '1px';
   g.lineWidth = 1;
-  g.strokeStyle = C.rule;
-  g.fillStyle = C.ink2;
+  g.strokeStyle = style.paint?.markers ?? C.rule;
+  g.fillStyle = style.paint?.labels ?? C.ink2;
   let lastEnd = -1e9;
   for (const s of markersByTime(spans, style.markerTimes)) {
     if (s.t > tMax) break;
@@ -769,18 +771,34 @@ function pitchGradient(g: Ctx2D, style: ScoreStyle, view: View): CanvasGradient 
   if (style.colors !== 'pitch') return null;
   const y0 = pitchToY(view, view.pLo);
   const y1 = pitchToY(view, view.pHi);
+  const own = style.paint?.pitchStops;
   const hit = gradients.get(g);
-  if (hit && hit.y0 === y0 && hit.y1 === y1 && hit.dark === style.dark && hit.oklch === style.oklch)
+  if (
+    hit &&
+    hit.y0 === y0 &&
+    hit.y1 === y1 &&
+    hit.dark === style.dark &&
+    hit.oklch === style.oklch &&
+    hit.own === own
+  )
     return hit.gradient;
   const gradient = g.createLinearGradient(0, y0, 0, y1);
-  for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
-  gradients.set(g, { y0, y1, dark: style.dark, oklch: style.oklch, gradient });
+  if (own) own.forEach((c, i) => gradient.addColorStop(i / (own.length - 1), c));
+  else for (const s of pitchStops(style.dark, style.oklch)) gradient.addColorStop(s.at, s.color);
+  gradients.set(g, { y0, y1, dark: style.dark, oklch: style.oklch, own, gradient });
   return gradient;
 }
 /** The last pitch gradient made on each context (constant while the camera follows). */
 const gradients = new WeakMap<
   Ctx2D,
-  { y0: number; y1: number; dark: boolean; oklch: boolean; gradient: CanvasGradient }
+  {
+    y0: number;
+    y1: number;
+    dark: boolean;
+    oklch: boolean;
+    own: readonly string[] | undefined;
+    gradient: CanvasGradient;
+  }
 >();
 
 function drawLines(
@@ -828,7 +846,7 @@ function drawLines(
     clipX(g, view, -Infinity, xc);
     for (const v of voices) {
       if (v.segments.length === 0) continue;
-      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      g.strokeStyle = strokeOf(style, gradient, v.index);
       traceWeighted(g, view, v, tL, Math.min(t, tR), LW, dim, maxStep, tolerance, sf);
     }
     g.restore();
@@ -838,7 +856,7 @@ function drawLines(
     const a = Math.max(t, tL);
     for (const v of voices) {
       if (v.segments.length === 0) continue;
-      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      g.strokeStyle = strokeOf(style, gradient, v.index);
       traceWeighted(g, view, v, a, tR, LW, futureA, maxStep, tolerance, sf);
     }
     g.restore();
@@ -871,7 +889,7 @@ function drawLines(
     clipX(g, view, -Infinity, xc);
     for (const v of voices) {
       if (v.segments.length === 0) continue;
-      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      g.strokeStyle = strokeOf(style, gradient, v.index);
       forHighlighted(v, hl, tL, tR, (a, b) => {
         if (a < t) traceWeighted(g, view, v, a, Math.min(t, b), HW, 1, maxStep, tolerance, sf);
       });
@@ -881,7 +899,7 @@ function drawLines(
       clipX(g, view, xc, Infinity);
       for (const v of voices) {
         if (v.segments.length === 0) continue;
-        g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+        g.strokeStyle = strokeOf(style, gradient, v.index);
         forHighlighted(v, hl, tL, tR, (a, b) => {
           if (b > t) traceWeighted(g, view, v, Math.max(t, a), b, HW, hlA, maxStep, tolerance, sf);
         });
@@ -912,7 +930,7 @@ function drawLines(
   // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
   for (const v of style.pulseMarks === false ? NO_VOICES : voices) {
     if (v.segments.length === 0 || !v.pulse) continue;
-    g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+    g.strokeStyle = strokeOf(style, gradient, v.index);
     if (past) drawHits(g, view, v, tL, Math.min(t, tR), dim, sf);
     if (ghost && t < tR) drawHits(g, view, v, Math.max(t, tL), tR, futureA, sf);
   }
@@ -921,7 +939,7 @@ function drawLines(
   if (style.traces && (hl || hv !== undefined)) {
     for (const v of compiled.voices) {
       if (v.segments.length === 0 || !breaksIn(v, drawnLives(sf, v))) continue;
-      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      g.strokeStyle = strokeOf(style, gradient, v.index);
       if (v.index === hv || hl?.voices?.has(v.index)) {
         traceSilent(g, view, v, tL, tR, TRACE_ALPHA, maxStep, tolerance, sf);
         continue;
@@ -1067,7 +1085,7 @@ function drawPreview(
   g.globalAlpha = PREVIEW_ALPHA;
   for (const v of score.voices) {
     if (v.segments.length === 0) continue;
-    g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+    g.strokeStyle = strokeOf(style, gradient, v.index);
     trace(g, view, sampleInto(PTS, v, a, view.tR, maxStep, tolerance));
   }
   g.restore();
@@ -1153,6 +1171,8 @@ function drawHeads(
   sf: StrandFrame,
 ): void {
   const { t, xHead: x } = view;
+  const P = style.paint;
+  const own = P?.pitchStops;
   const stops = style.colors === 'pitch' ? pitchStops(style.dark, style.oklch) : null;
   const groups = new Map<number, { p: number; y: number }>();
   const dots = style.dots !== false;
@@ -1167,15 +1187,16 @@ function drawHeads(
     let y = pitchToY(view, p);
     if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * F.lw;
     const mv = motionAt(v, t);
-    let color = lineColor(style, i);
+    let color = (P?.voiceFirst && style.customColors?.[i]) || lineColor(style, i);
     if (color === null && stops) {
       const f = Math.min(1, Math.max(0, (p - view.pLo) / (view.pHi - view.pLo)));
-      color = stops[Math.round(f * (stops.length - 1))].color;
+      color = own ? stopsAt(own, f) : stops[Math.round(f * (stops.length - 1))].color;
     }
     color ??= style.tokens.ink;
+    if (P?.heads) color = P.heads;
     if (rings && mv > 0.03) {
       g.globalAlpha = headA * mv * op;
-      g.strokeStyle = style.colors === 'ink' ? style.tokens.accent : color;
+      g.strokeStyle = style.colors === 'ink' && !P?.heads ? style.tokens.accent : color;
       g.lineWidth = 1.2;
       g.beginPath();
       g.arc(x, y, RING_R, 0, Math.PI * 2);
@@ -1196,7 +1217,7 @@ function drawHeads(
     return;
   }
   g.font = `10px ${MONO}`;
-  g.fillStyle = style.tokens.ink2;
+  g.fillStyle = P?.heads ?? style.tokens.ink2;
   g.globalAlpha = headA;
   g.textAlign = 'left';
   let lastY = -99;

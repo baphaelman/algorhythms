@@ -20,6 +20,7 @@
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
 import { HUD_ROW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
+import { fillBackground } from './colours';
 import { DEFAULT_MONO, drawScore, hudPlacement, keyName, type Ctx2D } from './draw';
 import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
@@ -374,13 +375,16 @@ function drawRows(
   let span = 0;
   for (const r of rows) span = Math.max(span, r.end - r.start);
   const rowStyle: ScoreStyle = { ...style, hud: false };
+  // A gradient spans the whole poster, drawn once below: the rows draw no background.
+  if (style.paint?.background && style.tokens.paper !== 'transparent') {
+    rowStyle.tokens = { ...style.tokens, paper: 'transparent' };
+  }
   delete rowStyle.reserveHud;
   delete rowStyle.hudExtra;
   const MONO = style.fontMono ?? DEFAULT_MONO;
 
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.fillStyle = style.tokens.paper;
-  g.fillRect(0, 0, W, H);
+  fillBackground(g, style.tokens.paper, style.paint, W, H);
   for (let i = 0; i < n; i++) {
     const r = rows[i];
     // Rows start on whole device pixels.
@@ -400,7 +404,7 @@ function drawRows(
     if (i > 0) {
       g.globalAlpha = 1;
       g.font = `${ROW_LABEL_PX}px ${MONO}`;
-      g.fillStyle = style.tokens.ink2;
+      g.fillStyle = style.paint?.labels ?? style.tokens.ink2;
       g.textAlign = 'left';
       g.textBaseline = 'alphabetic';
       g.fillText(posterLength(r.start), full.padL, view.padT - 4);
@@ -464,11 +468,11 @@ export function drawTitleBlock(
   g.textAlign = 'left';
 
   g.font = `500 ${NAME_PX}px ${MONO}`;
-  g.fillStyle = C.ink;
+  g.fillStyle = style.paint?.title ?? C.ink;
   g.fillText(fitText(g, info.name.trim() || 'Untitled', W - padL - padR), padL, y1);
 
   g.font = `${META_PX}px ${MONO}`;
-  g.fillStyle = C.ink2;
+  g.fillStyle = style.paint?.title ?? C.ink2;
   const sec = info.section;
   const key = sec ? keyAt(compiled, sec.start) : (info.key ?? keyAt(compiled, 0));
   g.fillText(posterMeta(compiled.duration, keyName(key), sec), padL, y2);

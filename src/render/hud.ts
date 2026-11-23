@@ -299,7 +299,7 @@ function drawPlacedHud(
     const em = emphasised(b.item);
     const fx = anchorFactors(b.anchor)[0];
     g.font = em ? `500 12px ${MONO}` : `10.5px ${MONO}`;
-    g.fillStyle = em ? C.ink : C.ink2;
+    g.fillStyle = style.paint?.hud ?? (em ? C.ink : C.ink2);
     g.textAlign = fx === 0 ? 'left' : fx === 1 ? 'right' : 'center';
     g.fillText(b.text, b.x + fx * b.w, b.y + HUD_BASELINE);
   }
@@ -363,7 +363,7 @@ export function drawHud(
         if (rw !== undefined && !(padL + text.length * CHAR_PX + 16 + rw < W - padR)) continue;
       }
       const f = em ? emFont : font;
-      const fill = em ? C.ink : C.ink2;
+      const fill = style.paint?.hud ?? (em ? C.ink : C.ink2);
       if (f !== curFont) g.font = curFont = f;
       if (fill !== curFill) g.fillStyle = curFill = fill;
       g.fillText(text, right ? W - padR : padL, hy + HUD_ROW * r);

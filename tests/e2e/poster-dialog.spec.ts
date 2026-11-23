@@ -146,8 +146,7 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   for (const t of ['look-future', 'look-follow-at', 'look-playhead', 'look-heads']) {
     await expect(page.getByTestId(t)).toHaveCount(0);
   }
-  await expect(page.getByTestId('look-background')).not.toBeChecked();
-  await expect(page.getByTestId('look-background')).toHaveAttribute('role', 'switch');
+  await expect(page.getByTestId('look-bg')).toHaveAttribute('data-value', 'theme');
   await expect(page.getByTestId('export-ptitle')).toHaveAttribute('role', 'switch');
   await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'off');
   await expect(page.getByTestId('look-moments')).toHaveAttribute('data-value', 'labels');
@@ -186,7 +185,7 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 
   // Transparent 1:1: an empty corner has alpha 0.
   await choose(page, 'export-psize', '1:1');
-  await setSwitch(page, 'look-background', true);
+  await chooseSegment(page, 'look-bg', 'Transparent');
   const clear = await decodePng(page, (await download(page)).bytes);
   expect(clear).toMatchObject({ width: 2160, height: 2160, cornerAlpha: 0 });
   expect(clear.inked).toBeGreaterThan(100);
@@ -212,8 +211,8 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await chooseSegment(page, 'look-guides', 'Lines + labels');
   await setRange(page, 'look-width', 1.75);
   await expect(page.getByTestId('look-width-value')).toHaveText('1.75×');
-  await chooseSegment(page, 'look-colors', 'Ink');
-  await page.getByTestId('look-ink').fill('#336699');
+  await chooseSegment(page, 'look-colors', 'One');
+  await page.getByTestId('swatch-one-hex').fill('#336699');
   await openHud(page);
   await setSwitch(page, 'hud-title', true);
   await setSwitch(page, 'hud-key', true);
@@ -233,6 +232,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
     lineWidth: 1.75,
     colors: 'ink',
     lineInk: '#336699',
+    colours: { lines: { kind: 'one', color: '#336699' } },
     hud: ['key', 'title'],
   });
 
@@ -246,9 +246,9 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
   await expect(page.getByTestId('look-width')).toHaveValue('1.75');
-  await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'ink');
+  await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'one');
   await expect(page.getByTestId('export-ptitle')).not.toBeChecked();
-  await expect(page.getByTestId('look-ink')).toHaveValue('#336699');
+  await expect(page.getByTestId('swatch-one-hex')).toHaveValue('#336699');
   await openHud(page);
   await expect(page.getByTestId('hud-title')).toBeChecked();
   await setHudOpen(page, false);
@@ -258,7 +258,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await expect(page.getByTestId('look-width')).toHaveValue('1');
   await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'app');
   await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'off');
-  await expect(page.getByTestId('look-ink')).toHaveCount(0);
+  await expect(page.getByTestId('swatch-one')).toHaveCount(0);
   await openHud(page);
   await expect(page.getByTestId('hud-title')).not.toBeChecked();
   // Default / None quick buttons: a poster's default HUD is none.
@@ -334,7 +334,7 @@ test('fits a phone screen with Poster and the Look open', async ({ page }) => {
   expect(box.x + box.width).toBeLessThanOrEqual(375);
   expect(box.y + box.height).toBeLessThanOrEqual(640);
   expect(await dialog(page).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  for (const t of ['look-background', 'look-hud-button', 'look-reset', 'export-run']) {
+  for (const t of ['look-bg', 'look-hud-button', 'look-reset', 'export-run']) {
     await page.getByTestId(t).scrollIntoViewIfNeeded();
     await expect(page.getByTestId(t)).toBeInViewport();
     await expect(page.getByTestId('preview-canvas')).toBeInViewport({ ratio: 1 });
@@ -431,7 +431,7 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   expect(first).toMatchObject({ cornerAlpha: 255, title: true });
   expect(first.width / first.height).toBeCloseTo(16 / 9, 1);
 
-  await setSwitch(page, 'look-background', true);
+  await chooseSegment(page, 'look-bg', 'Transparent');
   n = await drawn(page, n);
   const clear = await comparePreview(page);
   expect(clear.cornerAlpha).toBe(0);
@@ -592,7 +592,7 @@ test('the Look segments fit, one line each, at 375 and 1280 px; no dropdowns', a
     expect(await badSegments(page), `${w}`).toEqual([]);
     await chooseSegment(page, 'look-guides', 'Lines + labels');
     await chooseSegment(page, 'look-moments', 'Both');
-    await chooseSegment(page, 'look-colors', 'Custom');
+    await chooseSegment(page, 'look-colors', 'One');
     expect(await badSegments(page), `${w}`).toEqual([]);
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();

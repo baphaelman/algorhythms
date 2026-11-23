@@ -91,6 +91,7 @@ import {
 } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
+import { ColoursGroup } from './ColoursGroup';
 import {
   cameraOf,
   currentTime,
@@ -764,11 +765,9 @@ function LookPanel({
   kind: LookKind;
   disabled: boolean;
 }) {
-  const id = useId();
   const look = form.look;
   const follow = form.videoCamera === 'follow';
   const dark = look.theme === 'current' ? appDark() : look.theme === 'dark';
-  const ink = look.lineInk ?? tokensOf(dark ? 'dark' : 'light').ink;
 
   return (
     <fieldset className="look" disabled={disabled} data-testid="look">
@@ -782,35 +781,18 @@ function LookPanel({
                 {followAtHint(form)}
               </small>
             )}
-            {c.id === 'colors' && (look.colors === 'ink' || look.colors === 'custom') && (
-              <>
-                <label htmlFor={`${id}-ink`}>
-                  {look.colors === 'ink' ? 'Line colour' : 'Lines without a colour'}
-                </label>
-                <div className="field-row">
-                  <input
-                    id={`${id}-ink`}
-                    type="color"
-                    value={ink}
-                    data-testid="look-ink"
-                    onChange={(e) => patchLook({ lineInk: e.target.value })}
-                  />
-                  {look.lineInk !== null && (
-                    <button
-                      type="button"
-                      data-testid="look-ink-reset"
-                      onClick={() => patchLook({ lineInk: null })}
-                    >
-                      Theme ink
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
           </Fragment>
         ))}
         <HudSection form={form} kind={kind} />
       </div>
+      <ColoursGroup
+        look={look}
+        kind={kind}
+        dark={dark}
+        saved={form.colourSchemes}
+        onLook={patchLook}
+        onSaved={(colourSchemes) => patch({ colourSchemes })}
+      />
       <button
         type="button"
         className="look-reset"
