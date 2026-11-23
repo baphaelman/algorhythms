@@ -4250,6 +4250,11 @@ This is the *input* form: fields with defaults are optional here.
                   "maximum": 9007199254740991
                 }
               },
+              "restart": {
+                "description": "Restart the step counter (pattern and voice walk) every restart s from at; absent: never.",
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
               "strike": {
                 "description": "Each hit re-strikes the timbre's articulation (absent: true).",
                 "type": "boolean"

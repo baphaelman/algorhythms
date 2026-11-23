@@ -221,6 +221,11 @@ describe('lane items for regions', () => {
   it('bar art: a pulse cycle share, tune dashes by time and pitch', () => {
     const a = laneArt(pulse(), 4, 8);
     expect(a).toMatchObject({ kind: 'pulse', share: 25 });
+    // A restarting pulse: one cycle per restart, its first steps' accents.
+    expect(laneArt(pulse({ restart: 2, pattern: [1] }), 4, 8)).toMatchObject({
+      share: 50,
+      svg: patternSvg([1, 1, 1, 1]),
+    });
     const t = laneArt(tune(), 4, 7);
     expect(t?.kind).toBe('tune');
     if (t?.kind !== 'tune') return;

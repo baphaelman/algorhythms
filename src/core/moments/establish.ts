@@ -17,7 +17,8 @@
  *   voiced in a window of 12 + 3k semitones around the middle of the voices' ranges (k notes),
  *   not over the whole range, and `even` voices `close` there, so every chord tone sounds. A unison sits on
  *   its pitch; `center` is the middle of the first voice's range snapped to the key, `tonic` the
- *   key's tonic nearest that middle.
+ *   key's tonic nearest that middle. A chord symbol with `count: 1` sounds its bass (revision 14,
+ *   `rootTarget`), nearest where that voicing put its note.
  *
  * - **Tunes** (composing.md §3 #4; only on a `{ part }` target, `bringsIn`): one voice (the first
  *   free one of the part) on the tune's first note; the compiler plays the rest on it.
@@ -34,7 +35,7 @@ import { pitchClassOf, snapToScale } from '../scales';
 import { isRest, tuneShift } from './tune';
 import type { ChordMoment, Moment, Pitch, TuneMoment, UnisonMoment } from '../types';
 import { roundTiesDown, voiceNotes, pitchClasses } from '../voicing';
-import { distinctTargets } from './chord';
+import { distinctTargets, rootTarget } from './chord';
 import { IntentKind, unionRange, type MomentEnv, type MomentPlan } from './types';
 
 /** True for moments that can start the sound from silence: a chord with notes, and a unison. */
@@ -144,6 +145,9 @@ function establishChord(m: ChordMoment, env: MomentEnv): MomentPlan | null {
         )
   ).sort((a, b) => a - b);
   if (q.length === 0) return null;
+  // Notes: 1 (revision 14): the chord's bass, nearest where the voicing put its note.
+  const root = vs.length === 1 ? rootTarget(m, env, unionRange(env, vs), q[0], []) : null;
+  if (root !== null) return { ordered: true, intents: [birth(vs[0], root)] };
   if (q.length > vs.length) {
     env.diag(
       'info',

@@ -514,6 +514,13 @@ export interface PulseMoment extends MomentBase {
    * pitch order (1 = the lowest targeted voice); an index past the voice count wraps.
    */
   order?: number[];
+  /**
+   * Revision 14 (M10b): the step counter restarts every `restart` s from `at` (> 0): steps at
+   * at + c·restart + j·step while j·step < restart, and step j takes pattern[j mod length]; the
+   * up/down/updown/order walk starts over. So an arpeggio restarts each bar whatever the number
+   * of lines under it. Absent: steps run on from `at` without restarting.
+   */
+  restart?: Seconds;
   /** Each hit re-strikes the timbre's articulation. Absent means true. */
   strike?: boolean;
 }

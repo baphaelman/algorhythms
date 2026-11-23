@@ -38,7 +38,13 @@ import { tuneHarmony, type DriverRecord } from './tune-harmony';
 import { mod } from '../math';
 import { inPartScope, partScope, scopeName, type PartScope } from '../parts';
 import { isTimbreName } from '../timbres';
-import { nextPulseIndex, nextPulseOrder, type PulseWalk } from '../pulse';
+import {
+  nextPulseIndex,
+  nextPulseOrder,
+  pulseCycleSteps,
+  pulseStepTime,
+  type PulseWalk,
+} from '../pulse';
 import { hash32, momentSeed, Purpose, randHashed } from '../rng';
 import { FREE_LIMITS } from '../interrupt';
 import { pointMomentPlan } from '../moments/dispatch';
@@ -2383,9 +2389,13 @@ export class Compiler {
    * (all, or one by the mode). The tick at or after `until` ends the pulse: its voices go back
    * to 1.
    */
-  private onPulseTick(pi: number, k: number, st: PulseState): void {
+  private onPulseTick(pi: number, k: number, prev: PulseState): void {
     const p = this.moments[pi] as PulseMoment;
-    const t = p.at + k * p.step;
+    const cycle = pulseCycleSteps(p.step, p.restart);
+    const t = pulseStepTime(p.at, p.step, p.restart, cycle, k);
+    // Revision 14: each restart starts the pattern and the voice walk over.
+    const j = cycle > 0 ? k % cycle : k;
+    const st = cycle > 0 && j === 0 && k > 0 ? { ...PULSE_START, heard: prev.heard } : prev;
     if (!(t < p.until)) {
       for (const run of this.voices) {
         if (run.pulseOwner !== pi) continue;
@@ -2404,7 +2414,7 @@ export class Compiler {
       const run = this.voices[v];
       if (this.pulseClaim(pi, v, t) && run.frontier.alive && !run.resting) members.push(v);
     }
-    const accent = unit(p.pattern[k % p.pattern.length], 0);
+    const accent = unit(p.pattern[j % p.pattern.length], 0);
     let next: PulseState = st;
     if (members.length > 0 && !st.heard) next = { ...next, heard: true };
     if (accent > 0 && members.length > 0) {
@@ -2441,7 +2451,7 @@ export class Compiler {
         this.voices[members[order[j]]].pulse.push(rec);
       }
     }
-    const tn = p.at + (k + 1) * p.step;
+    const tn = pulseStepTime(p.at, p.step, p.restart, cycle, k + 1);
     this.queue.push({
       t: tn < p.until ? tn : p.until,
       cls: EventClass.Tick,
@@ -3346,6 +3356,11 @@ function pulseProblem(m: PulseMoment): string | null {
     return 'A pulse needs until > at.';
   if (!Array.isArray(m.pattern) || m.pattern.length === 0)
     return 'A pulse needs a non-empty pattern.';
+  if (
+    m.restart !== undefined &&
+    !(typeof m.restart === 'number' && Number.isFinite(m.restart) && m.restart > 0)
+  )
+    return 'A pulse restart must be > 0 s.';
   if (!m.pattern.every((a) => typeof a === 'number' && Number.isFinite(a)))
     return 'Every accent of a pulse pattern must be a number.';
   if (

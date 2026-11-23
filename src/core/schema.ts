@@ -372,6 +372,13 @@ const MOMENT_SCHEMAS = {
       .describe(
         "mode 'order': voices to hit, one per step, cycling; 1 = the lowest targeted voice, an index past the count wraps.",
       ),
+    restart: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        'Restart the step counter (pattern and voice walk) every restart s from at; absent: never.',
+      ),
     strike: z
       .boolean()
       .optional()

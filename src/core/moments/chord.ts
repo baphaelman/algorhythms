@@ -16,6 +16,8 @@
  *   neighbour (`absorbers`; an untargeted survivor's target is where it is heading), then fades
  *   over the glide length, following that survivor's later moves. At least one targeted voice
  *   survives (`count-limited`).
+ * - `count: 1` on a chord symbol (revision 14, integrator 2026-11-22): the one line takes the
+ *   chord's bass (the slash bass, else the root), not the voicing's middle note (`rootTarget`).
  */
 
 import { parseChord } from '../chords';
@@ -74,6 +76,36 @@ function bassLine(m: ChordMoment, env: MomentEnv): MomentPlan | null {
   let to = cands[0];
   for (const c of cands) if (Math.abs(c - from) < Math.abs(to - from)) to = c;
   return { ordered: m.assign !== 'free', intents: [{ voice: v, to, kind: IntentKind.Move }] };
+}
+
+/**
+ * Revision 14 (Notes: 1): the one target of a `count: 1` chord symbol voiced for one line: its
+ * bass (slash bass, else root) at the octave nearest `near` (ties: lower) within `range`, inside
+ * the moment's register when that holds one, short of the pitches in `held`. Null when it does
+ * not apply or finds no free octave (the chord is then voiced as usual).
+ */
+export function rootTarget(
+  m: ChordMoment,
+  env: MomentEnv,
+  range: readonly [Pitch, Pitch],
+  near: Pitch,
+  held: readonly Pitch[],
+): Pitch | null {
+  if (m.notes.kind !== 'chord' || m.count === undefined || Math.floor(m.count) !== 1) return null;
+  const r = parseChord(m.notes.symbol, env.key);
+  if (!r.ok) return null;
+  let cands = pitchesWithPcs([r.bass ?? r.root], range[0], range[1]);
+  if (m.register) {
+    const lo = Math.min(m.register[0], m.register[1]);
+    const hi = Math.max(m.register[0], m.register[1]);
+    const inside = cands.filter((p) => p >= lo && p <= hi);
+    if (inside.length > 0) cands = inside;
+  }
+  cands = cands.filter((c) => !held.some((p) => Math.abs(p - c) < 1e-9));
+  if (cands.length === 0) return null;
+  let to = cands[0];
+  for (const c of cands) if (Math.abs(c - near) < Math.abs(to - near)) to = c;
+  return to;
 }
 
 /** Explicit pitch lists (and `current`) stay as written: their unisons merge (owner, 2026-11-21). */
@@ -220,6 +252,18 @@ function voiceChord(
     return null;
   }
   const p = vs.map((v) => env.dest(v));
+  if (vs.length === 1) {
+    // Notes: 1 (revision 14): near where the lines were, the dying ones included.
+    const all = [...vs, ...dying];
+    let near = 0;
+    for (const v of all) near += env.dest(v) / all.length;
+    const to = rootTarget(m, env, unionRange(env, vs), near, occupying(env, all));
+    if (to !== null)
+      return {
+        ordered: m.assign !== 'free',
+        intents: [{ voice: vs[0], to, kind: IntentKind.Move }],
+      };
+  }
   const voiced = voiceNotes({
     notes: m.notes,
     k: vs.length,
@@ -293,19 +337,27 @@ function withBirths(m: ChordMoment, env: MomentEnv, want: number): MomentPlan | 
   }
   const free = m.assign === 'free';
   const k = vs.length + births;
-  const targets = literal(m)
-    ? voiced.targets
-    : distinctTargets(
-        m,
-        env,
-        voiced.targets,
-        k,
-        voiced.perVoice,
-        unionRange(env, [...vs, ...newborns]),
-        untargeted(env, vs),
-        p,
-        occupying(env, vs),
-      );
+  // Notes: 1 from silence (revision 14): the root nearest where the voicing put its note.
+  const root =
+    k === 1 && voiced.targets.length > 0
+      ? rootTarget(m, env, unionRange(env, newborns), voiced.targets[0], occupying(env, vs))
+      : null;
+  const targets =
+    root !== null
+      ? [root]
+      : literal(m)
+        ? voiced.targets
+        : distinctTargets(
+            m,
+            env,
+            voiced.targets,
+            k,
+            voiced.perVoice,
+            unionRange(env, [...vs, ...newborns]),
+            untargeted(env, vs),
+            p,
+            occupying(env, vs),
+          );
   return {
     ordered: !free,
     intents: voiceWithBirths(env, vs, p, newborns, { ...voiced, targets }, free),
