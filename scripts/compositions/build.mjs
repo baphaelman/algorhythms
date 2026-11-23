@@ -24,6 +24,7 @@ const songs = {
   moonwater: (await load('./moonwater.ts')).moonwater,
   'sunday-lane': (await load('./sunday-lane.ts')).sundayLane,
   'night-sleeper': (await load('./night-sleeper.ts')).nightSleeper,
+  crease: (await load('./crease.ts')).crease,
 };
 for (const [name, make] of Object.entries(songs)) {
   const file = fileURLToPath(
