@@ -42,6 +42,13 @@ Notes for the builder who rewrites the compositions after rev 9, and for any age
 - The engine normalises by 1/√(number of sounding voices), and silent voices still count. Adding voices does not make a piece louder; use `level` for the arc. Start quiet (the songs open around −24 dB and end around −18 dB, measured above 150 Hz).
 - Voices start at level 1: set level moments at t = 0 with `over: 0` for anything meant to come in later, or the first instant blips.
 - Measure loudness with the bass filtered out: an organ bass dominates plain RMS and hides the arc.
+- Let voices breathe (owner, 2026-11-23: abrupt entries and exits "sound abrupt and bad"). A tune rest cuts a line in 20 ms and a comeback starts in 10 ms, so fade sustained voices with `level` moments: phrase ends over 0.15–0.25 s ending at the rest, entries over 40–80 ms. Struck timbres can start at once, but let them ring and fade the part rather than cutting the ring with a rest.
+
+**Timing** (owner, 2026-11-23: a melody "a little out of sync").
+- Set `stagger` and `jitter` on every glide. Moments inherit the piece's default glide (3 s, stagger 0.8, jitter 0.2 in `song.ts`); a one-line chord with `land: true` and no stagger moved up to 0.8 s before its beat.
+- A landing glide starts moving `length` before the beat. Keep melody scoops at 30–50 ms, and give a lead a crisp, quick articulation (attack 15–20 ms, small `accent`); an 85 ms scoop with a soft bloom smeared every note against crisp accompaniment.
+- No echo near a subdivision: a 115 ms delay at 116 bpm made every note sound late. Time delays to the beat or keep the voice dry.
+- Swung melodies need something on the triplet grid underneath (a pulse with `step` = 1/3 beat), or they sound lazy over straight quarters.
 
 **Timbres (built-ins).**
 - `glass` is the safe pad and ornament.
