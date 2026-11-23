@@ -549,15 +549,20 @@ export const ALWAYS_ROWS: ReadonlySet<RowName> = new Set(['key', 'chords', 'text
 /** Rows whose blocks run to the next block on the row (their label is clipped to the block). */
 export const CHAINED_ROWS: ReadonlySet<RowName> = new Set(['key', 'chords']);
 
-/** Sub-row height (px): a 14 px block, and on Chords a 4 px glide strip under it. */
+/**
+ * Sub-row height (px). Key: a 14 px block. Chords: the block and a 4 px glide strip under it. The
+ * rows with block art (Texture, Melody, Level, Sound): an 11 px label band over a 7 px art band, so
+ * a label never crosses its block's art (owner 2026-11-23).
+ */
 export const SUB_H = 16;
 export const CHORD_SUB_H = 20;
+export const ART_SUB_H = 20;
 /** Height of a dot sub-row (note and pin moments, on top of the Chords row). */
 export const DOT_H = 10;
 /** Padding (px) above and below a row's sub-rows. */
 export const ROW_PAD = 2;
-/** The Level row is at least this tall, for its curve. */
-export const LEVEL_MIN_H = 28;
+/** The level curve's band (px) at the top of the first Level row, above its blocks. */
+export const LEVEL_CURVE_H = 16;
 /** Half a marker's width (px): a block's box starts this far left of its time. */
 export const MARKER_HALF = 5;
 
@@ -648,9 +653,9 @@ export interface LaneRowsLayout {
   height: number;
 }
 
-/** A block's label width estimate (px): marker, label and detail. */
+/** A block's label width estimate (px): marker, label and detail, and room to clear the next. */
 export function blockLabelPx(b: Pick<LaneBlock, 'label' | 'detail'>): number {
-  return 14 + (b.label.length + (b.detail ? b.detail.length + 3 : 0)) * 6.5 + 6;
+  return 14 + (b.label.length + (b.detail ? b.detail.length + 3 : 0)) * 6.5 + 6 + LABEL_GAP + 2;
 }
 
 /**
@@ -667,7 +672,24 @@ export function blockBoxPx(b: LaneBlock, pps: number): [number, number] {
 }
 
 /** Sub-row height of a row. */
-export const subH = (row: RowName): number => (row === 'chords' ? CHORD_SUB_H : SUB_H);
+export const subH = (row: RowName): number =>
+  row === 'chords' ? CHORD_SUB_H : row === 'key' ? SUB_H : ART_SUB_H;
+
+/** A label's left edge (px) right of its marker's time: half a marker and a gap. */
+export const LABEL_INSET = MARKER_HALF + 4;
+/** Clearance (px) between a label's right edge and the next marker (or the block's end handle). */
+export const LABEL_GAP = 2;
+
+/**
+ * The width (px) a block's label may take from its unshifted start (`LABEL_INSET` right of the
+ * marker at `at`): up to the block's end on chained rows, up to its stacking box (`blockBoxPx`,
+ * which reserves the label) elsewhere, less half the next marker and a gap. So a label never runs
+ * into the next block on its sub-row; past this width it is cut (Lane.tsx hides tiny remnants).
+ */
+export function labelRoomPx(b: LaneBlock, at: Seconds, pps: number): number {
+  const right = CHAINED_ROWS.has(b.row) ? b.end * pps : blockBoxPx(b, pps)[1];
+  return right - MARKER_HALF - LABEL_GAP - (at * pps + LABEL_INSET);
+}
 
 /**
  * The lane's rows, top to bottom, with each block's and dot's place (PLAN §6.4). Rows come from
@@ -739,8 +761,9 @@ export function laneRowsLayout(
       dotRows = ds.count;
       dotSub = ds.rows;
     }
-    let height = ROW_PAD * 2 + dotRows * DOT_H + subRows * subH(r.row);
-    if (r.row === 'level') height = Math.max(LEVEL_MIN_H, height);
+    // The first Level row holds the level curve in a band of its own above its blocks.
+    const curve = r.row === 'level' && !rows.some((o) => o.row === 'level') ? LEVEL_CURVE_H : 0;
+    const height = ROW_PAD * 2 + curve + dotRows * DOT_H + subRows * subH(r.row);
     const parted = r.part !== undefined;
     const box: LaneRowBox = {
       key,
@@ -755,7 +778,7 @@ export function laneRowsLayout(
     };
     if (parted) groupsSeen.add(r.row);
     rows.push(box);
-    const y0 = top + ROW_PAD + dotRows * DOT_H;
+    const y0 = top + ROW_PAD + curve + dotRows * DOT_H;
     all.forEach((b, i) => {
       const p = { row: key, sub: st.rows[i], top: y0 + st.rows[i] * subH(r.row) };
       if (ghost && b === ghost) ghostPlace = p;

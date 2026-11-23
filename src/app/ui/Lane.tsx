@@ -60,6 +60,8 @@ import {
   gridStep,
   laneBlocks,
   laneItems,
+  blockLabelPx,
+  labelRoomPx,
   laneRowsLayout,
   levelCurve,
   nudgeDt,
@@ -67,8 +69,9 @@ import {
   revealScroll,
   splitLanePx,
   spokenTime,
-  CHAINED_ROWS,
   DOT_H,
+  LABEL_INSET,
+  LEVEL_CURVE_H,
   MARKER_HALF,
   ROW_PAD,
   type LaneBlock,
@@ -97,11 +100,13 @@ import {
 import { wheelIntent } from '../wheel';
 import './lane.css';
 
-/** Block height (px; lane.css `.lane-item`); rows and sub-rows are laid out by `laneRowsLayout`. */
-const BLOCK_H = 14;
-/** The level curve's box (px) at the top of the first Level row. */
-const LEVEL_H = 24;
-const LEVEL_PAD = 3;
+/** Tallest block (px; lane.css); rows and sub-rows are laid out by `laneRowsLayout`. */
+const BLOCK_H = 18;
+/** The level curve's box (px): its band at the top of the first Level row. */
+const LEVEL_H = LEVEL_CURVE_H;
+const LEVEL_PAD = 2;
+/** A cut label narrower than this (px: a character and the ellipsis) is hidden instead. */
+const MIN_LABEL = 18;
 /** The divider between the score and the lanes (lane.css `.lane-divider`). */
 const DIVIDER_H = 10;
 /** Keyboard step (px) for the divider; Shift or Page keys move further. */
@@ -195,9 +200,10 @@ interface Drag {
 interface StickyLabel {
   label: HTMLElement;
   x: number;
-  w: number;
+  /** The width it may take unshifted (`labelRoomPx`), and its estimated full width. */
+  room: number;
+  need: number;
   row: string;
-  chained: boolean;
 }
 
 /** A press on the piece key at 0:00: a click selects it; a drag does nothing (it can't move). */
@@ -587,7 +593,13 @@ class LaneController {
     band.style.width = `${w.toFixed(2)}px`;
     const label = el.querySelector<HTMLElement>(':scope > .lane-text');
     if (label && p) {
-      const s = { label, x: at * pps, w, row: p.row, chained: CHAINED_ROWS.has(b.row) };
+      const s = {
+        label,
+        x: at * pps,
+        room: labelRoomPx(b, origAt, pps),
+        need: blockLabelPx(b) - 14 - 10,
+        row: p.row,
+      };
       this.labels.set(el, s);
       this.stick(s);
     }
@@ -595,18 +607,19 @@ class LaneController {
   }
 
   /**
-   * Keeps a block's label readable: clipped to the block on chained rows (a short chord's name
-   * never covers the next), and pushed right of its row's header while the block's start is
-   * under it (so a block that began off-screen still shows its name).
+   * Keeps a block's label readable and clear of other blocks: cut at its room (`labelRoomPx`, so
+   * a short chord's name never reaches the next marker), hidden when under a character is left,
+   * and pushed right of its row's header while the block's start is under it (so a block that
+   * began off-screen still shows its name).
    */
   private stick(s: StickyLabel): void {
-    const room = s.w - 2 * MARKER_HALF - 4;
-    const start = s.x + this.offset + MARKER_HALF + 4;
+    const start = s.x + this.offset + LABEL_INSET;
     const want = (this.gutter.get(s.row) ?? 0) + 4 - start;
-    const shift = Math.round(Math.max(0, Math.min(want, room - 24)));
+    const shift = Math.round(Math.max(0, Math.min(want, s.room - 24)));
     const tf = shift > 0 ? `translateX(${shift}px)` : '';
     if (s.label.style.transform !== tf) s.label.style.transform = tf;
-    const max = s.chained ? `${Math.max(0, room - shift).toFixed(0)}px` : '';
+    const left = Math.floor(s.room - shift);
+    const max = `${left >= Math.min(MIN_LABEL, s.need) ? left : 0}px`;
     if (s.label.style.maxWidth !== max) s.label.style.maxWidth = max;
   }
 
@@ -1292,8 +1305,8 @@ function pulseMask(art: Extract<LaneItem['art'], { kind: 'pulse' }>): {
   };
 }
 
-/** A tune note dash's vertical place: 0 % (the highest note) to 70 % of the bar, 1 px down. */
-const tuneTop = (top: number): string => `calc(${(top * 0.7).toFixed(2)}% + 1px)`;
+/** A tune note dash's vertical place in the art band: 0 % (the highest note) to its bottom. */
+const tuneTop = (top: number): string => `calc((100% - 2px) * ${(top / 100).toFixed(4)})`;
 
 /** A pulse's accent cycle or a tune's notes, drawn inside its bar (R9-7). */
 function BarArt({ art }: { art: LaneItem['art'] }) {

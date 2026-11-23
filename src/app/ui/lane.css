@@ -5,7 +5,8 @@
  * writes each `.lane-row`'s top and height and the track's `--lane-h`. Items are absolutely placed
  * by Lane.tsx (transforms) at their marker: a 14 px block (`.lane-band`, its extent on the row),
  * on Chords and Key with a 4 px glide strip under it (`.lane-bar`); on the rows whose blocks end on
- * their own the bar is the block. Note and pin moments are dots on top of the Chords row, their
+ * their own the bar is the block: an 11 px label band over a 7 px art band (walk stripes, pulse
+ * cycle, tune notes, ramps), so no label crosses its block's art (owner 2026-11-23). Note and pin moments are dots on top of the Chords row, their
  * label shown on hover, focus or selection. The track sits in `.lane-scroll`, which scrolls
  * vertically past the divider's split; `.lane-divider` sits above it.
  */
@@ -163,6 +164,9 @@
 }
 
 .lane-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--ink-2);
 }
 
@@ -205,7 +209,13 @@
   pointer-events: none;
 }
 
-/* Texture, Melody, Level and Sound: the bar is the block. */
+/* Texture, Melody, Level and Sound: the bar is the block, its label in the top band (the item's
+   height: marker and text centre there) and its art in the band below. */
+.lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound']) {
+  height: 11px;
+  font-size: 10px;
+}
+
 .lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound'])
   .lane-band {
   display: none;
@@ -214,31 +224,43 @@
 .lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound'])
   .lane-bar {
   top: 0;
-  height: 14px;
+  height: 18px;
   border-left: 1px solid color-mix(in srgb, var(--c) 70%, transparent);
-  background: color-mix(in srgb, var(--c) 14%, transparent);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
   pointer-events: auto;
 }
 
-.lane-item[data-type='walk'] .lane-bar {
+/* The art band (below the label band): walk stripes and ramp gradients here, art spans too. */
+.lane-bar::before,
+.lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound'])
+  .lane-bar
+  > .lane-art {
+  position: absolute;
+  inset: 11px 0 0;
+  border-radius: 0 0 2px 0;
+}
+
+.lane-bar::before {
+  content: none;
+  pointer-events: none;
+}
+
+.lane-item[data-type='walk'] .lane-bar::before {
+  content: '';
   background: repeating-linear-gradient(
     135deg,
     color-mix(in srgb, var(--c) 34%, transparent) 0 3px,
-    color-mix(in srgb, var(--c) 10%, transparent) 3px 6px
+    color-mix(in srgb, var(--c) 8%, transparent) 3px 6px
   );
 }
 
-/* Pulse (R9-7): a light region with its accent cycle repeated across it (a mask, pulse.ts). */
-.lane-item[data-type='pulse'] .lane-bar {
-  background: color-mix(in srgb, var(--c) 10%, transparent);
-}
-
 /* A level ramp and a timbre fade: a gradient over the ramp. */
-.lane-item:is([data-row='level'], [data-row='sound']) .lane-bar {
+.lane-item:is([data-row='level'], [data-row='sound']) .lane-bar::before {
+  content: '';
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--c) 40%, transparent),
-    color-mix(in srgb, var(--c) 12%, transparent)
+    color-mix(in srgb, var(--c) 45%, transparent),
+    color-mix(in srgb, var(--c) 8%, transparent)
   );
 }
 
@@ -250,6 +272,8 @@
   overflow: hidden;
   padding-left: 2px;
   border-left: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
+  box-sizing: border-box;
+  padding-right: 2px;
   font: 9px/14px var(--f-mono);
   color: var(--ink);
   white-space: nowrap;
@@ -299,13 +323,14 @@
   box-shadow: inset -1px 0 0 var(--paper);
 }
 
+/* The end handle: its line stays in the glide strip (Chords, Key) or the art band, below labels. */
 .lane-end {
   display: none;
   position: absolute;
   right: -4px;
-  top: -5px;
+  top: -4px;
   width: 8px;
-  height: 14px;
+  height: 12px;
   cursor: ew-resize;
   pointer-events: auto;
 }
@@ -314,16 +339,23 @@
   content: '';
   position: absolute;
   left: 3px;
-  top: 2px;
+  top: 3px;
   width: 2px;
-  height: 10px;
+  height: 6px;
   border-radius: 1px;
   background: var(--c);
 }
 
 .lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound'])
   .lane-end {
-  top: 0;
+  top: 8px;
+  height: 12px;
+}
+
+.lane-item:is([data-row='texture'], [data-row='melody'], [data-row='level'], [data-row='sound'])
+  .lane-end::after {
+  top: 3px;
+  height: 7px;
 }
 
 .lane-item[data-handle='true'] .lane-end {
@@ -353,8 +385,34 @@
   opacity: 0.7;
 }
 
-.lane-item[data-muted] .lane-bar,
-.lane-item[data-muted] .lane-band {
+/* Muted: dashes in the glide strip or the art band; the label's band only gets a dashed edge. */
+.lane-item[data-muted] .lane-bar {
+  background: repeating-linear-gradient(90deg, var(--c) 0 3px, transparent 3px 6px);
+  opacity: 0.5;
+}
+
+.lane-item[data-muted] .lane-band,
+.lane-item[data-muted]:is(
+    [data-row='texture'],
+    [data-row='melody'],
+    [data-row='level'],
+    [data-row='sound']
+  )
+  .lane-bar {
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--c) 50%, transparent);
+  outline-offset: -1px;
+  opacity: 1;
+}
+
+.lane-item[data-muted]:is(
+    [data-row='texture'],
+    [data-row='melody'],
+    [data-row='level'],
+    [data-row='sound']
+  )
+  .lane-bar::before {
+  content: '';
   background: repeating-linear-gradient(90deg, var(--c) 0 3px, transparent 3px 6px);
   opacity: 0.5;
 }

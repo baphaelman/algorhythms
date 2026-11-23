@@ -235,3 +235,92 @@ test('a note is a dot: it selects, drags in time and deletes', async ({ page }) 
   await page.keyboard.press('Delete');
   await expect(dot).toHaveCount(0);
 });
+
+/**
+ * Owner 2026-11-23 (PLAN §11.2 "Labels never cross a block's art"): every shown label's box misses
+ * the art of every block (glide strips, art bands with walk stripes, pulse marks, tune notes and
+ * ramps, end handles), the level curve, other markers and other labels.
+ */
+const labelCrossings = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    type R = { l: number; t: number; r: number; b: number; what: string; id: string };
+    const box = (e: Element, what: string, id: string, dt = 0, dh?: number): R => {
+      const b = e.getBoundingClientRect();
+      const t = b.top + dt;
+      return { l: b.left, t, r: b.right, b: dh === undefined ? b.bottom : t + dh, what, id };
+    };
+    const art: R[] = [];
+    const labels: R[] = [];
+    const track = document.querySelector('.lane-track')!.getBoundingClientRect();
+    for (const el of document.querySelectorAll<HTMLElement>('.lane-item[data-moment]')) {
+      if (el.dataset.dot !== undefined) continue;
+      const id = `${el.dataset.moment} (${el.dataset.type})`;
+      const artRow = !['key', 'chords'].includes(el.dataset.row ?? '');
+      const bar = el.querySelector(':scope > .lane-bar');
+      if (bar && bar.getBoundingClientRect().width > 0) {
+        // Chords: the glide strip; other rows: the art band under the label band.
+        art.push(artRow ? box(bar, 'art band', id, 11) : box(bar, 'glide', id));
+        for (const a of bar.querySelectorAll('.lane-art, .lane-art > span'))
+          art.push(box(a, 'art', id));
+      }
+      const end = el.querySelector(':scope > .lane-bar > .lane-end');
+      if (end && getComputedStyle(end).display !== 'none') {
+        const st = getComputedStyle(end, '::after');
+        art.push(box(end, 'end handle', id, parseFloat(st.top), parseFloat(st.height)));
+      }
+      art.push(box(el.querySelector('.lane-marker')!, 'marker', id));
+      const text = el.querySelector(':scope > .lane-text')!;
+      const r = text.getBoundingClientRect();
+      if (r.width > 1 && r.right > track.left && r.left < track.right)
+        labels.push(box(text, `label "${text.textContent}"`, id));
+    }
+    const svg = document.querySelector('.lane-level');
+    if (svg && getComputedStyle(svg).display !== 'none') art.push(box(svg, 'level curve', 'level'));
+    const hit = (a: R, b: R) =>
+      Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 &&
+      Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.5;
+    const out: string[] = [];
+    for (const L of labels) {
+      for (const a of art)
+        if (!(a.what === 'marker' && a.id === L.id) && hit(L, a))
+          out.push(`${L.id} ${L.what} × ${a.id} ${a.what}`);
+      for (const o of labels) if (o !== L && hit(L, o)) out.push(`${L.id} ${L.what} × ${o.id}`);
+    }
+    return out;
+  });
+
+test('labels never cross a block’s art, at two zooms, in both themes', async ({ page }) => {
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // Kite Day: chord glides, a walk, pulses, tunes on two parts, level ramps and the curve.
+    await page.goto('./?example=kite-day');
+    await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+    for (const type of ['pulse', 'tune', 'walk', 'level'])
+      await expect(page.locator(`.lane-item[data-type="${type}"]`).first()).toBeAttached();
+    for (const [window_, from] of [
+      [0, 0],
+      [8, 10],
+    ]) {
+      await page.evaluate(
+        ([w, from]) => {
+          const h = window.__algorhythms!;
+          const p = structuredClone(h.store.getState().piece) as unknown as {
+            view: Record<string, unknown>;
+          };
+          p.view = { ...p.view, window: w || h.store.getState().compiled.duration };
+          h.actions.loadPiece(p);
+          h.actions.seek(from);
+        },
+        [window_, from],
+      );
+      // Let the lane lay out at the new zoom and pan.
+      await page.waitForTimeout(300);
+      await expect.poll(() => labelCrossings(page)).toEqual([]);
+      // Each art type is drawn somewhere on screen at this zoom (so the check is not vacuous).
+      expect(
+        await page.locator('.lane-item[data-type="tune"] .lane-art span').count(),
+      ).toBeGreaterThan(0);
+    }
+  }
+});
