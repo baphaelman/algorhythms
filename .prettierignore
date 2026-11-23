@@ -7,6 +7,8 @@ test-results/
 blob-report/
 node_modules/
 prototype/
+gallery/
+renders/
 pnpm-lock.yaml
 # Prose is written by hand (PLAN.md and CLAUDE.md belong to the integrator).
 **/*.md

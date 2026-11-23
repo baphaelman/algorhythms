@@ -31,6 +31,9 @@ Thumbs.db
 # Listening renders
 renders/
 
+# Art gallery (local only; push single files with `git add -f` when the owner asks)
+gallery/
+
 # Builder worktrees and alternate e2e build folders
 .claude/worktrees/
 dist-*/

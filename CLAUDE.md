@@ -30,6 +30,7 @@ The integrator continues the work with a fresh agent.
   - If `node --version` is not v22 (for example after something installs the `node` formula), run `brew link --force --overwrite node@22`. Or put it first on the PATH: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`.
 - **The Mac has 6 cores and several builders share it.** While iterating, run only the tests you need, with `--maxWorkers=2`, and run Playwright with `--workers=1`. Run the full `pnpm test` once at the end, also with `--maxWorkers=2`. Timing gates (rtf, compile perf, render budget) miss under load: report them, don't chase them. For e2e, run only the specs your change touches, with `pnpm e2e:quick <specs> --workers=1` (skips the `@perf` timing gates). Never run the whole e2e suite: the integrator runs it once per merge.
 - **Never play audio out loud on the owner's Mac.** Don't use the built-in browser pane (`mcp__Claude_Browser__*`) or a dev-server preview to listen. Judge sound from offline WAV renders analysed numerically. Use only headless Playwright, whose config mutes chromium and firefox.
+- **Gallery:** `gallery/` is local only (gitignored) and holds art made with the instrument: posters, videos, pieces and the offline renderer. Read `gallery/README.md` before adding to it. Never commit or push it unless the owner asks for specific files.
 - Playwright's browsers live in `~/Library/Caches/ms-playwright`. Reinstall them with `pnpm exec playwright install chromium firefox webkit`.
 - Commands, set up in M0:
   - `pnpm test` runs Vitest without the timing and GC gates;

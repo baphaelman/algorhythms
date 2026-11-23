@@ -8,6 +8,8 @@ import { parsePiece } from '../../core/schema';
 import type { CompiledScore, Piece } from '../../core/types';
 import { DEFAULT_FUTURE_OPACITY, drawScore, followStart, type ScoreStyle } from '../index';
 import { DARK_TOKENS, LIGHT_TOKENS, supportsOklch } from '../index';
+import { pitchAt } from '../../core/query';
+import { strandsOf } from '../strands';
 import {
   drawVideoFrame,
   videoMarkers,
@@ -53,6 +55,8 @@ interface BenchOptions {
   voices?: number;
   /** Read a pixel after each frame, so the GPU/raster work is included. */
   flush: boolean;
+  /** Playhead range [from, to] in s (default: the whole piece). */
+  range?: [number, number];
 }
 
 function bench(canvas: HTMLCanvasElement, json: unknown, o: BenchOptions) {
@@ -78,7 +82,8 @@ function bench(canvas: HTMLCanvasElement, json: unknown, o: BenchOptions) {
   const t0 = score.duration * 0.3;
   for (let i = 0; i < 10; i++) drawScore(g, score, cam(t0), style, t0, size, 1);
   for (let i = 0; i < o.frames; i++) {
-    const t = 1 + ((score.duration - 2) * i) / o.frames;
+    const [r0, r1] = o.range ?? [1, score.duration - 1];
+    const t = r0 + ((r1 - r0) * i) / o.frames;
     const w0 = performance.now();
     drawScore(g, score, cam(t), style, t, size, 1);
     if (o.flush) g.getImageData(0, 0, 1, 1);
@@ -119,6 +124,51 @@ function shot(canvas: HTMLCanvasElement, json: unknown, t: number, win: number, 
     1,
   );
   return score.duration;
+}
+
+/** The merges and splits of a piece: time, kind, strand count and the rope's pitch. */
+function bundles(json: unknown) {
+  const { score } = compileExample(json);
+  return strandsOf(score).bundles.map((b) => ({
+    t: b.t,
+    split: b.split,
+    n: b.members.length,
+    pitch: pitchAt(score.voices[b.anchor], b.t + (b.split ? -1e-6 : 1e-6)),
+  }));
+}
+
+interface FrameOptions {
+  t: number;
+  start: number;
+  window: number;
+  dark: boolean;
+  future: number;
+  dpr: number;
+  colors?: ScoreStyle['colors'];
+  pitchRange?: [number, number];
+  heads?: boolean;
+  highlight?: string[];
+}
+
+/** Draws one frame (seam.spec) at CSS size canvas.width/dpr × canvas.height/dpr; returns the view. */
+function seamFrame(canvas: HTMLCanvasElement, json: unknown, o: FrameOptions) {
+  const { score } = compileExample(json);
+  const g = canvas.getContext('2d');
+  if (!g) throw new Error('no 2d context');
+  const size = { width: canvas.width / o.dpr, height: canvas.height / o.dpr };
+  const cam = { start: o.start, window: o.window, pitchRange: o.pitchRange };
+  const style: ScoreStyle = {
+    tokens: o.dark ? DARK_TOKENS : LIGHT_TOKENS,
+    dark: o.dark,
+    colors: o.colors ?? 'pitch',
+    oklch: supportsOklch(),
+    futureOpacity: o.future,
+    hud: false,
+    heads: o.heads,
+    highlight: o.highlight ? new Set(o.highlight) : undefined,
+  };
+  const v = drawScore(g, score, cam, style, o.t, size, o.dpr);
+  return { ...v };
 }
 
 /**
@@ -266,6 +316,8 @@ function videoBench(json: unknown, o: VideoOptions, n: number) {
   bench,
   shot,
   frame,
+  seamFrame,
+  bundles,
   videoFrames,
   videoBench,
 };

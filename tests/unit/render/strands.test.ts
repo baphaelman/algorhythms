@@ -349,6 +349,21 @@ describe('outline', () => {
     expect(end.map((o) => o.slice(1))).toEqual(start.map((o) => o.slice(1)));
   });
 
+  it('pushes straight ends along the line by extStart / extEnd, round ones not', () => {
+    const r = rec();
+    outlinePath(r, x, y, nx, ny, h, 0, n - 1, false, false, 2, 3);
+    const pts = r.ops.filter((o) => o[0] !== 'Z');
+    expect(pts[0]).toEqual(['M', -2, 50.5]);
+    expect(pts[n - 1]).toEqual(['L', 103, 51.5]);
+    expect(pts[n]).toEqual(['L', 103, 48.5]);
+    expect(pts[2 * n - 1]).toEqual(['L', -2, 49.5]);
+    const c = rec();
+    outlinePath(c, x, y, nx, ny, h, 0, n - 1, true, true, 2, 3);
+    const p = rec();
+    outlinePath(p, x, y, nx, ny, h, 0, n - 1, true, true);
+    expect(c.ops).toEqual(p.ops);
+  });
+
   it('keeps the width through a bend', () => {
     const bx = F([0, 10, 10]);
     const by = F([0, 0, 10]);
@@ -402,18 +417,18 @@ describe('drawn merge and split', () => {
       const x = timeToX(view, t);
       for (const f of p.fills) for (const a of f.arcs) expect(Math.abs(a.x - x)).toBeGreaterThan(1);
     }
-    // The merged lines stop at the meeting point.
+    // The merged lines stop at the meeting point (reaching 2 device px past it under a clip).
     const xm = timeToX(view, 5);
     for (const f of p.fills.filter((q) => q.style === '#aa0001'))
       for (const [px] of f.pts)
-        expect(px <= xm + 0.01 || px >= timeToX(view, 12) - 0.01).toBe(true);
+        expect(px <= xm + 2.01 || px >= timeToX(view, 12) - 2.01).toBe(true);
     // At the meeting the union of the strands spans the rope.
     const yc = pitchToY(view, 60);
-    const near = p.fills.flatMap((f) => f.pts).filter(([px]) => Math.abs(px - xm) < 1e-6);
+    const near = p.fills.flatMap((f) => f.pts).filter(([px]) => Math.abs(px - xm) <= 2 + 1e-6);
     const top = Math.min(...near.map((q) => q[1]));
     const bottom = Math.max(...near.map((q) => q[1]));
-    expect(top).toBeCloseTo(yc - (ROPE * 1.5) / 2, 9);
-    expect(bottom).toBeCloseTo(yc + (ROPE * 1.5) / 2, 9);
+    expect(top).toBeCloseTo(yc - (ROPE * 1.5) / 2, 2);
+    expect(bottom).toBeCloseTo(yc + (ROPE * 1.5) / 2, 2);
   });
 });
 
@@ -468,7 +483,8 @@ describe('ghost strands do not stack', () => {
 
   it('composites the merge and the split once each, at the ghost opacity', () => {
     const { p, view } = draw(mergeSplit(), 0);
-    expect(p.clips).toEqual([['evenodd']]);
+    // The ghost's clip (seam and playhead cuts clip too, nonzero).
+    expect(p.clips.filter((c) => c[0] === 'evenodd')).toEqual([['evenodd']]);
     expect(p.images.map((im) => im.alpha)).toEqual([0.35, 0.35]);
     for (const t of [5, 12]) {
       const x = timeToX(view, t);
@@ -502,7 +518,7 @@ describe('ghost strands do not stack', () => {
     for (const [t, over] of cases) {
       const a = draw(mergeSplit(), t, over);
       expect(a.p.images).toHaveLength(0);
-      expect(a.p.clips).toHaveLength(0);
+      expect(a.p.clips.filter((c) => c[0] === 'evenodd')).toHaveLength(0);
       expect(layer).toBeNull();
       vi.unstubAllGlobals();
       const b = draw(mergeSplit(), t, over);

@@ -4,7 +4,7 @@
  *
  *   1. background          2. octave grid (A lines labelled in Hz), bar grid (editor)
  *   3. moment/section markers
- *   4. lines (past solid, future ghost; pulse hit marks)   5. heads (dots, motion rings, Hz labels)
+ *   4. lines (past solid, future ghost, cut at the playhead; pulse hit marks)   5. heads (dots, motion rings, Hz labels)
  *   6. playhead            7. HUD (chord, key, voices, time)
  *
  * The editor overlay (§11) is drawn by the app on top of this.
@@ -144,6 +144,8 @@ export function drawScore(
   F.hitW = HIT_WIDTH * scale;
 
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  DPR = dpr;
+  SEAM_LAP = 2 / dpr;
   g.globalAlpha = 1;
 
   // 1. background
@@ -333,6 +335,10 @@ let SU = new Float64Array(0);
 let SNX = new Float64Array(0);
 let SNY = new Float64Array(0);
 let SH = new Float64Array(0);
+// Slices of the outline: first and last point, alpha.
+let LJ0 = new Int32Array(0);
+let LJ1 = new Int32Array(0);
+let LA = new Float64Array(0);
 function grow(n: number): void {
   if (n <= ST.length) return;
   const m = Math.max(n, ST.length * 2, 256);
@@ -353,6 +359,9 @@ function grow(n: number): void {
   SNX = new Float64Array(m);
   SNY = new Float64Array(m);
   SH = new Float64Array(m);
+  LJ0 = new Int32Array(m);
+  LJ1 = new Int32Array(m);
+  LA = new Float64Array(m);
 }
 /**
  * Appends a centre-line point (time, pitch) and the alpha of the interval ending at it, which is
@@ -414,6 +423,10 @@ function traceWeighted(
   }
 }
 const EVENT_EPS = 1e-6;
+/** Device pixel ratio of the frame being drawn. */
+let DPR = 1;
+/** How far a piece reaches past a merge or split under the clip: two device px. */
+let SEAM_LAP = 2;
 
 function isEvent(events: readonly number[], t: Seconds): boolean {
   for (const e of events) if (Math.abs(e - t) <= EVENT_EPS) return true;
@@ -537,28 +550,109 @@ function tracePiece(
   const capEnd = !isEvent(events, p1);
   const minA = OPACITY_EPS * alpha;
   // Slices of near-equal alpha; SA[k] is the alpha of the interval ending at point k.
+  let ns = 0;
   let j0 = 0;
   let sum = 0;
   let cnt = 0;
   for (let j = 1; j < n; j++) {
     sum += SA[j];
     cnt++;
-    const last = j === n - 1;
-    if (!last && SR[j + 1] === SR[j0 + 1]) {
+    if (j < n - 1 && SR[j + 1] === SR[j0 + 1]) {
       const d = Math.abs(SA[j + 1] - SA[j0 + 1]);
       if (SR[j + 1] ? d <= ALPHA_STEP : d === 0) continue;
     }
-    const al = sum / cnt;
-    if (al >= minA) {
-      g.globalAlpha = al;
-      g.beginPath();
-      outlinePath(g, SX, SY, SNX, SNY, SH, j0, j, capStart && j0 === 0, capEnd && last);
-      g.fill();
-    }
+    LJ0[ns] = j0;
+    LJ1[ns] = j;
+    LA[ns] = sum / cnt;
+    ns++;
     j0 = j;
     sum = 0;
     cnt = 0;
   }
+  // The piece's box, widened by its half-width: seam clips reach no further than the shape.
+  let maxU = 0;
+  let bx0 = Infinity;
+  let bx1 = -Infinity;
+  let by0 = Infinity;
+  let by1 = -Infinity;
+  for (let k = 0; k < n; k++) {
+    if (SU[k] > maxU) maxU = SU[k];
+    if (SX[k] < bx0) bx0 = SX[k];
+    if (SX[k] > bx1) bx1 = SX[k];
+    if (SY[k] < by0) by0 = SY[k];
+    if (SY[k] > by1) by1 = SY[k];
+  }
+  const margin = maxU + 1;
+  by0 -= margin;
+  by1 += margin;
+  for (let i = 0; i < ns; i++) {
+    const al = LA[i];
+    if (al < minA) continue;
+    const a0 = LJ0[i];
+    const a1 = LJ1[i];
+    const first = a0 === 0;
+    const last = a1 === n - 1;
+    // A seam: this slice meets a drawn neighbour slice, or the next piece at a merge or split.
+    const seamL = first ? !capStart : LA[i - 1] >= minA;
+    const seamR = last ? !capEnd : LA[i + 1] >= minA;
+    g.globalAlpha = al;
+    if (!seamL && !seamR) {
+      g.beginPath();
+      outlinePath(g, SX, SY, SNX, SNY, SH, a0, a1, capStart && first, capEnd && last);
+      g.fill();
+      continue;
+    }
+    // Seams are cut along device-pixel columns, the shape reaching past them under a clip, so
+    // neighbours tile exactly: anti-aliased ends side by side would leave hairline gaps.
+    const xa = seamL ? snap(SX[a0]) : bx0 - margin;
+    const xb = seamR ? snap(SX[a1]) : bx1 + margin;
+    let k0 = a0;
+    if (seamL) while (k0 > 0 && SX[k0] > xa - margin) k0--;
+    let k1 = a1;
+    if (seamR) while (k1 < n - 1 && SX[k1] < xb + margin) k1++;
+    const e0 = seamL && k0 === 0 && !capStart ? SEAM_LAP : 0;
+    const e1 = seamR && k1 === n - 1 && !capEnd ? SEAM_LAP : 0;
+    g.save();
+    g.beginPath();
+    g.rect(xa, by0, xb - xa, by1 - by0);
+    g.clip();
+    g.beginPath();
+    outlinePath(
+      g,
+      SX,
+      SY,
+      SNX,
+      SNY,
+      SH,
+      k0,
+      k1,
+      capStart && k0 === 0,
+      capEnd && k1 === n - 1,
+      e0,
+      e1,
+    );
+    g.fill();
+    g.restore();
+  }
+}
+
+/**
+ * Saves `g` and, when x ∈ [x0, x1] leaves part of the view out, clips it to that (the view's
+ * height); the caller restores.
+ */
+function clipX(g: CanvasRenderingContext2D, view: View, x0: number, x1: number): void {
+  g.save();
+  const a = Math.max(x0, 0);
+  const b = Math.min(x1, view.width);
+  if (a <= 0 && b >= view.width) return;
+  g.beginPath();
+  g.rect(a, 0, Math.max(0, b - a), view.height);
+  g.clip();
+}
+
+/** x rounded to the device-pixel grid. */
+function snap(x: number): number {
+  return Math.round(x * DPR) / DPR;
 }
 
 /** First index i with xs[i] >= t. */
@@ -714,12 +808,25 @@ function drawLines(
       : null;
   const ghGradient = gh ? pitchGradient(gh.layer.g, style, view) : null;
   const futureA = style.futureOpacity * dim;
-  for (const v of voices) {
-    if (v.segments.length === 0) continue;
-    g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
-    if (past) traceWeighted(g, view, v, tL, Math.min(t, tR), LW, dim, maxStep, tolerance, sf);
-    if (future && !gh) {
-      const a = Math.max(t, tL);
+  // The past and the future are cut at the playhead on a device-pixel edge, so no cap or seam
+  // shows there: at the left edge of the canvas rule, or under the editor's DOM one (centred).
+  const xHead = style.playhead === false ? view.xHead : Math.round(view.xHead);
+  const xc = Math.round(xHead * dpr) / dpr;
+  if (past) {
+    clipX(g, view, -Infinity, xc);
+    for (const v of voices) {
+      if (v.segments.length === 0) continue;
+      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+      traceWeighted(g, view, v, tL, Math.min(t, tR), LW, dim, maxStep, tolerance, sf);
+    }
+    g.restore();
+  }
+  if (future) clipX(g, view, xc, Infinity);
+  if (future && !gh) {
+    const a = Math.max(t, tL);
+    for (const v of voices) {
+      if (v.segments.length === 0) continue;
+      g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       traceWeighted(g, view, v, a, tR, LW, futureA, maxStep, tolerance, sf);
     }
   }
@@ -743,21 +850,29 @@ function drawLines(
       reachOf(view, LW, maxStep, tolerance),
     );
   }
+  if (future) g.restore();
   if (hl) {
     // Selected segments on top, thicker; the future part stays visible even with no ghost.
     const hlA = Math.max(style.futureOpacity, 0.6);
     const hg = hlA < 1 ? gh : null;
+    clipX(g, view, -Infinity, xc);
     for (const v of voices) {
       if (v.segments.length === 0) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       forHighlighted(v, hl, tL, tR, (a, b) => {
-        if (a < t) {
-          traceWeighted(g, view, v, a, Math.min(t, b), HW, 1, maxStep, tolerance, sf);
-        }
-        if (b > t && !hg) {
-          traceWeighted(g, view, v, Math.max(t, a), b, HW, hlA, maxStep, tolerance, sf);
-        }
+        if (a < t) traceWeighted(g, view, v, a, Math.min(t, b), HW, 1, maxStep, tolerance, sf);
       });
+    }
+    g.restore();
+    clipX(g, view, xc, Infinity);
+    if (!hg) {
+      for (const v of voices) {
+        if (v.segments.length === 0) continue;
+        g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
+        forHighlighted(v, hl, tL, tR, (a, b) => {
+          if (b > t) traceWeighted(g, view, v, Math.max(t, a), b, HW, hlA, maxStep, tolerance, sf);
+        });
+      }
     }
     if (hg) {
       drawGhost(
@@ -779,6 +894,7 @@ function drawLines(
         reachOf(view, HW, maxStep, tolerance),
       );
     }
+    g.restore();
   }
   // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
   for (const v of style.pulseMarks === false ? NO_VOICES : voices) {
