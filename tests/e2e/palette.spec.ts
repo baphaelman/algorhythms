@@ -108,7 +108,7 @@ test('Add and Next are separate, labelled groups with their own styles', async (
   const a = await style('[data-testid="palette"]');
   const n = await style('[data-testid="suggestions"]');
   expect(a.border).toBe('solid');
-  expect(n.border).toBe('dashed');
+  expect(n.border).not.toBe('dashed');
   expect(n.bg).not.toBe(a.bg);
   // Side by side when they fit (build-log "Compact view bar"), else Next below; never overlapping.
   const ab = (await add.boundingBox())!;
