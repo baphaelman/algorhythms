@@ -57,6 +57,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 ## Decided by the integrator (veto if wrong)
 - **Video bitrate (2026-11-23, M11):** the Quality presets set a bitrate *cap*; browsers spend far less on these frames and more bits barely improve them, so M11 gates decoded quality (≥ 40 dB PSNR) instead of "≥ 70 % of the target bitrate".
 - **Video true peak (2026-11-23, M11):** a video's audio is limited to −1.5 dBTP (AAC) or −2 dBTP (Opus) so it stays ≤ −1 dBTP after decoding; the WAV keeps −1.
+- **Camera key window (2026-11-23, M11.5):** a key's window is the seconds shown in a 16:9 frame of the same height; other aspects (9:16, the editor's wide view) scale it like Follow does.
 - **Walk `over: 'chord'` (2026-11-23, M13 bug fix):** walks follow the union of sounding chords; a chord of two or more notes ends earlier chords on other parts too (a one-note chord only adds its note). The editor's Chords row still shows those as overlapping.
 - **Rows (M10b, 2026-11-22).** A chord block with Notes: 1 sounds the chord's root (the row model voiced the middle tone). The Texture button adds an Arpeggio by default; Wander, Pulse and Hold are one click away.
 - **Next offers only chord cards (M10a, 2026-11-22).** Its split, walk, thin, collapse and level suggestions go; note counts and textures return as chord-block and texture choices in M10b. Cards add seventh chords when four or more lines sound, triads otherwise.
