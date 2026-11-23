@@ -10,6 +10,7 @@ const PERF_TESTS = [
   'tests/dsp/rtf.test.ts',
   'tests/dsp/no-gc.test.ts',
   'tests/unit/core/compiler-perf.test.ts',
+  'tests/unit/render/auto-camera-perf.test.ts',
 ];
 
 /**
