@@ -65,7 +65,8 @@ function stateAt(score: CompiledScore, at: Seconds) {
 
 /**
  * A new moment of `type` at `at` with id `id`, given the piece and its compiled score. The glide
- * and target are left to the piece defaults ('all').
+ * and target are left to the piece defaults ('all'). `fits`: a chord's theory default takes the
+ * best chord it accepts (`chordDefaultAt`).
  */
 export function defaultMoment<T extends MomentType>(
   type: T,
@@ -73,6 +74,7 @@ export function defaultMoment<T extends MomentType>(
   id: MomentId,
   piece: Piece,
   score: CompiledScore,
+  fits?: (m: ChordMoment) => boolean,
 ): MomentOf<T> {
   // At or past the end (open-ended canvas) the defaults follow the state just before it: adding
   // there extends the piece, and the voices hold until then.
@@ -86,7 +88,7 @@ export function defaultMoment<T extends MomentType>(
   switch (type as MomentType) {
     case 'chord': {
       // The chord that best fits the spot, by the key's chord theory (§11.3 rev 14).
-      const fit = chordDefaultAt(piece, score, at);
+      const fit = chordDefaultAt(piece, score, at, fits && ((d) => fits({ ...d, ...base })));
       if (fit) {
         m = { ...fit.moment, ...base };
         break;

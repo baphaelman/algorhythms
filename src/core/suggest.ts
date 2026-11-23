@@ -45,6 +45,7 @@ import {
   spotRanks,
   symbolFor,
   theoryOf,
+  transition,
   type Job,
   type RankedChord,
   type Theory,
@@ -714,46 +715,71 @@ export interface ChordChoice {
  * The Add → Chord default at `t`: the chord that best links the harmony before `t` to the next
  * harmony entry after it (transition in × out, neither neighbour); the best next chord when
  * nothing follows; the tonic triad from silence. A seventh chord when four or more lines sound,
- * keeping their spread as Next's cards do (`chordRegister`; stacked lines stay merged). Null when the key at `t` has no chord theory (keep the old default). Past the score's end it
- * reads the state just before the end, like the editor's defaults.
+ * keeping their spread as Next's cards do (`chordRegister`; stacked lines stay merged). Null when
+ * the key at `t` has no chord theory (keep the old default). Past the score's end it reads the
+ * state just before the end, like the editor's defaults. `fits`: when given, the best-ranked
+ * chord it accepts (the editor: one that changes something), else the best.
  */
-export function chordDefaultAt(piece: Piece, score: CompiledScore, t: Seconds): ChordChoice | null {
+export function chordDefaultAt(
+  piece: Piece,
+  score: CompiledScore,
+  t: Seconds,
+  fits?: (m: ChordDraft) => boolean,
+): ChordChoice | null {
   const read = Math.min(t, Math.max(0, score.duration - 0.01));
   const st = readState(piece, score, read);
   const th = theoryOf(keyAt(score, t));
   if (!th) return null;
   const n = st.active.length;
-  let c: TheoryChord;
+  let ranked: TheoryChord[];
   if (n === 0) {
-    c = tonicOf(th);
+    ranked = [tonicOf(th)];
   } else {
     const { prev, next } = neighboursAt(score, th, t, undefined, true);
-    c =
-      next !== null
-        ? bestBetween(th, prev, next)
-        : chordOf(th, rankNext(th, progressionAt(score, t))[0].num)!;
+    if (next !== null) {
+      // As `bestBetween`, best first (ties: key order).
+      const w = (c: TheoryChord): number =>
+        (prev !== null ? transition(th, prev, c.num) : 1) * transition(th, c.num, next);
+      ranked = th.chords
+        .filter((c) => c.num !== prev && c.num !== next)
+        .map((c) => ({ c, w: w(c) }))
+        .sort((a, b) => b.w - a.w)
+        .map((x) => x.c);
+      if (ranked.length === 0) ranked = [bestBetween(th, prev, next)];
+    } else {
+      ranked = rankNext(th, progressionAt(score, t)).map((r) => chordOf(th, r.num)!);
+    }
   }
-  let moment = chordDraft(c, n === 0 ? 3 : n);
-  if (n > 0) {
-    const pcs = n >= 4 ? c.seventh : c.triad;
-    const draw = rand(
-      hash32(piece.seed >>> 0, 'suggest', Math.round(t * 1000)),
-      c.num,
-      0,
-      Purpose.Suggest,
-    );
-    // As the cards: too few lines get the chord's notes (the editor's chord fill), stacked ones stay merged.
-    const lines = Math.min(piece.voices.length, Math.max(n, pcs.length));
-    const register = chordRegister(c, pcs, lines, st, piece, draw);
-    const stacked = (st.stacked ?? st).active.length;
-    moment = {
-      ...moment,
-      ...(lines !== stacked ? { count: lines } : {}),
-      ...(register ? { register } : {}),
-    };
+  const choose = (c: TheoryChord): ChordChoice => {
+    let moment = chordDraft(c, n === 0 ? 3 : n);
+    if (n > 0) {
+      const pcs = n >= 4 ? c.seventh : c.triad;
+      const draw = rand(
+        hash32(piece.seed >>> 0, 'suggest', Math.round(t * 1000)),
+        c.num,
+        0,
+        Purpose.Suggest,
+      );
+      // As the cards: too few lines get the chord's notes (the editor's chord fill), stacked ones stay merged.
+      const lines = Math.min(piece.voices.length, Math.max(n, pcs.length));
+      const register = chordRegister(c, pcs, lines, st, piece, draw);
+      const stacked = (st.stacked ?? st).active.length;
+      moment = {
+        ...moment,
+        ...(lines !== stacked ? { count: lines } : {}),
+        ...(register ? { register } : {}),
+      };
+    }
+    const sym = moment.notes.kind === 'chord' ? moment.notes.symbol : c.num;
+    return { moment, job: c.job, name: letterName(sym, th.key) };
+  };
+  const best = choose(ranked[0]);
+  if (!fits || fits(best.moment)) return best;
+  for (const c of ranked.slice(1)) {
+    const x = choose(c);
+    if (fits(x.moment)) return x;
   }
-  const sym = moment.notes.kind === 'chord' ? moment.notes.symbol : c.num;
-  return { moment, job: c.job, name: letterName(sym, th.key) };
+  return best;
 }
 
 /** A From-the-key chip's fit for a selected chord's spot (`diatonicChords` order). */

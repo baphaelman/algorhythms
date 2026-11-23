@@ -51,13 +51,6 @@ function check(name: string, p: Piece, s: CompiledScore, t: number, noops: strin
   return su.length;
 }
 
-/**
- * Known failure (docs/m10-acceptance.md, gap 1): at 10.739 s little-round's lines sound C2–C5–E5
- * (a Reed tune); the V card passes `momentEffectAt` but compiles to `no-effect`. Listed so the
- * suite stays green and any change, either way, shows.
- */
-const KNOWN_NOOPS = ['little-round.algorhythms.json @ 10.739: C · Tension (V) (effect check true)'];
-
 describe('M10: Next never offers a no-op', () => {
   it('finds the compositions', () => expect(compositions.length).toBeGreaterThanOrEqual(10));
   for (const [name, p] of compositions) {
@@ -70,7 +63,7 @@ describe('M10: Next never offers a no-op', () => {
         total += check(name, p, s, t, noops);
       }
       expect(total).toBeGreaterThanOrEqual(8);
-      expect(noops).toEqual(KNOWN_NOOPS.filter((n) => n.startsWith(`${name} `)));
+      expect(noops).toEqual([]);
     });
   }
 
