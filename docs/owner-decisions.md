@@ -43,6 +43,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - 2026-11-21 (night): thickness for loudness is good in the editor (an option for video export later). Merging lines should bundle into the thick line, with no swell after arrival, and merges and splits crossfade their sound across the approach.
 - 2026-11-21 (later): M4.5 looks good (done); M2 sound is fine (done); no vetoes on the calls below. Generate doesn't warn before replacing a piece, but an edited, unnamed piece gets a popup offering to name it before the next piece opens (PLAN §11.4, being built). Roman numerals stay read against the major scale. No M3 release announcement.
 - 2026-11-21: pluck and organ's softer 12 ms attack is good; the arrival tick is gone; the piece's key becomes a fixed key moment at 0:00 that can be edited but not deleted or moved.
+- 2026-11-22: Sunday Lane ships in Compositions whole, although its link is about 2,530 characters, over the 2,000 limit; Share offers a file instead. The alternatives were dropping the second whistle, the pad and the colours, or cutting sections.
 
 ## Decided by the integrator (veto if wrong)
 - **Export look details (rev 13).** With nothing drawn ahead of the playhead, a following video puts the playhead 80 % across (35 % when the future shows), as an option ("Playhead at"). Posters default to no HUD (it would show end-of-piece values) but keep the title block. Still fixed, not options: type sizes and font, dot and ring sizes, the pitch-colour gradient.

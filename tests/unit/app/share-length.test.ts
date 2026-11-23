@@ -1,6 +1,7 @@
 /**
  * M5 acceptance (PLAN.md §15): every example piece's share link is ≤ 2,000 characters, measured
- * as the full URL on the live site.
+ * as the full URL on the live site. Exempt: compositions the owner chose to ship whole although
+ * their links are longer (Share offers a file instead).
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,17 +18,20 @@ const read = (dir: string): [string, string][] =>
     .sort()
     .map((f) => [f, readFileSync(join(dir, f), 'utf8')]);
 
+/** Owner, 2026-11-22: Sunday Lane ships whole (about 2,530 characters). */
+const LONG_OK = new Set(['examples/compositions/sunday-lane.algorhythms.json']);
+
 const pieces: [string, string][] = ['examples', 'examples/compositions'].flatMap((dir) =>
   read(join(ROOT, dir)).map(([f, t]): [string, string] => [`${dir}/${f}`, t]),
 );
 
 describe('share link length (M5)', () => {
   for (const [name, text] of pieces) {
-    it(`${name} fits in ${LONG_LINK_CHARS} characters and round-trips`, async () => {
+    it(`${name} ${LONG_OK.has(name) ? 'is exempt from the limit' : `fits in ${LONG_LINK_CHARS} characters`} and round-trips`, async () => {
       const r = parsePiece(text);
       if (!r.ok) throw new Error(r.errors.join('; '));
       const link = await encodeShareLink(r.piece, SITE);
-      expect(link.length).toBeLessThanOrEqual(LONG_LINK_CHARS);
+      if (!LONG_OK.has(name)) expect(link.length).toBeLessThanOrEqual(LONG_LINK_CHARS);
       const back = parsePiece(await decodeShareLink(link));
       expect(back.ok && back.piece).toEqual(r.piece);
     });

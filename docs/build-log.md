@@ -2589,3 +2589,10 @@ On 5e2d4cc (v63, CI run 45081888847 all green; WebKit retried `video-dialog:825`
 
 ## Moonwater composition (scripts; 2026-11-22)
 Ninth bundled composition: `scripts/compositions/moonwater.ts`, ported from the gallery piece; output identical to the gallery script's (meta aside: the default examples author and dates). E minor, 6/8 at 156 eighths a minute; flute lead, four-voice marimba arpeggio (one `together` pulse per voice, order 0 1 2 3 2 1), organ bass; intro, A, A′, B, A′, outro (40 bars, 1′32″). 69 moments, share link 1,370 characters. Dropped the gallery-only solo muting, `art()` wrapper and author override. Render golden: moonwater's hash added, others unchanged. e2e: Compositions count 8 → 9. `build.mjs` also reformats harbour-song, kite-day and night-ferry on this branch; those rewrites were not kept.
+
+## Sunday Lane composition (scripts; 2026-11-22)
+Tenth bundled composition: `scripts/compositions/sunday-lane.ts`, ported from the gallery piece; the music is identical to the gallery script's. The bundled version differs only in the meta (the default examples author) and in per-voice colours (`view.colors: 'custom'`), lightened so they read on both themes. G major, 100 bpm; four custom timbres (`whistle`, `guitar`, `upright`, `glock`); 84 moments.
+- **Deviation (owner, 2026-11-22):** its share link is 2,534 characters, over the M5 limit of 2,000. Lossless trims (timbre fields, labels, a default glide) only reached about 2,250. The owner chose to ship it whole rather than in a lighter or shorter version. `share-length.test.ts` exempts it by name (`LONG_OK`), and it still checks the round trip.
+- **Test change:** `compositions.test.ts` used to count every life that ended early as a lost melody. A tune rest (revision 10) also ends a life, and the comeback starts a new one. Now only a merge (`crossOut`) or a voice's last life ending early fails the check.
+- Render golden: sunday-lane added, the others unchanged. e2e: the Compositions count goes from 9 to 10.
+

@@ -60,10 +60,12 @@ describe('compositions', () => {
       );
       for (const [i, v] of score.voices.entries()) {
         if (!sung.has(r.piece.voices[i].part ?? '')) continue;
-        for (const life of v.lives) {
-          if (life.died !== undefined)
+        // A tune rest (revision 10) ends a life and the comeback starts the next; a merge
+        // (crossOut) or the last life ending early loses the melody.
+        v.lives.forEach((life, k) => {
+          if (life.died !== undefined && (life.crossOut || k === v.lives.length - 1))
             expect(life.died, `${f} ${v.id}`).toBeGreaterThanOrEqual(ending - 1);
-        }
+        });
       }
     });
   }
