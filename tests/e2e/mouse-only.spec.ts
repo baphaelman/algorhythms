@@ -214,7 +214,7 @@ test(
 
     // 6. Drag one of the second chord's dots up: it edits that chord, adds nothing.
     await clickLane(page, split.id);
-    const dot = page.getByTestId('arrival-dot').last();
+    const dot = page.getByTestId('chord-dot').last();
     await expect(dot).toBeVisible();
     const b = (await dot.boundingBox())!;
     const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };

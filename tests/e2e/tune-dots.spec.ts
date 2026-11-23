@@ -274,9 +274,7 @@ test('typed notes: beats with a tempo, errors inline, Enter or blur, undo, share
   expect(await tuneOf(fresh)).toEqual(m);
 });
 
-test('typed notes in seconds without a tempo; a merge edits as a chord block', async ({
-  page,
-}) => {
+test('typed notes in seconds without a tempo; a merge edits as a chord block', async ({ page }) => {
   await open(page, null);
   const field = page.getByTestId('tune-text');
   await expect(field).toHaveValue('C4 1, D4 1, E4 2');
