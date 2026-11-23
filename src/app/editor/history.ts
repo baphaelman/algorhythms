@@ -15,6 +15,7 @@ import { create } from 'zustand';
 import type { MomentId, Piece } from '../../core/types';
 import { onLoadPiece, setPiece, usePlayer } from '../store';
 import { followContent } from './end';
+import { refitTunes } from './melody-fit';
 import { PIECE_KEY_ID } from './piece-key';
 
 /** Maximum number of undo entries. */
@@ -81,11 +82,12 @@ function push(before: Piece, label: string, sel: MomentId[]): void {
  * Applies `recipe` to the current piece as one undo entry, then `setPiece`. Returns false (and
  * records nothing) when the recipe returns the piece unchanged. Ends an open gesture first. An
  * explicit end moves out past added or changed moments (`followContent`, open-ended canvas).
+ * Fitted tunes follow the edit's chords in the same entry (`refitTunes`, M10b-5).
  */
 export function edit(recipe: Recipe, label = 'Edit'): boolean {
   if (gesture) endGesture();
   const before = piece();
-  const after = followContent(before, recipe(before));
+  const after = refitTunes(before, followContent(before, recipe(before)));
   if (after === before) return false;
   push(before, label, selection());
   setPiece(after, { now: true });
@@ -105,7 +107,7 @@ export function lastEntry(): object | null {
 export function amend(entry: object | null, recipe: Recipe, label = 'Edit'): boolean {
   if (gesture || entry === null || past.at(-1) !== entry) return edit(recipe, label);
   const before = piece();
-  const after = followContent(before, recipe(before));
+  const after = refitTunes(before, followContent(before, recipe(before)));
   if (after === before) return false;
   edited = true;
   future = [];
@@ -140,7 +142,7 @@ export function updateGesture(recipe: Recipe): void {
     edit(recipe);
     return;
   }
-  const next = followContent(gesture.start, recipe(gesture.start));
+  const next = refitTunes(gesture.start, followContent(gesture.start, recipe(gesture.start)));
   if (next !== piece()) setPiece(next);
 }
 

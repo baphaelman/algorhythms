@@ -58,8 +58,9 @@
   color: var(--ink-2);
 }
 
-/* New: Empty | Compose for me, on one row of the menu. */
+/* New: Empty | Like the video | Compose for me, wrapping when the menu is narrow. */
 .menu-panel li.menu-new {
+  flex-wrap: wrap;
   display: flex;
   align-items: baseline;
   gap: 4px;

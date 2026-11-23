@@ -156,7 +156,8 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-type', 'tune');
   expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(10, 3);
-  // A random melody over two bars (8 s at 60 bpm in 4/4): a dash per note.
+  // A melody fitted to the chord there (M10b-5): to the end of its block, 1 to 8 bars; a dash
+  // per note.
   const meter = await page.evaluate(
     () =>
       (window.__algorhythms!.store.getState().piece as unknown as { view: { meter?: number } }).view
@@ -164,7 +165,7 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   );
   expect(await ghost.locator('.lane-art.lane-tune > span').count()).toBeGreaterThan(2);
   const { pps } = await axis(page);
-  expect((await ghost.locator('.lane-bar').boundingBox())!.width).toBeCloseTo(2 * meter * pps, -1);
+  const ghostWidth = (await ghost.locator('.lane-bar').boundingBox())!.width;
   await page.mouse.move(5, 5);
   await expect(ghost).toBeHidden();
 
@@ -173,7 +174,11 @@ test('palette: greyed with no sounding line; hover shows a tune ghost with its n
   const added = (await hook(page).moments()).find((m) => m.type === 'tune' && m.id !== 'tune1')!;
   expect(added.at).toBeCloseTo(10, 3);
   expect(added.notes!.length).toBeGreaterThan(2);
-  expect(added.notes!.reduce((a, n) => a + n.len, 0)).toBeCloseTo(2 * meter, 5);
+  const total = added.notes!.reduce((a, n) => a + n.len, 0);
+  expect(total).toBeGreaterThanOrEqual(meter - 1e-6);
+  expect(total).toBeLessThanOrEqual(8 * meter + 1e-6);
+  expect(ghostWidth).toBeCloseTo(total * pps, -1);
+  expect((added as { fit?: unknown }).fit).toBeDefined();
   for (const n of added.notes!) expect([0, 2, 4, 5, 7, 9, 11]).toContain(n.pitch % 12);
   await expect(inspector(page).getByRole('heading')).toContainText('Tune');
 });
@@ -277,7 +282,7 @@ test('inspector: notes in beats with a tempo; ▲/▼, lengths, add, remove, gli
   expect(await tuneOf(fresh)).toEqual(m);
 });
 
-test('Random melody: new notes as long as the tune, in key; one undo entry', async ({ page }) => {
+test('New melody: fitted notes as long as the tune, in key; one undo entry', async ({ page }) => {
   await open(page, 60);
   await hook(page).select(['tune1']);
   const insp = inspector(page);
@@ -293,7 +298,8 @@ test('Random melody: new notes as long as the tune, in key; one undo entry', asy
   for (const n of a) expect([0, 2, 4, 5, 7, 9, 11]).toContain(n.pitch % 12);
   // Beats at 60 bpm: 1/8, 1/4, dotted 1/4 or 1/2 (the last may be longer).
   for (const n of a.slice(0, -1)) expect([0.5, 1, 1.5, 2]).toContain(n.len);
-  expect(await hook(page).undoLabel()).toBe('Random melody');
+  expect(await hook(page).undoLabel()).toBe('New melody');
+  expect((await tuneOf(page)) as { fit?: unknown }).toHaveProperty('fit');
   await expect(insp.getByTestId('tune-note')).toHaveCount(a.length);
   await expect.poll(auditions).toBeGreaterThan(before);
   // Each press rolls again.
@@ -303,6 +309,25 @@ test('Random melody: new notes as long as the tune, in key; one undo entry', asy
   expect((await tuneOf(page)).notes).toEqual(a);
   await hook(page).undo();
   expect(await pitches(page)).toEqual([60, 62, 64]);
+});
+
+test('Fit to chords: on redraws the melody; a note edit turns it off', async ({ page }) => {
+  await open(page, 60);
+  await hook(page).select(['tune1']);
+  const insp = inspector(page);
+  const fit = insp.getByTestId('tune-fit');
+  await expect(fit).not.toBeChecked();
+  await fit.click();
+  await expect(fit).toBeChecked();
+  expect(await hook(page).undoLabel()).toBe('Fit to chords');
+  const a = (await tuneOf(page)).notes!;
+  expect(a.map((n) => n.pitch)).not.toEqual([60, 62, 64]);
+  await insp.getByTestId('tune-note').first().getByTestId('tune-note-up').click();
+  await expect(fit).not.toBeChecked();
+  expect((await tuneOf(page)).notes!.slice(1)).toEqual(a.slice(1));
+  await hook(page).undo();
+  await expect(fit).toBeChecked();
+  expect((await tuneOf(page)).notes).toEqual(a);
 });
 
 test('without a tempo, lengths are in seconds', async ({ page }) => {

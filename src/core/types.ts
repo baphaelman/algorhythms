@@ -570,6 +570,17 @@ export interface TuneMoment extends MomentBase {
    * effect at `at`. Absent: the pitches are absolute.
    */
   writtenIn?: PitchClass;
+  /**
+   * M10b-5: the notes are a melody fitted to the chords under the tune (core/melody.ts), drawn
+   * with `seed`. The editor redraws them when the chords or the key under the tune change, and
+   * drops `fit` when the notes are edited by hand. The compiler ignores it.
+   */
+  fit?: TuneFit;
+}
+
+/** A tune's fit to the chords (M10b-5). */
+export interface TuneFit {
+  seed: number;
 }
 
 /** One chord of a progression (revision 10): a chord symbol or Roman numeral, held `len` seconds. */
