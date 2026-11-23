@@ -1158,6 +1158,9 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - the "Like the video" template is six chord blocks and one Wander texture, with no split, merge or unison;
   - the palette has no note, pin, split, merge, unison, shift, spread, walk, pulse or progression button.
 
+**M11. Exports you can shape (next after M10; owner 2026-11-23)**
+- Poster and video exports become truly customisable, and the Export dialog's UI and interactions are fixed. The details are gathered from the owner before M11 starts.
+
 **Later, in no order:**
 - camera moments;
 - the Drift texture;
