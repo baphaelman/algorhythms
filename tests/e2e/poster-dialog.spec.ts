@@ -483,12 +483,55 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
     rows: 4,
   });
 
-  // The area cap: Width stops where width × height reaches Safari's canvas limit.
+  // Fixed ranges: the sliders never move each other; each number is its slider's value.
+  const wEl = page.getByTestId('export-pwidth');
+  const hEl = page.getByTestId('export-pheight');
+  const labelsMatch = async () => {
+    for (const el of [wEl, hEl]) {
+      await expect(el).toHaveAttribute('max', '8000');
+      await expect(el).toHaveAttribute('min', '1000');
+    }
+    const [w, h] = [await wEl.inputValue(), await hEl.inputValue()];
+    await expect(page.getByTestId('export-pwidth-value')).toHaveText(`${w} px`);
+    await expect(page.getByTestId('export-pheight-value')).toHaveText(`${h} px`);
+  };
   await expect(page.getByTestId('export-pcap')).toHaveCount(0);
   await setRange(page, 'export-pheight', 4000);
-  await expect(page.getByTestId('export-pwidth')).toHaveAttribute('max', '4194');
-  await setRange(page, 'export-pwidth', 4194);
+  await labelsMatch();
+  const thumbX = () =>
+    hEl.evaluate((el) => {
+      const i = el as HTMLInputElement;
+      return (Number(i.value) - Number(i.min)) / (Number(i.max) - Number(i.min));
+    });
+  const hThumb = await thumbX();
+
+  // Drag Width to the far right with the pointer: it stops at the cap; Height stays put.
+  const box = (await wEl.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.3, y);
+  await page.mouse.down();
+  for (const f of [0.5, 0.7, 0.9, 1.05]) {
+    await page.mouse.move(box.x + box.width * f, y, { steps: 4 });
+    await expect(hEl).toHaveValue('4000');
+    await labelsMatch();
+  }
+  await page.mouse.up();
+  await expect(wEl).toHaveValue('4194'); // 16,777,216 / 4000, floored
+  await expect(page.getByTestId('export-pwidth-value')).toHaveText('4194 px');
+  expect(await thumbX()).toBe(hThumb);
   await expect(page.getByTestId('export-pcap')).toContainText('16.8 million pixels');
+
+  // Keyboard: a step past the cap stays at the cap; a step back is free, and the number follows.
+  await wEl.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(wEl).toHaveValue('4194');
+  await page.keyboard.press('ArrowLeft');
+  await expect(wEl).toHaveValue('4193');
+  await expect(hEl).toHaveValue('4000');
+  await labelsMatch();
+  await page.keyboard.press('End');
+  await expect(wEl).toHaveValue('4194');
+  await labelsMatch();
 
   // A quick pick sets both sliders.
   await choose(page, 'export-psize', '1:1');
@@ -505,6 +548,7 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
   await pickPoster(page);
   await expect(page.getByTestId('export-prows')).toHaveValue('4');
   await expect(dialog(page).getByLabel('1:1', { exact: true })).toBeChecked();
+  await labelsMatch();
 });
 
 test('the expanded HUD never covers the Export button (desktop and phone)', async ({ page }) => {

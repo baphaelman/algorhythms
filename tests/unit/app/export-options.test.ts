@@ -37,7 +37,9 @@ import {
   videoOptions,
   voiceNames,
   wavOptions,
+  windowSnaps,
   windowText,
+  WINDOW_SNAP,
   type ExportForm,
 } from '../../../src/app/export-options';
 import { videoCamera, videoWindow } from '../../../src/render/video';
@@ -358,6 +360,23 @@ describe('look', () => {
     expect(windowText(12.6)).toBe('13 s');
   });
 
+  it('Window slider snaps to the editor-zoom tick when moved close', () => {
+    const t = 0.4;
+    expect(WINDOW_SNAP).toBe(0.03);
+    // Pointer: by distance.
+    expect(windowSnaps(0.4, t)).toBe(true);
+    expect(windowSnaps(0.42, t)).toBe(true);
+    expect(windowSnaps(0.38, t)).toBe(true);
+    expect(windowSnaps(0.45, t)).toBe(false);
+    expect(windowSnaps(0.35, t)).toBe(false);
+    // Keyboard: only toward the tick, so a step can leave it.
+    expect(windowSnaps(0.4, t, 0.401)).toBe(true);
+    expect(windowSnaps(0.401, t, 0.4)).toBe(false);
+    expect(windowSnaps(0.42, t, 0.41)).toBe(false);
+    expect(windowSnaps(0.41, t, 0.42)).toBe(true);
+    expect(windowSnaps(0.45, t, 0.46)).toBe(false);
+  });
+
   it('Window reaches the camera: a frame shows the chosen seconds at every aspect', () => {
     const p = piece('x');
     const compiled = { duration: 60 } as Parameters<typeof videoCamera>[1];
@@ -469,6 +488,25 @@ describe('poster', () => {
     expect(posterCapped(7000, 2160)).toBe(false);
     expect(posterCapped(8000, 1000)).toBe(false); // the side limit, not the area
     for (const s of POSTER_SIZES) expect(posterCapped(s.width, s.height)).toBe(false);
+  });
+
+  it('a dragged side stops at the cap; the other side never moves', () => {
+    // As the Width slider does (fixed 1,000–8,000 range): Height kept, Width gives way.
+    for (const [v, h] of [
+      [8000, 4000],
+      [6000, 2160],
+      [3000, 8000],
+      [1000, 8000],
+    ]) {
+      const d = clampPosterDims(v, h, 'height');
+      expect(d.height).toBe(h);
+      expect(d.width).toBe(Math.min(v, posterSideMax(h)));
+      expect(d.width * d.height).toBeLessThanOrEqual(POSTER_MAX_AREA);
+    }
+    expect(clampPosterDims(8000, 4000, 'height')).toEqual({ width: 4194, height: 4000 });
+    expect(posterCapped(4194, 4000)).toBe(true);
+    // The smallest side always fits next to the largest.
+    expect(posterSideMax(POSTER_MAX_SIDE)).toBeGreaterThanOrEqual(POSTER_MIN_SIDE);
   });
 
   it('rows: whole, 1..8', () => {

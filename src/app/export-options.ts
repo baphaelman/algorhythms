@@ -201,7 +201,7 @@ export const POSTER_MAX_AREA = 16_777_216;
 /** Rows slider range (as the renderer's POSTER_MAX_ROWS). */
 export const POSTER_MAX_ROWS = 8;
 
-/** Largest side allowed next to a side `other` px long: the slider's max. */
+/** Largest side allowed next to a side `other` px long: where a dragged slider stops. */
 export function posterSideMax(other: number): number {
   return Math.min(POSTER_MAX_SIDE, Math.floor(POSTER_MAX_AREA / Math.max(1, other)));
 }
@@ -459,6 +459,21 @@ export function sliderToFollowWindow(x: number, duration: Seconds): Seconds {
   const [lo, hi] = followWindowRange(duration);
   const k = Math.min(1, Math.max(0, x));
   return Math.exp(Math.log(lo) + (Math.log(hi) - Math.log(lo)) * k);
+}
+
+/** How close (fraction of the track) the Window slider snaps to the editor's zoom tick. */
+export const WINDOW_SNAP = 0.03;
+
+/**
+ * Whether the Window slider at `x` lands on the editor's zoom tick at `tick` (0..1 positions):
+ * within WINDOW_SNAP. With `from` (a keyboard step from that position) it snaps only moving
+ * toward the tick, so a step can leave it. A pointer drag passes no `from`: the browser keeps
+ * its own drag position, so it snaps by distance alone.
+ */
+export function windowSnaps(x: number, tick: number, from?: number): boolean {
+  const d = Math.abs(x - tick);
+  if (d < 5e-4) return true; // the same slider step (1/1000)
+  return d <= WINDOW_SNAP && (from === undefined || d < Math.abs(from - tick));
 }
 
 /** "12 s", "4.5 s" (under 10 s, one decimal). */
