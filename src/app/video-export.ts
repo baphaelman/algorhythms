@@ -17,7 +17,7 @@ import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
 import { spanFrames, type ExportLoudness, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
-import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
+import type { CameraKey, CompiledScore, LineColors, Piece, Seconds } from '../core/types';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
@@ -59,6 +59,11 @@ export interface VideoOptions {
   window?: Seconds;
   /** Follow: the playhead's place across the frame, 0..1. @default 0.35 */
   followAt?: number;
+  /**
+   * `keys`/`auto`: the camera keys (M11.5). @default the piece's (`piece.camera.keys`); none =
+   * Follow.
+   */
+  keys?: readonly CameraKey[];
   theme: 'light' | 'dark';
   hud: boolean;
   thickness: boolean;
@@ -559,6 +564,10 @@ export function frameOptions(
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
   if (opts.section) o.section = opts.section;
+  if (opts.camera === 'keys' || opts.camera === 'auto') {
+    const keys = opts.keys ?? piece.camera?.keys;
+    if (keys && keys.length > 0) o.keys = keys;
+  }
   if (bookendsOn(opts.bookends)) {
     const tl = videoTimeline(compiled ?? compile(piece), piece.mix, opts);
     if (tl.bookends) o.bookends = tl.bookends;

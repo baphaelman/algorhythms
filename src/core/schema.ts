@@ -677,6 +677,35 @@ export const ViewSchema = z.looseObject({
     .describe('Loop region [start, end) (s).'),
 });
 
+/** A camera key (M11.5). */
+export const CameraKeySchema = z.looseObject({
+  at: seconds,
+  window: z.number().positive().describe('Seconds the view shows.'),
+  place: unitInterval.describe("The playhead's place across the view."),
+  pitch: pitch.describe("Pitch at the view's vertical centre."),
+  range: z.number().positive().describe('Semitones shown top to bottom.'),
+  ease: EaseSchema.optional().describe("Ease to the next key; absent = 'smootherstep'."),
+});
+
+/** `Piece.camera` (M11.5); keys sorted by `at`. */
+export const CameraSchema = z
+  .looseObject({
+    mode: z.enum(['follow', 'auto', 'keys']),
+    keys: z.array(CameraKeySchema).optional(),
+  })
+  .superRefine((c, ctx) => {
+    const keys = c.keys ?? [];
+    for (let i = 1; i < keys.length; i++) {
+      if (keys[i].at < keys[i - 1].at) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['keys', i, 'at'],
+          message: 'Camera keys must be in time order.',
+        });
+      }
+    }
+  });
+
 // ---------------------------------------------------------------------------------------------
 // Piece
 // ---------------------------------------------------------------------------------------------
@@ -803,6 +832,7 @@ export const PieceSchema = z
       .looseObject({ at: seconds.optional(), fade: nonNegative.default(DEFAULT_END_FADE) })
       .prefault({}),
     view: ViewSchema.prefault({}),
+    camera: CameraSchema.optional().describe('The video camera (M11.5); absent = Follow.'),
   })
   .superRefine(checkPiece);
 

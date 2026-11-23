@@ -176,6 +176,20 @@ export const VIDEO_CAMERAS: readonly { id: VideoCameraMode; label: string; hint:
   },
 ];
 
+/** The Camera choice shown when the piece has camera keys (M11.5; C3 builds the full UI). */
+export const VIDEO_CAMERA_KEYS: { id: VideoCameraMode; label: string; hint: string } = {
+  id: 'keys',
+  label: 'Keys',
+  hint: "The piece's camera keys, eased between them.",
+};
+
+/** The Camera choices for a piece: Follow, Whole piece, and Keys when it has keys. */
+export function videoCameras(
+  piece: Pick<Piece, 'camera'>,
+): readonly { id: VideoCameraMode; label: string; hint: string }[] {
+  return piece.camera?.keys?.length ? [...VIDEO_CAMERAS, VIDEO_CAMERA_KEYS] : VIDEO_CAMERAS;
+}
+
 export const VIDEO_THEMES: readonly { id: ExportVideoTheme; label: string }[] = [
   { id: 'current', label: 'Current' },
   { id: 'light', label: 'Light' },
@@ -800,7 +814,8 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
     customColors: piece.voices.map((v) => v.color),
     look,
   };
-  if (form.videoCamera === 'follow') {
+  // Keys without keys in the piece fall back to Follow, so they take Follow's window too.
+  if (form.videoCamera !== 'whole') {
     // The renderer takes the window as seen at 16:9; the form's is what this aspect shows.
     o.window =
       form.videoWindow === null

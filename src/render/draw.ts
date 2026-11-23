@@ -279,7 +279,8 @@ function drawBars(
     g.strokeStyle = color ?? (pass === 0 ? C.rule : C.ink2);
     g.globalAlpha = pass === 0 ? 0.6 : 0.3;
     g.beginPath();
-    for (let k = Math.ceil(tL / step - 1e-9); k * step <= tR + 1e-9; k++) {
+    // None before 0: a camera that starts early shows blank paper there.
+    for (let k = Math.max(0, Math.ceil(tL / step - 1e-9)); k * step <= tR + 1e-9; k++) {
       const t = k * step;
       // Beats under a bar line are left to the bar pass.
       if (pass === 0 && Math.abs(t / bar - Math.round(t / bar)) < 1e-6) continue;

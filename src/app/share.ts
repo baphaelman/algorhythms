@@ -7,7 +7,8 @@
  *   built-in timbres written as `1`, moment ids that just count up from the previous one omitted,
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
  *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
- *   `[notes, len, …]` lists (revision 10); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
+ *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
+ *   `[at, window, place, pitch, range, …]` lists (M11.5); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
@@ -172,6 +173,18 @@ function plainChord(c: unknown): c is { notes: string; len: number } {
   );
 }
 
+/** The fields of a camera key, in its flat `[at, window, place, pitch, range]` packing. */
+const KEY_FIELDS = ['at', 'window', 'place', 'pitch', 'range'] as const;
+
+/** A camera key that packs flat: exactly the five numbers (no ease). */
+function plainKey(k: unknown): k is Record<(typeof KEY_FIELDS)[number], number> {
+  return (
+    isRec(k) &&
+    Object.keys(k).length === KEY_FIELDS.length &&
+    KEY_FIELDS.every((f) => typeof k[f] === 'number')
+  );
+}
+
 /** The v2 form of a piece (JSON data), or null when it can't express this piece exactly. */
 export function packPiece(piece: Piece): Rec | null {
   const out = stripDefaults(piece);
@@ -220,6 +233,12 @@ export function packPiece(piece: Piece): Rec | null {
       moments.push(m);
     }
     out.moments = moments;
+  }
+  if (isRec(out.camera) && Array.isArray(out.camera.keys) && out.camera.keys.every(plainKey)) {
+    out.camera = {
+      ...out.camera,
+      keys: out.camera.keys.flatMap((k) => KEY_FIELDS.map((f) => k[f])),
+    };
   }
   return out;
 }
@@ -282,6 +301,22 @@ export function unpackPiece(packed: unknown): unknown {
       if (typeof m.id === 'string') prevId = m.id;
       return m;
     });
+  }
+  const cam = out.camera;
+  if (
+    isRec(cam) &&
+    Array.isArray(cam.keys) &&
+    cam.keys.length % KEY_FIELDS.length === 0 &&
+    cam.keys.every((x) => typeof x === 'number')
+  ) {
+    const flat = cam.keys as number[];
+    const keys: Rec[] = [];
+    for (let i = 0; i < flat.length; i += KEY_FIELDS.length) {
+      const k: Rec = {};
+      KEY_FIELDS.forEach((f, j) => (k[f] = flat[i + j]));
+      keys.push(k);
+    }
+    out.camera = { ...cam, keys };
   }
   return out;
 }
