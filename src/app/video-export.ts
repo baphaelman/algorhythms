@@ -55,6 +55,8 @@ export interface VideoOptions {
   theme: 'light' | 'dark';
   hud: boolean;
   thickness: boolean;
+  /** Target bitrate (§12 "Ready for YouTube"). @default 'high' (YouTube's upload rates) */
+  quality?: VideoQuality;
   /** @default 'pitch' */
   colors?: LineColors;
   /** Voice colours by pool index, for `colors: 'custom'`. */
@@ -105,7 +107,8 @@ export interface VideoSink extends Mp4Sink {
 export type VideoPhase = 'audio' | 'video' | 'finishing';
 
 export interface VideoHooks {
-  onProgress?(fraction: number, phase: VideoPhase): void;
+  /** `eta`: estimated seconds left, once the frame rate is known (`videoEta`). */
+  onProgress?(fraction: number, phase: VideoPhase, eta?: number): void;
   signal?: AbortSignal;
   /** Tests: draw on the main thread even where a worker could. */
   mainThread?: boolean;
@@ -113,27 +116,61 @@ export interface VideoHooks {
   primingSamples?: number;
   /** Tests: force a codec (must be supported) instead of the first supported one. */
   codecs?: { video?: string; audio?: string };
+  /** Tests: fields laid over the video encoder's config. */
+  config?: Partial<VideoEncoderConfig>;
+  /** Tests: the clock (ms) for the time-left estimate. @default performance.now */
+  now?: () => number;
 }
 
+/**
+ * `aac`: whether this browser can encode AAC-LC (`audio` is Opus when it can't; the dialog says
+ * so in one line).
+ */
 export type VideoSupport =
-  { ok: true; video: string; audio: string } | { ok: false; reason: string };
+  { ok: true; video: string; audio: string; aac: boolean } | { ok: false; reason: string };
 
 /** The audio's sample rate (AAC and Opus both at 48 kHz). */
 export const VIDEO_SAMPLE_RATE = 48000;
 export const AUDIO_BITRATE = 192_000;
-const KEY_SECONDS = 2;
+/**
+ * A key frame every half second: YouTube's upload recommendation ("closed GOP, half the frame
+ * rate"). It also lifts the delivered bitrate 10–27 % (build log "M11 Y3"): no encoder here
+ * spends the target on line art, whatever its rate-control mode.
+ */
+const KEY_SECONDS = 0.5;
 
-/** About 8 Mb/s at 1080p30, scaled by pixels, ×1.5 at 60 fps. */
-export function videoBitrate(opts: Pick<VideoOptions, 'aspect' | 'size' | 'fps'>): number {
+export type VideoQuality = 'standard' | 'high' | 'max';
+
+/** Target bitrate × High's, per quality. */
+export const QUALITY_SCALE: Record<VideoQuality, number> = { standard: 0.6, high: 1, max: 1.5 };
+
+/**
+ * High's bitrate (b/s) for a 16:9 frame of each size class at [30, 60] fps: YouTube's recommended
+ * upload rates (SDR); 720p is 1080p's scaled by pixels, as before M11.
+ */
+export const HIGH_BITRATES: Record<VideoSize, readonly [number, number]> = {
+  '720': [(8e6 * 4) / 9, (12e6 * 4) / 9],
+  '1080': [8e6, 12e6],
+  '1440': [16e6, 24e6],
+  '2160': [45e6, 68e6],
+};
+
+type BitrateOpts = Pick<VideoOptions, 'aspect' | 'size' | 'fps' | 'quality'>;
+
+/**
+ * The target video bitrate: High's rate for the size class and fps, scaled by the frame's pixels
+ * against the class's 16:9 frame (9:16 the same, 1:1 9/16 of it), × the quality's scale.
+ */
+export function videoBitrate(opts: BitrateOpts): number {
   const { width, height } = videoSize(opts.aspect, opts.size);
-  return Math.round(((8e6 * width * height) / (1920 * 1080)) * (opts.fps === 60 ? 1.5 : 1));
+  const wide = videoSize('16:9', opts.size);
+  const high = HIGH_BITRATES[opts.size][opts.fps === 60 ? 1 : 0];
+  const scale = QUALITY_SCALE[opts.quality ?? 'high'];
+  return Math.round((high * width * height * scale) / (wide.width * wide.height));
 }
 
 /** Upper estimate of the file size (the encoders' bitrates plus ~2 % container). */
-export function estimateVideoBytes(
-  durationSeconds: number,
-  opts: Pick<VideoOptions, 'aspect' | 'size' | 'fps'>,
-): number {
+export function estimateVideoBytes(durationSeconds: number, opts: BitrateOpts): number {
   const bits = (videoBitrate(opts) + AUDIO_BITRATE) * Math.max(0, durationSeconds);
   return Math.ceil((bits / 8) * 1.02 + 4096);
 }
@@ -146,6 +183,7 @@ const AVC_LEVELS: [number, number, number][] = [
   [0x2a, 8704, 522240],
   [0x32, 22080, 589824],
   [0x33, 36864, 983040],
+  [0x34, 36864, 2073600],
 ];
 // VP9 levels: [level ×10, max picture size, max luma sample rate].
 const VP9_LEVELS: [number, number, number][] = [
@@ -154,6 +192,7 @@ const VP9_LEVELS: [number, number, number][] = [
   [41, 2228224, 160432128],
   [50, 8912896, 311951360],
   [51, 8912896, 588251136],
+  [52, 8912896, 1176502272],
 ];
 
 const hex2 = (n: number) => n.toString(16).padStart(2, '0');
@@ -161,9 +200,13 @@ const hex2 = (n: number) => n.toString(16).padStart(2, '0');
 /** Candidate codec strings, best first: H.264 High, Main, Baseline at the fitting level; VP9. */
 export function videoCodecs(width: number, height: number, fps: number): string[] {
   const mbs = Math.ceil(width / 16) * Math.ceil(height / 16);
-  const avc = AVC_LEVELS.find(([, fs, rate]) => mbs <= fs && mbs * fps <= rate) ?? AVC_LEVELS[5];
+  const avc =
+    AVC_LEVELS.find(([, fs, rate]) => mbs <= fs && mbs * fps <= rate) ??
+    AVC_LEVELS[AVC_LEVELS.length - 1];
   const luma = width * height;
-  const vp9 = VP9_LEVELS.find(([, ps, rate]) => luma <= ps && luma * fps <= rate) ?? VP9_LEVELS[4];
+  const vp9 =
+    VP9_LEVELS.find(([, ps, rate]) => luma <= ps && luma * fps <= rate) ??
+    VP9_LEVELS[VP9_LEVELS.length - 1];
   const lv = hex2(avc[0]);
   return [`avc1.6400${lv}`, `avc1.4d00${lv}`, `avc1.4200${lv}`, `vp09.00.${vp9[0]}.08`];
 }
@@ -190,6 +233,25 @@ function audioConfig(codec: string): AudioEncoderConfig {
   };
 }
 
+/** Every size class, small to large (the dialog offers those `videoSizes` accepts). */
+export const VIDEO_SIZE_CLASSES: readonly VideoSize[] = ['720', '1080', '1440', '2160'];
+
+/**
+ * The size classes this browser can encode at this aspect and fps (`videoSupport` ok: H.264 at
+ * its level, else VP9), small to large.
+ */
+export async function videoSizes(
+  opts: Pick<VideoOptions, 'aspect' | 'fps' | 'quality'>,
+): Promise<VideoSize[]> {
+  const ok = await Promise.all(
+    VIDEO_SIZE_CLASSES.map(async (size) => (await videoSupport({ ...opts, size })).ok),
+  );
+  return VIDEO_SIZE_CLASSES.filter((_, i) => ok[i]);
+}
+
+/** Audio codecs, best first: AAC-LC (plays everywhere), then Opus. */
+export const AUDIO_CODECS = ['mp4a.40.2', 'opus'] as const;
+
 async function supported(
   check: () => Promise<{ supported?: boolean }> | undefined,
 ): Promise<boolean> {
@@ -201,9 +263,7 @@ async function supported(
 }
 
 /** The codecs this browser would use, or why it can't export video. */
-export async function videoSupport(
-  opts: Pick<VideoOptions, 'aspect' | 'size' | 'fps'>,
-): Promise<VideoSupport> {
+export async function videoSupport(opts: BitrateOpts): Promise<VideoSupport> {
   if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
     return {
       ok: false,
@@ -237,7 +297,7 @@ export async function videoSupport(
     };
   }
   let audio: string | null = null;
-  for (const codec of ['mp4a.40.2', 'opus']) {
+  for (const codec of AUDIO_CODECS) {
     if (await supported(() => AudioEncoder.isConfigSupported(audioConfig(codec)))) {
       audio = codec;
       break;
@@ -249,7 +309,7 @@ export async function videoSupport(
       reason: 'This browser can’t encode AAC or Opus audio, so it can’t make videos.',
     };
   }
-  return { ok: true, video, audio };
+  return { ok: true, video, audio, aac: audio === AUDIO_CODECS[0] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -531,6 +591,32 @@ export interface VideoResult {
   /** Where the frames were drawn. */
   thread: 'worker' | 'main';
   primingSamples: number;
+  /** The encoded video's bytes (the chunks'), and its average bitrate (b/s) over `frames`. */
+  videoBytes: number;
+  videoBitrate: number;
+  /** The target bitrate the encoder was given (b/s). */
+  targetBitrate: number;
+}
+
+/**
+ * Seconds left of an export that has drawn and encoded `done` of `total` frames in `elapsed`
+ * seconds, at its average rate so far; undefined until there is a rate worth quoting (1 s and
+ * 10 frames). Frames are most of the work; the audio renders alongside them.
+ */
+export function videoEta(done: number, total: number, elapsed: number): number | undefined {
+  if (elapsed < 1 || done < 10 || done > total) return undefined;
+  return ((total - done) * elapsed) / done;
+}
+
+/** "About 3 min left" / "About 40 s left" / "A few seconds left" for an ETA in seconds. */
+export function etaText(seconds: number): string {
+  if (seconds < 10) return 'A few seconds left';
+  if (seconds < 60) return `About ${Math.round(seconds / 10) * 10} s left`;
+  const min = Math.round(seconds / 60);
+  if (min < 60) return `About ${min} min left`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `About ${h} h${m ? ` ${m} min` : ''} left`;
 }
 
 /** Yields to the event loop (main-thread fallback: keeps the page responsive). */
@@ -596,8 +682,15 @@ export async function exportVideo(
 
   let audioFrac = 0;
   let videoDone = 0;
+  let videoBytes = 0;
+  const now = hooks.now ?? (() => performance.now());
+  const started = now();
   const report = (phase: VideoPhase) =>
-    hooks.onProgress?.(Math.min(1, 0.1 * audioFrac + (0.88 * videoDone) / frames), phase);
+    hooks.onProgress?.(
+      Math.min(1, 0.1 * audioFrac + (0.88 * videoDone) / frames),
+      phase,
+      videoEta(videoDone, frames, (now() - started) / 1000),
+    );
 
   // Audio: the mix render, encoded as it arrives.
   const audioTask = async () => {
@@ -642,15 +735,18 @@ export async function exportVideo(
     frame: frameOptions(piece, opts),
     fps: opts.fps,
     frames,
-    config: videoConfig(videoCodec, opts),
-    keyEvery: KEY_SECONDS * opts.fps,
+    config: { ...videoConfig(videoCodec, opts), ...hooks.config },
+    keyEvery: Math.round(KEY_SECONDS * opts.fps),
   };
   let thread: 'worker' | 'main' = 'worker';
 
   const mainFrames = () => {
     thread = 'main';
     return encodeFrames(job, {
-      output: (chunk, meta) => void muxed(muxer.addVideoChunk(chunk, meta)),
+      output: (chunk, meta) => {
+        videoBytes += chunk.data.byteLength;
+        void muxed(muxer.addVideoChunk(chunk, meta));
+      },
       before: (k) => (k % 2 === 0 ? yieldTask() : undefined),
       progress: (done) => {
         videoDone = done;
@@ -682,6 +778,7 @@ export async function exportVideo(
             break;
           case 'chunk':
             received = true;
+            videoBytes += msg.chunk.data.byteLength;
             void muxed(
               muxer.addVideoChunk(msg.chunk, msg.meta).then(() => {
                 count++;
@@ -730,6 +827,9 @@ export async function exportVideo(
       duration,
       thread,
       primingSamples: priming,
+      videoBytes,
+      videoBitrate: Math.round((videoBytes * 8 * opts.fps) / frames),
+      targetBitrate: job.config.bitrate ?? videoBitrate(opts),
     };
   } catch (e) {
     stop.abort();

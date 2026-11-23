@@ -12,6 +12,7 @@ import {
   POSTER_SIZES,
   clampPosterDims,
   clampRows,
+  aacNote,
   codecLabel,
   exportFileName,
   fileBase,
@@ -171,6 +172,7 @@ describe('video', () => {
       videoAspect: '16:9',
       videoSize: '1080',
       videoFps: 30,
+      videoQuality: 'high',
       videoCamera: 'follow',
       videoFollowAt: null,
       videoHud: DEFAULT_HUD,
@@ -180,6 +182,7 @@ describe('video', () => {
       aspect: '16:9',
       size: '1080',
       fps: 30,
+      quality: 'high',
       camera: 'follow',
       window: 12,
       followAt: 0.8,
@@ -198,6 +201,7 @@ describe('video', () => {
         videoAspect: '9:16',
         videoSize: '720',
         videoFps: 60,
+        videoQuality: 'max',
         videoCamera: 'whole',
         videoHud: [],
         look: { ...DEFAULT_LOOK_FORM, theme: 'light', thickness: false },
@@ -209,6 +213,7 @@ describe('video', () => {
       aspect: '9:16',
       size: '720',
       fps: 60,
+      quality: 'max',
       camera: 'whole',
       theme: 'light',
       hud: false,
@@ -613,6 +618,20 @@ describe('remembered choices', () => {
     expect(parsePrefs({ look: { colors: 'ink' } }).look!.colors).toBe('ink');
     expect(parsePrefs({ look: { colors: 'custom' } }).look!.colors).toBe('custom');
     expect(parsePrefs({ v: 2, look: { colors: 'app' } }).look!.colors).toBe('app');
+  });
+
+  it('remembers the video quality; unknown ones are dropped', () => {
+    expect(parsePrefs({ videoQuality: 'max' })).toEqual({ videoQuality: 'max' });
+    expect(parsePrefs({ videoQuality: 'ultra' })).toEqual({});
+  });
+
+  it('says in one line when the audio is Opus because AAC is missing', () => {
+    expect(aacNote({ ok: true, video: 'avc1.640028', audio: 'mp4a.40.2', aac: true })).toBeNull();
+    expect(aacNote({ ok: false, reason: 'no' })).toBeNull();
+    expect(aacNote(null)).toBeNull();
+    expect(aacNote({ ok: true, video: 'avc1.640028', audio: 'opus', aac: false })).toMatch(
+      /can’t encode AAC, so the audio is Opus/,
+    );
   });
 
   it('loads an old record’s size preset, and clamps stored pixels and rows', () => {

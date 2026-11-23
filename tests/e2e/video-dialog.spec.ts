@@ -197,6 +197,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
     aspect: '9:16',
     size: '720',
     fps: 30,
+    quality: 'high',
     camera: 'follow',
     window: 5,
     theme: 'dark',

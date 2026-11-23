@@ -17,12 +17,16 @@ import type { TimeSpan } from './section';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 
 export type VideoAspect = '16:9' | '9:16' | '1:1';
-export type VideoSize = '1080' | '720';
+/** The frame's short side, px (§12: 1440 and 2160 = 4K added in M11). */
+export type VideoSize = '720' | '1080' | '1440' | '2160';
 export type VideoCameraMode = 'follow' | 'whole';
 
-/** Output pixel size: 1080-class 1920×1080, 1080×1920, 1080×1080; 720-class two thirds of it. */
+/**
+ * Output pixel size: the short side is the size class (1080-class 1920×1080, 1080×1920, 1080×1080;
+ * 720, 1440 and 2160 likewise).
+ */
 export function videoSize(aspect: VideoAspect, size: VideoSize): { width: number; height: number } {
-  const s = size === '720' ? 720 : 1080;
+  const s = Number(size);
   const long = (s * 16) / 9;
   if (aspect === '16:9') return { width: long, height: s };
   if (aspect === '9:16') return { width: s, height: long };
