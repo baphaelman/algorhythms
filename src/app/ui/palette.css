@@ -19,7 +19,7 @@
 
 .palette-add {
   border: 1px solid var(--rule);
-  gap: 2px;
+  gap: 1px;
 }
 
 /*
@@ -123,13 +123,19 @@
   border-color: var(--accent);
 }
 
-/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, the numeral smaller
-   and dimmer, so four fit at 1280 px; the best fit gets an accent edge and a ★. */
+/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, set tight (narrow
+   spaces, padding and gaps), the numeral smaller and dimmer, so four fit at 1280 px with ~15 %
+   to spare for wider fallback fonts (Linux); the best fit gets an accent edge and a ★. */
 .suggestions button[data-job] {
-  gap: 3px;
-  padding: 0 6px;
+  gap: 2px;
+  padding: 0 4px;
   font-family: var(--f-sans);
   font-size: 11px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.suggest-sep {
+  word-spacing: -0.15em;
 }
 .suggest-num {
   font-size: 10px;
@@ -141,7 +147,7 @@
 }
 
 .suggest-best {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--accent);
 }
 
@@ -158,8 +164,13 @@
   max-width: max-content;
   align-content: flex-start;
   overflow: hidden;
-  padding-top: 4px;
-  padding-bottom: 4px;
+  gap: 2px;
+  padding: 4px 4px;
+}
+
+.suggestions .palette-label {
+  margin-right: 2px;
+  letter-spacing: 0.04em;
 }
 
 /* "Keep lines in order" and "Snap to beats" (§11.3) are editor controls. */

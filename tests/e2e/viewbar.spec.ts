@@ -47,13 +47,20 @@ test('1280×800: Add and Next share a row; all suggestions show whole', async ({
   const n = (await page.getByTestId('suggestions').boundingBox())!;
   expect(Math.abs(a.y - n.y)).toBeLessThan(4);
   expect(n.x).toBeGreaterThanOrEqual(a.x + a.width);
-  const hidden = await page.getByTestId('suggestions').evaluate((s) => {
-    const r = s.getBoundingClientRect();
-    return [...s.querySelectorAll('button')].filter(
-      (b) => b.getBoundingClientRect().bottom > r.bottom,
-    ).length;
+  const hidden = () =>
+    page.getByTestId('suggestions').evaluate((s) => {
+      const r = s.getBoundingClientRect();
+      return [...s.querySelectorAll('button')].filter(
+        (b) => b.getBoundingClientRect().bottom > r.bottom,
+      ).length;
+    });
+  expect(await hidden()).toBe(0);
+  // Wider fonts (Linux CI's fallback sans is wider than macOS's) still fit: Verdana, or DejaVu
+  // Sans where Verdana is missing, is ~12 % wider than the system face.
+  await page.addStyleTag({
+    content: `.suggestions button { font-family: Verdana, 'DejaVu Sans', sans-serif !important }`,
   });
-  expect(hidden).toBe(0);
+  expect(await hidden()).toBe(0);
 });
 
 test('View popover: opens, toggles theme and HUD, closes on Escape and outside press', async ({
