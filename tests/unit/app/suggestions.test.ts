@@ -165,7 +165,7 @@ describe('Next after a zero-length tail', () => {
     p.key = { tonic: 'C', scale: 'major' };
     const s = compile(p);
     const items = suggestionsAt(p, s, 10);
-    expect(items.map((x) => x.label)).toEqual(['Start on C', 'Start on C (unison)']);
+    expect(items.map((x) => x.label)).toEqual(['Home · C', 'One note · C']);
     const keys = items.map((x, i) => suggestionKey(10, i, x));
     expect(new Set(keys).size).toBe(keys.length);
   });

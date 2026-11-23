@@ -1,6 +1,10 @@
 /**
- * Next-move suggestions (PLAN.md §11.3, revision 6): 3–4 musically sensible moments to add at t,
- * drawn from the Generate composer's grammar (core/generate.ts):
+ * Next-move suggestions (PLAN.md §11.3). In a key with chord theory (revision 14, core/theory.ts):
+ * up to four chord cards, one per job, each a key-relative numeral chord (`theoryNext`); also the
+ * Add → Chord default (`chordDefaultAt`) and the chord picker's spot ranks (`chordPickerRanks`).
+ *
+ * Keys without theory (whole-tone, chromatic, locrian) keep revision 6: 3–4 musically sensible
+ * moments drawn from the Generate composer's grammar (core/generate.ts):
  *
  *   silence       → start on the tonic triad, or the tonic alone  (Seed; M4.5-27)
  *   one voice     → split into the next stage on a chord          (Split)
@@ -19,15 +23,44 @@
  * Each moment carries an explicit `seed`, so the added moment sounds like its preview.
  */
 
-import { momentEffectAt, readState } from './effect';
+import { diatonicChords } from './chord-spec';
+import { momentEffectAt, readState, type StateAt } from './effect';
 import { splitStages } from './generate';
 import { nameChord, spellPc } from './harmony';
 import { mod } from './math';
 import { Purpose, hash32, rand } from './rng';
 import { degreesToPcs, pitchClassOf, scaleIntervals } from './scales';
 import { sanitizeRange } from './compiler/range';
+import { keyAt } from './query';
+import {
+  JOB_LABEL,
+  bestBetween,
+  chordOf,
+  displayNumeral,
+  letterName,
+  neighboursAt,
+  pickCards,
+  progressionAt,
+  rankNext,
+  spotRanks,
+  symbolFor,
+  theoryOf,
+  type Job,
+  type RankedChord,
+  type Theory,
+  type TheoryChord,
+} from './theory';
 import { roundTiesDown } from './voicing';
-import type { CompiledScore, Glide, Moment, Piece, Pitch, Seconds } from './types';
+import type {
+  ChordMoment,
+  CompiledScore,
+  Glide,
+  Moment,
+  MomentId,
+  Piece,
+  Pitch,
+  Seconds,
+} from './types';
 
 /** A moment without id, at and seed (distributes over the union). */
 type Draft = Moment extends infer M
@@ -43,8 +76,17 @@ export type SuggestionKind = 'open' | 'chord' | 'split' | 'walk' | 'thin' | 'col
 
 export interface Suggestion {
   kind: SuggestionKind;
-  /** Short human label, e.g. "Open to Dm9", "Walk 8 s", "Collapse to A". */
+  /**
+   * Short human label: "<Job> · <Chord>" for a theory card ("Tension · G7", "Home · C",
+   * "One note · C"); else the composer's ("Open to Dm9", "Walk 8 s", "Collapse to A").
+   */
   label: string;
+  /** The chord's job (theory cards and theory openings only). */
+  job?: Job;
+  /** The best fit (the first suggestion). */
+  best: boolean;
+  /** Tooltip: the numeral and a short reason ("V7 — Resolves home"); else the label. */
+  tooltip: string;
   /** The moment (id `SUGGEST_ID`, explicit seed, `at` = t rounded to ms). */
   moment: Moment;
 }
@@ -78,7 +120,7 @@ function openings(
   at: Seconds,
   key: Piece['key'],
   count: number,
-): Suggestion[] {
+): Plain[] {
   const pcs = degreesToPcs([0, 2, 4], key);
   const triad = `Start on ${nameChord(pcs, pcs[0], key)}`;
   // A major triad is named by its root ("C"), so the tonic alone then says "(unison)".
@@ -100,7 +142,7 @@ function openings(
       { type: 'unison', pitch: 'tonic', octaves: false },
     ],
   ];
-  const out: Suggestion[] = [];
+  const out: Plain[] = [];
   for (const [kind, label, m] of drafts) {
     const moment = { ...m, id: SUGGEST_ID, at, seed: hash32(piece.seed >>> 0, label) } as Moment;
     if (out.length < count && momentEffectAt(piece, score, moment).effect)
@@ -109,9 +151,14 @@ function openings(
   return out;
 }
 
+/** A composer suggestion before `best` and `tooltip` are filled in. */
+type Plain = Omit<Suggestion, 'best' | 'tooltip' | 'job'>;
+
 /**
  * Up to `count` suggested next moments at `t` for `piece` (compiled as `score`), most fitting
- * first. When nothing sounds at t, the openings that can start the sound (`openings`).
+ * first. In a key with chord theory (core/theory.ts), chord cards, one per job (`theoryNext`);
+ * else the composer's grammar (`composerNext`). When nothing sounds at t, the openings that can
+ * start the sound.
  */
 export function suggestNext(
   piece: Piece,
@@ -120,11 +167,28 @@ export function suggestNext(
   count = 4,
 ): Suggestion[] {
   const at = round3(Math.max(0, t));
+  if (count <= 0) return [];
   // Stacked voices (revision 8): a merged unison still opens into a chord.
   const st0 = readState(piece, score, at);
   const st = st0.stacked ?? st0;
+  const th = theoryOf(st.key);
+  if (th) return theoryNext(piece, score, at, st, th, count);
+  return composerNext(piece, score, at, st, count).map((s, i) => ({
+    ...s,
+    best: i === 0,
+    tooltip: s.label,
+  }));
+}
+
+/** The Generate composer's grammar (keys without chord theory). */
+function composerNext(
+  piece: Piece,
+  score: CompiledScore,
+  at: Seconds,
+  st: StateAt,
+  count: number,
+): Plain[] {
   const n = st.active.length;
-  if (count <= 0) return [];
   if (n === 0) return openings(piece, score, at, st.key, count);
   const key = st.key;
   const dests = st.active.map((v) => st.dest[v]); // ascending
@@ -191,33 +255,10 @@ export function suggestNext(
   }
 
   // Register: the composer's span for k voices around the voices' centre, inside their ranges.
-  let rLo = 127;
-  let rHi = 0;
-  for (const v of st.active) {
-    const r = sanitizeRange(piece.voices[v]?.range);
-    rLo = Math.min(rLo, r[0]);
-    rHi = Math.max(rHi, r[1]);
-  }
+  const [rLo, rHi] = voiceSpan(piece, st);
   const centre = Math.round((lowest + highest) / 2);
-  const registerFor = (c: number, k: number, ctr: Pitch): [Pitch, Pitch] | undefined => {
-    const span = Math.min(rHi - rLo, 6 + k * 3.3);
-    let lo = ctr - span / 2;
-    let hi = ctr + span / 2;
-    if (lo < rLo) {
-      hi += rLo - lo;
-      lo = rLo;
-    }
-    if (hi > rHi) {
-      lo -= hi - rHi;
-      hi = rHi;
-    }
-    const a = Math.max(rLo, Math.ceil(lo));
-    const b = Math.min(rHi, Math.floor(hi));
-    const pcs = pcsOf(c, Math.min(4, S));
-    let inside = 0;
-    for (let p = a; p <= b; p++) if (pcs.includes(mod(p, 12))) inside++;
-    return inside < Math.min(k, 2) || a > b ? undefined : [a, b];
-  };
+  const registerFor = (c: number, k: number, ctr: Pitch): [Pitch, Pitch] | undefined =>
+    registerAround(pcsOf(c, Math.min(4, S)), k, ctr, rLo, rHi);
   const chordTonesNear = (c: number, x: Pitch): Pitch => {
     const pcs = pcsOf(c, 3);
     let best = NaN;
@@ -227,7 +268,7 @@ export function suggestNext(
     return best === best ? best : Math.round(x);
   };
 
-  const out: Suggestion[] = [];
+  const out: Plain[] = [];
   const add = (kind: SuggestionKind, label: string, m: Draft): void => {
     if (out.length >= count || out.some((s) => s.label === label)) return;
     const moment = {
@@ -379,4 +420,282 @@ function nearestPc(pc: number, x: Pitch, lo: Pitch, hi: Pitch): Pitch {
     if (mod(p, 12) === pc && !(Math.abs(p - x) >= Math.abs(best - x))) best = p;
   }
   return best === best ? best : Math.round(x);
+}
+
+/** The lowest and highest pitch the active voices' ranges allow. */
+function voiceSpan(piece: Piece, st: StateAt): [Pitch, Pitch] {
+  let lo = 127;
+  let hi = 0;
+  for (const v of st.active) {
+    const r = sanitizeRange(piece.voices[v]?.range);
+    lo = Math.min(lo, r[0]);
+    hi = Math.max(hi, r[1]);
+  }
+  return [lo, hi];
+}
+
+/**
+ * The composer's register for k voices around `ctr`, inside [rLo, rHi]; undefined when it holds
+ * fewer than min(k, 2) pitches of `pcs`.
+ */
+function registerAround(
+  pcs: readonly number[],
+  k: number,
+  ctr: Pitch,
+  rLo: Pitch,
+  rHi: Pitch,
+): [Pitch, Pitch] | undefined {
+  const span = Math.min(rHi - rLo, 6 + k * 3.3);
+  let lo = ctr - span / 2;
+  let hi = ctr + span / 2;
+  if (lo < rLo) {
+    hi += rLo - lo;
+    lo = rLo;
+  }
+  if (hi > rHi) {
+    lo -= hi - rHi;
+    hi = rHi;
+  }
+  const a = Math.max(rLo, Math.ceil(lo));
+  const b = Math.min(rHi, Math.floor(hi));
+  let inside = 0;
+  for (let p = a; p <= b; p++) if (pcs.includes(mod(p, 12))) inside++;
+  return inside < Math.min(k, 2) || a > b ? undefined : [a, b];
+}
+
+/**
+ * A register of whole octaves less a semitone ([a, a + 12m − 1], m = ⌈k / chord size⌉), so it
+ * holds each pitch class exactly m times in any key: an Even voicing of k ≥ chord-size lines then
+ * sounds every chord tone, and still does after a later key change. It starts on the root when
+ * that fits, its centre nearest `ctr`. Undefined when the voices' range is narrower.
+ */
+function octaveRegister(
+  pcs: readonly number[],
+  root: number,
+  k: number,
+  ctr: Pitch,
+  rLo: Pitch,
+  rHi: Pitch,
+): [Pitch, Pitch] | undefined {
+  const w = 12 * Math.max(1, Math.ceil(k / Math.max(1, pcs.length))) - 1;
+  let best = NaN;
+  for (let pass = 0; pass < 2 && best !== best; pass++) {
+    for (let a = Math.ceil(rLo); a + w <= rHi; a++) {
+      if (pass === 0 && mod(a, 12) !== root) continue;
+      if (!(Math.abs(a + w / 2 - ctr) >= Math.abs(best + w / 2 - ctr))) best = a;
+    }
+  }
+  return best === best ? [best, best + w] : undefined;
+}
+
+/** Chord moment fields without id, at and seed. */
+export type ChordDraft = Omit<ChordMoment, 'id' | 'at' | 'seed'>;
+
+/** A family chord as a key-relative chord moment for `lines` sounding lines (voicing Even). */
+function chordDraft(c: TheoryChord, lines: number): ChordDraft {
+  return {
+    type: 'chord',
+    notes: { kind: 'chord', symbol: symbolFor(c, lines) },
+    voicing: 'even',
+    assign: 'ordered',
+  };
+}
+
+/** The tonic chord of a theory (its first chord). */
+function tonicOf(th: Theory): TheoryChord {
+  return th.chords[0];
+}
+
+/**
+ * Theory-aware Next (PLAN §11.3 revision 14): one chord card per job, best fit first, ranked
+ * after the progression so far (core/theory.ts). From silence: Home (the tonic triad) and One
+ * note (the tonic).
+ */
+function theoryNext(
+  piece: Piece,
+  score: CompiledScore,
+  at: Seconds,
+  st: StateAt,
+  th: Theory,
+  count: number,
+): Suggestion[] {
+  const key = st.key;
+  const n = st.active.length;
+  const seed = hash32(piece.seed >>> 0, 'suggest', Math.round(at * 1000));
+  const out: Suggestion[] = [];
+  const push = (
+    kind: SuggestionKind,
+    label: string,
+    job: Job,
+    tooltip: string,
+    m: Draft,
+  ): boolean => {
+    const moment = { ...m, id: SUGGEST_ID, at, seed: hash32(seed, kind, label) } as Moment;
+    if (!momentEffectAt(piece, score, moment).effect) return false;
+    out.push({ kind, label, job, best: out.length === 0, tooltip, moment });
+    return true;
+  };
+
+  if (n === 0) {
+    const home = chordDraft(tonicOf(th), 3);
+    const sym = home.notes.kind === 'chord' ? home.notes.symbol : '';
+    push(
+      'open',
+      `Home · ${letterName(sym, key)}`,
+      'home',
+      `${displayNumeral(sym)} — Starts at home`,
+      home,
+    );
+    if (out.length < count) {
+      push(
+        'open',
+        `One note · ${spellPc(pitchClassOf(key.tonic), key)}`,
+        'home',
+        'The tonic alone',
+        {
+          type: 'unison',
+          pitch: 'tonic',
+          octaves: false,
+        },
+      );
+    }
+    return out.slice(0, count);
+  }
+
+  const dests = st.active.map((v) => st.dest[v]);
+  const lowest = dests[0];
+  const highest = dests[n - 1];
+  const pcsSounding = new Set(dests.map((p) => mod(Math.round(p), 12)));
+  const glide = pcsSounding.size === 1 ? GLIDE_OPEN : GLIDE_DRIFT;
+  const [rLo, rHi] = voiceSpan(piece, st);
+  const centre = Math.round((lowest + highest) / 2);
+  const pool = piece.voices.length;
+
+  const built = new Map<string, Moment | null>();
+  const momentFor = (r: RankedChord): Moment | null => {
+    let m = built.get(r.num);
+    if (m !== undefined) return m;
+    const c = chordOf(th, r.num)!;
+    const draft = chordDraft(c, n);
+    const pcs = n >= 4 ? c.seventh : c.triad;
+    // Too few lines for the chord: its new notes come in (as the editor's chord fill does).
+    const lines = Math.min(pool, Math.max(n, pcs.length));
+    const ctr = centre + Math.round((rand(seed, r.num, 0, Purpose.Suggest) - 0.5) * 6);
+    const register =
+      octaveRegister(pcs, c.root, lines, ctr, rLo, rHi) ??
+      registerAround(pcs, lines, ctr, rLo, rHi);
+    m = {
+      ...draft,
+      ...(lines > n ? { count: lines } : {}),
+      ...(register ? { register } : {}),
+      glide,
+      id: SUGGEST_ID,
+      at,
+      seed: hash32(seed, 'chord', r.num),
+    } as Moment;
+    if (!momentEffectAt(piece, score, m).effect) m = null;
+    built.set(r.num, m);
+    return m;
+  };
+
+  const ranked = rankNext(th, progressionAt(score, at));
+  const cards = pickCards(ranked, Math.min(4, count), (r) => momentFor(r) !== null);
+  for (const r of cards) {
+    const moment = momentFor(r)!;
+    const sym =
+      moment.type === 'chord' && moment.notes.kind === 'chord' ? moment.notes.symbol : r.num;
+    out.push({
+      kind: 'chord',
+      label: `${JOB_LABEL[r.job]} · ${letterName(sym, key)}`,
+      job: r.job,
+      best: out.length === 0,
+      tooltip: `${displayNumeral(sym)} — ${r.reason}`,
+      moment,
+    });
+  }
+  return out;
+}
+
+/** The Add → Chord default (PLAN §11.3 revision 14). */
+export interface ChordChoice {
+  /** Chord moment fields: a numeral symbol, voicing Even. */
+  moment: ChordDraft;
+  job: Job;
+  /** Letter name in the key ("G7"). */
+  name: string;
+}
+
+/**
+ * The Add → Chord default at `t`: the chord that best links the harmony before `t` to the next
+ * harmony entry after it (transition in × out, neither neighbour); the best next chord when
+ * nothing follows; the tonic triad from silence. A seventh chord when four or more lines sound.
+ * Null when the key at `t` has no chord theory (keep the old default). Past the score's end it
+ * reads the state just before the end, like the editor's defaults.
+ */
+export function chordDefaultAt(piece: Piece, score: CompiledScore, t: Seconds): ChordChoice | null {
+  const read = Math.min(t, Math.max(0, score.duration - 0.01));
+  const st0 = readState(piece, score, read);
+  const st = st0.stacked ?? st0;
+  const th = theoryOf(keyAt(score, t));
+  if (!th) return null;
+  const n = st.active.length;
+  let c: TheoryChord;
+  if (n === 0) {
+    c = tonicOf(th);
+  } else {
+    const { prev, next } = neighboursAt(score, th, t, undefined, true);
+    c =
+      next !== null
+        ? bestBetween(th, prev, next)
+        : chordOf(th, rankNext(th, progressionAt(score, t))[0].num)!;
+  }
+  const moment = chordDraft(c, n === 0 ? 3 : n);
+  const sym = moment.notes.kind === 'chord' ? moment.notes.symbol : c.num;
+  return { moment, job: c.job, name: letterName(sym, th.key) };
+}
+
+/** A From-the-key chip's fit for a selected chord's spot (`diatonicChords` order). */
+export interface ChipRank {
+  /** The chip's `DiatonicChord.degree`. */
+  degree: number;
+  /** The chip's `DiatonicChord.symbol`. */
+  symbol: string;
+  /** 0 = best fit among the chips. */
+  rank: number;
+  score: number;
+}
+
+/**
+ * For the chord moment `id`, how well each of the key's diatonic chords (core/chord-spec
+ * `diatonicChords`, keyed by `degree`) fits its spot: between the chord before it and the next
+ * one after it (its own harmony entries skipped). Chips the key's theory doesn't name (e.g. a
+ * harmonic-minor III+) are left out. Null when the moment isn't found or the key has no theory.
+ */
+export function chordPickerRanks(
+  piece: Piece,
+  score: CompiledScore,
+  id: MomentId,
+): ChipRank[] | null {
+  const m = piece.moments.find((x) => x.id === id);
+  if (!m) return null;
+  const key = keyAt(score, m.at);
+  const th = theoryOf(key);
+  if (!th) return null;
+  const { prev, next } = neighboursAt(score, th, m.at, id);
+  const spot = spotRanks(th, prev, next);
+  const rows: Omit<ChipRank, 'rank'>[] = [];
+  for (const chip of diatonicChords(key)) {
+    const want = chip.quality.id;
+    const c = th.chords.find(
+      (x) =>
+        x.root === chip.root &&
+        (want === 'maj' ? x.quality === 'maj' || x.quality === 'dom' : x.quality === want),
+    );
+    const s = c && spot.find((r) => r.num === c.num);
+    if (s) rows.push({ degree: chip.degree, symbol: chip.symbol, score: s.score });
+  }
+  const order = rows.map((_, i) => i).sort((a, b) => rows[b].score - rows[a].score || a - b);
+  const out = rows.map((r) => ({ ...r, rank: 0 }));
+  order.forEach((i, rank) => (out[i].rank = rank));
+  return out;
 }
