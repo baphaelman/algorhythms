@@ -901,6 +901,9 @@ Video and poster exports share one **Look** panel in the Export dialog that expo
   - theme (current, light, dark), and a transparent background option for PNG and SVG;
   - a title block (default on): the piece's name, its length and key, and a small "AlgoRhythms" credit, in the HUD's type; off draws only the score;
   - thickness on.
+- **Rows and dimensions (owner, 2026-11-23):** two sliders.
+  - **Rows** (1 = today, up to 8): the piece is split in time into horizontal sections stacked top to bottom, like systems in sheet music. Integrator calls: equal lengths, each break snapped to the nearest bar line when the piece has a BPM grid; every row shares one pitch range and one time scale (the last row may end short, left-aligned); lines cut at a break continue at the start of the next row; a small gap between rows; each row after the first starts with a small time label (e.g. "1:05") in the HUD's type; the title block stays at the top. Section labels belong to the row they fall in.
+  - **Width and Height** sliders (px), replacing the fixed size choice; the old sizes (16:9 4K, square, A4) stay as segmented quick picks that set both sliders. Range about 1,000–8,000 px each, capped so width × height stays within every browser's canvas limit (Safari ≈ 16.7 M px); the dialog says when a cap applies. Rows and dimensions show in the live preview and are remembered per viewer; PNG and SVG both follow them.
 - **Speed and size:** a 3-minute piece renders in under 2 s at 4K on a desktop; the SVG stays under about 10 MB for bundled compositions (simplify sampled glides to the 2 px rule at the poster's scale).
 
 ### Video export (revision 11, owner chose it next 2026-11-22)

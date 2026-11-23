@@ -29,6 +29,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - (none parked)
 
 ## Answered
+- **Poster rows and dimensions (2026-11-23, in progress).** Rows slider (sheet-music systems) and Width/Height sliders; calls in PLAN §12 Poster export.
 - **Playable video preview + Window (2026-11-23, live in v68).** The Export dialog's video preview plays (button, Space anywhere in the dialog), with sound, from the preview time; Follow gets a Window slider (seconds shown, starts at the editor's zoom). Calls in PLAN §12.
 - **Land chords always land (2026-11-23).** A land moment's lead-in never starts before the previous moment on the same lines; it is compressed instead, so the voices arrive on the marker. Until v64 an earlier moment could silently take the lines (Switchyard's bass at 2:00 ended on A2 instead of E2); v64 added a `land-overtaken` diagnostic.
 - **Export look (2026-11-22, PLAN §12 rev 13).** Every visual decision is an export option. Export defaults: no octave guide lines, no beat lines, nothing ahead of the playhead; moment section labels on, marker lines off (owner revised twice); beat lines can show every beat, full height (option). Line colours as in the app by default (owner). HUD fully customisable (checklist; new readouts such as the spread between lowest and highest line).
