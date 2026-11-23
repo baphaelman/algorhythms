@@ -56,10 +56,13 @@ export function addTime(): Seconds {
   return addTimeIn(usePlayer.getState().piece, playheadTime());
 }
 
-/** The effect of adding `type` at the playhead now (computed fresh, for clicks and keys). */
-export function playheadEffect(type: MomentType): MomentEffect {
+/**
+ * The effect of adding `type` at `at` (default: the playhead) now, computed fresh for clicks and
+ * keys.
+ */
+export function playheadEffect(type: MomentType, at: Seconds = playheadTime()): MomentEffect {
   const { piece, compiled } = usePlayer.getState();
-  const t = effectTime(compiled, addTime());
+  const t = effectTime(compiled, addTimeIn(piece, at));
   return momentEffectAt(piece, compiled, defaultMoment(type, t, PROBE_ID, piece, compiled));
 }
 

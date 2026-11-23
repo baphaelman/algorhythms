@@ -76,7 +76,7 @@ import { copyMoments, moveMomentsBy, newMomentIds, patchMoment } from '../editor
 import { idsInRect, marqueeSelection, rectOf, type Rect } from '../editor/selection';
 import { beatStep, changePoints, ofMoments, snapTime, type SnapSet } from '../editor/snap';
 import { onScoreFrame } from '../loop';
-import { attachPaletteDrop } from '../palette-drop';
+import { attachPaletteDrop, trackPointer } from '../palette-drop';
 import { panBy, usePlayer, zoomBy } from '../store';
 import {
   freeOf,
@@ -1149,6 +1149,7 @@ class LaneController {
     track.addEventListener('contextmenu', this.onContext);
     const off = onScoreFrame((v) => this.layout(v));
     const offDrop = attachPaletteDrop(track);
+    const untrack = trackPointer(track);
     const ro = new ResizeObserver(this.measure);
     ro.observe(track);
     ro.observe(scroller);
@@ -1162,6 +1163,7 @@ class LaneController {
       this.keyPress = null;
       off();
       offDrop();
+      untrack();
       offSel();
       cancelAnimationFrame(revealRaf);
       scroller.removeEventListener('wheel', this.onWheel);

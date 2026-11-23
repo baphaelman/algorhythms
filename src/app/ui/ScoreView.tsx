@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { attachCanvasInput } from '../canvas-input';
 import { startScoreLoop } from '../loop';
-import { attachPaletteDrop } from '../palette-drop';
+import { attachPaletteDrop, trackPointer } from '../palette-drop';
 import { usePlayer } from '../store';
 import { ArrivalDots } from './ArrivalDots';
 import { PianoRuler } from './PianoRuler';
@@ -22,7 +22,9 @@ export function ScoreView({ editor = false }: { editor?: boolean }) {
     const stopLoop = startScoreLoop(el, tip.current);
     const detach = attachCanvasInput(el);
     const detachDrop = attachPaletteDrop(el);
+    const untrack = trackPointer(el);
     return () => {
+      untrack();
       stopLoop();
       detach();
       detachDrop();

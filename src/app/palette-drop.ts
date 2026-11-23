@@ -7,12 +7,15 @@
  * While a drag is over a target, the score previews the moment at the pointer's drop time
  * (../preview.ts, owner 2026-11-21): ghost lines from that time, updated as the pointer moves.
  * Leaving the target, Escape or ending the drag clears it; after Escape the drop is ignored.
+ *
+ * Shortcuts add at the same snapped time under a mouse or pen over the score, ruler or lane rows
+ * (owner 2026-11-23; `trackPointer`, `shortcutTime`), else at the playhead.
  */
 
 import type { MomentType, Seconds } from '../core/types';
 import { xToTime, type View } from '../render';
 import { addMoment } from './editor/actions';
-import { PALETTE } from './editor/shortcuts';
+import { PALETTE, playheadTime } from './editor/shortcuts';
 import { beatStep, changePoints, snapTime, type SnapSet } from './editor/snap';
 import { onScoreFrame } from './loop';
 import { previewState, startPreview, stopPreview } from './preview';
@@ -31,6 +34,67 @@ export function droppedType(data: string): MomentType | null {
 /** Drop time for `x` px from the target's left edge (aligned with the canvas), snapped. */
 export function dropTime(view: View, x: number, snaps: SnapSet, alt = false): Seconds {
   return snapTime(xToTime(view, x), snaps, view.pps, alt);
+}
+
+/** The drop time `x` px from the canvas's left edge in the current piece, snapped (Alt: free). */
+function snappedAt(view: View, x: number, alt: boolean): Seconds {
+  const { compiled, piece } = usePlayer.getState();
+  return dropTime(
+    view,
+    x,
+    { points: changePoints(compiled, piece), grid: beatStep(piece.view) },
+    alt,
+  );
+}
+
+/** `clientX` as px from `el`'s content left edge (aligned with the canvas). */
+const xIn = (el: HTMLElement, clientX: number): number =>
+  clientX - el.getBoundingClientRect().left - el.clientLeft;
+
+/**
+ * The last mouse or pen position over a tracked area (score, ruler, lane rows): the area's
+ * x-reference and the pointer's clientX; `box` null when the pointer is elsewhere. Written per
+ * move without any render (§11.3a). `view` is the latest score camera.
+ */
+const hover = { box: null as HTMLElement | null, clientX: 0, view: null as View | null };
+
+/**
+ * Tracks the pointer over `el` for `shortcutTime`; `box` is the element whose left edge lines up
+ * with the canvas (default `el`). Touch is ignored. Returns a function that removes the handlers.
+ */
+export function trackPointer(el: HTMLElement, box: HTMLElement = el): () => void {
+  const off = onScoreFrame((v) => {
+    hover.view = v;
+  });
+  const onMove = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') return;
+    hover.box = box;
+    hover.clientX = e.clientX;
+  };
+  const onLeave = (): void => {
+    if (hover.box === box) hover.box = null;
+  };
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerover', onMove);
+  el.addEventListener('pointerleave', onLeave);
+  return () => {
+    off();
+    onLeave();
+    el.removeEventListener('pointermove', onMove);
+    el.removeEventListener('pointerover', onMove);
+    el.removeEventListener('pointerleave', onLeave);
+  };
+}
+
+/** The snapped time under the tracked pointer (Alt: free), or null when it is elsewhere. */
+export function pointerTime(alt = false): Seconds | null {
+  const { box, view } = hover;
+  return box && view ? snappedAt(view, xIn(box, hover.clientX), alt) : null;
+}
+
+/** Where a moment shortcut adds: the time under the pointer, else the playhead. */
+export function shortcutTime(alt = false): Seconds {
+  return pointerTime(alt) ?? playheadTime();
 }
 
 /** The palette drag in progress: its type, and whether Escape cancelled it. */
@@ -90,18 +154,8 @@ export function attachPaletteDrop(el: HTMLElement): () => void {
     else delete el.dataset.paletteDrop;
   };
   /** The drop time under the pointer, snapped; null without a view. */
-  const timeAt = (e: DragEvent): Seconds | null => {
-    if (!view) return null;
-    const r = el.getBoundingClientRect();
-    const x = e.clientX - r.left - el.clientLeft;
-    const { compiled, piece } = usePlayer.getState();
-    return dropTime(
-      view,
-      x,
-      { points: changePoints(compiled, piece), grid: beatStep(piece.view) },
-      e.altKey,
-    );
-  };
+  const timeAt = (e: DragEvent): Seconds | null =>
+    view ? snappedAt(view, xIn(el, e.clientX), e.altKey) : null;
   const onOver = (e: DragEvent): void => {
     if (!carries(e)) return;
     e.preventDefault();

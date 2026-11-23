@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { barGrid, xToTime, type View } from '../../render';
 import { onScoreFrame } from '../loop';
+import { trackPointer } from '../palette-drop';
 import { withEnd } from '../editor/end';
 import { beginGesture, cancelGesture, edit, endGesture, updateGesture } from '../editor/history';
 import { changePoints, snapTime, type ChangePoint } from '../editor/snap';
@@ -240,8 +241,10 @@ export function Ruler() {
     el.addEventListener('lostpointercapture', onUp);
     el.addEventListener('dblclick', onDouble);
     el.addEventListener('pointerleave', onLeave);
+    const untrack = trackPointer(el, box);
     return () => {
       off();
+      untrack();
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
