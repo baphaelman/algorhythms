@@ -11,16 +11,13 @@ import { FLOAT_GLIDE, textureMoment } from './rows';
 const BPM = 80;
 const BLOCK = 2 * 4 * (60 / BPM);
 
-/**
- * The blocks: notes and Notes: n. One-note blocks use the degree (the root), since a chord with
- * count 1 voices its middle candidate, not its root (build log "M10b-1 row model").
- */
+/** The blocks: notes and Notes: n (count 1 sounds the chord's root). */
 const BLOCKS: readonly [NoteSet, number][] = [
-  [{ kind: 'degrees', degrees: [0] }, 1],
+  [{ kind: 'chord', symbol: 'i' }, 1],
   [{ kind: 'chord', symbol: 'i9' }, 6],
   [{ kind: 'chord', symbol: 'bVImaj9' }, 6],
   [{ kind: 'chord', symbol: 'iv9' }, 6],
-  [{ kind: 'degrees', degrees: [4] }, 1],
+  [{ kind: 'chord', symbol: 'V' }, 1],
   [{ kind: 'chord', symbol: 'i9' }, 7],
 ];
 
@@ -43,7 +40,7 @@ export function likeTheVideo(opts: { seed: number; now?: string }): Piece {
     glide: { ...FLOAT_GLIDE },
   }));
   const last = (BLOCKS.length - 1) * BLOCK;
-  const wander = textureMoment('wander', { id: 'video7', at: last, until: last + BLOCK }, piece, 7);
+  const wander = textureMoment('wander', { id: 'video7', at: last, until: last + BLOCK }, piece);
   piece.moments = [...chords, wander];
   return piece;
 }

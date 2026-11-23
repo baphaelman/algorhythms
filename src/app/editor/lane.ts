@@ -5,6 +5,7 @@
 
 import { glides, landing, momentGlide } from '../../core/compiler/glide';
 import { isEstablishing } from '../../core/moments/establish';
+import { pulseCycleSteps } from '../../core/pulse';
 import { noteChanges } from '../../core/moments/note';
 import type {
   CompiledScore,
@@ -320,6 +321,12 @@ export function laneArt(m: Moment, start: Seconds, end: Seconds): LaneArt | unde
   if (!(len > 1e-6)) return undefined;
   if (m.type === 'pulse') {
     if (!(m.step > 0) || m.pattern.length === 0) return undefined;
+    // Revision 14: a restarting pulse's cycle is one restart, its accents the pattern's first.
+    const cycle = pulseCycleSteps(m.step, m.restart);
+    if (cycle > 0) {
+      const accents = Array.from({ length: cycle }, (_, j) => m.pattern[j % m.pattern.length]);
+      return { kind: 'pulse', svg: patternSvg(accents), share: (m.restart! / len) * 100 };
+    }
     return {
       kind: 'pulse',
       svg: patternSvg(m.pattern),

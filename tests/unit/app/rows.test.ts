@@ -10,7 +10,6 @@ import { newBlock, rowForKey, ROW_PALETTE } from '../../../src/app/editor/row-pa
 import {
   FLOAT_GLIDE,
   PIECE_KEY,
-  arpeggioOrder,
   arriveOf,
   asChord,
   relativeShapeOf,
@@ -144,7 +143,7 @@ describe('extents', () => {
   it('textures, melodies, levels and sounds end at their own end; keys chain', () => {
     const p = base([
       chord('aaaaaa', 0, 'C'),
-      textureMoment('wander', { id: 'wwwwww', at: 1, until: 9 }, base([]), 3),
+      textureMoment('wander', { id: 'wwwwww', at: 1, until: 9 }, base([])),
       {
         id: 'tttttt',
         type: 'tune',
@@ -227,7 +226,7 @@ describe('parts rows', () => {
   it('part rows per part; All only when used; Key and Chords shared', () => {
     const p = base([
       chord('aaaaaa', 0, 'C', { target: { part: 'Chords' } }),
-      textureMoment('arpeggio', { id: 'pppppp', at: 0, until: 4 }, base([]), 3),
+      textureMoment('arpeggio', { id: 'pppppp', at: 0, until: 4 }, base([])),
       {
         id: 'tttttt',
         type: 'tune',
@@ -362,17 +361,16 @@ describe('textures', () => {
     const p = base([chord('aaaaaa', 0, 'Cmaj7')], {
       view: { ...newPiece({ seed: 1 }).view, gridBpm: 120, meter: 4 },
     });
-    const arp = textureMoment('arpeggio', { id: 'xxxxxx', at: 0, until: 8 }, p, 4) as PulseMoment;
-    expect(arp.step).toBe(0.25);
+    const arp = textureMoment('arpeggio', { id: 'xxxxxx', at: 0, until: 8 }, p) as PulseMoment;
+    expect(arp).toMatchObject({ step: 0.25, mode: 'updown', restart: 2 });
     expect(arp.pattern).toHaveLength(8);
-    expect(arp.order).toEqual([1, 2, 3, 4, 3, 2, 1, 2]);
-    expect(arpeggioOrder(1, 3)).toEqual([1, 1, 1]);
-    const pulse = setTexture(arp, 'pulse', p, 4)!;
+    expect(arp.order).toBeUndefined();
+    const pulse = setTexture(arp, 'pulse', p)!;
     expect(pulse).toMatchObject({ type: 'pulse', mode: 'together', id: 'xxxxxx', until: 8 });
-    const wander = setTexture(pulse, 'wander', p, 4)!;
+    const wander = setTexture(pulse, 'wander', p)!;
     expect(wander).toMatchObject({ type: 'walk', over: 'chord', until: 8, grid: 0.5 });
-    expect(setTexture(wander, 'wander', p, 4)).toBe(wander);
-    expect(setTexture(wander, 'hold', p, 4)).toBeNull();
+    expect(setTexture(wander, 'wander', p)).toBe(wander);
+    expect(setTexture(wander, 'hold', p)).toBeNull();
     for (const t of [arp, pulse, wander])
       expect(errors({ ...p, moments: [...p.moments, t] })).toEqual([]);
   });

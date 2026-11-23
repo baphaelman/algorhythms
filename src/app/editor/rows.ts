@@ -636,28 +636,19 @@ export function beatAndBar(piece: Piece): { beat: Seconds; bar: Seconds; perBar:
 
 const r6 = (t: Seconds): Seconds => Math.round(t * 1e6) / 1e6;
 
-/** The up-down walk over n lines (1-based: 1 2 … n … 2), repeated to `steps` entries. */
-export function arpeggioOrder(n: number, steps: number): number[] {
-  const up = Array.from({ length: Math.max(1, n) }, (_, i) => i + 1);
-  const cyc = up.length <= 1 ? up : [...up, ...up.slice(1, -1).reverse()];
-  return Array.from({ length: steps }, (_, s) => cyc[s % cyc.length]);
-}
-
 /**
- * The fields of an Arpeggio pulse over `n` lines: eighth steps, accent 1 on the bar's first step
- * and 0.78 after, `order` the up-down walk. Both lists are one bar long, so it restarts each bar.
+ * The fields of an Arpeggio pulse: eighth steps, accent 1 on the bar's first step and 0.78
+ * after, mode `updown`, restarting each bar (`restart`), so it suits any number of lines.
  */
 export function arpeggioFields(
   piece: Piece,
-  n: number,
-): Pick<PulseMoment, 'step' | 'pattern' | 'mode' | 'order' | 'decay' | 'floor'> {
-  const { beat, perBar } = beatAndBar(piece);
-  const steps = perBar * 2;
+): Pick<PulseMoment, 'step' | 'pattern' | 'mode' | 'restart' | 'decay' | 'floor'> {
+  const { beat, bar, perBar } = beatAndBar(piece);
   return {
     step: r6(beat / 2),
-    pattern: [1, ...Array<number>(steps - 1).fill(0.78)],
-    mode: 'order',
-    order: arpeggioOrder(n, steps),
+    pattern: [1, ...Array<number>(perBar * 2 - 1).fill(0.78)],
+    mode: 'updown',
+    restart: r6(bar),
     decay: 0.3,
     floor: 0,
   };
@@ -665,13 +656,12 @@ export function arpeggioFields(
 
 /**
  * A texture moment of `kind` over [at, until] with the fields the row model gives it (build log
- * "M10b-1 row model"); `n` is the note count it arpeggiates. Glide and target left to the caller.
+ * "M10b-1 row model"). Glide and target left to the caller.
  */
 export function textureMoment(
   kind: TextureKind,
   base: { id: MomentId; at: Seconds; until: Seconds },
   piece: Piece,
-  n: number,
 ): WalkMoment | PulseMoment {
   const { beat } = beatAndBar(piece);
   if (kind === 'wander') {
@@ -696,7 +686,7 @@ export function textureMoment(
       mode: 'together',
     };
   }
-  return { ...base, type: 'pulse', ...arpeggioFields(piece, n) };
+  return { ...base, type: 'pulse', ...arpeggioFields(piece) };
 }
 
 /**
@@ -707,11 +697,10 @@ export function setTexture(
   m: WalkMoment | PulseMoment,
   choice: TextureChoice,
   piece: Piece,
-  n: number,
 ): WalkMoment | PulseMoment | null {
   if (choice === 'hold') return null;
   if (textureOf(m) === choice) return m;
-  const out = textureMoment(choice, { id: m.id, at: m.at, until: m.until }, piece, n);
+  const out = textureMoment(choice, { id: m.id, at: m.at, until: m.until }, piece);
   for (const k of ['target', 'seed', 'label', 'muted'] as const) {
     if (m[k] !== undefined) (out as unknown as Record<string, unknown>)[k] = m[k];
   }

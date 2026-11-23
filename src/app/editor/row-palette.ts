@@ -3,7 +3,6 @@
  * shortcut letters and the default block each adds (build log "M10b-1 row model").
  */
 
-import { activeAt } from '../../core/query';
 import type {
   ChordMoment,
   CompiledScore,
@@ -85,10 +84,8 @@ export function newBlock(
       return withChordFill(m, piece, score, at);
     }
     case 'texture': {
-      const read = Math.min(at, Math.max(0, score.duration - 0.01));
-      const n = activeAt(score, read).length || 3;
       const until = textureUntil(rowsOf(piece, score), piece, at);
-      return textureMoment('arpeggio', { id, at, until }, piece, n);
+      return textureMoment('arpeggio', { id, at, until }, piece);
     }
     case 'melody':
       return defaultMoment('tune', at, id, piece, score);

@@ -121,6 +121,7 @@ const MOMENTS: Record<string, Record<string, Spec>> = {
     pattern: each(roundLevel),
     decay: roundTime,
     floor: roundLevel,
+    restart: roundStep,
   },
   tune: { notes: each(obj({ pitch: roundOther, len: roundStep })) },
   progression: { chords: each(obj({ len: roundStep })), register: pitches },

@@ -21,7 +21,9 @@
  * `up`, `down` and `updown` hit one, walking that order (`nextPulseIndex`); `random` draws one
  * from the moment's seed and the step index; `order` (revision 10) hits one, following
  * `PulseMoment.order` (`nextPulseOrder`). A step with one sounding voice hits it without moving
- * any walk, and a rest moves none either.
+ * any walk, and a rest moves none either. With `restart` (revision 14) the count starts over
+ * every `restart` s from `at` (`pulseStepTime`): the pattern from its first accent, the walk from
+ * its start.
  */
 
 import type { CompiledVoice, PulseMode, Seconds } from './types';
@@ -124,4 +126,25 @@ export function nextPulseOrder(
   const e = Math.round(order[pos]) - 1;
   const voice = n <= 1 ? 0 : ((e % n) + n) % n;
   return { walk: { index: pos, dir: last.dir }, voice };
+}
+
+/**
+ * Steps per restart cycle (revision 14, `PulseMoment.restart`): the j ≥ 0 with j·step < restart,
+ * at least 1; 0 without a valid restart (steps never restart).
+ */
+export function pulseCycleSteps(step: Seconds, restart: Seconds | undefined): number {
+  if (restart === undefined || !(restart > 0) || !Number.isFinite(restart) || !(step > 0)) return 0;
+  return Math.max(1, Math.ceil(restart / step - 1e-9));
+}
+
+/** Time of step k (k ≥ 0) of a pulse at `at`; `cycle` from `pulseCycleSteps`. */
+export function pulseStepTime(
+  at: Seconds,
+  step: Seconds,
+  restart: Seconds | undefined,
+  cycle: number,
+  k: number,
+): Seconds {
+  if (cycle <= 0) return at + k * step;
+  return at + Math.floor(k / cycle) * restart! + (k % cycle) * step;
 }
