@@ -153,9 +153,12 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
   for (const label of ['16:9', '1080p', '30 fps', 'Follow', 'Current']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
-  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Whole piece', 'Light', 'Dark']) {
+  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Light', 'Dark']) {
     await expect(d.getByLabel(label, { exact: true })).not.toBeChecked();
   }
+  // "Whole piece" also names the Section's default.
+  const camera = d.getByTestId('export-camera');
+  await expect(camera.getByLabel('Whole piece', { exact: true })).not.toBeChecked();
   await openLook(page);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).toBeChecked();
@@ -374,9 +377,12 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await choose(page, 'export-format', 'MIDI');
   await pickVideo(page);
   const d = dialog(page);
-  for (const label of ['1:1', '720p', '60 fps', 'Whole piece', 'Light']) {
+  for (const label of ['1:1', '720p', '60 fps', 'Light']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
+  await expect(
+    d.getByTestId('export-camera').getByLabel('Whole piece', { exact: true }),
+  ).toBeChecked();
   await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).not.toBeChecked();

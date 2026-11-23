@@ -19,6 +19,7 @@ export {
   hudPad,
   MIN_PLOT_SHARE,
   pitchExtent,
+  pitchExtentIn,
   pitchToY,
   scorePads,
   sliderToWindow,
@@ -126,6 +127,7 @@ export {
   videoLayout,
   videoMarkers,
   videoSize,
+  videoSpan,
   videoStyle,
   videoWindow,
   type VideoAspect,
@@ -146,8 +148,10 @@ export {
   posterCamera,
   posterLayout,
   posterLength,
+  posterMeta,
   posterRows,
   posterSize,
+  posterSpan,
   posterStyle,
   resetContext,
   type PosterDims,
@@ -157,4 +161,16 @@ export {
   type PosterSize,
   type PosterStyleOptions,
 } from './poster';
+export {
+  MIN_SECTION,
+  barSeconds,
+  clampSpan,
+  clockText,
+  isWholeSpan,
+  sectionText,
+  snapToBar,
+  stepBar,
+  type BarGridSpec,
+  type TimeSpan,
+} from './section';
 export { MONO_ADVANCE, SvgContext, SvgGradient, asCtx2D, escapeXml, svgColor } from './svg';

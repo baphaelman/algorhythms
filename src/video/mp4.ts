@@ -91,6 +91,12 @@ export interface Mp4AudioConfig {
   description?: Bytes;
   /** Leading decoded samples to drop (see the header). */
   primingSamples?: number;
+  /**
+   * Samples the track shows after the priming (the audio's real length, at `sampleRate`): the
+   * edit list ends there, so padding an encoder adds at its flush is not played and does not
+   * lengthen the movie. Absent: every sample shows.
+   */
+  length?: number;
 }
 
 export interface Mp4Options {
@@ -636,9 +642,19 @@ export class Mp4Muxer {
       empty = toMovie(pMin - priming);
       mediaTime = delay;
     }
-    const shown = toMovie(Math.max(0, delay + mediaDuration - mediaTime));
+    let shownTicks = Math.max(0, delay + mediaDuration - mediaTime);
+    const len = t.kind === 'audio' ? this.audio?.length : undefined;
+    let capped = false;
+    if (len !== undefined && Number.isFinite(len) && len >= 0) {
+      const max = Math.round((len * t.timescale) / (this.audio?.sampleRate ?? t.timescale));
+      if (max < shownTicks) {
+        shownTicks = max;
+        capped = true;
+      }
+    }
+    const shown = toMovie(shownTicks);
     let edits: Timing['edits'] = null;
-    if (empty > 0 || mediaTime > 0) {
+    if (empty > 0 || mediaTime > 0 || capped) {
       edits = [];
       if (empty > 0) edits.push({ duration: empty, mediaTime: -1 });
       edits.push({ duration: shown, mediaTime });

@@ -12,6 +12,7 @@
  * `canvasEnd(duration)` lies well past the piece's end; Fit and following still frame the piece.
  */
 
+import { evalSegment } from '../core/segment';
 import type { CompiledScore, FollowMode, Seconds } from '../core/types';
 import type { CameraState, View } from './types';
 
@@ -174,6 +175,43 @@ export function pitchExtent(score: CompiledScore): [number, number] {
       if (b > hi) hi = b;
     }
   }
+  const out = padExtent(lo, hi);
+  extents.set(score, out);
+  return out;
+}
+
+/** Samples inside a segment's part in a span, besides its ends (eases can overshoot). */
+const SPAN_SAMPLES = 8;
+
+/**
+ * As `pitchExtent`, for the lines sounding in [start, end] only (a section of the piece: the
+ * export's section, §12 rev 15): each segment's pitch over its part in the span, from its ends
+ * and a few samples between. Falls back to `pitchExtent` when nothing sounds there.
+ */
+export function pitchExtentIn(
+  score: CompiledScore,
+  start: Seconds,
+  end: Seconds,
+): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of score.voices) {
+    for (const s of v.segments) {
+      if (s.t1 < start || s.t0 > end) continue;
+      const a = Math.max(s.t0, start);
+      const b = Math.min(s.t1, end);
+      for (let i = 0; i <= SPAN_SAMPLES + 1; i++) {
+        const p = evalSegment(s, a + ((b - a) * i) / (SPAN_SAMPLES + 1));
+        if (p < lo) lo = p;
+        if (p > hi) hi = p;
+      }
+    }
+  }
+  return hi >= lo ? padExtent(lo, hi) : pitchExtent(score);
+}
+
+/** [lo, hi] padded by 1.5 semitones, at least 12 tall; A3–A5 when empty. */
+function padExtent(lo: number, hi: number): [number, number] {
   if (!(hi >= lo)) {
     lo = 57;
     hi = 81;
@@ -185,9 +223,7 @@ export function pitchExtent(score: CompiledScore): [number, number] {
     lo = mid - 6;
     hi = mid + 6;
   }
-  const out: [number, number] = [lo, hi];
-  extents.set(score, out);
-  return out;
+  return [lo, hi];
 }
 
 /** What `cameraAt` needs from a score. */

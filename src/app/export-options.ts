@@ -17,6 +17,14 @@ import {
   type LookLineWidth,
 } from '../render/look';
 import type { PosterSize } from '../render/poster';
+import {
+  clampSpan,
+  isWholeSpan,
+  snapToBar,
+  stepBar,
+  type BarGridSpec,
+  type TimeSpan,
+} from '../render/section';
 import type { HudItem } from '../render/types';
 import { MIN_WINDOW } from '../render/camera';
 import {
@@ -83,6 +91,15 @@ export const BEND_RANGES: readonly { id: ExportBendRange; label: string }[] = [
 
 export type ExportVideoTheme = 'current' | 'light' | 'dark';
 
+/** The Section control's choice (§12 rev 15): what a video or poster shows. */
+export type ExportSectionKind = 'whole' | 'loop' | 'custom';
+
+export const SECTION_KINDS: readonly { id: ExportSectionKind; label: string }[] = [
+  { id: 'whole', label: 'Whole piece' },
+  { id: 'loop', label: 'Loop region' },
+  { id: 'custom', label: 'Custom' },
+];
+
 export const VIDEO_ASPECTS: readonly { id: VideoAspect; label: string }[] = [
   { id: '16:9', label: '16:9' },
   { id: '9:16', label: '9:16' },
@@ -117,6 +134,10 @@ export const VIDEO_THEMES: readonly { id: ExportVideoTheme; label: string }[] = 
 /** What the dialog's controls hold. */
 export interface ExportForm {
   format: ExportFormat;
+  /** Video and poster: the section shown (per piece for the session, not remembered). */
+  section: ExportSectionKind;
+  /** The Custom section's span (s); null until one is set. */
+  sectionSpan: TimeSpan | null;
   /** WAV and stems. */
   bitDepth: ExportBitDepth;
   /** WAV and stems. */
@@ -150,6 +171,8 @@ export interface ExportForm {
   /** Rows the piece is cut into, 1..POSTER_MAX_ROWS. */
   posterRows: number;
   posterTitle: boolean;
+  /** With a section: keep the whole piece's pitch range (else fit the section's lines). */
+  posterPieceRange: boolean;
   /** HUD readouts of a poster (default none: it would show end-of-piece values). */
   posterHud: readonly HudItem[];
   /** The Look shared by video and poster (§12 "Export look"). */
@@ -290,6 +313,8 @@ export const FOLLOW_AT_MAX = 90;
 
 export const DEFAULT_EXPORT_FORM: ExportForm = {
   format: 'wav',
+  section: 'whole',
+  sectionSpan: null,
   bitDepth: 32,
   sampleRate: 48000,
   mono: false,
@@ -309,6 +334,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   posterHeight: 2160,
   posterRows: 1,
   posterTitle: true,
+  posterPieceRange: false,
   posterHud: [],
   look: DEFAULT_LOOK_FORM,
 };
@@ -420,12 +446,148 @@ export function midiOptions(form: ExportForm, piece: Piece): MidiRequest {
   return req;
 }
 
+/** What a section resolves against: the piece's length and its loop region. */
+export interface SectionContext {
+  /** The piece's length (s). */
+  duration?: Seconds;
+  /** The piece's loop region (clipped to the piece), if it has one. */
+  loop?: TimeSpan | null;
+}
+
+/**
+ * The span the form's Section shows, or undefined for the whole piece (Whole; Loop without a
+ * loop region; a span covering the piece).
+ */
+export function sectionOf(
+  form: Pick<ExportForm, 'section' | 'sectionSpan'>,
+  ctx: SectionContext,
+): TimeSpan | undefined {
+  const D = ctx.duration;
+  if (D === undefined || !(D > 0)) return undefined;
+  let span: TimeSpan | undefined;
+  if (form.section === 'loop' && ctx.loop) span = clampSpan(ctx.loop, D);
+  else if (form.section === 'custom' && form.sectionSpan) span = clampSpan(form.sectionSpan, D);
+  return span && !isWholeSpan(span, D) ? span : undefined;
+}
+
+/** The piece's bar grid, if it has a tempo (`view.gridBpm`, `view.meter`). */
+export function gridOf(piece: Pick<Piece, 'view'>): BarGridSpec | undefined {
+  const bpm = piece.view.gridBpm;
+  if (typeof bpm !== 'number' || !Number.isFinite(bpm) || !(bpm > 0)) return undefined;
+  return piece.view.meter !== undefined ? { bpm, meter: piece.view.meter } : { bpm };
+}
+
+/**
+ * The span Custom starts with: the loop region if there is one, else the editor's view (snapped
+ * to bars), else the middle third when the view shows the whole piece.
+ */
+export function defaultCustomSpan(
+  duration: Seconds,
+  view: { start: Seconds; window: Seconds },
+  loop?: TimeSpan | null,
+  grid?: BarGridSpec,
+): TimeSpan {
+  if (loop) return clampSpan(loop, duration);
+  let span: TimeSpan = {
+    start: snapToBar(view.start, grid),
+    end: snapToBar(view.start + view.window, grid),
+  };
+  span = clampSpan(span, duration);
+  if (isWholeSpan(span, duration)) {
+    span = clampSpan(
+      { start: snapToBar(duration / 3, grid), end: snapToBar((2 * duration) / 3, grid) },
+      duration,
+    );
+  }
+  return span;
+}
+
+/** Which end of a section moves. */
+export type SectionHandle = 'start' | 'end';
+
+/**
+ * The span with one handle moved to t: snapped to the nearest bar line unless `free` (Alt) or
+ * the piece has no grid, kept inside the piece and at least MIN_SECTION from the other handle.
+ */
+export function moveHandle(
+  span: TimeSpan,
+  handle: SectionHandle,
+  t: Seconds,
+  duration: Seconds,
+  grid?: BarGridSpec,
+  free = false,
+): TimeSpan {
+  const v = free ? t : snapToBar(t, grid);
+  return handle === 'start'
+    ? clampSpan({ start: v, end: span.end }, duration, 'end')
+    : clampSpan({ start: span.start, end: v }, duration, 'start');
+}
+
+/**
+ * The span with one handle typed as t: exact, inside the piece; the other handle gives way to
+ * keep MIN_SECTION between them.
+ */
+export function typeHandle(
+  span: TimeSpan,
+  handle: SectionHandle,
+  t: Seconds,
+  duration: Seconds,
+): TimeSpan {
+  return clampSpan({ ...span, [handle]: t }, duration, handle);
+}
+
+/**
+ * A keyboard step of one handle: a bar (Shift: 4 bars) with a grid, else 1 s (Shift: 10 s); Alt
+ * steps 0.1 s (Shift: 1 s), off the grid. Home and End go to the piece's ends.
+ */
+export function stepHandle(
+  span: TimeSpan,
+  handle: SectionHandle,
+  key: string,
+  mods: { shift?: boolean; alt?: boolean },
+  duration: Seconds,
+  grid?: BarGridSpec,
+): TimeSpan | null {
+  const t = span[handle];
+  let dir: 1 | -1;
+  if (key === 'Home' || key === 'End') {
+    return moveHandle(span, handle, key === 'Home' ? 0 : duration, duration, undefined, true);
+  }
+  if (key === 'ArrowRight' || key === 'ArrowUp' || key === 'PageUp') dir = 1;
+  else if (key === 'ArrowLeft' || key === 'ArrowDown' || key === 'PageDown') dir = -1;
+  else return null;
+  const big = mods.shift === true || key === 'PageUp' || key === 'PageDown';
+  let v: Seconds;
+  if (mods.alt) v = t + dir * (big ? 1 : 0.1);
+  else if (grid) {
+    v = t;
+    for (let i = 0; i < (big ? 4 : 1); i++) v = stepBar(v, dir, grid);
+  } else v = t + dir * (big ? 10 : 1);
+  return moveHandle(span, handle, v, duration, undefined, true);
+}
+
+/** "0:45.0": a section handle's time, to the tenth of a second. */
+export function sectionClock(t: Seconds): string {
+  const tenths = Math.round(Math.max(0, t) * 10);
+  const m = Math.floor(tenths / 600);
+  const s = (tenths - m * 600) / 10;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+/** A typed time: "1:05.5", "65.5" or "1:05"; null when it isn't one. */
+export function parseClock(text: string): Seconds | null {
+  const m = /^\s*(?:(\d+):)?(\d+(?:\.\d*)?|\.\d+)\s*$/.exec(text);
+  if (!m) return null;
+  const sec = Number(m[2]);
+  if (m[1] !== undefined && sec >= 60) return null;
+  const v = (m[1] !== undefined ? Number(m[1]) * 60 : 0) + sec;
+  return Number.isFinite(v) ? v : null;
+}
+
 /** What the video and poster exports take from the app beyond the form. */
-export interface VideoContext extends LookAppContext {
+export interface VideoContext extends LookAppContext, SectionContext {
   /** The editor's zoom window now (s), as seen at 16:9; Follow uses it unless the form sets one. */
   window: Seconds;
-  /** The piece's length (s): caps the form's Follow window. */
-  duration?: Seconds;
 }
 
 /** The Follow window slider's range, seconds shown: 2 s to the whole piece. */
@@ -541,12 +703,20 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
         : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
     o.followAt = followAtOf(form) / 100;
   }
+  const section = sectionOf(form, ctx);
+  if (section) o.section = section;
   return o;
 }
 
-export function posterOptions(form: ExportForm, piece: Piece, ctx: LookAppContext): PosterOptions {
+export function posterOptions(
+  form: ExportForm,
+  piece: Piece,
+  ctx: LookAppContext & SectionContext,
+): PosterOptions {
   const look = lookOf(form, 'poster', ctx);
+  const section = sectionOf(form, ctx);
   return {
+    ...(section ? { section, pieceRange: form.posterPieceRange } : {}),
     size: { width: form.posterWidth, height: form.posterHeight },
     rows: form.posterRows,
     theme: look.theme,
@@ -590,6 +760,7 @@ const REMEMBERED = [
   'posterHeight',
   'posterRows',
   'posterTitle',
+  'posterPieceRange',
   'posterHud',
   'look',
 ] as const satisfies readonly (keyof ExportForm)[];
@@ -669,6 +840,7 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   }
   if (num(r.posterRows)) p.posterRows = clampRows(r.posterRows);
   if (isBool(r.posterTitle)) p.posterTitle = r.posterTitle;
+  if (isBool(r.posterPieceRange)) p.posterPieceRange = r.posterPieceRange;
   if (Array.isArray(r.posterHud)) p.posterHud = hudInOrder(r.posterHud);
   if (r.look && typeof r.look === 'object') {
     p.look = parseLook(r.look as Record<string, unknown>);

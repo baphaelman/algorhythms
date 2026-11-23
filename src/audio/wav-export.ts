@@ -19,6 +19,64 @@ export interface WavExportOptions {
   bitDepth: WavBitDepth;
   /** Seconds per chunk (rounded to whole blocks). @default 1 */
   chunkSeconds?: number;
+  /** Only this span of the render (a video section); absent = all of it. */
+  span?: WavSpan;
+}
+
+/**
+ * A span of the render (§12 rev 15, video sections): the samples from `start` to `end` of the
+ * render from t = 0 (so they equal the whole render's there, sounds already ringing included),
+ * with `fade` seconds of fade-in after a cut start and fade-out before a cut end, so neither cut
+ * clicks. `end` absent: to the render's end (the piece's end plus its FX tail), no fade-out.
+ */
+export interface WavSpan {
+  start: number;
+  end?: number;
+  /** @default SPAN_FADE */
+  fade?: number;
+}
+
+/** Fade at a section's cuts, seconds. */
+export const SPAN_FADE = 0.03;
+
+/** The frames [from, to) a span keeps of a `total`-frame render, and its fade lengths. */
+export function spanFrames(
+  total: number,
+  sampleRate: number,
+  span?: WavSpan,
+): { from: number; to: number; fadeIn: number; fadeOut: number } {
+  if (!span) return { from: 0, to: total, fadeIn: 0, fadeOut: 0 };
+  const from = Math.min(total, Math.max(0, Math.round(span.start * sampleRate)));
+  const to =
+    span.end === undefined
+      ? total
+      : Math.min(total, Math.max(from, Math.round(span.end * sampleRate)));
+  const n = Math.max(0, Math.round((span.fade ?? SPAN_FADE) * sampleRate));
+  const len = to - from;
+  return {
+    from,
+    to,
+    fadeIn: from > 0 ? Math.min(n, len) : 0,
+    fadeOut: to < total ? Math.min(n, len) : 0,
+  };
+}
+
+/**
+ * Gain of frame i (0-based in the span) of a `len`-frame span with these fades: sin² ramps, 0 at
+ * the cut sample itself, 1 inside.
+ */
+export function spanGain(i: number, len: number, fadeIn: number, fadeOut: number): number {
+  let g = 1;
+  if (i < fadeIn) {
+    const s = Math.sin((Math.PI / 2) * (i / fadeIn));
+    g *= s * s;
+  }
+  const j = len - 1 - i;
+  if (j < fadeOut) {
+    const s = Math.sin((Math.PI / 2) * (j / fadeOut));
+    g *= s * s;
+  }
+  return g;
 }
 
 /** What to export. */
@@ -34,7 +92,9 @@ export function wavExportSize(
   input: WavExportInput,
   options: WavExportOptions,
 ): { frames: number; bytes: number } {
-  const frames = exportFrameCount(input.score, input.mix, options.sampleRate);
+  const all = exportFrameCount(input.score, input.mix, options.sampleRate);
+  const { from, to } = spanFrames(all, options.sampleRate, options.span);
+  const frames = to - from;
   const header = wavHeader(
     { sampleRate: options.sampleRate, bitDepth: options.bitDepth, channels: 2 },
     frames,
@@ -53,7 +113,9 @@ export function* wavExportChunks(
 ): Generator<Uint8Array<ArrayBuffer>> {
   const flat = 'layout' in input.score ? input.score : flatten(input.score);
   const sampleRate = options.sampleRate;
-  const frames = exportFrameCount(flat, input.mix, sampleRate);
+  const all = exportFrameCount(flat, input.mix, sampleRate);
+  const { from, to, fadeIn, fadeOut } = spanFrames(all, sampleRate, options.span);
+  const frames = to - from;
   const format = { sampleRate, bitDepth: options.bitDepth, channels: 2 } as const;
   yield wavHeader(format, frames);
 
@@ -74,6 +136,10 @@ export function* wavExportChunks(
   const right = new Float32Array(chunkFrames);
   const bl = new Float32Array(BLOCK_FRAMES);
   const br = new Float32Array(BLOCK_FRAMES);
+  if (from > 0 || to < all) {
+    yield* spanChunks(graph, encoder, { from, to, fadeIn, fadeOut, chunkFrames }, onProgress);
+    return;
+  }
   let done = 0;
   while (done < frames) {
     const n = Math.min(chunkFrames, frames - done);
@@ -86,6 +152,45 @@ export function* wavExportChunks(
     const bytes = encoder.encode(left, right, n);
     onProgress?.(done / frames);
     yield bytes;
+  }
+}
+
+/**
+ * A span's chunks: the graph runs from t = 0 (the frames before `from` are rendered and
+ * dropped, so the span equals the whole render's samples there), stopping at `to`; the kept
+ * frames get the cut fades. Progress counts every frame rendered.
+ */
+function* spanChunks(
+  graph: ReturnType<typeof createLoadedGraph>,
+  encoder: WavEncoder,
+  o: { from: number; to: number; fadeIn: number; fadeOut: number; chunkFrames: number },
+  onProgress?: (fraction: number) => void,
+): Generator<Uint8Array<ArrayBuffer>> {
+  const { from, to, fadeIn, fadeOut, chunkFrames } = o;
+  const len = to - from;
+  const left = new Float32Array(chunkFrames);
+  const right = new Float32Array(chunkFrames);
+  const bl = new Float32Array(BLOCK_FRAMES);
+  const br = new Float32Array(BLOCK_FRAMES);
+  let fill = 0;
+  let kept = 0;
+  for (let f = 0; f < to; f += BLOCK_FRAMES) {
+    graph.process(bl, br);
+    const a = Math.max(f, from);
+    const b = Math.min(f + BLOCK_FRAMES, to);
+    for (let x = a; x < b; x++) {
+      const g = spanGain(kept, len, fadeIn, fadeOut);
+      left[fill] = bl[x - f] * g;
+      right[fill] = br[x - f] * g;
+      fill++;
+      kept++;
+      if (fill === chunkFrames || kept === len) {
+        const bytes = encoder.encode(left, right, fill);
+        fill = 0;
+        onProgress?.(Math.min(1, (x + 1) / to));
+        yield bytes;
+      }
+    }
   }
 }
 

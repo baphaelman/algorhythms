@@ -7,9 +7,9 @@
 import { exportWav } from '../audio/export-client';
 import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/stems-client';
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
-import { exportFrameCount } from '../audio/offline';
 import { wavExportSize } from '../audio/wav-export';
 import type { CompiledScore, Piece, Seconds } from '../core/types';
+import type { TimeSpan } from '../render/section';
 import type { Ctx2D } from '../render/draw';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
@@ -21,6 +21,7 @@ import {
   wavOptions,
   type ExportForm,
   type LookAppContext,
+  type SectionContext,
   type VideoContext,
 } from './export-options';
 import {
@@ -30,6 +31,7 @@ import {
   exportVideo,
   fileSink,
   previewVideoFrame,
+  videoAudioFrames,
   videoSupport,
   type VideoOptions,
   type VideoPhase,
@@ -57,8 +59,15 @@ export interface ExportEstimate {
   zip64: boolean;
 }
 
-/** Exact size of a WAV or stems export (no rendering); null for MIDI (it is small). */
-export function estimateExport(src: ExportSource, form: ExportForm): ExportEstimate | null {
+/**
+ * Exact size of a WAV or stems export (no rendering), an upper bound for a video (of its
+ * `section`, if any); null for MIDI (it is small).
+ */
+export function estimateExport(
+  src: ExportSource,
+  form: ExportForm,
+  section?: TimeSpan,
+): ExportEstimate | null {
   const input = { score: src.compiled, mix: src.piece.mix, timbres: src.piece.timbres };
   if (form.format === 'wav') {
     const { bytes } = wavExportSize(input, wavOptions(form));
@@ -69,8 +78,7 @@ export function estimateExport(src: ExportSource, form: ExportForm): ExportEstim
     return { bytes: p.bytes, files: p.entries.length, large: p.large, zip64: p.zip64 };
   }
   if (form.format === 'video') {
-    const seconds =
-      exportFrameCount(src.compiled, src.piece.mix, VIDEO_SAMPLE_RATE) / VIDEO_SAMPLE_RATE;
+    const seconds = videoAudioFrames(src.compiled, src.piece.mix, section) / VIDEO_SAMPLE_RATE;
     const bytes = estimateVideoBytes(seconds, {
       aspect: form.videoAspect,
       size: form.videoSize,
@@ -215,7 +223,7 @@ const aborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
 export async function runPoster(
   src: ExportSource,
   form: ExportForm,
-  ctx: LookAppContext,
+  ctx: LookAppContext & SectionContext,
   hooks: RunHooks & { target?: VideoFileHandle } = {},
 ): Promise<ExportOutput> {
   const options = posterOptions(form, src.piece, ctx);
@@ -277,7 +285,7 @@ export function previewPosterOf(
   g: Ctx2D,
   src: ExportSource,
   form: ExportForm,
-  ctx: LookAppContext,
+  ctx: LookAppContext & SectionContext,
   scale: number,
 ): void {
   const options = posterOptions(form, src.piece, ctx);

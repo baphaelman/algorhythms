@@ -1467,3 +1467,92 @@ dialog.dialog.export.has-preview {
   background: var(--ink);
   opacity: 0.6;
 }
+
+/* Export dialog: the Section (§12 rev 15). A two-handle range over the piece in miniature; x is
+   t / duration across the whole track, for the overview and the handles alike. */
+.dialog .section-field {
+  margin-bottom: 4px;
+}
+
+.dialog .section-range {
+  position: relative;
+  margin: 6px 0 4px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dialog .section-range.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.dialog .section-overview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dialog .section-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--paper);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.dialog .section-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+.dialog .section-handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 12px;
+  margin-left: -6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.dialog .section-handle::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.dialog .section-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+.dialog .section-times {
+  gap: 12px;
+}
+
+.dialog .section-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialog .section-clock input {
+  width: 8ch;
+  font-variant-numeric: tabular-nums;
+}

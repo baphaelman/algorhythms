@@ -10,7 +10,9 @@ import {
   type ReactNode,
 } from 'react';
 import { create } from 'zustand';
+import { evalSegment } from '../../core/segment';
 import { formatTime } from '../../render/hud';
+import { sectionText, type TimeSpan } from '../../render/section';
 import { tokensOf } from '../../render/palettes';
 import { videoSize } from '../../render/video';
 import type { HudItem } from '../../render/types';
@@ -29,29 +31,39 @@ import {
   POSTER_MIN_SIDE,
   POSTER_SIZES,
   RATES,
+  SECTION_KINDS,
   VIDEO_ASPECTS,
   VIDEO_CAMERAS,
   VIDEO_FPS,
   VIDEO_SIZES,
   VIDEO_THEMES,
   codecLabel,
+  defaultCustomSpan,
   exportFileName,
   followWindowOf,
   followWindowToSlider,
   formatBytes,
+  gridOf,
   hudInOrder,
   clampPosterDims,
   loadExportPrefs,
+  moveHandle,
+  parseClock,
   posterCapped,
   posterPixels,
   posterPreset,
   resetLook,
   saveExportPrefs,
+  sectionClock,
+  sectionOf,
   sliderToFollowWindow,
+  stepHandle,
+  typeHandle,
   windowSnaps,
   windowText,
   type ExportForm,
   type LookForm,
+  type SectionHandle,
   type VideoContext,
 } from '../export-options';
 import type { ExportEstimate, ExportOutput } from '../export-run';
@@ -68,7 +80,16 @@ import {
 } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
-import { cameraOf, currentTime, pause, play, pushNotice, seekTo, usePlayer } from '../store';
+import {
+  cameraOf,
+  currentTime,
+  loopRegion,
+  pause,
+  play,
+  pushNotice,
+  seekTo,
+  usePlayer,
+} from '../store';
 
 /** The lazily loaded engine room (it pulls in the DSP graph, so it is not in the main chunk). */
 type Runtime = typeof import('../export-run');
@@ -129,15 +150,40 @@ function appDark(): boolean {
   );
 }
 
-/** What the video and poster take from the app now: the editor's zoom, theme and line colours. */
+/**
+ * What the video and poster take from the app now: the editor's zoom, theme and line colours,
+ * the piece's length and loop region.
+ */
 function videoContext(): VideoContext {
   const { view, compiled } = usePlayer.getState();
+  const loop = loopRegion();
   return {
     window: cameraOf().window,
     duration: compiled.duration,
     dark: appDark(),
     colors: view.colors,
+    loop: loop ? { start: loop.start, end: loop.end } : null,
   };
+}
+
+/** The span the form's Section shows now, or the whole piece. */
+function sectionNow(form: ExportForm = useExportUi.getState().form): TimeSpan {
+  const ctx = videoContext();
+  return sectionOf(form, ctx) ?? { start: 0, end: ctx.duration ?? 0 };
+}
+
+/** A piece's identity for the Section's memory (it survives edits, not a different piece). */
+function pieceKey(): string {
+  const { piece } = usePlayer.getState();
+  return `${piece.meta.created}|${piece.seed}`;
+}
+
+/** The Section chosen per piece, for the session (integrator call: not remembered on disk). */
+const sections = new Map<string, Pick<ExportForm, 'section' | 'sectionSpan'>>();
+
+/** The piece's remembered Section, else Whole. */
+function sectionFor(key: string): Pick<ExportForm, 'section' | 'sectionSpan'> {
+  return sections.get(key) ?? { section: 'whole', sectionSpan: null };
 }
 
 /** The editor's playhead when the dialog opened, and whether the preview has moved it since. */
@@ -149,7 +195,11 @@ function playPreview(): void {
   const s = useExportUi.getState();
   if (s.previewPlaying || s.run.status === 'running') return;
   previewMoved = true;
-  seekTo(s.previewT);
+  // Only the section plays: from the preview time, or its start when at (or past) its end.
+  const span = sectionNow(s.form);
+  const from = s.previewT >= span.end - 0.05 || s.previewT < span.start ? span.start : s.previewT;
+  useExportUi.setState({ previewT: from });
+  seekTo(from);
   play();
   useExportUi.setState({ previewPlaying: usePlayer.getState().transport.status === 'playing' });
 }
@@ -188,14 +238,18 @@ export function openExport(): void {
   const { duration } = usePlayer.getState().compiled;
   openPlayhead = now;
   previewMoved = false;
+  // The remembered Look and video/poster choices (none if storage is unavailable), and this
+  // piece's Section (Whole for a piece not exported this session).
+  const form = running ? s.form : { ...s.form, ...loadExportPrefs(), ...sectionFor(pieceKey()) };
+  const span = sectionNow(form);
+  const t0 = now > 0 ? now : duration / 3;
   useExportUi.setState({
     open: true,
     previewPlaying: false,
     hudOpen: false,
-    previewT: now > 0 ? now : duration / 3,
+    previewT: Math.min(Math.max(t0, span.start), span.end),
     run: running ? s.run : IDLE,
-    // The remembered Look and video/poster choices (none if storage is unavailable).
-    form: running ? s.form : { ...s.form, ...loadExportPrefs() },
+    form,
   });
 }
 
@@ -212,7 +266,19 @@ function cancelExport(): void {
 
 function patch(p: Partial<ExportForm>): void {
   useExportUi.setState((s) => ({ form: { ...s.form, ...p }, run: IDLE }));
-  saveExportPrefs(useExportUi.getState().form);
+  const { form } = useExportUi.getState();
+  saveExportPrefs(form);
+  if ('section' in p || 'sectionSpan' in p) {
+    sections.set(pieceKey(), { section: form.section, sectionSpan: form.sectionSpan });
+    // The preview time stays inside the section.
+    const span = sectionNow(form);
+    const { previewT, previewPlaying } = useExportUi.getState();
+    const t = Math.min(Math.max(previewT, span.start), span.end);
+    if (t !== previewT) {
+      useExportUi.setState({ previewT: t });
+      if (previewPlaying) seekTo(t);
+    }
+  }
 }
 
 function patchLook(p: Partial<LookForm>): void {
@@ -327,7 +393,7 @@ function estimateFor(
 ): ExportEstimate | null {
   if (!runtime) return null;
   try {
-    return runtime.estimateExport({ piece, compiled }, form);
+    return runtime.estimateExport({ piece, compiled }, form, sectionOf(form, videoContext()));
   } catch {
     return null;
   }
@@ -824,8 +890,16 @@ function ExportPreview({
     let raf = 0;
     const tick = () => {
       const now = currentTime();
+      const span = sectionNow();
       if (usePlayer.getState().transport.status !== 'playing') {
         useExportUi.setState({ previewPlaying: false, previewT: now });
+        return;
+      }
+      // Only the section plays: stop at its end (or if the player left it, e.g. a loop's wrap).
+      if (now >= span.end - 1e-3 || now < span.start - 0.05) {
+        pause();
+        const at = Math.min(Math.max(now, span.start), span.end);
+        useExportUi.setState({ previewPlaying: false, previewT: at });
         return;
       }
       if (useExportUi.getState().previewT !== now) useExportUi.setState({ previewT: now });
@@ -842,7 +916,8 @@ function ExportPreview({
   const dpr = Math.min(2, devicePixelRatio || 1);
   const pxW = Math.round(cssW * dpr);
   const pxH = Math.max(1, Math.round((px.height * pxW) / px.width));
-  const time = Math.min(Math.max(0, t), compiled.duration);
+  const span = sectionNow(form);
+  const time = Math.min(Math.max(span.start, t), span.end);
 
   useEffect(() => {
     if (!runtime || avail.w === 0) return;
@@ -924,8 +999,8 @@ function ExportPreview({
           <input
             id={`${id}-t`}
             type="range"
-            min={0}
-            max={Math.max(0.1, compiled.duration)}
+            min={span.start}
+            max={Math.max(span.start + 0.1, span.end)}
             step={0.1}
             value={time}
             data-testid="preview-time"
@@ -1124,6 +1199,324 @@ function PosterSizeFields({ form, disabled }: { form: ExportForm; disabled: bool
   );
 }
 
+/** Overview height, CSS px. */
+const OVERVIEW_H = 48;
+
+/**
+ * The piece in miniature for the Section's range: every line as a thin polyline (one sample per
+ * 2 px) and the section labels at their markers, x = t / duration · width (the handles use the
+ * same mapping).
+ */
+function drawOverview(
+  c: HTMLCanvasElement,
+  compiled: ReturnType<typeof usePlayer.getState>['compiled'],
+  labels: readonly { t: number; text: string }[],
+  dark: boolean,
+): void {
+  const g = c.getContext('2d');
+  if (!g) return;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const w = c.clientWidth;
+  const h = c.clientHeight;
+  if (w === 0 || h === 0) return;
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const tk = tokensOf(dark ? 'dark' : 'light');
+  g.clearRect(0, 0, w, h);
+  const D = Math.max(1e-6, compiled.duration);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of compiled.voices) {
+    for (const sg of v.segments) {
+      lo = Math.min(lo, sg.p0, sg.p1);
+      hi = Math.max(hi, sg.p0, sg.p1);
+    }
+  }
+  if (!(hi > lo)) {
+    lo -= 6;
+    hi += 6;
+  }
+  const top = 13;
+  const bottom = h - 3;
+  const y = (p: number) => bottom - ((p - lo) / (hi - lo)) * (bottom - top);
+  g.strokeStyle = tk.ink2;
+  g.globalAlpha = 0.85;
+  g.lineWidth = 1;
+  g.lineJoin = 'round';
+  for (const v of compiled.voices) {
+    for (const sg of v.segments) {
+      const x0 = (sg.t0 / D) * w;
+      const x1 = (sg.t1 / D) * w;
+      g.beginPath();
+      g.moveTo(x0, y(sg.p0));
+      if (sg.p0 !== sg.p1 || sg.curve) {
+        for (let x = x0 + 2; x < x1; x += 2) g.lineTo(x, y(evalSegment(sg, (x / w) * D)));
+      }
+      g.lineTo(Math.max(x1, x0 + 0.5), y(sg.p1));
+      g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
+  g.font = `500 8.5px ${getComputedStyle(c).fontFamily}`;
+  g.fillStyle = tk.ink2;
+  g.strokeStyle = tk.rule;
+  let lastEnd = -1e9;
+  for (const l of labels) {
+    const x = Math.round((l.t / D) * w) + 0.5;
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, h);
+    g.stroke();
+    const text = l.text.toUpperCase();
+    const tw = g.measureText(text).width;
+    if (x >= lastEnd + 6 && x + 3 + tw < w) {
+      g.fillText(text, x + 3, 9);
+      lastEnd = x + 3 + tw;
+    }
+  }
+}
+
+/** A handle's time typed in a text field ("1:05.5" or seconds), committed on Enter or blur. */
+function ClockInput({
+  label,
+  value,
+  disabled,
+  testId,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  testId: string;
+  onCommit: (t: number) => void;
+}) {
+  const shown = sectionClock(value);
+  const [text, setText] = useState<string | null>(null);
+  const commit = () => {
+    if (text === null) return;
+    const t = parseClock(text);
+    setText(null);
+    if (t !== null) onCommit(t);
+  };
+  return (
+    <label className="section-clock">
+      <span>{label}</span>
+      <input
+        type="text"
+        inputMode="decimal"
+        spellCheck={false}
+        value={text ?? shown}
+        disabled={disabled}
+        aria-invalid={text !== null && parseClock(text) === null}
+        data-testid={testId}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape' && text !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            setText(null);
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+/**
+ * The Section (PLAN.md §12 "Exports you can shape"): Whole piece, Loop region (when the piece
+ * has one) or Custom, a two-handle range over the piece in miniature. Handles snap to bar lines
+ * when the piece has a tempo (Alt: free); each is a slider (arrows: a bar, or a second without a
+ * tempo; Shift: four; Alt: 0.1 s; Home / End), and the times can be typed.
+ */
+function SectionField({ form, disabled }: { form: ExportForm; disabled: boolean }) {
+  const id = useId();
+  const piece = usePlayer((s) => s.piece);
+  const compiled = usePlayer((s) => s.compiled);
+  const appView = usePlayer((s) => s.view.theme);
+  const track = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const drag = useRef<SectionHandle | null>(null);
+  const [width, setWidth] = useState(0);
+  const D = compiled.duration;
+  const grid = gridOf(piece);
+  const loop = loopRegion();
+  const kinds = SECTION_KINDS.filter((k) => k.id !== 'loop' || loop !== null);
+  // Loop without a loop region (it was removed) shows as Whole.
+  const kind = form.section === 'loop' && !loop ? 'whole' : form.section;
+  const span = sectionNow(form);
+  const custom = kind === 'custom';
+  const cspan = form.sectionSpan ?? span;
+
+  const labels = useMemo(() => {
+    const out: { t: number; text: string }[] = [];
+    for (const m of piece.moments) if (m.label) out.push({ t: m.at, text: m.label });
+    return out.sort((a, b) => a.t - b.t);
+  }, [piece.moments]);
+
+  useLayoutEffect(() => {
+    const el = track.current;
+    if (!el) return;
+    const measure = () => setWidth((w) => (w === el.clientWidth ? w : el.clientWidth));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [custom]);
+
+  useEffect(() => {
+    if (custom && canvas.current && width > 0) {
+      drawOverview(canvas.current, compiled, labels, appDark());
+    }
+  }, [custom, compiled, labels, width, appView]);
+
+  const setSpan = (next: TimeSpan) => {
+    const cur = useExportUi.getState().form.sectionSpan;
+    if (cur && cur.start === next.start && cur.end === next.end) return;
+    patch({ sectionSpan: next });
+  };
+  const timeAt = (clientX: number) => {
+    const r = track.current?.getBoundingClientRect();
+    if (!r || r.width === 0) return 0;
+    return (Math.min(Math.max(clientX - r.left, 0), r.width) / r.width) * D;
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const h = drag.current;
+    if (!h) return;
+    const cur = useExportUi.getState().form.sectionSpan ?? cspan;
+    setSpan(moveHandle(cur, h, timeAt(e.clientX), D, grid, e.altKey));
+  };
+  const startDrag = (e: React.PointerEvent, h: SectionHandle) => {
+    if (disabled || e.button !== 0) return;
+    e.preventDefault();
+    drag.current = h;
+    track.current?.setPointerCapture(e.pointerId);
+    (track.current?.querySelector(`[data-handle="${h}"]`) as HTMLElement | null)?.focus();
+    onMove(e);
+  };
+
+  const pct = (t: number) =>
+    `${(Math.min(Math.max(t / Math.max(D, 1e-6), 0), 1) * 100).toFixed(3)}%`;
+  const handle = (h: SectionHandle) => {
+    const t = cspan[h];
+    const name = h === 'start' ? 'Section start' : 'Section end';
+    return (
+      <div
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={name}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(D * 10) / 10}
+        aria-valuenow={Math.round(t * 10) / 10}
+        aria-valuetext={sectionClock(t)}
+        aria-disabled={disabled || undefined}
+        aria-describedby={`${id}-keys`}
+        className={`section-handle ${h}`}
+        data-handle={h}
+        data-testid={`section-${h}`}
+        style={{ left: pct(t) }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          startDrag(e, h);
+        }}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          const next = stepHandle(cspan, h, e.key, { shift: e.shiftKey, alt: e.altKey }, D, grid);
+          if (!next) return;
+          e.preventDefault();
+          setSpan(next);
+        }}
+      />
+    );
+  };
+
+  return (
+    <div className="section-field" data-testid="export-section-field">
+      <Radios
+        legend="Section"
+        name={`${id}-section`}
+        value={kind}
+        options={kinds}
+        disabled={disabled}
+        testId="export-section"
+        onChange={(section) => {
+          if (section === 'custom' && !useExportUi.getState().form.sectionSpan) {
+            patch({ section, sectionSpan: defaultCustomSpan(D, cameraOf(), loop, grid) });
+          } else patch({ section });
+        }}
+      />
+      {custom && (
+        <>
+          <div
+            ref={track}
+            className={disabled ? 'section-range disabled' : 'section-range'}
+            data-testid="section-range"
+            style={{ height: `${OVERVIEW_H}px` }}
+            onPointerDown={(e) => {
+              // A press on the track moves the nearer handle there.
+              const t = timeAt(e.clientX);
+              startDrag(e, Math.abs(t - cspan.start) <= Math.abs(t - cspan.end) ? 'start' : 'end');
+            }}
+            onPointerMove={onMove}
+            onPointerUp={() => (drag.current = null)}
+            onPointerCancel={() => (drag.current = null)}
+          >
+            <canvas
+              ref={canvas}
+              className="section-overview"
+              role="img"
+              aria-label="The piece in miniature"
+              data-testid="section-overview"
+            />
+            <div className="section-shade" style={{ left: 0, width: pct(cspan.start) }} />
+            <div className="section-shade" style={{ left: pct(cspan.end), right: 0 }} />
+            <div
+              className="section-sel"
+              style={{
+                left: pct(cspan.start),
+                width: `calc(${pct(cspan.end)} - ${pct(cspan.start)})`,
+              }}
+            />
+            {handle('start')}
+            {handle('end')}
+          </div>
+          <small className="visually-hidden" id={`${id}-keys`}>
+            {grid
+              ? 'Arrow keys move by a bar, Shift by four bars, Alt by a tenth of a second.'
+              : 'Arrow keys move by a second, Shift by ten, Alt by a tenth.'}
+          </small>
+          <div className="field-row section-times">
+            <ClockInput
+              label="Start"
+              value={cspan.start}
+              disabled={disabled}
+              testId="section-start-text"
+              onCommit={(t) => setSpan(typeHandle(cspan, 'start', t, D))}
+            />
+            <ClockInput
+              label="End"
+              value={cspan.end}
+              disabled={disabled}
+              testId="section-end-text"
+              onCommit={(t) => setSpan(typeHandle(cspan, 'end', t, D))}
+            />
+          </div>
+        </>
+      )}
+      {kind !== 'whole' && (
+        <small className="export-hint" data-testid="section-summary">
+          {sectionText(span, D)} ({Math.round((span.end - span.start) * 10) / 10} s)
+          {grid ? (custom ? '. Snaps to bars; hold Alt to place freely.' : '') : ''}
+        </small>
+      )}
+    </div>
+  );
+}
+
 /**
  * The Export dialog (PLAN.md §12): WAV, stems, MIDI, video and poster. A native modal `<dialog>`, so focus is
  * trapped, Escape closes it (cancelling a running export) and focus returns to the menu button.
@@ -1249,6 +1642,8 @@ export function ExportDialog() {
             )}
 
             <div className="export-options">
+              {(isVideo || isPoster) && <SectionField form={form} disabled={running} />}
+
               {(form.format === 'wav' || form.format === 'stems') && (
                 <>
                   <Radios
@@ -1409,6 +1804,21 @@ export function ExportDialog() {
                       onChange={(posterTitle) => patch({ posterTitle })}
                     />
                   </div>
+                  {sectionOf(form, videoContext()) && (
+                    <div className="field">
+                      <Switch
+                        checked={form.posterPieceRange}
+                        disabled={running}
+                        testId="export-prange"
+                        label="Piece’s pitch range"
+                        onChange={(posterPieceRange) => patch({ posterPieceRange })}
+                      >
+                        <small className="hud-sample">
+                          Off: the pitch range fits the section’s lines
+                        </small>
+                      </Switch>
+                    </div>
+                  )}
                 </>
               )}
 

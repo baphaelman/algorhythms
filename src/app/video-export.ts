@@ -15,12 +15,14 @@
 
 import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
+import { spanFrames, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
 import type { CompiledScore, LineColors, Piece, Seconds } from '../core/types';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, type Ctx2D } from '../render/draw';
 import { resetContext } from '../render/poster';
+import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
   drawVideoFrame,
   drawVideoFrameAt,
@@ -29,6 +31,7 @@ import {
   videoLayout,
   videoMarkers,
   videoSize,
+  videoSpan,
   videoStyle,
   type VideoAspect,
   type VideoCameraMode,
@@ -57,6 +60,36 @@ export interface VideoOptions {
   customColors?: readonly (string | undefined)[];
   /** The export Look (§12); replaces theme, hud, thickness and colors when given. */
   look?: Look;
+  /**
+   * The section exported (§12 rev 15): the video starts at its start and lasts its length; the
+   * audio is the mix's render of that span with fades at the cuts. Absent = the whole piece.
+   */
+  section?: TimeSpan;
+}
+
+/**
+ * The audio span of a video section (`WavSpan`), or undefined for the whole piece. A section
+ * ending at the piece's end keeps the ring-out, as the whole video does.
+ */
+export function videoAudioSpan(duration: Seconds, section?: TimeSpan): WavSpan | undefined {
+  if (!section || isWholeSpan(section, duration)) return undefined;
+  const span = videoSpan(duration, section);
+  return span.end >= duration - 1e-3 ? { start: span.start } : { start: span.start, end: span.end };
+}
+
+/** Audio frames (at VIDEO_SAMPLE_RATE) of a video export: the WAV render's, or its section's. */
+export function videoAudioFrames(
+  compiled: CompiledScore,
+  mix: Piece['mix'],
+  section?: TimeSpan,
+): number {
+  const all = exportFrameCount(compiled, mix, VIDEO_SAMPLE_RATE);
+  const { from, to } = spanFrames(
+    all,
+    VIDEO_SAMPLE_RATE,
+    videoAudioSpan(compiled.duration, section),
+  );
+  return to - from;
 }
 
 /** Where the MP4 goes. `positioned`: the sink takes positioned writes (streaming layout). */
@@ -224,13 +257,15 @@ export async function videoSupport(
 
 /**
  * The mix as the WAV export renders it (48 kHz, 32-bit float: the same samples), as interleaved
- * stereo chunks of about a second. Aborting the signal stops the render worker.
+ * stereo chunks of about a second; with a span, only that span (`WavSpan`). Aborting the signal
+ * stops the render worker.
  */
 export async function* mixChunks(
   compiled: CompiledScore,
   piece: Piece,
   signal: AbortSignal,
   onProgress?: (fraction: number) => void,
+  span?: WavSpan,
 ): AsyncGenerator<Float32Array<ArrayBuffer>> {
   const reader = exportWavStream({
     score: compiled,
@@ -240,6 +275,7 @@ export async function* mixChunks(
     bitDepth: 32,
     signal,
     onProgress,
+    ...(span ? { span } : {}),
   }).getReader();
   let header = true;
   try {
@@ -257,14 +293,21 @@ export async function* mixChunks(
   }
 }
 
-/** The whole mix as [left, right] (tests compare the MP4's audio with it). */
-export async function renderMix(piece: Piece): Promise<[Float32Array, Float32Array]> {
+/**
+ * The whole mix as [left, right], or a section's audio as the video exports it (tests compare the
+ * MP4's audio with it).
+ */
+export async function renderMix(
+  piece: Piece,
+  section?: TimeSpan,
+): Promise<[Float32Array, Float32Array]> {
   const compiled = compile(piece);
-  const frames = exportFrameCount(compiled, piece.mix, VIDEO_SAMPLE_RATE);
+  const frames = videoAudioFrames(compiled, piece.mix, section);
+  const span = videoAudioSpan(compiled.duration, section);
   const l = new Float32Array(frames);
   const r = new Float32Array(frames);
   let at = 0;
-  for await (const c of mixChunks(compiled, piece, new AbortController().signal)) {
+  for await (const c of mixChunks(compiled, piece, new AbortController().signal, undefined, span)) {
     for (let i = 0; i < c.length; i += 2, at++) {
       l[at] = c[i];
       r[at] = c[i + 1];
@@ -390,6 +433,7 @@ export function frameOptions(piece: Piece, opts: VideoOptions): VideoFrameOption
   const o: VideoFrameOptions = { aspect: opts.aspect, size: opts.size, camera: opts.camera, style };
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
+  if (opts.section) o.section = opts.section;
   return o;
 }
 
@@ -435,7 +479,8 @@ export function referenceFrameAt(
   const compiled = compile(piece);
   const fo = frameOptions(piece, opts);
   const lay = videoLayout(opts.aspect, opts.size);
-  const tc = Math.min(Math.max(0, t), compiled.duration);
+  const span = videoSpan(compiled.duration, fo.section);
+  const tc = Math.min(Math.max(span.start, t), span.end);
   const cam = videoCamera(fo.camera, compiled, tc, fo);
   g.lineCap = 'round';
   g.lineJoin = 'round';
@@ -511,7 +556,8 @@ export async function exportVideo(
 
   const compiled = compile(piece);
   const sr = VIDEO_SAMPLE_RATE;
-  const audioFrames = exportFrameCount(compiled, piece.mix, sr);
+  const audioSpan = videoAudioSpan(compiled.duration, opts.section);
+  const audioFrames = videoAudioFrames(compiled, piece.mix, opts.section);
   const duration = audioFrames / sr;
   const frames = videoFrameCount(duration, opts.fps);
   const { width, height } = videoSize(opts.aspect, opts.size);
@@ -533,7 +579,15 @@ export async function exportVideo(
     layout: sink.positioned ? 'streaming' : 'faststart',
     sink,
     video: { codec: videoCodec, width, height, frameRate: opts.fps },
-    audio: { codec: audioCodec, sampleRate: sr, numberOfChannels: 2, primingSamples: priming },
+    // The audio's own length: the encoders' flush padding (AAC: up to a packet or two past it)
+    // would otherwise make the video up to ~40 ms longer than the render.
+    audio: {
+      codec: audioCodec,
+      sampleRate: sr,
+      numberOfChannels: 2,
+      primingSamples: priming,
+      length: audioFrames,
+    },
   });
   const muxed = (p: Promise<void>) => p.catch(fail);
 
@@ -553,10 +607,11 @@ export async function exportVideo(
     try {
       enc.configure(audioConfig(audioCodec));
       let sent = 0;
-      for await (const data of mixChunks(compiled, piece, stop.signal, (f) => {
+      const onAudio = (f: number) => {
         audioFrac = f;
         report(videoDone < frames ? 'video' : 'audio');
-      })) {
+      };
+      for await (const data of mixChunks(compiled, piece, stop.signal, onAudio, audioSpan)) {
         if (stop.signal.aborted) return;
         const n = data.length >> 1;
         const ad = new AudioData({

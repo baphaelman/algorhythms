@@ -19,6 +19,7 @@ import {
   type PosterInfo,
   type PosterSize,
 } from '../render/poster';
+import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { videoMarkers } from '../render/video';
 import { fileBase } from './export-options';
@@ -41,6 +42,10 @@ export interface PosterOptions {
   customColors?: readonly (string | undefined)[];
   /** The export Look (§12); replaces theme, transparent, thickness and colors when given. */
   look?: Look;
+  /** The section drawn (§12 rev 15); absent = the whole piece. */
+  section?: TimeSpan;
+  /** With a section: the whole piece's pitch range, not the section's. @default false */
+  pieceRange?: boolean;
 }
 
 /**
@@ -65,6 +70,8 @@ export function posterDrawOptions(
   });
   const o: PosterDrawOptions = { size: opts.size, style, title: opts.title };
   if (opts.rows !== undefined && opts.rows !== 1) o.rows = opts.rows;
+  if (opts.section) o.section = opts.section;
+  if (opts.pieceRange) o.pieceRange = true;
   const bpm = piece.view.gridBpm;
   if (bpm !== undefined) {
     o.grid = piece.view.meter !== undefined ? { bpm, meter: piece.view.meter } : { bpm };

@@ -19,13 +19,13 @@
 
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
-import { HUD_ROW, cameraAt, cameraScore, hudLines } from './camera';
+import { HUD_ROW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
 import { DEFAULT_MONO, drawScore, keyName, type Ctx2D } from './draw';
 import { drawHud, hudItems, hudRows, hudTop } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
-import { DEFAULT_METER } from './bars';
-import { videoCamera } from './video';
+import { barSeconds, isWholeSpan, sectionText, type TimeSpan } from './section';
+import { videoCamera, videoSpan } from './video';
 
 export type PosterSize = '16:9' | '1:1' | 'a4';
 
@@ -63,11 +63,32 @@ export function posterLayout(kind: PosterSize | PosterDims): {
   return { width: p.width / POSTER_DPR, height: p.height / POSTER_DPR, dpr: POSTER_DPR };
 }
 
-/** The whole-piece camera (the video's Whole) with the score's fitted pitch range. */
-export function posterCamera(compiled: CompiledScore, pitchRange?: [number, number]): CameraState {
-  const o: { aspect: '16:9'; pitchRange?: [number, number] } = { aspect: '16:9' };
+/**
+ * The whole-piece camera (the video's Whole) with the score's fitted pitch range; with a
+ * section, the section fitted, its pitch range fitted to the lines sounding in it unless
+ * `pieceRange`.
+ */
+export function posterCamera(
+  compiled: CompiledScore,
+  pitchRange?: [number, number],
+  section?: TimeSpan,
+  pieceRange = false,
+): CameraState {
+  const o: { aspect: '16:9'; pitchRange?: [number, number]; section?: TimeSpan } = {
+    aspect: '16:9',
+  };
+  const span = posterSpan(compiled, section);
+  if (span) o.section = span;
   if (pitchRange) o.pitchRange = pitchRange;
+  else if (span && !pieceRange) o.pitchRange = pitchExtentIn(compiled, span.start, span.end);
   return videoCamera('whole', compiled, compiled.duration, o);
+}
+
+/** A poster's section clipped to the piece; undefined for none or the whole piece. */
+export function posterSpan(compiled: CompiledScore, section?: TimeSpan): TimeSpan | undefined {
+  if (!section) return undefined;
+  const span = videoSpan(compiled.duration, section);
+  return isWholeSpan(span, compiled.duration) || !(span.end > span.start) ? undefined : span;
 }
 
 export interface PosterStyleOptions {
@@ -148,8 +169,10 @@ function withTitle(style: ScoreStyle, title: boolean): ScoreStyle {
 export interface PosterInfo {
   /** The piece's name; empty shows "Untitled". */
   name: string;
-  /** Default: the score's key at 0. */
+  /** Default: the score's key at 0 (at the section's start with a section). */
   key?: Key;
+  /** The section drawn: the meta line gives its length and "0:45–1:30 of 2:28". */
+  section?: TimeSpan;
 }
 
 export interface PosterDrawOptions {
@@ -163,6 +186,13 @@ export interface PosterDrawOptions {
   rows?: number;
   /** The piece's bar grid (`view.gridBpm`, `view.meter`): row breaks snap to its bar lines. */
   grid?: { bpm: number; meter?: number };
+  /**
+   * The section drawn (§12 rev 15); absent or the whole piece = the whole piece. Rows split it;
+   * the title block adds its times.
+   */
+  section?: TimeSpan;
+  /** With a section: keep the whole piece's pitch range instead of fitting the section's. */
+  pieceRange?: boolean;
 }
 
 /** Most rows a poster takes. */
@@ -177,38 +207,37 @@ export interface PosterRow {
 }
 
 /**
- * The piece cut into `rows` rows of equal length; with a bar grid, each break moves to the
- * nearest bar line (unless that would leave a row empty or reorder breaks: then no break snaps).
- * The rows cover [0, duration] with no gaps or overlaps.
+ * [start, end] (the piece, or a section of it) cut into `rows` rows of equal length; with a bar
+ * grid, each break moves to the nearest bar line of the piece (unless that would leave a row
+ * empty or reorder breaks: then no break snaps). The rows cover [start, end] with no gaps or
+ * overlaps.
  */
 export function posterRows(
-  duration: number,
+  end: number,
   rows: number,
   grid?: { bpm: number; meter?: number },
+  start = 0,
 ): PosterRow[] {
-  const D = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  const D = Math.max(0, Number.isFinite(end) ? end : 0);
+  const A = Math.min(D, Math.max(0, Number.isFinite(start) ? start : 0));
   const n = Number.isFinite(rows) ? Math.min(POSTER_MAX_ROWS, Math.max(1, Math.round(rows))) : 1;
-  if (n === 1 || !(D > 0)) return [{ start: 0, end: D }];
+  if (n === 1 || !(D > A)) return [{ start: A, end: D }];
   const even: number[] = [];
-  for (let k = 1; k < n; k++) even.push((k * D) / n);
+  for (let k = 1; k < n; k++) even.push(A + (k * (D - A)) / n);
   let breaks = even;
-  const meter =
-    grid?.meter !== undefined && Number.isInteger(grid.meter) && grid.meter >= 1
-      ? grid.meter
-      : DEFAULT_METER;
-  const bar = grid && Number.isFinite(grid.bpm) && grid.bpm > 0 ? (60 / grid.bpm) * meter : 0;
+  const bar = barSeconds(grid);
   if (bar > 0) {
     const snapped = even.map((b) => Math.round(b / bar) * bar);
     const eps = 1e-9;
     let ok = true;
     for (let k = 0; k < snapped.length; k++) {
-      const prev = k === 0 ? 0 : snapped[k - 1];
+      const prev = k === 0 ? A : snapped[k - 1];
       if (!(snapped[k] > prev + eps) || !(snapped[k] < D - eps)) ok = false;
     }
     if (ok) breaks = snapped;
   }
   const out: PosterRow[] = [];
-  let a = 0;
+  let a = A;
   for (const b of breaks) {
     out.push({ start: a, end: b });
     a = b;
@@ -221,6 +250,16 @@ export function posterRows(
 export function posterLength(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The title block's second line: "2:28 · A minor", or with a section its length and times,
+ * "0:45 · 0:45–1:30 of 2:28 · A minor".
+ */
+export function posterMeta(duration: number, key: string, section?: TimeSpan): string {
+  if (!section) return `${posterLength(duration)} · ${key}`;
+  const len = posterLength(section.end - section.start);
+  return `${len} · ${sectionText(section, duration)} · ${key}`;
 }
 
 /** The credit in the title block. */
@@ -268,16 +307,22 @@ export function drawPoster(
   const px = posterSize(opts.size);
   resetContext(ctx);
   ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
-  const style = withTitle(opts.style, opts.title);
-  const cam = posterCamera(compiled, opts.pitchRange);
-  const rows = posterRows(compiled.duration, opts.rows ?? 1, opts.grid);
+  let style = withTitle(opts.style, opts.title);
+  const span = posterSpan(compiled, opts.section);
+  const cam = posterCamera(compiled, opts.pitchRange, span, opts.pieceRange === true);
+  const tInfo: PosterInfo = span ? { ...info, section: span } : info;
+  const rows = span
+    ? posterRows(span.end, opts.rows ?? 1, opts.grid, span.start)
+    : posterRows(compiled.duration, opts.rows ?? 1, opts.grid);
   if (rows.length > 1) {
     const view = drawRows(ctx, compiled, cam, style, rows, { width, height }, dpr);
-    if (opts.title) drawTitleBlock(ctx, compiled, info, style, view);
+    if (opts.title) drawTitleBlock(ctx, compiled, tInfo, style, view);
     return view;
   }
+  // A section shows only its own markers (as a row does).
+  if (span) style = { ...style, markerTimes: rowMarkers(compiled, style, span, true) };
   const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);
-  if (opts.title) drawTitleBlock(ctx, compiled, info, style, view);
+  if (opts.title) drawTitleBlock(ctx, compiled, tInfo, style, view);
   return view;
 }
 
@@ -411,8 +456,9 @@ export function drawTitleBlock(
 
   g.font = `${META_PX}px ${MONO}`;
   g.fillStyle = C.ink2;
-  const key = info.key ?? keyAt(compiled, 0);
-  g.fillText(`${posterLength(compiled.duration)} · ${keyName(key)}`, padL, y2);
+  const sec = info.section;
+  const key = sec ? keyAt(compiled, sec.start) : (info.key ?? keyAt(compiled, 0));
+  g.fillText(posterMeta(compiled.duration, keyName(key), sec), padL, y2);
 
   g.font = `${CREDIT_PX}px ${MONO}`;
   g.textAlign = 'right';
