@@ -334,11 +334,17 @@ describe('default moments', () => {
     expect(defaultMoment('tune', 30, 'yyyyyy', p, s).notes).not.toEqual(m.notes);
   });
 
-  it('a chord on a one-note opening moves the voice', () => {
+  it('a chord on a one-note opening grows around the note, no wider than it needs (M10a-3)', () => {
     const p = withOpening(newPiece({ seed: 3 }));
     const m = defaultMoment('chord', 1, 'zzzzzz', p, compile(p));
     const score = compile({ ...p, moments: [...p.moments, m] });
-    expect(score.voices[0].segments.some((s) => s.p0 !== s.p1)).toBe(true);
+    const end = score.duration - 0.5;
+    const ps = activeAt(score, end).map((i) => pitchAt(score.voices[i], end)!);
+    expect(new Set(ps).size).toBe(3);
+    expect(Math.max(...ps) - Math.min(...ps)).toBeLessThanOrEqual(12);
+    expect(
+      Math.abs(ps.reduce((a, b) => a + b, 0) / 3 - pitchAt(score.voices[0], 0.5)!),
+    ).toBeLessThan(7);
   });
 
   it('a chord on a silent piece brings its notes in, with no glide (M4.5-27)', () => {

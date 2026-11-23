@@ -77,15 +77,15 @@ export type SuggestionKind = 'open' | 'chord' | 'split' | 'walk' | 'thin' | 'col
 export interface Suggestion {
   kind: SuggestionKind;
   /**
-   * Short human label: "<Job> · <Chord>" for a theory card ("Tension · G7", "Home · C",
-   * "One note · C"); else the composer's ("Open to Dm9", "Walk 8 s", "Collapse to A").
+   * Short human label: "<Chord> · <Job> (<numeral>)" for a theory card ("G7 · Tension (V)",
+   * "C · Home (I)", "C · One note"); else the composer's ("Open to Dm9", "Walk 8 s").
    */
   label: string;
   /** The chord's job (theory cards and theory openings only). */
   job?: Job;
   /** The best fit (the first suggestion). */
   best: boolean;
-  /** Tooltip: the numeral and a short reason ("V7 — Resolves home"); else the label. */
+  /** Tooltip: a short reason, at most six words ("Resolves home"); else the label. */
   tooltip: string;
   /** The moment (id `SUGGEST_ID`, explicit seed, `at` = t rounded to ms). */
   moment: Moment;
@@ -172,7 +172,7 @@ export function suggestNext(
   const st0 = readState(piece, score, at);
   const st = st0.stacked ?? st0;
   const th = theoryOf(st.key);
-  if (th) return theoryNext(piece, score, at, st, th, count);
+  if (th) return theoryNext(piece, score, at, st0, th, count);
   return composerNext(piece, score, at, st, count).map((s, i) => ({
     ...s,
     best: i === 0,
@@ -488,6 +488,111 @@ function octaveRegister(
   return best === best ? [best, best + w] : undefined;
 }
 
+/** Cost of a register that sounds the whole chord in its key but not in every key. */
+const SPREAD_KEYED = 4;
+
+/**
+ * Spread (owner 2026-11-23, PLAN §11.3): the register in [rLo, rHi] whose Even voicing of k lines
+ * on `pcs` (core/voicing.ts) spans nearest `span` (the lines' spread before), centred nearest
+ * `ctr`, with distinct notes that sound the whole chord (k ≥ chord size): it widens only as far as
+ * the lines need. A register that still sounds the whole chord in every key (a later key change)
+ * is preferred by `SPREAD_KEYED`. Undefined when none holds k such notes.
+ */
+function spreadRegister(
+  pcs: readonly number[],
+  k: number,
+  span: number,
+  ctr: Pitch,
+  rLo: Pitch,
+  rHi: Pitch,
+): [Pitch, Pitch] | undefined {
+  const lo = Math.ceil(rLo);
+  const hi = Math.floor(rHi);
+  if (hi < lo || k < 1) return undefined;
+  // Per key shift s: the pitches of pcs + s in [lo, hi], and how many lie below each pitch.
+  const tones: number[][] = [];
+  const below: Int32Array[] = [];
+  for (let s = 0; s < 12; s++) {
+    const t: number[] = [];
+    const n = new Int32Array(hi - lo + 2);
+    for (let p = lo; p <= hi; p++) {
+      n[p - lo] = t.length;
+      if (pcs.includes(mod(p - s, 12))) t.push(p);
+    }
+    n[hi - lo + 1] = t.length;
+    tones.push(t);
+    below.push(n);
+  }
+  const want = Math.min(k, pcs.length);
+  /** Whether the Even voicing in [a, b], key shifted by s, sounds k distinct notes and the chord. */
+  const whole = (s: number, a: Pitch, b: Pitch): boolean => {
+    const i0 = below[s][a - lo];
+    const c = below[s][b - lo + 1] - i0;
+    if (c < k) return false;
+    let mask = 0;
+    for (let i = 0; i < k; i++) {
+      const j = k === 1 ? Math.floor((c - 1) / 2) : Math.round((i * (c - 1)) / (k - 1));
+      mask |= 1 << mod(tones[s][i0 + j] - s, 12);
+    }
+    let bits = 0;
+    for (; mask; mask &= mask - 1) bits++;
+    return bits >= want;
+  };
+  // Registers that give the same candidates in the key voice alike: walk the candidate runs
+  // t[i..j]; the register may reach down to above t[i − 1] and up to below t[j + 1].
+  const t = tones[0];
+  let best: [Pitch, Pitch] | undefined;
+  let bestCost = Infinity;
+  for (let i = 0; i < t.length; i++) {
+    for (let j = i + k - 1; j < t.length; j++) {
+      const first = k === 1 ? t[i + Math.floor((j - i) / 2)] : t[i];
+      const last = k === 1 ? first : t[j];
+      const base = Math.abs(last - first - span) + 0.5 * Math.abs((first + last) / 2 - ctr);
+      if (base >= bestCost || !whole(0, t[i], t[j])) continue;
+      let reg: [Pitch, Pitch] | undefined;
+      const aMin = i > 0 ? t[i - 1] + 1 : lo;
+      const bMax = j + 1 < t.length ? t[j + 1] - 1 : hi;
+      for (let a = t[i]; a >= aMin && !reg; a--) {
+        for (let b = t[j]; b <= bMax && !reg; b++) {
+          let all = true;
+          for (let s = 1; s < 12 && all; s++) all = whole(s, a, b);
+          if (all) reg = [a, b];
+        }
+      }
+      const cost = reg ? base : base + SPREAD_KEYED;
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = reg ?? [t[i], t[j]];
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * The register for a chord card or the Add → Chord default on `lines` lines: the lines' spread
+ * before (`spreadRegister`, centre moved ±3 by `draw`), else whole octaves, else the composer's.
+ */
+function chordRegister(
+  c: TheoryChord,
+  pcs: readonly number[],
+  lines: number,
+  st: StateAt,
+  piece: Piece,
+  draw: number,
+): [Pitch, Pitch] | undefined {
+  const dests = st.active.map((v) => st.dest[v]);
+  const lowest = dests[0];
+  const highest = dests[dests.length - 1];
+  const [rLo, rHi] = voiceSpan(piece, st);
+  const ctr = Math.round((lowest + highest) / 2) + Math.round((draw - 0.5) * 6);
+  return (
+    spreadRegister(pcs, lines, highest - lowest, ctr, rLo, rHi) ??
+    octaveRegister(pcs, c.root, lines, ctr, rLo, rHi) ??
+    registerAround(pcs, lines, ctr, rLo, rHi)
+  );
+}
+
 /** Chord moment fields without id, at and seed. */
 export type ChordDraft = Omit<ChordMoment, 'id' | 'at' | 'seed'>;
 
@@ -509,7 +614,7 @@ function tonicOf(th: Theory): TheoryChord {
 /**
  * Theory-aware Next (PLAN §11.3 revision 14): one chord card per job, best fit first, ranked
  * after the progression so far (core/theory.ts). From silence: Home (the tonic triad) and One
- * note (the tonic).
+ * note (the tonic). `st` is the state by lines (not stacked voices).
  */
 function theoryNext(
   piece: Piece,
@@ -523,53 +628,35 @@ function theoryNext(
   const n = st.active.length;
   const seed = hash32(piece.seed >>> 0, 'suggest', Math.round(at * 1000));
   const out: Suggestion[] = [];
-  const push = (
-    kind: SuggestionKind,
-    label: string,
-    job: Job,
-    tooltip: string,
-    m: Draft,
-  ): boolean => {
-    const moment = { ...m, id: SUGGEST_ID, at, seed: hash32(seed, kind, label) } as Moment;
-    if (!momentEffectAt(piece, score, moment).effect) return false;
-    out.push({ kind, label, job, best: out.length === 0, tooltip, moment });
-    return true;
+  /** `seedKey`: the card's label before revision 14's relabel, so it keeps its seed. */
+  const push = (label: string, seedKey: string, tooltip: string, m: Draft): void => {
+    const moment = { ...m, id: SUGGEST_ID, at, seed: hash32(seed, 'open', seedKey) } as Moment;
+    if (!momentEffectAt(piece, score, moment).effect) return;
+    out.push({ kind: 'open', label, job: 'home', best: out.length === 0, tooltip, moment });
   };
 
   if (n === 0) {
     const home = chordDraft(tonicOf(th), 3);
     const sym = home.notes.kind === 'chord' ? home.notes.symbol : '';
-    push(
-      'open',
-      `Home · ${letterName(sym, key)}`,
-      'home',
-      `${displayNumeral(sym)} — Starts at home`,
-      home,
-    );
+    const name = letterName(sym, key);
+    push(`${name} · Home (${displayNumeral(sym)})`, `Home · ${name}`, 'Starts at home', home);
     if (out.length < count) {
-      push(
-        'open',
-        `One note · ${spellPc(pitchClassOf(key.tonic), key)}`,
-        'home',
-        'The tonic alone',
-        {
-          type: 'unison',
-          pitch: 'tonic',
-          octaves: false,
-        },
-      );
+      const tonic = spellPc(pitchClassOf(key.tonic), key);
+      push(`${tonic} · One note`, `One note · ${tonic}`, 'The tonic alone', {
+        type: 'unison',
+        pitch: 'tonic',
+        octaves: false,
+      });
     }
     return out.slice(0, count);
   }
 
   const dests = st.active.map((v) => st.dest[v]);
-  const lowest = dests[0];
-  const highest = dests[n - 1];
   const pcsSounding = new Set(dests.map((p) => mod(Math.round(p), 12)));
   const glide = pcsSounding.size === 1 ? GLIDE_OPEN : GLIDE_DRIFT;
-  const [rLo, rHi] = voiceSpan(piece, st);
-  const centre = Math.round((lowest + highest) / 2);
   const pool = piece.voices.length;
+  // Stacked voices: compiled by line count unless the card sets `count` (compiler/lines.ts).
+  const stacked = (st.stacked ?? st).active.length;
 
   const built = new Map<string, Moment | null>();
   const momentFor = (r: RankedChord): Moment | null => {
@@ -579,14 +666,12 @@ function theoryNext(
     const draft = chordDraft(c, n);
     const pcs = n >= 4 ? c.seventh : c.triad;
     // Too few lines for the chord: its new notes come in (as the editor's chord fill does).
+    // Stacked lines stay merged (`count` counts lines), so they need no wider spread.
     const lines = Math.min(pool, Math.max(n, pcs.length));
-    const ctr = centre + Math.round((rand(seed, r.num, 0, Purpose.Suggest) - 0.5) * 6);
-    const register =
-      octaveRegister(pcs, c.root, lines, ctr, rLo, rHi) ??
-      registerAround(pcs, lines, ctr, rLo, rHi);
+    const register = chordRegister(c, pcs, lines, st, piece, rand(seed, r.num, 0, Purpose.Suggest));
     m = {
       ...draft,
-      ...(lines > n ? { count: lines } : {}),
+      ...(lines !== stacked ? { count: lines } : {}),
       ...(register ? { register } : {}),
       glide,
       id: SUGGEST_ID,
@@ -606,10 +691,10 @@ function theoryNext(
       moment.type === 'chord' && moment.notes.kind === 'chord' ? moment.notes.symbol : r.num;
     out.push({
       kind: 'chord',
-      label: `${JOB_LABEL[r.job]} · ${letterName(sym, key)}`,
+      label: `${letterName(sym, key)} · ${JOB_LABEL[r.job]} (${displayNumeral(sym)})`,
       job: r.job,
       best: out.length === 0,
-      tooltip: `${displayNumeral(sym)} — ${r.reason}`,
+      tooltip: r.reason,
       moment,
     });
   }
@@ -628,14 +713,13 @@ export interface ChordChoice {
 /**
  * The Add → Chord default at `t`: the chord that best links the harmony before `t` to the next
  * harmony entry after it (transition in × out, neither neighbour); the best next chord when
- * nothing follows; the tonic triad from silence. A seventh chord when four or more lines sound.
- * Null when the key at `t` has no chord theory (keep the old default). Past the score's end it
+ * nothing follows; the tonic triad from silence. A seventh chord when four or more lines sound,
+ * keeping their spread as Next's cards do (`chordRegister`; stacked lines stay merged). Null when the key at `t` has no chord theory (keep the old default). Past the score's end it
  * reads the state just before the end, like the editor's defaults.
  */
 export function chordDefaultAt(piece: Piece, score: CompiledScore, t: Seconds): ChordChoice | null {
   const read = Math.min(t, Math.max(0, score.duration - 0.01));
-  const st0 = readState(piece, score, read);
-  const st = st0.stacked ?? st0;
+  const st = readState(piece, score, read);
   const th = theoryOf(keyAt(score, t));
   if (!th) return null;
   const n = st.active.length;
@@ -649,7 +733,25 @@ export function chordDefaultAt(piece: Piece, score: CompiledScore, t: Seconds): 
         ? bestBetween(th, prev, next)
         : chordOf(th, rankNext(th, progressionAt(score, t))[0].num)!;
   }
-  const moment = chordDraft(c, n === 0 ? 3 : n);
+  let moment = chordDraft(c, n === 0 ? 3 : n);
+  if (n > 0) {
+    const pcs = n >= 4 ? c.seventh : c.triad;
+    const draw = rand(
+      hash32(piece.seed >>> 0, 'suggest', Math.round(t * 1000)),
+      c.num,
+      0,
+      Purpose.Suggest,
+    );
+    // As the cards: too few lines get the chord's notes (the editor's chord fill), stacked ones stay merged.
+    const lines = Math.min(piece.voices.length, Math.max(n, pcs.length));
+    const register = chordRegister(c, pcs, lines, st, piece, draw);
+    const stacked = (st.stacked ?? st).active.length;
+    moment = {
+      ...moment,
+      ...(lines !== stacked ? { count: lines } : {}),
+      ...(register ? { register } : {}),
+    };
+  }
   const sym = moment.notes.kind === 'chord' ? moment.notes.symbol : c.num;
   return { moment, job: c.job, name: letterName(sym, th.key) };
 }
