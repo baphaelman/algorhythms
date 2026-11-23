@@ -141,12 +141,17 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
   await expect.poll(async () => (await look()).colours).toBeUndefined();
 });
 
-test('swatches are labelled and keyboard reachable; low contrast warns', async ({ page }) => {
+test('swatches are labelled and keyboard reachable; low contrast warns', async ({
+  page,
+  browserName,
+}) => {
   const pick = dialog(page).getByLabel('HUD text', { exact: true });
   await expect(pick).toHaveAttribute('type', 'color');
   const hex = dialog(page).getByLabel('HUD text hex');
   await hex.focus();
-  await page.keyboard.press('Shift+Tab');
+  // WebKit's Tab skips colour inputs (even with Option), so only check the tab order elsewhere.
+  if (browserName === 'webkit') await pick.focus();
+  else await page.keyboard.press('Shift+Tab');
   await expect(pick).toBeFocused();
   await expect(page.getByTestId('colours-warning')).toHaveCount(0);
   await choose(page, 'export-vtheme', 'Light');
