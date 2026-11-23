@@ -3,7 +3,7 @@ import { compile } from '../../../src/core/compiler/compile';
 import type { Key } from '../../../src/core/types';
 import { defaultMoment } from '../../../src/app/editor/new-moment';
 import { PALETTE } from '../../../src/app/editor/shortcuts';
-import { fitOf } from '../../../src/app/ui/inspector/ChordPicker';
+import { fitOf } from '../../../src/app/editor/chord-fit';
 import { piece } from '../core/compiler-fixtures';
 import { progression } from '../core/progression-fixture';
 

@@ -23,6 +23,7 @@ import { chordPickerRanks, type ChipRank } from '../../../core/suggest';
 import { noteName, pitchClassOf } from '../../../core/scales';
 import type { Key, MomentId, NoteSet, Voicing } from '../../../core/types';
 import { auditionAfterEdit } from '../../audition';
+import { fitOf } from '../../editor/chord-fit';
 import { usePlayer } from '../../store';
 import { formatNum, liveNotes, prefersFlats } from './fields';
 
@@ -40,11 +41,6 @@ const VOICINGS: readonly (readonly [Voicing, string])[] = [
 ];
 
 const ROOTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-
-/** A chip's fit mark from its rank (§11.3 rev 14): the best fit, then the next two. */
-export function fitOf(rank: number | undefined): 'best' | 'good' | undefined {
-  return rank === undefined ? undefined : rank === 0 ? 'best' : rank <= 2 ? 'good' : undefined;
-}
 
 /**
  * The key's diatonic chords as one-click chips (numeral over the letter chord); the one `reading`
