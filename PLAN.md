@@ -929,6 +929,14 @@ Video and poster exports share one **Look** panel in the Export dialog that expo
 - **Preview and layout (owner, 2026-11-22):** the dialog shows a live preview of the video frame (with a time slider) or the poster, drawn by the export's own code and redrawn on every change; it stays on screen while the options scroll. The Look options follow Controls (above): sliders, switches and segmented buttons; the HUD expands in place.
 - **Playable preview (owner, 2026-11-23):** the video preview plays: a Play/Pause button beside its time slider, and **Space anywhere in the dialog** starts and stops it (only a text field still types a space; a focused switch or button no longer takes Space there). Integrator calls: it plays with sound through the app's player from the preview time, the frame and slider following the playhead; dragging the slider seeks; it stops at the end, when an export starts, and when the dialog closes (the editor's playhead returns to where it was when the dialog opened).
 
+### Exports you can shape (revision 15, owner 2026-11-23; M11)
+- **Section (the viewing window):** video and poster exports take a section of the piece, not only the whole. A **Section** control sits at the top of the Export dialog, shared by video and poster: Whole piece (default), Loop region (shown when the piece has one) or Custom. Custom is a two-handle range over a small overview of the piece (the score's lines in miniature, with section labels), snapped to bar lines when the piece has a BPM grid (Alt free), with editable start and end times. Integrator calls:
+  - **Poster:** draws only the section; its pitch range fits the lines sounding in the section (a "Piece's pitch range" switch keeps the whole piece's instead); Rows split the section; the title block shows the section's times after the length ("0:45–1:30 of 2:28").
+  - **Video:** starts at the section's start and lasts exactly its length; Follow and Whole work within the section (Whole shows the section's full width); the audio is the offline render of that span, with 30 ms fades at both cuts so nothing clicks (sounds already ringing at the start are included, as the player would play them from there); the preview's time slider covers only the section.
+  - WAV, stems and MIDI stay whole-piece in M11.
+- **HUD placement:** the HUD is a set of readouts the user places on the frame. In the preview, each readout is a box that can be dragged anywhere (snapping to the frame's margins, its centre lines and the other readouts' edges; Alt free), moved with the arrow keys when focused (Shift = larger steps), removed with its ×, and added back from the readout list (where each is a toggle, as now). A position is stored relative to the nearest corner or edge (anchor + offset as a fraction of the frame), so one layout carries across 16:9, 9:16, 1:1 and poster sizes; text never leaves the frame. **Reset layout** restores today's two columns. The export draws exactly what the preview shows. Video and poster share the layout.
+- **UI and interactions:** the owner's further notes on the Export dialog go here as they come; M11 includes a pass over the dialog's interactions (keyboard and focus order, preview sync, layout from 1280 to 1920 px, light and dark).
+
 ### Poster export (revision 12, owner chose it next 2026-11-22)
 - **One renderer.** The poster is `drawScore` with the whole-piece camera (§10, the video's Whole), drawn as if the piece had finished: every line at full opacity (no future ghost), no playhead, no heads or Hz labels, no editor overlays. Section labels as the player shows them. Thickness on (option off), like video.
 - **PNG:** drawn on an OffscreenCanvas at the chosen size, encoded with `convertToBlob`. **SVG:** the same `drawScore` call on a small in-house recording context (`Ctx2D`-compatible: paths, strokes, fills, text, alpha, line styles, transforms, linear gradients) that writes SVG elements; text stays text (system mono font stack). No dependency.
@@ -1162,10 +1170,14 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - the palette has no note, pin, split, merge, unison, shift, spread, walk, pulse or progression button.
 
 **M11. Exports you can shape (next after M10; owner 2026-11-23)**
-- Poster and video exports become truly customisable, and the Export dialog's UI and interactions are fixed. The details are gathered from the owner before M11 starts.
+- Poster and video exports become truly customisable, and the Export dialog's UI and interactions are fixed (§12 "Exports you can shape").
 - **Viewing window (owner):** both exports take a section: a poster can zoom in on one stretch of the piece, and a video can export one section of the song (a start and end time), not only the whole piece.
 - **HUD layout (owner):** the owner places each readout where it goes on the frame, instead of ticking readouts into a list in a fixed order.
-- More notes may follow; spec details are written when M11 starts.
+- *Accept when:*
+  - a poster of a 45 s section of a 3-minute piece draws only that section, with its pitch range fit to it, Rows splitting it, and the section's times in the title block;
+  - a video of that section lasts its length to within one frame, its first frame is the section's start, and its audio matches the offline render of that span (fades aside) with no click at either cut;
+  - every HUD readout can be dragged, moved by keyboard, removed and re-added; the exported video frame and poster put each readout within 1 px (at export scale) of where the preview shows it; a layout made at 16:9 keeps each readout on its corner or edge at 9:16 and 1:1; Reset layout restores the default;
+  - the Export dialog works by keyboard alone, and its preview stays in sync with every control.
 
 **M12. Compose for me, directed (after M11; owner 2026-11-23)**
 - "Compose for me" asks the user what to compose before it starts (§11.3 "Compose for me, directed"), then builds it with the theory-aware rows. The questions and defaults are specified with the owner when M12 starts.
@@ -1235,6 +1247,11 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 15 (2026-11-23): exports you can shape (owner; M11), directed Compose (M12)
+- **Section (§12):** video and poster exports take a section (whole, loop region or custom range); the poster's pitch range fits the section.
+- **HUD placement (§12):** readouts are placed freely on the frame (anchored to corners and edges so a layout carries across sizes), not ticked into a fixed list.
+- **Compose for me, directed (§11.3, M12):** the user directs the composer before it starts.
 
 ### Revision 14 (2026-11-22): editor overhaul (owner chose option B)
 - **Rows and blocks (§6.4, M10b):** a moment is a block on the Key, Chords, Texture, Melody, Level or Sound row, lasting until the next block on its row; unison, split, merge, shift, spread, walk, pulse and progression fold into chord blocks and textures; stored as today's moments (no new file format).
