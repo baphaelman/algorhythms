@@ -68,7 +68,7 @@ import {
 } from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
 import { walkTick } from '../moments/walk';
-import { ChordTrack, noteSetPcs } from './chord-track';
+import { ChordTrack, chordChain, noteSetBassPc, noteSetPcs } from './chord-track';
 import {
   MAX_VOICES,
   type CompiledScore,
@@ -220,6 +220,9 @@ export interface NoteBack {
   t: Seconds;
   changes: { from: Pitch; to: Pitch }[];
 }
+
+const samePcs = (a: readonly number[], b: readonly number[] | null): boolean =>
+  a === b || (b !== null && a.length === b.length && a.every((p, j) => p === b[j]));
 
 /** harmonyLabel, memoised in `cache` (a piece repeats its harmonies; the function is pure). */
 function cachedHarmonyLabel(
@@ -2897,8 +2900,8 @@ export class Compiler {
   private chordTrack: ChordTrack | null = null;
 
   /**
-   * Pitch classes of the latest chord at or before t, whatever its target (§6.2 walk `over`,
-   * revision 10), or null before any chord. Static (read from the piece, built on first use), so
+   * Pitch classes of the chord blocks sounding at t on the Chords row (§6.2 walk `over`, revision
+   * 10; §6.4; chord-track.ts), or null before any chord. Static (read from the piece, built on first use), so
    * the incremental compile's causality covers it. A progression's chords are chord moments of
    * `this.moments` (expanded, order = their index), so each is added at its own time.
    */
@@ -2907,8 +2910,14 @@ export class Compiler {
       const track = new ChordTrack();
       this.moments.forEach((m, i) => {
         if (!this.valid[i] || m.type !== 'chord') return;
-        const pcs = noteSetPcs(m.notes, this.keyBefore(i));
-        if (pcs) track.add(m.at, i, pcs);
+        const key = this.keyBefore(i);
+        let pcs = noteSetPcs(m.notes, key);
+        if (!pcs) return;
+        if (m.count === 1 && pcs.length > 1) {
+          const bass = noteSetBassPc(m.notes, key);
+          if (bass !== null) pcs = [bass];
+        }
+        track.add(m.at, i, pcs, chordChain(m.target), pcs.length === 1);
       });
       this.chordTrack = track;
     }
@@ -2944,11 +2953,13 @@ export class Compiler {
     if (inTarget.size === 0) return;
     const claimed = this.claimedAt(wi, w, t);
     const order = this.sortedActive();
+    const chord = w.over === 'chord' ? this.chordPitchClassesAt(t) : null;
     const steps = walkTick(w, {
       t,
       tick: k,
       key: this.key,
-      chord: w.over === 'chord' ? this.chordPitchClassesAt(t) : null,
+      chord,
+      changed: chord !== null && k > 0 && !samePcs(chord, this.chordPitchClassesAt(t - w.grid)),
       seed: this.seeds[wi],
       order,
       dest: (v) => this.destOf(v),
