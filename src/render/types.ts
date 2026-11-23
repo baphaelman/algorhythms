@@ -231,6 +231,12 @@ export interface ScoreStyle {
   /** Vignette, 0..1: the frame's edges darkened. Absent or 0: none. */
   vignette?: number;
   /**
+   * Minimum line opacity (§12 "Ready for YouTube", revision 17), 0..1: sounding lines are drawn
+   * at least this bright (level × pulse floored; life fades still apply). With level opacity
+   * only. Absent or 0: none.
+   */
+  minLineOpacity?: number;
+  /**
    * Guide lines at pitches (§12 "Ready for YouTube"): faint horizontal lines in the guides'
    * colour, each labelled with its note name when `labels`. Absent: none.
    */

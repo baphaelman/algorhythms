@@ -101,12 +101,31 @@ function lifeIn(lives: readonly Life[], t: Seconds): Life | null {
  * bundles into another ends at the meeting and a strand peeling off a rope starts without a fade
  * (strands.ts).
  */
-export function opacityIn(voice: CompiledVoice, lives: readonly Life[], t: Seconds): number {
+export function opacityIn(
+  voice: CompiledVoice,
+  lives: readonly Life[],
+  t: Seconds,
+  floor = 0,
+): number {
   const life = lives === voice.lives ? lifeAt(voice, t) : lifeIn(lives, t);
   if (!life) return 0;
-  const o = levelAt(voice, t) * lifeLevel(life, t) * pulseDrawLevel(voice, t);
+  const level = levelAt(voice, t);
+  let f = level * pulseDrawLevel(voice, t);
+  if (floor > 0) {
+    const m = floor * (level >= SOUNDING ? 1 : level > 0 ? level / SOUNDING : 0);
+    if (f < m) f = m;
+  }
+  const o = f * lifeLevel(life, t);
   return o > 1 ? 1 : o > 0 ? o : 0;
 }
+
+/**
+ * Minimum line opacity (§12 "Ready for YouTube", revision 17): `opacityIn`'s `floor` lifts
+ * level × pulse to at least the floor while the line sounds, so gated or pulsed parts stay bold
+ * between hits. Life fades still apply; below this level the floor scales down with it, so a line
+ * silenced by its level still fades out and vanishes.
+ */
+export const SOUNDING = 0.05;
 
 /** `opacityIn` without the pulse factor: the strength of a hit mark at t (draw.ts). */
 export function baseOpacityIn(voice: CompiledVoice, lives: readonly Life[], t: Seconds): number {

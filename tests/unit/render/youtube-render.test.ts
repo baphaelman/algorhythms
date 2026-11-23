@@ -148,12 +148,15 @@ describe('all off draws exactly as before', () => {
       { vignette: 0 },
       { pitchGuides: { pitches: [], labels: true } },
       { glow: Number.NaN, vignette: -1 },
+      { minLineOpacity: 0 },
     ] as Partial<Look>[]) {
       expect(lookStyle(look(over), CTX)).toEqual(base);
     }
+    expect(lookStyle(look({ minLineOpacity: 0.6 }), CTX).minLineOpacity).toBe(0.6);
+    expect(lookStyle(look({ minLineOpacity: 2 }), CTX).minLineOpacity).toBe(1);
   });
   it('drawScore makes the same calls', () => {
-    expect(strip(drawn({ glow: 0, vignette: 0 }))).toEqual(strip(drawn({})));
+    expect(strip(drawn({ glow: 0, vignette: 0, minLineOpacity: 0 }))).toEqual(strip(drawn({})));
   });
   it('a video frame with empty bookends is the old frame', () => {
     const style = videoStyle({ theme: 'dark', look: look({}), ...CTX });

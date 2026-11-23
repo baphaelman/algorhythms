@@ -104,9 +104,9 @@ export function hudPlacement(
 
 /**
  * Per-frame switches read deep in the line painters (set at the top of drawScore, which is
- * synchronous): opacity by audible level, and the line widths scaled by `ScoreStyle.lineScale`.
+ * synchronous): opacity by audible level and its floor (`minLineOpacity`), and the line widths scaled by `ScoreStyle.lineScale`.
  */
-const F = { level: true, lw: LINE_WIDTH, hw: HIGHLIGHT_WIDTH, hitW: 1.75 };
+const F = { level: true, floor: 0, lw: LINE_WIDTH, hw: HIGHLIGHT_WIDTH, hitW: 1.75 };
 
 interface Marker {
   id: MomentId;
@@ -168,6 +168,7 @@ export function drawScore(
   const { padT, padB } = view;
   const scale = style.lineScale ?? 1;
   F.level = style.levelOpacity !== false;
+  F.floor = style.minLineOpacity ?? 0;
   F.lw = LINE_WIDTH * scale;
   F.hw = HIGHLIGHT_WIDTH * scale;
   F.hitW = HIT_WIDTH * scale;
@@ -519,11 +520,11 @@ function tracePiece(
     let o = alpha;
     if (O) {
       const e = (c1 - c0) * 1e-3;
-      const o0 = opacityIn(v, lives, c0 + e);
+      const o0 = opacityIn(v, lives, c0 + e, F.floor);
       ramp =
-        Math.abs(opacityIn(v, lives, c1 - e) - o0) > OPACITY_FLAT ||
-        Math.abs(opacityIn(v, lives, (c0 + c1) / 2) - o0) > OPACITY_FLAT;
-      o = alpha * (ramp ? o0 : opacityIn(v, lives, (c0 + c1) / 2));
+        Math.abs(opacityIn(v, lives, c1 - e, F.floor) - o0) > OPACITY_FLAT ||
+        Math.abs(opacityIn(v, lives, (c0 + c1) / 2, F.floor) - o0) > OPACITY_FLAT;
+      o = alpha * (ramp ? o0 : opacityIn(v, lives, (c0 + c1) / 2, F.floor));
     }
     const dense = ramp || overlaps(vary, c0, c1);
     const pts = sampleInto(PTS, v, c0, c1, maxStep, tolerance);
@@ -542,12 +543,14 @@ function tracePiece(
         for (let j = 1; j < n; j++) {
           const tj = ta + ((t - ta) * j) / n;
           if (!ramp && !nearRanges(vary, tj, maxStep)) continue;
-          const oj = ramp ? alpha * opacityIn(v, lives, tj) : o;
+          const oj = ramp ? alpha * opacityIn(v, lives, tj, F.floor) : o;
           push(tj, pa + ((p - pa) * j) / n, ramp ? (lastO + oj) / 2 : o, ramp);
           lastO = oj;
         }
       }
-      const ok = ramp ? alpha * opacityIn(v, lives, t < c1 ? t : c1 - (c1 - c0) * 1e-3) : o;
+      const ok = ramp
+        ? alpha * opacityIn(v, lives, t < c1 ? t : c1 - (c1 - c0) * 1e-3, F.floor)
+        : o;
       push(t, p, ramp ? (lastO + ok) / 2 : o, ramp);
       lastO = ok;
     }
@@ -1194,7 +1197,7 @@ function drawHeads(
     const p = pitchAt(v, t);
     if (p === null) continue;
     const lives = drawnLives(sf, v);
-    const op = F.level && breaksIn(v, lives) ? opacityIn(v, lives, t) : 1;
+    const op = F.level && breaksIn(v, lives) ? opacityIn(v, lives, t, F.floor) : 1;
     if (op < OPACITY_EPS) continue;
     let y = pitchToY(view, p);
     if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * F.lw;

@@ -67,13 +67,21 @@ describe('look-controls', () => {
       width: 1,
       glow: 0,
       vignette: 0,
+      'min-opacity': 0,
     });
   });
 
   it('continuous values are sliders, yes/no switches, small sets segments; no dropdowns', () => {
     const by = (t: LookControl['type']) =>
       LOOK_CONTROLS.filter((c) => c.type === t).map((c) => c.id);
-    expect(by('slider')).toEqual(['future', 'follow-at', 'width', 'glow', 'vignette']);
+    expect(by('slider')).toEqual([
+      'future',
+      'follow-at',
+      'width',
+      'glow',
+      'vignette',
+      'min-opacity',
+    ]);
     expect(by('toggle')).toEqual(['playhead', 'level', 'thickness', 'pulse']);
     expect(by('segments')).toEqual(['guides', 'beats', 'moments']);
     expect(by('flags')).toEqual(['heads']);
