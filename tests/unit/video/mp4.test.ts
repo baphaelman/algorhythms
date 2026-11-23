@@ -261,6 +261,9 @@ describe('Mp4Muxer', () => {
       ['mp4a.40.2', 2112, 0],
       ['opus', 0, 0],
       ['opus', undefined, 312],
+      // Pre-skip in dOps, not cut by the edit list (the export's Opus): decoders drop it, so the
+      // edit shows it on top of the length.
+      ['opus', 0, 312],
     ] as const) {
       const sink = memorySink();
       const m = new Mp4Muxer({
@@ -279,10 +282,11 @@ describe('Mp4Muxer', () => {
       await m.finish();
       const f = sink.bytes();
       const a = audio(f);
-      const skip = codec === 'opus' ? pre : priming;
-      expect(a.edits).toEqual([{ duration: 1750, mediaTime: skip }]);
-      expect(a.tkhdDuration).toBe(1750);
-      expect(movieInfo(f).duration).toBe(1750);
+      const skip = priming ?? pre;
+      const shown = 1750 + Math.round((Math.max(0, pre - skip) * 1000) / 48000);
+      expect(a.edits).toEqual([{ duration: shown, mediaTime: skip }]);
+      expect(a.tkhdDuration).toBe(shown);
+      expect(movieInfo(f).duration).toBe(shown);
       // A length past the packets changes nothing.
       const sink2 = memorySink();
       const m2 = new Mp4Muxer({

@@ -2901,3 +2901,7 @@ PLAN §12 "UI and interactions", §15 M11 line 5. Checked by keyboard (Chromium,
 
 ## Fix: m11-acceptance video "atExport" check on Linux (2026-11-23)
 CI Linux got 39.7 dB (no codec involved: two canvas renders). The test drew the scale-1 preview on a transparent canvas at `req.t`, while `referenceFrame` draws on the export's opaque (`alpha: false`) context at frame k's time; Linux Chromium/Firefox render text differently on opaque canvases (likely cause; can't run Linux locally). The test now draws on an opaque canvas at `k / fps`: 138 dB on macOS chromium/firefox/webkit; the controls (2 / 27 dB) keep their margins. Not an app bug.
+
+## M11 Linux CI fix: Opus section length, codec check (2026-11-23)
+- **Muxer (`video/mp4.ts`):** with Opus at priming 0 the length cap's edit list ended 312 samples (the dOps pre-skip, which decoders still drop) early, so a decoded section came out 6.5 ms short (CI's `endDb` NaN). The cap now adds the pre-skip the edit list leaves in; decoded length = the render's, +24 samples (the elst is in ms: 6.5 → 7). `<video>` 45.007 s.
+- **m11-acceptance:** section test runs every audio codec offered (AAC + forced Opus on macOS); lag is measured on first differences at three places, |lag| ≤ 1 sample (the raw bass-heavy correlation's broad peak gave CI's −1 and 291 here with Opus; differenced: 0 everywhere). Loudness test expects AAC iff `AudioEncoder` offers mp4a.40.2, else Opus (its −2 dBTP ceiling already applies).
