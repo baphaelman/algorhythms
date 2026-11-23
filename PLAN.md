@@ -971,7 +971,7 @@ The owner will post pieces on YouTube. A review of the gallery's best videos (Cr
 - **Quality** (segmented: Standard / High / Max) sets the target bitrate from size and fps.
   - High follows YouTube's recommended upload rates (1080p30 about 8 Mb/s, 1080p60 12, 1440p60 24, 4K30 45, 4K60 68).
   - Max is 1.5× High.
-  - The encoder must deliver close to the target: m8 gap 2, under-delivery, is fixed here.
+  - The target is a cap. Browser encoders spend well under it on these mostly flat frames (Night Sleeper 4K60: 4–8 Mb/s of 68) and extra bits barely raise quality (chroma subsampling limits thin coloured lines), so quality is gated on decoded PSNR instead (m8 gap 2 closed this way; integrator call 2026-11-23). Key frames every 0.5 s.
 - **Audio codec:** AAC-LC whenever `isConfigSupported` allows it. If only Opus is available, the dialog says so in one line.
 - **Look additions** (video and poster; the Controls rules apply):
   - **Glow:** a 0–100 % slider: soft light around the lines, drawn from the lines only. It needs a fallback where canvas `filter` is unsupported.
@@ -1245,7 +1245,7 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
 - **Ready for YouTube (revision 16, owner 2026-11-23):** loudness, glue and width; 1440p and 4K, quality and AAC; glow, vignette and guide lines; title card, fades and the end card; thumbnail; description with chapters; the YouTube and Shorts presets (§12 "Ready for YouTube"). *Accept when:*
   - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled), on Crease, Night Sleeper and one example;
   - with glue 0 and width 1 every render golden is unchanged; with glue or width on, the stems plus the FX return still sum to the mix (the §12 tolerance);
-  - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with an average video bitrate ≥ 70 % of the target on a dense piece; its audio is AAC wherever the browser offers it;
+  - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with a decoded quality of at least 40 dB PSNR against the rendered frames on a dense piece (integrator call 2026-11-23: browser encoders spend far less than the target on these frames and more bits barely raise quality, so the target is a cap, not a goal); its audio is AAC wherever the browser offers it;
   - glow, vignette and guide lines draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
   - the title card, fades, lead-in and end card appear at their times; the end card shows the whole-piece view and lasts its length to within one frame;
   - the thumbnail is 1280×720 JPEG under 2 MB; the copied description has chapters only when YouTube's rules allow them;
