@@ -105,10 +105,7 @@
       "id": "start0",
       "type": "chord",
       "at": 0,
-      "notes": {
-        "kind": "pitches",
-        "pitches": [72, 52, 55, 60, 64, 36, 81, 84, 88]
-      },
+      "notes": { "kind": "pitches", "pitches": [72, 52, 55, 60, 64, 36, 81, 84, 88] },
       "voicing": "even",
       "assign": "ordered",
       "byVoice": true
@@ -1030,13 +1027,7 @@
     { "id": "kd0061", "type": "level", "at": 98.4, "gain": 0, "over": 6 }
   ],
   "mix": {
-    "reverb": {
-      "size": 0.7,
-      "decay": 3.2,
-      "damping": 0.45,
-      "preDelay": 0.02,
-      "returnLevel": 0.32
-    },
+    "reverb": { "size": 0.7, "decay": 3.2, "damping": 0.45, "preDelay": 0.02, "returnLevel": 0.32 },
     "delay": { "time": 0.45, "feedback": 0.3, "returnLevel": 0.18 },
     "sends": { "reverb": 0.5, "delay": 0.25 },
     "tone": { "tilt": 0, "lowpassHz": 20000 },
@@ -1044,11 +1035,5 @@
     "panAuto": "index"
   },
   "end": { "at": 108, "fade": 2 },
-  "view": {
-    "window": 20,
-    "colors": "pitch",
-    "hud": true,
-    "gridBpm": 100,
-    "meter": 4
-  }
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 100, "meter": 4 }
 }

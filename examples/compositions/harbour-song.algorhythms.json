@@ -96,10 +96,7 @@
       "id": "start0",
       "type": "chord",
       "at": 0,
-      "notes": {
-        "kind": "pitches",
-        "pitches": [78, 54, 57, 62, 66, 38, 90, 93]
-      },
+      "notes": { "kind": "pitches", "pitches": [78, 54, 57, 62, 66, 38, 90, 93] },
       "voicing": "even",
       "assign": "ordered",
       "byVoice": true
@@ -1286,13 +1283,7 @@
     { "id": "hs0090", "type": "level", "at": 136.667, "gain": 0, "over": 9 }
   ],
   "mix": {
-    "reverb": {
-      "size": 0.8,
-      "decay": 4.2,
-      "damping": 0.45,
-      "preDelay": 0.02,
-      "returnLevel": 0.36
-    },
+    "reverb": { "size": 0.8, "decay": 4.2, "damping": 0.45, "preDelay": 0.02, "returnLevel": 0.36 },
     "delay": { "time": 0.625, "feedback": 0.3, "returnLevel": 0.2 },
     "sends": { "reverb": 0.5, "delay": 0.25 },
     "tone": { "tilt": 0, "lowpassHz": 20000 },
@@ -1300,11 +1291,5 @@
     "panAuto": "index"
   },
   "end": { "at": 146.667, "fade": 3 },
-  "view": {
-    "window": 20,
-    "colors": "pitch",
-    "hud": true,
-    "gridBpm": 72,
-    "meter": 4
-  }
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 72, "meter": 4 }
 }

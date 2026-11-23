@@ -1471,13 +1471,7 @@
     { "id": "nf0105", "type": "level", "at": 141.439, "gain": 0, "over": 4 }
   ],
   "mix": {
-    "reverb": {
-      "size": 0.8,
-      "decay": 4.5,
-      "damping": 0.45,
-      "preDelay": 0.02,
-      "returnLevel": 0.38
-    },
+    "reverb": { "size": 0.8, "decay": 4.5, "damping": 0.45, "preDelay": 0.02, "returnLevel": 0.38 },
     "delay": { "time": 1.0714, "feedback": 0.28, "returnLevel": 0.16 },
     "sends": { "reverb": 0.5, "delay": 0.25 },
     "tone": { "tilt": 0, "lowpassHz": 20000 },
@@ -1485,11 +1479,5 @@
     "panAuto": "index"
   },
   "end": { "at": 145.714, "fade": 2 },
-  "view": {
-    "window": 20,
-    "colors": "pitch",
-    "hud": true,
-    "gridBpm": 168,
-    "meter": 6
-  }
+  "view": { "window": 20, "colors": "pitch", "hud": true, "gridBpm": 168, "meter": 6 }
 }
