@@ -68,7 +68,7 @@ export interface LookFlags extends Base {
   flags: readonly { id: string; label: string; key: FlagKey }[];
 }
 
-type FlagKey = { [K in keyof LookForm]: LookForm[K] extends boolean ? K : never }[keyof LookForm];
+type FlagKey = { [K in keyof LookForm]-?: LookForm[K] extends boolean ? K : never }[keyof LookForm];
 
 export type LookControl = LookSegments | LookToggle | LookSlider | LookFlags;
 

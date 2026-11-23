@@ -9,8 +9,15 @@
  */
 
 import type { CompiledScore, LineColors, MomentId, Piece, Seconds } from '../core/types';
-import { DEFAULT_FUTURE_OPACITY, MIN_WINDOW, followStart, pitchExtent } from './camera';
+import {
+  DEFAULT_FUTURE_OPACITY,
+  MIN_WINDOW,
+  followStart,
+  pitchExtent,
+  pitchExtentIn,
+} from './camera';
 import { drawScore, type Ctx2D } from './draw';
+import { layerFor } from './layer';
 import { DEFAULT_HUD } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { TimeSpan } from './section';
@@ -215,6 +222,13 @@ export interface VideoFrameOptions {
   section?: TimeSpan;
   /** From `videoStyle`. */
   style: ScoreStyle;
+  /** Opening and ending (§12 "Ready for YouTube"); absent or all off = the video as before. */
+  bookends?: VideoBookends;
+  /**
+   * The whole video's length, s (`videoLength`: lead-in, music and its ring-out, end card), for
+   * the fade to black. @default lead-in + the section + the end card
+   */
+  length?: Seconds;
 }
 
 /**
@@ -228,6 +242,7 @@ export function drawVideoFrame(
   k: number,
   fps: number,
 ): View {
+  if (bookendsOn(opts.bookends)) return drawVideoMoment(ctx, compiled, opts, k / fps);
   const span = videoSpan(compiled.duration, opts.section);
   return drawVideoFrameAt(ctx, compiled, opts, videoFrameTime(k, fps, span.end, span.start));
 }
@@ -259,4 +274,367 @@ export function drawVideoFrameAt(
   const px = videoSize(opts.aspect, opts.size);
   ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
   return drawScore(ctx, compiled, cam, opts.style, t, { width, height }, dpr * scale);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Opening and ending (PLAN.md §12 "Ready for YouTube")
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A video's opening and ending. Every field absent or 0 draws the video as before. Times in
+ * seconds of the video (τ, from its first frame).
+ */
+export interface VideoBookends {
+  /** Fade in from black over the first `fadeIn` s, 0..3. */
+  fadeIn?: Seconds;
+  /** The opening frame held, silent, before the music, 0..3 (the audio starts this late). */
+  leadIn?: Seconds;
+  /** Title card: the title (empty = none) and an optional subtitle, over the picture. */
+  title?: { text: string; subtitle?: string };
+  /** Fade to black over the last `fadeOut` s, 0..3. */
+  fadeOut?: Seconds;
+  /** End card, s (0 = off; the dialog offers 5, 10, 20): the whole-piece view after the music. */
+  endCard?: Seconds;
+  /** The end card's credit line; absent or empty = none. */
+  credit?: string;
+}
+
+/** The end card's default credit line. */
+export const END_CREDIT = 'Made with AlgoRhythms';
+/** The end card's crossfade from the last frame, s. */
+export const END_FADE = 2;
+/** The title card: in at TITLE_AT, fading in TITLE_IN, holding TITLE_HOLD, fading out TITLE_OUT. */
+export const TITLE_AT = 0.5;
+export const TITLE_IN = 1;
+export const TITLE_HOLD = 4;
+export const TITLE_OUT = 1;
+/** The title card's type (no serif ships with the app: a system serif stack). */
+export const DEFAULT_SERIF =
+  '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif';
+/** Title card type size, layout px (shrunk to fit the frame's width). */
+export const TITLE_PX = 34;
+
+const num0 = (v: number | undefined) => (v !== undefined && Number.isFinite(v) && v > 0 ? v : 0);
+
+/** Whether any opening or ending option is on. */
+export function bookendsOn(b: VideoBookends | undefined): b is VideoBookends {
+  if (!b) return false;
+  return (
+    num0(b.fadeIn) > 0 ||
+    num0(b.leadIn) > 0 ||
+    num0(b.fadeOut) > 0 ||
+    num0(b.endCard) > 0 ||
+    (b.title !== undefined && b.title.text.trim() !== '')
+  );
+}
+
+/**
+ * The video's length, s: the lead-in, then the audio (the section's render, ring-out included),
+ * or the end card's end if later (the card starts when the section's music ends).
+ */
+export function videoLength(
+  b: VideoBookends | undefined,
+  spanLength: Seconds,
+  audioLength: Seconds,
+): Seconds {
+  const lead = num0(b?.leadIn);
+  const card = num0(b?.endCard);
+  return Math.max(lead + audioLength, card > 0 ? lead + spanLength + card : 0);
+}
+
+/** 0..1 eased (smoothstep) as x goes 0 → 1, clamped. */
+function ease(x: number): number {
+  const k = Math.min(1, Math.max(0, x));
+  return k * k * (3 - 2 * k);
+}
+
+/** The title card's opacity at video time τ (0 without a title). */
+export function titleAlpha(b: VideoBookends | undefined, tau: Seconds): number {
+  if (!b?.title || b.title.text.trim() === '') return 0;
+  const x = tau - TITLE_AT;
+  if (x <= 0) return 0;
+  if (x < TITLE_IN) return ease(x / TITLE_IN);
+  if (x <= TITLE_IN + TITLE_HOLD) return 1;
+  return 1 - ease((x - TITLE_IN - TITLE_HOLD) / TITLE_OUT);
+}
+
+/** What a frame at video time τ shows. */
+export interface BookendState {
+  /** Score time of the picture (the section's start through the lead-in, held at its end). */
+  t: Seconds;
+  /** Title card opacity. */
+  title: number;
+  /** The end card's share of the picture (0 none, 1 the card alone). */
+  end: number;
+  /** Black over everything (the fades). */
+  black: number;
+}
+
+/**
+ * The frame at video time τ: the score time (τ − lead-in from the section's start, clamped to
+ * it), the title's opacity, the end card's crossfade (over END_FADE from the section's end), and
+ * the fades' black (the stronger of the two).
+ */
+export function bookendsAt(
+  b: VideoBookends | undefined,
+  span: TimeSpan,
+  tau: Seconds,
+  length?: Seconds,
+): BookendState {
+  const lead = num0(b?.leadIn);
+  const music = Math.max(0, span.end - span.start);
+  const card = num0(b?.endCard);
+  const L = length ?? lead + music + card;
+  const t = Math.min(span.end, Math.max(span.start, span.start + tau - lead));
+  const end = card > 0 ? ease((tau - lead - music) / END_FADE) : 0;
+  const fi = num0(b?.fadeIn);
+  const fo = num0(b?.fadeOut);
+  const black = Math.max(fi > 0 ? 1 - ease(tau / fi) : 0, fo > 0 ? ease((tau - (L - fo)) / fo) : 0);
+  return { t, title: titleAlpha(b, tau), end, black };
+}
+
+/**
+ * The end card's ScoreStyle: the video's look drawn finished (no ghost, heads, playhead or HUD;
+ * the HUD's band kept for the credit line), a section showing only its own markers.
+ */
+export function endCardStyle(
+  style: ScoreStyle,
+  compiled: CompiledScore,
+  section?: TimeSpan,
+): ScoreStyle {
+  const s: ScoreStyle = {
+    ...style,
+    futureOpacity: 1,
+    heads: false,
+    playhead: false,
+    hud: false,
+    reserveHud: true,
+  };
+  delete s.aheadHidden;
+  delete s.hudLayout;
+  delete s.hudExtra;
+  if (section) {
+    const out: Record<string, number> = {};
+    for (const m of compiled.momentSpans) {
+      const t = style.markerTimes?.[m.id] ?? m.start;
+      out[m.id] = t >= section.start && t <= section.end ? t : -Infinity;
+    }
+    s.markerTimes = out;
+  }
+  return s;
+}
+
+/**
+ * The whole-piece camera of the end card (the poster's): the section fitted, its pitch range fit
+ * to its lines unless the video sets one.
+ */
+export function endCardCamera(compiled: CompiledScore, opts: VideoFrameOptions): CameraState {
+  const span = videoSpan(compiled.duration, opts.section);
+  const whole = span.start <= 0 && span.end >= compiled.duration - 1e-9;
+  const o: VideoCameraOptions = { aspect: opts.aspect };
+  if (!whole) o.section = span;
+  if (opts.pitchRange) o.pitchRange = opts.pitchRange;
+  else if (!whole) o.pitchRange = pitchExtentIn(compiled, span.start, span.end);
+  return videoCamera('whole', compiled, compiled.duration, o);
+}
+
+/** A fresh context state for a frame (drawScore inherits some state; see drawVideoFrameAt). */
+function freshState(ctx: Ctx2D): void {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  ctx.textAlign = 'left';
+}
+
+/**
+ * Clears and draws the end card (the whole-piece view drawn finished, and the credit line) on a
+ * canvas `scale` times the video's pixels. `credit` false leaves the credit out (thumbnails).
+ */
+export function drawEndCard(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  scale = 1,
+  credit = true,
+): View {
+  const { width, height, dpr } = videoLayout(opts.aspect, opts.size);
+  const px = videoSize(opts.aspect, opts.size);
+  freshState(ctx);
+  ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
+  const span = videoSpan(compiled.duration, opts.section);
+  const whole = span.start <= 0 && span.end >= compiled.duration - 1e-9;
+  const style = endCardStyle(opts.style, compiled, whole ? undefined : span);
+  const view = drawScore(
+    ctx,
+    compiled,
+    endCardCamera(compiled, opts),
+    style,
+    compiled.duration,
+    { width, height },
+    dpr * scale,
+  );
+  const text = credit ? (opts.bookends?.credit ?? '').trim() : '';
+  if (text) {
+    const g = ctx as CanvasRenderingContext2D;
+    g.globalAlpha = 1;
+    g.font = `italic 12px ${DEFAULT_SERIF}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    g.fillStyle = style.paint?.end ?? style.tokens.ink2;
+    g.fillText(text, width / 2, height - Math.max(10, view.padB / 2 - 6));
+    g.textAlign = 'left';
+  }
+  return view;
+}
+
+/**
+ * The title (and subtitle) centred over the picture at `alpha`, in the serif, on a soft scrim of
+ * the background colour so it reads over lines. `size` is the title's type in layout px.
+ */
+export function drawTitleText(
+  ctx: Ctx2D,
+  style: ScoreStyle,
+  layout: { width: number; height: number },
+  dpr: number,
+  title: { text: string; subtitle?: string },
+  alpha: number,
+  size = TITLE_PX,
+  at = 0.44,
+): void {
+  const g = ctx as CanvasRenderingContext2D;
+  const { width: W, height: H } = layout;
+  const text = title.text.trim();
+  if (!text || !(alpha > 0)) return;
+  const sub = title.subtitle?.trim() ?? '';
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.textAlign = 'center';
+  g.textBaseline = 'alphabetic';
+  g.font = `500 ${size}px ${DEFAULT_SERIF}`;
+  const w = g.measureText(text).width;
+  const px = w > W * 0.86 ? (size * W * 0.86) / w : size;
+  const subPx = Math.max(9, px * 0.42);
+  const y = H * at + px * 0.35;
+  // The scrim: the background's colour, strongest behind the text, gone at its edges.
+  const bg = style.paint?.background;
+  const paper =
+    bg?.kind === 'solid' ? bg.color : bg?.kind === 'gradient' ? bg.from : style.tokens.paper;
+  const cy = H * at + (sub ? subPx * 0.6 : 0);
+  const rx = Math.min(W * 0.48, Math.max(w, px * 4) * 0.62);
+  g.save();
+  g.translate(W / 2, cy);
+  g.scale(rx, px * (sub ? 2.4 : 1.9));
+  const scrim = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+  scrim.addColorStop(0, paper);
+  scrim.addColorStop(0.55, paper);
+  scrim.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  g.globalAlpha = alpha * 0.7;
+  g.fillStyle = scrim;
+  g.beginPath();
+  g.arc(0, 0, 1, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+  g.globalAlpha = alpha;
+  g.fillStyle = style.paint?.title ?? style.tokens.ink;
+  g.font = `500 ${px}px ${DEFAULT_SERIF}`;
+  g.fillText(text, W / 2, y);
+  if (sub) {
+    g.font = `italic ${subPx}px ${DEFAULT_SERIF}`;
+    g.fillStyle = style.paint?.title ?? style.tokens.ink2;
+    g.fillText(sub, W / 2, y + subPx * 1.9);
+  }
+  g.globalAlpha = 1;
+  g.textAlign = 'left';
+}
+
+/**
+ * Clears and draws the frame at video time τ with its opening and ending: the picture at the
+ * score time `bookendsAt` gives, crossfaded into the end card, the title card over it, then the
+ * fades' black. Canvas `scale` times the video's pixels (the dialog's preview).
+ */
+export function drawVideoMoment(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  tau: Seconds,
+  scale = 1,
+): View {
+  const b = opts.bookends;
+  const span = videoSpan(compiled.duration, opts.section);
+  const st = bookendsAt(b, span, tau, opts.length);
+  const px = videoSize(opts.aspect, opts.size);
+  const cw = Math.ceil(px.width * scale);
+  const ch = Math.ceil(px.height * scale);
+  let view: View;
+  if (st.end >= 1) view = drawEndCard(ctx, compiled, opts, scale);
+  else {
+    view = drawVideoFrameAt(ctx, compiled, opts, st.t, scale);
+    if (st.end > 0) {
+      const layer = layerFor(ctx, 'end-card', cw, ch);
+      if (layer) {
+        drawEndCard(layer.g, compiled, opts, scale);
+        const g = ctx as CanvasRenderingContext2D;
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = st.end;
+        g.drawImage(layer.canvas, 0, 0, cw, ch, 0, 0, cw, ch);
+        g.restore();
+      } else if (st.end >= 0.5) view = drawEndCard(ctx, compiled, opts, scale);
+    }
+  }
+  const lay = videoLayout(opts.aspect, opts.size);
+  if (st.title > 0 && b?.title) {
+    drawTitleText(ctx, opts.style, lay, lay.dpr * scale, b.title, st.title);
+  }
+  if (st.black > 0) {
+    const g = ctx as CanvasRenderingContext2D;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = Math.min(1, st.black);
+    g.fillStyle = '#000000';
+    g.fillRect(0, 0, cw, ch);
+    g.globalAlpha = 1;
+  }
+  return view;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Thumbnail (PLAN.md §12 "Ready for YouTube")
+// ---------------------------------------------------------------------------------------------
+
+/** A thumbnail's pixels: YouTube's 1280×720 at 16:9, 720×1280 at 9:16, 1080×1080 at 1:1. */
+export function thumbnailSize(aspect: VideoAspect): { width: number; height: number } {
+  if (aspect === '16:9') return { width: 1280, height: 720 };
+  if (aspect === '9:16') return { width: 720, height: 1280 };
+  return { width: 1080, height: 1080 };
+}
+
+/** The thumbnail title's type, layout px (shrunk to fit). */
+export const THUMB_TITLE_PX = 60;
+
+export interface ThumbnailOptions {
+  /** The picture: the frame at this score time (clamped to the section), or the whole piece. */
+  at: Seconds | 'whole';
+  /** Drawn large over the picture; empty = none. */
+  title: { text: string; subtitle?: string };
+}
+
+/**
+ * Clears and draws a thumbnail on a canvas `thumbnailSize(opts.aspect)` pixels: the video's
+ * frame at a time, or the end card's whole-piece view (no credit), with the title large.
+ */
+export function drawThumbnail(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  thumb: ThumbnailOptions,
+): void {
+  const px = videoSize(opts.aspect, opts.size);
+  const scale = thumbnailSize(opts.aspect).width / px.width;
+  if (thumb.at === 'whole') drawEndCard(ctx, compiled, opts, scale, false);
+  else drawVideoFrameAt(ctx, compiled, opts, thumb.at, scale);
+  const lay = videoLayout(opts.aspect, opts.size);
+  drawTitleText(ctx, opts.style, lay, lay.dpr * scale, thumb.title, 1, THUMB_TITLE_PX, 0.42);
 }

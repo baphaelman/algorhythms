@@ -11,7 +11,14 @@ import { stylePaint, type LookColours } from './colours';
 import { DEFAULT_HUD } from './hud';
 import type { HudLayout } from './hud-layout';
 import { tokensOf } from './palettes';
-import type { HudItem, MomentLabels, MomentTimes, ScoreStyle, ThemeName } from './types';
+import type {
+  HudItem,
+  MomentLabels,
+  MomentTimes,
+  PitchGuides,
+  ScoreStyle,
+  ThemeName,
+} from './types';
 
 export type LookFuture = 'hidden' | 'dimmed' | 'full';
 export type LookLineWidth = 'thin' | 'normal' | 'bold';
@@ -77,6 +84,12 @@ export interface Look {
    * `colors` and `lineInk`.
    */
   colours?: LookColours;
+  /** Glow round the lines, 0..1 (§12 "Ready for YouTube"); absent = 0. */
+  glow?: number;
+  /** Vignette, 0..1; absent = 0. */
+  vignette?: number;
+  /** Guide lines at pitches, labelled or not; absent or no pitches = none. */
+  pitchGuides?: PitchGuides;
 }
 
 /** Line width factor per option. */
@@ -206,11 +219,22 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
       style.customColors = lines.colors.map((col, i) => own?.[i] || col);
     }
   }
+  const glow = unit(look.glow);
+  if (glow > 0) style.glow = glow;
+  const vignette = unit(look.vignette);
+  if (vignette > 0) style.vignette = vignette;
+  const pg = look.pitchGuides;
+  if (pg && pg.pitches.length > 0) style.pitchGuides = pg;
   if (ctx.labels) style.labels = ctx.labels;
   if (ctx.markerTimes) style.markerTimes = ctx.markerTimes;
   if (ctx.pieceName !== undefined) style.pieceName = ctx.pieceName;
   if (ctx.fontMono) style.fontMono = ctx.fontMono;
   return style;
+}
+
+/** A 0..1 amount (NaN and absent → 0). */
+function unit(v: number | undefined): number {
+  return v !== undefined && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
 }
 
 /** A readout list as ScoreStyle.hud: today's list is `true`, none is `false`. */

@@ -2,15 +2,17 @@
  * `drawScore`: the pure score painter shared by the player, the editor and export (PLAN.md §10).
  * No globals, no React: everything arrives as arguments. Layers, back to front:
  *
- *   1. background          2. octave grid (A lines labelled in Hz), bar grid (editor)
+ *   1. background          2. octave grid (A lines labelled in Hz), pitch guides, bar grid
  *   3. moment/section markers
- *   4. lines (past solid, future ghost, cut at the playhead; pulse hit marks)   5. heads (dots, motion rings, Hz labels)
- *   6. playhead            7. HUD (chord, key, voices, time)
+ *   4. glow, then the lines (past solid, future ghost, cut at the playhead; pulse hit marks)
+ *   5. heads (dots, motion rings, Hz labels)
+ *   6. playhead, vignette  7. HUD (chord, key, voices, time)
  *
  * The editor overlay (§11) is drawn by the app on top of this.
  */
 
 import { activeAt, lifeAt, motionAt, pitchAt, segmentIndexAt } from '../core/query';
+import { noteName } from '../core/scales';
 import { hzOf } from '../core/tuning';
 import type {
   CompiledScore,
@@ -27,8 +29,10 @@ import { drawHud, hudBoxes, hudItems, hudMargin, hudRows, type HudPlacement } fr
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { CutSink, outlineFrame, outlinePath } from './outline';
 import { fillBackground, stopsAt } from './colours';
+import { blurInto, canFilter, layerFor } from './layer';
 import { lineColor, pitchStops, strokeOf } from './palettes';
 import { sampleInto, samples, stableScale, type Samples } from './sampling';
+import { SvgContext } from './svg';
 import {
   drawnLives,
   geometryAt,
@@ -202,6 +206,8 @@ export function drawScore(
     g.globalAlpha = 1;
   }
 
+  if (style.pitchGuides) drawPitchGuides(g, style, view, MONO, W);
+
   if (style.bars) drawBars(g, style.bars, view, C, style.aheadHidden === true, P?.beats);
 
   // 3. moment and section markers
@@ -216,6 +222,8 @@ export function drawScore(
     g.clip();
   }
   const sf = strandFrame(compiled, view.pps, style.thickness === false);
+  const glow = style.glow ?? 0;
+  if (glow > 0) drawGlow(g, compiled, style, view, sf, dpr, Math.min(1, glow));
   drawLines(g, compiled, style, view, sf, dpr);
   if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);
@@ -240,6 +248,8 @@ export function drawScore(
     g.lineTo(Math.round(xH) + 0.5, H - padB + 6);
     g.stroke();
   }
+  const vig = style.vignette ?? 0;
+  if (vig > 0) drawVignette(g, W, H, Math.min(1, vig));
 
   // 7. HUD
   if (rows > 0) drawHud(g, compiled, style, view, MONO, items);
@@ -427,7 +437,7 @@ function traceWeighted(
   const lives = drawnLives(sf, v);
   const O = F.level ? breaksIn(v, lives) : null;
   if (!weighted && !strands && !O) {
-    g.globalAlpha = alpha;
+    g.globalAlpha = alpha * ALPHA_K;
     g.lineWidth = base;
     trace(g, view, sampleInto(PTS, v, a, b, maxStep, tolerance));
     return;
@@ -451,6 +461,8 @@ function traceWeighted(
 const EVENT_EPS = 1e-6;
 /** Device pixel ratio of the frame being drawn. */
 let DPR = 1;
+/** Multiplies every line alpha (the glow's passes drawn straight onto the target). */
+let ALPHA_K = 1;
 /** How far a piece reaches past a merge or split before the cut: two device px. */
 let SEAM_LAP = 2;
 /** Seam cuts; their round ends are flattened to within this many device px. */
@@ -612,7 +624,7 @@ function tracePiece(
     // A seam: this slice meets a drawn neighbour slice, or the next piece at a merge or split.
     const seamL = first ? !capStart : LA[i - 1] >= minA;
     const seamR = last ? !capEnd : LA[i + 1] >= minA;
-    g.globalAlpha = al;
+    g.globalAlpha = al * ALPHA_K;
     g.beginPath();
     if (!seamL && !seamR) {
       outlinePath(g, SX, SY, SNX, SNY, SH, a0, a1, capStart && first, capEnd && last);
@@ -1019,7 +1031,7 @@ function drawHits(
     const qa = Math.round(al * 32) / 32;
     if (qa !== pathA) {
       if (pathA >= 0) g.stroke();
-      g.globalAlpha = qa;
+      g.globalAlpha = qa * ALPHA_K;
       g.beginPath();
       pathA = qa;
     }
@@ -1228,4 +1240,184 @@ function drawHeads(
     lastY = gr.y;
   }
   g.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ready for YouTube: pitch guides, glow, vignette (PLAN.md §12)
+// ---------------------------------------------------------------------------------------------
+
+/** Opacity of a pitch guide line and its label. */
+export const PITCH_GUIDE_ALPHA = 0.55;
+
+/** The name a pitch guide is labelled with: "E4", or "E4+25" off the semitone (cents). */
+export function pitchGuideLabel(p: number): string {
+  const n = Math.round(p);
+  const cents = Math.round((p - n) * 100);
+  return cents === 0 ? noteName(n) : `${noteName(n)}${cents > 0 ? '+' : ''}${cents}`;
+}
+
+/** Faint lines at the style's pitch guides, labels right-aligned above them. */
+function drawPitchGuides(
+  g: CanvasRenderingContext2D,
+  style: ScoreStyle,
+  view: View,
+  MONO: string,
+  W: number,
+): void {
+  const pg = style.pitchGuides;
+  if (!pg) return;
+  const col = style.paint?.guides ?? style.tokens.rule;
+  const ink = style.paint?.guides ?? style.tokens.ink2;
+  g.lineWidth = 1;
+  g.font = `10px ${MONO}`;
+  g.textBaseline = 'alphabetic';
+  g.textAlign = 'right';
+  for (const p of pg.pitches) {
+    if (!Number.isFinite(p) || p < view.pLo || p > view.pHi) continue;
+    const y = Math.round(pitchToY(view, p)) + 0.5;
+    g.globalAlpha = PITCH_GUIDE_ALPHA;
+    g.strokeStyle = col;
+    g.setLineDash(GUIDE_DASH);
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+    g.stroke();
+    g.setLineDash(NO_DASH);
+    if (pg.labels) {
+      g.fillStyle = ink;
+      g.fillText(pitchGuideLabel(p), W - Math.max(6, view.padR), y - 4);
+    }
+  }
+  g.globalAlpha = 1;
+  g.textAlign = 'left';
+}
+const GUIDE_DASH = [6, 4];
+
+/**
+ * Glow passes: blur radius (layout px) and the share of the glow amount each is composited at.
+ */
+export const GLOW_PASSES: readonly (readonly [number, number])[] = [
+  [3, 0.85],
+  [10, 0.75],
+];
+/** Pixel ratio of the glow's layers at most: the light is soft, so it is blurred small. */
+const GLOW_DPR = 1.5;
+/** The glow's traces are this many times the lines' width: blurred, a thin line all but fades. */
+export const GLOW_WIDTH = 3;
+
+/** The style the glow traces the lines with: the glow colour on every line, or the lines' own. */
+function glowStyle(style: ScoreStyle): ScoreStyle {
+  const c = style.paint?.glow;
+  if (!c) return style;
+  const gs: ScoreStyle = { ...style, colors: 'ink', lineInk: c };
+  delete gs.customColors;
+  delete gs.paint;
+  return gs;
+}
+
+/**
+ * The glow under the lines: the lines traced into a small layer, blurred (canvas `filter`, else
+ * ring passes) and composited at `amount`. An `SvgContext` gets the same traces with an SVG blur;
+ * a context with no layer (a test double) gets wide translucent strokes.
+ */
+function drawGlow(
+  g: CanvasRenderingContext2D,
+  compiled: CompiledScore,
+  style: ScoreStyle,
+  view: View,
+  sf: StrandFrame,
+  dpr: number,
+  amount: number,
+): void {
+  const gs = glowStyle(style);
+  const lwWas = F.lw;
+  F.lw = lwWas * GLOW_WIDTH;
+  try {
+    drawGlowAt(g, compiled, gs, view, sf, dpr, amount, lwWas);
+  } finally {
+    F.lw = lwWas;
+    ALPHA_K = 1;
+  }
+}
+
+function drawGlowAt(
+  g: CanvasRenderingContext2D,
+  compiled: CompiledScore,
+  gs: ScoreStyle,
+  view: View,
+  sf: StrandFrame,
+  dpr: number,
+  amount: number,
+  lineWidth: number,
+): void {
+  if ((g as unknown) instanceof SvgContext) {
+    for (const [r, share] of GLOW_PASSES) {
+      g.filter = `blur(${r}px)`;
+      ALPHA_K = amount * share;
+      drawLines(g, compiled, gs, view, sf, dpr);
+    }
+    g.filter = 'none';
+    return;
+  }
+  const cw = (g.canvas as { width?: number } | undefined)?.width ?? 0;
+  const ch = (g.canvas as { height?: number } | undefined)?.height ?? 0;
+  const k = Math.min(dpr, GLOW_DPR) / dpr;
+  const lw = Math.ceil(cw * k);
+  const lh = Math.ceil(ch * k);
+  const src = lw > 0 && lh > 0 ? layerFor(g, 'glow', lw, lh) : null;
+  const out = src ? layerFor(g, 'glow-out', lw, lh) : null;
+  if (!src || !out) {
+    for (const [r, share] of GLOW_PASSES) {
+      F.lw = lineWidth + r * 1.5;
+      ALPHA_K = amount * share * 0.3;
+      drawLines(g, compiled, gs, view, sf, dpr);
+    }
+    return;
+  }
+  const m = g.getTransform();
+  const L = src.g;
+  L.setTransform(1, 0, 0, 1, 0, 0);
+  L.globalAlpha = 1;
+  L.globalCompositeOperation = 'source-over';
+  L.clearRect(0, 0, src.canvas.width, src.canvas.height);
+  L.setTransform(m.a * k, 0, 0, m.d * k, m.e * k, m.f * k);
+  const dprWas = DPR;
+  const lapWas = SEAM_LAP;
+  DPR = dpr * k;
+  SEAM_LAP = 2 / DPR;
+  drawLines(L, compiled, gs, view, sf, dpr * k);
+  DPR = dprWas;
+  SEAM_LAP = lapWas;
+  const filtered = canFilter(out.g);
+  const tmp = filtered ? null : layerFor(g, 'glow-tmp', lw, lh);
+  for (const [r, share] of GLOW_PASSES) {
+    blurInto(out, src, tmp, lw, lh, r * dpr * k, filtered);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = Math.min(1, amount * share);
+    g.globalCompositeOperation = 'source-over';
+    g.imageSmoothingEnabled = true;
+    g.drawImage(out.canvas, 0, 0, lw, lh, 0, 0, lw / k, lh / k);
+    g.restore();
+  }
+}
+
+/** Darkest the vignette makes a corner (at 100 %). */
+export const VIGNETTE_MAX = 0.7;
+
+/** Darkens the frame's edges: a radial gradient, clear inside 35 % of the half-diagonal. */
+export function drawVignette(
+  g: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  amount: number,
+): void {
+  const r = Math.hypot(W, H) / 2;
+  const grad = g.createRadialGradient(W / 2, H / 2, r * 0.35, W / 2, H / 2, r);
+  grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  grad.addColorStop(0.5, `rgba(0, 0, 0, ${(amount * VIGNETTE_MAX * 0.3).toFixed(4)})`);
+  grad.addColorStop(1, `rgba(0, 0, 0, ${(amount * VIGNETTE_MAX).toFixed(4)})`);
+  g.globalAlpha = 1;
+  g.fillStyle = grad;
+  g.fillRect(0, 0, W, H);
 }

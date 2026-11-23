@@ -40,9 +40,12 @@ import {
   type ColoursForm,
 } from './export-colours';
 import {
+  END_CREDIT,
+  bookendsOn,
   videoWindow as videoWindowOf,
   videoWindowAt16x9,
   type VideoAspect,
+  type VideoBookends,
   type VideoCameraMode,
   type VideoSize,
 } from '../render/video';
@@ -130,6 +133,17 @@ export const VIDEO_QUALITIES: readonly { id: VideoQuality; label: string }[] = [
   { id: 'max', label: 'Max' },
 ];
 
+/** End card lengths offered (§12 "Ready for YouTube"), s; 0 = off. */
+export type VideoEndCard = 0 | 5 | 10 | 20;
+export const VIDEO_END_CARDS: readonly { id: VideoEndCard; label: string }[] = [
+  { id: 0, label: 'Off' },
+  { id: 5, label: '5 s' },
+  { id: 10, label: '10 s' },
+  { id: 20, label: '20 s' },
+];
+/** Longest fade in, lead-in and fade to black, s. */
+export const VIDEO_FADE_MAX = 3;
+
 export const VIDEO_FPS: readonly { id: 30 | 60; label: string }[] = [
   { id: 30, label: '30 fps' },
   { id: 60, label: '60 fps' },
@@ -184,6 +198,18 @@ export interface ExportForm {
   videoWindow: number | null;
   /** HUD readouts of a video, in `HUD_ITEMS` order. */
   videoHud: readonly HudItem[];
+  /** Opening (§12 "Ready for YouTube"): fade in from black and lead-in, s (0..3). */
+  videoFadeIn: number;
+  videoLeadIn: number;
+  /** The title card on; its title (null = the piece's name) and subtitle (per piece). */
+  videoTitleCard: boolean;
+  videoTitle: string | null;
+  videoSubtitle: string;
+  /** Ending: fade to black, s (0..3), and the end card's length (0 = off). */
+  videoFadeOut: number;
+  videoEndCard: VideoEndCard;
+  /** The end card's credit line ('' = none). */
+  videoCredit: string;
   posterFormat: PosterFormat;
   /** Poster pixels (POSTER_MIN_SIDE..POSTER_MAX_SIDE each, area ≤ POSTER_MAX_AREA). */
   posterWidth: number;
@@ -350,6 +376,14 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoFollowAt: null,
   videoWindow: null,
   videoHud: DEFAULT_HUD,
+  videoFadeIn: 0,
+  videoLeadIn: 0,
+  videoTitleCard: false,
+  videoTitle: null,
+  videoSubtitle: '',
+  videoFadeOut: 0,
+  videoEndCard: 0,
+  videoCredit: END_CREDIT,
   posterFormat: 'png',
   posterWidth: 3840,
   posterHeight: 2160,
@@ -744,7 +778,33 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
   }
   const section = sectionOf(form, ctx);
   if (section) o.section = section;
+  const bookends = bookendsOf(form, piece);
+  if (bookends) o.bookends = bookends;
   return o;
+}
+
+const fade = (v: number) =>
+  Number.isFinite(v) ? Math.min(VIDEO_FADE_MAX, Math.max(0, Math.round(v * 10) / 10)) : 0;
+
+/** The video's opening and ending from the form, or undefined when all are off. */
+export function bookendsOf(
+  form: ExportForm,
+  piece: Pick<Piece, 'meta'>,
+): VideoBookends | undefined {
+  const b: VideoBookends = {};
+  if (fade(form.videoFadeIn) > 0) b.fadeIn = fade(form.videoFadeIn);
+  if (fade(form.videoLeadIn) > 0) b.leadIn = fade(form.videoLeadIn);
+  if (form.videoTitleCard) {
+    const text = (form.videoTitle ?? piece.meta.title).trim();
+    const sub = form.videoSubtitle.trim();
+    if (text) b.title = sub ? { text, subtitle: sub } : { text };
+  }
+  if (fade(form.videoFadeOut) > 0) b.fadeOut = fade(form.videoFadeOut);
+  if (form.videoEndCard > 0) {
+    b.endCard = form.videoEndCard;
+    if (form.videoCredit.trim()) b.credit = form.videoCredit.trim();
+  }
+  return bookendsOn(b) ? b : undefined;
 }
 
 export function posterOptions(
@@ -799,6 +859,12 @@ const REMEMBERED = [
   'videoFollowAt',
   'videoWindow',
   'videoHud',
+  'videoFadeIn',
+  'videoLeadIn',
+  'videoTitleCard',
+  'videoFadeOut',
+  'videoEndCard',
+  'videoCredit',
   'posterFormat',
   'posterWidth',
   'posterHeight',
@@ -850,6 +916,7 @@ export function loadExportPrefs(storage?: PrefsStorage | null): ExportPrefs {
 
 const oneOf = <T>(list: readonly { id: T }[], v: unknown): v is T => list.some((o) => o.id === v);
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /** Validates stored prefs field by field (unknown or bad values are left out). */
 export function parsePrefs(raw: unknown): ExportPrefs {
@@ -871,9 +938,14 @@ export function parsePrefs(raw: unknown): ExportPrefs {
     p.videoWindow = Math.max(MIN_WINDOW, r.videoWindow);
   }
   if (Array.isArray(r.videoHud)) p.videoHud = hudInOrder(r.videoHud);
+  if (num(r.videoFadeIn)) p.videoFadeIn = fade(r.videoFadeIn);
+  if (num(r.videoLeadIn)) p.videoLeadIn = fade(r.videoLeadIn);
+  if (isBool(r.videoTitleCard)) p.videoTitleCard = r.videoTitleCard;
+  if (num(r.videoFadeOut)) p.videoFadeOut = fade(r.videoFadeOut);
+  if (oneOf(VIDEO_END_CARDS, r.videoEndCard)) p.videoEndCard = r.videoEndCard;
+  if (typeof r.videoCredit === 'string') p.videoCredit = r.videoCredit.slice(0, 120);
   if (oneOf(POSTER_FORMATS, r.posterFormat)) p.posterFormat = r.posterFormat;
   // Size: explicit pixels, else an old record's preset (`posterSize`); both sides or neither.
-  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
   const preset = POSTER_SIZES.find((s) => s.id === r.posterSize);
   if (num(r.posterWidth) || num(r.posterHeight) || preset) {
     const base = preset ?? POSTER_SIZES[0];
@@ -952,11 +1024,30 @@ function parseLook(r: Record<string, unknown>): LookForm {
   if (l.future === 'dimmed' && l.futureOpacity <= 0) l.future = 'hidden';
   if (l.future === 'dimmed' && l.futureOpacity >= 1) l.future = 'full';
   if (r.colours && typeof r.colours === 'object') l.colours = parseColours(r.colours);
+  for (const k of ['glow', 'vignette'] as const) {
+    const v = r[k];
+    if (num(v) && v > 0) l[k] = Math.min(1, v);
+  }
+  const pg = parsePitchGuides(r.pitchGuides);
+  if (pg) l.pitchGuides = pg;
   if (oneOf(LOOK_WIDTHS, r.lineWidth)) l.lineWidth = r.lineWidth;
   else if (typeof r.lineWidth === 'number' && Number.isFinite(r.lineWidth)) {
     l.lineWidth = Math.min(LINE_SCALE_MAX, Math.max(LINE_SCALE_MIN, r.lineWidth));
   }
   return l;
+}
+
+/** Most guide lines at pitches a Look keeps. */
+export const PITCH_GUIDES_MAX = 12;
+
+/** Stored guide lines at pitches: MIDI 0..127, up to PITCH_GUIDES_MAX; null when none. */
+export function parsePitchGuides(raw: unknown): { pitches: number[]; labels: boolean } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (!Array.isArray(r.pitches)) return null;
+  const pitches = r.pitches.filter((p): p is number => num(p) && p >= 0 && p <= 127);
+  if (pitches.length === 0) return null;
+  return { pitches: pitches.slice(0, PITCH_GUIDES_MAX), labels: r.labels !== false };
 }
 
 /**
