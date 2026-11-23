@@ -33,14 +33,16 @@ import {
 } from '../render';
 import { composeView } from './compose-view';
 import { live, writeText } from './dom';
-import { useEditor } from './editor/history';
+import { inGesture, useEditor } from './editor/history';
+import { viewKeysOf } from './editor/camera-keys';
+import { cameraPathAt } from '../render/camera-path';
 import { PIANO_WIDTH } from './editor/piano';
 import { hoverPointer } from './hover';
 import { lineHighlight } from './line-highlight';
 import { live as liveEngine } from './live';
 import { LiveTrailBuffer } from './live-trail';
 import { previewState, type PreviewGhost } from './preview';
-import { camera, cameraOf, currentTime, usePlayer } from './store';
+import { camera, cameraOf, currentTime, isRecordClock, usePlayer } from './store';
 
 /** Duration of the future-ghost fade, ms (the prototype's 900). */
 const GHOST_TWEEN_MS = 900;
@@ -58,6 +60,9 @@ export const frameStats = {
   start: 0,
   window: 0,
   head: 0,
+  /** The last frame's playhead time, and whether it drew through the piece's camera path. */
+  t: 0,
+  path: false,
   /** Opacity of the future lines as of the last frame. */
   ghost: 1,
   /** The last drawn frame showed a moment preview's ghost lines (from this time; NaN: none). */
@@ -226,9 +231,6 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       lastWindow = win;
       dirty = true;
     }
-    frameStats.start = camera.start;
-    frameStats.window = win;
-    frameStats.head = (t - camera.start) / win;
 
     // The future ghost: full before the first play, then dimmed.
     const ghostTarget = idle ? 1 : (piece.view.futureOpacity ?? DEFAULT_FUTURE_OPACITY);
@@ -263,8 +265,26 @@ export function startScoreLoop(canvas: HTMLCanvasElement, tip?: HTMLElement | nu
       dirty = true;
     }
 
-    const cam: CameraState = { start: camera.start, window: win };
-    if (camera.pitch) cam.pitchRange = camera.pitch;
+    // The editor's Camera (M11.5): while playing, the piece's camera path replaces Follow; a
+    // held view, a gesture (editing) or live mode keep the normal view. Follow still runs
+    // underneath, so stopping returns to it.
+    const keys =
+      view.cameraPath &&
+      transport.status === 'playing' &&
+      !held &&
+      !inGesture() &&
+      !liveEngine.active &&
+      !isRecordClock()
+        ? viewKeysOf(piece, compiled)
+        : null;
+    const path = keys ? cameraPathAt(keys, t) : null;
+    const cam: CameraState = path ?? { start: camera.start, window: win };
+    if (!path && camera.pitch) cam.pitchRange = camera.pitch;
+    frameStats.start = cam.start;
+    frameStats.window = cam.window;
+    frameStats.head = (t - cam.start) / cam.window;
+    frameStats.t = t;
+    frameStats.path = path !== null;
     if (camera.pitch !== lastPitch) {
       lastPitch = camera.pitch;
       dirty = true;

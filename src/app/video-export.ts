@@ -22,6 +22,7 @@ import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
+import type { CameraState } from '../render/types';
 import { resetContext } from '../render/poster';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
@@ -565,7 +566,8 @@ export function frameOptions(
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
   if (opts.section) o.section = opts.section;
   if (opts.camera === 'keys' || opts.camera === 'auto') {
-    const keys = opts.keys ?? piece.camera?.keys;
+    // Auto's keys come in `opts.keys` (made from the score); the piece's own are Keys'.
+    const keys = opts.keys ?? (opts.camera === 'keys' ? piece.camera?.keys : undefined);
     if (keys && keys.length > 0) o.keys = keys;
   }
   if (bookendsOn(opts.bookends)) {
@@ -623,6 +625,21 @@ export function previewVideoFrame(
   const fo = frameOptions(piece, opts);
   const view = drawVideoFrameAt(ctx, compiled, fo, t, scale);
   return hudPlacement(ctx, compiled, fo.style, view);
+}
+
+/**
+ * The camera of the frame at score time t (clamped to the section), as the export draws it: what
+ * the dialog's preview shows, for "add a key from this view".
+ */
+export function videoCameraAt(
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: VideoOptions,
+  t: Seconds,
+): CameraState {
+  const fo = frameOptions(piece, opts);
+  const span = videoSpan(compiled.duration, fo.section);
+  return videoCamera(fo.camera, compiled, Math.min(Math.max(span.start, t), span.end), fo);
 }
 
 /**
