@@ -58,6 +58,7 @@ import {
   sectionOf,
   sliderToFollowWindow,
   stepHandle,
+  typeHandle,
   windowSnaps,
   windowText,
   type ExportForm,
@@ -1494,14 +1495,14 @@ function SectionField({ form, disabled }: { form: ExportForm; disabled: boolean 
               value={cspan.start}
               disabled={disabled}
               testId="section-start-text"
-              onCommit={(t) => setSpan(moveHandle(cspan, 'start', t, D, undefined, true))}
+              onCommit={(t) => setSpan(typeHandle(cspan, 'start', t, D))}
             />
             <ClockInput
               label="End"
               value={cspan.end}
               disabled={disabled}
               testId="section-end-text"
-              onCommit={(t) => setSpan(moveHandle(cspan, 'end', t, D, undefined, true))}
+              onCommit={(t) => setSpan(typeHandle(cspan, 'end', t, D))}
             />
           </div>
         </>

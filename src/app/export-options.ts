@@ -524,6 +524,19 @@ export function moveHandle(
 }
 
 /**
+ * The span with one handle typed as t: exact, inside the piece; the other handle gives way to
+ * keep MIN_SECTION between them.
+ */
+export function typeHandle(
+  span: TimeSpan,
+  handle: SectionHandle,
+  t: Seconds,
+  duration: Seconds,
+): TimeSpan {
+  return clampSpan({ ...span, [handle]: t }, duration, handle);
+}
+
+/**
  * A keyboard step of one handle: a bar (Shift: 4 bars) with a grid, else 1 s (Shift: 10 s); Alt
  * steps 0.1 s (Shift: 1 s), off the grid. Home and End go to the piece's ends.
  */

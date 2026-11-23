@@ -579,7 +579,15 @@ export async function exportVideo(
     layout: sink.positioned ? 'streaming' : 'faststart',
     sink,
     video: { codec: videoCodec, width, height, frameRate: opts.fps },
-    audio: { codec: audioCodec, sampleRate: sr, numberOfChannels: 2, primingSamples: priming },
+    // The audio's own length: the encoders' flush padding (AAC: up to a packet or two past it)
+    // would otherwise make the video up to ~40 ms longer than the render.
+    audio: {
+      codec: audioCodec,
+      sampleRate: sr,
+      numberOfChannels: 2,
+      primingSamples: priming,
+      length: audioFrames,
+    },
   });
   const muxed = (p: Promise<void>) => p.catch(fail);
 

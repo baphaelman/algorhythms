@@ -164,3 +164,14 @@ describe('video section length', () => {
     expect(videoAudioFrames(compiled, piece.mix, { start: 10, end: D })).toBe(all - 480_000);
   });
 });
+
+describe('typed handle times', () => {
+  it('a typed time stays; the other handle gives way', async () => {
+    const { typeHandle } = await import('../../../src/app/export-options');
+    const s = { start: 10, end: 20 };
+    expect(typeHandle(s, 'start', 45, 148)).toEqual({ start: 45, end: 45 + MIN_SECTION });
+    expect(typeHandle(s, 'end', 5, 148)).toEqual({ start: 5 - MIN_SECTION, end: 5 });
+    expect(typeHandle(s, 'start', 12.34, 148)).toEqual({ start: 12.34, end: 20 });
+    expect(typeHandle(s, 'end', 500, 148)).toEqual({ start: 10, end: 148 });
+  });
+});

@@ -256,6 +256,52 @@ describe('Mp4Muxer', () => {
     expect(new DataView(dOps.buffer, dOps.byteOffset).getUint32(4)).toBe(48000);
   });
 
+  it('ends the audio at its length: flush padding is not shown (AAC and Opus)', async () => {
+    for (const [codec, priming, pre] of [
+      ['mp4a.40.2', 2112, 0],
+      ['opus', 0, 0],
+      ['opus', undefined, 312],
+    ] as const) {
+      const sink = memorySink();
+      const m = new Mp4Muxer({
+        layout: 'faststart',
+        sink,
+        audio: {
+          codec,
+          sampleRate: 48000,
+          numberOfChannels: 2,
+          ...(codec === 'opus' ? { description: OPUS_HEAD(pre) } : {}),
+          ...(priming !== undefined ? { primingSamples: priming } : {}),
+          length: 84000, // 1.75 s; the packets run to 2 s (+ priming)
+        },
+      });
+      for (const c of audioChunks()) await m.addAudioChunk(c);
+      await m.finish();
+      const f = sink.bytes();
+      const a = audio(f);
+      const skip = codec === 'opus' ? pre : priming;
+      expect(a.edits).toEqual([{ duration: 1750, mediaTime: skip }]);
+      expect(a.tkhdDuration).toBe(1750);
+      expect(movieInfo(f).duration).toBe(1750);
+      // A length past the packets changes nothing.
+      const sink2 = memorySink();
+      const m2 = new Mp4Muxer({
+        layout: 'faststart',
+        sink: sink2,
+        audio: {
+          codec: 'opus',
+          sampleRate: 48000,
+          numberOfChannels: 2,
+          description: OPUS_HEAD(0),
+          length: 1e6,
+        },
+      });
+      for (const c of audioChunks()) await m2.addAudioChunk(c);
+      await m2.finish();
+      expect(audio(sink2.bytes()).edits).toEqual([]);
+    }
+  });
+
   it("lays audio out contiguously whatever the encoder's timestamps (Firefox's Opus)", async () => {
     // Firefox shifts Opus timestamps back by the pre-skip (6.5 ms) and clamps the first to 0.
     const shifted = audioChunks().map((c) => ({
