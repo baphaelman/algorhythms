@@ -88,6 +88,8 @@ export interface Look {
   glow?: number;
   /** Vignette, 0..1; absent = 0. */
   vignette?: number;
+  /** Minimum line opacity, 0..1 (revision 17): sounding lines at least this bright; absent = 0. */
+  minLineOpacity?: number;
   /** Guide lines at pitches, labelled or not; absent or no pitches = none. */
   pitchGuides?: PitchGuides;
 }
@@ -223,6 +225,8 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
   if (glow > 0) style.glow = glow;
   const vignette = unit(look.vignette);
   if (vignette > 0) style.vignette = vignette;
+  const minOp = unit(look.minLineOpacity);
+  if (minOp > 0) style.minLineOpacity = minOp;
   const pg = look.pitchGuides;
   if (pg && pg.pitches.length > 0) style.pitchGuides = pg;
   if (ctx.labels) style.labels = ctx.labels;

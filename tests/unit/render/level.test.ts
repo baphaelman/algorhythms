@@ -17,6 +17,7 @@ import {
   nearestLine,
   opacityAt,
   opacityBreaks,
+  opacityIn,
   pitchToY,
   pulseDrawLevel,
   pulseHits,
@@ -26,6 +27,7 @@ import {
   type Ctx2D,
   type ScoreStyle,
 } from '../../../src/render';
+import { SvgContext, asCtx2D } from '../../../src/render/svg';
 import { pathCtx } from './path-ctx';
 
 interface Stroke {
@@ -391,5 +393,69 @@ describe('pulse drawing (revision 10)', () => {
     const heads = p.fills.filter((f) => f.pts.length === 0 && f.arcs.length === 1);
     expect(heads.length).toBe(2);
     for (const h of heads) expect(h.alpha).toBeCloseTo(PULSE_DRAW_FLOOR, 9);
+  });
+});
+
+describe('minimum line opacity (revision 17)', () => {
+  const cam: CameraState = { window: 12, start: 0 };
+  /** Alphas of voice 0's line (RED) fills between the hits of its pulse (2..6 s). */
+  function between(s: CompiledScore, over: Partial<ScoreStyle>): number[] {
+    const p = pathCtx();
+    const view = drawScore(p.ctx, s, cam, style(over), 11, SIZE, 1);
+    const x0 = timeToX(view, 2);
+    const x1 = timeToX(view, 6);
+    return p.fills
+      .filter((f) => f.style === RED && f.pts.some(([x]) => x > x0 + 1 && x < x1 - 1))
+      .map((f) => f.alpha);
+  }
+
+  it('0 draws exactly as before', () => {
+    const s = pulsed();
+    const a = pathCtx();
+    const b = pathCtx();
+    drawScore(a.ctx, s, cam, style(), 11, SIZE, 1);
+    drawScore(b.ctx, s, cam, style({ minLineOpacity: 0 }), 11, SIZE, 1);
+    expect(b.fills).toEqual(a.fills);
+    expect(b.strokes).toEqual(a.strokes);
+  });
+
+  it('a gated line is drawn at least the minimum between hits', () => {
+    const s = pulsed();
+    const v = s.voices[0];
+    for (let t = 2; t < 6; t += 0.05) {
+      expect(opacityIn(v, v.lives, t, 0.6)).toBeGreaterThanOrEqual(0.6 - 1e-9);
+      expect(opacityIn(v, v.lives, t, 0.6)).toBeGreaterThanOrEqual(opacityAt(v, t));
+    }
+    expect(Math.min(...between(s, {}))).toBeLessThan(0.3);
+    const lifted = between(s, { minLineOpacity: 0.6 });
+    expect(lifted.length).toBeGreaterThan(0);
+    expect(Math.min(...lifted)).toBeGreaterThanOrEqual(0.6 - 1e-6);
+  });
+
+  it('SVG: the gated line between hits is at least the minimum', () => {
+    const s = pulsed();
+    const svg = (over: Partial<ScoreStyle>) => {
+      // The pulse region only (2.2..5.8 s), past the playhead.
+      const c = new SvgContext(SIZE.width, SIZE.height);
+      drawScore(asCtx2D(c), s, { start: 2.2, window: 3.6 }, style(over), 11, SIZE, 1);
+      return c.toSvg();
+    };
+    const alphas = (out: string) =>
+      out
+        .split('\n')
+        .filter((l) => l.includes(`fill="${RED}"`) && l.startsWith('<path'))
+        .map((l) => Number(/ opacity="([\d.]+)"/.exec(l)?.[1] ?? 1));
+    expect(svg({ minLineOpacity: 0 })).toBe(svg({}));
+    expect(Math.min(...alphas(svg({})))).toBeLessThan(0.3);
+    expect(Math.min(...alphas(svg({ minLineOpacity: 0.6 })))).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it('life fades still apply, and a line silenced by its level still vanishes', () => {
+    const v = voice(0, 60, [{ t: 10, gain: 0, over: 4 }], [{ born: 0, fadeIn: 2 }]);
+    expect(opacityIn(v, v.lives, 1, 0.6)).toBeCloseTo(lifeLevel(v.lives[0], 1), 12);
+    expect(opacityIn(v, v.lives, 5, 0.6)).toBe(1);
+    expect(opacityIn(v, v.lives, 12, 0.6)).toBe(0.6); // level 0.5: lifted
+    expect(opacityIn(v, v.lives, 13.999, 0.6)).toBeLessThan(0.01);
+    expect(opacityIn(v, v.lives, 15, 0.6)).toBe(0);
   });
 });

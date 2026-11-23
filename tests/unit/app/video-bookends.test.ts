@@ -106,21 +106,30 @@ describe('Look additions in the form', () => {
         ...DEFAULT_EXPORT_FORM.look,
         glow: 0.6,
         vignette: 0.3,
+        minLineOpacity: 0.6,
         pitchGuides: { pitches: [64], labels: true },
       },
     });
     const l = lookOf(f, 'poster', ctx);
     expect(l.glow).toBe(0.6);
     expect(l.vignette).toBe(0.3);
+    expect(l.minLineOpacity).toBe(0.6);
     expect(l.pitchGuides).toEqual({ pitches: [64], labels: true });
   });
   it('are remembered and validated', () => {
     const p = parsePrefs({
       v: 4,
-      look: { glow: 2, vignette: 'x', pitchGuides: { pitches: [64, 'a', 300, 52.5] } },
+      look: {
+        glow: 2,
+        vignette: 'x',
+        minLineOpacity: 0.4,
+        pitchGuides: { pitches: [64, 'a', 300, 52.5] },
+      },
     });
     expect(p.look?.glow).toBe(1);
     expect(p.look).not.toHaveProperty('vignette');
+    expect(p.look?.minLineOpacity).toBe(0.4);
+    expect(parsePrefs({ v: 4, look: {} }).look).not.toHaveProperty('minLineOpacity');
     expect(p.look?.pitchGuides).toEqual({ pitches: [64, 52.5], labels: true });
     expect(parsePitchGuides({ pitches: [] })).toBeNull();
     expect(parsePitchGuides({ pitches: Array(20).fill(60) })?.pitches).toHaveLength(

@@ -64,6 +64,7 @@ export {
   levelAt,
   lifeLevel,
   opacityAt,
+  opacityIn,
   opacityBreaks,
   pulseDrawLevel,
   pulseHits,

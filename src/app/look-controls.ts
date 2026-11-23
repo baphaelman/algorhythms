@@ -181,7 +181,12 @@ const widthControl: LookSlider = {
 };
 
 /** A 0..100 % slider over a 0..1 Look amount (absent = 0, and 0 leaves the field out). */
-function amount(id: string, label: string, key: 'glow' | 'vignette', hint: string): LookSlider {
+function amount(
+  id: string,
+  label: string,
+  key: 'glow' | 'vignette' | 'minLineOpacity',
+  hint: string,
+): LookSlider {
   return {
     type: 'slider',
     id,
@@ -261,6 +266,12 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
   widthControl,
   amount('glow', 'Glow', 'glow', 'Soft light around the lines.'),
   amount('vignette', 'Vignette', 'vignette', 'Darkens the corners.'),
+  amount(
+    'min-opacity',
+    'Minimum line opacity',
+    'minLineOpacity',
+    'Sounding lines are drawn at least this bright, so gated parts stay bold between hits.',
+  ),
 ];
 
 /** The controls a format shows. */

@@ -1063,7 +1063,7 @@ function parseLook(r: Record<string, unknown>): LookForm {
   if (l.future === 'dimmed' && l.futureOpacity <= 0) l.future = 'hidden';
   if (l.future === 'dimmed' && l.futureOpacity >= 1) l.future = 'full';
   if (r.colours && typeof r.colours === 'object') l.colours = parseColours(r.colours);
-  for (const k of ['glow', 'vignette'] as const) {
+  for (const k of ['glow', 'vignette', 'minLineOpacity'] as const) {
     const v = r[k];
     if (num(v) && v > 0) l[k] = Math.min(1, v);
   }
