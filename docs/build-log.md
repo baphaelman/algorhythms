@@ -2751,3 +2751,6 @@ PLAN §6.4, §11.3 "Add a moment", §15 M10.
 
 ## lane-dense divider spec after the M10b merge (e2e; 2026-11-23)
 - The six-button row palette (M10b-4) no longer wraps, so the timeline is taller and dense Kite Day's default lane (187 px at 1024×700) sits 19 px under its content (206 px); the lane never grows past its rows (as designed). The divider test now drags down 40 px first and checks growth on the "way up" drag.
+
+## Lane marker under a selected band (app; 2026-11-23)
+- touch-edit failed on Firefox/WebKit: a block's band ends at the next marker's centre, and a selected (raised) block's band covered that marker's left half, so integer-pixel taps there selected the previous block (real for mouse and touch). `Lane.onDown` now prefers a `.lane-marker` under the press over a band; regression test in lane-blocks. touch-edit:239 (score readout tap) flakes on Chromium at baseline too; not touched.
