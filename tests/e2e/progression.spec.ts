@@ -110,17 +110,15 @@ test('add a progression, type chords, lane names, HUD while playing, Freeze', as
     'V · G',
     'I · C',
   ]);
+  // On the lane, one Chords block per chord, named by its chord (PLAN §6.4 short labels).
   const bar = page.locator(`.lane-item[data-moment="${typed.id}"]`);
-  await expect(bar.getByTestId('lane-prog-chord')).toHaveText([
-    'I · C',
-    'IV · F',
-    'V · G',
-    'I · C',
-  ]);
+  await expect(bar.getByTestId('lane-prog-chord')).toHaveText(['C', 'F', 'G', 'C']);
   const boxes = await bar
     .getByTestId('lane-prog-chord')
     .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
-  for (const w of boxes) expect(Math.abs(w - boxes[0])).toBeLessThan(2);
+  // Equal chords; the last block runs on to the next Chords block (here the piece's end).
+  for (const w of boxes.slice(0, -1)) expect(Math.abs(w - boxes[0])).toBeLessThan(2);
+  expect(boxes.at(-1)!).toBeGreaterThanOrEqual(boxes[0] - 2);
 
   // Playing from 3.2 s: the HUD reads the chord in effect at the playhead (IV, then V).
   await seek(page, 3.2);
@@ -215,7 +213,7 @@ test('owner notes: on New → Empty, chords match, default spacing, the chord li
   await expect(rows).toHaveCount(5);
   await expect(insp.getByTestId('prog-chord-name').nth(4)).toHaveText('ii · Bm');
   await expect(bar.getByTestId('lane-prog-chord')).toHaveCount(5);
-  await expect(bar.getByTestId('lane-prog-chord').nth(4)).toHaveText('ii · Bm');
+  await expect(bar.getByTestId('lane-prog-chord').nth(4)).toHaveText('Bm');
 
   // Hovering a row highlights its chord on the lane.
   await rows.nth(1).hover();

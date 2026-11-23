@@ -654,15 +654,16 @@ export function blockLabelPx(b: Pick<LaneBlock, 'label' | 'detail'>): number {
 }
 
 /**
- * A block's pixel interval for stacking: its band (from the marker), at least the marker wide.
- * On rows whose blocks end on their own (texture, melody, level, sound) the label counts too, so a
- * short block's label never runs into the next one; chained rows clip their labels.
+ * A block's pixel interval for stacking: its band, at least its marker wide. It starts at the
+ * block's time, so a chord that starts where the one before ends shares its sub-row (the marker's
+ * left half may overlap the end of that block). On rows whose blocks end on their own (texture,
+ * melody, level, sound) the label counts too, so a short block's label never runs into the next
+ * one; chained rows clip their labels.
  */
 export function blockBoxPx(b: LaneBlock, pps: number): [number, number] {
   const x = b.start * pps;
-  const left = x - MARKER_HALF;
-  const min = CHAINED_ROWS.has(b.row) ? 2 * MARKER_HALF : blockLabelPx(b);
-  return [left, Math.max(b.end * pps, left + min)];
+  const min = CHAINED_ROWS.has(b.row) ? MARKER_HALF : blockLabelPx(b) - MARKER_HALF;
+  return [x, Math.max(b.end * pps, x + min)];
 }
 
 /** Sub-row height of a row. */

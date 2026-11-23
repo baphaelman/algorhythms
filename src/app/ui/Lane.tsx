@@ -1,14 +1,15 @@
 /**
- * The lane rows under the score (PLAN.md §11.2, §11.3 incl. "Dense lanes", §11.3a, §11.5), on the
- * score's time axis at every frame: **Moments** (marker and name) and **Transitions** (each
- * moment's compiled span as a bar; walks striped), both stacked in sub-rows so overlapping moments
- * never share one (revision 7); **Pins** (only when the piece has pins: marker and glide bar on
- * one thin sub-row, stacked when spans overlap), **Level** (the mean level curve, with each
- * `level` moment's marker on it; colliding markers stack below) and **Effects** (M6, only when the
- * piece or the preview has a timbre change: marker, preset name and fade bar on one sub-row,
- * stacked like Moments; the end handle sets the fade). The lane area grows to fit up to
- * the divider's split (default: the score keeps ≥ 55 % of the timeline), then scrolls vertically.
- * One DOM item per moment holds its marker and its bar, so selection, focus and drags act on both.
+ * The lane rows under the score (PLAN.md §6.4, §11.2, §11.3 incl. "Dense lanes", §11.3a, §11.5),
+ * on the score's time axis at every frame: Key, Chords, Texture, Melody, Level and Sound (one row
+ * per part on the last four when the piece has parts), from the row model (../editor/rows.ts) laid
+ * out by `laneRowsLayout`. Key, Chords and Texture always show; the others only with a block or
+ * under a preview of their type. Each moment is one block on its row, from its marker to its end
+ * (a chord to the next chord block, a texture to its own end), with a short label; overlapping
+ * blocks stack on sub-rows. A Chords block draws its glide as a strip under it (land lead-ins
+ * reach back before the marker); a progression draws one block per chord; the Level row draws
+ * the mean level curve behind its blocks. Note and pin moments are dots on top of the Chords
+ * row. The lane area grows to fit up to the divider's split, then scrolls vertically. One DOM item
+ * per moment holds its marker, block and bar, so selection, focus and drags act on all of them.
  *
  * React renders the items (on piece, score or selection changes only). Positions are written
  * directly: the loop's per-frame camera (`onScoreFrame`) translates one inner container, and item
@@ -17,10 +18,11 @@
  * an editor gesture (one undo entry per drag; Escape cancels).
  *
  * Pointer: click selects, Shift- or ⌘/Ctrl-click toggles, a click on empty lane clears and a drag
- * there pans (Follow turns off during playback); a Shift-drag there draws a marquee that selects the
- * moments it touches (⌘/Ctrl+Shift: adds them); drag an item to move it (snapping
- * to the BPM grid unless Alt is held); Alt at press duplicates; dragging a span end changes the
- * glide length (Shift: stagger; a walk's end, a level ramp's length). Keys on a focused item:
+ * there (or on the piece key's band, which never moves) pans (Follow turns off during playback);
+ * a Shift-drag there draws a marquee that selects the moments it touches (⌘/Ctrl+Shift: adds
+ * them); drag an item to move it along its row (snapping as a palette drop; Alt is free); Alt at
+ * press duplicates; dragging a span end changes the glide length (Shift: stagger; a texture's
+ * end, a level ramp's length, a fade). Keys on a focused item:
  * ←/→ nudge, ↑/↓/Home/End move focus, Delete/Backspace delete, Enter selects, Shift+Enter toggles
  * (Space plays and pauses); on a selected item these act on the whole selection. Focusing an
  * off-screen item pans the paused view to it.
@@ -858,9 +860,9 @@ class LaneController {
     el.style.height = `${r.bottom - r.top}px`;
     const boxes: ({ id: MomentId } & Rect)[] = [];
     for (const [id, item] of this.els) {
-      // The marker and the bar, not the item's whole box (it spans both rows).
+      // The marker, block, glide strip and (clipped) label, not the item's whole box.
       for (const part of item.querySelectorAll<HTMLElement>(
-        '.lane-marker, .lane-band, .lane-bar, .lane-label',
+        ':scope > .lane-marker, :scope > .lane-band, :scope > .lane-bar, :scope > .lane-text',
       )) {
         const b = part.getBoundingClientRect();
         if (b.width > 0 || b.height > 0)
@@ -916,7 +918,23 @@ class LaneController {
     this.hold?.move(e.clientX, e.clientY);
     const k = this.keyPress;
     if (k && e.pointerId === k.pointerId) {
-      if (Math.abs(e.clientX - k.x0) > this.slop) k.moved = true;
+      if (Math.abs(e.clientX - k.x0) <= this.slop) return;
+      // The piece key never moves: a drag on its band pans, as on the background.
+      k.moved = true;
+      this.endHold();
+      this.keyPress = null;
+      this.pan = {
+        pointerId: k.pointerId,
+        x0: k.x0,
+        y0: e.clientY,
+        lastX: k.x0,
+        lastY: e.clientY,
+        touch: e.pointerType !== 'mouse',
+        shift: false,
+        extend: false,
+        started: false,
+      };
+      this.onPanMove(e, this.pan);
       return;
     }
     const p = this.pan;
@@ -1040,11 +1058,6 @@ class LaneController {
       this.keyPress = null;
       if (this.track?.hasPointerCapture(k.pointerId)) this.track.releasePointerCapture(k.pointerId);
       if (e.type === 'pointercancel') return;
-      // The piece key never moves: a drag is ignored.
-      if (k.moved) {
-        this.announce("The piece's key stays at 0:00");
-        return;
-      }
       const sel = useEditor.getState().selection;
       if (k.shift) {
         select(

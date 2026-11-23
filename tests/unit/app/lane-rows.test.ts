@@ -86,7 +86,7 @@ describe('rows shown', () => {
   it('row heights: sub-rows × height + padding; Level keeps room for its curve; tops add up', () => {
     const p = base([
       chord('c1', 0),
-      chord('c2', 1, { target: { rank: 'top', n: 1 } }),
+      chord('c2', 1, { target: { rank: [0, 0] } }),
       { id: 'l1', type: 'level', at: 2, gain: 0.5, over: 1 },
     ]);
     const L = layout(p);
@@ -149,12 +149,19 @@ describe('blocks', () => {
 
   it('box: the band on chained rows; the label too where blocks end on their own', () => {
     const c: LaneBlock = { id: 'c', row: 'chords', start: 1, end: 1.25, label: 'Cmaj7' };
-    expect(blockBoxPx(c, 100)).toEqual([95, 125]);
-    expect(blockBoxPx({ ...c, end: 1 }, 100)).toEqual([95, 105]);
+    expect(blockBoxPx(c, 100)).toEqual([100, 125]);
+    expect(blockBoxPx({ ...c, end: 1 }, 100)).toEqual([100, 105]);
     const l: LaneBlock = { id: 'l', row: 'level', start: 1, end: 1, label: '55%' };
     const [a, z] = blockBoxPx(l, 100);
-    expect(a).toBe(95);
+    expect(a).toBe(100);
     expect(z - a).toBeGreaterThan(30);
+  });
+
+  it('chained blocks that touch share a sub-row', () => {
+    const p = base([chord('c1', 0), chord('c2', 1), chord('c3', 2)]);
+    const L = layout(p, 40);
+    expect(['c1', 'c2', 'c3'].map((id) => L.blocks.get(id)?.sub)).toEqual([0, 0, 0]);
+    expect(L.rows[1].subRows).toBe(1);
   });
 
   it('own-end rows stack a point block whose label would cover the next', () => {

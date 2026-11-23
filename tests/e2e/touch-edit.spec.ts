@@ -314,8 +314,10 @@ test("on the score: a long press opens the line's moment menu; a double tap adds
 test('pinch zooms the time window over the lane; two fingers pan it', async ({ page }) => {
   await open(page);
   const box = (await page.locator('.lane-track').boundingBox())!;
-  // Empty lane background, right of the last moment.
-  const y = box.y + 40;
+  // Empty lane background: the Texture row, right of the last moment (Chords blocks run to the
+  // piece's end, PLAN §6.4).
+  const tex = (await page.locator('.lane-row[data-row="texture"]').boundingBox())!;
+  const y = tex.y + tex.height / 2;
   const cx = box.x + box.width * 0.8;
   const w0 = await page.evaluate(() => window.__algorhythms!.frameStats.window);
   await twoFinger(

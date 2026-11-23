@@ -2,7 +2,8 @@
  * Dense pieces on the lane (owner 2026-11-21, PLAN §11.3 "Dense lanes"; the pre-rev-9 Kite Day,
  * 349 moments, kept as tests/golden/v1/kite-day.algorhythms.json and opened as a share link,
  * since the bundled Kite Day is now written with tunes and pulses): rows keep their
- * full height; `level` moments sit on the Level row, `pin` moments on their own Pins row; the lane
+ * full height; `level` moments sit on the Level row, `pin` moments are dots on the Chords row
+ * (PLAN §6.4, M10b-3); the lane
  * area is capped (default: the score keeps ≥ 55 % of the timeline) and scrolls inside itself; a
  * draggable divider sets the split and is remembered. A sparse piece is unchanged.
  */
@@ -25,7 +26,10 @@ const box = async (l: Locator): Promise<Box> => (await l.boundingBox())!;
 const selection = (page: Page): Promise<string[]> =>
   page.evaluate(() => window.__algorhythms!.editor.state.getState().selection);
 
-/** Per lane row: the item types whose marker centre lies inside it (track coordinates). */
+/**
+ * Per lane row: the item types whose marker centre lies inside it (track coordinates); `wrong`
+ * lists items whose `data-row` differs from that row's.
+ */
 async function typesByRow(page: Page): Promise<Record<string, string[]>> {
   return page.evaluate(() => {
     const rows = [...document.querySelectorAll<HTMLElement>('.lane-row[data-row]')].map((r) => ({
@@ -39,6 +43,7 @@ async function typesByRow(page: Page): Promise<Record<string, string[]>> {
       const row = rows.find((x) => x.r.height > 0 && y >= x.r.top && y <= x.r.bottom);
       const k = row?.name ?? 'none';
       (out[k] ??= []).push(el.dataset.type!);
+      if (row && row.name !== el.dataset.row) (out.wrong ??= []).push(el.dataset.moment!);
     }
     return out;
   });
@@ -103,25 +108,23 @@ for (const [width, height] of [
       const lane = await box(page.getByTestId('lane'));
       expect(lane.y + lane.height).toBeLessThanOrEqual(timeline.y + timeline.height + 1);
       expect(lane.y + lane.height).toBeLessThanOrEqual(height);
-      // No compaction: Moments items are full height, with their labels shown.
+      // No compaction: blocks are full height, with their labels shown.
       await expect(page.locator('.lane-track')).not.toHaveAttribute('data-compact');
       const chord = page.locator('.lane-item[data-type="chord"]').nth(1);
-      expect((await box(chord)).height).toBeGreaterThanOrEqual(19);
+      expect((await box(chord)).height).toBeGreaterThanOrEqual(13);
       await expect(chord.locator('.lane-label')).toBeVisible();
 
       const rows = await typesByRow(page);
       expect(rows.none ?? []).toEqual([]);
+      expect(rows.wrong ?? []).toEqual([]);
       expect(new Set(rows.level)).toEqual(new Set(['level']));
-      expect(new Set(rows.pins)).toEqual(new Set(['pin']));
       expect(rows.level.length).toBe(141);
-      expect(rows.pins.length).toBe(165);
-      expect(rows.moments).toContain('chord');
-      expect(rows.moments.filter((t) => t === 'chord').length).toBe(42);
-      expect(rows.moments).not.toContain('level');
-      expect(rows.moments).not.toContain('pin');
-      // Level moments have no Transitions bar.
-      const levelBar = page.locator('.lane-item[data-type="level"] .lane-bar').first();
-      await expect(levelBar).toBeHidden();
+      // Pins are dots on the Chords row; there is no Pins row.
+      expect(rows.chords.filter((t) => t === 'pin').length).toBe(165);
+      expect(rows.chords.filter((t) => t === 'chord').length).toBe(42);
+      expect(rows.chords).not.toContain('level');
+      await expect(page.locator('.lane-row[data-row="pins"]')).toHaveCount(0);
+      await expect(page.locator('.lane-item[data-type="pin"]').first()).toHaveAttribute('data-dot');
     });
 
     test('the Level row is reachable by wheel; a level marker selects on click', async ({
@@ -134,7 +137,7 @@ for (const [width, height] of [
       await page.mouse.wheel(0, 600);
       await expect
         .poll(async () => {
-          const level = await box(page.locator('[data-row="level"]'));
+          const level = await box(page.locator('.lane-row[data-row="level"]'));
           return level.y + level.height <= scBox.y + scBox.height + 1;
         })
         .toBe(true);
@@ -143,7 +146,7 @@ for (const [width, height] of [
       const items = await visibleMarkers(page, 'level');
       expect(items.length).toBeGreaterThan(0);
       const it = items.at(-1)!;
-      const level = await box(page.locator('[data-row="level"]'));
+      const level = await box(page.locator('.lane-row[data-row="level"]'));
       expect(it.y).toBeGreaterThanOrEqual(level.y);
       expect(it.y).toBeLessThanOrEqual(level.y + level.height);
       await page.mouse.click(it.x, it.y);
@@ -266,7 +269,7 @@ test('a sparse piece keeps full rows, no Pins row and no lane scrolling', async 
   const sc = page.getByTestId('lane-scroll');
   expect(await sc.evaluate((e) => e.scrollHeight - e.clientHeight)).toBeLessThanOrEqual(0);
   await expect(page.getByTestId('lane')).not.toHaveAttribute('data-more-below');
-  await expect(page.locator('[data-row="pins"]')).toBeHidden();
+  await expect(page.locator('.lane-row[data-row="pins"]')).toHaveCount(0);
   // Labels show as before.
   await expect(page.locator('.lane-item[data-moment] .lane-label').first()).toBeVisible();
 });
