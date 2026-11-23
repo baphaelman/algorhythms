@@ -30,6 +30,8 @@ interface Base {
   /** The control's test id (`look-<id>`). */
   id: string;
   label: string;
+  /** A tooltip. */
+  hint?: string;
   /** The formats that show it. */
   kinds: readonly LookKind[];
 }
@@ -178,6 +180,28 @@ const widthControl: LookSlider = {
   text: factor,
 };
 
+/** A 0..100 % slider over a 0..1 Look amount (absent = 0, and 0 leaves the field out). */
+function amount(id: string, label: string, key: 'glow' | 'vignette', hint: string): LookSlider {
+  return {
+    type: 'slider',
+    id,
+    label,
+    hint,
+    kinds: BOTH,
+    min: 0,
+    max: 100,
+    step: 1,
+    value: (form) => pct(form.look[key] ?? 0),
+    apply: (form, n) => {
+      if (!Number.isFinite(n)) return {};
+      const v = Math.min(100, Math.max(0, Math.round(n))) / 100;
+      const { [key]: _drop, ...rest } = form.look;
+      return { look: v > 0 ? { ...rest, [key]: v } : rest };
+    },
+    text: (n) => (n <= 0 ? 'Off' : `${Math.round(n)} %`),
+  };
+}
+
 /**
  * The Look's controls in dialog order (Theme, the HUD and the Colours group, which holds line
  * colours and the poster's transparent background, are separate controls).
@@ -235,6 +259,8 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     ],
   },
   widthControl,
+  amount('glow', 'Glow', 'glow', 'Soft light around the lines.'),
+  amount('vignette', 'Vignette', 'vignette', 'Darkens the corners.'),
 ];
 
 /** The controls a format shows. */

@@ -51,6 +51,7 @@ import {
 } from '../render/video';
 import type { PosterOptions } from './poster-export';
 import type { VideoOptions, VideoQuality, VideoSupport } from './video-export';
+import type { ExportLoudness } from '../audio/wav-export';
 
 export type ExportFormat = 'wav' | 'stems' | 'midi' | 'video' | 'poster';
 
@@ -121,9 +122,26 @@ export const VIDEO_ASPECTS: readonly { id: VideoAspect; label: string }[] = [
   { id: '1:1', label: '1:1' },
 ];
 
+/** Every size class; the dialog shows those this browser can encode (`videoSizes`). */
 export const VIDEO_SIZES: readonly { id: VideoSize; label: string }[] = [
-  { id: '1080', label: '1080p' },
   { id: '720', label: '720p' },
+  { id: '1080', label: '1080p' },
+  { id: '1440', label: '1440p' },
+  { id: '2160', label: '4K' },
+];
+
+/** Loudness of the WAV mix and the video's audio (§12 "Ready for YouTube"). */
+export const LOUDNESS_TARGETS: readonly { id: ExportLoudness; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  { id: -14, label: '−14 LUFS' },
+  { id: -16, label: '−16 LUFS' },
+];
+
+/** Where the thumbnail's picture comes from: the preview's frame or the whole-piece view. */
+export type ThumbnailAt = 'frame' | 'whole';
+export const THUMBNAIL_ATS: readonly { id: ThumbnailAt; label: string }[] = [
+  { id: 'frame', label: 'This frame' },
+  { id: 'whole', label: 'Whole piece' },
 ];
 
 /** Quality (§12 "Ready for YouTube"): the target bitrate, High = YouTube's upload rates. */
@@ -177,6 +195,8 @@ export interface ExportForm {
   sampleRate: ExportRate;
   /** Stems only: mono voice and FX stems (the mix stays stereo). */
   mono: boolean;
+  /** WAV and video: normalise to this loudness (off = peaks ≤ −1 dBFS, as before). */
+  loudness: ExportLoudness;
   midiMode: ExportMidiMode;
   /** Per-voice mode only (MPE is always ±48; notes-only writes no bends). */
   bendRange: ExportBendRange;
@@ -210,6 +230,10 @@ export interface ExportForm {
   videoEndCard: VideoEndCard;
   /** The end card's credit line ('' = none). */
   videoCredit: string;
+  /** The thumbnail's picture. */
+  thumbnailAt: ThumbnailAt;
+  /** Copy description: add the piece's share link. */
+  descriptionLink: boolean;
   posterFormat: PosterFormat;
   /** Poster pixels (POSTER_MIN_SIDE..POSTER_MAX_SIDE each, area ≤ POSTER_MAX_AREA). */
   posterWidth: number;
@@ -364,6 +388,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   bitDepth: 32,
   sampleRate: 48000,
   mono: false,
+  loudness: 'off',
   midiMode: 'perVoice',
   bendRange: 24,
   cc11: false,
@@ -384,6 +409,8 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoFadeOut: 0,
   videoEndCard: 0,
   videoCredit: END_CREDIT,
+  thumbnailAt: 'frame',
+  descriptionLink: false,
   posterFormat: 'png',
   posterWidth: 3840,
   posterHeight: 2160,
@@ -452,6 +479,11 @@ export function exportFileName(piece: Piece, form: ExportForm, files = 1): strin
 
 export function wavOptions(form: ExportForm): { sampleRate: ExportRate; bitDepth: ExportBitDepth } {
   return { sampleRate: form.sampleRate, bitDepth: form.bitDepth };
+}
+
+/** The WAV export's loudness option: present only when on. */
+export function wavLoudness(form: Pick<ExportForm, 'loudness'>): { loudness?: -14 | -16 } {
+  return form.loudness === 'off' ? {} : { loudness: form.loudness };
 }
 
 /** Display names by voice id, for the stem file names. */
@@ -780,6 +812,7 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
   if (section) o.section = section;
   const bookends = bookendsOf(form, piece);
   if (bookends) o.bookends = bookends;
+  if (form.loudness !== 'off') o.loudness = form.loudness;
   return o;
 }
 
@@ -851,6 +884,7 @@ export const EXPORT_PREFS_VERSION = 4;
 
 /** The form fields remembered per viewer. */
 const REMEMBERED = [
+  'loudness',
   'videoAspect',
   'videoSize',
   'videoFps',
@@ -865,6 +899,8 @@ const REMEMBERED = [
   'videoFadeOut',
   'videoEndCard',
   'videoCredit',
+  'thumbnailAt',
+  'descriptionLink',
   'posterFormat',
   'posterWidth',
   'posterHeight',
@@ -923,6 +959,7 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (!raw || typeof raw !== 'object') return {};
   const r = raw as Record<string, unknown>;
   const p: ExportPrefs = {};
+  if (oneOf(LOUDNESS_TARGETS, r.loudness)) p.loudness = r.loudness;
   if (oneOf(VIDEO_ASPECTS, r.videoAspect)) p.videoAspect = r.videoAspect;
   if (oneOf(VIDEO_SIZES, r.videoSize)) p.videoSize = r.videoSize;
   if (oneOf(VIDEO_FPS, r.videoFps)) p.videoFps = r.videoFps;
@@ -944,6 +981,8 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (num(r.videoFadeOut)) p.videoFadeOut = fade(r.videoFadeOut);
   if (oneOf(VIDEO_END_CARDS, r.videoEndCard)) p.videoEndCard = r.videoEndCard;
   if (typeof r.videoCredit === 'string') p.videoCredit = r.videoCredit.slice(0, 120);
+  if (oneOf(THUMBNAIL_ATS, r.thumbnailAt)) p.thumbnailAt = r.thumbnailAt;
+  if (isBool(r.descriptionLink)) p.descriptionLink = r.descriptionLink;
   if (oneOf(POSTER_FORMATS, r.posterFormat)) p.posterFormat = r.posterFormat;
   // Size: explicit pixels, else an old record's preset (`posterSize`); both sides or neither.
   const preset = POSTER_SIZES.find((s) => s.id === r.posterSize);

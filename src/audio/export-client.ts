@@ -6,7 +6,7 @@
 
 import { flatten, transferList } from '../core/flat';
 import type { CompiledScore, MixSettings, Timbre } from '../core/types';
-import type { NormalizeReport } from '../dsp/loudness';
+import type { LoudnessMeasure, NormalizeReport } from '../dsp/loudness';
 import type { ExportReply, ExportRequest } from './export.worker';
 import type { WavExportOptions } from './wav-export';
 
@@ -61,6 +61,9 @@ export function exportWavStream(req: ExportWavRequest): ReadableStream<Uint8Arra
             stop();
             controller.close();
             break;
+          case 'progress':
+          case 'measure':
+            break;
           case 'error':
             stop();
             controller.error(new Error(msg.message));
@@ -102,4 +105,57 @@ export async function exportWav(req: ExportWavRequest): Promise<Blob> {
     parts.push(value);
   }
   return new Blob(parts, { type: 'audio/wav' });
+}
+
+/** A measure-only request: the render a loudness-normalised export would start from. */
+export interface MeasureRequest extends Pick<WavExportOptions, 'sampleRate' | 'span'> {
+  score: CompiledScore;
+  mix: MixSettings;
+  timbres?: Record<string, Timbre>;
+  onProgress?: (fraction: number) => void;
+  signal?: AbortSignal;
+}
+
+/** Measures the export's loudness in a worker (§12 "Ready for YouTube" → Display). */
+export function measureInWorker(req: MeasureRequest): Promise<LoudnessMeasure> {
+  return new Promise((resolve, reject) => {
+    if (req.signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const w = new Worker(new URL('./export.worker.ts', import.meta.url), { type: 'module' });
+    const stop = () => w.terminate();
+    req.signal?.addEventListener('abort', () => {
+      stop();
+      reject(abortError());
+    });
+    w.onmessage = (e: MessageEvent<ExportReply>) => {
+      const msg = e.data;
+      if (msg.type === 'progress') req.onProgress?.(msg.progress);
+      else if (msg.type === 'measure') {
+        stop();
+        resolve(msg.measure);
+      } else if (msg.type === 'error') {
+        stop();
+        reject(new Error(msg.message));
+      }
+    };
+    w.onerror = (e) => {
+      stop();
+      reject(new Error(e.message || 'export worker failed'));
+    };
+    const flat = flatten(req.score);
+    const request: ExportRequest = {
+      score: flat,
+      mix: req.mix,
+      timbres: req.timbres,
+      options: {
+        sampleRate: req.sampleRate,
+        bitDepth: 32,
+        ...(req.span ? { span: req.span } : {}),
+      },
+      measure: true,
+    };
+    w.postMessage(request, transferList(flat));
+  });
 }
