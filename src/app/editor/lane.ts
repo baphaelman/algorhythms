@@ -27,6 +27,7 @@ import { cycleShare, patternSvg } from './pulse';
 import { tuneEnd, tuneEndDrag } from './tune';
 import { progressionEnd, progressionStarts } from '../../core/moments/progression';
 import { progressionChordNames, progressionEndDrag } from './progression';
+import { ROW_ORDER, type Block, type RowName, type RowsView } from './rows';
 
 /** Nudge step without a grid, seconds. */
 export const NUDGE_NO_GRID: Seconds = 0.1;
@@ -525,69 +526,271 @@ export function stackRows(
   return { rows, count: ends.length };
 }
 
-/**
- * Which lane row a moment sits on (PLAN §11.3 "Dense lanes", §11.2 Effects): `level` moments on
- * the Level row (marker on the envelope), `pin` moments on the Pins row, `timbre` changes on the
- * Effects row (M6), the rest on Moments and Transitions.
- */
-export type LaneRow = 'main' | 'pins' | 'level' | 'effects';
+// ---------------------------------------------------------------------------------------------
+// Rows and blocks on the lane (PLAN §6.4, M10b-3): the row model (./rows.ts) laid out in px
+// ---------------------------------------------------------------------------------------------
 
-export function laneRowOf(type: MomentType): LaneRow {
-  if (type === 'timbre') return 'effects';
-  return type === 'level' ? 'level' : type === 'pin' ? 'pins' : 'main';
-}
-
-/** Half a marker's width (px) on the Pins and Level rows. */
-export const SMALL_MARKER_HALF = 5;
-
-/** A pin's box on the Pins row: its span (stacking only when spans overlap). */
-export function pinBoxPx(item: LaneItem, pps: number): [number, number] {
-  const left = Math.min(item.start, item.at) * pps;
-  return [left, Math.max(item.end * pps, item.at * pps + 1)];
-}
-
-/** A level marker's box on the Level row: the marker alone (its ramp is the envelope). */
-export function levelBoxPx(item: LaneItem, pps: number): [number, number] {
-  const x = item.at * pps;
-  return [x - SMALL_MARKER_HALF - 1, x + SMALL_MARKER_HALF + 1];
-}
-
-/** Lane row and sub-row per item (input order) and each lane row's sub-row count. */
-export interface LaneLayout {
-  lane: LaneRow[];
-  rows: number[];
-  /** Sub-rows used per lane row (0 when it has no items). */
-  count: Record<LaneRow, number>;
-}
-
-const BOX: Record<LaneRow, (item: LaneItem, pps: number) => [number, number]> = {
-  main: itemBoxPx,
-  pins: pinBoxPx,
-  level: levelBoxPx,
-  effects: itemBoxPx,
+/** Row headers. */
+export const ROW_TITLE: Record<RowName, string> = {
+  key: 'Key',
+  chords: 'Chords',
+  texture: 'Texture',
+  melody: 'Melody',
+  level: 'Level',
+  sound: 'Sound',
 };
 
-const LANE_ROWS: readonly LaneRow[] = ['main', 'pins', 'level', 'effects'];
+/**
+ * Rows shown even when empty (with parts: one row of the group); the others only with a block, or
+ * under a preview of their type.
+ */
+export const ALWAYS_ROWS: ReadonlySet<RowName> = new Set(['key', 'chords', 'texture']);
+
+/** Rows whose blocks run to the next block on the row (their label is clipped to the block). */
+export const CHAINED_ROWS: ReadonlySet<RowName> = new Set(['key', 'chords']);
+
+/** Sub-row height (px): a 14 px block, and on Chords a 4 px glide strip under it. */
+export const SUB_H = 16;
+export const CHORD_SUB_H = 20;
+/** Height of a dot sub-row (note and pin moments, on top of the Chords row). */
+export const DOT_H = 10;
+/** Padding (px) above and below a row's sub-rows. */
+export const ROW_PAD = 2;
+/** The Level row is at least this tall, for its curve. */
+export const LEVEL_MIN_H = 28;
+/** Half a marker's width (px): a block's box starts this far left of its time. */
+export const MARKER_HALF = 5;
+
+/** One block as the lane draws it: a moment (a progression's chord blocks merged into one). */
+export interface LaneBlock {
+  /** Moment id; `PIECE_KEY` for the piece key's band. */
+  id: MomentId;
+  row: RowName;
+  part?: string;
+  start: Seconds;
+  end: Seconds;
+  label: string;
+  detail?: string;
+  /** A progression's chords, one block each (same moment). */
+  chords?: { start: Seconds; end: Seconds; label: string }[];
+}
+
+/** The lane's blocks from the row model, one per moment (progressions merged), and its dots. */
+export function laneBlocks(view: RowsView): LaneBlock[] {
+  const out: LaneBlock[] = [];
+  const prog = new Map<MomentId, LaneBlock>();
+  for (const r of view.rows) {
+    for (const b of r.blocks) {
+      if (b.index !== undefined) {
+        const seen = prog.get(b.id);
+        const chord = { start: b.start, end: b.end, label: b.label };
+        if (seen) {
+          seen.chords!.push(chord);
+          seen.start = Math.min(seen.start, b.start);
+          seen.end = Math.max(seen.end, b.end);
+          continue;
+        }
+        const lb: LaneBlock = { ...blockOf(b), chords: [chord] };
+        prog.set(b.id, lb);
+        out.push(lb);
+      } else out.push(blockOf(b));
+    }
+  }
+  for (const p of prog.values()) p.chords!.sort((a, b) => a.start - b.start);
+  return out;
+}
+
+function blockOf(b: Block): LaneBlock {
+  return {
+    id: b.id,
+    row: b.row,
+    ...(b.part !== undefined ? { part: b.part } : {}),
+    start: b.start,
+    end: b.end,
+    label: b.label,
+    ...(b.detail !== undefined ? { detail: b.detail } : {}),
+  };
+}
+
+/** A row's key: `chords`, or `texture:Bass` for a part row (`texture:` = All). */
+export function rowKey(row: RowName, part?: string): string {
+  return part === undefined ? row : `${row}:${part}`;
+}
+
+/** A row on the lane: where it sits and what its header says. */
+export interface LaneRowBox {
+  key: string;
+  row: RowName;
+  part?: string;
+  /** The header: the row's name, or on a part row the part's ("All" for the All row). */
+  title: string;
+  /** On a part row: its group's name, on the first row of the group only. */
+  group?: string;
+  top: number;
+  height: number;
+  subRows: number;
+  /** Dot sub-rows on top (Chords only). */
+  dotRows: number;
+}
+
+/** Where a block or dot sits: its row, sub-row and top (px in the track). */
+export interface LanePlace {
+  row: string;
+  sub: number;
+  top: number;
+}
+
+export interface LaneRowsLayout {
+  rows: LaneRowBox[];
+  blocks: Map<MomentId, LanePlace>;
+  dots: Map<MomentId, LanePlace>;
+  ghost?: LanePlace;
+  height: number;
+}
+
+/** A block's label width estimate (px): marker, label and detail. */
+export function blockLabelPx(b: Pick<LaneBlock, 'label' | 'detail'>): number {
+  return 14 + (b.label.length + (b.detail ? b.detail.length + 3 : 0)) * 6.5 + 6;
+}
 
 /**
- * Splits items by lane row and stacks each: Moments/Transitions and Effects by marker, label and
- * span (revision 7), Pins by span overlap, Level by marker collision.
+ * A block's pixel interval for stacking: its band, at least its marker wide. It starts at the
+ * block's time, so a chord that starts where the one before ends shares its sub-row (the marker's
+ * left half may overlap the end of that block). On rows whose blocks end on their own (texture,
+ * melody, level, sound) the label counts too, so a short block's label never runs into the next
+ * one; chained rows clip their labels.
  */
-export function laneLayout(items: readonly LaneItem[], pps: number): LaneLayout {
-  const lane = items.map((it) => laneRowOf(it.type));
-  const rows = new Array<number>(items.length).fill(0);
-  const count: Record<LaneRow, number> = { main: 0, pins: 0, level: 0, effects: 0 };
-  for (const r of LANE_ROWS) {
-    const idx = items.map((_, i) => i).filter((i) => lane[i] === r);
-    const st = stackRows(
-      idx.map((i) => items[i]),
-      pps,
-      BOX[r],
-    );
-    idx.forEach((i, k) => (rows[i] = st.rows[k]));
-    count[r] = st.count;
+export function blockBoxPx(b: LaneBlock, pps: number): [number, number] {
+  const x = b.start * pps;
+  const min = CHAINED_ROWS.has(b.row) ? MARKER_HALF : blockLabelPx(b) - MARKER_HALF;
+  return [x, Math.max(b.end * pps, x + min)];
+}
+
+/** Sub-row height of a row. */
+export const subH = (row: RowName): number => (row === 'chords' ? CHORD_SUB_H : SUB_H);
+
+/**
+ * The lane's rows, top to bottom, with each block's and dot's place (PLAN §6.4). Rows come from
+ * the row model (`view`); Key, Chords and Texture always show (with parts, Texture's part rows
+ * that hold a block, else its first), the others only when they hold a block or the preview's
+ * `ghost` would land there (so a drop target exists). Blocks stack on
+ * sub-rows by `blockBoxPx` (the ghost with them, so it shows the sub-row it would take); dots sit
+ * on dot sub-rows on top of the Chords row, stacked when their markers would touch.
+ */
+export function laneRowsLayout(
+  view: RowsView,
+  pps: number,
+  ghost?: LaneBlock | null,
+): LaneRowsLayout {
+  const blocks = laneBlocks(view);
+  const rowList: { row: RowName; part?: string }[] = view.rows.map((r) =>
+    r.part !== undefined ? { row: r.row, part: r.part } : { row: r.row },
+  );
+  // A ghost on a row the model doesn't list (a new part row, the All row): insert it in order.
+  if (ghost && !rowList.some((r) => rowKey(r.row, r.part) === rowKey(ghost.row, ghost.part))) {
+    const order = ROW_ORDER.indexOf(ghost.row);
+    let at = rowList.findIndex((r) => ROW_ORDER.indexOf(r.row) > order);
+    if (at < 0) at = rowList.length;
+    rowList.splice(at, 0, {
+      row: ghost.row,
+      ...(ghost.part !== undefined ? { part: ghost.part } : {}),
+    });
   }
-  return { lane, rows, count };
+  const byRow = new Map<string, LaneBlock[]>();
+  for (const b of blocks) {
+    const k = rowKey(b.row, b.part);
+    const list = byRow.get(k);
+    if (list) list.push(b);
+    else byRow.set(k, [b]);
+  }
+  const ghostKey = ghost ? rowKey(ghost.row, ghost.part) : null;
+  const rows: LaneRowBox[] = [];
+  const placeB = new Map<MomentId, LanePlace>();
+  const placeD = new Map<MomentId, LanePlace>();
+  let ghostPlace: LanePlace | undefined;
+  let top = 0;
+  const groupsSeen = new Set<RowName>();
+  // Shown: rows with a block or the ghost; Key, Chords and Texture always (on part rows, the
+  // group's first row when none of them holds a block).
+  const used = (r: { row: RowName; part?: string }): boolean => {
+    const key = rowKey(r.row, r.part);
+    return (byRow.get(key)?.length ?? 0) > 0 || key === ghostKey;
+  };
+  const shown = rowList.filter(
+    (r, i) =>
+      used(r) ||
+      (ALWAYS_ROWS.has(r.row) &&
+        (r.part === undefined ||
+          (!rowList.some((o) => o.row === r.row && used(o)) &&
+            rowList.findIndex((o) => o.row === r.row) === i))),
+  );
+  for (const r of shown) {
+    const key = rowKey(r.row, r.part);
+    const mine = byRow.get(key) ?? [];
+    const all = ghost && key === ghostKey ? [...mine, ghost] : mine;
+    const st = stackBoxes(all.map((b) => blockBoxPx(b, pps)));
+    const subRows = Math.max(1, st.count);
+    let dotRows = 0;
+    let dotSub: number[] = [];
+    if (r.row === 'chords' && view.dots.length > 0) {
+      const ds = stackBoxes(
+        view.dots.map((d) => [d.at * pps - MARKER_HALF - 1, d.at * pps + MARKER_HALF + 1]),
+      );
+      dotRows = ds.count;
+      dotSub = ds.rows;
+    }
+    let height = ROW_PAD * 2 + dotRows * DOT_H + subRows * subH(r.row);
+    if (r.row === 'level') height = Math.max(LEVEL_MIN_H, height);
+    const parted = r.part !== undefined;
+    const box: LaneRowBox = {
+      key,
+      row: r.row,
+      ...(parted ? { part: r.part } : {}),
+      title: parted ? r.part || 'All' : ROW_TITLE[r.row],
+      ...(parted && !groupsSeen.has(r.row) ? { group: ROW_TITLE[r.row] } : {}),
+      top,
+      height,
+      subRows,
+      dotRows,
+    };
+    if (parted) groupsSeen.add(r.row);
+    rows.push(box);
+    const y0 = top + ROW_PAD + dotRows * DOT_H;
+    all.forEach((b, i) => {
+      const p = { row: key, sub: st.rows[i], top: y0 + st.rows[i] * subH(r.row) };
+      if (ghost && b === ghost) ghostPlace = p;
+      else placeB.set(b.id, p);
+    });
+    view.dots.forEach((d, i) => {
+      if (r.row === 'chords')
+        placeD.set(d.id, { row: key, sub: dotSub[i], top: top + ROW_PAD + dotSub[i] * DOT_H });
+    });
+    top += height;
+  }
+  return {
+    rows,
+    blocks: placeB,
+    dots: placeD,
+    ...(ghostPlace ? { ghost: ghostPlace } : {}),
+    height: top,
+  };
+}
+
+/** Greedy interval packing (as `stackRows`) over pixel boxes, in input order on ties. */
+function stackBoxes(boxes: readonly [number, number][]): Stack {
+  const order = boxes.map((_, i) => i).sort((a, b) => boxes[a][0] - boxes[b][0] || a - b);
+  const ends: number[] = [];
+  const rows = new Array<number>(boxes.length).fill(0);
+  for (const i of order) {
+    const [l, r] = boxes[i];
+    let row = ends.findIndex((e) => e <= l);
+    if (row < 0) {
+      row = ends.length;
+      ends.push(r);
+    } else ends[row] = r;
+    rows[i] = row;
+  }
+  return { rows, count: ends.length };
 }
 
 /**

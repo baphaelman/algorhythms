@@ -1,6 +1,6 @@
 /**
- * M6-b3 timbre moment in the editor (PLAN.md §11.2 Effects row, §11.3, §15 M6): add one from the
- * palette, change its preset and fade in the inspector, see its bar on the Effects row (shown only
+ * M6-b3 timbre moment in the editor (PLAN.md §6.4 Sound row, §11.3, §15 M6): add one from the
+ * palette, change its preset and fade in the inspector, see its bar on the Sound row (shown only
  * while the piece has one), drag its end, undo it all; renaming the piece's own timbre in the
  * Sound drawer renames its moments, deleting it leaves them `unknown-timbre`. Chromium only.
  */
@@ -55,7 +55,7 @@ async function pps(page: Page): Promise<number> {
 
 /** True when the centre of `sel`'s first match lies inside lane row `row`. */
 async function inRow(page: Page, sel: string, row: string): Promise<boolean> {
-  const r = await page.locator(`[data-row="${row}"]`).boundingBox();
+  const r = await page.locator(`.lane-row[data-row="${row}"]`).boundingBox();
   const m = await page.locator(sel).first().boundingBox();
   if (!r || !m) return false;
   const y = m.y + m.height / 2;
@@ -78,13 +78,13 @@ test('the palette fits one row at 1280 px with the timbre entry', async ({ page 
   expect(new Set(tops).size).toBe(1);
 });
 
-test('add a timbre change, edit preset and fade, see it on the Effects row, undo', async ({
+test('add a timbre change, edit preset and fade, see it on the Sound row, undo', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  const effects = page.locator('[data-row="effects"]');
+  const effects = page.locator('.lane-row[data-row="sound"]');
   await expect(effects).toBeHidden();
   const before = (await H(page).piece()).voices.map((v) => v.timbre);
 
@@ -102,12 +102,12 @@ test('add a timbre change, edit preset and fade, see it on the Effects row, undo
   // Its own row, under Level, labelled with the preset; the bar spans the fade.
   await expect(effects).toBeVisible();
   const item = page.getByTestId('lane').locator(`[data-moment="${added.id}"]`);
-  await expect(item).toHaveAttribute('data-lane', 'effects');
+  await expect(item).toHaveAttribute('data-row', 'sound');
   await expect(item.locator('.lane-label')).toHaveText(added.preset!);
   await expect
-    .poll(() => inRow(page, `[data-moment="${added.id}"] .lane-marker`, 'effects'))
+    .poll(() => inRow(page, `[data-moment="${added.id}"] .lane-marker`, 'sound'))
     .toBe(true);
-  const level = (await page.locator('[data-row="level"]').boundingBox())!;
+  const level = (await page.locator('.lane-row[data-row="level"]').boundingBox())!;
   expect((await effects.boundingBox())!.y).toBeGreaterThanOrEqual(level.y + level.height - 1);
   const k = await pps(page);
   const bar = item.locator('.lane-bar');
@@ -147,7 +147,7 @@ test('add a timbre change, edit preset and fade, see it on the Effects row, undo
   expect((await timbres(page))[0].fade).toBeCloseTo(3, 1);
   expect(await H(page).undoLabel()).toBe('Change fade');
 
-  // Undo: fade drag, fade, preset, add. The Effects row goes with the moment.
+  // Undo: fade drag, fade, preset, add. The Sound row goes with the moment.
   for (let i = 0; i < 3; i++) expect(await H(page).undo()).toBe(true);
   expect(await timbres(page)).toEqual([added]);
   expect(await H(page).undo()).toBe(true);

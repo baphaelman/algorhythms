@@ -43,13 +43,15 @@ test('hovering a palette item shows a ghost lane item at the playhead; Escape cl
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-type', 'unison');
   expect(Number(await ghost.getAttribute('data-at'))).toBeCloseTo(50, 3);
-  await expect(ghost.locator('.lane-label')).toHaveText('unison');
+  // A unison is a Chords block (PLAN §6.4), labelled as one.
+  await expect(ghost.locator('.lane-label')).toHaveText('one note');
+  await expect(ghost).toHaveAttribute('data-row', 'chords');
   // Drawn at the playhead, on a sub-row, with its transition bar.
   const head = (await page.getByTestId('playhead').boundingBox())!;
   expect(
     Math.abs((await markerX(page, '[data-testid="lane-ghost"] .lane-marker')) - head.x),
   ).toBeLessThan(2);
-  expect(Number(await ghost.getAttribute('data-row'))).toBeGreaterThanOrEqual(0);
+  expect(Number(await ghost.getAttribute('data-sub'))).toBeGreaterThanOrEqual(0);
   expect((await ghost.locator('.lane-bar').boundingBox())!.width).toBeGreaterThan(2);
   // Not a real moment: no item added, nothing selectable.
   expect(await page.getByTestId('lane').locator('[data-moment]').count()).toBe(n0);
@@ -59,31 +61,31 @@ test('hovering a palette item shows a ghost lane item at the playhead; Escape cl
   expect(Number.isNaN(await ghostAt(page))).toBe(true);
 });
 
-test('level and timbre ghosts land on the Level and Effects rows', async ({ page }) => {
+test('level and timbre ghosts land on the Level and Sound rows', async ({ page }) => {
   await open(page);
   await seek(page, 50);
   const ghost = page.getByTestId('lane-ghost');
   const inRow = async (row: string): Promise<boolean> => {
-    const r = await page.locator(`[data-row="${row}"]`).boundingBox();
+    const r = await page.locator(`.lane-row[data-row="${row}"]`).boundingBox();
     const m = await page.locator('[data-testid="lane-ghost"] .lane-marker').boundingBox();
     if (!r || !m) return false;
     const y = m.y + m.height / 2;
     return y >= r.y && y <= r.y + r.height;
   };
   // Tidewater Hymn has no timbre changes: that row appears only for the ghost's type.
-  await expect(page.locator('[data-row="effects"]')).toBeHidden();
+  await expect(page.locator('.lane-row[data-row="sound"]')).toHaveCount(0);
   for (const [type, row] of [
     ['level', 'level'],
-    ['timbre', 'effects'],
+    ['timbre', 'sound'],
   ] as const) {
     await page.getByTestId('palette').locator(`[data-moment="${type}"]`).hover();
     await expect(ghost).toHaveAttribute('data-type', type);
-    await expect(ghost).toHaveAttribute('data-lane', row);
+    await expect(ghost).toHaveAttribute('data-row', row);
     await expect.poll(() => inRow(row)).toBe(true);
     await escape(page);
     await expect(ghost).toBeHidden();
   }
-  await expect(page.locator('[data-row="effects"]')).toBeHidden();
+  await expect(page.locator('.lane-row[data-row="sound"]')).toHaveCount(0);
 });
 
 test('dragging over the score and the lane moves the ghost to the drop time; Escape clears it', async ({

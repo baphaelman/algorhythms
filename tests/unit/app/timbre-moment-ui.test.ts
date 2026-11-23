@@ -41,9 +41,9 @@ import {
   endEditOf,
   estimateSpan,
   laneItems,
-  laneLayout,
-  laneRowOf,
+  laneRowsLayout,
 } from '../../../src/app/editor/lane';
+import { rowOf, rowsOf } from '../../../src/app/editor/rows';
 import { defaultMoment, newTimbrePreset } from '../../../src/app/editor/new-moment';
 import { paletteEffects } from '../../../src/app/editor/palette-effects';
 import { PALETTE, momentTypeForKey } from '../../../src/app/editor/shortcuts';
@@ -137,11 +137,11 @@ describe('a new timbre moment', () => {
   });
 });
 
-describe('the Effects lane row', () => {
+describe('the Sound lane row', () => {
   it('puts a timbre change on its own row, labelled with its preset, spanning the fade', () => {
     const p = base([timbre(), timbre({ id: 'b', at: 4.5, preset: 'bell', fade: 3 })]);
     const s = compile(p);
-    expect(laneRowOf('timbre')).toBe('effects');
+    expect(rowOf('timbre')).toBe('sound');
     expect(endEditOf('timbre')).toBe('fade');
     const items = laneItems(p, s.momentSpans).filter((it) => it.type === 'timbre');
     expect(items.map((it) => [it.text, it.start, it.end])).toEqual([
@@ -151,12 +151,12 @@ describe('the Effects lane row', () => {
     expect(estimateSpan(timbre({ fade: 1.5 }), G)).toEqual([4, 5.5]);
     // A label wins over the preset name.
     expect(laneItems(base([timbre({ label: 'swell' })]), []).at(-1)?.text).toBe('swell');
-    // Overlapping changes stack; the main rows don't count them.
-    const all = laneItems(p, s.momentSpans);
-    const layout = laneLayout(all, 40);
-    expect(layout.count.effects).toBe(2);
-    expect(layout.lane.filter((r) => r === 'effects')).toHaveLength(2);
-    expect(laneLayout(laneItems(base(), []), 40).count.effects).toBe(0);
+    // Overlapping changes stack on the Sound row; without one the row is hidden.
+    const layout = laneRowsLayout(rowsOf(p, s), 40);
+    expect(layout.rows.find((r) => r.row === 'sound')?.subRows).toBe(2);
+    expect([layout.blocks.get('tmb')?.sub, layout.blocks.get('b')?.sub]).toEqual([0, 1]);
+    const q = base();
+    expect(laneRowsLayout(rowsOf(q, compile(q)), 40).rows.map((r) => r.row)).not.toContain('sound');
   });
 
   it('dragging the end sets the fade, never below 0', () => {

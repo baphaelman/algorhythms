@@ -54,8 +54,9 @@ test('the key at 0:00 is edited, never deleted or moved', async ({ page }) => {
   // Centres: dense rows draw a smaller marker (lane-dense).
   expect(Math.abs(kb.x + kb.width / 2 - (open.x + open.width / 2))).toBeLessThan(1.5);
   expect(open.y).toBeGreaterThan(kb.y + kb.height);
+  // Blocks only: note and pin dots sit above them on the Chords row (PLAN §6.4).
   const ys = await lane
-    .locator('[data-moment] .lane-marker')
+    .locator('[data-moment]:not([data-dot]) .lane-marker')
     .evaluateAll((es) => es.map((e) => e.getBoundingClientRect().y));
   expect(Math.abs(open.y - Math.min(...ys))).toBeLessThan(1);
 

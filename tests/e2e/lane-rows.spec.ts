@@ -1,6 +1,6 @@
 /**
- * M4.5 lane rows (PLAN.md §11.2, §15 M4.5): Moments, Transitions and Level share the score's time
- * axis. A moment's marker, its transition bar's start and its glide's start on the lines sit
+ * Lane rows (PLAN.md §6.4, §11.2; M4.5, rows since M10b-3) share the score's time axis. A
+ * moment's marker, its glide strip's start and its glide's start on the lines sit
  * within 1 px at any zoom while following; the Level row reflects a level moment; dragging the
  * lane background pans (and turns Follow off during playback).
  */
@@ -174,11 +174,11 @@ test('marker, transition bar start and glide start align within 1 px at several 
 
 test('the Level row reflects a level moment', async ({ page }) => {
   await load(page, [{ id: 'lvl001', type: 'level', at: 6, gain: 0.5, over: 2 }], false);
-  await expect(page.locator('[data-moment="lvl001"] .lane-label')).toHaveText('level 50%');
-  // On the Level row; no Transitions bar (its ramp is the envelope).
-  await expect(page.locator('[data-moment="lvl001"]')).toHaveAttribute('data-lane', 'level');
-  await expect(page.locator('[data-moment="lvl001"] .lane-bar')).toBeHidden();
-  const levelRow = (await page.locator('[data-row="level"]').boundingBox())!;
+  await expect(page.locator('[data-moment="lvl001"] .lane-label')).toHaveText('50%');
+  // A block on the Level row (PLAN §6.4) spanning its ramp, over the curve.
+  await expect(page.locator('[data-moment="lvl001"]')).toHaveAttribute('data-row', 'level');
+  await expect(page.locator('[data-moment="lvl001"] .lane-bar')).toBeVisible();
+  const levelRow = (await page.locator('.lane-row[data-row="level"]').boundingBox())!;
   const marker = (await page.locator('[data-moment="lvl001"] .lane-marker').boundingBox())!;
   expect(marker.y).toBeGreaterThanOrEqual(levelRow.y);
   expect(marker.y + marker.height).toBeLessThanOrEqual(levelRow.y + levelRow.height);
@@ -208,10 +208,12 @@ test('the Level row reflects a level moment', async ({ page }) => {
   // Half the level: halfway down the curve's height.
   expect(after - before).toBeGreaterThan(6);
 
-  // Removing the moment flattens the curve again.
+  // Removing the moment removes the Level row (it shows only with a block, PLAN §6.4) and its
+  // curve.
   await page.locator('[data-moment="lvl001"]').click();
   await page.keyboard.press('Delete');
-  await expect.poll(() => yAt(12)).toBeCloseTo(before, 1);
+  await expect(page.locator('.lane-row[data-row="level"]')).toHaveCount(0);
+  await expect(page.getByTestId('lane-level')).toBeHidden();
 });
 
 test('dragging the lane background pans; during playback it turns Follow off', async ({ page }) => {
@@ -254,7 +256,7 @@ test('dragging the lane background pans; during playback it turns Follow off', a
   expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying)).toBe(true);
 });
 
-test('overlapping moments stack in sub-rows; the lane grows; bars stay with their markers', async ({
+test('overlapping blocks stack in sub-rows; the lane grows; glide strips stay with their markers', async ({
   page,
 }) => {
   const chord = (id: string, at: number, length: number) => ({
@@ -299,39 +301,37 @@ test('overlapping moments stack in sub-rows; the lane grows; bars stay with thei
     (await page.locator(`[data-moment="${id}"] ${part}`).boundingBox())!;
   const ids = ['stk001', 'stk002', 'stk003'];
   const markers = await Promise.all(ids.map((id) => box(id, '.lane-marker')));
-  const labels = await Promise.all(ids.map((id) => box(id, '.lane-label')));
+  const bands = await Promise.all(ids.map((id) => box(id, '.lane-band')));
   const bars = await Promise.all(ids.map((id) => box(id, '.lane-bar')));
-  // The opening at 0 brings its note in from silence: no glide bar, and its label alone leaves
-  // room for stk001 at 4 s on the first sub-row.
+  // The opening at 0 brings its note in from silence: no glide strip; its block runs to 4 s,
+  // where stk001 starts on the same sub-row.
   const opening = await box('start0', '.lane-marker');
   expect((await box('start0', '.lane-bar')).width).toBeLessThan(1);
   expect(Math.abs(opening.y - markers[0].y)).toBeLessThan(1);
-  // Three distinct sub-rows, in piece order; no two labels or bars overlap.
+  // stk001 and stk002 start together (each runs to stk003): two sub-rows; stk003 follows them
+  // on the first.
   expect(markers[1].y).toBeGreaterThan(markers[0].y + 10);
-  expect(markers[2].y).toBeGreaterThan(markers[1].y + 10);
+  expect(Math.abs(markers[2].y - markers[0].y)).toBeLessThan(1);
   const apart = (a: { y: number; height: number }, b: { y: number; height: number }) =>
     a.y + a.height <= b.y + 0.5 || b.y + b.height <= a.y + 0.5;
-  for (let i = 0; i < 3; i++)
-    for (let j = i + 1; j < 3; j++) {
-      expect(apart(labels[i], labels[j])).toBe(true);
-      expect(apart(bars[i], bars[j])).toBe(true);
-    }
-  // Each bar starts at its marker, and the bars keep the markers' order in the Transitions row.
+  expect(apart(bands[0], bands[1])).toBe(true);
+  // Blocks chain: stk001's band ends where stk003's starts.
+  expect(Math.abs(bands[0].x + bands[0].width - bands[2].x)).toBeLessThanOrEqual(1);
+  // Each glide strip starts at its marker, under its block.
   for (let i = 0; i < 3; i++) {
     expect(Math.abs(bars[i].x - (markers[i].x + markers[i].width / 2))).toBeLessThanOrEqual(1);
+    expect(bars[i].y).toBeGreaterThanOrEqual(bands[i].y + bands[i].height);
   }
-  expect(bars[1].y).toBeGreaterThan(bars[0].y);
-  expect(bars[2].y).toBeGreaterThan(bars[1].y);
-  // The lane grew to fit; the bars stay inside the Transitions row.
-  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', '3');
+  // The lane grew to fit; everything stays inside the Chords row.
+  await expect(page.locator('.lane-track')).toHaveAttribute('data-subrows', '2');
   expect((await page.locator('.lane-track').boundingBox())!.height).toBeGreaterThan(h0 + 10);
-  const transitions = (await page.locator('[data-row="transitions"]').boundingBox())!;
-  for (const b of bars) {
-    expect(b.y).toBeGreaterThanOrEqual(transitions.y);
-    expect(b.y + b.height).toBeLessThanOrEqual(transitions.y + transitions.height);
+  const chords = (await page.locator('.lane-row[data-row="chords"]').boundingBox())!;
+  for (const b of [...bars, ...bands]) {
+    expect(b.y).toBeGreaterThanOrEqual(chords.y);
+    expect(b.y + b.height).toBeLessThanOrEqual(chords.y + chords.height);
   }
-  // Hit-testing: clicking the third sub-row's marker selects it.
-  await page.locator('[data-moment="stk003"] .lane-marker').click();
-  await expect(page.locator('[data-moment="stk003"]')).toHaveAttribute('aria-pressed', 'true');
+  // Hit-testing: clicking the second sub-row's marker selects it.
+  await page.locator('[data-moment="stk002"] .lane-marker').click();
+  await expect(page.locator('[data-moment="stk002"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-moment="stk001"]')).toHaveAttribute('aria-pressed', 'false');
 });

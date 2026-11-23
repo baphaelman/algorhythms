@@ -58,9 +58,12 @@ test('⌘/Ctrl-click toggles moments on the lane', async ({ page }) => {
 test('Shift-drag on the lane selects the moments it touches; plain drag pans', async ({ page }) => {
   const k = await lanePps(page);
   const b = await markerAt(page, 'bbbbbb');
-  // From empty lane at 18.5 s, left to 5 s, from the Moments row down into Transitions.
-  const from = { x: b.x + 12.5 * k, y: b.y - 6 };
-  const to = { x: b.x - 1 * k, y: b.y + 30 };
+  // From the empty Texture row at 18.5 s (past the walk), left and up to the unison's marker on
+  // the Chords row. Chord blocks run to the next one (PLAN §6.4), so the left edge stays right of
+  // the chord's block, which ends at the unison.
+  const texture = (await page.locator('.lane-row[data-row="texture"]').boundingBox())!;
+  const from = { x: b.x + 12.5 * k, y: texture.y + texture.height - 3 };
+  const to = { x: b.x + 2, y: b.y };
   await marquee(page, from, to);
   expect([...(await selection(page))].sort()).toEqual(['bbbbbb', 'cccccc']);
   await expect(page.getByTestId('lane-marquee')).toBeHidden();
@@ -68,13 +71,13 @@ test('Shift-drag on the lane selects the moments it touches; plain drag pans', a
   // The first selected item has focus, so the arrows nudge the group.
   await expect(item(page, 'bbbbbb')).toBeFocused();
 
-  // ⌘/Ctrl+Shift adds the chord at 2 s: from the empty Level row up to its marker.
+  // ⌘/Ctrl+Shift adds the chord at 2 s: from the empty Texture row up to its marker (right of
+  // the opening's block, which ends there).
   const a = await markerAt(page, 'aaaaaa');
-  const level = (await page.locator('.lane-row[data-row="level"]').boundingBox())!;
   await marquee(
     page,
-    { x: a.x + 0.6 * k, y: level.y + level.height - 3 },
-    { x: a.x - 0.05 * k, y: a.y },
+    { x: a.x + 0.6 * k, y: texture.y + texture.height - 3 },
+    { x: a.x + 2, y: a.y },
     ['ControlOrMeta'],
   );
   expect([...(await selection(page))].sort()).toEqual(['aaaaaa', 'bbbbbb', 'cccccc']);

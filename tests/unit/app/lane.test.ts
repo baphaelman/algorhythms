@@ -24,11 +24,7 @@ import {
   SPLIT_MIN_SCORE,
   clampLanePx,
   curveAt,
-  laneLayout,
   laneMaxPx,
-  laneRowOf,
-  levelBoxPx,
-  pinBoxPx,
   revealScroll,
   splitLanePx,
   type LaneItem,
@@ -239,69 +235,7 @@ describe('stackRows (revision 7)', () => {
   });
 });
 
-describe('dense lanes: rows by kind', () => {
-  const it_ = (
-    id: string,
-    type: LaneItem['type'],
-    at: number,
-    end = at,
-    text: string = type,
-  ): LaneItem => ({
-    id,
-    type,
-    text,
-    at,
-    start: at,
-    end,
-    muted: false,
-    endEdit: 'glide',
-    land: false,
-  });
-
-  it('laneRowOf: level → Level, pin → Pins, the rest → Moments/Transitions', () => {
-    expect(laneRowOf('level')).toBe('level');
-    expect(laneRowOf('pin')).toBe('pins');
-    for (const t of ['chord', 'unison', 'split', 'merge', 'walk', 'note', 'key', 'shift'] as const)
-      expect(laneRowOf(t)).toBe('main');
-  });
-
-  it('laneLayout stacks each row on its own: labels on Moments, spans on Pins, markers on Level', () => {
-    const items = [
-      it_('c1', 'chord', 0),
-      it_('p1', 'pin', 0.5, 1.0),
-      it_('l1', 'level', 0.5, 3),
-      it_('c2', 'chord', 1),
-      it_('p2', 'pin', 0.9, 1.2),
-      it_('l2', 'level', 2, 4),
-      it_('l3', 'level', 2),
-      it_('p3', 'pin', 1.2, 1.5),
-    ];
-    const L = laneLayout(items, 10);
-    expect(L.lane).toEqual(['main', 'pins', 'level', 'main', 'pins', 'level', 'level', 'pins']);
-    // Chords: labels overlap (1 s = 10 px) → two sub-rows.
-    expect([L.rows[0], L.rows[3]]).toEqual([0, 1]);
-    // Pins: p2 overlaps p1's span; p3 starts where p1 ends → back on sub-row 0.
-    expect([L.rows[1], L.rows[4], L.rows[7]]).toEqual([0, 1, 0]);
-    // Level: l1's ramp (to 3 s) doesn't stack l2; l2 and l3 share a time → two sub-rows.
-    expect([L.rows[2], L.rows[5], L.rows[6]]).toEqual([0, 0, 1]);
-    expect(L.count).toEqual({ main: 2, pins: 2, level: 2, effects: 0 });
-    expect(laneLayout([it_('c', 'chord', 0)], 10).count).toEqual({
-      main: 1,
-      pins: 0,
-      level: 0,
-      effects: 0,
-    });
-  });
-
-  it('pinBoxPx is the span; levelBoxPx is the marker alone', () => {
-    expect(pinBoxPx(it_('p', 'pin', 2, 3), 10)).toEqual([20, 30]);
-    expect(pinBoxPx(it_('p', 'pin', 2), 10)).toEqual([20, 21]);
-    const [a, b] = levelBoxPx(it_('l', 'level', 2, 9), 10);
-    expect(a).toBeLessThan(20);
-    expect(b).toBeGreaterThan(20);
-    expect(b - a).toBeLessThan(16);
-  });
-
+describe('the level curve', () => {
   it('curveAt interpolates, takes the value after a step, and holds past the ends', () => {
     const c = [
       { t: 0, v: 1 },
