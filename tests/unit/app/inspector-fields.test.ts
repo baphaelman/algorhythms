@@ -9,6 +9,7 @@ import {
   formatTime,
   keyAt,
   landGlide,
+  landNote,
   liveNotes,
   parseIntList,
   parseNum,
@@ -136,6 +137,19 @@ describe('liveNotes', () => {
     expect(liveNotes(score, 'a')).toEqual([59, 67, 72]);
     expect(liveNotes(score, 'b')).toEqual([59, 69, 72]);
     expect(liveNotes(score, 'z')).toEqual([]);
+  });
+});
+
+describe('landNote (Land at the marker)', () => {
+  const g = { length: 2, jitter: 0, stagger: 0.5, order: 'random', ease: 'linear' } as const;
+  it('says when the glide starts: from the glide, or where the compiler started it', () => {
+    expect(landNote(10, g)).toBe('Notes arrive on the marker; the glide starts at 7.5 s.');
+    expect(landNote(10, g, 7.5)).toBe('Notes arrive on the marker; the glide starts at 7.5 s.');
+    // It waited for an earlier moment (build log "Land always arrives").
+    expect(landNote(10, g, 9.25)).toBe(
+      'Notes arrive on the marker; the glide starts at 9.25 s, after an earlier moment.',
+    );
+    expect(landNote(10, { ...g, length: 0, stagger: 0 })).toBe('Notes arrive on the marker.');
   });
 });
 

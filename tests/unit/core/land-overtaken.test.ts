@@ -5,11 +5,14 @@
  * that moment moves its glide starts when that move arrives. `land-overtaken` is left for two land
  * moments setting one line at one marker. Supersedes the "Land overtaken" diagnostic of v64.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { createIncrementalCompiler } from '../../../src/core/compiler/incremental';
 import { pitchAt } from '../../../src/core/query';
+import { parsePiece } from '../../../src/core/schema';
 import type { CompiledScore, Piece } from '../../../src/core/types';
 import { piece, type MomentInput } from './compiler-fixtures';
 
@@ -258,16 +261,152 @@ describe('land always arrives', () => {
     expect(s.diagnostics.filter((d) => d.code === 'no-effect')).toEqual([]);
   });
 
+  it('a later land moment does not cut an earlier one before it arrives', () => {
+    // a lands at 3 (lead 2, decides 1); b lands at 3.5 (lead 1, decides 2.5 inside a's glide):
+    // b's glide starts when a arrives.
+    const c = { ...CASE, aAt: 3, aLen: 2, aLand: true, gap: 0.5, bLen: 1 };
+    const s = compile(build(c));
+    expect(linesAt(s, c, 3)).toEqual([64]);
+    expect(arrived(s, c)).toBe(true);
+    const [a] = glidesOf(s, 'a');
+    expect([a.t0, a.t1]).toEqual([1, 3]);
+    const [b] = glidesOf(s, 'b');
+    expect(b.t0).toBe(3);
+    expect(b.t1).toBe(3.5);
+    expect(s.diagnostics.filter((d) => d.code === 'land-overtaken')).toEqual([]);
+  });
+
+  it('MomentSpan.leadIn: the lead-in start as compiled (waits and floors)', () => {
+    const lead = (s: CompiledScore, id: string) => s.momentSpans.find((x) => x.id === id)?.leadIn;
+    // Waits for a (decides at 2), and its one line for a's arrival (3).
+    const w = compile(build(CASE));
+    expect(lead(w, 'b')).toBe(3);
+    // Waits for a, and moves a line a does not move (the bass): just after a decides.
+    const p = build(CASE);
+    delete (p.moments[2] as { target?: unknown }).target;
+    (p.moments[2] as { notes: unknown }).notes = { kind: 'pitches', pitches: [43, 67] };
+    const both = lead(compile(p), 'b')!;
+    expect(both).toBeGreaterThan(2);
+    expect(both).toBeLessThan(2 + 1e-9);
+    // Every line it targets waits for a land a to arrive: a's marker.
+    const c = { ...CASE, aAt: 3, aLen: 2, aLand: true, gap: 0.5, bLen: 1 };
+    const f = compile(build(c));
+    expect([lead(f, 'a'), lead(f, 'b')]).toEqual([1, 3]);
+    // Not a land moment: none.
+    expect(lead(w, 'a')).toBeUndefined();
+  });
+
+  it('a later land moment with no room cuts the earlier one 0.1 s before its marker', () => {
+    const c = { ...CASE, aAt: 3, aLen: 2, aLand: true, gap: 0.05, bLen: 1 };
+    const s = compile(build(c));
+    expect(arrived(s, c)).toBe(true);
+    const [b] = glidesOf(s, 'b');
+    expect(b.t0).toBeCloseTo(2.95, 9);
+    expect(b.t1).toBeCloseTo(3.05, 9);
+  });
+
+  it('a chain of land chords: each glide starts when the one before arrives', () => {
+    // a lands at 3 (lead 2), b at 4 (lead 2, decides 2), c at 5 (lead 2.5, decides 2.5).
+    const land = (at: number, length: number, p: number, id: string): MomentInput => ({
+      id,
+      type: 'chord',
+      at,
+      notes: { kind: 'pitches', pitches: [p] },
+      voicing: 'even',
+      assign: 'ordered',
+      glide: { land: true, length },
+    });
+    const s = compile(
+      piece({
+        start: [60],
+        glide: { length: 1, jitter: 0, stagger: 0 },
+        end: { at: 10, fade: 1 },
+        moments: [land(3, 2, 64, 'a'), land(4, 2, 67, 'b'), land(5, 2.5, 62, 'c')],
+      }),
+    );
+    const v = s.voices[0];
+    expect([pitchAt(v, 3), pitchAt(v, 4), pitchAt(v, 5)]).toEqual([64, 67, 62]);
+    const span = (id: string) => {
+      const g = v.segments.find((x) => x.momentId === id && x.p0 !== x.p1)!;
+      return [g.t0, g.t1];
+    };
+    expect([span('a'), span('b'), span('c')]).toEqual([
+      [1, 3],
+      [3, 4],
+      [4, 5],
+    ]);
+  });
+
+  it('a line an earlier land chord holds (a common tone) waits for its marker too', () => {
+    // a lands at 3 (lead 2) on 64 and 67: the upper line already sounds 67. b lands at 3.5
+    // (lead 1, decides 2.5): the upper line leaves 67 at 3, not 2.5.
+    const c: Case = { ...CASE, lines: 2, part: false, aAt: 3, aLen: 2, aLand: true, gap: 0.5 };
+    const p = build(c);
+    (p.moments[1] as { notes: unknown }).notes = { kind: 'pitches', pitches: [64, 67] };
+    const s = compile(p);
+    expect(linesAt(s, c, 3)).toEqual([64, 67]);
+    expect(arrived(s, c)).toBe(true);
+    const up = s.voices[1].segments.find((g) => g.momentId === 'b' && g.p0 !== g.p1)!;
+    expect(up.t0).toBe(3);
+  });
+
+  it('incremental compile equals a full compile across edits to a chain of land chords', () => {
+    const inc = createIncrementalCompiler();
+    let q = build({ ...CASE, lines: 2, part: true, aAt: 3, aLen: 2, aLand: true, gap: 0.5 });
+    q.moments.push({ ...q.moments[2], id: 'c', at: 4.2 } as Piece['moments'][number]);
+    (q.moments[3] as { notes: unknown }).notes = { kind: 'pitches', pitches: [62, 69] };
+    expect(inc.compile(q)).toEqual(compile(q));
+    const edits: ((p: Piece) => void)[] = [
+      (p) => (p.moments[2].glide = { land: true, length: 0.3 }), // b starts after a arrives
+      (p) => (p.moments[2].glide = { land: true, length: 1 }), // b waits on a again
+      (p) => (p.moments[3].glide = { land: true, length: 2 }), // c spans a and b
+      (p) => (p.moments[1].at = 2.5), // a earlier
+      (p) => (p.moments[1].glide = { length: 2 }), // a no longer lands: b cuts it
+      (p) => (p.moments[1].glide = { length: 2, land: true }),
+      (p) => (p.moments[2].target = { part: 'Bass' }), // b leaves a's lines alone
+      (p) => p.moments.splice(2, 1), // b goes: c waits on a
+    ];
+    for (const edit of edits) {
+      q = structuredClone(q);
+      edit(q);
+      expect(inc.compile(q)).toEqual(compile(q));
+    }
+  });
+
+  it('Switchyard: sw0059 leaves the bass to sw0060 by its target; it sounds the same', () => {
+    const r = parsePiece(
+      readFileSync(
+        join(import.meta.dirname, '../../../examples/compositions/switchyard.algorhythms.json'),
+        'utf8',
+      ),
+    );
+    if (!r.ok) throw new Error(r.errors.join('; '));
+    const p = r.piece;
+    const m = p.moments.find((x) => x.id === 'sw0059')!;
+    expect(m.target).toEqual({ exceptParts: ['Bass'] });
+    const s = compile(p);
+    expect(overtaken(s, 'sw0059')).toEqual([]);
+    // Targeting every voice instead (as before): the bass is left to sw0060 at the same marker.
+    const q = structuredClone(p);
+    delete q.moments.find((x) => x.id === 'sw0059')!.target;
+    const t = compile(q);
+    expect(overtaken(t, 'sw0059')).toHaveLength(1);
+    expect(s.voices).toEqual(t.voices);
+    expect(s.harmony).toEqual(t.harmony);
+    expect(s.momentSpans).toEqual(t.momentSpans);
+  });
+
   describe('matrix: arrives by its marker', () => {
     const cases: Case[] = [];
     for (const lines of [1, 2] as const)
       for (const part of [false, true])
         for (const count of [false, true])
           for (const aLand of [false, true])
-            for (const gap of [0, 0.1, 0.3, 0.5, 1])
-              for (const bLen of [0.5, 1, 2, 4])
-                for (const stagger of [0, 1])
-                  cases.push({ ...CASE, lines, part, count, aLand, gap, bLen, stagger });
+            for (const aLen of [1, 3])
+              for (const gap of [0, 0.1, 0.3, 0.5, 1])
+                for (const bLen of [0.5, 1, 2, 4])
+                  for (const stagger of [0, 1])
+                    cases.push({ ...CASE, lines, part, count, aLand, aLen, gap, bLen, stagger });
     it(`${cases.length} cases`, () => {
       for (const c of cases) {
         const s = compile(build(c));
@@ -281,8 +420,9 @@ describe('land always arrives', () => {
         }
         expect(arrived(s, c), msg).toBe(true);
         expect(overtaken(s), msg).toEqual([]);
-        // a is heard where there is room: its notes sound when it arrives.
-        if (!c.aLand && c.gap >= 0.1 && bAt(c) - c.bLen - c.stagger < c.aAt)
+        // a is heard where there is room: its notes sound when it arrives. A land a always
+        // arrives by its marker (a later land b never cuts it).
+        if (c.aLand ? c.gap >= 0.1 : c.gap >= 0.1 && bAt(c) - c.bLen - c.stagger < c.aAt)
           expect(near(linesAt(s, c, aEnd(c)), A.slice(0, c.lines)), msg).toBe(true);
       }
     });
@@ -312,8 +452,58 @@ describe('land always arrives', () => {
         }
         expect(arrived(s, c), msg).toBe(true);
         expect(overtaken(s), msg).toEqual([]);
+        if (c.aLand && c.gap >= 0.1)
+          expect(near(linesAt(s, c, c.aAt), A.slice(0, c.lines)), msg).toBe(true);
       }),
       { numRuns: 300, seed: 1122 },
+    );
+  });
+
+  it('property: in a chain of chords, every land chord arrives by its marker (seeded)', () => {
+    // 2–5 chords on the same lines, markers ≥ 0.1 s apart, some landing, glides that overlap.
+    const chordArb = fc.record({
+      gap: fc.double({ min: 0.1, max: 2, noNaN: true }),
+      len: fc.double({ min: 0.1, max: 4, noNaN: true }),
+      stagger: fc.double({ min: 0, max: 1, noNaN: true }),
+      land: fc.boolean(),
+      d: fc.constantFrom(-5, -3, -2, -1, 1, 2, 3, 5),
+    });
+    const arb = fc.record({
+      lines: fc.constantFrom(1 as const, 2 as const),
+      part: fc.boolean(),
+      jitter: fc.constantFrom(0, 0.2),
+      chords: fc.array(chordArb, { minLength: 2, maxLength: 5 }),
+    });
+    fc.assert(
+      fc.property(arb, (g) => {
+        const c: Case = { ...CASE, lines: g.lines, part: g.part, count: false };
+        let at = 1;
+        let notes = A.slice(0, g.lines);
+        const want: [number, number[]][] = [];
+        const moments = g.chords.map((x, k) => {
+          at += x.gap;
+          notes = notes.map((p) => p + x.d);
+          if (x.land) want.push([at, notes]);
+          return chord(at, notes, { length: x.len, stagger: x.stagger, land: x.land }, `c${k}`, c);
+        });
+        const mel = g.lines === 1 ? [BASE] : [BASE, BASE + 7];
+        const p = piece({
+          pool: 6,
+          start: g.part ? [...mel, 40] : mel,
+          glide: { length: 1, jitter: g.jitter, stagger: 0 },
+          end: { at: at + 10, fade: 1 },
+          moments,
+        });
+        if (g.part) p.voices.forEach((v, i) => (v.part = i === g.lines ? 'Bass' : 'Mel'));
+        const s = compile(p);
+        const msg = JSON.stringify(g);
+        for (const [t, ns] of want) expect(near(linesAt(s, c, t), ns), `${msg} @${t}`).toBe(true);
+        expect(
+          s.diagnostics.filter((d) => d.code === 'land-overtaken'),
+          msg,
+        ).toEqual([]);
+      }),
+      { numRuns: 300, seed: 2311 },
     );
   });
 

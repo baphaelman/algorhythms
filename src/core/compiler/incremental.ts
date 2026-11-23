@@ -74,12 +74,12 @@ const STRIDE = 2;
  * Numbers, NUMS per voice: status, diedAt, segs/lives/level lengths, open, bornT, bornV, bornMid,
  * the tail's t1 and p1 (the fields `finishAt` mutates), into, deathFade, count, weight, weights
  * length, handed, counts length, pulse length, pulse owner, tune end, timbre length, rest start,
- * rests length (revision 10), tail moment. References,
+ * rests length (revision 10), tail moment, land hold. References,
  * REFS per voice: pending moves (a copy), pending birth, open life, tail, tail curve, members (a
  * copy), the last weight and stack entries (`rampWeight` and `setCount` may replace them in the
  * shared arrays after the checkpoint).
  */
-const NUMS = 25;
+const NUMS = 26;
 const REFS = 8;
 const NO_MOVES: readonly Move[] = [];
 
@@ -135,6 +135,7 @@ interface State {
   initDiags: number;
   spanStart: number[];
   spanEnd: number[];
+  leadIns: number[];
   /** Per compiler moment: when it decides, and the moments a land moment waited for. */
   eventT: readonly number[];
   waits: readonly (readonly number[] | undefined)[];
@@ -278,6 +279,7 @@ function snapshot(c: Compiler, t: Seconds, i: number, initDiags: number): Checkp
       run.restFrom,
       run.rests.length,
       run.tailMoment,
+      run.landHold,
     );
     refs.push(
       run.pending.length > 0 ? run.pending.slice() : NO_MOVES,
@@ -373,6 +375,7 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     run.rests.length = 0;
     pushPrefix(run.rests, prev.rests[v], nums[n + 23]);
     run.tailMoment = nums[n + 24];
+    run.landHold = nums[n + 25];
     run.pending = (refs[r] as Move[]).slice();
     run.pendingBirth = refs[r + 1] as Birth | null;
     // An open life has only `born`, `fadeIn` and `crossIn` (closing sets the rest, and drops it).
@@ -411,8 +414,8 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
   c.syncDrivers();
   pushPrefix(c.walkSteps, prev.walkSteps, cp.walkSteps);
   c.lastActivity = cp.lastActivity;
-  // Spans of the moments handled before the checkpoint (all below k): final ones from the
-  // previous run, then the ones that were still open.
+  // Spans (and land lead-ins) of the moments handled before the checkpoint (all below k): final
+  // ones from the previous run, then the spans that were still open.
   const n = Math.min(k, prev.spanStart.length, c.spanStart.length);
   for (let j = 0; j < n; j++) {
     if (!c.valid[j]) continue;
@@ -420,6 +423,7 @@ function restore(c: Compiler, cp: Checkpoint, prev: State, k: number): void {
     if (at < cp.t || (at === cp.t && j < cp.i)) {
       c.spanStart[j] = prev.spanStart[j];
       c.spanEnd[j] = prev.spanEnd[j];
+      c.leadIns[j] = prev.leadIns[j];
     }
   }
   for (let q = 0; q < cp.spans.length; q += 3) {
@@ -557,6 +561,7 @@ export function createIncrementalCompiler(options: CompileOptions = {}): Increme
       initDiags,
       spanStart: c.spanStart,
       spanEnd: c.spanEnd,
+      leadIns: c.leadIns,
       eventT: c.eventT,
       waits: c.landings.map((l) => l?.after),
     };

@@ -8,7 +8,8 @@
  *    newborn forks from its parent's pitch at its own start (§7.4); under `arrive: 'together'`
  *    (default, revision 6) every duration instead runs to one shared end (the latest start + the
  *    moment's jittered length, or the arrival of a `land` moment), so start changes below
- *    (adoption, pull-back) keep that end;
+ *    (adoption, pull-back) keep that end; a land moment's lines may have floors (`floors`: an
+ *    earlier move there arrives first), which a timing group shares and a pull-back respects;
  * 3. under `ordered`, sets each mover's overshoot limit L = min(1 semitone, gap to its neighbour)
  *    (§7.5) and enforces the crossing guarantee (§7.2): every adjacent pair of targeted voices is
  *    sampled at 64 points over the moment's window; if a pair crosses, the overtaking voice adopts
@@ -125,6 +126,12 @@ export interface PlanHost {
    * every move ends there; under 'spread' the timings are as usual from `t`.
    */
   readonly land?: Seconds;
+  /**
+   * Build log "Land always arrives": per pool voice, the earliest start of its move (an earlier
+   * moment's move on the line arrives first). A timing group takes its members' latest floor, and
+   * a pull-back never goes below it; under 'spread' a floored move keeps its end.
+   */
+  readonly floors?: ReadonlyMap<number, Seconds> | null;
   /** Committed destination (after the targeted voices' pending moves were cancelled). */
   dest(v: number): Pitch;
   diag(level: DiagnosticLevel, code: string, message: string): void;
@@ -284,6 +291,27 @@ export function planMoment(
     gStart[i] = T + drawn[r].offset;
     gDur[i] = drawn[r].dur;
   });
+  const together = arrivesTogether(glide);
+  /** Per group root: the earliest start its members allow (`host.floors`). */
+  const gFloor = filled(n, -Infinity);
+  /** Raises group r's start to its floor (under 'spread' keeping its end). */
+  const raise = (r: number): void => {
+    const f = gFloor[r];
+    if (!(f > gStart[r])) return;
+    if (!together) {
+      const d = gDur[r] - (f - gStart[r]);
+      gDur[r] = d > MIN_GLIDE ? d : MIN_GLIDE;
+    }
+    gStart[r] = f;
+  };
+  if (host.floors) {
+    for (let i = 0; i < n; i++) {
+      const f = host.floors.get(parts[i].voice);
+      if (f === undefined || parts[i].kind === PartKind.Birth) continue;
+      gFloor[i] = f;
+      if (parts[i].kind !== PartKind.Fixed) raise(i);
+    }
+  }
   const find = (i: number): number => {
     while (uf[i] !== i) {
       uf[i] = uf[uf[i]];
@@ -298,8 +326,8 @@ export function planMoment(
   };
   // Arrive together (§7.2, revision 6): every duration runs to one shared end, the latest drawn
   // start plus the moment's jittered length. Fix-ups (adoption, pull-back) only copy existing
-  // starts or move them earlier, and keep that end.
-  const together = arrivesTogether(glide);
+  // starts or move them earlier (or up to a land moment's floor, whose end is its arrival), and
+  // keep that end.
   let lastStart = T;
   if (together) {
     for (let i = 0; i < n; i++) {
@@ -623,7 +651,7 @@ export function planMoment(
     const pullBack = (i: number, at: number): boolean => {
       const t = times[at - 1];
       const s = startOf(i);
-      if (!(s > t) || parts[i].deferT >= s) return false;
+      if (!(s > t) || parts[i].deferT >= s || gFloor[find(i)] > t) return false;
       const r = find(i);
       gLink[r] = -1;
       gStart[r] = t;
@@ -774,6 +802,8 @@ export function planMoment(
     if (ra === rb) return;
     gStart[rb] = gLink[rb] >= 0 ? startOf(gLink[rb]) : gStart[rb];
     gLink[rb] = -1;
+    if (gFloor[ra] > gFloor[rb]) gFloor[rb] = gFloor[ra];
+    raise(rb);
     uf[ra] = rb;
   }
 

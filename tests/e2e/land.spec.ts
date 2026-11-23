@@ -148,6 +148,44 @@ test('the Transition toggle writes glide.land; the bar ends at the marker, and f
   await expect(page.locator('[data-moment="c1"]')).not.toHaveAttribute('title', /arrive/);
 });
 
+test('a land moment that waits for an earlier one: its bar and note start where it glides', async ({
+  page,
+}) => {
+  // Build log "Land always arrives": b (land at 12.5, glide 4) would start at 8.5, but a (at 10,
+  // glide 2) decides inside that lead-in, so b glides from a's arrival (12).
+  await open(page, false);
+  await page.evaluate(() => {
+    const h = window.__algorhythms!;
+    const p = structuredClone(h.store.getState().piece) as unknown as { moments: unknown[] };
+    const chord = (id: string, at: number, pitches: number[], glide?: object) => ({
+      id,
+      type: 'chord',
+      at,
+      notes: { kind: 'pitches', pitches },
+      voicing: 'even',
+      assign: 'ordered',
+      ...(glide ? { glide } : {}),
+    });
+    p.moments = [
+      chord('start0', 0, [48, 55, 60, 64]),
+      chord('a', 10, [50, 57, 62, 65]),
+      chord('b', 12.5, [48, 55, 60, 64], { land: true, length: 4 }),
+    ];
+    h.actions.setPiece(p);
+  });
+  const px = await pps(page);
+  const g = await expectBar(page, 'b', true);
+  expect(Math.abs(g.right - g.left - 0.5 * px)).toBeLessThan(2);
+  await expect(page.locator('[data-moment="b"]')).toHaveAttribute(
+    'title',
+    /the glide starts at 12 s/,
+  );
+  await select(page, ['b']);
+  await expect(page.getByTestId('insp-land-note')).toContainText(
+    'the glide starts at 12 s, after an earlier moment',
+  );
+});
+
 test('with land in the piece defaults the toggle shows on, and an override turns one moment off', async ({
   page,
 }) => {

@@ -583,6 +583,7 @@
       "id": "sw0059",
       "type": "shift",
       "at": 120,
+      "target": { "exceptParts": ["Bass"] },
       "by": 3,
       "unit": "scaleSteps",
       "glide": { "length": 0.3, "stagger": 0.05, "land": true },

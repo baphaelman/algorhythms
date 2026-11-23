@@ -617,6 +617,45 @@ describe('land at the marker (revision 9)', () => {
     expect(patch).toEqual({ glide: { land: true, length: 3 } });
   });
 
+  it('the bar starts where the compiler started the glide: a wait, a floor, no move', () => {
+    // Build log "Land always arrives". a: chord at 2 (glide 1); b lands at 3.3 (glide 2): its
+    // lead-in would start at 1.3, but it waits for a and glides from a's arrival (3).
+    const land = (id: string, at: number, length: number, p: number, more = {}) =>
+      ({
+        id,
+        type: 'chord',
+        at,
+        notes: { kind: 'pitches', pitches: [p] },
+        voicing: 'even',
+        assign: 'ordered',
+        glide: { land: true, length },
+        ...more,
+      }) as never;
+    const items = (moments: never[]) => {
+      const p = pieceOf({
+        start: [60],
+        glide: { length: 1, jitter: 0, stagger: 0 },
+        end: { at: 10, fade: 1 },
+        moments,
+      });
+      const s = compile(p);
+      return laneItems(p, s.momentSpans, undefined, s.harmony, s.voices);
+    };
+    const waits = items([land('a', 2, 1, 64, { glide: { length: 1 } }), land('b', 3.3, 2, 67)]);
+    expect(waits.find((x) => x.id === 'b')).toMatchObject({ start: 3, end: 3.3, land: true });
+    // a lands at 3 (glide 2); b at 3.5 (glide 1) starts when a arrives, not at 2.5.
+    const floors = items([land('a', 3, 2, 64), land('b', 3.5, 1, 67)]);
+    expect(floors.find((x) => x.id === 'b')).toMatchObject({ start: 3, end: 3.5 });
+    // b moves nothing (a already brings the line to 64): its bar is the compiled lead-in.
+    const still = items([land('a', 3, 2, 64), land('b', 3.5, 1, 64)]);
+    expect(still.find((x) => x.id === 'b')).toMatchObject({ start: 3, end: 3.5 });
+    // Stale (the moment moved since the compile): the estimate, not the compiled lead-in.
+    const p = pieceOf({});
+    p.moments = [land('b', 3.5, 1, 64)];
+    const stale = laneItems(p, [{ id: 'b', start: 3.5, end: 3.5, leadIn: 3 }], new Map([['b', 3]]));
+    expect([stale[0].start, stale[0].end]).toEqual(estimateSpan(p.moments[0], p.defaults.glide));
+  });
+
   it('LaneItem.land is set from the effective glide', () => {
     const p = pieceOf({});
     p.moments = [chord('a', 4), chord('b', 8, { glide: { land: true } })];

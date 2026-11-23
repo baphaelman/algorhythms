@@ -161,6 +161,7 @@ export function switchyard(): Record<string, unknown> {
 
   // Out: one last chord, the plucks ring.
   s.m('shift', s.T(56), {
+    target: { exceptParts: ['Bass'] }, // the unison below lands the bass
     by: 3,
     unit: 'scaleSteps',
     glide: { length: 0.3, stagger: 0.05, land: true },
