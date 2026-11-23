@@ -28,6 +28,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - (none parked)
 
 ## Answered
+- **Ready for YouTube (2026-11-23, PLAN rev 16):** the owner will post on YouTube. YouTube export features join M11 (loudness to −14 LUFS, glue and width, 1440p/4K, quality, AAC, glow, vignette, guide lines, title and end cards, thumbnail, description with chapters, YouTube and Shorts presets). The camera path (keyframes, auto camera) is the follow-up, M11.5. The specifics are integrator calls in §12 "Ready for YouTube" (veto any).
 - **Editor polish + Compose overhaul (2026-11-23):** Add/Next span the editor column to the inspector (as wide as the score and lane), not the screen; lane block text never overlaps a block's lines; "Compose for me" becomes directed (the user tells the composer what to make before it starts) as PLAN §15 M12, after M11.
 - **Next milestone after M10 (2026-11-23):** truly customisable poster and video exports, with the Export dialog's UI and interactions fixed (PLAN §15 M11). Owner notes so far: a viewing window for both (poster zooms in on a section; video exports a section of the song); the HUD lets the owner place each readout, not just tick it into a list.
 - **Editor overhaul (2026-11-22, PLAN rev 14, M10).** Demo: https://claude.ai/artifact/4ZFDbZFHywWasBzXMjTCBv. (1) Option B: rows of blocks. (2) Ship the theory-aware Next first, in today's editor. (3) One card per job, with much less text; the chord picker also marks good fits, more lightly. (4) Note and pin leave the palette.

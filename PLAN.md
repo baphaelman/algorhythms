@@ -615,7 +615,7 @@ voice i ─► × g_n(t) ─┬────────────────�
 - **Loop:** wraps with the same 5 ms crossfade.
 
 ### 8.8 Loudness and safety
-The limiter is always on. The meter is shown in the transport. Exports peak at ≤ −1 dBFS. True-peak and LUFS normalisation are Later.
+The limiter is always on. The meter is shown in the transport. Exports peak at ≤ −1 dBFS. **Revision 16:** LUFS normalisation with a true-peak ceiling, a master glue compressor and a stereo width control arrive in M11 (§12 "Ready for YouTube").
 
 ### 8.9 Performance budget
 There is one number, a **real-time factor (RTF)**: RTF ≥ 10× for 24 voices plus FX at 48 kHz, measured in Node on the CI machine. That is about 10% of one core. It leaves 2× headroom for the live budget of ≤ 20% of a core on a 2020-era laptop and for browser overhead. M2 gates on this number.
@@ -937,6 +937,62 @@ Video and poster exports share one **Look** panel in the Export dialog that expo
 - **HUD placement:** the HUD is a set of readouts the user places on the frame. In the preview, each readout is a box that can be dragged anywhere (snapping to the frame's margins, its centre lines and the other readouts' edges; Alt free), moved with the arrow keys when focused (Shift = larger steps), removed with its ×, and added back from the readout list (where each is a toggle, as now). A position is stored relative to the nearest corner or edge (anchor + offset as a fraction of the frame), so one layout carries across 16:9, 9:16, 1:1 and poster sizes; text never leaves the frame. **Reset layout** restores today's two columns. The export draws exactly what the preview shows. Video and poster share the layout.
 - **UI and interactions:** the owner's further notes on the Export dialog go here as they come; M11 includes a pass over the dialog's interactions (keyboard and focus order, preview sync, layout from 1280 to 1920 px, light and dark).
 
+### Ready for YouTube (revision 16, owner 2026-11-23; M11)
+The owner will post pieces on YouTube. A review of the gallery's best videos (Crease, Night Sleeper) found that they rely on things the app can't export. It also found that the exports would play quietly and compress badly on YouTube. These items close that gap. All defaults leave today's exports unchanged, except where the YouTube preset sets them. Integrator calls throughout; the owner may veto.
+
+**Audio**
+- **Loudness.** A **Loudness** control (segmented: Off / −14 LUFS / −16 LUFS) applies to the WAV mix and the video's audio.
+  - **Off** is today's behaviour: peaks ≤ −1 dBFS.
+  - **Otherwise:** render, measure the integrated loudness (ITU-R BS.1770-4: K-weighting, 400 ms blocks, absolute and relative gating), apply one gain, then run the limiter with a true-peak ceiling of −1 dBTP (4× oversampled peak detection).
+  - **Display:** the dialog shows the piece's measured loudness and the gain it will apply. Measured on demand in a worker and cached per piece version.
+  - **Warning:** shown when reaching the target would need more than 6 dB of limiting.
+  - Stems and MIDI are unchanged in M11.
+  - **Why:** YouTube plays at about −14 LUFS and only turns loud videos down. Crease measured −21.9, so it would play about 8 dB quieter than the video before it.
+- **Glue.** A gentle master compressor before the limiter: `mix.glue`, 0..1, default 0 (off).
+  - At 1 it is about a 2:1 ratio with a slow attack and release, for 2–4 dB of gain reduction on peaks.
+  - It is feed-forward and acts on the sum, so it is a time-varying gain: stems record the glue and limiter gain together as the one curve g_L(t), and keep summing exactly (§12 "Stems").
+  - It is in the Sound drawer's master FX. It also gives headroom where many lines strike one note (the Crease crossing measured 4–5 dB above the rest).
+- **Width.** Master stereo width (mid/side): `mix.width`, 0..2, default 1.
+  - It is linear, so stems carry it exactly.
+  - It is in the master FX. Crease and Night Sleeper measured a left/right correlation of 0.83–0.87, which is fairly narrow.
+- With glue 0 and width 1, every render golden stays unchanged.
+
+**Video**
+- **Sizes:** 1440p and 2160p (4K) join 1080p and 720p, at every aspect (16:9 2560×1440 and 3840×2160; 9:16 and 1:1 to match).
+  - They are offered when `isConfigSupported` accepts them (H.264 level 5.1+, or VP9).
+  - **Why 4K:** YouTube gives 1440p and 4K uploads a better codec and bitrate even for 1080p viewers. Thin lines on dark backgrounds suffer most at 1080p.
+- **Quality** (segmented: Standard / High / Max) sets the target bitrate from size and fps.
+  - High follows YouTube's recommended upload rates (1080p30 about 8 Mb/s, 1080p60 12, 1440p60 24, 4K30 45, 4K60 68).
+  - Max is 1.5× High.
+  - The encoder must deliver close to the target: m8 gap 2, under-delivery, is fixed here.
+- **Audio codec:** AAC-LC whenever `isConfigSupported` allows it. If only Opus is available, the dialog says so in one line.
+- **Look additions** (video and poster; the Controls rules apply):
+  - **Glow:** a 0–100 % slider: soft light around the lines, drawn from the lines only. It needs a fallback where canvas `filter` is unsupported.
+  - **Vignette:** 0–100 %.
+  - **Guide lines at pitches:** note names typed or picked, each drawn as a faint horizontal line with an optional label. Crease needed a silent voice to draw its crease.
+  - No film grain: compression smears it.
+  - All default to off.
+- **Opening:**
+  - **Fade in from black:** 0–3 s, default 0.
+  - **Lead-in:** 0–3 s of the opening frame, silent, before the first sound; default 0.
+  - **Title card:** a toggle. The title (default: the piece's name) and an optional subtitle fade in over the picture in the theme's serif, hold for about 4 s and fade out. It is not a separate black card.
+- **Ending:**
+  - **Fade to black:** 0–3 s.
+  - **End card:** Off / 5 / 10 / 20 s, default Off. After the music, the frame crossfades over 2 s to the **whole-piece view** (the poster's camera, drawn finished), with an optional credit line (default "Made with AlgoRhythms"). It holds for the chosen time, which leaves room for YouTube's end-screen elements.
+  - **Why:** the whole-piece view was the strongest image in both gallery videos, and it appeared only in their last seconds.
+- **Thumbnail:** a button next to the preview exports a 1280×720 JPEG (under 2 MB, YouTube's limit). The image is the preview frame at its current time, or the whole-piece view, with the title large. 9:16 and 1:1 exports get the same at their aspect.
+- **Description:** a "Copy description" button copies text for the YouTube description box:
+  - the title;
+  - the key, tempo and length;
+  - **chapters** from the section labels (`0:00 Label` lines), written only when YouTube would accept them: the first at 0:00, at least three, each at least 10 s long;
+  - "Made with AlgoRhythms" and the site URL;
+  - optionally the share link.
+- **Presets:** a segmented **Preset** at the top of the video options: YouTube / Shorts / Custom.
+  - **YouTube:** 16:9 at 2160p (1440p where 4K isn't supported), 60 fps, High quality, AAC where possible, −14 LUFS, title card on, end card 10 s.
+  - **Shorts:** 9:16 1080×1920, 60 fps, High quality, −14 LUFS, no end card. It warns when the section is over 3 minutes.
+  - Changing any option it set shows Custom.
+- **Progress** shows an estimated time left: 4K60 renders are long.
+
 ### Poster export (revision 12, owner chose it next 2026-11-22)
 - **One renderer.** The poster is `drawScore` with the whole-piece camera (§10, the video's Whole), drawn as if the piece had finished: every line at full opacity (no future ghost), no playhead, no heads or Hz labels, no editor overlays. Section labels as the player shows them. Thickness on (option off), like video.
 - **PNG:** drawn on an OffscreenCanvas at the chosen size, encoded with `convertToBlob`. **SVG:** the same `drawScore` call on a small in-house recording context (`Ctx2D`-compatible: paths, strokes, fills, text, alpha, line styles, transforms, linear gradients) that writes SVG elements; text stays text (system mono font stack). No dependency.
@@ -1178,12 +1234,25 @@ Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
   - a video of that section lasts its length to within one frame, its first frame is the section's start, and its audio matches the offline render of that span (fades aside) with no click at either cut;
   - every HUD readout can be dragged, moved by keyboard, removed and re-added; the exported video frame and poster put each readout within 1 px (at export scale) of where the preview shows it; a layout made at 16:9 keeps each readout on its corner or edge at 9:16 and 1:1; Reset layout restores the default;
   - the Export dialog works by keyboard alone, and its preview stays in sync with every control.
+- **Ready for YouTube (revision 16, owner 2026-11-23):** loudness, glue and width; 1440p and 4K, quality and AAC; glow, vignette and guide lines; title card, fades and the end card; thumbnail; description with chapters; the YouTube and Shorts presets (§12 "Ready for YouTube"). *Accept when:*
+  - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled), on Crease, Night Sleeper and one example;
+  - with glue 0 and width 1 every render golden is unchanged; with glue or width on, the stems plus the FX return still sum to the mix (the §12 tolerance);
+  - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with an average video bitrate ≥ 70 % of the target on a dense piece; its audio is AAC wherever the browser offers it;
+  - glow, vignette and guide lines draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
+  - the title card, fades, lead-in and end card appear at their times; the end card shows the whole-piece view and lasts its length to within one frame;
+  - the thumbnail is 1280×720 JPEG under 2 MB; the copied description has chapters only when YouTube's rules allow them;
+  - choosing YouTube or Shorts sets every option listed, and changing one shows Custom.
+
+**M11.5. Camera path (follow-up to M11; owner 2026-11-23)**
+- The video camera moves with the music, as the gallery's per-frame cameras do (Crease, Night Sleeper): it starts tight on the first note, opens as the chord widens, leans in where lines meet, and pulls back over the whole piece at the end.
+- **Keyframes** in the Export dialog: time, window (seconds shown), playhead position, and pitch centre and range, eased between keys and edited on the preview's timeline.
+- **Auto camera:** keys made from the piece. The pitch range follows the sounding lines, smoothed, and the camera leans in at one-point crossings and pulls back at the end. You can edit the result.
+- This replaces "camera moments" in Later. Whether keys are stored in the piece is decided with the owner when M11.5 starts, along with the rest of the spec.
 
 **M12. Compose for me, directed (after M11; owner 2026-11-23)**
 - "Compose for me" asks the user what to compose before it starts (§11.3 "Compose for me, directed"), then builds it with the theory-aware rows. The questions and defaults are specified with the owner when M12 starts.
 
 **Later, in no order:**
-- camera moments;
 - the Drift texture;
 - Scala tunings;
 - MIDI CC learn;
@@ -1247,6 +1316,10 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 16 (2026-11-23): ready for YouTube (owner; M11), camera path (M11.5)
+- **Ready for YouTube (§12, §8.8):** LUFS normalisation with a true-peak ceiling, glue and width on the master; 1440p and 4K, quality presets, AAC; glow, vignette, guide lines; title card, fades, end card on the whole-piece view; thumbnail; description with chapters; YouTube and Shorts presets.
+- **Camera path (M11.5):** keyframed and auto camera for video, after M11; replaces Later's "camera moments".
 
 ### Revision 15 (2026-11-23): exports you can shape (owner; M11), directed Compose (M12)
 - **Section (§12):** video and poster exports take a section (whole, loop region or custom range); the poster's pitch range fits the section.
