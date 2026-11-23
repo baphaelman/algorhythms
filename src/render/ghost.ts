@@ -231,18 +231,24 @@ function layerSize(n: number, max: number): number {
   return Math.max(1, Math.min(max, Math.ceil(n / 128) * 128));
 }
 
-/** Adds the boxes (device px; all, or the one at `only`) to g's path, in CSS px. */
+/**
+ * Adds the boxes (device px; all, or the one at `only`) to g's path, in CSS px, cut to x ≥ `from`
+ * (device px).
+ */
 function boxPath(
   g: CanvasRenderingContext2D,
   boxes: readonly number[],
   dpr: number,
   only = -1,
+  from = 0,
 ): void {
   for (let i = only < 0 ? 0 : only; i < (only < 0 ? boxes.length : only + 4); i += 4) {
+    const x0 = Math.max(boxes[i], from);
+    if (boxes[i + 2] <= x0) continue;
     g.rect(
-      boxes[i] / dpr,
+      x0 / dpr,
       boxes[i + 1] / dpr,
-      (boxes[i + 2] - boxes[i]) / dpr,
+      (boxes[i + 2] - x0) / dpr,
       (boxes[i + 3] - boxes[i + 1]) / dpr,
     );
   }
@@ -264,9 +270,10 @@ export type FutureTrace = (
 export type Reach = (v: CompiledVoice, lo: Seconds, hi: Seconds, y0: number, y1: number) => boolean;
 
 /**
- * Draws the future through the ghost at `alpha`: other lines directly onto g; the strands outside
- * the boxes directly too (under one clip), inside them at full strength into the layer, which is
- * composited once.
+ * Draws the future through the ghost at `alpha`, right of `cut` (CSS px on the device grid; the
+ * playhead): other lines directly onto g; the strands outside the boxes directly too (under one
+ * clip), inside them at full strength into the layer, which is composited once. One clip at a
+ * time, and none under the composite (WebKit on macOS: see CutSink).
  */
 export function drawGhost(
   g: CanvasRenderingContext2D,
@@ -280,23 +287,31 @@ export function drawGhost(
   alpha: number,
   trace: FutureTrace,
   reach?: Reach,
+  cut = -Infinity,
 ): void {
   const { boxes, strands, ox, oy } = gh;
+  // The cut in whole device px, and in CSS px.
+  const cx = Math.min(Math.ceil(view.width * dpr), Math.max(0, Math.round(cut * dpr)));
+  const x0 = cx / dpr;
   for (let pass = 0; pass < 2; pass++) {
-    if (pass === 1) {
-      g.save();
+    g.save();
+    if (pass === 1 || cx > 0) {
       g.beginPath();
-      g.rect(0, 0, view.width, view.height);
-      boxPath(g, boxes, dpr);
-      g.clip('evenodd');
+      g.rect(x0, 0, Math.max(0, view.width - x0), view.height);
+      if (pass === 1) {
+        boxPath(g, boxes, dpr, -1, cx);
+        g.clip('evenodd');
+      } else {
+        g.clip();
+      }
     }
     for (const v of voices) {
       if (v.segments.length === 0 || strands[v.index] !== pass) continue;
       g.strokeStyle = gradient ?? lineColor(style, v.index) ?? style.tokens.ink;
       trace(g, v, alpha, -Infinity, Infinity);
     }
+    g.restore();
   }
-  g.restore();
 
   const L = gh.layer.g;
   L.save();
@@ -314,6 +329,7 @@ export function drawGhost(
   L.lineCap = 'round';
   const pad = TRACE_PAD / view.pps;
   for (let i = 0; i < boxes.length; i += 4) {
+    if (boxes[i + 2] <= cx) continue;
     L.save();
     L.beginPath();
     boxPath(L, boxes, dpr, i);
@@ -333,13 +349,15 @@ export function drawGhost(
   }
   L.restore();
 
+  // Composited right of the cut by the source rectangle, not a clip.
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalAlpha = alpha;
   for (let i = 0; i < boxes.length; i += 4) {
-    const x = boxes[i];
+    const x = Math.max(boxes[i], cx);
     const y = boxes[i + 1];
     const w = boxes[i + 2] - x;
     const h = boxes[i + 3] - y;
+    if (w <= 0) continue;
     g.drawImage(gh.layer.canvas, x - ox, y - oy, w, h, x, y, w, h);
   }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);

@@ -15,7 +15,7 @@ import type {
   WeightChange,
 } from '../../../src/core/types';
 import { drawScore, pitchToY, timeToX, type ScoreStyle } from '../../../src/render';
-import { outlineFrame, outlinePath, type PathSink } from '../../../src/render/outline';
+import { CutSink, outlineFrame, outlinePath, type PathSink } from '../../../src/render/outline';
 import {
   STRAND_LAP,
   drawnLives,
@@ -364,6 +364,69 @@ describe('outline', () => {
     expect(c.ops).toEqual(p.ops);
   });
 
+  /** Signed area (shoelace) of a closed polygon from a recorder's M/L ops. */
+  const area = (ops: (string | number)[][]) => {
+    const q = ops.filter((o) => o[0] === 'M' || o[0] === 'L').map((o) => o.slice(1) as number[]);
+    let a = 0;
+    for (let i = 0; i < q.length; i++) {
+      const [x0, y0] = q[i];
+      const [x1, y1] = q[(i + 1) % q.length];
+      a += x0 * y1 - x1 * y0;
+    }
+    return a / 2;
+  };
+
+  it('CutSink: cuts an outline to [x0, x1] with straight edges there, winding kept', () => {
+    const c = new CutSink();
+    c.reset(25, 72.5, 0.05);
+    outlinePath(c, x, y, nx, ny, h, 0, n - 1, false, false);
+    const r = rec();
+    c.emit(r);
+    expect(r.ops[0][0]).toBe('M');
+    expect(r.ops[r.ops.length - 1]).toEqual(['Z']);
+    const xs = r.ops.filter((o) => o[0] !== 'Z').map((o) => o[1] as number);
+    expect(Math.min(...xs)).toBe(25);
+    expect(Math.max(...xs)).toBe(72.5);
+    // The band's area, with the same sign as the whole outline's.
+    const whole = rec();
+    outlinePath(whole, x, y, nx, ny, h, 0, n - 1, false, false);
+    const wAt = (t: number) => 1 + (2 * t) / 100;
+    expect(area(r.ops)).toBeCloseTo(
+      (Math.sign(area(whole.ops)) * (72.5 - 25) * (wAt(25) + wAt(72.5))) / 2,
+      9,
+    );
+    // One side only; nothing left when the cut misses the shape.
+    c.reset(-Infinity, 50, 0.05);
+    outlinePath(c, x, y, nx, ny, h, 0, n - 1, false, false);
+    const left = rec();
+    c.emit(left);
+    expect(Math.min(...left.ops.filter((o) => o[0] !== 'Z').map((o) => o[1] as number))).toBe(0);
+    c.reset(200, Infinity, 0.05);
+    outlinePath(c, x, y, nx, ny, h, 0, n - 1, false, false);
+    const none = rec();
+    c.emit(none);
+    expect(none.ops).toEqual([]);
+  });
+
+  it('CutSink: round ends flattened to within the tolerance', () => {
+    const c = new CutSink();
+    const tol = 0.05;
+    c.reset(-Infinity, 50, tol);
+    outlinePath(c, x, y, nx, ny, h, 0, n - 1, true, true);
+    const r = rec();
+    c.emit(r);
+    expect(r.ops.some((o) => o[0] === 'A')).toBe(false);
+    // The start cap: a half disc of radius 0.5 around (0, 50), points on the circle.
+    const cap = r.ops.filter((o) => o[0] !== 'Z' && (o[1] as number) < 0);
+    expect(cap.length).toBeGreaterThan(2);
+    for (const o of cap)
+      expect(Math.hypot((o[1] as number) - 0, (o[2] as number) - 50)).toBeCloseTo(0.5, 9);
+    // Its area within the chord error of the half disc's.
+    const capArea = (Math.PI * 0.5 * 0.5) / 2;
+    const band = (50 * (1 + 2)) / 2; // w from 1 to 2 over [0, 50]
+    expect(Math.abs(Math.abs(area(r.ops)) - band - capArea)).toBeLessThan(tol * Math.PI * 0.5);
+  });
+
   it('keeps the width through a bend', () => {
     const bx = F([0, 10, 10]);
     const by = F([0, 0, 10]);
@@ -417,11 +480,11 @@ describe('drawn merge and split', () => {
       const x = timeToX(view, t);
       for (const f of p.fills) for (const a of f.arcs) expect(Math.abs(a.x - x)).toBeGreaterThan(1);
     }
-    // The merged lines stop at the meeting point (reaching 2 device px past it under a clip).
+    // The merged lines stop at the meeting point (cut on the device-pixel column at it).
     const xm = timeToX(view, 5);
     for (const f of p.fills.filter((q) => q.style === '#aa0001'))
       for (const [px] of f.pts)
-        expect(px <= xm + 2.01 || px >= timeToX(view, 12) - 2.01).toBe(true);
+        expect(px <= xm + 0.51 || px >= timeToX(view, 12) - 0.51).toBe(true);
     // At the meeting the union of the strands spans the rope.
     const yc = pitchToY(view, 60);
     const near = p.fills.flatMap((f) => f.pts).filter(([px]) => Math.abs(px - xm) <= 2 + 1e-6);
@@ -483,7 +546,7 @@ describe('ghost strands do not stack', () => {
 
   it('composites the merge and the split once each, at the ghost opacity', () => {
     const { p, view } = draw(mergeSplit(), 0);
-    // The ghost's clip (seam and playhead cuts clip too, nonzero).
+    // The ghost's clip (the playhead cut clips too, nonzero).
     expect(p.clips.filter((c) => c[0] === 'evenodd')).toEqual([['evenodd']]);
     expect(p.images.map((im) => im.alpha)).toEqual([0.35, 0.35]);
     for (const t of [5, 12]) {

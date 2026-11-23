@@ -95,7 +95,7 @@ export function outlineFrame(
  * Adds the outline of points i0..i1 (i1 > i0) to `sink` as one closed subpath: one side forward,
  * the end (a half disc of radius w/2 when `capEnd`, else straight across), the other side back,
  * the start likewise. Uses the arrays `outlineFrame` filled. A straight start or end is pushed
- * `extStart` / `extEnd` px further along the line (to reach under a clip at a seam).
+ * `extStart` / `extEnd` px further along the line (to reach past a seam before it is cut).
  */
 export function outlinePath(
   sink: PathSink,
@@ -131,4 +131,121 @@ export function outlinePath(
     sink.arc(x[i0], y[i0], h[i0], a, a - Math.PI, true);
   }
   sink.closePath();
+}
+
+/**
+ * A PathSink that collects one closed outline (arcs flattened to within `tol`) and `emit`s it cut
+ * to x0 ≤ x ≤ x1 (Sutherland–Hodgman; the winding inside the band is kept), so a seam is a
+ * straight edge of the path rather than a clip: WebKit on macOS drew clipped frames differently
+ * from one draw to the next (CI v66). Reused: no allocation once grown.
+ */
+export class CutSink implements PathSink {
+  private ax = new Float64Array(64);
+  private ay = new Float64Array(64);
+  private bx = new Float64Array(64);
+  private by = new Float64Array(64);
+  private n = 0;
+  private x0 = -Infinity;
+  private x1 = Infinity;
+  private tol = 0.05;
+
+  /** Starts a new outline, cut to [x0, x1] (±Infinity: no cut on that side). */
+  reset(x0: number, x1: number, tol: number): void {
+    this.n = 0;
+    this.x0 = x0;
+    this.x1 = x1;
+    this.tol = tol;
+  }
+
+  private push(x: number, y: number): void {
+    if (this.n === this.ax.length) {
+      const m = this.n * 2;
+      const grow = (a: Float64Array) => {
+        const b = new Float64Array(m);
+        b.set(a);
+        return b;
+      };
+      this.ax = grow(this.ax);
+      this.ay = grow(this.ay);
+      this.bx = new Float64Array(m);
+      this.by = new Float64Array(m);
+    }
+    this.ax[this.n] = x;
+    this.ay[this.n] = y;
+    this.n++;
+  }
+
+  moveTo(x: number, y: number): void {
+    this.n = 0;
+    this.push(x, y);
+  }
+
+  lineTo(x: number, y: number): void {
+    this.push(x, y);
+  }
+
+  arc(cx: number, cy: number, r: number, a0: number, a1: number, ccw = false): void {
+    const TAU = 2 * Math.PI;
+    let d = ccw ? a0 - a1 : a1 - a0;
+    if (d < 0) d += TAU * Math.ceil(-d / TAU);
+    if (d > TAU) d = TAU;
+    const step = r > this.tol ? 2 * Math.acos(1 - this.tol / r) : Math.PI;
+    const m = Math.min(256, Math.max(1, Math.ceil(d / step)));
+    const s = (ccw ? -d : d) / m;
+    for (let j = 0; j <= m; j++) {
+      const a = a0 + s * j;
+      this.push(cx + r * Math.cos(a), cy + r * Math.sin(a));
+    }
+  }
+
+  closePath(): void {}
+
+  /** Adds the cut outline to `sink` as one closed subpath (nothing when the cut leaves none). */
+  emit(sink: PathSink): void {
+    if (this.x0 > -Infinity) this.cut(this.x0, 1);
+    if (this.x1 < Infinity) this.cut(this.x1, -1);
+    const { ax, ay, n } = this;
+    if (n < 3) return;
+    sink.moveTo(ax[0], ay[0]);
+    for (let i = 1; i < n; i++) sink.lineTo(ax[i], ay[i]);
+    sink.closePath();
+  }
+
+  /** Keeps the part with s·(x − c) ≥ 0, from a* into b*, then swaps them. */
+  private cut(c: number, s: number): void {
+    if (this.bx.length < 2 * this.n) {
+      this.bx = new Float64Array(2 * this.n);
+      this.by = new Float64Array(2 * this.n);
+    }
+    const { ax, ay, bx, by, n } = this;
+    let m = 0;
+    if (n > 0) {
+      let px = ax[n - 1];
+      let py = ay[n - 1];
+      let pin = s * (px - c) >= 0;
+      for (let i = 0; i < n; i++) {
+        const x = ax[i];
+        const y = ay[i];
+        const xin = s * (x - c) >= 0;
+        if (xin !== pin) {
+          bx[m] = c;
+          by[m] = py + ((y - py) * (c - px)) / (x - px);
+          m++;
+        }
+        if (xin) {
+          bx[m] = x;
+          by[m] = y;
+          m++;
+        }
+        px = x;
+        py = y;
+        pin = xin;
+      }
+    }
+    this.ax = bx;
+    this.ay = by;
+    this.bx = ax;
+    this.by = ay;
+    this.n = m;
+  }
 }

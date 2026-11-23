@@ -376,19 +376,23 @@ describe('drawVideoFrame', () => {
     const view = drawVideoFrameAt(small.ctx, s, o, 2, 0.25);
     expect(view.t).toBe(2);
     expect(small.strokes).toEqual(full.strokes);
-    // Line seams are cut on device-pixel columns, reaching 2 device px past them: at a smaller
-    // pixel ratio those ends move by up to a few device px.
+    // Line seams are cut on device-pixel columns (their round ends flattened to the pixel ratio),
+    // so at a smaller pixel ratio a shape's points differ: its box moves by up to a few device px.
     const d = videoLayout('16:9', '720').dpr * 0.25;
     const tol = 3 / d;
-    expect(small.fills.map(({ pts, ...f }) => ({ ...f, n: pts.length }))).toEqual(
-      full.fills.map(({ pts, ...f }) => ({ ...f, n: pts.length })),
+    expect(small.fills.map(({ style, alpha, width }) => ({ style, alpha, width }))).toEqual(
+      full.fills.map(({ style, alpha, width }) => ({ style, alpha, width })),
     );
-    small.fills.forEach((f, i) =>
-      f.pts.forEach(([x, y], k) => {
-        expect(Math.abs(x - full.fills[i].pts[k][0])).toBeLessThan(tol);
-        expect(Math.abs(y - full.fills[i].pts[k][1])).toBeLessThan(tol);
-      }),
-    );
+    const box = ({ pts, arcs }: Shape) => {
+      const xs = [...pts.map((q) => q[0]), ...arcs.flatMap((c) => [c.x - c.r, c.x + c.r])];
+      const ys = [...pts.map((q) => q[1]), ...arcs.flatMap((c) => [c.y - c.r, c.y + c.r])];
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    };
+    small.fills.forEach((f, i) => {
+      const a = box(f);
+      const b = box(full.fills[i]);
+      for (let k = 0; k < 4; k++) expect(Math.abs(a[k] - b[k])).toBeLessThan(tol);
+    });
     expect(dprs).toContain(d);
     // Clamped to the piece.
     expect(drawVideoFrameAt(pathCtx().ctx, s, o, 1e9).t).toBe(s.duration);
