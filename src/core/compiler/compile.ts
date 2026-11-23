@@ -18,9 +18,10 @@
  * Then every voice is closed at the end (`end.at`, or the last activity + 4 s) with the end fade.
  *
  * A land moment (revision 9) decides at its lead-in start, or after the earlier moments that may
- * move its lines and decide inside its lead-in (glide.ts `landOrder`); on the lines they move its
- * glide starts when they arrive (`floorMoves`). Lines a land moment at the same marker brings in
- * are left to it (`protect`). Build log "Land always arrives".
+ * move its lines and decide inside its lead-in (glide.ts `landOrder`); on the lines they move, and
+ * on lines an earlier land moment is still bringing in, its glide starts when they arrive
+ * (`landFloors`, the planner's floors). Lines a land moment at the same marker brings in are left
+ * to it (`protect`). Build log "Land always arrives".
  *
  * Schema v2 (M4.5-27): every voice starts dormant. A chord, unison or tune that comes when nothing
  * is sounding establishes: its voices come in on their notes with no glide (`establish`). Every
@@ -407,6 +408,8 @@ export class Compiler {
   private readonly keyMoments: number[] = [];
   readonly spanStart: number[] = [];
   readonly spanEnd: number[] = [];
+  /** Per moment: a land moment's lead-in start as decided (`MomentSpan.leadIn`), else NaN. */
+  readonly leadIns: number[] = [];
   readonly walks: number[] = [];
   /** Valid pulse moments (indices), in array order. */
   readonly pulses: number[] = [];
@@ -519,6 +522,7 @@ export class Compiler {
       this.landings.push(null);
       this.spanStart.push(NaN);
       this.spanEnd.push(NaN);
+      this.leadIns.push(NaN);
       if (!m || typeof m !== 'object') {
         this.diag('error', 'invalid-moment', `Moment ${i} is not an object.`);
         return;
@@ -1423,13 +1427,14 @@ export class Compiler {
         ? hash32(this.seeds[i], `note${tune.k}`)
         : this.seeds[i];
     const free = dormant.filter((u) => !x.reserved.has(u));
-    // A land moment that waited for earlier moments keeps their moves on its lines (`landFloors`).
-    const floors = land?.after ? this.landFloors(land.after, lines(pre), T) : null;
+    // A land moment keeps the moves of the moments it waited for, and of earlier land moments
+    // still arriving, on its lines (`landFloors`).
+    const floors = land ? this.landFloors(i, land, lines(pre), T) : null;
     const cancel = (v: number): void => {
       const run = this.voices[v];
       if (!floors?.has(v)) return run.cancelPending();
       for (const mv of run.pending)
-        if (!mv.death && !land!.after!.includes(mv.momentIndex)) mv.cancelled = true;
+        if (!mv.death && !this.yieldsTo(i, land!, mv.momentIndex, T)) mv.cancelled = true;
       run.prunePending();
     };
     let targeted: number[];
@@ -1490,6 +1495,20 @@ export class Compiler {
       this.traceMoment(i, targetedLines, subset, null, null, T);
       return { targeted: targetedLines, res: null, lost: 0, absorbed: 0 };
     }
+    const capped = floors ? this.capFloors(floors, m.at, T, glide) : null;
+    if (land && land.start < m.at) {
+      // Its lead-in start (`MomentSpan.leadIn`): the earliest floor when every line has one.
+      let lead = capped && pre.length > 0 ? Infinity : T;
+      for (const v of lines(pre)) {
+        const f = capped?.get(v);
+        if (f === undefined) {
+          lead = T;
+          break;
+        }
+        if (f < lead) lead = f;
+      }
+      this.leadIns[i] = lead;
+    }
     const host = {
       voices: this.voices,
       t: T,
@@ -1499,6 +1518,7 @@ export class Compiler {
       seed,
       crossings: this.options.crossings,
       land: tune ? tune.land : land ? land.end : undefined,
+      floors: capped,
       dest: (v: number) => this.destOf(v),
       diag: (level: DiagnosticLevel, code: string, message: string) =>
         this.diag(level, code, message, m.id),
@@ -1523,7 +1543,7 @@ export class Compiler {
     plan = col.plan;
     const res = planMoment(host, plan, targetedLines, subset);
     if (ov) applyOverrideEnds(res, ov, T, m.at, this.voices);
-    if (floors) this.floorMoves(res, floors, m.at, T, glide);
+    if (floors) this.yieldMoves(res, floors);
     this.commitLines(col, res, T, i, ov);
     for (const b of res.births) {
       const run = this.voices[b.voice];
@@ -1583,6 +1603,10 @@ export class Compiler {
         obj: nb,
       });
     }
+    // Build log "Land always arrives": a later land moment waits for this one on these lines.
+    const hold = land && land.start < m0.at ? i : -1;
+    for (const v of targetedLines) this.voices[v].landHold = hold;
+    for (const mv of res.moves) this.voices[mv.voice].landHold = hold;
     // Lines this moment left holding (a cancelled move, no new one) may now share a note.
     for (const v of targetedLines) {
       const run = this.voices[v];
@@ -1616,15 +1640,31 @@ export class Compiler {
   }
 
   /**
-   * Build log "Land always arrives": for a land moment deciding at T after the moments `after`
-   * (`landOrder`), each of `lines` still moving for one of them (its last pending move, else its
-   * tail glide), and when that move arrives.
+   * Build log "Land always arrives": land moment i (lead-in `land`, deciding at T) gives way on a
+   * line to moment k's move there when k is a moment it waited for (`landOrder`), or a land
+   * moment (not a tune) with an earlier marker still ahead at T (rule 2b: a later land moment
+   * never cuts an earlier one before it arrives).
+   */
+  private yieldsTo(i: number, land: Landing, k: number, T: Seconds): boolean {
+    if (k < 0 || k === i) return false;
+    if (land.after?.includes(k)) return true;
+    const mk = this.moments[k];
+    return !!this.landings[k] && mk.type !== 'tune' && mk.at < this.moments[i].at && T < mk.at;
+  }
+
+  /**
+   * Build log "Land always arrives": for land moment i deciding at T, each of `lines` still moving
+   * for a moment it gives way to (`yieldsTo`; its last pending move, else its tail glide), and
+   * when that move arrives; or held by one (`landHold`: a land moment that targeted it, moving
+   * it or not), and that moment's marker.
    */
   private landFloors(
-    after: readonly number[],
+    i: number,
+    land: Landing,
     lines: readonly number[],
     T: Seconds,
   ): Map<number, Seconds> | null {
+    if (!(land.start < this.moments[i].at)) return null;
     let out: Map<number, Seconds> | null = null;
     for (const v of lines) {
       const run = this.voices[v];
@@ -1635,34 +1675,41 @@ export class Compiler {
         const s = run.frontier.tail;
         if (s && !run.frontier.open && isGlide(s) && s.t1 > T) k = run.tailMoment;
       }
-      if (k >= 0 && after.includes(k)) (out ??= new Map()).set(v, arrivalOf(run));
+      let f = this.yieldsTo(i, land, k, T) ? arrivalOf(run) : -Infinity;
+      const h = run.landHold;
+      if (h !== k && this.yieldsTo(i, land, h, T) && this.moments[h].at > f) f = this.moments[h].at;
+      if (f > -Infinity) (out ??= new Map()).set(v, f);
     }
     return out;
   }
 
   /**
-   * The land moment's moves on lines in `floors` start when the earlier moment's move there
-   * arrives, still ending as planned, leaving the glide at least LAND_ROOM (or its length, if
-   * shorter) before the marker `at`; that moment's moves there starting after it give way.
+   * The floors `landFloors` found, as the planner's earliest starts (`PlanHost.floors`): the
+   * arrival, but leaving the land glide at least LAND_ROOM (or its length, if shorter) before the
+   * marker `at`; the earlier glide is cut there.
    */
-  private floorMoves(
-    res: PlanResult,
+  private capFloors(
     floors: ReadonlyMap<number, Seconds>,
     at: Seconds,
     T: Seconds,
     glide: Glide,
-  ): void {
+  ): Map<number, Seconds> {
     const room = Math.min(LAND_ROOM, glide.length, at - T);
+    const out = new Map<number, Seconds>();
+    for (const [v, f] of floors) out.set(v, f < at - room ? f : at - room);
+    return out;
+  }
+
+  /**
+   * On lines in `floors`, the earlier moments' moves kept there that would start after the land
+   * moment's move give way (also when the move did not need the floor: a staggered earlier move
+   * can start a hair after it).
+   */
+  private yieldMoves(res: PlanResult, floors: ReadonlyMap<number, Seconds>): void {
     for (const mv of res.moves) {
-      const f = floors.get(mv.voice);
-      if (f === undefined) continue;
-      const s = f < at - room ? f : at - room;
-      if (!(s > mv.t0)) continue;
-      const end = mv.t0 + mv.dur;
-      mv.t0 = s;
-      mv.dur = end - s > MIN_GLIDE ? end - s : MIN_GLIDE;
+      if (!floors.has(mv.voice)) continue;
       const run = this.voices[mv.voice];
-      for (const q of run.pending) if (!q.death && q.t0 >= s) q.cancelled = true;
+      for (const q of run.pending) if (!q.death && q.t0 >= mv.t0) q.cancelled = true;
       run.prunePending();
     }
   }
@@ -3214,6 +3261,9 @@ export class Compiler {
       };
       const o = this.origins?.[i];
       if (!o) {
+        const land = this.landings[i];
+        if (land && m.type !== 'tune' && land.start < m.at)
+          span.leadIn = this.leadIns[i] === this.leadIns[i] ? this.leadIns[i] : land.start;
         momentSpans.push(span);
         return;
       }

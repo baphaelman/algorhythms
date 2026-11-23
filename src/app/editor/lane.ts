@@ -229,9 +229,12 @@ export function establishedIds(
 /**
  * Lane items in piece order. Spans come from the compiled score when it has one for the moment
  * and the moment has not moved since (`compiledAt` maps ids to the times the score was built
- * with) and the span is not empty (a moment that moves nothing still shows its intended glide);
- * otherwise they are estimated from the glide. A chord or unison that establishes notes from
- * silence (`voices`, the compiled lines, show it) is a point: its box is its label alone.
+ * with) and the span is not empty (a moment that moves nothing still shows its intended glide:
+ * a land moment the lead-in the compiler used, `MomentSpan.leadIn`); otherwise they are
+ * estimated from the glide. A land moment's compiled bar starts where its glide really starts,
+ * after any wait for earlier moments (build log "Land always arrives"). A chord or unison that
+ * establishes notes from silence (`voices`, the compiled lines, show it) is a point: its box is
+ * its label alone.
  * `harmony` (the compiled timeline) names chords; with `keys`, a progression's chords that have
  * no harmony entry are named in the key at their time.
  */
@@ -260,11 +263,16 @@ export function laneItems(
     const stale = compiledAt !== undefined && compiledAt.get(m.id) !== m.at;
     let start: Seconds;
     let end: Seconds;
+    const land = landsAtMarker(m, defaults);
     if (s && s.end > s.start && !stale && !m.muted) {
       start = Math.min(s.start, m.at);
       end = Math.max(s.end, m.at);
     } else if (s && !stale && !m.muted && isEstablishing(m) && established.has(m.id)) {
       start = end = m.at;
+    } else if (land && s?.leadIn !== undefined && !stale && !m.muted) {
+      // It moved nothing: the lead-in the compiler used (it may have waited or started late).
+      start = Math.min(s.leadIn, m.at);
+      end = m.at;
     } else {
       [start, end] = estimateSpan(m, defaults);
     }
@@ -277,7 +285,7 @@ export function laneItems(
       end,
       muted: !!m.muted,
       endEdit: endEditOf(m.type),
-      land: landsAtMarker(m, defaults),
+      land,
       art:
         m.type === 'progression'
           ? progressionArt(m, start, end, progressionChordNames(m, harmony, keyOf))

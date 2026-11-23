@@ -13,6 +13,7 @@ import {
   pitchOfDegreeIndex,
   scaleIntervals,
 } from '../../../core/scales';
+import { landing } from '../../../core/compiler/glide';
 import { activeAt, segmentAt } from '../../../core/query';
 import { partScope } from '../../../core/parts';
 import type {
@@ -131,6 +132,21 @@ export function landGlide(
   delete rest.land;
   const next = on === (fallback === true) ? rest : { ...rest, land: on };
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * The note under "Land at the marker": when the glide starts. `leadIn` is where the compiler
+ * started it (`MomentSpan.leadIn`): later than the glide alone says when the moment waits for an
+ * earlier one (build log "Land always arrives"). Without it, from the glide (`landing`).
+ */
+export function landNote(at: Seconds, g: Glide, leadIn?: Seconds): string {
+  const own = landing(at, g).start;
+  const start = leadIn !== undefined && leadIn <= at ? leadIn : own;
+  const from = Number(start.toFixed(2));
+  if (!(start < at - 1e-3)) return 'Notes arrive on the marker.';
+  return start > own + 1e-3
+    ? `Notes arrive on the marker; the glide starts at ${from} s, after an earlier moment.`
+    : `Notes arrive on the marker; the glide starts at ${from} s.`;
 }
 
 /** Shortest decimal text for `x`, at most `digits` decimals ("3", "0.25", "-1.5"). */

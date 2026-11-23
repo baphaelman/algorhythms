@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { glides, landing } from '../../../core/compiler/glide';
+import { glides } from '../../../core/compiler/glide';
 import { partScope } from '../../../core/parts';
 import { TUNE_GLIDE } from '../../../core/defaults';
 import { activeAt } from '../../../core/query';
@@ -18,6 +18,7 @@ import {
   arriveGlide,
   easePath,
   landGlide,
+  landNote,
   partPick,
   pickTarget,
   targetMode,
@@ -214,6 +215,8 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
   // A tune (one line, note by note) has its own defaults between the piece's and its own, and
   // no stagger, jitter, arrival or order: it moves one line.
   const tune = m.type === 'tune';
+  // Where the compiler started a land moment's glide (it may wait for earlier moments).
+  const leadIn = usePlayer((s) => s.compiled.momentSpans.find((x) => x.id === m.id)?.leadIn);
   const g: Glide = tune
     ? { ...piece.defaults.glide, ...TUNE_GLIDE, ...m.glide }
     : { ...piece.defaults.glide, ...m.glide };
@@ -311,7 +314,7 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
             <p className="insp-note" data-testid="insp-land-note">
               {tune
                 ? 'Each note arrives on its start; its glide runs before it.'
-                : landNote(m.at, g)}
+                : landNote(m.at, g, leadIn)}
             </p>
           )}
         </>
@@ -346,15 +349,6 @@ export function GlideFields({ m, piece }: { m: Moment; piece: Piece }) {
       {bz && <BezierFields m={m} piece={piece} bz={bz} />}
     </fieldset>
   );
-}
-
-/** What the Land toggle means for this moment: the notes arrive on the marker, the glide starts before. */
-function landNote(at: number, g: Glide): string {
-  const start = landing(at, g).start;
-  const from = Number(start.toFixed(2));
-  return start < at - 1e-3
-    ? `Notes arrive on the marker; the glide starts at ${from} s.`
-    : 'Notes arrive on the marker.';
 }
 
 const DEFAULT_BEZIER = { kind: 'bezier' as const, x1: 0.42, y1: 0, x2: 0.58, y2: 1 };

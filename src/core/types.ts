@@ -1062,6 +1062,13 @@ export interface MomentSpan {
   start: Seconds;
   /** Latest move end. */
   end: Seconds;
+  /**
+   * A land moment's (revision 9; not a tune or progression) lead-in start as compiled: `at` −
+   * length − stagger (clamped at 0), or later when it waited for earlier moments, or when every
+   * line it targets waited for an earlier moment's move to arrive (build log "Land always
+   * arrives"). Its lines' glides start here or later (stagger). Absent for other moments.
+   */
+  leadIn?: Seconds;
 }
 
 /** A key in effect from `t` until the next entry (§6.2 `key`). */
