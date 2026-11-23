@@ -81,8 +81,8 @@ export function Suggestions() {
       {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => {
         const desc = `${uid}-d${i}`;
-        // A theory card's numeral, set smaller: "G7 · Tension" "(V7)".
-        const num = s.job ? /^(.*) \(([^)]+)\)$/.exec(s.label) : null;
+        // A theory card: "G7", " · " (narrow spaces), "Tension", then the numeral set smaller "(V7)".
+        const num = s.job ? /^(.*?) · (.*) \(([^)]+)\)$/.exec(s.label) : null;
         return (
           <Fragment key={suggestionKey(t, i, s)}>
             <button
@@ -108,7 +108,12 @@ export function Suggestions() {
               )}
               {num ? (
                 <>
-                  {num[1]} <span className="suggest-num">({num[2]})</span>
+                  <span>
+                    {num[1]}
+                    <span className="suggest-sep"> · </span>
+                    {num[2]}
+                  </span>{' '}
+                  <span className="suggest-num">({num[3]})</span>
                 </>
               ) : (
                 s.label

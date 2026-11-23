@@ -2707,3 +2707,9 @@ PLAN §11.3 "Little text" and "The moment a card adds" (Spread).
 - **Even's granularity:** 3 lines on a triad can only span ~8, ~17 or ~31 semitones while sounding all three tones, so a 3-line spread of ~24 lands ~7 off.
 - **Labels:** `<Chord> · <Job> (<numeral>)` ("G7 · Tension (V7)"; from silence "C · Home (I)", "C · One note", seeds unchanged); tooltip is the reason alone. Job dots and `--job-*` tokens removed (`data-job` stays). The cards use the sans face at 11 px with the numeral at 10 px in `--ink-2`, so four still fit at 1280 px (kite-day: 558 of 563 px).
 - **Tests:** `suggest-spread.test.ts`: 3, 5 and 8 lines, narrow/medium/wide, every card and Add → Chord: tolerance the larger of ±5 semitones and ±25 % of max(spread before, the narrowest span the lines need); every line on a chord tone, all tones sounding, no merges; stacked lines get `count`; a chain of eight picks is not monotone and stays in tolerance. `editor.test.ts`: a chord on a one-note opening now keeps the note (a chord tone) and grows around it. e2e: suggestions, start-moment, palette, viewbar, snap-beats on Chromium dev + prod; 13 chord-adding specs on Chromium dev.
+
+## Next cards fit one row with slack (app; 2026-11-23)
+CI (Linux Chromium) wrapped the fourth M10a-3 card: on macOS Chromium kite-day's four cards took 558 of 564 px.
+- **Tighter, same text:** cards padding 6→4 px, inner gap 3→2, letter-spacing −0.01em, weight 400 (was 500); only the spaces around "·" are narrowed (`.suggest-sep`, word-spacing −0.15em; "Near home" keeps its space); ★ 10→9 px. Strip gap 4→2, padding 6→4, "Next" label letter-spacing 0.08→0.04em. Add palette gap 2→1; viewbar column gap 8→6.
+- **Slack (kite-day, macOS Chromium):** 490 of 579 px (15.3 % free; was 1 %). Forcing Verdana on the cards needs 567 px and fits.
+- **Test:** `viewbar.spec.ts` repeats the fit check with the cards in Verdana / DejaVu Sans (a wide face on every OS).

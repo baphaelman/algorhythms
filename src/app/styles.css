@@ -600,7 +600,7 @@ input[type='range'] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 6px;
 }
 
 .vb-row {
