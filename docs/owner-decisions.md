@@ -25,9 +25,10 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - **v41.** Sound drawer → Master tab (reverb, delay in beats, sends, tone; Voices drawer gets per-note R/D sends); the new bell's strike partials and FM "held" in the timbre editor. Empty: no opening note, opens on the key with Tonic focused, the first moment lands at 0:00. Melody on moves the tune by scale steps and highlights a line on hover. Compact bar under the lanes: Add + Next on one row, zoom/follow/snap + Notes/Sound/View ▾/? on the second.
 
 ## Owner notes (parked: don't implement until the owner asks to "get back to my notes")
-- **Playable video preview (2026-11-23).** The Export dialog's video preview should play if that's not unreasonable; Space from anywhere in the dialog starts and stops it.
+- (none parked)
 
 ## Answered
+- **Playable video preview + Window (2026-11-23, in progress).** The Export dialog's video preview plays (button, Space anywhere in the dialog), with sound, from the preview time; Follow gets a Window slider (seconds shown, starts at the editor's zoom). Calls in PLAN §12.
 - **Land chords always land (2026-11-23).** A land moment's lead-in never starts before the previous moment on the same lines; it is compressed instead, so the voices arrive on the marker. Until v64 an earlier moment could silently take the lines (Switchyard's bass at 2:00 ended on A2 instead of E2); v64 added a `land-overtaken` diagnostic.
 - **Export look (2026-11-22, PLAN §12 rev 13).** Every visual decision is an export option. Export defaults: no octave guide lines, no beat lines, nothing ahead of the playhead; moment section labels on, marker lines off (owner revised twice); beat lines can show every beat, full height (option). Line colours as in the app by default (owner). HUD fully customisable (checklist; new readouts such as the spread between lowest and highest line).
 - **M7 feel check: passed.** The owner played live mode: "its good" (2026-11-22).

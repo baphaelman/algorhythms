@@ -891,6 +891,7 @@ Video and poster exports share one **Look** panel in the Export dialog that expo
 - **Owner, 2026-11-22 (later):** moments default to labels only (no marker lines); yes/no options are toggle switches (multi-way: see Controls below); beat lines: off (default) / bars and beats as the zoom allows / every beat (full height, never thinned).
 - **Controls (owner, 2026-11-22):** continuous values are sliders (ahead of the playhead 0–100 %: 0 hidden, 100 full; playhead at %); yes/no are toggles; small fixed sets are segmented buttons; no arbitrary dropdowns. The HUD expands in place, one toggle per readout, no popup.
 - **Preview and layout (owner, 2026-11-22):** the dialog shows a live preview of the video frame (with a time slider) or the poster, drawn by the export's own code and redrawn on every change; it stays on screen while the options scroll. The Look options follow Controls (above): sliders, switches and segmented buttons; the HUD expands in place.
+- **Playable preview (owner, 2026-11-23):** the video preview plays: a Play/Pause button beside its time slider, and **Space anywhere in the dialog** starts and stops it (only a text field still types a space; a focused switch or button no longer takes Space there). Integrator calls: it plays with sound through the app's player from the preview time, the frame and slider following the playhead; dragging the slider seeks; it stops at the end, when an export starts, and when the dialog closes (the editor's playhead returns to where it was when the dialog opened).
 
 ### Poster export (revision 12, owner chose it next 2026-11-22)
 - **One renderer.** The poster is `drawScore` with the whole-piece camera (§10, the video's Whole), drawn as if the piece had finished: every line at full opacity (no future ghost), no playhead, no heads or Hz labels, no editor overlays. Section labels as the player shows them. Thickness on (option off), like video.
@@ -909,6 +910,7 @@ Video and poster exports share one **Look** panel in the Export dialog that expo
   - aspect 16:9 (1920×1080, default), 9:16 (1080×1920), 1:1 (1080×1080); 720p-class sizes as a smaller option;
   - 30 fps (default) or 60 fps; bitrate from size and fps (about 8 Mb/s at 1080p30);
   - camera **Follow** (default: Smooth follow with the editor's current zoom window, playhead at 35 %, clamped at the ends as §10) or **Whole piece** (Fit; the playhead moves across a still view). Time stays horizontal in every aspect; 9:16 gets more pitch height;
+  - **Window (owner, 2026-11-23):** with Follow, a slider sets how many seconds the frame shows (log scale, 2 s to the whole piece); it starts at the editor's current zoom, is remembered per viewer, and the preview shows it;
   - theme (current, light or dark), HUD on, thickness on (off draws equal-width lines), future ghost as the player.
   - No editor overlays (selection, markers' editing affordances); section labels drawn as the player shows them.
 - **Memory:** stream the MP4 to disk with `showSaveFilePicker` on Chromium (the muxer writes chunks in order; `moov` patched at the end, or fragmented MP4); elsewhere a Blob from parts, with a warning above about 1 GB estimated.
