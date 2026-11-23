@@ -18,6 +18,7 @@ import { exportFrameCount } from '../audio/offline';
 import { spanFrames, type ExportLoudness, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
 import type { CameraKey, CompiledScore, LineColors, Piece, Seconds } from '../core/types';
+import { autoCameraKeys } from '../render/auto-camera';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
@@ -32,6 +33,7 @@ import {
   drawThumbnail,
   drawVideoMoment,
   thumbnailSize,
+  VIDEO_RATIO,
   videoCamera,
   videoLength,
   videoFrameCount,
@@ -60,8 +62,8 @@ export interface VideoOptions {
   /** Follow: the playhead's place across the frame, 0..1. @default 0.35 */
   followAt?: number;
   /**
-   * `keys`/`auto`: the camera keys (M11.5). @default the piece's (`piece.camera.keys`); none =
-   * Follow.
+   * `keys`/`auto`: the camera keys (M11.5). @default Keys: the piece's (`piece.camera.keys`;
+   * none = Follow); Auto: made from the piece (`autoCameraKeys`, for the section and aspect).
    */
   keys?: readonly CameraKey[];
   theme: 'light' | 'dark';
@@ -564,9 +566,11 @@ export function frameOptions(
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
   if (opts.section) o.section = opts.section;
-  if (opts.camera === 'keys' || opts.camera === 'auto') {
+  if (opts.camera === 'keys') {
     const keys = opts.keys ?? piece.camera?.keys;
     if (keys && keys.length > 0) o.keys = keys;
+  } else if (opts.camera === 'auto') {
+    o.keys = opts.keys ?? autoKeys((compiled ??= compile(piece)), opts);
   }
   if (bookendsOn(opts.bookends)) {
     const tl = videoTimeline(compiled ?? compile(piece), piece.mix, opts);
@@ -574,6 +578,13 @@ export function frameOptions(
     o.length = tl.total / VIDEO_SAMPLE_RATE;
   }
   return o;
+}
+
+/** The Auto camera's keys for a video: its section (when not the whole piece) and aspect. */
+function autoKeys(compiled: CompiledScore, opts: VideoOptions): readonly CameraKey[] {
+  const span =
+    opts.section && !isWholeSpan(opts.section, compiled.duration) ? opts.section : undefined;
+  return autoCameraKeys(compiled, { aspect: VIDEO_RATIO[opts.aspect], ...(span ? { span } : {}) });
 }
 
 /**
@@ -620,7 +631,7 @@ export function previewVideoFrame(
   scale: number,
 ): HudPlacement {
   resetContext(ctx);
-  const fo = frameOptions(piece, opts);
+  const fo = frameOptions(piece, opts, compiled);
   const view = drawVideoFrameAt(ctx, compiled, fo, t, scale);
   return hudPlacement(ctx, compiled, fo.style, view);
 }

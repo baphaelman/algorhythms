@@ -9,9 +9,12 @@ import {
   cameraOfPose,
   cameraPathAt,
   cameraPoseAt,
+  KEY_ASPECT,
   keyOfCamera,
   pieceCameraKeys,
+  shownWindow,
 } from '../../../src/render/camera-path';
+import { VIDEO_RATIO } from '../../../src/render/video';
 import {
   MIN_WINDOW,
   cameraAt,
@@ -152,6 +155,46 @@ describe('cameraPathAt', () => {
   });
 });
 
+describe('aspect (M11.5 C2): a key window is seconds shown at 16:9 of the same height', () => {
+  const k = KEYS[0];
+
+  it('a view of another aspect shows window × aspect / (16/9), the playhead still at its place', () => {
+    expect(KEY_ASPECT).toBe(16 / 9);
+    expect(cameraPathAt(KEYS, 0)).toEqual(cameraPathAt(KEYS, 0, 16 / 9));
+    for (const aspect of [9 / 16, 1, 1400 / 500]) {
+      const cam = cameraPathAt([k], 3, aspect)!;
+      const shown = Math.max(MIN_WINDOW, (k.window * aspect) / (16 / 9));
+      expect(cam.window).toBeCloseTo(shown, 12);
+      expect(shownWindow(k.window, aspect)).toBeCloseTo(shown, 12);
+      expect(cam.start).toBeCloseTo(3 - k.place * shown, 12);
+      expect(cam.pitchRange).toEqual(cameraPathAt([k], 3)!.pitchRange);
+      // keyOfCamera inverts it at the same aspect.
+      const back = keyOfCamera(cam as Required<typeof cam>, 3, undefined, aspect);
+      if (shown > MIN_WINDOW) {
+        expect(back.window).toBeCloseTo(k.window, 9);
+        expect(back.place).toBeCloseTo(k.place, 9);
+      }
+    }
+    // 9:16 shows 0.316× (px per second relative to the height kept); never under 2 s.
+    expect(cameraPathAt([{ ...k, window: 20 }], 0, 9 / 16)!.window).toBeCloseTo(
+      20 * (81 / 256),
+      12,
+    );
+    expect(cameraPathAt([{ ...k, window: 4 }], 0, 9 / 16)!.window).toBe(MIN_WINDOW);
+  });
+
+  it('videoCamera reads the frame’s aspect: 9:16 and 1:1 scale the window, 16:9 is the path', () => {
+    const score = compile(crossfadePiece());
+    for (const aspect of ['16:9', '9:16', '1:1'] as const) {
+      const cam = videoCamera('keys', score, 4, { aspect, keys: KEYS });
+      expect(cam).toEqual(cameraPathAt(KEYS, 4, VIDEO_RATIO[aspect]));
+    }
+    expect(videoCamera('keys', score, 4, { aspect: '9:16', keys: KEYS }).window).toBeLessThan(
+      videoCamera('keys', score, 4, { aspect: '16:9', keys: KEYS }).window,
+    );
+  });
+});
+
 describe('pieceCameraKeys', () => {
   it("is the keys only in mode 'keys' with keys", () => {
     expect(pieceCameraKeys({})).toBeNull();
@@ -181,7 +224,7 @@ describe('video frames on the camera path', () => {
     expect(videoCamera('whole', score, 6, opts)).toEqual(videoCamera('whole', score, 6, none));
   });
 
-  it('frameOptions takes the piece’s keys for Keys and Auto only; a piece without camera has none', () => {
+  it('frameOptions takes the piece’s keys for Keys only (Auto makes its own, C2); a piece without camera has none', () => {
     const base = {
       aspect: '16:9' as const,
       size: '720' as const,
@@ -192,7 +235,8 @@ describe('video frames on the camera path', () => {
     };
     const withKeys: Piece = { ...piece, camera: { mode: 'keys', keys: KEYS } };
     expect(frameOptions(withKeys, { ...base, camera: 'keys' }).keys).toBe(KEYS);
-    expect(frameOptions(withKeys, { ...base, camera: 'auto' }).keys).toBe(KEYS);
+    expect(frameOptions(withKeys, { ...base, camera: 'auto' }).keys).not.toBe(KEYS);
+    expect(frameOptions(withKeys, { ...base, camera: 'auto', keys: KEYS }).keys).toBe(KEYS);
     expect(frameOptions(withKeys, { ...base, camera: 'follow' })).not.toHaveProperty('keys');
     expect(frameOptions(piece, { ...base, camera: 'keys' })).not.toHaveProperty('keys');
     // The camera field changes nothing for Follow and Whole.

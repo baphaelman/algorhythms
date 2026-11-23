@@ -28,8 +28,8 @@ export type VideoAspect = '16:9' | '9:16' | '1:1';
 /** The frame's short side, px (§12: 1440 and 2160 = 4K added in M11). */
 export type VideoSize = '720' | '1080' | '1440' | '2160';
 /**
- * `keys`: the piece's camera path (`VideoCameraOptions.keys`, M11.5); `auto`: keys made from the
- * piece (TODO(C2): until then, as `keys` when keys are given, else Follow).
+ * `keys`: the piece's camera path (`VideoCameraOptions.keys`, M11.5); `auto`: the same, with keys
+ * made from the piece (auto-camera.ts; the app's `frameOptions` passes them).
  */
 export type VideoCameraMode = 'follow' | 'whole' | 'keys' | 'auto';
 
@@ -50,6 +50,13 @@ export function videoSize(aspect: VideoAspect, size: VideoSize): { width: number
  * 400×711 (2.7×) and 1:1 as 440×440 (2.45×), so text stays legible on a phone in the narrow ones.
  */
 const LAYOUT_W: Record<VideoAspect, number> = { '16:9': 2560 / 3, '9:16': 400, '1:1': 440 };
+
+/** Width / height of each aspect (a camera key's window is measured at 16:9; camera-path.ts). */
+export const VIDEO_RATIO: Record<VideoAspect, number> = {
+  '16:9': 16 / 9,
+  '9:16': 9 / 16,
+  '1:1': 1,
+};
 
 /** The layout size and pixel ratio a frame of this aspect and size is drawn at. */
 export function videoLayout(
@@ -90,7 +97,7 @@ export interface VideoCameraOptions {
    * stays inside it, as it stays inside the piece.
    */
   section?: TimeSpan;
-  /** `keys`/`auto`: the camera keys (`cameraPathAt`); none = Follow. */
+  /** `keys`/`auto`: the camera keys (`cameraPathAt`, windows at 16:9); none = Follow. */
   keys?: readonly CameraKey[];
 }
 
@@ -105,9 +112,9 @@ export function videoSpan(duration: Seconds, section?: TimeSpan): TimeSpan {
 /**
  * The camera at time t, from t alone (no state between frames). Follow: Smooth follow, the
  * playhead at `followAt` (35 %) with `start` in [0, duration − window]. Whole: the piece fitted. The vertical
- * framing is the same for every frame. Keys (and Auto): the camera path at t (`cameraPathAt`;
- * the start may be < 0; window and pitch from the keys, a `pitchRange` option ignored); without
- * keys, Follow.
+ * framing is the same for every frame. Keys (and Auto): the camera path at t (`cameraPathAt`
+ * at the frame's aspect; the start may be < 0; window and pitch from the keys, a `pitchRange`
+ * option ignored); without keys, Follow.
  */
 export function videoCamera(
   mode: VideoCameraMode,
@@ -116,7 +123,7 @@ export function videoCamera(
   opts: VideoCameraOptions,
 ): CameraState {
   if ((mode === 'keys' || mode === 'auto') && opts.keys) {
-    const cam = cameraPathAt(opts.keys, t);
+    const cam = cameraPathAt(opts.keys, t, VIDEO_RATIO[opts.aspect]);
     if (cam) return cam;
   }
   const span = videoSpan(compiled.duration, opts.section);

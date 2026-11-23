@@ -9,12 +9,26 @@
  * playhead). The start is t − place · window, so it may be below 0: blank paper before the
  * piece, with the first notes appearing at the playhead's place. Pure in t: no state between
  * frames, like Follow.
+ *
+ * Aspect (integrator, M11.5 C2): a key's window is the seconds shown in a 16:9 frame of the same
+ * height. A view `aspect` (width / height) wide shows window · aspect / (16/9), at least
+ * MIN_WINDOW: px per second relative to the height stay the same, so 9:16 shows fewer seconds and
+ * a wide editor view more.
  */
 
 import { bezierOf, ease, easeCodeOf } from '../core/ease';
 import type { CameraKey, EaseRef, Piece, Seconds } from '../core/types';
 import { MIN_WINDOW } from './camera';
 import type { CameraState } from './types';
+
+/** The aspect (width / height) a key's window is measured at. */
+export const KEY_ASPECT = 16 / 9;
+
+/** Seconds a view `aspect` wide shows for a key window (see the module comment). */
+export function shownWindow(window: Seconds, aspect: number = KEY_ASPECT): Seconds {
+  const f = Number.isFinite(aspect) && aspect > 0 ? aspect / KEY_ASPECT : 1;
+  return Math.max(MIN_WINDOW, window * f);
+}
 
 /** A key's ease when it names none. */
 export const DEFAULT_KEY_EASE: EaseRef = 'smootherstep';
@@ -82,12 +96,20 @@ export function cameraPoseAt(keys: readonly CameraKey[], t: Seconds): CameraPose
   };
 }
 
-/** The camera of a pose with the playhead at t: start = t − place · window, may be < 0. */
-export function cameraOfPose(pose: CameraPose, t: Seconds): CameraState {
+/**
+ * The camera of a pose with the playhead at t, on a view `aspect` wide: start = t − place ·
+ * shown window, may be < 0.
+ */
+export function cameraOfPose(
+  pose: CameraPose,
+  t: Seconds,
+  aspect: number = KEY_ASPECT,
+): CameraState {
   const half = pose.range / 2;
+  const window = shownWindow(pose.window, aspect);
   return {
-    start: t - pose.place * pose.window,
-    window: pose.window,
+    start: t - pose.place * window,
+    window,
     pitchRange: [pose.pitch - half, pose.pitch + half],
     free: true,
   };
@@ -95,23 +117,33 @@ export function cameraOfPose(pose: CameraPose, t: Seconds): CameraState {
 
 /**
  * The camera at time t from a piece's keys (see the module comment); null without keys (the
- * caller falls back to Follow). `free` is set, so `cameraAt` keeps a start below 0.
+ * caller falls back to Follow), on a view `aspect` (width / height) wide. `free` is set, so
+ * `cameraAt` keeps a start below 0.
  */
-export function cameraPathAt(keys: readonly CameraKey[], t: Seconds): CameraState | null {
+export function cameraPathAt(
+  keys: readonly CameraKey[],
+  t: Seconds,
+  aspect: number = KEY_ASPECT,
+): CameraState | null {
   const pose = cameraPoseAt(keys, t);
-  return pose ? cameraOfPose(pose, t) : null;
+  return pose ? cameraOfPose(pose, t, aspect) : null;
 }
 
-/** A key from a camera seen at time t (the inverse of `cameraOfPose`; for editing in C3). */
+/**
+ * A key from a camera seen at time t on a view `aspect` wide (the inverse of `cameraOfPose`
+ * above MIN_WINDOW; for editing in C3).
+ */
 export function keyOfCamera(
   cam: { start: Seconds; window: Seconds; pitchRange: [number, number] },
   t: Seconds,
   easeRef?: EaseRef,
+  aspect: number = KEY_ASPECT,
 ): CameraKey {
   const [lo, hi] = cam.pitchRange;
+  const f = Number.isFinite(aspect) && aspect > 0 ? aspect / KEY_ASPECT : 1;
   const k: CameraKey = {
     at: t,
-    window: cam.window,
+    window: cam.window / f,
     place: (t - cam.start) / cam.window,
     pitch: (lo + hi) / 2,
     range: hi - lo,
@@ -121,9 +153,9 @@ export function keyOfCamera(
 }
 
 /**
- * The keys a piece's camera path uses, or null when it has none to follow: no `camera`, mode
- * `follow`, or `keys` without keys. TODO(C2): `auto` makes keys from the piece; until then it
- * reads as Follow.
+ * The stored keys a piece's camera path uses in mode `keys`, or null: no `camera`, mode `follow`,
+ * `keys` without keys, or `auto` (its keys come from the compiled piece: auto-camera.ts
+ * `pieceCameraPath`).
  */
 export function pieceCameraKeys(piece: Pick<Piece, 'camera'>): readonly CameraKey[] | null {
   const c = piece.camera;
