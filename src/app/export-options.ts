@@ -28,6 +28,17 @@ import {
 } from '../render/section';
 import type { HudItem } from '../render/types';
 import { MIN_WINDOW } from '../render/camera';
+import { tokensOf } from '../render/palettes';
+import {
+  DEFAULT_COLOURS,
+  coloursFromOld,
+  coloursLook,
+  lineColorsOf,
+  parseColours,
+  parseSchemes,
+  type ColourScheme,
+  type ColoursForm,
+} from './export-colours';
 import {
   videoWindow as videoWindowOf,
   videoWindowAt16x9,
@@ -183,26 +194,28 @@ export interface ExportForm {
   hudLayout: HudLayout;
   /** The Look shared by video and poster (§12 "Export look"). */
   look: LookForm;
+  /** Colour schemes the viewer saved (§12 Colours), oldest first. */
+  colourSchemes: readonly ColourScheme[];
 }
 
 export type PosterFormat = 'png' | 'svg';
 
-/** Line colours in the dialog: the app's mode and voice colours ('app'), or an override. */
-export type LookColors = 'app' | LineColors;
-
-/** The dialog's Look: `Look` with a 'current' theme, no HUD (per format) and no unset ink. */
-export interface LookForm extends Omit<Look, 'theme' | 'hud' | 'hudLayout' | 'lineInk' | 'colors'> {
+/**
+ * The dialog's Look: `Look` with a 'current' theme, no HUD (per format), and the Colours group's
+ * form in place of the line colours (§12 Colours; lines 'app' = as the app draws now).
+ */
+export interface LookForm extends Omit<
+  Look,
+  'theme' | 'hud' | 'hudLayout' | 'lineInk' | 'colors' | 'colours'
+> {
   theme: ExportVideoTheme;
-  /** 'app' = as the app draws now (owner, 2026-11-22). */
-  colors: LookColors;
-  /** Colour of 'ink' lines and the 'custom' fallback (#rrggbb); null = the theme's ink. */
-  lineInk: string | null;
+  colours: ColoursForm;
 }
 
-/** EXPORT_LOOK as the dialog holds it (theme: current, line colours as in the app). */
+/** EXPORT_LOOK as the dialog holds it (theme: current, every colour the theme's). */
 export const DEFAULT_LOOK_FORM: LookForm = (() => {
-  const { hud: _h, lineInk: _i, theme: _t, colors: _c, ...rest } = EXPORT_LOOK;
-  return { ...rest, theme: 'current', colors: 'app', lineInk: null };
+  const { hud: _h, lineInk: _i, theme: _t, colors: _c, colours: _o, ...rest } = EXPORT_LOOK;
+  return { ...rest, theme: 'current', colours: DEFAULT_COLOURS };
 })();
 
 export const POSTER_FORMATS: readonly { id: PosterFormat; label: string }[] = [
@@ -280,13 +293,6 @@ export const LOOK_FUTURES: readonly { id: LookFuture; label: string }[] = [
   { id: 'full', label: 'Full' },
 ];
 
-export const LOOK_COLORS: readonly { id: LookColors; label: string }[] = [
-  { id: 'app', label: 'As in the app' },
-  { id: 'pitch', label: 'By pitch' },
-  { id: 'ink', label: 'Ink' },
-  { id: 'custom', label: 'Custom' },
-];
-
 export const LOOK_WIDTHS: readonly { id: LookLineWidth; label: string }[] = [
   { id: 'thin', label: 'Thin' },
   { id: 'normal', label: 'Normal' },
@@ -344,6 +350,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   posterHud: [],
   hudLayout: {},
   look: DEFAULT_LOOK_FORM,
+  colourSchemes: [],
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -669,28 +676,42 @@ export interface LookAppContext {
   dark: boolean;
   /** The app's line colours now (`view.colors`), for 'app'. */
   colors: LineColors;
+  /** Each voice's part by pool index (per-part line colours). */
+  parts?: readonly (string | undefined)[];
 }
 
 /**
  * The renderer's Look for a video or poster export of this form. 'app' line colours resolve to
  * the app's mode with the theme's ink, as the app draws them (voice colours come from the piece).
+ * The Colours group's choices go in `colours` only when one differs from the theme's.
  */
 export function lookOf(form: ExportForm, kind: 'video' | 'poster', app: LookAppContext): Look {
-  const { theme, lineInk, colors, ...rest } = form.look;
+  const { theme, colours, ...rest } = form.look;
+  const name = theme === 'current' ? (app.dark ? 'dark' : 'light') : theme;
+  const transparent = kind === 'poster' && form.look.transparent;
   const look: Look = {
     ...rest,
-    theme: theme === 'current' ? (app.dark ? 'dark' : 'light') : theme,
-    transparent: kind === 'poster' && form.look.transparent,
-    colors: colors === 'app' ? app.colors : colors,
+    theme: name,
+    transparent,
+    colors: lineColorsOf(colours.lines, app.colors),
     hud: hudInOrder(kind === 'poster' ? form.posterHud : form.videoHud),
     hudLayout: form.hudLayout,
   };
-  if (lineInk && colors !== 'app') look.lineInk = lineInk;
+  const c = coloursLook(colours, {
+    tokens: tokensOf(name),
+    dark: name === 'dark',
+    ...(app.parts ? { parts: app.parts } : {}),
+  });
+  if (c) look.colours = c;
+  if (c?.lines?.kind === 'one') look.lineInk = c.lines.color;
   return look;
 }
 
+/** Each voice's part, for per-part colours. */
+const partsOf = (piece: Piece) => piece.voices.map((v) => v.part);
+
 export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
-  const look = lookOf(form, 'video', ctx);
+  const look = lookOf(form, 'video', { ...ctx, parts: partsOf(piece) });
   const o: VideoOptions = {
     aspect: form.videoAspect,
     size: form.videoSize,
@@ -721,7 +742,7 @@ export function posterOptions(
   piece: Piece,
   ctx: LookAppContext & SectionContext,
 ): PosterOptions {
-  const look = lookOf(form, 'poster', ctx);
+  const look = lookOf(form, 'poster', { ...ctx, parts: partsOf(piece) });
   const section = sectionOf(form, ctx);
   return {
     ...(section ? { section, pieceRange: form.posterPieceRange } : {}),
@@ -753,8 +774,10 @@ export const EXPORT_PREFS_KEY = 'algorhythms.export';
  * predates that: its 'pitch' was the old default, not a choice, so it loads as 'app'.
  * 3: `hudLayout` (placed readouts). An older record's ordered lists load with an empty layout:
  * each readout in its default slot, the list's two columns as before.
+ * 4: the Look's `colours` (§12 Colours) and the saved `colourSchemes`. An older record's line
+ * colours and ink load as the Colours group's Lines (Ink and Custom as One colour).
  */
-export const EXPORT_PREFS_VERSION = 3;
+export const EXPORT_PREFS_VERSION = 4;
 
 /** The form fields remembered per viewer. */
 const REMEMBERED = [
@@ -774,6 +797,7 @@ const REMEMBERED = [
   'posterHud',
   'hudLayout',
   'look',
+  'colourSchemes',
 ] as const satisfies readonly (keyof ExportForm)[];
 
 export type ExportPrefs = Partial<Pick<ExportForm, (typeof REMEMBERED)[number]>>;
@@ -815,7 +839,6 @@ export function loadExportPrefs(storage?: PrefsStorage | null): ExportPrefs {
 
 const oneOf = <T>(list: readonly { id: T }[], v: unknown): v is T => list.some((o) => o.id === v);
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
-const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Validates stored prefs field by field (unknown or bad values are left out). */
 export function parsePrefs(raw: unknown): ExportPrefs {
@@ -859,11 +882,17 @@ export function parsePrefs(raw: unknown): ExportPrefs {
     // Before v3 the lists' order was the layout: empty = their default slots.
     p.hudLayout = {};
   }
+  const v = typeof r.v === 'number' ? r.v : 1;
   if (r.look && typeof r.look === 'object') {
-    p.look = parseLook(r.look as Record<string, unknown>);
-    // Before v2 'pitch' was the unchosen default (ink and custom were real choices).
-    if (!(typeof r.v === 'number' && r.v >= 2) && p.look.colors === 'pitch') p.look.colors = 'app';
+    const look = r.look as Record<string, unknown>;
+    p.look = parseLook(look);
+    if (v < 4) {
+      // Before v2 'pitch' was the unchosen default (ink and custom were real choices).
+      const colors = v < 2 && look.colors === 'pitch' ? 'app' : look.colors;
+      p.look.colours = coloursFromOld(colors, look.lineInk);
+    }
   }
+  if (Array.isArray(r.colourSchemes)) p.colourSchemes = parseSchemes(r.colourSchemes);
   return p;
 }
 
@@ -910,10 +939,7 @@ function parseLook(r: Record<string, unknown>): LookForm {
   // The Ahead slider's ends are Hidden and Full: a dimmed 0 or 1 reads as those.
   if (l.future === 'dimmed' && l.futureOpacity <= 0) l.future = 'hidden';
   if (l.future === 'dimmed' && l.futureOpacity >= 1) l.future = 'full';
-  if (oneOf(LOOK_COLORS, r.colors)) l.colors = r.colors;
-  if (r.lineInk === null || (typeof r.lineInk === 'string' && HEX.test(r.lineInk))) {
-    l.lineInk = r.lineInk;
-  }
+  if (r.colours && typeof r.colours === 'object') l.colours = parseColours(r.colours);
   if (oneOf(LOOK_WIDTHS, r.lineWidth)) l.lineWidth = r.lineWidth;
   else if (typeof r.lineWidth === 'number' && Number.isFinite(r.lineWidth)) {
     l.lineWidth = Math.min(LINE_SCALE_MAX, Math.max(LINE_SCALE_MIN, r.lineWidth));

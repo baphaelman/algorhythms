@@ -64,9 +64,7 @@ describe('look-controls', () => {
       thickness: true,
       pulse: true,
       heads: ['dots', 'rings', 'hz'],
-      colors: 'app',
       width: 1,
-      background: false,
     });
   });
 
@@ -74,8 +72,8 @@ describe('look-controls', () => {
     const by = (t: LookControl['type']) =>
       LOOK_CONTROLS.filter((c) => c.type === t).map((c) => c.id);
     expect(by('slider')).toEqual(['future', 'follow-at', 'width']);
-    expect(by('toggle')).toEqual(['playhead', 'level', 'thickness', 'pulse', 'background']);
-    expect(by('segments')).toEqual(['guides', 'beats', 'moments', 'colors']);
+    expect(by('toggle')).toEqual(['playhead', 'level', 'thickness', 'pulse']);
+    expect(by('segments')).toEqual(['guides', 'beats', 'moments']);
     expect(by('flags')).toEqual(['heads']);
     for (const c of LOOK_CONTROLS) {
       if (c.type !== 'segments') continue;
@@ -116,10 +114,8 @@ describe('look-controls', () => {
     expect(flip(f0, 'thickness', false).look.thickness).toBe(false);
     expect(flip(f0, 'pulse', false).look.pulseMarks).toBe(false);
     expect(flip(f0, 'playhead', false).look.playhead).toBe(false);
-    expect(flip(f0, 'background', true).look.transparent).toBe(true);
     expect(pick(f0, 'beats', 'auto').look.beats).toBe('auto');
     expect(pick(f0, 'beats', 'every').look.beats).toBe('every');
-    expect(pick(f0, 'colors', 'custom').look.colors).toBe('custom');
     // Heads: each flag is its own field, so every combination is reachable.
     const heads = ctl('heads');
     expect(heads.type === 'flags' && heads.flags.map((x) => x.key)).toEqual([
@@ -231,7 +227,7 @@ describe('look-controls', () => {
       expect(ids('poster')).not.toContain(id);
       expect(ids('video')).toContain(id);
     }
-    expect(ids('poster')).toContain('background');
+    expect(ids('poster')).not.toContain('background'); // in the Colours group
   });
 
   it('hudSummary counts readouts', () => {

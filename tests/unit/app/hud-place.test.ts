@@ -106,12 +106,12 @@ describe('remembered layout', () => {
     }
   }
 
-  it('round-trips at version 3, dropping bad positions', () => {
-    expect(EXPORT_PREFS_VERSION).toBe(3);
+  it('round-trips (version 3 and later), dropping bad positions', () => {
+    expect(EXPORT_PREFS_VERSION).toBeGreaterThanOrEqual(3);
     const st = new Mem();
     const hudLayout = { chord: { anchor: 'tr' as const, x: -0.1, y: 0.05 } };
     saveExportPrefs({ ...DEFAULT_EXPORT_FORM, hudLayout }, st);
-    expect(JSON.parse(st.getItem(EXPORT_PREFS_KEY)!).v).toBe(3);
+    expect(JSON.parse(st.getItem(EXPORT_PREFS_KEY)!).v).toBe(EXPORT_PREFS_VERSION);
     expect(loadExportPrefs(st).hudLayout).toEqual(hudLayout);
     expect(
       parsePrefs({

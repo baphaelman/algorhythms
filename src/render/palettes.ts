@@ -118,6 +118,8 @@ export interface PaletteInput {
   customColors?: readonly (string | undefined)[];
   /** Replaces the theme ink as the line colour ('ink', and 'custom' fallback). */
   lineInk?: string;
+  /** Export colours: `voiceFirst` puts voice colours over the pitch gradient. */
+  paint?: { voiceFirst?: boolean };
 }
 
 /**
@@ -130,4 +132,13 @@ export function lineColor(p: PaletteInput, index: number): string | null {
   const ink = p.lineInk ?? p.tokens.ink;
   if (p.colors === 'custom') return p.customColors?.[index] || ink;
   return ink;
+}
+
+/**
+ * The stroke of voice `index`: the pitch gradient when there is one (a voice's own colour first
+ * when the export colours say so), else its solid colour, else the ink.
+ */
+export function strokeOf<G>(p: PaletteInput, gradient: G | null, index: number): G | string {
+  if (gradient) return (p.paint?.voiceFirst && p.customColors?.[index]) || gradient;
+  return lineColor(p, index) ?? p.tokens.ink;
 }

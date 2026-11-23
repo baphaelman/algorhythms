@@ -4,6 +4,7 @@
  */
 
 import type { CompiledScore, LineColors, MomentId, Seconds } from '../core/types';
+import type { StylePaint } from './colours';
 import type { HudLayout } from './hud-layout';
 
 /** The colour tokens of one theme (the prototype's `--paper`, `--ink`, ...; §11.5). */
@@ -159,6 +160,11 @@ export interface ScoreStyle {
   lineScale?: number;
   /** Colour of 'ink' lines and the fallback of 'custom' ones. @default tokens.ink */
   lineInk?: string;
+  /**
+   * Export colours (§12 "Exports you can shape" → Colours): the background, own pitch stops and
+   * each element's colour. Absent (or any field absent): the tokens as before.
+   */
+  paint?: StylePaint;
   /**
    * Moment labels by id. A labelled moment gets a full-height marker with its label (a "section");
    * an unlabelled one gets a short tick. Positions come from `CompiledScore.momentSpans`.

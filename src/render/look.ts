@@ -7,6 +7,7 @@
 
 import type { LineColors, Piece } from '../core/types';
 import { DEFAULT_FUTURE_OPACITY } from './camera';
+import { stylePaint, type LookColours } from './colours';
 import { DEFAULT_HUD } from './hud';
 import type { HudLayout } from './hud-layout';
 import { tokensOf } from './palettes';
@@ -70,6 +71,12 @@ export interface Look {
   hud: readonly HudItem[];
   /** Where each readout sits (§12 "Exports you can shape"); absent = today's two columns. */
   hudLayout?: HudLayout;
+  /**
+   * The export colours (§12 "Exports you can shape" → Colours): background, lines, each
+   * element's colour. Absent (or a field absent) = the theme's as before; `lines` replaces
+   * `colors` and `lineInk`.
+   */
+  colours?: LookColours;
 }
 
 /** Line width factor per option. */
@@ -186,6 +193,19 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
   if (scale !== 1) style.lineScale = scale;
   if (look.lineInk) style.lineInk = look.lineInk;
   if (ctx.customColors) style.customColors = ctx.customColors;
+  const c = look.colours;
+  const paint = stylePaint(c, look.transparent);
+  if (paint) style.paint = paint;
+  const lines = c?.lines;
+  if (lines) {
+    style.colors = lines.kind === 'pitch' ? 'pitch' : 'custom';
+    delete style.lineInk;
+    if (lines.kind === 'one') style.lineInk = lines.color;
+    if (lines.kind === 'part') {
+      const own = ctx.customColors;
+      style.customColors = lines.colors.map((col, i) => own?.[i] || col);
+    }
+  }
   if (ctx.labels) style.labels = ctx.labels;
   if (ctx.markerTimes) style.markerTimes = ctx.markerTimes;
   if (ctx.pieceName !== undefined) style.pieceName = ctx.pieceName;

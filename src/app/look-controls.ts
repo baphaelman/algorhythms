@@ -16,7 +16,6 @@ import {
   HUD_CHOICES,
   followAtOf,
   type ExportForm,
-  type LookColors,
   type LookForm,
 } from './export-options';
 
@@ -75,7 +74,6 @@ export type LookControl = LookSegments | LookToggle | LookSlider | LookFlags;
 
 const BOTH: readonly LookKind[] = ['video', 'poster'];
 const VIDEO: readonly LookKind[] = ['video'];
-const POSTER: readonly LookKind[] = ['poster'];
 
 const look = (form: ExportForm, p: Partial<LookForm>): Partial<ExportForm> => ({
   look: { ...form.look, ...p },
@@ -180,14 +178,10 @@ const widthControl: LookSlider = {
   text: factor,
 };
 
-const COLORS: readonly { id: LookColors; label: string }[] = [
-  { id: 'app', label: 'App' },
-  { id: 'pitch', label: 'By pitch' },
-  { id: 'ink', label: 'Ink' },
-  { id: 'custom', label: 'Custom' },
-];
-
-/** The Look's controls in dialog order (Theme and the HUD are separate controls). */
+/**
+ * The Look's controls in dialog order (Theme, the HUD and the Colours group, which holds line
+ * colours and the poster's transparent background, are separate controls).
+ */
 export const LOOK_CONTROLS: readonly LookControl[] = [
   segments(
     'guides',
@@ -240,15 +234,7 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
       { id: 'hz', label: 'Hz', key: 'hzLabels' },
     ],
   },
-  segments(
-    'colors',
-    'Line colours',
-    BOTH,
-    COLORS.map((c) => ({ value: c.id, label: c.label, set: { colors: c.id } })),
-    (l) => l.colors,
-  ),
   widthControl,
-  onOff('background', 'Transparent background', 'transparent', POSTER),
 ];
 
 /** The controls a format shows. */
