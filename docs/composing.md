@@ -85,6 +85,13 @@ Five pieces in `scripts/compositions/` (helpers in `kit.ts`), built by `build.mj
 | Little Round | A three-voice round: one tune pasted onto three parts two bars apart; entries are births that swoop up out of the line below; custom colours show the braid | 33 | 842 |
 | Moonwater | E minor, 6/8 at 156 eighths a minute: flute lead over a four-voice marimba arpeggio (one `together` pulse per voice, order 0 1 2 3 2 1) and an organ bass. Intro, A, A′, B, A′, outro (40 bars, 1′32″). Hand voicings, as in §1; ported from a gallery piece (2026-11-22) | 69 | 1,370 |
 | Sunday Lane | G major, 100 bpm: a custom `whistle` timbre (near-sine + narrow breath noise, scooped notes, late vibrato) over a Travis-picked guitar (one `order` pulse, `order 1 3 2 4`), a plucked upright bass (a `tune`; repeats re-strike) and glockenspiel answers in the tune's rests; glass pad from the bridge; a second whistle harmonises A″. Intro, A, A′, B, A″, outro (42 bars, 1′43″). Ported from a gallery piece (2026-11-22). Its link is over the limit by the owner's choice | 84 | 2,534 |
+| Night Sleeper | Experimental (2026-11-23; pinned first in the menu). No song: the harmony is chord moves. One note blooms to E♭maj7 (lydian), `spread` 1.5 opens it, `shift` −4 planes it down a third twice (E♭ B G), a mirror (`spread` −1, stagger 0) sends every line through one point and lands on B lydian, `shift` +4 brings it home, it blooms to seven and folds 7 → 5 → 3 → 1. A celesta music box (`order` pulses that restart each bar), rail-joint upright pulses, a bell on each chord's third, a crooned tune per key. Transitions 3–6 s, each sized to its gesture. Ported from a gallery piece. Its link is over the limit by the owner's choice | 99 | 3,378 |
+
+**The experimental direction (Night Sleeper, 2026-11-23).** The owner liked a chord-move "dream" inside a song more than the song around it, and asked for that flavour throughout. What made it work:
+- Harmony made of moves, each with its own glide length (blooms 3–4 s staggered from the centre, planes 3 s with no stagger, a 5 s yawn), all landing on downbeats.
+- One crossing, all lines through one point: a mirror with stagger 0, jitter 0 and one length. A lydian maj7♯11 voicing mirrored about its middle line (the major seventh) lands on the lydian chord a major third up, so a fold can also modulate.
+- Something steady under the moves: a pulse (rail joints), an arpeggio that plays whatever chord is there (a music box), a bell on arrivals.
+- Lydian chords hold a semitone under the root and the fifth (the major seventh, the ♯11), so tunes, bells and doublings avoid singing those against them.
 
 **What works well**
 - Numerals with `close` voicing in a register give good voice leading for free, and a `key` moment carries them.
