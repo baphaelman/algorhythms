@@ -18,8 +18,14 @@ const read = (dir: string): [string, string][] =>
     .sort()
     .map((f) => [f, readFileSync(join(dir, f), 'utf8')]);
 
-/** Owner, 2026-11-22: Sunday Lane ships whole (about 2,530 characters). */
-const LONG_OK = new Set(['examples/compositions/sunday-lane.algorhythms.json']);
+/**
+ * Owner, 2026-11-22: Sunday Lane ships whole (about 2,530 characters). 2026-11-23: Night Sleeper,
+ * added at the owner's request with its six custom timbres (about 3,380).
+ */
+const LONG_OK = new Set([
+  'examples/compositions/sunday-lane.algorhythms.json',
+  'examples/compositions/night-sleeper.algorhythms.json',
+]);
 
 const pieces: [string, string][] = ['examples', 'examples/compositions'].flatMap((dir) =>
   read(join(ROOT, dir)).map(([f, t]): [string, string] => [`${dir}/${f}`, t]),
