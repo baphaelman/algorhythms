@@ -895,8 +895,12 @@ test('Follow’s Window slider sets the seconds shown; the preview and the expor
   let n = await drawn(page);
   const slider = page.getByTestId('export-window');
   const value = page.getByTestId('export-window-value');
-  // Starts at the editor's zoom (10 s at 16:9); no way back shown yet.
+  // Starts at the editor's zoom (10 s at 16:9), on its tick; no button.
   await expect(value).toHaveText('10 s');
+  await expect(page.getByTestId('export-window-tick')).toHaveAttribute(
+    'aria-label',
+    'Editor’s zoom (10 s)',
+  );
   await expect(page.getByTestId('export-window-reset')).toHaveCount(0);
   const before = (await previewReq(page))!;
   expect(before.kind === 'video' && before.options.window).toBe(10);
@@ -922,9 +926,84 @@ test('Follow’s Window slider sets the seconds shown; the preview and the expor
   await choose(page, 'export-camera', 'Whole piece');
   await expect(slider).toHaveCount(0);
   await choose(page, 'export-camera', 'Follow');
-  await tap(page, 'export-window-reset');
+  const tick = Math.round(
+    Number(await page.getByTestId('export-window-tick').getAttribute('data-at')) * 1000,
+  );
+  await guarded(page, 'fill export-window', () => slider.fill(String(tick)));
   await choose(page, 'export-aspect', '16:9');
   await expect(value).toHaveText('10 s');
+});
+
+/** The Window slider's value and its editor-zoom tick's track position (0..1000). */
+async function windowState(page: Page): Promise<{ value: number; tick: number; text: string }> {
+  const tick = Number(await page.getByTestId('export-window-tick').getAttribute('data-at'));
+  return {
+    value: Number(await page.getByTestId('export-window').inputValue()),
+    tick: Math.round(tick * 1000),
+    text: await page.getByTestId('export-window-value').innerText(),
+  };
+}
+
+test('Window: the editor’s zoom is a tick the slider snaps to when dragged close', async ({
+  page,
+}) => {
+  await setZoom(page, 20);
+  await openExport(page);
+  await pickVideo(page);
+  const slider = page.getByTestId('export-window');
+  const tickEl = page.getByTestId('export-window-tick');
+  const value = page.getByTestId('export-window-value');
+  for (const aspect of ['16:9', '9:16', '1:1'] as const) {
+    await choose(page, 'export-aspect', aspect);
+    const s0 = await windowState(page);
+    expect(s0.value).toBe(s0.tick); // starts on the tick
+    await expect(tickEl).toHaveAttribute('aria-label', `Editor’s zoom (${s0.text})`);
+    await expect(tickEl).toHaveAttribute('title', `Editor’s zoom (${s0.text})`);
+    // The tick sits under the thumb's place for that value (thumb centre ≈ 8 px from each end).
+    const sb = (await slider.boundingBox())!;
+    const tb = (await tickEl.boundingBox())!;
+    const expectX = sb.x + 8 + (sb.width - 16) * (s0.tick / 1000);
+    expect(Math.abs(tb.x + tb.width / 2 - expectX)).toBeLessThan(3);
+    expect(tb.y).toBeGreaterThanOrEqual(sb.y + sb.height / 2);
+
+    // Free away from the tick.
+    const far = s0.tick > 500 ? s0.tick - 200 : s0.tick + 200;
+    const dir = Math.sign(s0.tick - far);
+    await guarded(page, 'fill export-window', () => slider.fill(String(far)));
+    await expect(slider).toHaveValue(String(far));
+    const near = s0.tick - dir * 50; // 5 %: still free
+    await guarded(page, 'fill export-window', () => slider.fill(String(near)));
+    await expect(slider).toHaveValue(String(near));
+    // Within 3 %, moving toward it: snaps.
+    await guarded(page, 'fill export-window', () => slider.fill(String(s0.tick - dir * 20)));
+    await expect(slider).toHaveValue(String(s0.tick));
+    await expect(value).toHaveText(s0.text);
+    // A keyboard step leaves the tick; a step back snaps onto it.
+    await slider.focus();
+    await page.keyboard.press(dir > 0 ? 'ArrowRight' : 'ArrowLeft');
+    await expect(slider).toHaveValue(String(s0.tick + dir));
+    await page.keyboard.press(dir > 0 ? 'ArrowLeft' : 'ArrowRight');
+    await expect(slider).toHaveValue(String(s0.tick));
+  }
+
+  // Back at 16:9, still on the tick: the form holds no window of its own.
+  await choose(page, 'export-aspect', '16:9');
+  await expect(value).toHaveText('20 s');
+  const on = await windowState(page);
+  expect(on.value).toBe(on.tick);
+
+  // A pointer drag near the tick snaps too; dragged far it stays free.
+  const sb = (await slider.boundingBox())!;
+  const y = sb.y + sb.height / 2;
+  const xAt = (v: number) => sb.x + 8 + (sb.width - 16) * (v / 1000);
+  await page.mouse.move(xAt(on.tick), y);
+  await page.mouse.down();
+  await page.mouse.move(xAt(on.tick - 250), y, { steps: 5 });
+  const away = await windowState(page);
+  expect(Math.abs(away.value - (on.tick - 250))).toBeLessThan(15);
+  await page.mouse.move(xAt(on.tick - 15), y, { steps: 5 });
+  await page.mouse.up();
+  await expect(slider).toHaveValue(String(on.tick));
 });
 
 test('the preview stays in view while the options scroll (desktop and phone)', async ({ page }) => {
@@ -1097,13 +1176,16 @@ test('HUD: reduced motion opens it at once; otherwise it animates its height', a
   // In between heights on the way to the full one.
   const full = swoop[swoop.length - 1];
   expect(full).toBeGreaterThan(200);
-  expect(swoop.some((y) => y > 0 && y < full)).toBe(true);
+  expect(
+    swoop.some((y) => y > 0 && y < full),
+    String(swoop),
+  ).toBe(true);
   await tap(page, 'look-hud-button');
   await expect(page.getByTestId('look-hud')).toBeHidden();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await tap(page, 'look-hud-button');
   const instant = await heights();
-  expect(instant.every((y) => y === full)).toBe(true);
+  expect(instant, `full ${full}`).toEqual(instant.map(() => full));
 });
 
 test('renders without storage (localStorage throws)', async ({ page }) => {

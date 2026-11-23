@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { create } from 'zustand';
@@ -44,10 +45,10 @@ import {
   posterCapped,
   posterPixels,
   posterPreset,
-  posterSideMax,
   resetLook,
   saveExportPrefs,
   sliderToFollowWindow,
+  windowSnaps,
   windowText,
   type ExportForm,
   type LookForm,
@@ -942,8 +943,9 @@ function ExportPreview({
 }
 
 /**
- * Follow's Window (PLAN.md §12 "Video export"): seconds the frame shows at the chosen aspect, log
- * scale from 2 s to the whole piece; it starts at the editor's zoom, to which a button returns.
+ * Follow’s Window (PLAN.md §12 "Video export"): seconds the frame shows at the chosen aspect, log
+ * scale from 2 s to the whole piece. A tick under the track marks the editor's zoom; the slider
+ * snaps to it when moved close, and on it the form keeps no window of its own (null).
  */
 function WindowField({
   form,
@@ -955,41 +957,55 @@ function WindowField({
   disabled: boolean;
 }) {
   const id = useId();
-  const shown = followWindowOf(form, { window: cameraOf().window, duration });
+  /** The last slider input came from the keyboard (snaps only toward the tick). */
+  const keyed = useRef(false);
+  const ctx = { window: cameraOf().window, duration };
+  const shown = followWindowOf(form, ctx);
+  const zoom = followWindowOf({ ...form, videoWindow: null }, ctx);
+  const at = followWindowToSlider(shown, duration);
+  const tick = followWindowToSlider(zoom, duration);
+  const onTick = form.videoWindow === null;
   const text = windowText(shown);
+  const tickLabel = `Editor’s zoom (${windowText(zoom)})`;
   return (
     <div className="field">
       <label htmlFor={`${id}-w`}>Window</label>
       <div className="field-row look-range">
-        <input
-          id={`${id}-w`}
-          type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(followWindowToSlider(shown, duration) * 1000)}
-          disabled={disabled}
-          aria-valuetext={text}
-          data-testid="export-window"
-          onChange={(e) =>
-            patch({ videoWindow: sliderToFollowWindow(Number(e.target.value) / 1000, duration) })
-          }
-        />
+        <span className="window-track">
+          <input
+            id={`${id}-w`}
+            type="range"
+            min={0}
+            max={1000}
+            step={1}
+            value={Math.round(at * 1000)}
+            disabled={disabled}
+            aria-valuetext={onTick ? `${text}, editor’s zoom` : text}
+            aria-describedby={`${id}-t`}
+            data-testid="export-window"
+            onChange={(e) => {
+              const x = Number(e.target.value) / 1000;
+              const snap = windowSnaps(x, tick, keyed.current ? at : undefined);
+              patch({ videoWindow: snap ? null : sliderToFollowWindow(x, duration) });
+            }}
+            onKeyDown={() => (keyed.current = true)}
+            onPointerDown={() => (keyed.current = false)}
+          />
+          <span
+            id={`${id}-t`}
+            className="window-tick"
+            role="img"
+            aria-label={tickLabel}
+            title={tickLabel}
+            data-testid="export-window-tick"
+            data-at={tick.toFixed(4)}
+            style={{ '--at': tick } as CSSProperties}
+          />
+        </span>
         <output htmlFor={`${id}-w`} data-testid="export-window-value">
           {text}
         </output>
       </div>
-      {form.videoWindow !== null && (
-        <button
-          type="button"
-          className="window-reset"
-          disabled={disabled}
-          data-testid="export-window-reset"
-          onClick={() => patch({ videoWindow: null })}
-        >
-          Editor’s zoom
-        </button>
-      )}
     </div>
   );
 }
@@ -1041,7 +1057,8 @@ function RangeField({
 
 /**
  * The poster's Rows, Width and Height sliders and the size quick picks (PLAN.md §12 "Rows and
- * dimensions"). Each side's slider stops where the other side's length reaches the area cap.
+ * dimensions"). Each side keeps a fixed range (a max that followed the other side moved this
+ * thumb while its number stayed); a dragged side stops where width × height reaches the cap.
  */
 function PosterSizeFields({ form, disabled }: { form: ExportForm; disabled: boolean }) {
   const id = useId();
@@ -1074,7 +1091,7 @@ function PosterSizeFields({ form, disabled }: { form: ExportForm; disabled: bool
       <RangeField
         label="Width"
         min={POSTER_MIN_SIDE}
-        max={posterSideMax(h)}
+        max={POSTER_MAX_SIDE}
         value={w}
         text={`${w} px`}
         disabled={disabled}
@@ -1087,7 +1104,7 @@ function PosterSizeFields({ form, disabled }: { form: ExportForm; disabled: bool
       <RangeField
         label="Height"
         min={POSTER_MIN_SIDE}
-        max={posterSideMax(w)}
+        max={POSTER_MAX_SIDE}
         value={h}
         text={`${h} px`}
         disabled={disabled}

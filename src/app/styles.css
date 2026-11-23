@@ -1457,8 +1457,28 @@ dialog.dialog.export.has-preview {
   }
 }
 
-/* Export dialog: Follow's Window, back to the editor's zoom. */
-.dialog .window-reset {
-  margin-top: 6px;
-  font-size: 12px;
+/* Export dialog: Follow's Window, with a tick under the track at the editor's zoom. The tick
+   follows the thumb's centre, which travels the track less one thumb width (about 16 px). */
+.dialog .window-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+}
+
+.dialog .window-track input[type='range'] {
+  width: 100%;
+}
+
+.dialog .window-tick {
+  position: absolute;
+  bottom: 0;
+  left: calc(8px + (100% - 16px) * var(--at, 0));
+  width: 2px;
+  height: 6px;
+  margin-left: -1px;
+  background: var(--ink);
+  opacity: 0.6;
 }
