@@ -209,10 +209,15 @@ test('16:9 → 9:16 keeps a corner readout on its corner; Reset layout restores 
     .poll(async () => (await boxOf(page, 'chord')).H / (await boxOf(page, 'chord')).W)
     .toBeGreaterThan(1.5);
   await ready(page, 6);
-  const b = await boxOf(page, 'chord');
-  // Same fractions from the top-right corner.
-  expect((b.W - (b.x + b.w)) / b.W).toBeCloseTo((a.W - (a.x + a.w)) / a.W, 2);
-  expect(b.y / b.H).toBeCloseTo(a.y / a.H, 2);
+  // Same fractions from the top-right corner (polled: the frame size and the boxes re-lay out
+  // in separate steps, so one read can catch the new frame with the old box).
+  const right = (a.W - (a.x + a.w)) / a.W;
+  await expect
+    .poll(async () => {
+      const b = await boxOf(page, 'chord');
+      return Math.max(Math.abs((b.W - (b.x + b.w)) / b.W - right), Math.abs(b.y / b.H - a.y / a.H));
+    })
+    .toBeLessThan(0.005);
 
   await choose(page, 'export-aspect', '16:9');
   await setHudOpen(page, true);
@@ -221,9 +226,11 @@ test('16:9 → 9:16 keeps a corner readout on its corner; Reset layout restores 
   await expect(page.getByTestId('hud-reset-layout')).toBeDisabled();
   expect(await layoutOf(page)).toEqual({});
   await expect
-    .poll(async () => Math.abs((await boxOf(page, 'chord')).y - home.y))
+    .poll(async () => {
+      const c = await boxOf(page, 'chord');
+      return Math.max(Math.abs(c.y - home.y), Math.abs(c.x - home.x));
+    })
     .toBeLessThan(0.6);
-  expect(Math.abs((await boxOf(page, 'chord')).x - home.x)).toBeLessThan(0.6);
 });
 
 /**
