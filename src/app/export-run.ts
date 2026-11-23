@@ -29,6 +29,7 @@ import {
   VIDEO_SAMPLE_RATE,
   blobSink,
   estimateVideoBytes,
+  etaText,
   exportVideo,
   fileSink,
   previewVideoFrame,
@@ -337,7 +338,11 @@ export async function runVideo(
   try {
     last.result = await exportVideo(src.piece, opts, sink, {
       signal: hooks.signal,
-      onProgress: (f, phase) => hooks.onProgress?.(f, PHASE_LABEL[phase]),
+      onProgress: (f, phase, eta) =>
+        hooks.onProgress?.(
+          f,
+          eta === undefined ? PHASE_LABEL[phase] : `${PHASE_LABEL[phase]} ${etaText(eta)}.`,
+        ),
     });
   } catch (e) {
     // exportVideo aborts the sink itself once it has started; not on its early checks.

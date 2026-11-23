@@ -58,13 +58,19 @@ function bare(duration: number): CompiledScore {
 }
 
 describe('videoSize', () => {
-  it('gives the 1080- and 720-class pixel sizes', () => {
+  it('gives the 720-, 1080-, 1440- and 2160-class pixel sizes', () => {
     expect(videoSize('16:9', '1080')).toEqual({ width: 1920, height: 1080 });
     expect(videoSize('9:16', '1080')).toEqual({ width: 1080, height: 1920 });
     expect(videoSize('1:1', '1080')).toEqual({ width: 1080, height: 1080 });
     expect(videoSize('16:9', '720')).toEqual({ width: 1280, height: 720 });
     expect(videoSize('9:16', '720')).toEqual({ width: 720, height: 1280 });
     expect(videoSize('1:1', '720')).toEqual({ width: 720, height: 720 });
+    expect(videoSize('16:9', '1440')).toEqual({ width: 2560, height: 1440 });
+    expect(videoSize('9:16', '1440')).toEqual({ width: 1440, height: 2560 });
+    expect(videoSize('1:1', '1440')).toEqual({ width: 1440, height: 1440 });
+    expect(videoSize('16:9', '2160')).toEqual({ width: 3840, height: 2160 });
+    expect(videoSize('9:16', '2160')).toEqual({ width: 2160, height: 3840 });
+    expect(videoSize('1:1', '2160')).toEqual({ width: 2160, height: 2160 });
   });
 
   it('lays 720p out exactly as 1080p, at two thirds the pixel ratio', () => {
@@ -78,6 +84,15 @@ describe('videoSize', () => {
       expect(hi.width * hi.dpr).toBeCloseTo(px.width, 9);
       expect(hi.height * hi.dpr).toBeCloseTo(px.height, 9);
       expect(hi.dpr).toBeGreaterThanOrEqual(2); // text at least twice the player's size
+      for (const [size, k] of [
+        ['1440', 4 / 3],
+        ['2160', 2],
+      ] as const) {
+        const big = videoLayout(a, size);
+        expect(big.width).toBeCloseTo(hi.width, 9);
+        expect(big.height).toBeCloseTo(hi.height, 9);
+        expect(big.dpr / hi.dpr).toBeCloseTo(k, 9);
+      }
     }
   });
 });

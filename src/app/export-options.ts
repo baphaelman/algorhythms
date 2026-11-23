@@ -36,7 +36,7 @@ import {
   type VideoSize,
 } from '../render/video';
 import type { PosterOptions } from './poster-export';
-import type { VideoOptions } from './video-export';
+import type { VideoOptions, VideoQuality, VideoSupport } from './video-export';
 
 export type ExportFormat = 'wav' | 'stems' | 'midi' | 'video' | 'poster';
 
@@ -112,6 +112,13 @@ export const VIDEO_SIZES: readonly { id: VideoSize; label: string }[] = [
   { id: '720', label: '720p' },
 ];
 
+/** Quality (§12 "Ready for YouTube"): the target bitrate, High = YouTube's upload rates. */
+export const VIDEO_QUALITIES: readonly { id: VideoQuality; label: string }[] = [
+  { id: 'standard', label: 'Standard' },
+  { id: 'high', label: 'High' },
+  { id: 'max', label: 'Max' },
+];
+
 export const VIDEO_FPS: readonly { id: 30 | 60; label: string }[] = [
   { id: 30, label: '30 fps' },
   { id: 60, label: '60 fps' },
@@ -155,6 +162,7 @@ export interface ExportForm {
   videoAspect: VideoAspect;
   videoSize: VideoSize;
   videoFps: 30 | 60;
+  videoQuality: VideoQuality;
   videoCamera: VideoCameraMode;
   /** Follow: playhead place across the frame, % (10..90); null = by the future (`followAtOf`). */
   videoFollowAt: number | null;
@@ -331,6 +339,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoAspect: '16:9',
   videoSize: '1080',
   videoFps: 30,
+  videoQuality: 'high',
   videoCamera: 'follow',
   videoFollowAt: null,
   videoWindow: null,
@@ -695,6 +704,7 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
     aspect: form.videoAspect,
     size: form.videoSize,
     fps: form.videoFps,
+    quality: form.videoQuality,
     camera: form.videoCamera,
     theme: look.theme,
     hud: look.hud.length > 0,
@@ -761,6 +771,7 @@ const REMEMBERED = [
   'videoAspect',
   'videoSize',
   'videoFps',
+  'videoQuality',
   'videoCamera',
   'videoFollowAt',
   'videoWindow',
@@ -825,6 +836,7 @@ export function parsePrefs(raw: unknown): ExportPrefs {
   if (oneOf(VIDEO_ASPECTS, r.videoAspect)) p.videoAspect = r.videoAspect;
   if (oneOf(VIDEO_SIZES, r.videoSize)) p.videoSize = r.videoSize;
   if (oneOf(VIDEO_FPS, r.videoFps)) p.videoFps = r.videoFps;
+  if (oneOf(VIDEO_QUALITIES, r.videoQuality)) p.videoQuality = r.videoQuality;
   if (oneOf(VIDEO_CAMERAS, r.videoCamera)) p.videoCamera = r.videoCamera;
   if (r.videoFollowAt === null) p.videoFollowAt = null;
   else if (typeof r.videoFollowAt === 'number' && Number.isFinite(r.videoFollowAt)) {
@@ -946,6 +958,14 @@ const CODEC_NAMES: [string, string][] = [
 export function codecLabel(video: string, audio: string): string {
   const name = (c: string) => CODEC_NAMES.find(([p]) => c.startsWith(p))?.[1] ?? c;
   return `${name(video)} + ${name(audio)}`;
+}
+
+/**
+ * The dialog's one line when this browser can't encode AAC (§12 "Ready for YouTube"), else null.
+ */
+export function aacNote(support: VideoSupport | null): string | null {
+  if (!support?.ok || support.aac) return null;
+  return 'This browser can’t encode AAC, so the audio is Opus; some players (QuickTime, iPhone Photos) may not play it.';
 }
 
 // ---------------------------------------------------------------------------------------------
