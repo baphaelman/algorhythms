@@ -47,10 +47,10 @@ export class Kit extends Song {
    * bar `at`. Copies keep the original's effective seed, as the editor's Duplicate does.
    */
   paste(from: number, to: number, at: number): void {
-    const [a, b, dt] = [this.T(from), this.T(to), this.T(at) - this.T(from)];
-    const src = this.moments.filter(
-      (m) => (m.at as number) >= a - 1e-9 && (m.at as number) < b - 1e-9,
-    );
+    // Moments sit on whole ms (`m`), bar times on 0.1 ms: compare both in integer ms.
+    const ms = (t: number): number => Math.round(t * 1e3);
+    const [a, b, dt] = [ms(this.T(from)), ms(this.T(to)), this.T(at) - this.T(from)];
+    const src = this.moments.filter((m) => ms(m.at as number) >= a && ms(m.at as number) < b);
     for (const m of src) {
       const { seedFrom, ...rest } = m;
       const copy = structuredClone(rest) as Json;
