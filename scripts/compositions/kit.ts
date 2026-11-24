@@ -63,7 +63,7 @@ export class Kit extends Song {
     }
   }
 
-  toJson(): Json {
+  override toJson(): Json {
     const j = super.toJson();
     for (const m of j.moments as Json[]) {
       const src = m.seedFrom as Json | undefined;
