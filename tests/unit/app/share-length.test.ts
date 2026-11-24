@@ -24,13 +24,13 @@ const read = (dir: string): [string, string][] =>
  * same way.
  */
 const LONG_OK = new Set([
-  'examples/compositions/sunday-lane.algorhythms.json',
-  'examples/compositions/night-sleeper.algorhythms.json',
-  'examples/compositions/crease.algorhythms.json',
+  'examples/songs/sunday-lane.algorhythms.json',
+  'examples/experiments/night-sleeper.algorhythms.json',
+  'examples/experiments/crease.algorhythms.json',
 ]);
 
-const pieces: [string, string][] = ['examples', 'examples/compositions'].flatMap((dir) =>
-  read(join(ROOT, dir)).map(([f, t]): [string, string] => [`${dir}/${f}`, t]),
+const pieces: [string, string][] = ['examples', 'examples/songs', 'examples/experiments'].flatMap(
+  (dir) => read(join(ROOT, dir)).map(([f, t]): [string, string] => [`${dir}/${f}`, t]),
 );
 
 describe('share link length (M5)', () => {

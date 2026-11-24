@@ -108,3 +108,6 @@ export function moonwater(): Record<string, unknown> {
   s.end = { at: s.T(40), fade: 1 };
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

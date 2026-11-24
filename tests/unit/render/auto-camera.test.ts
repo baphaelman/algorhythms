@@ -31,9 +31,11 @@ import { frameOptions } from '../../../src/app/video-export';
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const files = [
   ...readdirSync(EXAMPLES).filter((f) => f.endsWith('.algorhythms.json')),
-  ...readdirSync(join(EXAMPLES, 'compositions'))
-    .filter((f) => f.endsWith('.algorhythms.json'))
-    .map((f) => `compositions/${f}`),
+  ...['songs', 'experiments'].flatMap((d) =>
+    readdirSync(join(EXAMPLES, d))
+      .filter((f) => f.endsWith('.algorhythms.json'))
+      .map((f) => `${d}/${f}`),
+  ),
 ];
 
 function load(file: string): Piece {
@@ -48,7 +50,7 @@ const score = (file: string): CompiledScore => {
   if (!c) scores.set(file, (c = compile(load(file))));
   return c;
 };
-const CREASE = 'compositions/crease.algorhythms.json';
+const CREASE = 'experiments/crease.algorhythms.json';
 
 /** Drawn pitches (opacity ≥ 0.1, as the camera reads them) at t. */
 function drawn(c: CompiledScore, t: number): number[] {
@@ -84,9 +86,7 @@ describe('autoCameraPlan', () => {
   });
 
   it('ends on the whole piece: the end card camera, at any aspect', () => {
-    for (const file of [CREASE, 'kite-day.algorhythms.json'].map((f) =>
-      f.startsWith('compositions') ? f : `compositions/${f}`,
-    )) {
+    for (const file of [CREASE, 'songs/kite-day.algorhythms.json']) {
       const c = score(file);
       for (const aspect of ['16:9', '9:16', '1:1'] as const) {
         const keys = autoCameraKeys(c, { aspect: VIDEO_RATIO[aspect] });

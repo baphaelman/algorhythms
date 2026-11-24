@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { PALETTE } from '../editor/shortcuts';
-import { COMPOSITIONS, ORIGINALS } from '../examples';
+import { EXPERIMENTS, ORIGINALS, SONGS } from '../examples';
 import {
   canLinkFiles,
   linkToFile,
@@ -16,10 +16,11 @@ import { openGenerate } from './GeneratePanel';
 import { openShare } from './ShareDialog';
 import { MOD_KEY } from '../platform';
 
-/** The examples menu, in two groups (owner, 2026-11-20). */
+/** The examples menu, in three groups (owner, 2026-11-24). */
 const EXAMPLE_GROUPS = [
+  { heading: 'Songs', items: SONGS },
+  { heading: 'Experiments', items: EXPERIMENTS },
   { heading: 'Originals', items: ORIGINALS },
-  { heading: 'Compositions', items: COMPOSITIONS },
 ] as const;
 
 const MOD = MOD_KEY;

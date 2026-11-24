@@ -15,11 +15,12 @@ import { theoryOf } from '../../../src/core/theory';
 import type { CompiledScore, Key, Moment, Piece } from '../../../src/core/types';
 import { piece } from './compiler-fixtures';
 
-const DIR = join(import.meta.dirname, '../../../examples/compositions');
-const compositions: [string, Piece][] = readdirSync(DIR)
+const ROOT = join(import.meta.dirname, '../../../examples');
+const compositions: [string, Piece][] = ['songs', 'experiments']
+  .flatMap((d) => readdirSync(join(ROOT, d)).map((f) => join(d, f)))
   .filter((f) => f.endsWith('.algorhythms.json'))
   .map((f) => {
-    const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
+    const r = parsePiece(readFileSync(join(ROOT, f), 'utf8'));
     if (!r.ok) throw new Error(f);
     return [f, r.piece];
   });

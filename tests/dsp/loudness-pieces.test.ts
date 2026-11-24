@@ -46,8 +46,8 @@ function load(file: string) {
 
 describe('−14 LUFS exports', () => {
   const cases: [string, WavExportOptions][] = [
-    ['compositions/crease', { sampleRate: 48000, bitDepth: 32, loudness: -14 }],
-    ['compositions/night-sleeper', { sampleRate: 48000, bitDepth: 32, loudness: -14 }],
+    ['experiments/crease', { sampleRate: 48000, bitDepth: 32, loudness: -14 }],
+    ['experiments/night-sleeper', { sampleRate: 48000, bitDepth: 32, loudness: -14 }],
     ['clockwork-heron', { sampleRate: 44100, bitDepth: 24, loudness: -14 }],
   ];
   for (const [file, opts] of cases) {
@@ -78,7 +78,7 @@ describe('−14 LUFS exports', () => {
   }
 
   it("'off' is the plain export, byte for byte", () => {
-    const piece = load('compositions/crease');
+    const piece = load('experiments/crease');
     const input = { score: compile(piece), mix: piece.mix, timbres: piece.timbres };
     const span = { start: 10, end: 14 };
     const a = renderWav(input, { sampleRate: 48000, bitDepth: 24, span });

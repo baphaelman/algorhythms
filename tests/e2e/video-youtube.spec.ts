@@ -14,7 +14,7 @@ import { tracks } from '../unit/video/boxes';
 
 const ROOT = join(import.meta.dirname, '../..');
 const PIECE = JSON.parse(
-  readFileSync(join(ROOT, 'examples/compositions/night-sleeper.algorhythms.json'), 'utf8'),
+  readFileSync(join(ROOT, 'examples/experiments/night-sleeper.algorhythms.json'), 'utf8'),
 ) as unknown;
 /**
  * §15 M11: at least 40 dB decoded. Measured 42–48 dB at 1080p–4K on all three engines; the frame

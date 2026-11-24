@@ -305,8 +305,9 @@ test('the examples gallery loads each example, stopped', async ({ page }) => {
   await page.getByTestId('menu-button').click();
   const list = page.getByRole('list', { name: 'Originals' });
   await expect(list.getByRole('button')).toHaveCount(5);
-  const comps = page.getByRole('list', { name: 'Compositions' }).getByRole('button');
-  await expect(comps).toHaveCount(12);
+  await expect(page.getByRole('list', { name: 'Songs' }).getByRole('button')).toHaveCount(8);
+  const comps = page.getByRole('list', { name: 'Experiments' }).getByRole('button');
+  await expect(comps).toHaveCount(4);
   // Pinned at the top (owner, 2026-11-23).
   await expect(comps.first()).toContainText('Crease');
   await expect(comps.nth(1)).toContainText('Night Sleeper');

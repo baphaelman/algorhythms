@@ -152,9 +152,11 @@ describe('a fork takes its parent level', () => {
 });
 
 describe('forks in the examples', () => {
-  const dirs = ['../../../examples', '../../../examples/compositions'].map((d) =>
-    join(import.meta.dirname, d),
-  );
+  const dirs = [
+    '../../../examples',
+    '../../../examples/songs',
+    '../../../examples/experiments',
+  ].map((d) => join(import.meta.dirname, d));
   for (const dir of dirs) {
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.algorhythms.json'))) {
       it(`${f}: every fork starts at its parent's level`, () => {

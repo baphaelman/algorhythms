@@ -376,7 +376,7 @@ describe('land always arrives', () => {
   it('Switchyard: sw0059 leaves the bass to sw0060 by its target; it sounds the same', () => {
     const r = parsePiece(
       readFileSync(
-        join(import.meta.dirname, '../../../examples/compositions/switchyard.algorhythms.json'),
+        join(import.meta.dirname, '../../../examples/experiments/switchyard.algorhythms.json'),
         'utf8',
       ),
     );

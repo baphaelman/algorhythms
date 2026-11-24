@@ -125,3 +125,6 @@ export function tidePools(): Record<string, unknown> {
   s.end = { at: s.T(62), fade: 5 };
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

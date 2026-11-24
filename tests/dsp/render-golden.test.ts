@@ -36,7 +36,7 @@ const frames = (s: number) => Math.ceil((s * RATE) / BLOCK_FRAMES) * BLOCK_FRAME
 
 function pieceFiles(): string[] {
   const out: string[] = [];
-  for (const dir of ['', 'compositions']) {
+  for (const dir of ['', 'songs', 'experiments']) {
     for (const f of readdirSync(join(EXAMPLES, dir)).sort())
       if (f.endsWith('.algorhythms.json')) out.push(join(dir, f));
   }

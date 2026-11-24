@@ -18,7 +18,7 @@ import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render';
 
 const ROOT = join(import.meta.dirname, '../..');
-const FILES = ['examples', 'examples/compositions'].flatMap((d) =>
+const FILES = ['examples', 'examples/songs', 'examples/experiments'].flatMap((d) =>
   readdirSync(join(ROOT, d))
     .filter((f) => f.endsWith('.algorhythms.json'))
     .map((f) => join(ROOT, d, f)),

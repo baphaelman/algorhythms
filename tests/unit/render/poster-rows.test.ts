@@ -115,7 +115,7 @@ const texts = (svg: string) => [
 ];
 
 describe('drawPoster with rows', () => {
-  const piece = load('examples/compositions/tide-pools.algorhythms.json');
+  const piece = load('examples/songs/tide-pools.algorhythms.json');
   const compiled = compile(piece);
   const grid = { bpm: piece.view.gridBpm!, meter: piece.view.meter! };
 

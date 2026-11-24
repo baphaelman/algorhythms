@@ -83,7 +83,7 @@ describe('Add → Chord is never a no-op where a chord can change something', ()
   it('falls back to the next-best chord when the best changes nothing', () => {
     // Little Round at 2.091 s: only the Bass line sounds (F); the best chord, F, adds notes the
     // Bass part has no voice for, so it would change nothing.
-    const p = read('examples/compositions/little-round.algorhythms.json');
+    const p = read('examples/songs/little-round.algorhythms.json');
     const s = compile(p);
     const best = chordDefaultAt(p, s, 2.091)!;
     expect(best.name).toBe('F');
@@ -96,7 +96,7 @@ describe('Add → Chord is never a no-op where a chord can change something', ()
   });
 
   it('on every example and composition, at four times, Add → Chord has an effect', () => {
-    const dirs = ['examples', 'examples/compositions'];
+    const dirs = ['examples', 'examples/songs', 'examples/experiments'];
     const files = dirs.flatMap((d) =>
       readdirSync(d)
         .filter((f) => f.endsWith('.algorhythms.json'))

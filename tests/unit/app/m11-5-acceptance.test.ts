@@ -19,7 +19,7 @@ const load = (file: string): Piece => {
   if (!r.ok) throw new Error(r.errors.join('; '));
   return r.piece;
 };
-const CREASE = 'compositions/crease.algorhythms.json';
+const CREASE = 'experiments/crease.algorhythms.json';
 const KEYS: CameraKey[] = [
   { at: 0, window: 6, place: 0.2, pitch: 64, range: 24 },
   { at: 6, window: 14, place: 0.6, pitch: 68, range: 30, ease: 'linear' },
@@ -54,7 +54,7 @@ describe('video only: posters keep Section', () => {
     title: true,
     thickness: true,
   };
-  for (const file of [CREASE, 'compositions/kite-day.algorhythms.json']) {
+  for (const file of [CREASE, 'songs/kite-day.algorhythms.json']) {
     it(`${file}: the poster SVG is the same with Follow, Auto or Keys stored`, () => {
       const piece = load(file);
       const plain = renderPosterSvg(piece, opts);
