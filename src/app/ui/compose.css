@@ -78,7 +78,7 @@
   flex: 1 1 auto;
 }
 
-/* ---- The setup screen (M12): five questions as chips, More folded ---- */
+/* ---- The setup screen (M12): six questions as chips, More folded ---- */
 
 dialog.dialog.compose-setup {
   width: min(620px, calc(100vw - 32px));

@@ -4,7 +4,9 @@
  * The composer's pen sweeps the piece once, left to right: a structural step places its moment at
  * the pen, then the pen draws its lines in up to the next moment's time. The pen moves at
  * `PEN_SPEED` seconds of music per second (a 2:30 piece draws in 20 s), faster for long pieces so
- * the pen never takes more than `MAX_PEN_SECONDS`. Then the detail sweep (M4.5-38): each detail
+ * the pen never takes more than `MAX_PEN_SECONDS`. Steps shown longer than the pen needs (the
+ * minimums) add at most `MAX_EXTRA` of the sweep, so a busy piece (Speed Fast) draws its many
+ * steps a little quicker. Then the detail sweep (M4.5-38): each detail
  * step is shown for `DETAIL_MS`, the whole sweep for at most `MAX_DETAIL_MS`, its pen at the
  * detail's time.
  */
@@ -20,6 +22,8 @@ export const MAX_PEN_SECONDS = 40;
 export const MIN_ADD_MS = 150;
 /** Time an add step is shown when the next one is at the same time (a chord and its level), ms. */
 export const TIE_MS = 50;
+/** The most the minimums may add to the pen's sweep, as a share of it. */
+export const MAX_EXTRA = 0.4;
 /** Time a detail step is shown, ms. */
 export const DETAIL_MS = 700;
 /** Longest the detail sweep is shown, ms (its steps share it). */
@@ -58,6 +62,23 @@ export function composeTimeline(c: Composition<string>): Timeline {
   const last = structure.at(-1);
   const sweep = last ? reach(last.moment) : 0;
   const speed = Math.max(PEN_SPEED, sweep / MAX_PEN_SECONDS);
+  const spans = structure.map((s, i) => {
+    const from = s.moment.at;
+    const after = structure[i + 1];
+    const to = after ? Math.max(from, after.moment.at) : Math.max(from, reach(s.moment));
+    return { from, to, tie: after !== undefined && to - from < 1e-3 };
+  });
+  const showFor = (x: (typeof spans)[number], f: number): number =>
+    x.tie ? f * TIE_MS : Math.max(f * MIN_ADD_MS, ((x.to - x.from) / speed) * 1000);
+  // Scaling the minimums by f scales their extra by at most f.
+  let pen = 0;
+  let extra = 0;
+  for (const x of spans) {
+    const share = ((x.to - x.from) / speed) * 1000;
+    pen += share;
+    extra += showFor(x, 1) - share;
+  }
+  const f = extra > MAX_EXTRA * pen ? (MAX_EXTRA * pen) / extra : 1;
 
   const beats: Beat[] = [];
   let clock = 0;
@@ -67,11 +88,10 @@ export function composeTimeline(c: Composition<string>): Timeline {
     let from: Seconds;
     let to: Seconds;
     if (s.phase === 'structure') {
-      next++;
-      from = s.moment.at;
-      const after = structure[next];
-      to = after ? Math.max(from, after.moment.at) : Math.max(from, reach(s.moment));
-      dur = after && to - from < 1e-3 ? TIE_MS : Math.max(MIN_ADD_MS, ((to - from) / speed) * 1000);
+      const x = spans[next++];
+      from = x.from;
+      to = x.to;
+      dur = showFor(x, f);
     } else {
       from = to = s.moment.at;
       dur = Math.min(DETAIL_MS, MAX_DETAIL_MS / details);

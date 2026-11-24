@@ -32,6 +32,7 @@ describe('buildBrief (M12 D2)', () => {
       mood: 'dark',
       length: 180,
       shape: 'journey',
+      speed: 'fast',
       parts: ['bells', 'chords'],
       start: { progression: PROGRESSIONS[0].name },
       tonic: 2,
@@ -43,6 +44,7 @@ describe('buildBrief (M12 D2)', () => {
       mood: 'dark',
       length: 180,
       shape: 'journey',
+      speed: 'fast',
       parts: ['chords', 'bells'],
       start: { kind: 'progression', name: PROGRESSIONS[0].name },
       key: { tonic: 2, mode: 'dorian' },
@@ -60,6 +62,13 @@ describe('buildBrief (M12 D2)', () => {
     // No melody to start from: Surprise.
     expect(buildBrief({ ...DEFAULT_ANSWERS, start: 'melody' }, 1, null).start).toBe(undefined);
     expect(shownAnswers({ ...DEFAULT_ANSWERS, start: 'melody' }, false).start).toBe('surprise');
+  });
+
+  it('Speed: Surprise me leaves it out; Slow, Medium and Fast land in the brief', () => {
+    expect(DEFAULT_ANSWERS.speed).toBe('surprise');
+    expect('speed' in buildBrief(DEFAULT_ANSWERS, 3)).toBe(false);
+    for (const speed of ['slow', 'medium', 'fast'] as const)
+      expect(buildBrief({ ...DEFAULT_ANSWERS, speed }, 3)).toEqual({ seed: 3, speed });
   });
 });
 
@@ -111,7 +120,13 @@ describe('remembered answers', () => {
   it('round-trips, and defaults when empty or broken', () => {
     const st = store();
     expect(loadAnswers(st)).toEqual(DEFAULT_ANSWERS);
-    const a: ComposeAnswers = { ...DEFAULT_ANSWERS, mood: 'calm', parts: ['bass'], tempo: 120 };
+    const a: ComposeAnswers = {
+      ...DEFAULT_ANSWERS,
+      mood: 'calm',
+      speed: 'slow',
+      parts: ['bass'],
+      tempo: 120,
+    };
     expect(saveAnswers(a, st)).toBe(true);
     expect(loadAnswers(st)).toEqual(a);
     st.setItem(COMPOSE_PREFS_KEY, '{nope');
@@ -125,6 +140,7 @@ describe('remembered answers', () => {
         mood: 'angry',
         length: 90,
         shape: 'arc',
+        speed: 'warp',
         parts: ['bass', 'kazoo'],
         start: { progression: 'unknown' },
         tonic: 12,
@@ -133,6 +149,9 @@ describe('remembered answers', () => {
       }),
     ).toEqual({ ...DEFAULT_ANSWERS, shape: 'arc', parts: ['bass'] });
     expect(parseAnswers({ parts: [] }).parts).toBe('surprise');
+    expect(parseAnswers({ speed: 'fast' }).speed).toBe('fast');
+    // Answers stored before Speed existed: Surprise me.
+    expect(parseAnswers({ mood: 'dark' }).speed).toBe('surprise');
   });
 
   it('Watch the composer: ticked by default, remembered, ticked when storage fails', () => {

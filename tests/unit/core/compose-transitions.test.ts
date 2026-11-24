@@ -94,7 +94,7 @@ function figureAt(r: ReturnType<typeof regions>, id: string, t: number): string 
   return pu === '-' && wa === '-' ? 'hold' : `${pu}|${wa}`;
 }
 
-/** Each audible textured line's pattern changes within two bars of each section boundary. */
+/** Each audible textured line's pattern changes within two bars (inclusive) of each section boundary. */
 function boundaryChanges(
   d: DirectedComposition,
   p: Piece,
@@ -109,7 +109,8 @@ function boundaryChanges(
     for (const v of lines) {
       const cv = score.voices[p.voices.indexOf(v)];
       let before = figureAt(r, v.id, s.at - 2 * bar - beat / 4);
-      for (let k = -8; k < 16 * p.view.meter!; k++) {
+      // To two bars after, inclusive (a slow piece hands over across two bars).
+      for (let k = -8; k <= 16 * p.view.meter!; k++) {
         const t = s.at - 2 * bar + (k * beat) / 4;
         const f = figureAt(r, v.id, t + 2e-3); // moment times are on a 1 ms grid
         // A line coming in or going out is a fade, not a change of pattern.
@@ -164,7 +165,9 @@ describe('section transitions (PLAN M12 listening notes)', { timeout: 120_000 },
     const p = composedPiece(d.composition);
     expect(p.meta.title).toBe('Dreamy E♭ Dorian 2771674892');
     const all = boundaryChanges(d, p, compile(p));
-    expect(all.some((b) => Math.abs(b.at - 32.432) < 1e-3)).toBe(true);
+    // A to B (at 32.432 s before Speed; now drawn slow, so the sections are longer).
+    const atB = d.sections.find((s) => s.name === 'B')!.at;
+    expect(all.some((b) => Math.abs(b.at - atB) < 1e-3)).toBe(true);
     for (const b of all) {
       const on = b.changes.filter((c) => Math.abs(c.t - b.at) < 1e-3).length;
       expect(on, `at ${b.at}`).toBeLessThan(p.voices.length);

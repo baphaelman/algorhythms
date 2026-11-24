@@ -12,6 +12,7 @@ import {
   type Mood as ComposeMood,
   type ComposePart,
   type Shape as ComposeShape,
+  type Speed as ComposeSpeed,
 } from '../core/compose-brief';
 
 export const SURPRISE = 'surprise';
@@ -35,6 +36,11 @@ export const SHAPES: readonly { id: ComposeShape; label: string }[] = [
   { id: 'arc', label: 'Arc' },
   { id: 'steady', label: 'Steady' },
   { id: 'journey', label: 'Journey' },
+];
+export const SPEEDS: readonly { id: ComposeSpeed; label: string }[] = [
+  { id: 'slow', label: 'Slow' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'fast', label: 'Fast' },
 ];
 export const PARTS: readonly { id: ComposePart; label: string }[] = [
   { id: 'chords', label: 'Chords' },
@@ -65,6 +71,8 @@ export interface ComposeAnswers {
   mood: ComposeMood | Surprise;
   length: ComposeLength | Surprise;
   shape: ComposeShape | Surprise;
+  /** How fast things change (chord holds, transitions, sections); not the tempo. */
+  speed: ComposeSpeed | Surprise;
   /** Surprise, or at least one part. */
   parts: ComposePart[] | Surprise;
   start: StartAnswer;
@@ -79,6 +87,7 @@ export const DEFAULT_ANSWERS: ComposeAnswers = {
   mood: SURPRISE,
   length: SURPRISE,
   shape: SURPRISE,
+  speed: SURPRISE,
   parts: SURPRISE,
   start: SURPRISE,
   tonic: SURPRISE,
@@ -123,6 +132,7 @@ export function buildBrief(
   if (a.mood !== SURPRISE) brief.mood = a.mood;
   if (a.length !== SURPRISE) brief.length = a.length;
   if (a.shape !== SURPRISE) brief.shape = a.shape;
+  if (a.speed !== SURPRISE) brief.speed = a.speed;
   if (a.parts !== SURPRISE && a.parts.length > 0) {
     brief.parts = PARTS.map((p) => p.id).filter((p) => (a.parts as ComposePart[]).includes(p));
   }
@@ -174,6 +184,7 @@ export function parseAnswers(raw: unknown): ComposeAnswers {
     mood: oneOf(o.mood, MOODS),
     length: oneOf(o.length, LENGTHS),
     shape: oneOf(o.shape, SHAPES),
+    speed: oneOf(o.speed, SPEEDS),
     parts: parts.length > 0 ? parts : SURPRISE,
     start,
     tonic:

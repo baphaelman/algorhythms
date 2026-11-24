@@ -24,6 +24,8 @@ export type Mood = 'calm' | 'bright' | 'dreamy' | 'dark' | 'driving';
 export type ComposeLength = 60 | 120 | 180 | 300;
 export type Shape = 'build' | 'arc' | 'steady' | 'journey';
 export type ComposePart = 'chords' | 'bass' | 'melody' | 'pulse' | 'bells';
+/** The pace of change: chord holds, transitions, phrase and section lengths (not the tempo). */
+export type Speed = 'slow' | 'medium' | 'fast';
 
 /** A note of a given melody: start and length in seconds (from the melody's own start), MIDI pitch. */
 export interface BriefNote {
@@ -47,6 +49,7 @@ export interface ComposeBrief {
   key?: { tonic: number; mode: string };
   /** Beats per minute. */
   tempo?: number;
+  speed?: Speed;
 }
 
 /** The answers in setup-screen order, for the UI. */
@@ -54,6 +57,7 @@ export const MOODS: readonly Mood[] = ['calm', 'bright', 'dreamy', 'dark', 'driv
 export const LENGTHS: readonly ComposeLength[] = [60, 120, 180, 300];
 export const SHAPES: readonly Shape[] = ['build', 'arc', 'steady', 'journey'];
 export const PARTS: readonly ComposePart[] = ['chords', 'bass', 'melody', 'pulse', 'bells'];
+export const SPEEDS: readonly Speed[] = ['slow', 'medium', 'fast'];
 
 export const MOOD_LABEL: Readonly<Record<Mood, string>> = {
   calm: 'Calm',
@@ -74,6 +78,18 @@ export const PART_LABEL: Readonly<Record<ComposePart, string>> = {
   melody: 'Melody',
   pulse: 'Pulse',
   bells: 'Bells',
+};
+export const SPEED_LABEL: Readonly<Record<Speed, string>> = {
+  slow: 'Slow',
+  medium: 'Medium',
+  fast: 'Fast',
+};
+
+/** The speed (0 slow … 1 fast) an answer draws from; Surprise draws from the mood's range. */
+export const SPEED_RANGE: Readonly<Record<Speed, readonly [number, number]>> = {
+  slow: [0, 0.2],
+  medium: [0.4, 0.6],
+  fast: [0.8, 1],
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -210,6 +226,8 @@ export interface MoodRegion {
   pace: number;
   /** How much the textures lean on arpeggios (a weight among the other textures). */
   arp: number;
+  /** The range Surprise draws the speed from (0 slow … 1 fast). */
+  speed: readonly [number, number];
   sounds: Sounds;
 }
 
@@ -224,6 +242,7 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     centre: [56, 62],
     pace: 0.2,
     arp: 0.15,
+    speed: [0.15, 0.6],
     sounds: {
       chords: ['glass', 'choir', 'organ'],
       bass: ['organ', 'sine'],
@@ -242,6 +261,7 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     centre: [58, 65],
     pace: 0.8,
     arp: 0.6,
+    speed: [0.35, 0.85],
     sounds: {
       chords: ['epiano', 'glass', 'pluck'],
       bass: ['organ', 'pluck'],
@@ -260,6 +280,7 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     centre: [57, 64],
     pace: 0.1,
     arp: 0.2,
+    speed: [0, 0.45],
     sounds: {
       chords: ['choir', 'glass', 'sine'],
       bass: ['sine', 'organ'],
@@ -278,6 +299,7 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     centre: [49, 55],
     pace: 0,
     arp: 0.05,
+    speed: [0, 0.45],
     sounds: {
       chords: ['organ', 'choir', 'brass'],
       bass: ['organ', 'sine'],
@@ -296,6 +318,7 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     centre: [55, 62],
     pace: 1,
     arp: 0.45,
+    speed: [0.55, 1],
     sounds: {
       chords: ['brass', 'organ', 'epiano'],
       bass: ['organ', 'pluck'],
@@ -386,10 +409,23 @@ export interface ResolvedBrief {
   sevenths: boolean;
   /** Centre of the chord register (MIDI). */
   centre: number;
+  /**
+   * 0 (slow) … 1 (fast): the pace of change. How long chords are held, how long glides, staggers,
+   * handovers and fades take, how long phrases and sections are. Not the tempo or the figures.
+   */
+  speed: number;
   /** Which fields were answered (not Surprise). */
   given: Readonly<
-    Record<'mood' | 'length' | 'shape' | 'parts' | 'start' | 'key' | 'tempo', boolean>
+    Record<'mood' | 'length' | 'shape' | 'parts' | 'start' | 'key' | 'tempo' | 'speed', boolean>
   >;
+}
+
+/**
+ * How much longer than at medium speed a transition takes (glides, staggers, fades): 1.62 at
+ * speed 0, 1 at 0.5, 0.62 at 1.
+ */
+export function changeScale(speed: number): number {
+  return exp2((0.5 - speed) * 1.4);
 }
 
 /** The energy at x ∈ [0, 1] (linear between the samples). */
@@ -570,6 +606,7 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     start: brief.start !== undefined && brief.start.kind !== 'none',
     key: brief.key !== undefined && Number.isFinite(brief.key.tonic),
     tempo: brief.tempo !== undefined && Number.isFinite(brief.tempo) && brief.tempo > 0,
+    speed: brief.speed !== undefined && brief.speed in SPEED_RANGE,
   };
 
   // Mood: one region, or a blend of neighbours (one point in mood space, from which the mode,
@@ -685,7 +722,12 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     sounds[p] = list[Math.floor(d(`sound-${p}`) * list.length)];
   }
 
-  const glide = Math.round(inBlend(mood, (r) => r.glide, d('glide')) * 100) / 100;
+  // Speed: in the answer's band, or the mood's range (Dark and Dreamy lean slow, Driving fast).
+  const speed = given.speed
+    ? lerp(SPEED_RANGE[brief.speed!][0], SPEED_RANGE[brief.speed!][1], d('speed'))
+    : inBlend(mood, (r) => r.speed, d('speed'));
+  const glide =
+    Math.round(inBlend(mood, (r) => r.glide, d('glide')) * changeScale(speed) * 100) / 100;
   const stagger = Math.round(glide * (0.15 + 0.25 * d('stagger')) * 100) / 100;
   const sevenths = d('sevenths') < inBlend(mood, (r) => [r.sevenths, r.sevenths], 0);
   const centre = Math.round(inBlend(mood, (r) => r.centre, d('centre')));
@@ -714,6 +756,7 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     stagger,
     sevenths,
     centre,
+    speed: Math.round(speed * 1000) / 1000,
     given,
   };
 }

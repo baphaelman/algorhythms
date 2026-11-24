@@ -4,7 +4,13 @@
 
 import { decodeShareLink, encodeShareLink } from '../src/app/share';
 import { canonicalPiece } from '../src/core/canonical';
-import { MOOD_LABEL, PART_LABEL, SHAPE_LABEL, type ComposeBrief } from '../src/core/compose-brief';
+import {
+  MOOD_LABEL,
+  PART_LABEL,
+  SHAPE_LABEL,
+  SPEED_LABEL,
+  type ComposeBrief,
+} from '../src/core/compose-brief';
 import { composeDirectedPiece } from '../src/core/compose-directed';
 import { jsonEqual, parsePiece } from '../src/core/schema';
 
@@ -22,7 +28,14 @@ const briefs: ComposeBrief[] = [
     shape: 'arc',
     start: { kind: 'progression', name: 'I–V–vi–iii–IV–I–IV–V' },
   },
-  { seed: 404, mood: 'dark', length: 180, shape: 'journey', parts: ['chords', 'bass', 'pulse'] },
+  {
+    seed: 404,
+    mood: 'dark',
+    length: 180,
+    shape: 'journey',
+    speed: 'slow',
+    parts: ['chords', 'bass', 'pulse'],
+  },
   {
     seed: 505,
     mood: 'bright',
@@ -47,6 +60,7 @@ function words(b: ComposeBrief): string {
     `Mood ${s(b.mood && MOOD_LABEL[b.mood])}`,
     `Length ${b.length ? `${b.length / 60} min` : 'Surprise me'}`,
     `Shape ${s(b.shape && SHAPE_LABEL[b.shape])}`,
+    `Speed ${s(b.speed && SPEED_LABEL[b.speed])}`,
     `Parts ${b.parts ? b.parts.map((p) => PART_LABEL[p]).join(' + ') : 'Surprise me'}`,
     `Start from ${start}`,
     ...(b.key ? [`Key ${NOTE[b.key.tonic]} ${b.key.mode}`] : []),

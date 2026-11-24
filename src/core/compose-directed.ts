@@ -24,6 +24,9 @@
  *             time round), its top line moves like a tune (voicing windows chosen per chord),
  *             and its texture follows each phrase's energy. Backing parts may loop.
  *   Detail    optional: upper-neighbour notes only on long held chords in quiet sections.
+ *   Speed     the pace of change (not the tempo or the figures): slower holds chords longer,
+ *             glides, hands over and fades for longer, and makes phrases and sections longer
+ *             (fewer of them in the same length), so parts come and go less often.
  *
  * Deterministic for the brief (seed included): every draw is `rand(seed, decision, i,
  * Purpose.Compose)`.
@@ -36,6 +39,7 @@ import { canonicalMoment, canonicalPiece } from './canonical';
 import {
   MOOD_LABEL,
   PART_LABEL,
+  changeScale,
   energyAt,
   modeFamily,
   pickIndex,
@@ -57,7 +61,7 @@ import {
   type Composition,
   type GeneratedSection,
 } from './generate';
-import { clamp, log2, mod, sinPi } from './math';
+import { clamp, exp2, log2, mod, sinPi } from './math';
 import { fitMelody, type MelodyChord } from './melody';
 import { pitchAt } from './query';
 import { voiceNotes } from './voicing';
@@ -373,6 +377,12 @@ class Composer {
   private stage = new Map<string, 'late' | 'lines'>();
   /** Chords changes (beats) that glide slowly while the lines sound one at a time. */
   private features = new Set<number>();
+  /** Speed: how much longer than at medium a transition takes (`changeScale`). */
+  private readonly slower: number;
+  /** Speed: bars a handover spreads over (texture staging, the bass, level moves). */
+  private readonly hand: number;
+  /** Speed: bars of a phrase. */
+  private readonly phraseBars: number;
 
   constructor(r: ResolvedBrief, brief: ComposeBrief & { now?: string }) {
     this.r = r;
@@ -383,6 +393,9 @@ class Composer {
     this.d = (stream, i = 0) => rand(r.seed, stream, i, Purpose.Compose);
     this.now = brief.now ?? DEFAULT_TIMESTAMP;
     this.lead = this.has('melody') ? null : (LEAD_ORDER.find((p) => this.has(p)) ?? null);
+    this.slower = changeScale(r.speed);
+    this.hand = r.speed < 1 / 3 ? 2 : 1;
+    this.phraseBars = r.speed < 1 / 3 ? 8 : 4;
     const c = r.centre;
     // An unhurried tune sits lower.
     const mel0 = Math.min(84, c + (r.unhurried ? 5 : 9));
@@ -461,15 +474,19 @@ class Composer {
         )
       : 0;
     const total = Math.max(8, Math.round(r.length / this.barSec));
-    const intro = r.melody || total < 20 ? 2 : d('intro') < 0.5 ? 4 : 2;
-    let outro = total < 20 ? 2 : d('outro') < 0.5 ? 4 : 3;
-    // Sections: 4-bar phrases, in sections of 2 phrases (a given melody sets the section size).
+    // Slower pieces lean to the longer intro and outro.
+    const long = clamp(1 - r.speed, 0.15, 0.85);
+    const intro = r.melody || total < 20 ? 2 : d('intro') < long ? 4 : 2;
+    let outro = total < 20 ? 2 : d('outro') < long ? 4 : 3;
+    // Sections: 4-bar units, about 2 to a section at medium speed (slow ~3.5, fast ~1.4); a given
+    // melody sets the section size.
     const unit = r.melody ? Math.ceil(melodyBars / 4) * 4 : 4;
     const body = Math.max(unit, total - intro - outro);
     const units = Math.max(1, Math.floor(body / unit));
     outro += Math.max(0, total - intro - outro - units * unit);
     const journey = r.shape.journey >= 0.5;
-    let count = r.melody ? units : Math.max(1, Math.round(units / 2));
+    const perSection = 2 * exp2((0.5 - r.speed) * (r.speed < 0.5 ? 1.6 : 1));
+    let count = r.melody ? units : Math.max(1, Math.round(units / perSection));
     if (journey && units >= 3) count = Math.max(3, count);
     count = Math.min(count, units);
     const sizes = Array.from(
@@ -522,7 +539,7 @@ class Composer {
     secs.push(mk('Outro', 'outro', null, bar, outro));
     this.allBars = all;
     for (const s of secs) {
-      const n = s.kind === 'body' ? Math.max(1, Math.round(s.bars / 4)) : 1;
+      const n = s.kind === 'body' ? Math.max(1, Math.round(s.bars / this.phraseBars)) : 1;
       for (let q = 0; q < n; q++) {
         const b0 = s.bar0 + Math.round((q * s.bars) / n);
         const b1 = s.bar0 + Math.round(((q + 1) * s.bars) / n);
@@ -556,12 +573,21 @@ class Composer {
     return theoryOf(key) ?? theoryOf({ tonic: key.tonic, scale: 'major' })!;
   }
 
-  /** Beats per chord: a chord lasts about 1.5–6 s (unhurried: a bar or more, up to 8.5 s). */
+  /**
+   * Beats per chord: at medium speed a chord lasts about 1.5–6 s (unhurried: a bar or more, up
+   * to 8.5 s). Slower stretches those bounds and leans to the longer chords (four bars too);
+   * faster shrinks them and leans to the shorter.
+   */
   private chordBeats(): number {
     const { meter, d, r } = this;
-    const opts = (meter === 3 || r.unhurried ? [1, 2] : [0.5, 1, 2]).map((h) => h * meter);
+    const k = exp2((0.5 - r.speed) * 1.8);
+    const bars = meter === 3 || r.unhurried ? [1, 2] : [0.5, 1, 2];
+    if (r.speed < 0.4) bars.push(4);
+    const opts = bars.map((h) => h * meter);
+    // Fast allows chords down to ~0.8 s (half bars at Driving tempos).
+    const shortest = 1.5 * exp2(Math.min(0, (0.5 - r.speed) * 1.8));
     const ok = opts.filter(
-      (b) => b * this.beat >= 1.5 && b * this.beat <= (r.unhurried ? 8.5 : 6.2),
+      (b) => b * this.beat >= shortest && b * this.beat <= (r.unhurried ? 8.5 : 6.2) * k,
     );
     const list =
       ok.length > 0
@@ -571,8 +597,14 @@ class Composer {
               Math.abs(b * this.beat - 3) < Math.abs(a * this.beat - 3) ? b : a,
             ),
           ];
-    const w = list.map((b) =>
-      b === meter ? 3 : b < meter ? 1.5 * r.density : (r.unhurried ? 3 : 1.5) * (1 - r.density),
+    const tilt = 4 * (0.5 - r.speed);
+    const w = list.map(
+      (b) =>
+        (b === meter
+          ? 3
+          : b < meter
+            ? 1.5 * r.density
+            : (r.unhurried ? 3 : 1.5) * (1 - r.density)) * exp2(tilt * log2(b / meter)),
     );
     return list[pickIndex(w, d('harmonic-rhythm'))];
   }
@@ -605,9 +637,11 @@ class Composer {
 
   /** Beats for a loop of `n` chords at `h` beats per chord. */
   private loopBeats(n: number, h: number): number[] {
-    if (n === 1) return [4 * h];
-    if (n === 2) return [2 * h, 2 * h];
-    if (n === 3) return [h, h, 2 * h];
+    // Four-bar chords (slow) aren't doubled.
+    const h2 = h >= 4 * this.meter ? h : 2 * h;
+    if (n === 1) return [2 * h2];
+    if (n === 2) return [h2, h2];
+    if (n === 3) return [h, h, h2];
     if (n >= 8 && h >= this.meter && this.meter % 2 === 0) return Array<number>(n).fill(h / 2);
     return Array<number>(n).fill(h);
   }
@@ -646,7 +680,8 @@ class Composer {
           nums = this.drawLoop(th, first, n, 1, `loop-${s.label}-again`);
       }
       // A section in half time now and then (a named progression keeps its order either way).
-      const hh = s.label === 'B' && d('half-time') < 0.3 && h * 2 * this.beat <= 7 ? h * 2 : h;
+      const hh =
+        s.label === 'B' && d('half-time') < 0.3 && h * 2 * this.beat <= 7 * this.slower ? h * 2 : h;
       const beats = this.loopBeats(nums.length, hh);
       const loop = nums.map((num, i) => ({ num, beats: beats[i] }));
       loops.set(id, loop);
@@ -916,16 +951,20 @@ class Composer {
     const { r, d } = this;
     const secs = this.sections;
     const bodies = secs.filter((s) => s.kind === 'body');
+    // Slower: a part that plays stays on until the energy falls a little below its threshold.
+    const stay = Math.max(0, 0.2 * (0.5 - r.speed));
     for (const p of r.parts) {
       const th = ENTER[p] + (d(`enter-${p}`) - 0.5) * 0.16;
+      let was = false;
       for (const s of secs) {
-        let on = s.energy >= th;
+        let on: boolean = s.energy >= (was ? th - stay : th);
         if (p === 'melody') on = on && s.kind === 'body';
         if (p === 'melody' && r.melody)
           on = s.kind === 'body' && (s.label === 'A' || s.energy >= th);
         if (p === 'bass' && s.kind === 'intro') on = on && s.energy >= 0.35;
         if (p === 'pulse' && s.kind === 'outro') on = on && s.energy >= 0.45;
         s.on[p] = on;
+        was = on;
       }
       // Every part plays somewhere: in the liveliest body section (or the last section).
       if (!secs.some((s) => s.on[p])) {
@@ -1505,15 +1544,16 @@ class Composer {
         const b = runs[i];
         const how = this.stage.get(`${p}|${b.from}`);
         if (!how || !a.on || !b.on || fig(a.val) === fig(b.val)) continue;
+        const by = this.hand * this.meter;
         if (how === 'late') {
-          for (let l = 0; l < n; l++) starts[i][l] = b.from + this.meter;
+          for (let l = 0; l < n; l++) starts[i][l] = b.from + by;
           continue;
         }
         if (n < 2) continue;
         const late = Math.floor(n / 2);
         const rising = b.energy >= a.last;
         for (let l = 0; l < n; l++)
-          if (rising ? l < late : l >= n - late) starts[i][l] = b.from + this.meter;
+          if (rising ? l < late : l >= n - late) starts[i][l] = b.from + by;
       }
       runs.forEach((ru, i) => {
         if (!ru.val) return;
@@ -1544,9 +1584,9 @@ class Composer {
   }
 
   /**
-   * Where textures change figure, the change spreads over a bar: part by part when several parts
-   * change (rising, the highest part first, the others a bar later; falling, the lowest first),
-   * line by line when one part changes alone.
+   * Where textures change figure, the change spreads over a bar (two when slow): part by part
+   * when several parts change (rising, the highest part first, the others later; falling, the
+   * lowest first), line by line when one part changes alone.
    */
   private staging(): void {
     const at = new Map<number, { p: BlockPart; e0: number; e1: number }[]>();
@@ -1554,7 +1594,7 @@ class Composer {
       for (let i = 1; i < spans.length; i++) {
         const a = spans[i - 1];
         const b = spans[i];
-        if (!a.on || !b.on || b.to - b.from < 2 * this.meter) continue;
+        if (!a.on || !b.on || b.to - b.from < (this.hand + 1) * this.meter) continue;
         if (figureOf(a.tex) === figureOf(b.tex)) continue;
         at.set(b.from, [...(at.get(b.from) ?? []), { p, e0: a.last, e1: b.energy }]);
       }
@@ -1621,23 +1661,24 @@ class Composer {
       const sp = spans.find((x) => x.from <= b && b < x.to);
       const L = s.on[p] ? r3(this.levelOf(p, s) * this.texGain(p, sp?.tex ?? null)) : null;
       if (q === 0) {
-        if (L !== null) this.enter(p, 0, L, clamp(2 * this.barSec, 2, 5));
+        if (L !== null) this.enter(p, 0, L, this.opening());
       } else if (L !== null && prev === null) this.enter(p, this.T(b), L, fade);
       else if (L === null && prev !== null) this.level(p, r4(this.T(b) - fade), 0, r3(fade));
       else if (L !== null && prev !== null && Math.abs(L - prev) > 0.04) {
-        const late = this.stage.get(`${p}|${b}`) === 'late' ? this.meter : 0;
-        this.level(p, this.T(b + late), L, r3(this.barSec));
+        const late = this.stage.get(`${p}|${b}`) === 'late' ? this.hand * this.meter : 0;
+        this.level(p, this.T(b + late), L, r3(this.hand * this.barSec));
       }
       prev = L;
     });
   }
 
   /**
-   * True when the part's lines sound one at a time at `beat`, or a bar before (a staged change
-   * carries the old figure a bar), while it plays.
+   * True when the part's lines sound one at a time at `beat`, or a handover before (a staged
+   * change carries the old figure that long), while it plays.
    */
   private oneAtATimeAt(p: BlockPart, beat: number): boolean {
-    return [beat, beat - this.meter].some((b) => {
+    const back = Array.from({ length: this.hand + 1 }, (_, i) => beat - i * this.meter);
+    return back.some((b) => {
       const sp = this.spans.get(p)?.find((x) => x.from <= b && b < x.to);
       return sp !== undefined && sp.on && oneAtATime(sp.tex);
     });
@@ -1761,12 +1802,12 @@ class Composer {
     }
     // Levels at 0:00: everything starts at 0; what plays first fades in.
     this.put({ type: 'level', at: 0, gain: 0, over: 0 });
-    const fade = clamp(this.barSec, 1, 3);
+    // Entries and exits fade over about a bar (longer when slow, shorter when fast).
+    const fade = clamp(this.barSec * this.slower, 1, 3 * this.slower);
     const block = (p: ComposePart): p is BlockPart =>
       (BLOCK_PARTS as readonly string[]).includes(p);
     for (const p of r.parts) {
-      if (first.on[p] && !block(p))
-        this.enter(p, 0, this.levelOf(p, first), clamp(2 * this.barSec, 2, 5));
+      if (first.on[p] && !block(p)) this.enter(p, 0, this.levelOf(p, first), this.opening());
     }
     this.flushLevels();
 
@@ -1785,7 +1826,7 @@ class Composer {
           const L = this.levelOf(p, s);
           if (s.on[p] && !was) this.enter(p, this.T(start), L, fade);
           else if (s.on[p] && Math.abs(L - this.levelOf(p, prev)) > 0.04)
-            this.level(p, this.T(start), L, r3(this.barSec));
+            this.level(p, this.T(start), L, r3(this.hand * this.barSec));
           else if (!s.on[p] && was) this.level(p, r4(this.T(start) - fade), 0, r3(fade));
         }
       }
@@ -1826,6 +1867,11 @@ class Composer {
         melodyLast = this.melody(s, start, end, rest, melodyLast, themes);
       }
     });
+  }
+
+  /** The opening fade-in, s: two bars, 2–5 s at medium speed. */
+  private opening(): Seconds {
+    return r3(clamp(2 * this.barSec * this.slower, 2, 5 * this.slower));
   }
 
   /** True when the part's sound is struck and dies away (pluck, piano, mallets, bells). */
@@ -2039,7 +2085,7 @@ class Composer {
 
   /**
    * The bass's tune for a section: the root on every chord change, a pattern between. A new
-   * pattern comes in a bar late (the bass carries the old figure across the boundary); the
+   * pattern comes in a handover late (the bass carries the old figure across the boundary); the
    * leading bass changes pattern phrase by phrase.
    */
   private bassLine(
@@ -2056,7 +2102,7 @@ class Composer {
     const patAt = (beat: number): BassPattern =>
       this.lead === 'bass'
         ? this.leadBassAt(beat)
-        : was !== undefined && was !== own && beat < start + meter
+        : was !== undefined && was !== own && beat < start + this.hand * meter
           ? was
           : own;
     const notes: { pitch: number | null; beats: number }[] = [];
@@ -2236,7 +2282,7 @@ class Composer {
       moments: [],
       timbres: builtinTimbresFor(voices),
       mix,
-      end: { at, fade: r3(clamp(2 * this.barSec, 3, 8)) },
+      end: { at, fade: r3(clamp(2 * this.barSec * this.slower, 3, 8)) },
       view: { ...defaultView(), gridBpm: r.tempo, meter: this.meter },
     };
   }

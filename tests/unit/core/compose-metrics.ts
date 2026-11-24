@@ -184,3 +184,49 @@ export function quickest(p: Piece): number {
   }
   return q;
 }
+
+/** The pace of change of a directed composition (PLAN M12 "Speed"). */
+export interface PaceOfChange {
+  /** Mean chord length, bars (repeated chords merged). */
+  chord: number;
+  /** Mean chord-change glide (length + stagger), beats. */
+  glide: number;
+  /** Mean level ramp (entries, exits, moves), s. */
+  fade: number;
+  /** Mean body section length, bars. */
+  section: number;
+  /** Sections, intro and outro included. */
+  sections: number;
+}
+
+export function paceOf(
+  d: {
+    resolved: { tempo: number; meter: number };
+    chords: readonly { t: Seconds; symbol: string; key: { tonic: string } }[];
+    sections: readonly { name: string; at: Seconds; end: Seconds }[];
+  },
+  p: Piece,
+): PaceOfChange {
+  const beat = 60 / d.resolved.tempo;
+  const bar = beat * d.resolved.meter;
+  const end = d.sections[d.sections.length - 1].end;
+  const ch = d.chords.filter(
+    (c, i) =>
+      i === 0 || c.symbol !== d.chords[i - 1].symbol || c.key.tonic !== d.chords[i - 1].key.tonic,
+  );
+  const glides: number[] = [];
+  const fades: number[] = [];
+  for (const m of p.moments) {
+    if (m.type === 'chord' && m.at > 0)
+      glides.push(((m.glide?.length ?? 0) + (m.glide?.stagger ?? 0)) / beat);
+    if (m.type === 'level' && m.over > 0) fades.push(m.over);
+  }
+  const body = d.sections.filter((s) => s.name !== 'Intro' && s.name !== 'Outro');
+  return {
+    chord: mean(ch.map((c, i) => ((ch[i + 1]?.t ?? end) - c.t) / bar)),
+    glide: mean(glides),
+    fade: mean(fades),
+    section: mean(body.map((s) => (s.end - s.at) / bar)),
+    sections: d.sections.length,
+  };
+}

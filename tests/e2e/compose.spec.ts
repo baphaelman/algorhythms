@@ -80,7 +80,7 @@ test('the setup opens from New: every answer Surprise me, More folded, old input
 }) => {
   const before = await piece(page);
   await openSetup(page);
-  for (const q of ['mood', 'length', 'shape', 'parts']) {
+  for (const q of ['mood', 'length', 'shape', 'speed', 'parts']) {
     await expect(chosen(page, q)).toHaveText(['Surprise me']);
   }
   await expect(page.getByTestId('compose-start')).toHaveValue('surprise');
@@ -107,8 +107,9 @@ test('every control works from the keyboard; Enter on Compose composes the brief
   const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
   const BACK = `Shift+${TAB}`;
   await openSetup(page);
-  // Back from Compose: Watch, Cancel, More, Start from, six Parts chips, Shape, Length, Mood.
-  for (let i = 0; i < 13; i++) await page.keyboard.press(BACK);
+  // Back from Compose: Watch, Cancel, More, Start from, six Parts chips, Speed, Shape, Length,
+  // Mood.
+  for (let i = 0; i < 14; i++) await page.keyboard.press(BACK);
   const mood = page.getByTestId('compose-mood');
   await expect(mood.getByRole('radio', { name: 'Surprise me' })).toBeFocused();
   await page.keyboard.press('ArrowRight');
@@ -120,6 +121,9 @@ test('every control works from the keyboard; Enter on Compose composes the brief
   await page.keyboard.press(TAB);
   await page.keyboard.press('ArrowRight');
   await expect(chosen(page, 'shape')).toHaveText(['Build up']);
+  await page.keyboard.press(TAB);
+  await page.keyboard.press('ArrowLeft'); // from Surprise me round to the last: Fast
+  await expect(chosen(page, 'speed')).toHaveText(['Fast']);
   await page.keyboard.press(TAB); // Parts: Surprise me
   await page.keyboard.press(TAB); // Chords
   await page.keyboard.press('Space');
@@ -164,11 +168,28 @@ test('every control works from the keyboard; Enter on Compose composes the brief
     mood: 'calm',
     length: 120,
     shape: 'build',
+    speed: 'fast',
     parts: ['chords', 'melody'],
     start: { kind: 'none' },
     key: { tonic: 2, mode: 'dorian' },
     tempo: 100,
   });
+});
+
+test('Speed: Fast composes a Fast piece, and Compose again keeps it', async ({ page }) => {
+  await openSetup(page);
+  const speed = page.getByTestId('compose-speed');
+  await expect(speed.getByRole('radio')).toHaveCount(4);
+  await speed.getByRole('radio', { name: 'Fast' }).click();
+  await expect(chosen(page, 'speed')).toHaveText(['Fast']);
+  await page.getByTestId('compose-watch').uncheck();
+  await page.getByTestId('compose-run').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  const b = (await brief(page))!;
+  expect(b).toEqual({ seed: b.seed, speed: 'fast' });
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
+  await page.getByTestId('compose-again').click();
+  await expect(chosen(page, 'speed')).toHaveText(['Fast']);
 });
 
 test('Compose for me places moments over time, then shows the full piece', async ({ page }) => {
@@ -365,6 +386,19 @@ test("the open piece's melody is offered when it has one, and goes into the brie
   expect(notes.length).toBeGreaterThan(4);
   for (let i = 1; i < notes.length; i++)
     expect(notes[i].at).toBeGreaterThanOrEqual(notes[i - 1].at);
+});
+
+test('the setup fits 1280×720 without scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openSetup(page);
+  const fit = await setup(page).evaluate((d) => ({
+    scroll: d.scrollHeight,
+    client: d.clientHeight,
+    bottom: d.getBoundingClientRect().bottom,
+  }));
+  expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+  expect(fit.bottom).toBeLessThanOrEqual(720);
+  await expect(page.getByTestId('compose-run')).toBeInViewport();
 });
 
 test('the setup fits a narrow window and follows dark mode', async ({ page }) => {

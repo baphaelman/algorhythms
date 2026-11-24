@@ -296,14 +296,19 @@ describe('Compose for me', () => {
     expect(piece()).toBe(done);
     expect(ui().open).toBe(true);
 
-    const dark: ComposeAnswers = { ...ANSWERS, mood: 'dark' };
+    const dark: ComposeAnswers = { ...ANSWERS, mood: 'dark', speed: 'fast' };
     useCompose.setState({ seed: 6, answers: dark });
     runCompose();
     expect(ui().setup).toBe(false);
     expect(ui().status).toBe('building');
+    expect(ui().brief?.speed).toBe('fast');
     finish();
     expect(piece().moments).toEqual(want(6, dark).moments);
     expect(ui().open).toBe(true);
+    // Compose again keeps the Speed answer.
+    composeAgain();
+    expect(ui().answers.speed).toBe('fast');
+    closeSetup();
     undo();
     expect(piece().moments).toHaveLength(0);
     expect(useEditor.getState().canUndo).toBe(false);

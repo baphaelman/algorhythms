@@ -7,6 +7,7 @@ import {
   MOODS,
   PARTS,
   SHAPES,
+  SPEEDS,
   SURPRISE,
   TEMPO_MAX,
   TEMPO_MIN,
@@ -72,7 +73,7 @@ function parseStart(v: string): StartAnswer {
 }
 
 /**
- * Compose for me's setup screen (PLAN.md §11.3 "Compose for me, directed", M12): five questions,
+ * Compose for me's setup screen (PLAN.md §11.3 "Compose for me, directed", M12): six questions,
  * each Surprise me by default, More (key and scale, tempo), and "Watch the composer" beside
  * Compose (unticked, the finished piece opens at once). A native modal `<dialog>`: focus
  * is trapped, Escape closes it, Compose has the focus (Enter composes).
@@ -148,6 +149,14 @@ export function ComposeSetup() {
             options={SHAPES}
             value={a.shape}
             onChange={(shape) => setComposeAnswers({ shape })}
+          />
+          <Chips
+            name={`${id}-speed`}
+            label="Speed"
+            testId="compose-speed"
+            options={SPEEDS}
+            value={a.speed}
+            onChange={(speed) => setComposeAnswers({ speed })}
           />
           <fieldset className="setup-q" data-testid="compose-parts">
             <legend>Parts</legend>
