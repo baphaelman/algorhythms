@@ -6,6 +6,7 @@ import './naming';
 import { startPersistence } from './persist';
 import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
+import { ComposeSetup } from './ui/ComposeSetup';
 import { ExportDialog } from './ui/ExportDialog';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
@@ -70,6 +71,7 @@ export function App() {
         <Menu />
       </Transport>
       <GeneratePanel />
+      <ComposeSetup />
       <ExportDialog />
       <MyPieces />
       <NamePrompt />

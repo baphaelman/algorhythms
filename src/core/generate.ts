@@ -93,9 +93,13 @@ export const SECTION_NAMES = [
 /** One of `SECTION_NAMES`. */
 export type SectionName = (typeof SECTION_NAMES)[number];
 
-/** Where a section starts. Its first moment (none for Seed) carries the name as its label. */
-export interface GeneratedSection {
-  name: SectionName;
+/**
+ * Where a section starts. Its first moment (none for Seed) carries the name as its label. `S`:
+ * the section names (the directed composer, core/compose-directed.ts, names its own: "Intro",
+ * "A", "B′").
+ */
+export interface GeneratedSection<S extends string = SectionName> {
+  name: S;
   at: Seconds;
 }
 
@@ -303,26 +307,26 @@ function shortPlan(
 export type ComposePhase = 'structure' | 'detail';
 
 /** One step of a composition, in composition order. */
-export type ComposeStep =
+export type ComposeStep<S extends string = SectionName> =
   /** Inserts `moment` into the piece's moments, which stay in time order. */
-  | { kind: 'add'; moment: Moment; section: SectionName; phase: ComposePhase }
+  | { kind: 'add'; moment: Moment; section: S; phase: ComposePhase }
   /** Replaces the placed moment with `moment.id` by `moment` (a detail edit). */
   | { kind: 'edit'; moment: Moment; phase: 'detail' };
 
 /** A composition: the piece without moments, and the steps that place and adjust them. */
-export interface Composition {
+export interface Composition<S extends string = SectionName> {
   /** The finished piece's settings (voices, key, timbres, title, end) with no moments. */
   base: Piece;
-  steps: ComposeStep[];
+  steps: ComposeStep<S>[];
   /** Where each section starts in the finished piece. */
-  sections: GeneratedSection[];
+  sections: GeneratedSection<S>[];
 }
 
 /**
  * The piece after the first `count` steps (all by default). The finished piece is `generate()`'s.
  * A partial one has an automatic end (4 s after the last activity), so it is an ordinary piece.
  */
-export function composedPiece(c: Composition, count: number = c.steps.length): Piece {
+export function composedPiece(c: Composition<string>, count: number = c.steps.length): Piece {
   const k = Math.max(0, Math.min(c.steps.length, Math.floor(count)));
   const moments: Moment[] = [];
   for (let i = 0; i < k; i++) {

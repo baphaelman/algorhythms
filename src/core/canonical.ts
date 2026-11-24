@@ -20,7 +20,7 @@
  * to 0 (it becomes one quantum), so `len > 0`-style rules still hold.
  */
 
-import type { Piece } from './types';
+import type { Moment, Piece } from './types';
 
 type Rec = Record<string, unknown>;
 type Rule = (x: number) => number;
@@ -175,4 +175,9 @@ const PIECE: Spec = obj({
  */
 export function canonicalPiece<P extends Piece>(piece: P): P {
   return apply(PIECE, piece) as P;
+}
+
+/** The canonical form of one moment's numbers (as `canonicalPiece` stores it). */
+export function canonicalMoment<M extends Moment>(m: M): M {
+  return (apply(PIECE, { moments: [m] }) as { moments: M[] }).moments[0];
 }

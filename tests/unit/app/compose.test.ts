@@ -48,17 +48,20 @@ vi.mock('../../../src/app/persist', async () => {
 });
 
 import { compile } from '../../../src/core/compiler/compile';
-import { composeSteps, generate } from '../../../src/core/generate';
+import { composedPiece } from '../../../src/core/generate';
 import { parsePiece } from '../../../src/core/schema';
 import {
   closeCompose,
+  closeSetup,
   composeAgain,
   finish,
   openCompose,
-  setComposeInput,
+  runCompose,
   stopCompose,
   useCompose,
 } from '../../../src/app/compose';
+import { composeDirected } from '../../../src/core/compose-directed';
+import { DEFAULT_ANSWERS, buildBrief, type ComposeAnswers } from '../../../src/app/compose-setup';
 import { MAX_PEN_SECONDS, composeTimeline, penAt, stepsAt } from '../../../src/app/compose-pace';
 import { composeView } from '../../../src/app/compose-view';
 import { updateMoment } from '../../../src/app/editor/actions';
@@ -79,45 +82,52 @@ function run(ms: number): void {
   }
 }
 
-function open(seed = '4242', extra = {}): void {
-  useCompose.setState((s) => ({
-    form: { ...s.form, mode: 'dorian', length: 150, naturalLength: false, voices: 12, ...extra },
-  }));
+/** A fixed length, so the pace checks see a full-size piece. */
+const ANSWERS: ComposeAnswers = { ...DEFAULT_ANSWERS, mood: 'dreamy', length: 180 };
+
+/** The finished piece for `seed` and `answers`. */
+const want = (seed: number, answers = ANSWERS) =>
+  composedPiece(composeDirected(buildBrief(answers, seed)));
+
+/** New → Compose for me, then Compose with `answers` and `seed`. */
+function open(seed = 4242, answers = ANSWERS): void {
   openCompose();
-  setComposeInput({ seed });
+  expect(ui().setup).toBe(true);
+  useCompose.setState({ seed, answers });
+  runCompose();
 }
 
 describe('compose pace', () => {
-  it('builds a 2:30 piece in 15–25 s', () => {
+  it('builds a 2 min piece in 15–25 s, 3 min in 20–35 s', () => {
     for (const seed of [1, 2, 3, 4242, 99]) {
-      for (const opts of [
-        { mode: 'dorian' as const, length: 150 },
-        { mode: 'pentatonic' as const },
-        { mode: 'lydian' as const, length: 150, voices: 24 },
-      ]) {
-        const total = composeTimeline(composeSteps(seed, opts)).total;
-        expect(total, `${seed} ${JSON.stringify(opts)}`).toBeGreaterThan(15_000);
-        expect(total).toBeLessThan(25_000);
+      for (const [brief, lo, hi] of [
+        [{ seed, length: 120 }, 15_000, 25_000],
+        [{ seed, length: 180, mood: 'driving' }, 20_000, 35_000],
+        [{ seed, length: 180, shape: 'build' }, 20_000, 35_000],
+      ] as const) {
+        const total = composeTimeline(composeDirected(brief)).total;
+        expect(total, JSON.stringify(brief)).toBeGreaterThan(lo);
+        expect(total, JSON.stringify(brief)).toBeLessThan(hi);
       }
     }
   });
 
-  it('keeps short and long pieces watchable: 30 s takes a few seconds, 15 min under a minute', () => {
-    const short = composeTimeline(composeSteps(5, { mode: 'aeolian', length: 30 })).total;
+  it('keeps short and long pieces watchable: 1 min takes a few seconds, 5 min under a minute', () => {
+    const short = composeTimeline(composeDirected({ seed: 5, length: 60 })).total;
     expect(short).toBeGreaterThan(3_000);
     expect(short).toBeLessThan(15_000);
-    const long = composeTimeline(composeSteps(5, { mode: 'aeolian', length: 900 })).total;
+    const long = composeTimeline(composeDirected({ seed: 5, length: 300 })).total;
     expect(long).toBeLessThan((MAX_PEN_SECONDS + 10) * 1000);
   });
 
   it('applies steps in order; the pen only moves forward, through the structure then the details', () => {
-    const c = composeSteps(8, { mode: 'dorian' });
+    const c = composeDirected({ seed: 1, mood: 'dreamy', length: 180 }); // has a detail step
     const tl = composeTimeline(c);
     expect(tl.beats).toHaveLength(c.steps.length);
     expect(stepsAt(tl, 0)).toBe(1);
     expect(stepsAt(tl, tl.total)).toBe(c.steps.length);
     const details = tl.beats.filter((b) => b.detail);
-    expect(details.length).toBeGreaterThan(1);
+    expect(details.length).toBeGreaterThan(0);
     expect(tl.beats.findIndex((b) => b.detail)).toBe(tl.beats.length - details.length);
     let k = 0;
     let pen = 0;
@@ -160,29 +170,29 @@ describe('Compose for me', () => {
     // Moments appear over time, a few per two seconds, not all at once.
     expect(counts[0]).toBeGreaterThan(0);
     expect(counts[0]).toBeLessThan(counts[5]);
-    run(15000);
+    run(25000);
     expect(ui().status).toBe('done');
     expect(composeView.reveal).toBe(undefined);
-    const want = generate(4242, { mode: 'dorian', length: 150, voices: 12, density: 0.45 });
-    expect(piece().moments).toEqual(want.moments);
-    expect(piece().end).toEqual(want.end);
+    expect(piece().moments).toEqual(want(4242).moments);
+    expect(piece().end).toEqual(want(4242).end);
+    expect(ui().brief).toEqual({ seed: 4242, mood: 'dreamy', length: 180 });
   });
 
   it('Skip shows the whole piece at once', () => {
-    open('7');
+    open(7);
     run(500);
     finish();
     expect(ui().status).toBe('done');
-    expect(piece().moments).toEqual(generate(7, { mode: 'dorian', length: 150 }).moments);
+    expect(piece().moments).toEqual(want(7).moments);
   });
 
   it('Stop keeps a valid, playable partial piece; one undo empties it', () => {
-    open('31');
+    open(31);
     run(6000);
     stopCompose();
     expect(ui().status).toBe('stopped');
     const partial = piece();
-    const all = generate(31, { mode: 'dorian', length: 150 }).moments.length;
+    const all = want(31).moments.length;
     expect(partial.moments.length).toBeGreaterThan(1);
     expect(partial.moments.length).toBeLessThan(all);
     expect(parsePiece(JSON.parse(JSON.stringify(partial))).ok).toBe(true);
@@ -201,26 +211,8 @@ describe('Compose for me', () => {
     expect(piece()).toBe(partial);
   });
 
-  it('an input change mid-build restarts from it', () => {
-    open('100');
-    run(5000);
-    const before = ui().step;
-    expect(before).toBeGreaterThan(3);
-    setComposeInput({ seed: '101' });
-    expect(ui().step).toBe(0);
-    expect(piece().moments).toHaveLength(0);
-    run(2000);
-    const first = composeSteps(101, { mode: 'dorian', length: 150 }).steps[1].moment;
-    expect(piece().moments.some((m) => m.id === first.id)).toBe(true);
-    finish();
-    expect(piece().moments).toEqual(generate(101, { mode: 'dorian', length: 150 }).moments);
-    undo();
-    expect(piece().moments).toHaveLength(0);
-    expect(useEditor.getState().canUndo).toBe(false);
-  });
-
   it('the camera follows the pen forward, then holds on the whole piece for the details', () => {
-    open('4242');
+    open(1); // seed 1 has a detail step
     let start = camera.start;
     let flashed = 0;
     let fitted = NaN;
@@ -242,46 +234,58 @@ describe('Compose for me', () => {
     expect(flashed).toBeGreaterThan(0);
   });
 
-  it('after it finishes, input changes do not recompose; Compose again does, as one entry', () => {
-    open('5');
+  it('Compose again reopens the setup with the last answers and a new seed; one entry', () => {
+    open(5);
     finish();
     const done = piece();
-    setComposeInput({ voices: 6 });
-    expect(ui().status).toBe('done');
+    composeAgain();
+    expect(ui().setup).toBe(true);
+    expect(ui().answers).toEqual(ANSWERS);
+    expect(ui().seed).not.toBe(5);
     run(3000);
     expect(piece()).toBe(done);
     expect(ui().open).toBe(true);
 
-    composeAgain();
+    const dark: ComposeAnswers = { ...ANSWERS, mood: 'dark' };
+    useCompose.setState({ seed: 6, answers: dark });
+    runCompose();
+    expect(ui().setup).toBe(false);
     expect(ui().status).toBe('building');
     finish();
-    expect(piece().voices).toHaveLength(6);
-    expect(piece().moments).toEqual(
-      generate(5, { mode: 'dorian', length: 150, voices: 6 }).moments,
-    );
+    expect(piece().moments).toEqual(want(6, dark).moments);
     expect(ui().open).toBe(true);
     undo();
     expect(piece().moments).toHaveLength(0);
     expect(useEditor.getState().canUndo).toBe(false);
   });
 
-  it('after Stop, input changes wait for Compose again', () => {
-    open('6');
+  it('after Stop, Compose again rebuilds as one entry', () => {
+    open(6);
     run(3000);
     stopCompose();
     const kept = piece();
-    setComposeInput({ seed: '7' });
+    composeAgain();
     run(2000);
     expect(piece()).toBe(kept);
-    composeAgain();
+    useCompose.setState({ seed: 7 });
+    runCompose();
     finish();
-    expect(piece().moments).toEqual(generate(7, { mode: 'dorian', length: 150 }).moments);
+    expect(piece().moments).toEqual(want(7).moments);
     undo();
     expect(piece().moments).toHaveLength(0);
   });
 
+  it('closing the setup from New leaves the open piece alone', () => {
+    const before = piece();
+    openCompose();
+    closeSetup();
+    expect(ui().setup).toBe(false);
+    expect(ui().open).toBe(false);
+    expect(piece()).toBe(before);
+  });
+
   it('the user editing the piece after the build closes the panel', () => {
-    open('8');
+    open(8);
     finish();
     expect(ui().open).toBe(true);
     updateMoment(piece().moments[1].id, { muted: true });
@@ -294,14 +298,14 @@ describe('Compose for me', () => {
   });
 
   it('undoing the compose closes the panel', () => {
-    open('12');
+    open(12);
     finish();
     undo();
     expect(ui().open).toBe(false);
   });
 
   it('an edit from outside stops the build where it is and closes the panel', () => {
-    open('9');
+    open(9);
     run(4000);
     const id = piece().moments[1].id;
     updateMoment(id, { muted: true });

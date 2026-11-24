@@ -1,11 +1,14 @@
 /**
- * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order"; M4.5-28,
- * M4.5-38): New → Compose for me builds a piece on screen, the camera and pen only moving forward;
- * Skip shows all of it, Stop keeps a playable part, a seed change restarts a build in progress,
- * inputs after the finish wait for Compose again, and one undo goes back to the empty piece.
+ * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order", "Compose
+ * for me, directed"; M4.5-28, M4.5-38, M12 D2): New → Compose for me opens the setup (every
+ * answer Surprise me, keyboard-complete, remembered per browser); Compose builds the brief's piece
+ * on screen, the camera and pen only moving forward; Skip shows all of it, Stop keeps a playable
+ * part, Compose again reopens the setup with a new seed, and one undo goes back to the empty piece.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { generate } from '../../src/core/generate';
+import { composedPiece } from '../../src/core/generate';
+import type { ComposeBrief } from '../../src/core/compose-brief';
+import { composeDirected } from '../../src/core/compose-directed';
 import './app-hook';
 
 interface Shown {
@@ -19,21 +22,39 @@ const piece = (page: Page): Promise<Shown> =>
   });
 const count = async (page: Page): Promise<number> => (await piece(page)).moments.length;
 const panel = (page: Page) => page.getByTestId('compose-panel');
+const setup = (page: Page) => page.getByTestId('compose-setup');
 const status = (page: Page) => panel(page).getAttribute('data-status');
+const brief = (page: Page): Promise<ComposeBrief | null> =>
+  page.evaluate(() => window.__algorhythms!.composeBrief() as ComposeBrief | null);
+/** The finished piece of the last build. */
+const expected = async (page: Page) => {
+  const b = await brief(page);
+  expect(b).not.toBeNull();
+  return composedPiece(composeDirected(b!));
+};
+/** The chip that is on in a question. */
+const chosen = (page: Page, q: string) => page.getByTestId(`compose-${q}`).locator('label.on');
 
-async function compose(page: Page, seed: string): Promise<void> {
+async function openSetup(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
   await page.getByTestId('compose-piece').click();
-  await expect(panel(page)).toBeVisible();
-  await expect(page.getByTestId('inspector')).toBeHidden();
-  // A fixed seed, so the result can be checked (this restarts the build).
-  await page.getByTestId('compose-seed').fill(seed);
-  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  await expect(setup(page)).toBeVisible();
 }
 
-/** The finished piece for `seed` with the panel's default inputs (Dorian, 2:30, 12 notes). */
-const expected = (seed: number) =>
-  generate(seed, { mode: 'dorian', length: 150, voices: 12, density: 0.45 }).moments;
+/** Opens the setup and composes; with `seed`, a fixed one (and a 2 min Dreamy piece). */
+async function compose(page: Page, seed?: number): Promise<void> {
+  await openSetup(page);
+  if (seed !== undefined) {
+    await page.getByTestId('compose-mood').getByRole('radio', { name: 'Dreamy' }).click();
+    await page.getByTestId('compose-length').getByRole('radio', { name: '2 min' }).click();
+    await page.evaluate((s) => window.__algorhythms!.composeSeed(s), seed);
+  }
+  await page.getByTestId('compose-run').click();
+  await expect(setup(page)).toBeHidden();
+  await expect(panel(page)).toBeVisible();
+  await expect(page.getByTestId('inspector')).toBeHidden();
+  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+}
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
@@ -41,15 +62,97 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 
-interface Sample {
-  start: number;
-  pen: number;
-  detail: boolean;
-  status: string | null;
-}
+test('the setup opens from New: every answer Surprise me, More folded, old inputs gone', async ({
+  page,
+}) => {
+  const before = await piece(page);
+  await openSetup(page);
+  for (const q of ['mood', 'length', 'shape', 'parts']) {
+    await expect(chosen(page, q)).toHaveText(['Surprise me']);
+  }
+  await expect(page.getByTestId('compose-start')).toHaveValue('surprise');
+  // Tidewater Hymn has no melody line, so it is not offered.
+  await expect(page.getByTestId('compose-start').locator('option[value="melody"]')).toHaveCount(0);
+  await expect(page.getByTestId('compose-more')).not.toHaveAttribute('open', '');
+  await expect(page.getByTestId('compose-key')).toBeHidden();
+  await expect(page.getByTestId('compose-run')).toBeFocused();
+  for (const old of ['seed', 'new-seed', 'mode', 'voices', 'density', 'natural']) {
+    await expect(page.getByTestId(`compose-${old}`)).toHaveCount(0);
+  }
+  // Escape closes it; nothing changed.
+  await page.keyboard.press('Escape');
+  await expect(setup(page)).toBeHidden();
+  await expect(panel(page)).toHaveCount(0);
+  expect(await piece(page)).toEqual(before);
+});
 
-/** Records the camera, pen and phase every frame until the build ends. */
-async function trace(page: Page): Promise<void> {
+test('every control works from the keyboard; Enter on Compose composes the brief', async ({
+  page,
+}) => {
+  await openSetup(page);
+  // Back from Compose: Cancel, More, Start from, six Parts chips, Shape, Length, Mood.
+  for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+Tab');
+  const mood = page.getByTestId('compose-mood');
+  await expect(mood.getByRole('radio', { name: 'Surprise me' })).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(chosen(page, 'mood')).toHaveText(['Calm']);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(chosen(page, 'length')).toHaveText(['2 min']);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('ArrowRight');
+  await expect(chosen(page, 'shape')).toHaveText(['Build up']);
+  await page.keyboard.press('Tab'); // Parts: Surprise me
+  await page.keyboard.press('Tab'); // Chords
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Tab'); // Bass
+  await page.keyboard.press('Tab'); // Melody
+  await page.keyboard.press('Space');
+  await expect(chosen(page, 'parts')).toHaveText(['Chords', 'Melody']);
+  await page.keyboard.press('Tab'); // Pulse
+  await page.keyboard.press('Tab'); // Bells
+  await page.keyboard.press('Tab'); // Start from
+  await expect(page.getByTestId('compose-start')).toBeFocused();
+  await page.keyboard.type('N');
+  await expect(page.getByTestId('compose-start')).toHaveValue('none');
+  await page.keyboard.press('Tab'); // More
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('compose-more')).toHaveAttribute('open', '');
+  await expect(page.getByTestId('compose-scale')).toBeDisabled();
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('compose-key')).toBeFocused();
+  await page.keyboard.type('D');
+  await expect(page.getByTestId('compose-key')).toHaveValue('2');
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('compose-scale')).toBeFocused();
+  await page.keyboard.type('Do');
+  await expect(page.getByTestId('compose-scale')).toHaveValue('dorian');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('100');
+  await page.keyboard.press('Tab'); // Cancel
+  await page.keyboard.press('Tab'); // Compose
+  await expect(page.getByTestId('compose-run')).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  const b = await brief(page);
+  expect(b).toEqual({
+    seed: b!.seed,
+    mood: 'calm',
+    length: 120,
+    shape: 'build',
+    parts: ['chords', 'melody'],
+    start: { kind: 'none' },
+    key: { tonic: 2, mode: 'dorian' },
+    tempo: 100,
+  });
+  await page.getByTestId('compose-skip').click();
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
+});
+
+test('Compose for me places moments over time, then shows the full piece', async ({ page }) => {
+  await compose(page, 46); // seed 46 has detail steps
   await page.evaluate(() => {
     const h = window.__algorhythms!;
     const out: Sample[] = [];
@@ -63,16 +166,7 @@ async function trace(page: Page): Promise<void> {
     };
     requestAnimationFrame(tick);
   });
-}
-const traced = (page: Page): Promise<Sample[]> =>
-  page.evaluate(() => (window as unknown as { __trace: Sample[] }).__trace);
-
-test('New → Compose for me places moments over time, then shows the full piece', async ({
-  page,
-}) => {
-  await compose(page, '4242');
-  await trace(page);
-  const all = expected(4242).length;
+  const all = (await expected(page)).moments.length;
   await expect.poll(() => count(page), { timeout: 15_000 }).toBeGreaterThan(0);
   const seen: number[] = [];
   for (let i = 0; i < 4; i++) {
@@ -89,21 +183,23 @@ test('New → Compose for me places moments over time, then shows the full piece
     .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.start))
     .toBeGreaterThan(5);
   await expect(panel(page)).toHaveAttribute('data-status', 'done', { timeout: 30_000 });
-  expect((await piece(page)).moments).toEqual(expected(4242));
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
 
   // In play order: the camera and pen never move back while the structure is placed; the detail
   // sweep then shows the whole piece (the camera still) and its pen also only moves forward.
-  const samples = (await traced(page)).filter((s) => s.status === 'building');
+  const samples = (
+    await page.evaluate(() => (window as unknown as { __trace: Sample[] }).__trace)
+  ).filter((s) => s.status === 'building');
   const structure = samples.filter((s) => !s.detail);
   const details = samples.filter((s) => s.detail);
   expect(structure.length).toBeGreaterThan(100);
-  expect(details.length).toBeGreaterThan(5);
+  expect(details.length).toBeGreaterThan(5); // frames
   expect(samples.findIndex((s) => s.detail)).toBe(structure.length);
   for (let i = 1; i < structure.length; i++) {
     expect(structure[i].start).toBeGreaterThanOrEqual(structure[i - 1].start - 1e-6);
     expect(structure[i].pen).toBeGreaterThanOrEqual(structure[i - 1].pen - 1e-6);
   }
-  expect(structure.at(-1)!.pen).toBeGreaterThan(140);
+  expect(structure.at(-1)!.pen).toBeGreaterThan(100);
   // The first detail frame may still show the last structural camera; from then on it holds.
   for (let i = 2; i < details.length; i++) {
     expect(details[i].start).toBe(details[1].start);
@@ -111,19 +207,26 @@ test('New → Compose for me places moments over time, then shows the full piece
   }
 });
 
+interface Sample {
+  start: number;
+  pen: number;
+  detail: boolean;
+  status: string | null;
+}
+
 test('Skip ends with the full piece; one undo empties back to before the compose', async ({
   page,
 }) => {
-  await compose(page, '77');
+  await compose(page);
   await page.waitForTimeout(800);
   await page.getByTestId('compose-skip').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'done');
   const done = await piece(page);
-  expect(done.title).toBe('Dorian 77');
-  expect(done.moments).toEqual(expected(77));
+  const want = await expected(page);
+  expect(done.title).toBe(want.meta.title);
+  expect(done.moments).toEqual(want.moments);
 
-  // Undo from the keyboard (not in the seed field, which keeps its own text undo). The user's own
-  // history change closes the panel, and the inspector returns.
+  // The user's own history change closes the panel, and the inspector returns.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(async () => (await piece(page)).moments.length).toBe(0);
@@ -136,13 +239,13 @@ test('Skip ends with the full piece; one undo empties back to before the compose
 });
 
 test('Stop keeps a partial piece that plays', async ({ page }) => {
-  await compose(page, '31');
+  await compose(page);
   await expect.poll(() => count(page), { timeout: 30_000 }).toBeGreaterThan(2);
   await page.getByTestId('compose-stop').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'stopped');
   const kept = await count(page);
   expect(kept).toBeGreaterThan(2);
-  expect(kept).toBeLessThan(expected(31).length);
+  expect(kept).toBeLessThan((await expected(page)).moments.length);
   await page.waitForTimeout(1000);
   expect(await count(page)).toBe(kept);
 
@@ -163,38 +266,35 @@ test('Stop keeps a partial piece that plays', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('changing the seed mid-build restarts the build from it', async ({ page }) => {
-  await compose(page, '100');
-  await expect.poll(() => count(page), { timeout: 30_000 }).toBeGreaterThan(2);
-  await page.getByTestId('compose-seed').fill('101');
-  // The build starts over: the old moments go, the new seed's come in.
-  await expect.poll(() => count(page), { timeout: 10_000 }).toBeLessThan(3);
-  expect((await piece(page)).title).toBe('Dorian 101');
-  const firstSplit = expected(101)[1].id;
-  await expect
-    .poll(async () => (await piece(page)).moments.some((m) => m.id === firstSplit))
-    .toBe(true);
-  await page.getByTestId('compose-skip').click();
-  expect((await piece(page)).moments).toEqual(expected(101));
-});
-
-test('after the finish, inputs wait for Compose again', async ({ page }) => {
-  await compose(page, '55');
+test('Compose again keeps the answers with a new seed, as one undo entry', async ({ page }) => {
+  await openSetup(page);
+  await page.getByTestId('compose-mood').getByRole('radio', { name: 'Dark' }).click();
+  await page.getByTestId('compose-parts').getByRole('checkbox', { name: 'Bells' }).click();
+  await page.getByTestId('compose-run').click();
   await page.getByTestId('compose-skip').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'done');
-  const done = await piece(page);
-  expect(done.moments).toEqual(expected(55));
+  const first = (await brief(page))!;
+  expect(first).toEqual({ seed: first.seed, mood: 'dark', parts: ['bells'] });
 
-  await page.getByTestId('compose-seed').fill('56');
-  await page.waitForTimeout(1500);
+  await page.getByTestId('compose-again').click();
+  await expect(setup(page)).toBeVisible();
+  await expect(chosen(page, 'mood')).toHaveText(['Dark']);
+  await expect(chosen(page, 'parts')).toHaveText(['Bells']);
+  // Escape leaves the finished piece and the panel as they were.
+  const done = await piece(page);
+  await page.keyboard.press('Escape');
+  await expect(setup(page)).toBeHidden();
   await expect(panel(page)).toHaveAttribute('data-status', 'done');
   expect(await piece(page)).toEqual(done);
 
   await page.getByTestId('compose-again').click();
+  await page.getByTestId('compose-run').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'building');
-  await expect.poll(async () => (await piece(page)).title).toBe('Dorian 56');
+  const again = (await brief(page))!;
+  expect(again.seed).not.toBe(first.seed);
+  expect(again).toEqual({ ...first, seed: again.seed });
   await page.getByTestId('compose-skip').click();
-  expect((await piece(page)).moments).toEqual(expected(56));
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
   // Still one undo entry back to the empty piece.
   await page.getByTestId('compose-close').click();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -203,4 +303,102 @@ test('after the finish, inputs wait for Compose again', async ({ page }) => {
   expect(await page.evaluate(() => window.__algorhythms!.editor.state.getState().canUndo)).toBe(
     false,
   );
+});
+
+test('the answers survive a reload', async ({ page }) => {
+  await openSetup(page);
+  await page.getByTestId('compose-length').getByRole('radio', { name: '5 min' }).click();
+  await page.getByTestId('compose-shape').getByRole('radio', { name: 'Journey' }).click();
+  await page.getByTestId('compose-more').locator('summary').click();
+  await page.getByTestId('compose-tempo').fill('84');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openSetup(page);
+  await expect(chosen(page, 'length')).toHaveText(['5 min']);
+  await expect(chosen(page, 'shape')).toHaveText(['Journey']);
+  await expect(chosen(page, 'mood')).toHaveText(['Surprise me']);
+  // More opens by itself when it holds an answer.
+  await expect(page.getByTestId('compose-more')).toHaveAttribute('open', '');
+  await expect(page.getByTestId('compose-tempo')).toHaveValue('84');
+});
+
+test("the open piece's melody is offered when it has one, and goes into the brief", async ({
+  page,
+}) => {
+  await page.goto('./?example=kite-day');
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  await openSetup(page);
+  await page.getByTestId('compose-start').selectOption('melody');
+  await page.getByTestId('compose-run').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  const b = (await brief(page))!;
+  expect(b.start?.kind).toBe('melody');
+  const notes = b.start?.kind === 'melody' ? b.start.notes : [];
+  expect(notes.length).toBeGreaterThan(4);
+  for (let i = 1; i < notes.length; i++)
+    expect(notes[i].at).toBeGreaterThanOrEqual(notes[i - 1].at);
+});
+
+test('the setup fits a narrow window and follows dark mode', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await openSetup(page);
+  const fit = await setup(page).evaluate((d) => ({
+    scroll: d.scrollWidth,
+    client: d.clientWidth,
+    right: d.getBoundingClientRect().right,
+  }));
+  expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+  expect(fit.right).toBeLessThanOrEqual(390);
+  const bg = () => setup(page).evaluate((d) => getComputedStyle(d).backgroundColor);
+  const light = await bg();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(bg).not.toBe(light);
+});
+
+/** Composes `answers` (radio names per question, Parts checkbox names) with `seed`, skipped to the end. */
+async function composeWith(
+  page: Page,
+  seed: number,
+  answers: { mood?: string; parts?: string[] },
+): Promise<{ scale: string; bpm: number; parts: string[] }> {
+  await openSetup(page);
+  if (answers.mood)
+    await page.getByTestId('compose-mood').getByRole('radio', { name: answers.mood }).click();
+  for (const p of answers.parts ?? [])
+    await page.getByTestId('compose-parts').getByRole('checkbox', { name: p }).click();
+  await page.evaluate((s) => window.__algorhythms!.composeSeed(s), seed);
+  await page.getByTestId('compose-run').click();
+  await page.getByTestId('compose-skip').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
+  return page.evaluate(() => {
+    const p = window.__algorhythms!.store.getState().piece as unknown as {
+      key: { scale: string };
+      view: { gridBpm: number };
+      moments: { target?: { part?: string } }[];
+    };
+    const parts = new Set<string>();
+    for (const m of p.moments) {
+      if (m.target?.part) parts.add(m.target.part);
+    }
+    return { scale: p.key.scale, bpm: p.view.gridBpm, parts: [...parts].sort() };
+  });
+}
+
+test('the answers shape the piece: two moods differ in mode and tempo; Parts gives only those', async ({
+  page,
+}) => {
+  const calm = await composeWith(page, 11, { mood: 'Calm' });
+  await page.getByTestId('compose-close').click();
+  const driving = await composeWith(page, 11, { mood: 'Driving' });
+  expect(driving.scale === calm.scale && driving.bpm === calm.bpm).toBe(false);
+  expect(driving.bpm).toBeGreaterThan(calm.bpm);
+  await page.getByTestId('compose-close').click();
+  // Mood Surprise me again, so only Parts is set.
+  await openSetup(page);
+  await page.getByTestId('compose-mood').getByRole('radio', { name: 'Surprise me' }).click();
+  await page.keyboard.press('Escape');
+  const two = await composeWith(page, 12, { parts: ['Chords', 'Bass'] });
+  expect(two.parts).toEqual(['Bass', 'Chords']);
 });

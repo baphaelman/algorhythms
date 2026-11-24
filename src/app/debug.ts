@@ -14,6 +14,8 @@ import { connectMidi, disconnectMidi, liveInputs, midiSink, useLive } from './li
 import { frameStats } from './loop';
 import { auditionState } from './audition';
 import { composeView } from './compose-view';
+import { useCompose } from './compose';
+import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
 import { previewStats } from './ui/ExportDialog';
@@ -49,6 +51,10 @@ export interface AlgoRhythmsDebug {
   audition: typeof auditionState;
   /** Compose for me's pen and phase (M4.5-38). */
   compose: typeof composeView;
+  /** The brief of the last Compose for me build (M12). */
+  composeBrief(): ComposeBrief | null;
+  /** Sets the next Compose for me build's seed (while the setup is open). */
+  composeSeed(seed: number): void;
   /** Live mode (M7): enter/exit, the LiveEngine (noteOn, …), and an analyser on its output. */
   live: {
     enter: typeof enterLive;
@@ -115,6 +121,8 @@ export function installDebug(): void {
     preview: previewState,
     audition: auditionState,
     compose: composeView,
+    composeBrief: () => useCompose.getState().brief,
+    composeSeed: (seed: number) => useCompose.setState({ seed }),
     live: {
       enter: enterLive,
       exit: exitLive,

@@ -1,25 +1,36 @@
 /**
- * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order"; M4.5-28,
- * M4.5-38): New opens an empty piece and a side panel with Generate's inputs, and the composer
- * builds the piece on screen, step by step (`composeSteps`), at the pace of ./compose-pace.ts.
- * The structure comes in play order: the camera follows the pen forward and the lines draw in up
- * to it (`composeView`). Then the whole piece is fitted in view and the detail sweep highlights
- * each detail as it is placed, left to right.
+ * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order", "Compose
+ * for me, directed"; M4.5-28, M4.5-38, M12): New opens the setup screen (./compose-setup.ts) over
+ * the open piece; Compose opens an empty piece and a side panel, and the composer builds the piece
+ * on screen, step by step (`composeDirected`), at the pace of ./compose-pace.ts. The structure
+ * comes in play order: the camera follows the pen forward and the lines draw in up to it
+ * (`composeView`). Then the whole piece is fitted in view and the detail sweep highlights each
+ * detail as it is placed, left to right.
  *
  * The whole compose is one undo entry back to the empty piece: the build runs as one editor
- * gesture, closed when it finishes (or Skip, Stop). Changing an input restarts the build only
- * while it builds; afterwards "Compose again" rebuilds, first undoing the last build's entry when
- * it is still the newest, so it stays one entry. The user's own edit (any history change not made
- * here: an edit, undo, drag) stops a build and closes the panel; so does loading another piece.
+ * gesture, closed when it finishes (or Skip, Stop). "Compose again" reopens the setup with the
+ * last answers and a new seed; its build first undoes the last build's entry when it is still the
+ * newest, so it stays one entry. The user's own edit (any history change not made here: an edit,
+ * undo, drag) stops a build and closes the panel; so does loading another piece.
  *
  * Playback is not driven: the transport stays where it is, and playing while it builds plays the
  * piece as it grows (each step is hot-swapped like any edit); the camera then follows the playhead.
  */
 
 import { create } from 'zustand';
-import { composeSteps, composedPiece, type Composition } from '../core/generate';
+import { composedPiece, type Composition } from '../core/generate';
 import type { Piece } from '../core/types';
+import type { ComposeBrief } from '../core/compose-brief';
+import { composeDirected } from '../core/compose-directed';
 import { composeTimeline, penAt, stepsAt, type Timeline } from './compose-pace';
+import {
+  buildBrief,
+  loadAnswers,
+  melodyOf,
+  saveAnswers,
+  type ComposeAnswers,
+  type MelodyNote,
+} from './compose-setup';
 import { composeView } from './compose-view';
 import {
   beginGesture,
@@ -31,13 +42,7 @@ import {
   updateGesture,
   useEditor,
 } from './editor/history';
-import {
-  DEFAULT_FORM,
-  checkForm,
-  newSeed,
-  type FieldErrors,
-  type GenerateForm,
-} from './generate-options';
+import { newSeed } from './generate-options';
 import { loadNewPiece } from './persist';
 import { camera, cameraOf, fitWindow, onLoadPiece, runOpen, usePlayer } from './store';
 
@@ -45,9 +50,17 @@ import { camera, cameraOf, fitWindow, onLoadPiece, runOpen, usePlayer } from './
 export type ComposeStatus = 'building' | 'done' | 'stopped';
 
 export interface ComposeUi {
+  /** The side panel (the build show). */
   open: boolean;
-  form: GenerateForm;
-  errors: FieldErrors;
+  /** The setup screen. */
+  setup: boolean;
+  /** The setup's answers (remembered per browser) and the next build's seed. */
+  answers: ComposeAnswers;
+  seed: number;
+  /** Whether "The open piece's melody" can be offered. */
+  hasMelody: boolean;
+  /** The brief of the last build. */
+  brief: ComposeBrief | null;
   status: ComposeStatus;
   /** Steps placed so far, and the total. */
   step: number;
@@ -56,11 +69,14 @@ export interface ComposeUi {
   activity: string;
 }
 
-/** The panel's state; the form outlives the panel (reopening keeps the choices, with a new seed). */
+/** The panel's and setup's state; the answers outlive both. */
 export const useCompose = create<ComposeUi>()(() => ({
   open: false,
-  form: { ...DEFAULT_FORM, seed: '0' },
-  errors: {},
+  setup: false,
+  answers: loadAnswers(),
+  seed: 0,
+  hasMelody: false,
+  brief: null,
   status: 'done',
   step: 0,
   total: 0,
@@ -68,7 +84,7 @@ export const useCompose = create<ComposeUi>()(() => ({
 }));
 
 const run = {
-  comp: null as Composition | null,
+  comp: null as Composition<string> | null,
   timeline: null as Timeline | null,
   /** `performance.now()` when the build began. */
   t0: 0,
@@ -84,6 +100,8 @@ const run = {
   loading: false,
   /** True while Compose itself changes the history (not the user's edit). */
   self: false,
+  /** The melody of the piece open when New → Compose for me was chosen. */
+  melody: null as MelodyNote[] | null,
 };
 
 /** Runs `f` as Compose's own history change. */
@@ -201,21 +219,13 @@ function frame(now: number): void {
 }
 
 /**
- * (Re)starts the build from the panel's inputs ("Compose again"). Mid-build it just starts over
- * (same gesture); after a finished or stopped build whose entry is still the newest and untouched,
- * that entry is undone first, so the compose stays one undo entry. Invalid inputs stop it and
- * show the errors.
+ * (Re)starts the build from `brief`. Mid-build it just starts over (same gesture); after a
+ * finished or stopped build whose entry is still the newest and untouched, that entry is undone
+ * first, so the compose stays one undo entry.
  */
-export function restartCompose(): void {
-  const { form } = useCompose.getState();
-  const check = checkForm(form, new Date().toISOString());
-  if (!check.ok) {
-    if (useCompose.getState().status === 'building') stopCompose();
-    useCompose.setState({ errors: check.errors });
-    return;
-  }
+function restartCompose(brief: ComposeBrief): void {
   cancelFrame();
-  run.comp = composeSteps(check.request.seed, check.request.options);
+  run.comp = composeDirected(brief);
   run.timeline = composeTimeline(run.comp);
   if (run.gesture === null || currentGesture() !== run.gesture) {
     ours(() => {
@@ -231,7 +241,7 @@ export function restartCompose(): void {
     run.gesture = currentGesture();
   }
   clearView();
-  useCompose.setState({ errors: {}, status: 'building', total: run.comp.steps.length });
+  useCompose.setState({ brief, status: 'building', total: run.comp.steps.length });
   run.t0 = performance.now();
   camera.start = 0;
   if (!show(0)) return;
@@ -253,12 +263,42 @@ export function stopCompose(): void {
   settle('stopped');
 }
 
-/** New → Compose for me: an empty piece, the panel, and a build from a fresh seed. */
+/** New → Compose for me: the setup screen over the open piece, with a fresh seed. */
 export function openCompose(): void {
-  runOpen(startCompose);
+  run.melody = melodyOf(usePlayer.getState().piece);
+  useCompose.setState({ setup: true, seed: newSeed(), hasMelody: run.melody !== null });
 }
 
-function startCompose(): void {
+/** "Compose again" (after a finish or Stop): the setup with the last answers and a new seed. */
+export function composeAgain(): void {
+  if (useCompose.getState().status === 'building') return;
+  useCompose.setState({ setup: true, seed: newSeed() });
+}
+
+/** Closes the setup screen without composing. */
+export function closeSetup(): void {
+  useCompose.setState({ setup: false });
+}
+
+/** Changes the setup's answers (remembered per browser). */
+export function setComposeAnswers(patch: Partial<ComposeAnswers>): void {
+  useCompose.setState((s) => ({ answers: { ...s.answers, ...patch } }));
+  saveAnswers(useCompose.getState().answers);
+}
+
+/**
+ * The setup's Compose: builds the brief, then starts the build show. From New it opens an empty
+ * piece first; from "Compose again" it rebuilds in the open session.
+ */
+export function runCompose(): void {
+  const { answers, seed, open } = useCompose.getState();
+  const brief = buildBrief(answers, seed, run.melody);
+  useCompose.setState({ setup: false });
+  if (open) restartCompose(brief);
+  else runOpen(() => startCompose(brief));
+}
+
+function startCompose(brief: ComposeBrief): void {
   cancelFrame();
   clearView();
   run.gesture = run.entry = run.result = null;
@@ -268,35 +308,14 @@ function startCompose(): void {
   } finally {
     run.loading = false;
   }
-  useCompose.setState((s) => ({
-    open: true,
-    errors: {},
-    form: { ...s.form, seed: String(newSeed()) },
-  }));
-  restartCompose();
+  useCompose.setState({ open: true });
+  restartCompose(brief);
 }
 
 /** Closes the panel (a build in progress stops where it is). */
 export function closeCompose(): void {
   stopCompose();
-  useCompose.setState({ open: false });
-}
-
-/** "Compose again": a new build from the current inputs. */
-export const composeAgain = restartCompose;
-
-/**
- * Changes inputs. While it builds, the build restarts from them (live); afterwards they wait for
- * "Compose again" (only their errors show).
- */
-export function setComposeInput(patch: Partial<GenerateForm>): void {
-  useCompose.setState((s) => ({ form: { ...s.form, ...patch } }));
-  if (useCompose.getState().status === 'building') {
-    restartCompose();
-    return;
-  }
-  const check = checkForm(useCompose.getState().form, new Date().toISOString());
-  useCompose.setState({ errors: check.ok ? {} : check.errors });
+  useCompose.setState({ open: false, setup: false });
 }
 
 // The user's own history change after a build (an edit, undo or redo) closes the panel.
@@ -306,9 +325,12 @@ useEditor.subscribe(() => {
   if (lastEntry() !== run.entry) closeCompose();
 });
 
-// Opening another piece ends the compose session.
+// Opening another piece ends the compose session (and closes the setup).
 onLoadPiece(() => {
-  if (run.loading || !useCompose.getState().open) return;
+  if (run.loading) return;
+  const { open, setup } = useCompose.getState();
+  if (setup) useCompose.setState({ setup: false });
+  if (!open) return;
   cancelFrame();
   clearView();
   run.gesture = run.entry = run.result = null;

@@ -17,7 +17,9 @@ export const PEN_SPEED = 7.5;
 /** The pen's longest sweep, seconds (long pieces draw faster). */
 export const MAX_PEN_SECONDS = 40;
 /** Shortest time an add step is shown, ms. */
-export const MIN_ADD_MS = 250;
+export const MIN_ADD_MS = 150;
+/** Time an add step is shown when the next one is at the same time (a chord and its level), ms. */
+export const TIE_MS = 50;
 /** Time a detail step is shown, ms. */
 export const DETAIL_MS = 700;
 /** Longest the detail sweep is shown, ms (its steps share it). */
@@ -49,7 +51,7 @@ function reach(m: Moment): Seconds {
 }
 
 /** The timeline for `c`'s steps. */
-export function composeTimeline(c: Composition): Timeline {
+export function composeTimeline(c: Composition<string>): Timeline {
   const { steps } = c;
   const structure = steps.filter((s) => s.phase === 'structure');
   const details = steps.length - structure.length;
@@ -69,7 +71,7 @@ export function composeTimeline(c: Composition): Timeline {
       from = s.moment.at;
       const after = structure[next];
       to = after ? Math.max(from, after.moment.at) : Math.max(from, reach(s.moment));
-      dur = Math.max(MIN_ADD_MS, ((to - from) / speed) * 1000);
+      dur = after && to - from < 1e-3 ? TIE_MS : Math.max(MIN_ADD_MS, ((to - from) / speed) * 1000);
     } else {
       from = to = s.moment.at;
       dur = Math.min(DETAIL_MS, MAX_DETAIL_MS / details);
