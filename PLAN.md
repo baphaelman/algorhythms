@@ -858,6 +858,7 @@ Tablets such as iPads are wider than 900 px, so they get the editor. Touch rules
   - **Defaults are stripped before encoding:** built-in timbres that are unchanged, a default `mix`, `view`, and any field equal to its default are omitted and restored on decode. Moment ids are 6 characters. Without stripping, a typical piece would be 3–5k characters; the target after stripping is ≤ 2,000 characters for the example pieces, checked in M5.
   - Some chat apps truncate long links, so when the URL exceeds about 2,000 characters the UI warns and offers a file instead.
   - The fragment never reaches a server.
+  - **The address bar is the share link (owner 2026-11-24):** whatever piece is open is in the URL, so copying the address shares it. An unedited bundled example reads `#<example-id>` (for example `…/algorhythms/#kite-day`, opening the current version of that piece); anything else (an edited example, a composed or generated piece, your own pieces) reads `#p=<payload>`, kept up to date as you edit. Integrator calls: the URL is updated with `replaceState` (debounced, off the edit path), so Back still leaves the app as before; reloading the page reopens the same piece without adding a copy to My pieces.
 
 ### 11.5 Mobile, accessibility and theming
 - **Priority (owner, 2026-11-20):** desktop is the focus. Phones get a usable layout, without phone-specific testing or polish beyond what exists.
@@ -1379,6 +1380,7 @@ The original questions follow for reference.
 ### Revision 18 (2026-11-24): the owner's M12 listening notes
 - **Compose (M12 D3):** a Watch the composer checkbox replaces Skip; staggered section transitions; the detail sweep is optional; a lone part leads instead of looping.
 - **Editor:** Next cards drop the numeral and narrow (Add widens); a trackpad pinch over a line zooms the editor, not the page.
+- **Share (§11.4):** the address bar always holds the open piece (`#<example-id>` for an unedited example, else `#p=`).
 
 ### Revision 17 (2026-11-23): composer's toolkit (M13), hover to hear
 - **M13:** the composers' unaddressed findings, with the `over: 'chord'` walk bug to fix now.
