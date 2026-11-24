@@ -160,3 +160,6 @@ export function harbourSong(o: { decay?: number; strike?: boolean } = {}): Recor
   s.level(s.T(41), undefined, 0, 9);
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

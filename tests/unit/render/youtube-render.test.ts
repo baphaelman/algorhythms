@@ -51,7 +51,7 @@ function load(file: string): Piece {
   if (!r.ok) throw new Error(r.errors.join('; '));
   return r.piece;
 }
-const PIECE = load('examples/compositions/kite-day.algorhythms.json');
+const PIECE = load('examples/songs/kite-day.algorhythms.json');
 const SCORE = compile(PIECE);
 const CTX = { ...videoMarkers(PIECE), ...pieceLook(PIECE) };
 const SIZE = { width: 853, height: 480 };

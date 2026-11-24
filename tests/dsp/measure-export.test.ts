@@ -18,7 +18,7 @@ function load(file: string) {
 
 describe('measureExport', () => {
   it('equals the input measurement of a normalised export (span and fades included)', () => {
-    const piece = load('compositions/kite-day');
+    const piece = load('songs/kite-day');
     const input = { score: compile(piece), mix: piece.mix, timbres: piece.timbres };
     const span = { start: 12, end: 16 };
     let report: NormalizeReport | undefined;

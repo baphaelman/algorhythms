@@ -12,7 +12,7 @@ const load = async (f) =>
 const { compareSong } = await load('./compare.ts');
 const [oldDir, outDir, only, variant] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
-const newDir = fileURLToPath(new URL('../../examples/compositions', import.meta.url));
+const newDir = fileURLToPath(new URL('../../examples/songs', import.meta.url));
 
 const bars = (bpm, meter, list) =>
   list.map(([name, a, b, step]) => ({

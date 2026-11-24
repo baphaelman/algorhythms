@@ -151,7 +151,9 @@ describe('examples', () => {
     ...readdirSync(ROOT)
       .filter((f) => f.endsWith('.algorhythms.json'))
       .map((f) => join(ROOT, f)),
-    ...readdirSync(join(ROOT, 'compositions')).map((f) => join(ROOT, 'compositions', f)),
+    ...['songs', 'experiments'].flatMap((d) =>
+      readdirSync(join(ROOT, d)).map((f) => join(ROOT, d, f)),
+    ),
   ];
 
   /** Largest difference between two compiled scores' numbers; throws if their shapes differ. */

@@ -1,5 +1,5 @@
 /**
- * The bundled compositions (examples/compositions, CC0): songs with a melody line over chords.
+ * The bundled compositions (examples/songs and examples/experiments, CC0): songs with a melody line over chords.
  * Under "distinct notes" (PLAN rev 8) a melody that lands on another line's pitch merges into it
  * and the rest of the tune is lost, so each song must keep every line alive until its ending.
  * Rev 9 (docs/composing.md §1): written with parts, tunes and pulses, in few moments.
@@ -11,39 +11,46 @@ import { canonicalPiece } from '../../../src/core/canonical';
 import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 
-const DIR = join(import.meta.dirname, '../../../examples/compositions');
-const files = readdirSync(DIR).filter((f) => f.endsWith('.algorhythms.json'));
+const ROOT = join(import.meta.dirname, '../../../examples');
+/** Paths relative to examples/, e.g. `songs/kite-day.algorhythms.json`. */
+const files = ['songs', 'experiments'].flatMap((d) =>
+  readdirSync(join(ROOT, d))
+    .filter((f) => f.endsWith('.algorhythms.json'))
+    .map((f) => `${d}/${f}`),
+);
 
 describe('compositions', () => {
   it('there are some, all CC0', () => {
     expect(files.length).toBeGreaterThanOrEqual(3);
     for (const f of files) {
-      const json = JSON.parse(readFileSync(join(DIR, f), 'utf8')) as { meta: { license?: string } };
+      const json = JSON.parse(readFileSync(join(ROOT, f), 'utf8')) as {
+        meta: { license?: string };
+      };
       expect(json.meta.license, f).toBe('CC0-1.0');
     }
   });
 
   for (const f of files) {
     it(`${f}: every voice has a part; few moments; a tempo`, () => {
-      const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
+      const r = parsePiece(readFileSync(join(ROOT, f), 'utf8'));
       if (!r.ok) throw new Error(r.errors.join('; '));
       expect(
         r.piece.voices.every((v) => (v.part ?? '') !== ''),
         f,
       ).toBe(true);
-      expect(r.piece.moments.length, f).toBeLessThan(f.startsWith('night-ferry') ? 150 : 100);
+      expect(r.piece.moments.length, f).toBeLessThan(f.includes('night-ferry') ? 150 : 100);
       expect(r.piece.view.gridBpm, f).toBeGreaterThan(0);
     });
 
     it(`${f}: is stored with canonical numbers (scripts/compositions/build.mjs)`, () => {
-      const json = JSON.parse(readFileSync(join(DIR, f), 'utf8')) as Parameters<
+      const json = JSON.parse(readFileSync(join(ROOT, f), 'utf8')) as Parameters<
         typeof canonicalPiece
       >[0];
       expect(canonicalPiece(json)).toEqual(json);
     });
 
     it(`${f}: compiles without warnings and no tune's line dies before the ending`, () => {
-      const r = parsePiece(readFileSync(join(DIR, f), 'utf8'));
+      const r = parsePiece(readFileSync(join(ROOT, f), 'utf8'));
       if (!r.ok) throw new Error(r.errors.join('; '));
       const score = compile(r.piece);
       const bad = score.diagnostics.filter((d) => d.level !== 'info');

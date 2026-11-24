@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 import { build } from 'vite';
 
 const ROOT = join(import.meta.dirname, '../..');
-const PIECE = join(ROOT, 'examples/compositions/tide-pools.algorhythms.json');
+const PIECE = join(ROOT, 'examples/songs/tide-pools.algorhythms.json');
 const BENCH = join(ROOT, 'examples/the-cartographers-rain.algorhythms.json');
 
 let bundle: string | null = null;

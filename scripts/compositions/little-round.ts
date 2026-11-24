@@ -71,3 +71,6 @@ export function littleRound(): Record<string, unknown> {
   j.view.colors = 'custom';
   return j;
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

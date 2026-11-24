@@ -13,9 +13,11 @@ import { autoCameraPlan } from '../../../src/render/auto-camera';
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const files = [
   ...readdirSync(EXAMPLES).filter((f) => f.endsWith('.algorhythms.json')),
-  ...readdirSync(join(EXAMPLES, 'compositions'))
-    .filter((f) => f.endsWith('.algorhythms.json'))
-    .map((f) => `compositions/${f}`),
+  ...['songs', 'experiments'].flatMap((d) =>
+    readdirSync(join(EXAMPLES, d))
+      .filter((f) => f.endsWith('.algorhythms.json'))
+      .map((f) => `${d}/${f}`),
+  ),
 ];
 
 it('makes keys for every example and composition in < 50 ms', () => {

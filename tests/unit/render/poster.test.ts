@@ -38,11 +38,13 @@ const BUNDLED = [
   ...readdirSync(join(ROOT, 'examples'))
     .filter((f) => f.endsWith('.algorhythms.json'))
     .map((f) => `examples/${f}`),
-  ...readdirSync(join(ROOT, 'examples/compositions'))
-    .filter((f) => f.endsWith('.algorhythms.json'))
-    .map((f) => `examples/compositions/${f}`),
+  ...['songs', 'experiments'].flatMap((d) =>
+    readdirSync(join(ROOT, 'examples', d))
+      .filter((f) => f.endsWith('.algorhythms.json'))
+      .map((f) => `examples/${d}/${f}`),
+  ),
 ];
-const PIECE = 'examples/compositions/tide-pools.algorhythms.json';
+const PIECE = 'examples/songs/tide-pools.algorhythms.json';
 
 function svgOf(piece: Piece, size: PosterSize, title: boolean, theme: 'light' | 'dark' = 'light') {
   const compiled = compile(piece);

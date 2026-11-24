@@ -153,3 +153,6 @@ export function nightFerry(opts: Opts = {}): Record<string, unknown> {
   s.level(s.T(66) + 0.01, undefined, 0, 4);
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

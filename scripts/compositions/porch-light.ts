@@ -185,3 +185,6 @@ export function porchLight(): Record<string, unknown> {
   s.end = { at: s.T(52), fade: 4 };
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

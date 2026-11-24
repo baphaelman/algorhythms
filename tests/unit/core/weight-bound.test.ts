@@ -135,7 +135,7 @@ describe('lines merging into a level target take its level', () => {
 
 describe('examples: settled weights stay within the voices', () => {
   const root = join(import.meta.dirname, '../../../examples');
-  const files = ['', 'compositions'].flatMap((d) =>
+  const files = ['', 'songs', 'experiments'].flatMap((d) =>
     readdirSync(join(root, d))
       .filter((f) => f.endsWith('.algorhythms.json'))
       .map((f) => join(d, f)),

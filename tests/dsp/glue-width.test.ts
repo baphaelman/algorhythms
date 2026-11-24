@@ -102,7 +102,7 @@ describe('width', () => {
 
 describe('glue on a dense passage (Crease)', () => {
   it('takes 2–4 dB off the loudest peaks and leaves the quiet opening alone', () => {
-    const piece = loadPiece('compositions/crease');
+    const piece = loadPiece('experiments/crease');
     const score = flatten(compile(piece));
     const n = frames(56);
     const input = (mix: MixSettings) => ({

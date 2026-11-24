@@ -186,3 +186,6 @@ export function switchyard(): Record<string, unknown> {
   s.end = { at: s.T(60), fade: 3 };
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'experiment' as const;

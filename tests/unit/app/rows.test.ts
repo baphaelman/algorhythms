@@ -31,9 +31,11 @@ const files = [
   ...readdirSync(ROOT)
     .filter((f) => f.endsWith('.algorhythms.json'))
     .map((f) => join(ROOT, f)),
-  ...readdirSync(join(ROOT, 'compositions'))
-    .filter((f) => f.endsWith('.algorhythms.json'))
-    .map((f) => join(ROOT, 'compositions', f)),
+  ...['songs', 'experiments'].flatMap((d) =>
+    readdirSync(join(ROOT, d))
+      .filter((f) => f.endsWith('.algorhythms.json'))
+      .map((f) => join(ROOT, d, f)),
+  ),
 ];
 
 function load(path: string): Piece {

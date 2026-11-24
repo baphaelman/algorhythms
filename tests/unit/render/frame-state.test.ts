@@ -127,7 +127,7 @@ describe('video frames leave no state behind', () => {
   });
 
   // video-frames.spec's piece; its frames, and one with the ghost layer in use.
-  const piece = load('examples/compositions/tide-pools.algorhythms.json');
+  const piece = load('examples/songs/tide-pools.algorhythms.json');
   const score = compile(piece);
   for (const aspect of ['16:9', '9:16', '1:1'] as VideoAspect[]) {
     it(aspect, () => {

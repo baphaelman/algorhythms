@@ -128,3 +128,6 @@ export function kiteDay(o: { decay?: number; strike?: boolean } = {}): Record<st
   s.level(s.T(41), undefined, 0, 6);
   return s.toJson();
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;

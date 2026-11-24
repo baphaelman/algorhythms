@@ -443,3 +443,6 @@ export function crease(): J {
   piece.view = { ...(piece.view as J), colors: 'custom', window: 20 };
   return piece;
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'experiment' as const;

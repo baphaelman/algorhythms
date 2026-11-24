@@ -79,7 +79,7 @@ function points(file: string, height: number): number {
 
 describe('short score', () => {
   it('chord tolerance stays positive at any height (no plot: Infinity, the step bound rules)', () => {
-    const score = load('examples/compositions/kite-day.algorhythms.json');
+    const score = load('examples/songs/kite-day.algorhythms.json');
     for (const h of [20, 60, 80, 82, 83, 143, 400, 800, 4000]) {
       const view = cameraAt(
         cameraScore(score),
@@ -94,7 +94,7 @@ describe('short score', () => {
   });
 
   it('the plot height is > 0 and upright for canvas heights 20–4000 px (pads shrink)', () => {
-    const score = load('examples/compositions/kite-day.algorhythms.json');
+    const score = load('examples/songs/kite-day.algorhythms.json');
     for (const hud of [true, false]) {
       for (let h = 20; h <= 4000; h += h < 300 ? 1 : 37) {
         const v = cameraAt(
@@ -127,7 +127,7 @@ describe('short score', () => {
     expect(hudLines(40)).toBe(2);
     expect(hudLines(29)).toBe(1);
     expect(hudLines(15)).toBe(0);
-    const score = load('examples/compositions/kite-day.algorhythms.json');
+    const score = load('examples/songs/kite-day.algorhythms.json');
     for (const h of [20, 40, 60, 82, 100, 137, 143, 400]) {
       const ys: number[] = [];
       const { ctx } = countingCtx();
@@ -169,8 +169,8 @@ describe('short score', () => {
   });
 
   for (const file of [
-    'examples/compositions/kite-day.algorhythms.json',
-    'examples/compositions/harbour-song.algorhythms.json',
+    'examples/songs/kite-day.algorhythms.json',
+    'examples/songs/harbour-song.algorhythms.json',
     'examples/tidewater-hymn.algorhythms.json',
   ]) {
     it(`path size does not grow as the score shrinks: ${file.split('/').pop()}`, () => {

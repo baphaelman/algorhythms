@@ -121,7 +121,7 @@ describe('HUD chord in tune-driven pieces', () => {
     const files = readdirSync(join(ROOT, 'examples'))
       .filter((f) => f.endsWith('.algorhythms.json'))
       .map((f) => `examples/${f}`);
-    for (const f of [...files, 'examples/compositions/porch-light.algorhythms.json']) {
+    for (const f of [...files, 'examples/songs/porch-light.algorhythms.json']) {
       const h = compile(load(f)).harmony ?? [];
       expect(h.length, f).toBeGreaterThan(0);
       expect(
@@ -132,7 +132,7 @@ describe('HUD chord in tune-driven pieces', () => {
   });
 
   it('Little Round names its round F, Dm, B♭, C, and resumes incrementally the same', () => {
-    const p = load('examples/compositions/little-round.algorhythms.json');
+    const p = load('examples/songs/little-round.algorhythms.json');
     const s = compile(p);
     expect([27.5, 29, 30.8, 31.6].map((t) => label(s, t))).toEqual(['F', 'Dm', 'B♭', 'C']);
     expect(new Set((s.harmony ?? []).map((h) => h.label)).size).toBeGreaterThan(8);

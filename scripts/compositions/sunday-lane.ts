@@ -398,3 +398,6 @@ export function sundayLane(): Record<string, unknown> {
   };
   return piece;
 }
+
+/** Which examples folder build.mjs writes this piece into. */
+export const kind = 'song' as const;
