@@ -4,6 +4,7 @@ import { attachLiveKeys } from './live-ui';
 import { useCompose } from './compose';
 import './naming';
 import { startPersistence } from './persist';
+import { startAddressBar } from './address';
 import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
 import { ComposeSetup } from './ui/ComposeSetup';
@@ -56,6 +57,7 @@ export function App() {
 
   useEffect(() => {
     startPersistence();
+    startAddressBar();
     startPlayer();
     const detachLive = attachLiveKeys();
     const detach = attachKeys();

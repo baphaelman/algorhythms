@@ -109,7 +109,7 @@ export function Menu() {
                       data-testid={`example-${ex.id}`}
                       aria-current={ex.title === title ? 'true' : undefined}
                       onClick={() => {
-                        openExample(ex.json);
+                        openExample(ex.json, ex.id);
                         close();
                       }}
                     >

@@ -139,7 +139,7 @@ export function startPersistence(lib?: Library): Autosaver {
     const info = loadInfo();
     if (info.count !== seen) {
       seen = info.count;
-      s.loaded(state.piece, info.source, opening ?? undefined);
+      s.loaded(state.piece, info.source, opening ?? info.entryId);
       opening = null;
     } else if (state.piece !== prev.piece) {
       s.edited(state.piece);
