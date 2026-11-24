@@ -706,7 +706,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
 ### 11.1 Structure
 - `/` opens the instrument straight away, with a featured example piece loaded but not playing (browser autoplay rules). The featured piece is **Kite Day** (owner, 2026-11-20). `/?example=<id>` opens another example (a link to a song; the e2e specs use `?example=tidewater-hymn`).
 - `/#p=…` opens a shared piece.
-- Menus give access to **Examples** (CC0, in two groups, owner 2026-11-20: **Originals**, the five first examples in `examples/`, and **Compositions**, songs written with the instrument in `examples/compositions/`), **My pieces** (stored in IndexedDB), **New** (empty, or from a template), **Generate**, **Import/Export**, and **Help** (shortcuts).
+- Menus give access to **Examples** (CC0. Three groups, owner 2026-11-24, replacing 2026-11-20's Originals + Compositions: **Songs** first, pieces meant as music, in `examples/songs/`; **Experiments**, pieces that use the tools for an audio-visual experience rather than a song (toward the *Nebula* video), in `examples/experiments/`, Crease and Night Sleeper pinned first; **Originals** last, the five first examples in `examples/`. Split as the gallery's kinds: Songs = Harbour Song, Kite Day, Little Round, Moonwater, Night Ferry, Porch Light, Sunday Lane, Tide Pools; Experiments = Crease, Interference, Night Sleeper, Switchyard), **My pieces** (stored in IndexedDB), **New** (empty, or from a template), **Generate**, **Import/Export**, and **Help** (shortcuts).
 
 ### 11.2 Layout (desktop; revision 5)
 Mockup (owner-approved direction, made-up music): https://claude.ai/artifact/29KnYtonhJGSZKEj12Jogm
@@ -1380,6 +1380,7 @@ The original questions follow for reference.
 ### Revision 18 (2026-11-24): the owner's M12 listening notes
 - **Compose (M12 D3):** a Watch the composer checkbox replaces Skip; staggered section transitions; the detail sweep is optional; a lone part leads instead of looping.
 - **Editor:** Next cards drop the numeral and narrow (Add widens); a trackpad pinch over a line zooms the editor, not the page.
+- **Examples (§11.1, owner):** the menu splits into Songs, Experiments and Originals.
 - **Share (§11.4):** the address bar always holds the open piece (`#<example-id>` for an unedited example, else `#p=`).
 
 ### Revision 17 (2026-11-23): composer's toolkit (M13), hover to hear
