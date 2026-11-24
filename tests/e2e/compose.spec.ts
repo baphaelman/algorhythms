@@ -88,50 +88,54 @@ test('the setup opens from New: every answer Surprise me, More folded, old input
 
 test('every control works from the keyboard; Enter on Compose composes the brief', async ({
   page,
+  browserName,
 }) => {
+  // macOS WebKit's Tab skips radios and buttons (system "Keyboard navigation" off); Option-Tab doesn't.
+  const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+  const BACK = `Shift+${TAB}`;
   await openSetup(page);
   // Back from Compose: Cancel, More, Start from, six Parts chips, Shape, Length, Mood.
-  for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+Tab');
+  for (let i = 0; i < 12; i++) await page.keyboard.press(BACK);
   const mood = page.getByTestId('compose-mood');
   await expect(mood.getByRole('radio', { name: 'Surprise me' })).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(chosen(page, 'mood')).toHaveText(['Calm']);
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(TAB);
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   await expect(chosen(page, 'length')).toHaveText(['2 min']);
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(TAB);
   await page.keyboard.press('ArrowRight');
   await expect(chosen(page, 'shape')).toHaveText(['Build up']);
-  await page.keyboard.press('Tab'); // Parts: Surprise me
-  await page.keyboard.press('Tab'); // Chords
+  await page.keyboard.press(TAB); // Parts: Surprise me
+  await page.keyboard.press(TAB); // Chords
   await page.keyboard.press('Space');
-  await page.keyboard.press('Tab'); // Bass
-  await page.keyboard.press('Tab'); // Melody
+  await page.keyboard.press(TAB); // Bass
+  await page.keyboard.press(TAB); // Melody
   await page.keyboard.press('Space');
   await expect(chosen(page, 'parts')).toHaveText(['Chords', 'Melody']);
-  await page.keyboard.press('Tab'); // Pulse
-  await page.keyboard.press('Tab'); // Bells
-  await page.keyboard.press('Tab'); // Start from
+  await page.keyboard.press(TAB); // Pulse
+  await page.keyboard.press(TAB); // Bells
+  await page.keyboard.press(TAB); // Start from
   await expect(page.getByTestId('compose-start')).toBeFocused();
   await page.keyboard.type('N');
   await expect(page.getByTestId('compose-start')).toHaveValue('none');
-  await page.keyboard.press('Tab'); // More
+  await page.keyboard.press(TAB); // More
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('compose-more')).toHaveAttribute('open', '');
   await expect(page.getByTestId('compose-scale')).toBeDisabled();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(TAB);
   await expect(page.getByTestId('compose-key')).toBeFocused();
   await page.keyboard.type('D');
   await expect(page.getByTestId('compose-key')).toHaveValue('2');
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(TAB);
   await expect(page.getByTestId('compose-scale')).toBeFocused();
   await page.keyboard.type('Do');
   await expect(page.getByTestId('compose-scale')).toHaveValue('dorian');
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(TAB);
   await page.keyboard.type('100');
-  await page.keyboard.press('Tab'); // Cancel
-  await page.keyboard.press('Tab'); // Compose
+  await page.keyboard.press(TAB); // Cancel
+  await page.keyboard.press(TAB); // Compose
   await expect(page.getByTestId('compose-run')).toBeFocused();
   await page.keyboard.press('Enter');
 
