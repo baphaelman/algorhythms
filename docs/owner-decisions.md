@@ -28,6 +28,7 @@ Try these in the newest preview; the integrator adds to this list as work lands:
 - (none parked)
 
 ## Answered
+- **M12 directed Compose (2026-11-23):** approved the map: five questions + More; old sliders removed; Generate = all Surprise me (owner asked whether lists limit variation — integrator: answers narrow a region, Surprise samples the whole continuous range, variety measured against today's Generate); listening check by links to the live site with the piece open, not WAVs.
 - **M11.5 camera path (2026-11-23):** approved the map. Keys stored in the piece; new videos default to Auto; video only. The editor gets a Camera toggle while playing: pure Follow by default, or watch the camera path.
 - **Composer's toolkit and hover to hear (2026-11-23, PLAN rev 17):** the composers' unaddressed findings become M13, after M12; the `over: 'chord'` walk bug is fixed now. A minimum line opacity joins M11, and a camera that can start before 0 joins M11.5. **Reverted:** "hover previews are silent" (2026-11-21). Hovering an Add or Next card now plays the move into the result, then the result (for a chord, the chord), and names the result on the card.
 - **Export colours (2026-11-23, M11):** every colour an export draws is customisable (background solid/gradient, lines, heads, playhead, HUD, labels, guides, beat lines, title/end text), with built-in and saved colour schemes, for video and poster, not only the YouTube preset (PLAN §12 "Exports you can shape" → Colours).
