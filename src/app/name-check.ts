@@ -1,6 +1,7 @@
 /** The decision behind "name it before moving on" (PLAN.md §11.4); see naming.ts. */
 
 import { DEFAULT_TITLE } from '../core/defaults';
+import { isComposedTitle } from '../core/compose-directed';
 import { isGeneratedTitle } from '../core/generate';
 
 /** The inputs of the decision. */
@@ -15,7 +16,7 @@ export interface NameCheck {
 /** True for the default title, an empty one, or an automatic Generate / Compose title. */
 export function isUnnamed(title: string): boolean {
   const t = title.trim();
-  return t === '' || t === DEFAULT_TITLE || isGeneratedTitle(t);
+  return t === '' || t === DEFAULT_TITLE || isGeneratedTitle(t) || isComposedTitle(t);
 }
 
 /** True if the open piece is edited, still unnamed and not yet skipped: ask before moving on. */

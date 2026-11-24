@@ -7,7 +7,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { composedPiece } from '../../src/core/generate';
-import { composeDirected, type ComposeBrief } from '../../src/app/compose-brief-stub';
+import type { ComposeBrief } from '../../src/core/compose-brief';
+import { composeDirected } from '../../src/core/compose-directed';
 import './app-hook';
 
 interface Shown {
@@ -25,7 +26,7 @@ const setup = (page: Page) => page.getByTestId('compose-setup');
 const status = (page: Page) => panel(page).getAttribute('data-status');
 const brief = (page: Page): Promise<ComposeBrief | null> =>
   page.evaluate(() => window.__algorhythms!.composeBrief() as ComposeBrief | null);
-/** The finished piece of the last build (the stub composer until D1 merges). */
+/** The finished piece of the last build. */
 const expected = async (page: Page) => {
   const b = await brief(page);
   expect(b).not.toBeNull();
@@ -40,8 +41,14 @@ async function openSetup(page: Page): Promise<void> {
   await expect(setup(page)).toBeVisible();
 }
 
-async function compose(page: Page): Promise<void> {
+/** Opens the setup and composes; with `seed`, a fixed one (and a 2 min Dreamy piece). */
+async function compose(page: Page, seed?: number): Promise<void> {
   await openSetup(page);
+  if (seed !== undefined) {
+    await page.getByTestId('compose-mood').getByRole('radio', { name: 'Dreamy' }).click();
+    await page.getByTestId('compose-length').getByRole('radio', { name: '2 min' }).click();
+    await page.evaluate((s) => window.__algorhythms!.composeSeed(s), seed);
+  }
   await page.getByTestId('compose-run').click();
   await expect(setup(page)).toBeHidden();
   await expect(panel(page)).toBeVisible();
@@ -145,7 +152,7 @@ test('every control works from the keyboard; Enter on Compose composes the brief
 });
 
 test('Compose for me places moments over time, then shows the full piece', async ({ page }) => {
-  await compose(page);
+  await compose(page, 46); // seed 46 has detail steps
   await page.evaluate(() => {
     const h = window.__algorhythms!;
     const out: Sample[] = [];
@@ -186,7 +193,7 @@ test('Compose for me places moments over time, then shows the full piece', async
   const structure = samples.filter((s) => !s.detail);
   const details = samples.filter((s) => s.detail);
   expect(structure.length).toBeGreaterThan(100);
-  expect(details.length).toBeGreaterThan(5);
+  expect(details.length).toBeGreaterThan(5); // frames
   expect(samples.findIndex((s) => s.detail)).toBe(structure.length);
   for (let i = 1; i < structure.length; i++) {
     expect(structure[i].start).toBeGreaterThanOrEqual(structure[i - 1].start - 1e-6);
@@ -347,4 +354,51 @@ test('the setup fits a narrow window and follows dark mode', async ({ page }) =>
   const light = await bg();
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect.poll(bg).not.toBe(light);
+});
+
+/** Composes `answers` (radio names per question, Parts checkbox names) with `seed`, skipped to the end. */
+async function composeWith(
+  page: Page,
+  seed: number,
+  answers: { mood?: string; parts?: string[] },
+): Promise<{ scale: string; bpm: number; parts: string[] }> {
+  await openSetup(page);
+  if (answers.mood)
+    await page.getByTestId('compose-mood').getByRole('radio', { name: answers.mood }).click();
+  for (const p of answers.parts ?? [])
+    await page.getByTestId('compose-parts').getByRole('checkbox', { name: p }).click();
+  await page.evaluate((s) => window.__algorhythms!.composeSeed(s), seed);
+  await page.getByTestId('compose-run').click();
+  await page.getByTestId('compose-skip').click();
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
+  return page.evaluate(() => {
+    const p = window.__algorhythms!.store.getState().piece as unknown as {
+      key: { scale: string };
+      view: { gridBpm: number };
+      moments: { target?: { part?: string } }[];
+    };
+    const parts = new Set<string>();
+    for (const m of p.moments) {
+      if (m.target?.part) parts.add(m.target.part);
+    }
+    return { scale: p.key.scale, bpm: p.view.gridBpm, parts: [...parts].sort() };
+  });
+}
+
+test('the answers shape the piece: two moods differ in mode and tempo; Parts gives only those', async ({
+  page,
+}) => {
+  const calm = await composeWith(page, 11, { mood: 'Calm' });
+  await page.getByTestId('compose-close').click();
+  const driving = await composeWith(page, 11, { mood: 'Driving' });
+  expect(driving.scale === calm.scale && driving.bpm === calm.bpm).toBe(false);
+  expect(driving.bpm).toBeGreaterThan(calm.bpm);
+  await page.getByTestId('compose-close').click();
+  // Mood Surprise me again, so only Parts is set.
+  await openSetup(page);
+  await page.getByTestId('compose-mood').getByRole('radio', { name: 'Surprise me' }).click();
+  await page.keyboard.press('Escape');
+  const two = await composeWith(page, 12, { parts: ['Chords', 'Bass'] });
+  expect(two.parts).toEqual(['Bass', 'Chords']);
 });

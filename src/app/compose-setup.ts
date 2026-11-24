@@ -9,10 +9,10 @@ import {
   PROGRESSIONS,
   type ComposeBrief,
   type ComposeLength,
-  type ComposeMood,
+  type Mood as ComposeMood,
   type ComposePart,
-  type ComposeShape,
-} from './compose-brief-stub';
+  type Shape as ComposeShape,
+} from '../core/compose-brief';
 
 export const SURPRISE = 'surprise';
 type Surprise = typeof SURPRISE;

@@ -175,11 +175,11 @@ export function chordFrame(
   return { root, stable };
 }
 
-/** The chord in effect at `t`. */
+/** The chord in effect at `t` (1 ms early counts: chord times are rounded). */
 function chordIn(chords: readonly MelodyChord[], key: Key, t: Seconds): MelodyChord {
   let c: MelodyChord | undefined = chords[0];
   for (const x of chords) {
-    if (x.t <= t + 1e-6) c = x;
+    if (x.t <= t + 1e-3) c = x;
     else break;
   }
   if (c && c.pcs.length > 0) return c;
@@ -192,7 +192,7 @@ function chordIn(chords: readonly MelodyChord[], key: Key, t: Seconds): MelodyCh
 function keyIn(keys: readonly KeyChange[], t: Seconds): Key {
   let k = keys[0].key;
   for (const e of keys) {
-    if (e.t <= t + 1e-6) k = e.key;
+    if (e.t <= t + 1e-3) k = e.key;
     else break;
   }
   return k;

@@ -10,7 +10,7 @@ import {
   shownAnswers,
   type ComposeAnswers,
 } from '../../../src/app/compose-setup';
-import { PROGRESSIONS } from '../../../src/app/compose-brief-stub';
+import { PROGRESSIONS } from '../../../src/core/compose-brief';
 import { newPiece } from '../../../src/core/defaults';
 import type { Moment, Piece } from '../../../src/core/types';
 

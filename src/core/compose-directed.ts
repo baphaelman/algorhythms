@@ -24,6 +24,7 @@
 import { chordOf, chordSymbolOf, rankNext, theoryOf, transition, type Theory } from './theory';
 import { parseChord } from './chords';
 import { compile } from './compiler/compile';
+import { canonicalMoment, canonicalPiece } from './canonical';
 import {
   MOOD_LABEL,
   PART_LABEL,
@@ -104,11 +105,11 @@ export function composedTitle(r: ResolvedBrief): string {
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
-  return `${MOOD_LABEL[r.moodName]} ${k.tonic.replace('b', '♭')} ${mode} ${r.seed}`;
+  return `${MOOD_LABEL[r.moodName]} ${k.tonic.replace('b', '♭').replace('#', '♯')} ${mode} ${r.seed}`;
 }
 
 const TITLE_RE = new RegExp(
-  `^(${Object.values(MOOD_LABEL).join('|')}) [A-G][♭#]? [A-Z][a-z]+( [A-Z][a-z]+)? \\d+$`,
+  `^(${Object.values(MOOD_LABEL).join('|')}) [A-G][♭♯#]? [A-Z][a-z]+( [A-Z][a-z]+)? \\d+$`,
 );
 
 /** True if `title` looks exactly like an automatic `composedTitle`. */
@@ -1279,7 +1280,7 @@ class Composer {
   }
 
   private steps(): Composition<string> {
-    const base = this.base();
+    const base = canonicalPiece(this.base());
     const used = new Set<string>();
     let k = 0;
     const id = (): string => {
@@ -1305,7 +1306,7 @@ class Composer {
     const labelled = new Set<string>();
     for (const { m } of sorted) {
       const s = this.sectionAt(m.at);
-      const moment = { id: id(), ...m } as Moment;
+      const moment = canonicalMoment({ id: id(), ...m } as Moment);
       if (!labelled.has(s.name) && m.type !== 'level') {
         labelled.add(s.name);
         moment.label = s.name;
@@ -1315,7 +1316,7 @@ class Composer {
     // Detail: upper neighbours on held chords, one left-to-right sweep.
     const structure = composedPiece({ base, steps, sections: [] });
     for (const m of this.details(structure)) {
-      const moment = { id: id(), ...m } as Moment;
+      const moment = canonicalMoment({ id: id(), ...m } as Moment);
       steps.push({ kind: 'add', moment, section: this.sectionAt(m.at).name, phase: 'detail' });
     }
     const sections: GeneratedSection<string>[] = this.sections.map((s) => ({

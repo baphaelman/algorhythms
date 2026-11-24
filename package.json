@@ -22,7 +22,8 @@
     "e2e": "playwright test",
     "e2e:quick": "playwright test --grep-invert @perf",
     "docs:schema": "node scripts/docs-schema.mjs",
-    "render:wavs": "node scripts/render-wavs.mjs"
+    "render:wavs": "node scripts/render-wavs.mjs",
+    "compose:links": "node scripts/compose-links.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

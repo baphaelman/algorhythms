@@ -20,7 +20,8 @@
 import { create } from 'zustand';
 import { composedPiece, type Composition } from '../core/generate';
 import type { Piece } from '../core/types';
-import { composeDirected, type ComposeBrief } from './compose-brief-stub';
+import type { ComposeBrief } from '../core/compose-brief';
+import { composeDirected } from '../core/compose-directed';
 import { composeTimeline, penAt, stepsAt, type Timeline } from './compose-pace';
 import {
   buildBrief,
@@ -83,7 +84,7 @@ export const useCompose = create<ComposeUi>()(() => ({
 }));
 
 const run = {
-  comp: null as Composition | null,
+  comp: null as Composition<string> | null,
   timeline: null as Timeline | null,
   /** `performance.now()` when the build began. */
   t0: 0,

@@ -62,7 +62,7 @@ function starts(m: TuneMoment): number[] {
 /** The plan chord sounding at t. */
 function chordAt(d: DirectedComposition, t: number): DirectedComposition['chords'][number] {
   let c = d.chords[0];
-  for (const x of d.chords) if (x.t <= t + 1e-6) c = x;
+  for (const x of d.chords) if (x.t <= t + 1e-3) c = x; // times are rounded
   return c;
 }
 
@@ -381,7 +381,7 @@ describe('composeDirected', { timeout: 60_000 }, () => {
         if (partOf(m) === PART_NAME.bass) {
           const end = st[st.length - 1] + m.notes[m.notes.length - 1].len;
           for (const c of d.chords) {
-            if (c.t < m.at - 1e-6 || c.t >= end - 1e-6) continue;
+            if (c.t < m.at - 1e-6 || c.t >= end - 2e-3) continue; // times are on a 1 ms grid
             const k = st.findIndex((t) => Math.abs(t - c.t) < 2e-3);
             expect(k, `${seed} bass note at ${c.t}`).toBeGreaterThanOrEqual(0);
             const n = m.notes[k];

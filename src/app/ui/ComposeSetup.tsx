@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { PROGRESSIONS } from '../compose-brief-stub';
+import { PROGRESSIONS } from '../../core/compose-brief';
 import { closeSetup, runCompose, setComposeAnswers, useCompose } from '../compose';
 import {
   KEY_SCALES,
@@ -191,7 +191,7 @@ export function ComposeSetup() {
               <optgroup label="Chord progression">
                 {PROGRESSIONS.map((p) => (
                   <option key={p.name} value={`p:${p.name}`}>
-                    {p.name}
+                    {p.name} ({p.nick})
                   </option>
                 ))}
               </optgroup>
