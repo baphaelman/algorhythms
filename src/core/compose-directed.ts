@@ -15,7 +15,15 @@
  *             Arpeggio, walks over the chord), a bass tune on the roots, melodies fitted to the
  *             chords (core/melody `fitMelody`), and level ramps: a part comes in when the energy
  *             passes its threshold and fades in and out, never cut.
- *   Detail    after the structure, upper-neighbour notes on held chords, left to right.
+ *   Joins     (D3, the owner's listening notes) a section never changes everything on one beat:
+ *             its last chord leads into the next section's first (a turnaround); a texture's
+ *             new figure comes in part by part, or line by line when one part changes alone,
+ *             over a bar; the bass carries its old pattern a bar into the new section.
+ *   Lead      with no tune (no Melody part) the first of Chords, Pulse, Bells, Bass drives the
+ *             piece: its progression develops (a new loop for A′, a substitute every other
+ *             time round), its top line moves like a tune (voicing windows chosen per chord),
+ *             and its texture follows each phrase's energy. Backing parts may loop.
+ *   Detail    optional: upper-neighbour notes only on long held chords in quiet sections.
  *
  * Deterministic for the brief (seed included): every draw is `rand(seed, decision, i,
  * Purpose.Compose)`.
@@ -49,9 +57,10 @@ import {
   type Composition,
   type GeneratedSection,
 } from './generate';
-import { clamp, log2, mod } from './math';
+import { clamp, log2, mod, sinPi } from './math';
 import { fitMelody, type MelodyChord } from './melody';
 import { pitchAt } from './query';
+import { voiceNotes } from './voicing';
 import { Purpose, base62Id, mix32, rand } from './rng';
 import {
   FLAT_NAMES,
@@ -71,9 +80,12 @@ import {
   type Piece,
   type Pitch,
   type PulseMode,
+  type PulseMoment,
   type Seconds,
   type TuneNote,
   type VoiceDef,
+  type VoiceSelector,
+  type WalkMoment,
 } from './types';
 
 /** A moment without its id (distributes over the union). */
@@ -150,6 +162,62 @@ interface Section {
 /** A loop: numerals with lengths in beats. */
 type Loop = { num: string; beats: number }[];
 
+/** A 4-bar phrase (intro and outro are one phrase each). */
+interface Phrase {
+  bar0: number;
+  bars: number;
+  energy: number;
+  section: Section;
+}
+
+/** A texture on a part's lines: a pulse, and a walk inside it; null holds. */
+interface Tex {
+  pulse?: Omit<PulseMoment, 'id' | 'type' | 'at' | 'until' | 'target'>;
+  walk?: Omit<WalkMoment, 'id' | 'type' | 'at' | 'until' | 'target'>;
+}
+
+/** A stretch of one texture on a part (beats); `on` false where the part is silent. */
+interface Span {
+  from: number;
+  to: number;
+  on: boolean;
+  tex: Tex | null;
+  /** Energy of its first and last phrase. */
+  energy: number;
+  last: number;
+}
+
+/** A chord block of a part: the opening, a change, an entry, or a new voicing of a long chord. */
+interface Block {
+  beat: number;
+  beats: number;
+  c: PlanChord;
+  reg: [Pitch, Pitch];
+  open?: boolean;
+  revoice?: boolean;
+}
+
+/**
+ * A texture's figure: its rhythm (step, accents, envelope, all lines together or one at a time)
+ * and its walk's grid and steps; not an arpeggio's direction or how often the walk steps.
+ * 'hold' for none.
+ */
+function figureOf(tex: Tex | null): string {
+  if (tex === null) return 'hold';
+  const p = tex.pulse;
+  const w = tex.walk;
+  return JSON.stringify([
+    p && [p.step, p.pattern, p.decay, p.floor, p.mode === 'together', p.restart ?? 0, p.strike],
+    w && [w.grid, w.steps, w.over],
+  ]);
+}
+
+/** The parts written as chord blocks and textures. */
+const BLOCK_PARTS = ['chords', 'pulse', 'bells'] as const;
+type BlockPart = (typeof BLOCK_PARTS)[number];
+
+type BassPattern = 'hold' | 'halves' | 'rfo' | 'walk' | 'drive';
+
 /** Thresholds of energy at which a part plays (owner: frequent bells, a solid bass). */
 const ENTER: Readonly<Record<ComposePart, number>> = {
   chords: 0,
@@ -198,6 +266,8 @@ export function composeDirectedPiece(brief: ComposeBrief): Piece {
 export interface ComposedChord {
   t: Seconds;
   symbol: string;
+  /** Its Roman numeral (core/theory). */
+  num: string;
   key: Key;
   /** Root pitch class and the chord's pitch classes. */
   root: number;
@@ -219,6 +289,8 @@ export interface DirectedComposition {
   composition: Composition<string>;
   chords: ComposedChord[];
   sections: ComposedSection[];
+  /** The part that drives the piece when no part carries a tune (no Melody), else null. */
+  lead: ComposePart | null;
 }
 
 /** `composeDirected`, also returning the resolved brief, the chords and the sections. */
@@ -226,7 +298,7 @@ export function composeDirectedWithBrief(brief: ComposeBrief): DirectedCompositi
   const resolved = resolveBrief(brief);
   const c = new Composer(resolved, brief);
   const composition = c.run();
-  return { resolved, composition, ...c.plan() };
+  return { resolved, composition, ...c.plan(), lead: c.lead };
 }
 
 class Composer {
@@ -246,6 +318,18 @@ class Composer {
   /** Each part's register: chords, pulse, bells (close voicing windows), bass, melody. */
   private reg: Record<ComposePart, [Pitch, Pitch]>;
   private now: string;
+  /** The part that drives the piece when no part carries a tune (PLAN M12 "A lone part leads"). */
+  readonly lead: ComposePart | null;
+  private phrases: Phrase[] = [];
+  private allBars = 0;
+  /** Chord blocks per part, with their voicing windows. */
+  private blocks = new Map<BlockPart, Block[]>();
+  /** Texture spans per part. */
+  private spans = new Map<BlockPart, Span[]>();
+  /** The bass pattern per section name. */
+  private bassPats = new Map<string, BassPattern>();
+  /** How a part changes figure at a beat: a bar late as a whole, or line by line. */
+  private stage = new Map<string, 'late' | 'lines'>();
 
   constructor(r: ResolvedBrief, brief: ComposeBrief & { now?: string }) {
     this.r = r;
@@ -255,6 +339,7 @@ class Composer {
     this.has = (p) => r.parts.includes(p);
     this.d = (stream, i = 0) => rand(r.seed, stream, i, Purpose.Compose);
     this.now = brief.now ?? DEFAULT_TIMESTAMP;
+    this.lead = this.has('melody') ? null : (LEAD_ORDER.find((p) => this.has(p)) ?? null);
     const c = r.centre;
     const mel0 = Math.min(84, c + 9);
     this.reg = {
@@ -276,6 +361,7 @@ class Composer {
       s.chords.map((c) => ({
         t: this.T(c.beat),
         symbol: c.symbol,
+        num: c.num,
         key: c.key,
         root: c.root,
         pcs: c.pcs,
@@ -296,6 +382,14 @@ class Composer {
     this.harmony();
     this.parts();
     this.voicePool();
+    for (const p of BLOCK_PARTS) {
+      if (!this.has(p)) continue;
+      this.blocks.set(p, this.blockList(p));
+      this.spans.set(p, this.textureSpans(p));
+    }
+    if (this.lead === 'chords' || this.lead === 'pulse' || this.lead === 'bells')
+      this.topLine(this.lead);
+    this.staging();
     this.write();
     return this.steps();
   }
@@ -378,6 +472,17 @@ class Composer {
       bar += n;
     });
     secs.push(mk('Outro', 'outro', null, bar, outro));
+    this.allBars = all;
+    for (const s of secs) {
+      const n = s.kind === 'body' ? Math.max(1, Math.round(s.bars / 4)) : 1;
+      for (let q = 0; q < n; q++) {
+        const b0 = s.bar0 + Math.round((q * s.bars) / n);
+        const b1 = s.bar0 + Math.round(((q + 1) * s.bars) / n);
+        let e = 0;
+        for (let k = 0; k < 4; k++) e += energyAt(r, (b0 + ((k + 0.5) * (b1 - b0)) / 4) / all);
+        this.phrases.push({ bar0: b0, bars: b1 - b0, energy: r3(e / 4), section: s });
+      }
+    }
 
     // A lift: the last body section and the outro up a step (Build and Arc, sometimes).
     if (
@@ -500,6 +605,9 @@ class Composer {
 
     // A given melody: its own chords under the A sections.
     const melodyLoop = r.melody ? this.harmoniseMelody() : null;
+    // A lone part leads: its progression develops (a new loop for A′, a substitute on repeats).
+    const develop = this.lead !== null && !r.progression;
+    const seen = new Map<string, number>();
 
     let beat = 0;
     let last: string | null = null;
@@ -539,17 +647,124 @@ class Composer {
       } else if (s.kind === 'intro') {
         seq = melodyLoop ?? loopFor({ ...s, label: 'A' });
       } else if (melodyLoop && s.label === 'A') seq = melodyLoop;
-      else seq = loopFor(s);
-      // Fill the section by repeating the loop.
+      else {
+        seq = loopFor(s);
+        if (develop) {
+          const id = `${s.label}|${s.key.tonic}`;
+          const k = seen.get(id) ?? 0;
+          seen.set(id, k + 1);
+          if (k > 0) seq = this.varyLoop(th, seq, `${s.name}`);
+        }
+      }
+      // Fill the section by repeating the loop (developing: every other time with a substitute).
       let b = 0;
-      for (let i = 0; b < len; i++) {
-        const c = seq[i % seq.length];
-        const beats = Math.min(c.beats, len - b);
-        s.chords.push(this.chord(s.key, c.num, beat + b, beats));
-        b += beats;
+      for (let rep = 0; b < len; rep++) {
+        const loop =
+          develop && s.kind === 'body' && rep % 2 === 1
+            ? this.substitute(th, seq, `sub-${s.name}-${rep}`)
+            : seq;
+        for (const c of loop) {
+          if (b >= len) break;
+          const beats = Math.min(c.beats, len - b);
+          s.chords.push(this.chord(s.key, c.num, beat + b, beats));
+          b += beats;
+        }
       }
       beat += len;
       last = s.chords[s.chords.length - 1].num;
+    }
+    if (!r.progression) this.turnarounds(melodyLoop !== null);
+  }
+
+  /** A new loop for a section's return (A′): the same first chord, a new way round. */
+  private varyLoop(th: Theory, loop: Loop, tag: string): Loop {
+    const nums = loop.map((c) => c.num);
+    if (nums.length >= 3) {
+      const drawn = this.drawLoop(th, nums[0], nums.length, 0.3, `vary-${tag}`);
+      if (drawn.length === nums.length && drawn.join() !== nums.join())
+        return drawn.map((num, i) => ({ num, beats: loop[i].beats }));
+    }
+    return this.substitute(th, this.substitute(th, loop, `vary-${tag}-a`), `vary-${tag}-b`);
+  }
+
+  /** The loop with one chord (not the first) swapped for one sharing two of its tones. */
+  private substitute(th: Theory, loop: Loop, tag: string): Loop {
+    const n = loop.length;
+    if (n < 2) return loop;
+    const tri = (num: string): readonly number[] => chordOf(th, num)?.triad ?? [];
+    const first = 1 + Math.floor(this.d(`${tag}-slot`) * (n - 1));
+    for (let k = 0; k < n - 1; k++) {
+      const i = 1 + ((first - 1 + k) % (n - 1));
+      const at = loop[i].num;
+      const prev = loop[i - 1].num;
+      const next = loop[(i + 1) % n].num;
+      const cands = th.chords.filter(
+        (c) =>
+          !c.num.includes('/') &&
+          c.num !== at &&
+          c.num !== prev &&
+          c.num !== next &&
+          c.triad.filter((pc) => tri(at).includes(pc)).length >= 2,
+      );
+      if (cands.length === 0) continue;
+      const w = cands.map((c) => {
+        const x = transition(th, prev, c.num) * transition(th, c.num, next);
+        return x * x * (c.job === 'colour' ? 0.4 : 1);
+      });
+      const pick = cands[pickIndex(w, this.d(`${tag}-pick`))];
+      return loop.map((c, j) => (j === i ? { num: pick.num, beats: c.beats } : c));
+    }
+    return loop;
+  }
+
+  /**
+   * The harmony leads into each section: a section's last chord becomes the best chord into the
+   * next section's first (a pre-dominant or dominant), or a last chord of four bars or more
+   * gives its second half to one. A section that already ends on the next one's chord, reached
+   * by a strong move, keeps it (an anticipation). Not into the outro (its cadence is planned),
+   * across a key change, or under a given melody.
+   */
+  private turnarounds(melody: boolean): void {
+    const secs = this.sections;
+    for (let i = 0; i + 1 < secs.length; i++) {
+      const s = secs[i];
+      const n = secs[i + 1];
+      if (n.kind === 'outro' || s.key.tonic !== n.key.tonic) continue;
+      if (melody && (s.kind === 'intro' || s.label === 'A')) continue;
+      const th = this.theory(s.key);
+      const target = n.chords[0].num;
+      const k = s.chords.length - 1;
+      const last = s.chords[k];
+      if (last.num !== target && transition(th, last.num, target) >= 2.5) continue;
+      // An anticipation: the next section's chord arrives early, by a strong move, and carries
+      // across the boundary.
+      if (last.num === target && k > 0 && transition(th, s.chords[k - 1].num, target) >= 2)
+        continue;
+      const split = last.beats >= 4 * this.meter;
+      const prev = split ? last.num : k > 0 ? s.chords[k - 1].num : null;
+      // The step into the new section matters most.
+      const into = (x: string): number =>
+        Math.sqrt(prev !== null ? transition(th, prev, x) : 1) * transition(th, x, target) ** 2;
+      let best: string | null = null;
+      // Better than keeping the chord as it is, by a margin.
+      const keep = split
+        ? transition(th, last.num, target) ** 2
+        : into(last.num) * (last.num === target ? 0.15 : 1);
+      let bw = keep * (last.num === target ? 1 : 1.15);
+      for (const c of th.chords) {
+        if (c.num.includes('/') || c.num === target || c.num === prev) continue;
+        const w = into(c.num) * (c.job === 'colour' ? 0.5 : 1);
+        if (w > bw) {
+          bw = w;
+          best = c.num;
+        }
+      }
+      if (best === null) continue;
+      if (split) {
+        const half = this.meter * Math.floor(last.beats / this.meter / 2);
+        s.chords[k] = this.chord(s.key, last.num, last.beat, half);
+        s.chords.push(this.chord(s.key, best, last.beat + half, last.beats - half));
+      } else s.chords[k] = this.chord(s.key, best, last.beat, last.beats);
     }
   }
 
@@ -736,6 +951,553 @@ class Composer {
   }
 
   // -------------------------------------------------------------------------------------------
+  // Chord blocks and the lead's top line
+  // -------------------------------------------------------------------------------------------
+
+  /** A part's pool voices; ordered voice leading keeps them in pitch order. */
+  private idsOf(p: ComposePart): string[] {
+    return this.voices.filter((v) => v.part === PART_NAME[p]).map((v) => v.id);
+  }
+
+  private sectionAtBeat(beat: number): Section {
+    let s = this.sections[0];
+    for (const x of this.sections) if (x.bar0 * this.meter <= beat) s = x;
+    return s;
+  }
+
+  private phraseAtBeat(beat: number): number {
+    let q = 0;
+    this.phrases.forEach((P, i) => {
+      if (P.bar0 * this.meter <= beat) q = i;
+    });
+    return q;
+  }
+
+  /**
+   * A part's chord blocks: the opening, each change while it plays, its entries. The lead also
+   * gets a new voicing half way through a chord of two bars or more, so its top line moves on.
+   */
+  private blockList(p: BlockPart): Block[] {
+    const secs = this.sections;
+    const out: Block[] = [];
+    secs.forEach((s, si) => {
+      const prev = si > 0 ? secs[si - 1] : null;
+      s.chords.forEach((c, ci) => {
+        if (c.beat === 0) {
+          out.push({ beat: 0, beats: 0, c, reg: this.reg[p], open: true });
+          return;
+        }
+        if (!s.on[p]) return;
+        const before = ci > 0 ? s.chords[ci - 1] : prev?.chords[prev.chords.length - 1];
+        const entering = ci === 0 && prev !== null && !prev.on[p];
+        if (!entering && before && before.symbol === c.symbol && before.key.tonic === c.key.tonic)
+          return;
+        out.push({ beat: c.beat, beats: 0, c, reg: this.reg[p] });
+      });
+    });
+    const end = this.allBars * this.meter;
+    out.forEach((b, i) => (b.beats = (i + 1 < out.length ? out[i + 1].beat : end) - b.beat));
+    if (this.lead !== p) return out;
+    const full: Block[] = [];
+    for (const b of out) {
+      full.push(b);
+      const bars = Math.floor(b.beats / this.meter);
+      const mid = b.beat + this.meter * Math.floor(bars / 2);
+      if (bars < 2 || !this.sectionAtBeat(mid).on[p]) continue;
+      full.push({ beat: mid, beats: b.beats - (mid - b.beat), c: b.c, reg: b.reg, revoice: true });
+      b.beats = mid - b.beat;
+    }
+    return full;
+  }
+
+  /** The tops a close voicing of `c` can have on part `p` (each with its window), low to high. */
+  private voiceTops(p: BlockPart, c: PlanChord): { top: Pitch; reg: [Pitch, Pitch]; d: number }[] {
+    const vs = this.voices.filter((v) => v.part === PART_NAME[p]);
+    const k = vs.length;
+    const [lo, hi] = vs[0].range;
+    const [a, b] = this.reg[p];
+    const out = new Map<Pitch, { top: Pitch; reg: [Pitch, Pitch]; d: number }>();
+    for (let d = -7; d <= 7; d++) {
+      const reg: [Pitch, Pitch] = [a + d, b + d];
+      const v = voiceNotes({
+        notes: { kind: 'chord', symbol: c.symbol },
+        k,
+        mode: 'close',
+        register: reg,
+        key: c.key,
+        current: [],
+        voices: [],
+      });
+      if (!v.ok || v.targets.length !== k || new Set(v.targets).size !== k) continue;
+      if (v.targets[0] < lo || v.targets[k - 1] > hi) continue;
+      const top = v.targets[k - 1];
+      const had = out.get(top);
+      if (!had || Math.abs(d) < Math.abs(had.d)) out.set(top, { top, reg, d });
+    }
+    return [...out.values()].sort((x, y) => x.top - y.top);
+  }
+
+  /**
+   * The lead's top line moves like a tune: each block's voicing window is chosen so the top
+   * voice moves mostly by step, follows a contour per phrase (arch, rise, fall or dip, never the
+   * same twice running), avoids what it played over the same chord a phrase earlier, and rests
+   * on the root or third at a section's end (the root at the very end). Viterbi per phrase.
+   */
+  private topLine(p: BlockPart): void {
+    const blocks = this.blocks.get(p)!;
+    const cands = blocks.map((b) => {
+      const c = this.voiceTops(p, b.c);
+      return c.length > 0 ? c : [{ top: NaN, reg: b.reg, d: 0 }];
+    });
+    const groups: number[][] = this.phrases.map(() => []);
+    blocks.forEach((b, i) => groups[this.phraseAtBeat(b.beat)].push(i));
+    const z = cands[0].find((x) => x.d === 0) ?? cands[0][Math.floor(cands[0].length / 2)];
+    const anchor0 = Number.isFinite(z.top) ? z.top : this.reg[p][1] - 4;
+    const byBeat = new Map<number, number>();
+    blocks.forEach((b, i) => byBeat.set(b.beat, i));
+    const pick: number[] = blocks.map(() => 0);
+    const move = (a: Pitch, b: Pitch, revoice: boolean): number => {
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return 1;
+      const iv = Math.abs(b - a);
+      if (revoice && iv === 0) return 50;
+      return iv === 0
+        ? 0.7
+        : iv <= 2
+          ? 0
+          : iv <= 4
+            ? 0.5
+            : iv === 5
+              ? 1.3
+              : iv <= 7
+                ? 2.2
+                : 4 + 0.3 * iv;
+    };
+    let prevTop: Pitch | null = null;
+    let prevPrev: Pitch | null = null;
+    let lastShape = -1;
+    groups.forEach((idx, q) => {
+      if (idx.length === 0) return;
+      const P = this.phrases[q];
+      let shape = Math.floor(this.d('contour', q) * 4);
+      if (shape === lastShape) shape = (shape + 1) % 4;
+      lastShape = shape;
+      const anchor = anchor0 + Math.round((P.energy - 0.5) * 6);
+      const amp = 4 + 6 * P.energy;
+      const b0 = P.bar0 * this.meter;
+      const len = P.bars * this.meter;
+      const contour = (beat: number): number => {
+        const x = clamp((beat - b0) / len, 0, 1);
+        const v =
+          shape === 0
+            ? 2 * sinPi(x) - 1
+            : shape === 1
+              ? 2 * x - 1
+              : shape === 2
+                ? 1 - 2 * x
+                : 1 - 2 * sinPi(x);
+        return anchor + 0.5 * amp * v;
+      };
+      const local = (i: number, j: number): number => {
+        const b = blocks[i];
+        const c = cands[i][j];
+        if (!Number.isFinite(c.top)) return 0;
+        let cost =
+          0.22 * Math.abs(c.top - contour(b.beat)) +
+          0.05 * Math.abs(c.d) +
+          0.15 * this.d(`top-${p}`, i * 16 + j);
+        const ago = byBeat.get(b.beat - len);
+        if (ago !== undefined && blocks[ago].c.symbol === b.c.symbol) {
+          if (cands[ago][pick[ago]].top === c.top) cost += 0.8;
+        }
+        const pc = mod(c.top, 12);
+        const next = blocks[i + 1];
+        if (!next) cost += pc === b.c.root ? -1.2 : 0;
+        else if (
+          this.sectionAtBeat(next.beat) !== this.sectionAtBeat(b.beat) &&
+          (pc === b.c.pcs[0] || pc === b.c.pcs[1])
+        )
+          cost -= 0.5;
+        return cost;
+      };
+      // Second order: (the pick before, this pick), so a line that turns straight back costs.
+      const tops = (n: number): Pitch[] => cands[idx[n]].map((c) => c.top);
+      const rev = (n: number): boolean => blocks[idx[n]].revoice === true;
+      const turn = (a: Pitch | null, b: Pitch, c: Pitch): number => {
+        if (a === null || !Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c))
+          return 0;
+        if (a === c && b !== a) return 0.6;
+        const up = b - a;
+        const on = c - b;
+        return up * on > 0 && Math.abs(on) <= 2 ? -0.15 : 0;
+      };
+      const t0 = tops(0);
+      // score[h][j]: best cost with pick h at n − 1 and j at n (n = 0: h unused, one row).
+      let score: number[][] = [
+        t0.map(
+          (c, j) =>
+            local(idx[0], j) +
+            (prevTop === null ? 0 : move(prevTop, c, rev(0)) + turn(prevPrev, prevTop, c)),
+        ),
+      ];
+      const back: number[][][] = [];
+      for (let n = 1; n < idx.length; n++) {
+        const a = n >= 2 ? tops(n - 2) : null;
+        const b = tops(n - 1);
+        const c = tops(n);
+        const next: number[][] = b.map(() => c.map(() => Infinity));
+        const from: number[][] = b.map(() => c.map(() => 0));
+        b.forEach((bt, h) => {
+          c.forEach((ct, j) => {
+            const m = move(bt, ct, rev(n)) + local(idx[n], j);
+            score.forEach((row, g) => {
+              const v = row[h] + m + turn(a ? a[g] : n === 1 ? prevTop : null, bt, ct);
+              if (v < next[h][j]) {
+                next[h][j] = v;
+                from[h][j] = g;
+              }
+            });
+          });
+        });
+        back.push(from);
+        score = next;
+      }
+      let bh = 0;
+      let bj = 0;
+      score.forEach((row, h) =>
+        row.forEach((v, j) => {
+          if (v < score[bh][bj]) {
+            bh = h;
+            bj = j;
+          }
+        }),
+      );
+      for (let n = idx.length - 1; n >= 0; n--) {
+        pick[idx[n]] = bj;
+        if (n > 0) {
+          const g = back[n - 1][bh][bj];
+          bj = bh;
+          bh = g;
+        }
+      }
+      prevPrev =
+        idx.length >= 2 ? cands[idx[idx.length - 2]][pick[idx[idx.length - 2]]].top : prevTop;
+      prevTop = cands[idx[idx.length - 1]][pick[idx[idx.length - 1]]].top;
+    });
+    // Each block takes its window; a new voicing that found no new top is dropped.
+    const kept: Block[] = [];
+    blocks.forEach((b, i) => {
+      b.reg = cands[i][pick[i]].reg;
+      const prev = kept[kept.length - 1];
+      if (b.revoice && prev && cands[i][pick[i]].top === cands[i - 1][pick[i - 1]].top) {
+        prev.beats += b.beats;
+        return;
+      }
+      kept.push(b);
+    });
+    this.blocks.set(p, kept);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Textures
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * A part's textures, phrase by phrase: a backing part keeps its section's texture; the lead's
+   * texture follows each phrase's energy, never the same for more than two phrases running when
+   * its energy band offers another.
+   */
+  private textureSpans(p: BlockPart): Span[] {
+    const out: Span[] = [];
+    let prevSig = '';
+    let run = 0;
+    this.phrases.forEach((P, q) => {
+      const s = P.section;
+      const from = P.bar0 * this.meter;
+      const to = (P.bar0 + P.bars) * this.meter;
+      let tex: Tex | null = null;
+      if (s.on[p]) {
+        if (this.lead === p) {
+          const opts = this.leadTextures(p, P, q);
+          let i = Math.floor(this.d(`lead-tex-${p}`, q) * opts.length);
+          if (JSON.stringify(opts[i]) === prevSig && run >= 2) i = (i + 1) % opts.length;
+          tex = opts[i];
+        } else tex = this.sectionTexture(p, s);
+      }
+      const sig = s.on[p] ? JSON.stringify(tex) : 'off';
+      run = sig === prevSig ? run + 1 : 1;
+      prevSig = sig;
+      const last = out[out.length - 1];
+      if (
+        last &&
+        last.on === s.on[p] &&
+        JSON.stringify(last.on ? last.tex : 'off') === JSON.stringify(s.on[p] ? tex : 'off')
+      ) {
+        last.to = to;
+        last.last = P.energy;
+      } else out.push({ from, to, on: s.on[p], tex, energy: P.energy, last: P.energy });
+    });
+    return out;
+  }
+
+  /** A backing part's texture in a section. */
+  private sectionTexture(p: BlockPart, s: Section): Tex | null {
+    if (p === 'chords') return this.chordTexture(s);
+    if (p === 'pulse') return this.pulseTexture(s.energy, `pulse-${s.label ?? s.kind}`, 0.55);
+    return this.bellTexture(s, s.energy, `bells-${s.label ?? s.kind}`);
+  }
+
+  /** The textures the lead may take in a phrase, by its energy. */
+  private leadTextures(p: BlockPart, P: Phrase, q: number): (Tex | null)[] {
+    const e = P.energy;
+    if (p === 'pulse') return [this.pulseTexture(e, `pulse-q${q}`, 0.45)];
+    if (p === 'bells') return [this.bellTexture(P.section, e, `bells-q${q}`)];
+    const struck = this.struck('chords');
+    const hold: Tex | null = struck ? { pulse: this.arp('up', 1) } : null;
+    const step = this.meter === 4 ? this.barSec / 2 : this.barSec;
+    const breathe: Tex = {
+      pulse: {
+        step: r6(step),
+        pattern: this.meter === 4 ? [1, 0.7] : [1],
+        decay: r3(Math.min(1.6, step * 1.1)),
+        floor: 0.5,
+        mode: 'together',
+        strike: struck,
+      },
+    };
+    if (e < 0.3) return [hold, hold, breathe];
+    if (e < 0.5) return [breathe, { pulse: this.arp('down') }, hold];
+    if (e < 0.72)
+      return [
+        { pulse: this.arp('updown') },
+        { pulse: this.arp('up') },
+        { pulse: this.arp('down') },
+      ];
+    return [this.repeated(this.d(`chord-floor-${P.section.name}`)), { pulse: this.arp('updown') }];
+  }
+
+  /** An arpeggio over the part's lines, restarting each bar. */
+  private arp(mode: PulseMode, slow = 0): NonNullable<Tex['pulse']> {
+    const step = this.beat * (this.r.tempo > 100 || slow ? 1 : 0.5);
+    return {
+      step: r6(step),
+      pattern: this.meter === 3 ? [1, 0.6, 0.75] : [1, 0.6, 0.8, 0.6],
+      decay: r3(Math.min(0.6, step * 1.6)),
+      floor: 0.12,
+      mode,
+      restart: r6(this.barSec),
+      strike: true,
+    };
+  }
+
+  /** Repeated chords, all lines together. */
+  private repeated(u: number): Tex {
+    const step = this.beat * (this.r.density > 0.75 ? 0.5 : 1);
+    return {
+      pulse: {
+        step: r6(step),
+        pattern: this.meter === 3 ? [1, 0.55, 0.7] : [1, 0.55, 0.8, 0.55],
+        decay: r3(Math.min(1.2, step * 1.5)),
+        floor: r3(0.45 + 0.15 * u),
+        mode: 'together',
+        strike: this.struck('chords'),
+      },
+    };
+  }
+
+  private chordTexture(s: Section): Tex | null {
+    const { d } = this;
+    const e = s.energy;
+    const u = d(`chord-tex-${s.name}`);
+    const tex: 'hold' | 'arp' | 'pulse' =
+      e < 0.4
+        ? 'hold'
+        : e < 0.7
+          ? this.has('pulse') || u < 0.4
+            ? 'hold'
+            : 'arp'
+          : this.has('pulse')
+            ? u < 0.6
+              ? 'pulse'
+              : 'hold'
+            : u < 0.6
+              ? 'arp'
+              : 'pulse';
+    // A struck sound fades while it holds: it arpeggiates instead.
+    if (tex === 'hold' && !this.struck('chords')) return null;
+    if (tex === 'arp' || tex === 'hold') return { pulse: this.arp('updown') };
+    return this.repeated(d(`chord-floor-${s.name}`));
+  }
+
+  /**
+   * Writes a part's textures, its pulse and its walk each merged over the spans where it stays
+   * the same. A change staged a bar late (`staging`) moves the whole part; one staged line by
+   * line goes: rising, the new figure comes in on the upper lines while the lower ones carry the
+   * old one a bar longer; falling, the lower lines settle first and the top keeps the old figure
+   * for that bar.
+   */
+  private writeTextures(p: BlockPart): void {
+    const ids = this.idsOf(p);
+    const n = ids.length;
+    for (const kind of ['pulse', 'walk'] as const) {
+      type Val = Tex[typeof kind] | null;
+      const runs: {
+        from: number;
+        to: number;
+        on: boolean;
+        val: Val;
+        energy: number;
+        last: number;
+      }[] = [];
+      for (const sp of this.spans.get(p)!) {
+        const val: Val = sp.on ? (sp.tex?.[kind] ?? null) : null;
+        const prev = runs[runs.length - 1];
+        if (prev && prev.on === sp.on && JSON.stringify(prev.val) === JSON.stringify(val)) {
+          prev.to = sp.to;
+          prev.last = sp.last;
+        } else
+          runs.push({ from: sp.from, to: sp.to, on: sp.on, val, energy: sp.energy, last: sp.last });
+      }
+      const fig = (v: Val): string => figureOf(v ? { [kind]: v } : null);
+      const starts = runs.map((ru) => ids.map(() => ru.from));
+      for (let i = 1; i < runs.length; i++) {
+        const a = runs[i - 1];
+        const b = runs[i];
+        const how = this.stage.get(`${p}|${b.from}`);
+        if (!how || !a.on || !b.on || fig(a.val) === fig(b.val)) continue;
+        if (how === 'late') {
+          for (let l = 0; l < n; l++) starts[i][l] = b.from + this.meter;
+          continue;
+        }
+        if (n < 2) continue;
+        const late = Math.floor(n / 2);
+        const rising = b.energy >= a.last;
+        for (let l = 0; l < n; l++)
+          if (rising ? l < late : l >= n - late) starts[i][l] = b.from + this.meter;
+      }
+      runs.forEach((ru, i) => {
+        if (!ru.val) return;
+        const from = starts[i];
+        const to = ids.map((_, l) => (i + 1 < runs.length ? starts[i + 1][l] : ru.to));
+        // One moment per stretch where the same lines play it: all of them between handovers.
+        const cuts = [...new Set([...from, ...to])].sort((x, y) => x - y);
+        for (let k = 0; k + 1 < cuts.length; k++) {
+          const ls = ids.flatMap((_, l) => (from[l] <= cuts[k] && to[l] >= cuts[k + 1] ? [l] : []));
+          if (ls.length === 0) continue;
+          const target: VoiceSelector =
+            ls.length === n ? this.target(p) : { voices: ls.map((l) => ids[l]) };
+          const at = this.T(cuts[k]);
+          const until = this.T(cuts[k + 1]);
+          if (kind === 'pulse')
+            this.put({
+              type: 'pulse',
+              at,
+              target,
+              until,
+              ...(ru.val as NonNullable<Tex['pulse']>),
+            });
+          else
+            this.put({ type: 'walk', at, target, until, ...(ru.val as NonNullable<Tex['walk']>) });
+        }
+      });
+    }
+  }
+
+  /**
+   * Where textures change figure, the change spreads over a bar: part by part when several parts
+   * change (rising, the highest part first, the others a bar later; falling, the lowest first),
+   * line by line when one part changes alone.
+   */
+  private staging(): void {
+    const at = new Map<number, { p: BlockPart; e0: number; e1: number }[]>();
+    for (const [p, spans] of this.spans) {
+      for (let i = 1; i < spans.length; i++) {
+        const a = spans[i - 1];
+        const b = spans[i];
+        if (!a.on || !b.on || b.to - b.from < 2 * this.meter) continue;
+        if (figureOf(a.tex) === figureOf(b.tex)) continue;
+        at.set(b.from, [...(at.get(b.from) ?? []), { p, e0: a.last, e1: b.energy }]);
+      }
+    }
+    const high: BlockPart[] = ['bells', 'pulse', 'chords'];
+    for (const [beat, list] of at) {
+      if (list.length === 1) {
+        this.stage.set(`${list[0].p}|${beat}`, 'lines');
+        continue;
+      }
+      const rising = list[0].e1 >= list[0].e0;
+      const order = (rising ? high : [...high].reverse()).filter((p) =>
+        list.some((x) => x.p === p),
+      );
+      for (const p of order.slice(1)) this.stage.set(`${p}|${beat}`, 'late');
+    }
+  }
+
+  /**
+   * How much a texture lowers a part's loudness, undone: 1 / the RMS of one line's pulse
+   * envelope (an arpeggio, one line at a time with a low floor, sits ~10 dB under held chords).
+   * 1 to 1.6.
+   */
+  private texGain(p: BlockPart, tex: Tex | null): number {
+    const pu = tex?.pulse;
+    if (!pu) return 1;
+    const n = this.partVoices.get(p) ?? 1;
+    const all = pu.mode === 'together';
+    const K = 8;
+    let sum = 0;
+    let cnt = 0;
+    for (let l = 0; l < n; l++) {
+      let a = 1;
+      let t0 = -Infinity;
+      for (let k = 0; k < 2 * n * pu.pattern.length; k++) {
+        const acc = pu.pattern[k % pu.pattern.length];
+        if (acc > 0 && (all || k % n === l)) {
+          a = acc;
+          t0 = k * pu.step;
+        }
+        for (let j = 0; j < K; j++) {
+          const u = (k + j / K) * pu.step - t0;
+          const fall = pu.decay > 0 && u < pu.decay ? (1 - u / pu.decay) ** 3 : 0;
+          const env = a * (pu.floor + (1 - pu.floor) * fall);
+          sum += env * env;
+          cnt++;
+        }
+      }
+    }
+    return r3(clamp(1 / Math.sqrt(sum / cnt), 1, 1.6));
+  }
+
+  /**
+   * A chord-block part's levels, phrase by phrase: its section's level times its texture's
+   * `texGain`, so a texture change keeps the loudness; entries fade in, exits fade out over the
+   * bar before. A change staged a bar late moves its level a bar late too.
+   */
+  private blockLevels(p: BlockPart, fade: Seconds): void {
+    const spans = this.spans.get(p)!;
+    let prev: number | null = null;
+    this.phrases.forEach((P, q) => {
+      const s = P.section;
+      const b = P.bar0 * this.meter;
+      const sp = spans.find((x) => x.from <= b && b < x.to);
+      const L = s.on[p] ? r3(this.levelOf(p, s) * this.texGain(p, sp?.tex ?? null)) : null;
+      if (q === 0) {
+        if (L !== null) this.enter(p, 0, L, clamp(2 * this.barSec, 2, 5));
+      } else if (L !== null && prev === null) this.enter(p, this.T(b), L, fade);
+      else if (L === null && prev !== null) this.level(p, r4(this.T(b) - fade), 0, r3(fade));
+      else if (L !== null && prev !== null && Math.abs(L - prev) > 0.04) {
+        const late = this.stage.get(`${p}|${b}`) === 'late' ? this.meter : 0;
+        this.level(p, this.T(b + late), L, r3(this.barSec));
+      }
+      prev = L;
+    });
+  }
+
+  /** True when the part's texture holds (no pulse) at `beat`, while it plays. */
+  private holdsAt(p: BlockPart, beat: number): boolean {
+    const sp = this.spans.get(p)?.find((x) => x.from <= beat && beat < x.to);
+    return sp !== undefined && sp.on && sp.tex === null;
+  }
+
+  // -------------------------------------------------------------------------------------------
   // Writing the moments
   // -------------------------------------------------------------------------------------------
 
@@ -791,7 +1553,7 @@ class Composer {
           target: this.target(p),
           notes: { kind: 'chord', symbol: c0.symbol },
           voicing: 'close',
-          register: this.reg[p],
+          register: this.blocks.get(p)![0].reg,
           assign: 'ordered',
           count: this.partVoices.get(p),
         });
@@ -813,8 +1575,54 @@ class Composer {
     // Levels at 0:00: everything starts at 0; what plays first fades in.
     this.put({ type: 'level', at: 0, gain: 0, over: 0 });
     const fade = clamp(this.barSec, 1, 3);
+    const block = (p: ComposePart): p is BlockPart =>
+      (BLOCK_PARTS as readonly string[]).includes(p);
     for (const p of r.parts) {
-      if (first.on[p]) this.enter(p, 0, this.levelOf(p, first), clamp(2 * this.barSec, 2, 5));
+      if (first.on[p] && !block(p))
+        this.enter(p, 0, this.levelOf(p, first), clamp(2 * this.barSec, 2, 5));
+    }
+    this.flushLevels();
+
+    secs.forEach((s, si) => {
+      const prev = si > 0 ? secs[si - 1] : null;
+      const start = s.bar0 * this.meter;
+      if (prev && prev.key.tonic !== s.key.tonic) {
+        this.put({ type: 'key', at: this.T(start), key: s.key });
+      }
+      // Levels: entries fade in from the section's start, exits fade out over the bar before; a
+      // part that plays on moves to its new level over a bar. (Chord-block parts: `blockLevels`.)
+      if (prev) {
+        for (const p of r.parts) {
+          if (block(p)) continue;
+          const was = prev.on[p];
+          const L = this.levelOf(p, s);
+          if (s.on[p] && !was) this.enter(p, this.T(start), L, fade);
+          else if (s.on[p] && Math.abs(L - this.levelOf(p, prev)) > 0.04)
+            this.level(p, this.T(start), L, r3(this.barSec));
+          else if (!s.on[p] && was) this.level(p, r4(this.T(start) - fade), 0, r3(fade));
+        }
+      }
+    });
+    for (const p of BLOCK_PARTS) if (this.has(p)) this.blockLevels(p, fade);
+    this.flushLevels();
+
+    // Chord blocks, then textures, for each harmonic part.
+    for (const p of BLOCK_PARTS) {
+      if (!this.has(p)) continue;
+      for (const b of this.blocks.get(p)!) {
+        if (b.open) continue;
+        this.put({
+          type: 'chord',
+          at: this.T(b.beat),
+          target: this.target(p),
+          notes: { kind: 'chord', symbol: b.c.symbol },
+          voicing: 'close',
+          register: b.reg,
+          assign: 'ordered',
+          glide: this.changeGlide(p, b.revoice ? b.beats : b.c.beats),
+        });
+      }
+      this.writeTextures(p);
     }
 
     let bassLast = 40;
@@ -825,120 +1633,12 @@ class Composer {
       const next = si + 1 < secs.length ? secs[si + 1] : null;
       const start = s.bar0 * this.meter;
       const end = start + s.bars * this.meter;
-
-      if (prev && prev.key.tonic !== s.key.tonic) {
-        this.put({ type: 'key', at: this.T(start), key: s.key });
-      }
-
-      // Levels: entries fade in from the section's start, exits fade out over the bar before.
-      if (prev) {
-        for (const p of r.parts) {
-          const was = prev.on[p];
-          const L = this.levelOf(p, s);
-          if (s.on[p] && !was) this.enter(p, this.T(start), L, fade);
-          else if (s.on[p] && Math.abs(L - this.levelOf(p, prev)) > 0.04)
-            this.put({
-              type: 'level',
-              at: this.T(start),
-              target: this.target(p),
-              gain: L,
-              over: r3(this.barSec),
-            });
-          else if (!s.on[p] && was)
-            this.put({
-              type: 'level',
-              at: r4(this.T(start) - fade),
-              target: this.target(p),
-              gain: 0,
-              over: r3(fade),
-            });
-        }
-      }
-
-      // Chord blocks: each harmonic part, at every change while it plays (and at its entry).
-      for (const p of ['chords', 'pulse', 'bells'] as const) {
-        if (!this.has(p) || !s.on[p]) continue;
-        s.chords.forEach((c, ci) => {
-          if (c.beat === 0) return; // the opening
-          const before = ci > 0 ? s.chords[ci - 1] : prev?.chords[prev.chords.length - 1];
-          const entering = ci === 0 && prev !== null && !prev.on[p];
-          if (!entering && before && before.symbol === c.symbol && before.key.tonic === c.key.tonic)
-            return;
-          this.put({
-            type: 'chord',
-            at: this.T(c.beat),
-            target: this.target(p),
-            notes: { kind: 'chord', symbol: c.symbol },
-            voicing: 'close',
-            register: this.reg[p],
-            assign: 'ordered',
-            glide: this.changeGlide(p, c.beats),
-          });
-        });
-      }
-
-      // Textures.
-      if (this.has('chords') && s.on.chords) this.chordTexture(s, start, end);
-      if (this.has('pulse') && s.on.pulse) this.pulseTexture(s, start, end);
-      if (this.has('bells') && s.on.bells) this.bellTexture(s, start, end);
-      if (this.has('bass') && s.on.bass) bassLast = this.bassLine(s, start, end, bassLast, next);
+      if (this.has('bass') && s.on.bass) bassLast = this.bassLine(s, start, prev, bassLast, next);
       if (this.has('melody') && s.on.melody) {
         const rest = !next || !next.on.melody;
         melodyLast = this.melody(s, start, end, rest, melodyLast, themes);
       }
     });
-  }
-
-  private chordTexture(s: Section, start: number, end: number): void {
-    const { d } = this;
-    const e = s.energy;
-    const u = d(`chord-tex-${s.name}`);
-    const tex: 'hold' | 'arp' | 'pulse' =
-      e < 0.4
-        ? 'hold'
-        : e < 0.7
-          ? this.has('pulse') || u < 0.4
-            ? 'hold'
-            : 'arp'
-          : this.has('pulse')
-            ? u < 0.6
-              ? 'pulse'
-              : 'hold'
-            : u < 0.6
-              ? 'arp'
-              : 'pulse';
-    // A struck sound fades while it holds: it arpeggiates instead.
-    if (tex === 'hold' && !this.struck('chords')) return;
-    if (tex === 'arp' || tex === 'hold') {
-      const step = this.beat * (this.r.tempo > 100 ? 1 : 0.5);
-      this.put({
-        type: 'pulse',
-        at: this.T(start),
-        target: this.target('chords'),
-        until: this.T(end),
-        step: r6(step),
-        pattern: this.meter === 3 ? [1, 0.6, 0.75] : [1, 0.6, 0.8, 0.6],
-        decay: r3(Math.min(0.6, step * 1.6)),
-        floor: 0.12,
-        mode: 'updown',
-        restart: r6(this.barSec),
-        strike: true,
-      });
-    } else {
-      const step = this.beat * (this.r.density > 0.75 ? 0.5 : 1);
-      this.put({
-        type: 'pulse',
-        at: this.T(start),
-        target: this.target('chords'),
-        until: this.T(end),
-        step: r6(step),
-        pattern: this.meter === 3 ? [1, 0.55, 0.7] : [1, 0.55, 0.8, 0.55],
-        decay: r3(Math.min(1.2, step * 1.5)),
-        floor: r3(0.45 + 0.15 * d(`chord-floor-${s.name}`)),
-        mode: 'together',
-        strike: this.struck('chords'),
-      });
-    }
   }
 
   /** True when the part's sound is struck and dies away (pluck, piano, mallets, bells). */
@@ -948,9 +1648,29 @@ class Composer {
 
   /** A part's entry at `at`: a fade from silence (a struck sound from 40 %, so its first hit sounds). */
   private enter(p: ComposePart, at: Seconds, gain: number, over: Seconds): void {
-    if (this.struck(p))
-      this.put({ type: 'level', at, target: this.target(p), gain: r3(0.4 * gain), over: 0 });
-    this.put({ type: 'level', at, target: this.target(p), gain, over: r3(over) });
+    if (this.struck(p)) this.level(p, at, r3(0.4 * gain), 0);
+    this.level(p, at, gain, r3(over));
+  }
+
+  /** Level moves, batched: parts moving to the same level at the same time share a moment. */
+  private levels = new Map<string, { at: Seconds; gain: number; over: Seconds; ps: string[] }>();
+  private level(p: ComposePart, at: Seconds, gain: number, over: Seconds): void {
+    const k = `${at}|${gain}|${over}`;
+    const m = this.levels.get(k) ?? { at, gain, over, ps: [] };
+    m.ps.push(PART_NAME[p]);
+    this.levels.set(k, m);
+  }
+
+  private flushLevels(): void {
+    for (const m of this.levels.values())
+      this.put({
+        type: 'level',
+        at: m.at,
+        target: m.ps.length === 1 ? { part: m.ps[0] } : { parts: m.ps },
+        gain: m.gain,
+        over: m.over,
+      });
+    this.levels.clear();
   }
 
   /** A seeded accent pattern of `n` steps: the first a downbeat, rests by density. */
@@ -969,48 +1689,43 @@ class Composer {
     return out;
   }
 
-  private pulseTexture(s: Section, start: number, end: number): void {
+  /** A seeded level gate over the Pulse lines, with a walk inside when it's lively. */
+  private pulseTexture(e: number, tag: string, walkFrom: number): Tex {
     const { d, r } = this;
-    const tag = `pulse-${s.label ?? s.kind}`;
-    const fast = r.density > 0.8 && r.tempo < 112 && s.energy > 0.6;
+    const fast = r.density > 0.8 && r.tempo < 112 && e > 0.6;
     const step = this.beat * (fast ? 0.25 : 0.5);
     const n = Math.round(this.barSec / step);
     const modes: PulseMode[] = ['up', 'updown', 'random', 'together'];
     const mode = modes[Math.floor(d(`${tag}-mode`) * modes.length)];
-    this.put({
-      type: 'pulse',
-      at: this.T(start),
-      target: this.target('pulse'),
-      until: this.T(end),
-      step: r6(step),
-      pattern: this.accents(n, tag, 0.35 * (1 - r.density)),
-      decay: r3(clamp(step * (1.2 + 1.5 * d(`${tag}-decay`)), 0.1, 0.45)),
-      floor: r3(0.04 + 0.1 * d(`${tag}-floor`)),
-      mode,
-      ...(mode === 'up' || mode === 'updown' ? { restart: r6(this.barSec) } : {}),
-      strike: true,
-    });
+    const tex: Tex = {
+      pulse: {
+        step: r6(step),
+        pattern: this.accents(n, tag, 0.35 * (1 - r.density)),
+        decay: r3(clamp(step * (1.2 + 1.5 * d(`${tag}-decay`)), 0.1, 0.45)),
+        floor: r3(0.04 + 0.1 * d(`${tag}-floor`)),
+        mode,
+        ...(mode === 'up' || mode === 'updown' ? { restart: r6(this.barSec) } : {}),
+        strike: true,
+      },
+    };
     // Level-gate rhythm with a walk inside, when it's lively.
-    if (s.energy > 0.55) {
-      this.put({
-        type: 'walk',
-        at: this.T(start),
-        target: this.target('pulse'),
-        until: this.T(end),
+    if (e > walkFrom) {
+      tex.walk = {
         grid: r6(this.beat),
         density: r3(0.25 + 0.35 * r.density),
         steps: [-1, 1],
         stepGlide: 0.04,
         over: 'chord',
         glide: { stagger: 0, jitter: 0, ease: 'smoothstep' },
-      });
+      };
     }
+    return tex;
   }
 
-  private bellTexture(s: Section, start: number, end: number): void {
+  /** Sparse struck bells, with a slow walk over the chord. */
+  private bellTexture(s: Section, e: number, tag: string): Tex {
     const { d, r } = this;
-    const tag = `bells-${s.label ?? s.kind}`;
-    const quick = s.energy >= 0.6 && r.density > 0.5;
+    const quick = e >= 0.6 && r.density > 0.5;
     const step = this.beat * (quick ? 0.5 : 1);
     const n = Math.round((2 * this.barSec) / step);
     const pattern: number[] = [];
@@ -1025,32 +1740,27 @@ class Composer {
       );
     }
     const modes: PulseMode[] = ['random', 'up', 'down'];
-    this.put({
-      type: 'pulse',
-      at: this.T(start),
-      target: this.target('bells'),
-      until: this.T(end),
-      step: r6(step),
-      pattern,
-      decay: r3(1.2 + 1.3 * d(`${tag}-decay`)),
-      floor: 0,
-      mode: modes[Math.floor(d(`${tag}-mode`) * 3)],
-      strike: true,
-    });
-    if (s.kind === 'body' || s.energy > 0.3) {
-      this.put({
-        type: 'walk',
-        at: this.T(start),
-        target: this.target('bells'),
-        until: this.T(end),
+    const tex: Tex = {
+      pulse: {
+        step: r6(step),
+        pattern,
+        decay: r3(1.2 + 1.3 * d(`${tag}-decay`)),
+        floor: 0,
+        mode: modes[Math.floor(d(`${tag}-mode`) * 3)],
+        strike: true,
+      },
+    };
+    if (s.kind === 'body' || e > 0.3) {
+      tex.walk = {
         grid: r6(this.beat * (quick ? 1 : 2)),
         density: r3(0.3 + 0.25 * d(`${tag}-walk`)),
         steps: [-1, 1, -2, 2],
         stepGlide: 0.05,
         over: 'chord',
         glide: { stagger: 0, jitter: 0, ease: 'smoothstep' },
-      });
+      };
     }
+    return tex;
   }
 
   /** The root pitch class in the bass register, nearest `near`. */
@@ -1066,36 +1776,78 @@ class Composer {
     return best;
   }
 
-  /** The bass's tune for a section: the root on every chord change, a pattern between. */
+  /** The bass's pattern for an energy (a draw `u` picks among the fitting ones). */
+  private bassPattern(e: number, outro: boolean, u: number): BassPattern {
+    const { r } = this;
+    return outro || e < 0.35
+      ? 'hold'
+      : e < 0.55
+        ? u < 0.5
+          ? 'halves'
+          : 'rfo'
+        : e < 0.75
+          ? u < 0.55
+            ? 'rfo'
+            : 'walk'
+          : r.density > 0.6 && u < 0.6
+            ? 'drive'
+            : u < 0.5
+              ? 'walk'
+              : 'rfo';
+  }
+
+  /** The leading bass's pattern per phrase: by energy, never the same two phrases running. */
+  private leadBass: BassPattern[] | null = null;
+  private leadBassAt(beat: number): BassPattern {
+    if (!this.leadBass) {
+      let prev: BassPattern | null = null;
+      this.leadBass = this.phrases.map((P, q) => {
+        const e = P.energy;
+        const opts: BassPattern[] =
+          P.section.kind === 'outro'
+            ? ['hold']
+            : e < 0.35
+              ? ['hold', 'halves']
+              : e < 0.55
+                ? ['halves', 'rfo', 'walk']
+                : e < 0.75
+                  ? ['rfo', 'walk']
+                  : ['walk', 'drive', 'rfo'];
+        let i = Math.floor(this.d('lead-bass', q) * opts.length);
+        if (opts[i] === prev && opts.length > 1) i = (i + 1) % opts.length;
+        prev = opts[i];
+        return opts[i];
+      });
+    }
+    return this.leadBass[this.phraseAtBeat(beat)];
+  }
+
+  /**
+   * The bass's tune for a section: the root on every chord change, a pattern between. A new
+   * pattern comes in a bar late (the bass carries the old figure across the boundary); the
+   * leading bass changes pattern phrase by phrase.
+   */
   private bassLine(
     s: Section,
     start: number,
-    end: number,
+    prev: Section | null,
     near: Pitch,
     next: Section | null,
   ): Pitch {
-    const { d, r, meter } = this;
-    const e = s.energy;
-    const u = d(`bass-pat-${s.label ?? s.kind}`);
-    const pat: 'hold' | 'halves' | 'rfo' | 'walk' | 'drive' =
-      s.kind === 'outro' || e < 0.35
-        ? 'hold'
-        : e < 0.55
-          ? u < 0.5
-            ? 'halves'
-            : 'rfo'
-          : e < 0.75
-            ? u < 0.55
-              ? 'rfo'
-              : 'walk'
-            : r.density > 0.6 && u < 0.6
-              ? 'drive'
-              : u < 0.5
-                ? 'walk'
-                : 'rfo';
+    const { d, meter } = this;
+    const own = this.bassPattern(s.energy, s.kind === 'outro', d(`bass-pat-${s.label ?? s.kind}`));
+    this.bassPats.set(s.name, own);
+    const was = prev?.on.bass ? this.bassPats.get(prev.name) : undefined;
+    const patAt = (beat: number): BassPattern =>
+      this.lead === 'bass'
+        ? this.leadBassAt(beat)
+        : was !== undefined && was !== own && beat < start + meter
+          ? was
+          : own;
     const notes: { pitch: number | null; beats: number }[] = [];
     let last = near;
     s.chords.forEach((c, ci) => {
+      const pat = patAt(c.beat);
       const root = this.bassRoot(c.root, last);
       last = root;
       const nb = c.beats;
@@ -1147,20 +1899,20 @@ class Composer {
       type: 'tune',
       at: this.T(start),
       target: this.target('bass'),
-      notes: this.tuneNotes(start, notes),
+      notes: this.tuneNotes(notes),
       glide: { length: r3(Math.min(0.16, this.beat * 0.25)), land: true, ease: 'smoothstep' },
     });
-    void end;
     return last;
   }
 
-  /** Tune notes from beat lengths, timed on the absolute grid (no drift). */
-  private tuneNotes(start: number, notes: { pitch: number | null; beats: number }[]): TuneNote[] {
+  /**
+   * Tune notes from beat lengths. Equal lengths are equal numbers (short share links); the
+   * rounding drifts under a millisecond over a section's tune.
+   */
+  private tuneNotes(notes: { pitch: number | null; beats: number }[]): TuneNote[] {
     const out: TuneNote[] = [];
-    let b = start;
     for (const n of notes) {
-      const len = r6(this.T(b + n.beats) - this.T(b));
-      b += n.beats;
+      const len = r6(n.beats * this.beat);
       if (len <= 0) continue;
       out.push(n.pitch === null ? { rest: true, len } : { pitch: n.pitch, len });
     }
@@ -1281,24 +2033,17 @@ class Composer {
 
   private steps(): Composition<string> {
     const base = canonicalPiece(this.base());
-    const used = new Set<string>();
+    // Ids count up from a seeded prefix: unique, and share links omit them (app/share v2).
+    const prefix = base62Id(mix32(this.r.seed, 0, 0, Purpose.ComposeId)).slice(0, 2);
     let k = 0;
-    const id = (): string => {
-      for (let attempt = 0; ; attempt++) {
-        const s = base62Id(mix32(this.r.seed, k, attempt, Purpose.ComposeId));
-        if (!used.has(s)) {
-          used.add(s);
-          k++;
-          return s;
-        }
-      }
-    };
+    const id = (): string => `${prefix}${String(++k).padStart(4, '0')}`;
     const sorted = this.moments
       .filter((x) => x.phase === 'structure')
-      // At equal times a level comes after the notes it acts on (it needs them sounding).
+      // At equal times a key change comes first and a level after the notes it acts on.
       .sort(
         (a, b) =>
           a.m.at - b.m.at ||
+          Number(b.m.type === 'key') - Number(a.m.type === 'key') ||
           Number(a.m.type === 'level') - Number(b.m.type === 'level') ||
           a.order - b.order,
       );
@@ -1313,7 +2058,7 @@ class Composer {
       }
       steps.push({ kind: 'add', moment, section: s.name, phase: 'structure' });
     }
-    // Detail: upper neighbours on held chords, one left-to-right sweep.
+    // Detail (optional): upper neighbours on held chords, one left-to-right sweep.
     const structure = composedPiece({ base, steps, sections: [] });
     for (const m of this.details(structure)) {
       const moment = canonicalMoment({ id: id(), ...m } as Moment);
@@ -1326,9 +2071,13 @@ class Composer {
     return { base, steps, sections };
   }
 
-  /** Neighbour notes on the Chords part's top line where it holds alone (quiet sections). */
+  /**
+   * Neighbour notes on the Chords part's top line, only where they help: a long chord held
+   * still (no texture, no tune over it) in a quiet section. Often none. The leading Chords part's
+   * top line already moves, so it gets none.
+   */
   private details(piece: Piece): NewMoment[] {
-    if (!this.has('chords')) return [];
+    if (!this.has('chords') || this.lead === 'chords') return [];
     const score = compile(piece);
     const chordVoices = score.voices.filter((v) => v.part === PART_NAME.chords);
     const out: NewMoment[] = [];
@@ -1336,7 +2085,8 @@ class Composer {
     for (const s of this.sections) {
       if (!s.on.chords || s.on.melody || s.energy >= 0.5 || out.length >= 4) continue;
       s.chords.forEach((c, ci) => {
-        if (out.length >= 4 || c.beats < 2 * this.meter) return;
+        if (out.length >= 4 || c.beats < 2 * this.meter || !this.holdsAt('chords', c.beat + 1))
+          return;
         if (this.d('detail', n++) > 0.5 || ci % 2 === 1) return;
         const at = this.T(c.beat + 1);
         const back = r3(this.beat);

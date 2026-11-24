@@ -45,8 +45,16 @@ import {
   stdev,
 } from './compose-metrics';
 
-const partOf = (m: Moment): string | null =>
-  m.target && typeof m.target === 'object' && 'part' in m.target ? m.target.part : null;
+/** The part a moment targets: a `part`, or (with the piece) `voices` all of one part. */
+const partOf = (m: Moment, p?: Piece): string | null => {
+  const t = m.target;
+  if (t && typeof t === 'object' && 'part' in t) return t.part;
+  if (p && t && typeof t === 'object' && 'voices' in t) {
+    const parts = new Set(t.voices.map((id) => p.voices.find((v) => v.id === id)?.part));
+    return parts.size === 1 ? ([...parts][0] ?? null) : null;
+  }
+  return null;
+};
 
 /** Note starts of a tune (rests included). */
 function starts(m: TuneMoment): number[] {
@@ -246,7 +254,7 @@ describe('composeDirected', { timeout: 60_000 }, () => {
       const names = new Set(parts.map((x) => PART_NAME[x]));
       expect(new Set(p.voices.map((v) => v.part))).toEqual(names);
       for (const m of p.moments) {
-        const part = partOf(m);
+        const part = partOf(m, p);
         if (part !== null) expect(names.has(part), `${mask} ${m.type}`).toBe(true);
         else expect(['level', 'key'], `${mask} ${m.type} targets all`).toContain(m.type);
       }
@@ -408,8 +416,9 @@ describe('composeDirected', { timeout: 60_000 }, () => {
     }
   });
 
-  it('places the structure in play order, then one left-to-right detail sweep', () => {
+  it('places the structure in play order, then one left-to-right detail sweep (maybe empty)', () => {
     let details = 0;
+    let none = 0;
     for (let seed = 1; seed <= 30; seed++) {
       const c = composeDirected({ seed });
       const cut = c.steps.findIndex((s) => s.phase === 'detail');
@@ -431,8 +440,11 @@ describe('composeDirected', { timeout: 60_000 }, () => {
         expect(bad, `${seed} at ${k}`).toEqual([]);
       }
       details += sweep.length;
+      if (sweep.length === 0) none++;
     }
-    expect(details).toBeGreaterThan(5);
+    // Detail is optional (PLAN M12 listening notes): some pieces get a little, most none.
+    expect(details).toBeGreaterThan(0);
+    expect(none).toBeGreaterThan(0);
   });
 });
 
