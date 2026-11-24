@@ -7,6 +7,7 @@ import { Suggestions } from './Suggestions';
 import { BarPopover } from './BarPopover';
 import {
   fitWindow,
+  setCameraPath,
   setColors,
   setFollow,
   setHud,
@@ -44,7 +45,7 @@ const THEMES: readonly (readonly [ThemePref, string])[] = [
 
 /**
  * The bar under the lanes (PLAN.md §10, §11.2), compact (build-log "Compact view bar"): Add and
- * Next on one row when they fit; then Zoom, Follow, Snap, the drawer toggles, and the "View ▾"
+ * Next on one row when they fit; then Zoom, Follow, Camera, Snap, the drawer toggles, and the "View ▾"
  * (line colours, theme, HUD, line order) and "?" (help) popovers.
  */
 export function ViewBar() {
@@ -54,6 +55,7 @@ export function ViewBar() {
   const hud = usePlayer((s) => s.view.hud);
   const theme = usePlayer((s) => s.view.theme);
   const follow = usePlayer((s) => s.view.follow);
+  const cameraPath = usePlayer((s) => s.view.cameraPath);
   const keepOrder = useLineOrder((s) => s.keep);
   const view = usePlayer((s) => s.piece.view);
   // "Snap to beats" shows when the piece has a tempo, on unless the piece turned it off.
@@ -151,6 +153,17 @@ export function ViewBar() {
           </div>
         </div>
 
+        <button
+          type="button"
+          className="toggle camera-path-toggle"
+          aria-pressed={cameraPath}
+          data-testid="camera-path-toggle"
+          title="While playing, the view moves as the video's camera will (Export → Camera). Panning or zooming turns it off."
+          onClick={() => setCameraPath(!cameraPath)}
+        >
+          Camera
+        </button>
+
         {hasTempo && (
           <button
             type="button"
@@ -163,7 +176,7 @@ export function ViewBar() {
               refreshSuggestions(true);
             }}
           >
-            Snap to beats
+            Snap<span className="vb-long"> to beats</span>
           </button>
         )}
 

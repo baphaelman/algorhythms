@@ -617,6 +617,17 @@ input[type='range'] {
   padding: 6px 10px;
 }
 
+/* The view controls stay on one row at 1024 px with the Camera toggle (M11.5). */
+@media (max-width: 1199px) {
+  .vb-row {
+    column-gap: 8px;
+  }
+
+  .vb-row .vb-long {
+    display: none;
+  }
+}
+
 .vb-end {
   display: flex;
   align-items: center;
@@ -1592,6 +1603,82 @@ dialog.dialog.export.has-preview {
   margin-left: -1px;
   background: var(--ink);
   opacity: 0.6;
+}
+
+/* Export dialog: Camera keys (M11.5). Markers sit under the preview's slider, on the thumb's
+   travel (the track less one thumb width, as the Window tick). */
+.export-preview .preview-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.export-preview .preview-track input[type='range'] {
+  width: 100%;
+}
+
+.export-preview .preview-track.keys {
+  padding-bottom: 14px;
+}
+
+.export-preview .camera-key-track {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 14px;
+}
+
+.export-preview .camera-key {
+  position: absolute;
+  top: 1px;
+  width: 11px;
+  height: 11px;
+  min-height: 0;
+  margin-left: -5.5px;
+  padding: 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 2px;
+  background: var(--panel);
+  transform: rotate(45deg);
+  touch-action: none;
+  cursor: ew-resize;
+}
+
+.export-preview .camera-key.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.export-preview .camera-key:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.export-preview .camera-key-buttons {
+  margin-top: 4px;
+}
+
+.export-preview .camera-key-buttons output {
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-2);
+}
+
+.export-preview .preview-stage.keys {
+  touch-action: none;
+  cursor: grab;
+}
+
+.export-preview .preview-stage.keys.panning {
+  cursor: grabbing;
+}
+
+.dialog .camera-hint {
+  justify-content: space-between;
 }
 
 /* Export dialog: the Section (§12 rev 15). A two-handle range over the piece in miniature; x is

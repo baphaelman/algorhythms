@@ -8,12 +8,13 @@ import { exportWav, measureInWorker } from '../audio/export-client';
 import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/stems-client';
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
 import { LOUDNESS_CEILING, wavExportSize } from '../audio/wav-export';
-import type { CompiledScore, Piece, Seconds } from '../core/types';
+import type { CameraKey, CompiledScore, Piece, Seconds } from '../core/types';
 import { normalizePlan, type LoudnessMeasure } from '../dsp/loudness';
 import { videoSpan } from '../render/video';
 import type { TimeSpan } from '../render/section';
 import type { Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
+import type { CameraState } from '../render/types';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
   bookendsOf,
@@ -42,8 +43,10 @@ import {
   previewVideoFrame,
   previewVideoMoment,
   videoAudioFrames,
+  videoCameraAt,
   videoLoudnessCeiling,
   videoAudioSpan,
+  videoAutoKeys,
   videoSizes,
   videoSupport,
   videoTimeline,
@@ -301,6 +304,27 @@ export function previewClock(
   return { from, to: from + tl.total / VIDEO_SAMPLE_RATE, lead, span };
 }
 
+/** The video's options (Auto's keys are made in `frameOptions`, for the section and aspect). */
+const optionsOf = (src: ExportSource, form: ExportForm, ctx: VideoContext): VideoOptions =>
+  videoOptions(form, src.piece, ctx);
+
+/** The Auto camera's keys for this video (its section and aspect): what Auto exports. */
+export const previewAutoKeys = (
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+): readonly CameraKey[] => videoAutoKeys(src.compiled, optionsOf(src, form, ctx));
+
+/** The camera the preview shows at score time t (for a key made from the current view). */
+export function previewCamera(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  t: Seconds,
+): CameraState {
+  return videoCameraAt(src.piece, src.compiled, optionsOf(src, form, ctx), t);
+}
+
 /**
  * The dialog's preview of a video export: the frame at v on the preview's clock (the score's
  * time, less the lead-in before the section's start; see `previewClock`), drawn by the export's
@@ -315,7 +339,7 @@ export function previewVideo(
   v: Seconds,
   scale: number,
 ): HudPlacement {
-  const options = videoOptions(form, src.piece, ctx);
+  const options = optionsOf(src, form, ctx);
   if (!options.bookends) {
     lastPreview = { kind: 'video', options, t: v, scale };
     return previewVideoFrame(g, src.piece, src.compiled, options, v, scale);
@@ -337,7 +361,7 @@ export async function runThumbnail(
   ctx: VideoContext,
   at: Seconds | 'whole',
 ): Promise<ExportOutput> {
-  const options = videoOptions(form, src.piece, ctx);
+  const options = optionsOf(src, form, ctx);
   const blob = await exportThumbnail(src.piece, options, at);
   return { name: `${fileBase(src.piece)}-thumbnail.jpg`, blob, bytes: blob.size, files: 1 };
 }
@@ -465,7 +489,7 @@ export async function runVideo(
   ctx: VideoContext,
   hooks: RunHooks & { target?: VideoFileHandle } = {},
 ): Promise<ExportOutput> {
-  const opts = videoOptions(form, src.piece, ctx);
+  const opts = optionsOf(src, form, ctx);
   const last = { options: opts, result: null as VideoResult | null };
   lastVideo = last;
   const mem = hooks.target ? null : blobSink();

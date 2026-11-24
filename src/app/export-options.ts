@@ -169,6 +169,12 @@ export const VIDEO_FPS: readonly { id: 30 | 60; label: string }[] = [
 
 export const VIDEO_CAMERAS: readonly { id: VideoCameraMode; label: string; hint: string }[] = [
   { id: 'follow', label: 'Follow', hint: 'Follows the playhead; Window sets how much it shows.' },
+  { id: 'auto', label: 'Auto', hint: 'Moves with the music.' },
+  {
+    id: 'keys',
+    label: 'Keys',
+    hint: 'Your keys. Select one, then drag or scroll the preview.',
+  },
   {
     id: 'whole',
     label: 'Whole piece',
@@ -176,18 +182,15 @@ export const VIDEO_CAMERAS: readonly { id: VideoCameraMode; label: string; hint:
   },
 ];
 
-/** The Camera choice shown when the piece has camera keys (M11.5; C3 builds the full UI). */
-export const VIDEO_CAMERA_KEYS: { id: VideoCameraMode; label: string; hint: string } = {
-  id: 'keys',
-  label: 'Keys',
-  hint: "The piece's camera keys, eased between them.",
-};
-
-/** The Camera choices for a piece: Follow, Whole piece, and Keys when it has keys. */
-export function videoCameras(
+/**
+ * The Camera the dialog shows for a piece (M11.5): Whole piece is the dialog's own choice;
+ * otherwise the piece's camera mode (Auto without one), which Follow, Auto and Keys write.
+ */
+export function cameraChoice(
+  form: Pick<ExportForm, 'videoCamera'>,
   piece: Pick<Piece, 'camera'>,
-): readonly { id: VideoCameraMode; label: string; hint: string }[] {
-  return piece.camera?.keys?.length ? [...VIDEO_CAMERAS, VIDEO_CAMERA_KEYS] : VIDEO_CAMERAS;
+): VideoCameraMode {
+  return form.videoCamera === 'whole' ? 'whole' : (piece.camera?.mode ?? 'auto');
 }
 
 export const VIDEO_THEMES: readonly { id: ExportVideoTheme; label: string }[] = [

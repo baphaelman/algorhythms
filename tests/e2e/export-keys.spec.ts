@@ -249,15 +249,17 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     'export-vsize',
     false,
   );
+  // Auto (a piece without a camera) to Follow: the piece's camera mode changes.
   await step(
-    'camera Whole',
+    'camera Follow',
     async () => {
-      await radio('export-camera', 'Follow');
-      await key('ArrowRight');
+      await radio('export-camera', 'Auto');
+      await key('ArrowLeft');
     },
     'export-camera',
   );
-  await step('camera Follow', () => key('ArrowLeft'), 'export-camera');
+  await step('camera Auto', () => key('ArrowRight'), 'export-camera');
+  await step('camera Follow again', () => key('ArrowLeft'), 'export-camera');
   await step(
     'window',
     async () => {

@@ -150,10 +150,11 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
   await openExport(page);
   await pickVideo(page);
   const d = dialog(page);
-  for (const label of ['16:9', '1080p', '30 fps', 'Follow', 'Current']) {
+  // A piece without a camera exports with Auto (M11.5).
+  for (const label of ['16:9', '1080p', '30 fps', 'Auto', 'Current']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
-  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Light', 'Dark']) {
+  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Follow', 'Keys', 'Light', 'Dark']) {
     await expect(d.getByLabel(label, { exact: true })).not.toBeChecked();
   }
   // "Whole piece" also names the Section's default.
@@ -182,6 +183,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await setZoom(page, 5);
   await openExport(page);
   await pickVideo(page);
+  await choose(page, 'export-camera', 'Follow');
   await choose(page, 'export-aspect', '9:16');
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-vtheme', 'Dark');
@@ -430,6 +432,7 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await loadShortPiece(page, 2);
   await openExport(page);
   await pickVideo(page);
+  await choose(page, 'export-camera', 'Follow');
   await choose(page, 'export-vsize', '720p');
   await openLook(page);
   const d = dialog(page);
@@ -582,6 +585,7 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
 test('Look sliders work from the keyboard (focused, arrows / Home / End)', async ({ page }) => {
   await openExport(page);
   await pickVideo(page);
+  await choose(page, 'export-camera', 'Follow');
   const future = page.getByTestId('look-future');
   await guarded(page, 'focus look-future', () => future.focus());
   await page.keyboard.press('End');
@@ -899,6 +903,7 @@ test('Follow’s Window slider sets the seconds shown; the preview and the expor
   await setZoom(page, 10);
   await openExport(page);
   await pickVideo(page);
+  await choose(page, 'export-camera', 'Follow');
   let n = await drawn(page);
   const slider = page.getByTestId('export-window');
   const value = page.getByTestId('export-window-value');
@@ -957,6 +962,7 @@ test('Window: the editor’s zoom is a tick the slider snaps to when dragged clo
   await setZoom(page, 20);
   await openExport(page);
   await pickVideo(page);
+  await choose(page, 'export-camera', 'Follow');
   const slider = page.getByTestId('export-window');
   const tickEl = page.getByTestId('export-window-tick');
   const value = page.getByTestId('export-window-value');

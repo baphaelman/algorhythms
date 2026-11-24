@@ -23,6 +23,7 @@ import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
+import type { CameraState } from '../render/types';
 import { resetContext } from '../render/poster';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
@@ -570,7 +571,7 @@ export function frameOptions(
     const keys = opts.keys ?? piece.camera?.keys;
     if (keys && keys.length > 0) o.keys = keys;
   } else if (opts.camera === 'auto') {
-    o.keys = opts.keys ?? autoKeys((compiled ??= compile(piece)), opts);
+    o.keys = opts.keys ?? videoAutoKeys((compiled ??= compile(piece)), opts);
   }
   if (bookendsOn(opts.bookends)) {
     const tl = videoTimeline(compiled ?? compile(piece), piece.mix, opts);
@@ -581,7 +582,7 @@ export function frameOptions(
 }
 
 /** The Auto camera's keys for a video: its section (when not the whole piece) and aspect. */
-function autoKeys(compiled: CompiledScore, opts: VideoOptions): readonly CameraKey[] {
+export function videoAutoKeys(compiled: CompiledScore, opts: VideoOptions): readonly CameraKey[] {
   const span =
     opts.section && !isWholeSpan(opts.section, compiled.duration) ? opts.section : undefined;
   return autoCameraKeys(compiled, { aspect: VIDEO_RATIO[opts.aspect], ...(span ? { span } : {}) });
@@ -634,6 +635,21 @@ export function previewVideoFrame(
   const fo = frameOptions(piece, opts, compiled);
   const view = drawVideoFrameAt(ctx, compiled, fo, t, scale);
   return hudPlacement(ctx, compiled, fo.style, view);
+}
+
+/**
+ * The camera of the frame at score time t (clamped to the section), as the export draws it: what
+ * the dialog's preview shows, for "add a key from this view".
+ */
+export function videoCameraAt(
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: VideoOptions,
+  t: Seconds,
+): CameraState {
+  const fo = frameOptions(piece, opts);
+  const span = videoSpan(compiled.duration, fo.section);
+  return videoCamera(fo.camera, compiled, Math.min(Math.max(span.start, t), span.end), fo);
 }
 
 /**

@@ -1,8 +1,8 @@
 /**
  * The Auto camera (PLAN.md §15 M11.5 C2) on Crease: the preview's drawing is the export's frame
  * at the opening, a lean-in at the crossing and the pull-back, an Auto MP4's decoded frames match
- * the path, and Auto draws another picture than Follow. The dialog's Auto choice is C3's, so the
- * options are the dialog's video options with `camera: 'auto'`.
+ * the path, and Auto draws another picture than Follow. Crease has no camera, so the dialog opens
+ * on Auto (C3) and its own preview is checked against the exported frame.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -26,7 +26,7 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
   await expect(input).toBeChecked();
 }
 
-/** Crease, the Export dialog open on Video, 720p, Follow (its options are the base). */
+/** Crease, the Export dialog open on Video, 720p, Auto (a piece without camera is Auto). */
 async function openCrease(page: Page): Promise<void> {
   await page.goto('./?example=crease');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
@@ -36,7 +36,9 @@ async function openCrease(page: Page): Promise<void> {
   await choose(page, 'export-format', 'Video (MP4)');
   await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   await choose(page, 'export-vsize', '720p');
-  await choose(page, 'export-camera', 'Follow');
+  await expect(
+    dialog(page).getByTestId('export-camera').getByLabel('Auto', { exact: true }),
+  ).toBeChecked();
   await expect
     .poll(() =>
       page.evaluate(
@@ -76,7 +78,8 @@ test('Auto on Crease: the preview is the export frame; Auto is not Follow', asyn
       const piece = h.store.getState().piece as never;
       const compiled = h.store.getState().compiled as never;
       const m = await h.videoExport();
-      const opts = { ...req.options, camera: 'auto' as const };
+      if (req.options.camera !== 'auto') throw new Error(`dialog camera ${req.options.camera}`);
+      const opts = req.options;
       const out: Record<string, { atExport: number; follow: number; keys: number }> = {};
       // The opening (blank paper), the bloom, the lean-in at the crossing (79.5 s), the pull-back.
       for (const t of [0.5, 20, 79.5, 114]) {
@@ -99,6 +102,37 @@ test('Auto on Crease: the preview is the export frame; Auto is not Follow', asyn
     expect(v.keys, 'auto keys').toBeGreaterThan(4);
     expect(v.atExport, `preview code vs frame at ${t} s`).toBeGreaterThan(45);
     expect(v.follow, `Auto vs Follow at ${t} s`).toBeLessThan(v.atExport - 15);
+  }
+
+  // The dialog's own Auto preview (its canvas) is the exported Auto frame.
+  for (const t of [20, 79.5]) {
+    await page.getByTestId('preview-time').fill(String(t));
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const req = (
+            await (window as unknown as HookWindow).__algorhythms.exportRun()
+          ).lastPreviewRequest();
+          return req?.kind === 'video' ? req.t : NaN;
+        }),
+      )
+      .toBeCloseTo(t, 2);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))));
+    const bad = await page.evaluate(async (t) => {
+      const h = (window as unknown as HookWindow).__algorhythms;
+      const req = (await h.exportRun()).lastPreviewRequest()!;
+      if (req.kind !== 'video' || req.options.camera !== 'auto') throw new Error('not auto');
+      const m = await h.videoExport();
+      const c = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;
+      const live = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      const piece = h.store.getState().piece as never;
+      const ref = m.referenceFrameAt(piece, req.options, t, req.scale, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < live.length; i += 4)
+        if (Math.max(...[0, 1, 2, 3].map((j) => Math.abs(live[i + j] - ref[i + j]))) > 16) n++;
+      return n / (live.length / 4);
+    }, t);
+    expect(bad, `dialog preview vs Auto export frame at ${t} s`).toBeLessThan(0.002);
   }
 });
 

@@ -74,6 +74,11 @@ export interface ViewState {
   follow: FollowMode;
   /** Draw the canvas heads-up display. */
   hud: boolean;
+  /**
+   * While playing, the view draws through the piece's camera path (M11.5 "In the editor"); off,
+   * Follow as always. Per browser (localStorage); a pan or zoom while playing turns it off.
+   */
+  cameraPath: boolean;
 }
 
 /** Transport status. `idle` = loaded, nothing played yet (overview shown). */
@@ -104,6 +109,15 @@ export interface PlayerState {
 }
 
 const THEME_KEY = 'algorhythms.theme';
+const CAMERA_PATH_KEY = 'algorhythms.cameraPath';
+
+function storedCameraPath(): boolean {
+  try {
+    return localStorage.getItem(CAMERA_PATH_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function storedTheme(): ThemePref {
   try {
@@ -120,8 +134,14 @@ function parseOrThrow(json: unknown): Piece {
   return r.piece;
 }
 
-function viewFor(piece: Piece, compiled: CompiledScore, theme: ThemePref): ViewState {
+function viewFor(
+  piece: Piece,
+  compiled: CompiledScore,
+  theme: ThemePref,
+  cameraPath = storedCameraPath(),
+): ViewState {
   return {
+    cameraPath,
     window: clampWindow(piece.view.window, compiled.duration),
     colors: piece.view.colors,
     theme,
@@ -404,7 +424,7 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   set((s) => ({
     piece,
     compiled,
-    view: viewFor(piece, compiled, s.view.theme),
+    view: viewFor(piece, compiled, s.view.theme, s.view.cameraPath),
     transport: { status: 'idle', scrubbing: false, audio: s.transport.audio },
     notices: opts.keepNotices ? [...s.notices, ...notices] : notices,
   }));
@@ -765,6 +785,7 @@ export function setWindow(seconds: Seconds): void {
   );
   camera.start = next.start;
   setView({ window: next.window });
+  userMovedView();
 }
 
 /** Multiplies the window (1.25 zooms out, 0.8 zooms in); see `setWindow`. */
@@ -781,6 +802,22 @@ export function fitWindow(): void {
 /** Sets the follow mode. */
 export function setFollow(follow: FollowMode): void {
   setView({ follow });
+}
+
+/** Turns the editor's Camera (the piece's camera path while playing) on or off; remembered. */
+export function setCameraPath(on: boolean): void {
+  try {
+    localStorage.setItem(CAMERA_PATH_KEY, on ? '1' : '0');
+  } catch {
+    // Storage unavailable: this session only.
+  }
+  setView({ cameraPath: on });
+}
+
+/** A user pan or zoom while playing turns the Camera off, so it never fights the user. */
+function userMovedView(): void {
+  const { transport, view } = get();
+  if (transport.status === 'playing' && view.cameraPath) setCameraPath(false);
 }
 
 /** Sets the line colouring. */
@@ -803,6 +840,7 @@ export function panBy(dt: Seconds): void {
   camera.start = clampStart(cam.start + dt, cam.window, compiled.duration);
   // The loop redraws when it sees `camera.start` change.
   if (transport.status === 'playing' && view.follow !== 'off') setView({ follow: 'off' });
+  userMovedView();
 }
 
 /** Applies the theme preference to the document and stores it. */

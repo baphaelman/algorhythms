@@ -292,7 +292,8 @@ export function hudSummary(items: readonly unknown[]): string {
 
 /** The note under Playhead at. */
 export function followAtHint(form: ExportForm): string {
-  if (form.videoCamera !== 'follow') return 'Follow only (Whole piece: the playhead moves across).';
+  if (form.videoCamera === 'whole') return 'Follow only (Whole piece: the playhead moves across).';
+  if (form.videoCamera !== 'follow') return 'Follow only (the camera places it).';
   if (form.videoFollowAt !== null) return 'Across the frame.';
   const by = form.look.future === 'hidden' ? FOLLOW_AT_HIDDEN : FOLLOW_AT_SHOWN;
   return `Across the frame; ${by} % follows Ahead of the playhead until you change it.`;

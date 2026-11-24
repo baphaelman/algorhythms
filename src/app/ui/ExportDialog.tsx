@@ -15,7 +15,7 @@ import { formatTime, type HudPlacement } from '../../render/hud';
 import { hudPosText, posOfBox } from '../../render/hud-layout';
 import { sectionText, type TimeSpan } from '../../render/section';
 import { tokensOf } from '../../render/palettes';
-import { videoSize, type VideoSize } from '../../render/video';
+import { VIDEO_RATIO, videoSize, type VideoSize } from '../../render/video';
 import type { HudItem } from '../../render/types';
 import { downloadBlob } from '../download';
 import {
@@ -44,13 +44,13 @@ import {
   RATES,
   SECTION_KINDS,
   VIDEO_ASPECTS,
-  videoCameras,
   VIDEO_FPS,
   VIDEO_QUALITIES,
   VIDEO_SIZES,
   VIDEO_THEMES,
   aacNote,
   bookendsOf,
+  cameraChoice,
   codecLabel,
   defaultCustomSpan,
   exportFileName,
@@ -105,6 +105,15 @@ import {
   PreviewActions,
 } from './ExportYoutube';
 import { applyPreset } from '../youtube-preset';
+import {
+  CameraField,
+  KeyButtons,
+  KeyMarkers,
+  useCameraKeys,
+  useKeyView,
+  type CameraCtl,
+} from './CameraKeys';
+import { redo, undo } from '../editor/history';
 import {
   cameraOf,
   currentTime,
@@ -306,6 +315,36 @@ function togglePreview(): void {
   else playPreview();
 }
 
+/** What the Camera controls (CameraKeys.tsx) use of the dialog. */
+const cameraCtl: CameraCtl = {
+  time: () => {
+    const s = useExportUi.getState();
+    const { span } = clockNow(s.form);
+    return Math.min(Math.max(s.previewT, span.start), span.end);
+  },
+  seek: (t) => {
+    pausePreview();
+    useExportUi.setState({ previewT: t });
+  },
+  cameraAt: (t) => {
+    const { runtime, form } = useExportUi.getState();
+    if (!runtime) return null;
+    const { piece, compiled } = usePlayer.getState();
+    const cam = runtime.previewCamera({ piece, compiled }, form, videoContext(), t);
+    return cam.pitchRange
+      ? { start: cam.start, window: cam.window, pitchRange: cam.pitchRange }
+      : null;
+  },
+  aspect: () => VIDEO_RATIO[useExportUi.getState().form.videoAspect],
+  autoKeys: () => {
+    const { runtime, form } = useExportUi.getState();
+    if (!runtime) return null;
+    const { piece, compiled } = usePlayer.getState();
+    return runtime.previewAutoKeys({ piece, compiled }, form, videoContext());
+  },
+  setChoice: (videoCamera) => patch({ videoCamera }),
+};
+
 /** Stops the preview and puts the editor's playhead back where it was when the dialog opened. */
 function restorePlayhead(): void {
   silent = null;
@@ -330,7 +369,15 @@ export function openExport(): void {
   previewMoved = false;
   // The remembered Look and video/poster choices (none if storage is unavailable), and this
   // piece's Section (Whole for a piece not exported this session).
-  const form = running ? s.form : { ...s.form, ...loadExportPrefs(), ...sectionFor(pieceKey()) };
+  const remembered = running
+    ? s.form
+    : { ...s.form, ...loadExportPrefs(), ...sectionFor(pieceKey()) };
+  // The Camera is the piece's (Whole piece is the dialog's own).
+  const form = {
+    ...remembered,
+    videoCamera: cameraChoice(remembered, usePlayer.getState().piece),
+  };
+  useCameraKeys.setState({ selected: null });
   const b = form.format === 'video' ? bookendsOf(form, usePlayer.getState().piece) : undefined;
   const span = sectionNow(form);
   const t0 = now > 0 ? now : duration / 3;
@@ -1098,7 +1145,11 @@ function ExportPreview({
   const draws = useRef(0);
   const frame = useRef(0);
   const job = useRef<(() => void) | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const id = useId();
+  // Keys: the timeline's key markers, and the preview shapes the selected key's view.
+  const keysMode = kind === 'video' && form.videoCamera === 'keys';
+  useKeyView(stage, cameraCtl, keysMode && !running);
 
   // The space the preview may take: the column's width, a share of the screen's height. State
   // changes only when a number does, so a re-render the size causes cannot loop back here.
@@ -1280,7 +1331,11 @@ function ExportPreview({
   return (
     <div className="export-preview" data-testid="export-preview" ref={wrap}>
       <div className="preview-box" ref={box}>
-        <div className="preview-stage" style={{ width: `${cssW}px`, height: `${cssH}px` }}>
+        <div
+          ref={stage}
+          className={keysMode ? 'preview-stage keys' : 'preview-stage'}
+          style={{ width: `${cssW}px`, height: `${cssH}px` }}
+        >
           <canvas
             ref={canvas}
             role="img"
@@ -1312,37 +1367,48 @@ function ExportPreview({
           <label htmlFor={`${id}-t`} className="visually-hidden">
             Preview time
           </label>
-          <input
-            id={`${id}-t`}
-            type="range"
-            min={clock.from}
-            max={Math.max(clock.from + 0.1, clock.to)}
-            step={0.1}
-            value={v}
-            aria-valuetext={formatTime(shown)}
-            data-testid="preview-time"
-            onChange={(e) => {
-              const x = Number(e.target.value);
-              useExportUi.setState({ previewT: x });
-              if (!useExportUi.getState().previewPlaying) return;
-              // Playing: the music follows the slider; the lead-in and end card run silently.
-              if (x >= span.start && x < span.end - 0.05) {
-                if (silent) {
-                  silent = null;
-                  seekTo(x);
-                  play();
-                } else seekTo(x);
-              } else {
-                if (!silent) pause();
-                silent = { v: x, at: performance.now() };
-              }
-            }}
-          />
+          <span className={keysMode ? 'preview-track keys' : 'preview-track'}>
+            <input
+              id={`${id}-t`}
+              type="range"
+              min={clock.from}
+              max={Math.max(clock.from + 0.1, clock.to)}
+              step={0.1}
+              value={v}
+              aria-valuetext={formatTime(shown)}
+              data-testid="preview-time"
+              onChange={(e) => {
+                const x = Number(e.target.value);
+                useExportUi.setState({ previewT: x });
+                if (!useExportUi.getState().previewPlaying) return;
+                // Playing: the music follows the slider; the lead-in and end card run silently.
+                if (x >= span.start && x < span.end - 0.05) {
+                  if (silent) {
+                    silent = null;
+                    seekTo(x);
+                    play();
+                  } else seekTo(x);
+                } else {
+                  if (!silent) pause();
+                  silent = { v: x, at: performance.now() };
+                }
+              }}
+            />
+            {keysMode && (
+              <KeyMarkers
+                from={clock.from}
+                to={Math.max(clock.from + 0.1, clock.to)}
+                disabled={running}
+                ctl={cameraCtl}
+              />
+            )}
+          </span>
           <output htmlFor={`${id}-t`} data-testid="preview-time-value">
             {formatTime(shown)}
           </output>
         </div>
       )}
+      {keysMode && <KeyButtons disabled={running} ctl={cameraCtl} />}
       {kind === 'video' && wide && <VideoActions form={form} runtime={runtime} />}
     </div>
   );
@@ -1864,6 +1930,36 @@ export function ExportDialog() {
   const wide = useWide();
   useFocusRescue(dialog, open);
 
+  // Undo and redo (camera edits) where no text field takes them. On the document: a clicked
+  // button keeps no focus in WebKit, so the key may come from the body.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      const text =
+        t instanceof HTMLTextAreaElement ||
+        (t instanceof HTMLInputElement && !['range', 'radio', 'checkbox'].includes(t.type));
+      const k = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || text || (k !== 'z' && k !== 'y')) return;
+      e.preventDefault();
+      if (useExportUi.getState().run.status === 'running') return;
+      if (k === 'y' || e.shiftKey) redo();
+      else undo();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // The Camera follows the piece's (undo and redo change it too).
+  const camera = cameraChoice(form, piece);
+  useEffect(() => {
+    if (!open) return;
+    const s = useExportUi.getState();
+    if (s.form.videoCamera !== camera) {
+      useExportUi.setState({ form: { ...s.form, videoCamera: camera } });
+    }
+  }, [open, camera]);
+
   useEffect(() => {
     const d = dialog.current;
     if (!d) return;
@@ -1950,8 +2046,6 @@ export function ExportDialog() {
   const isPoster = form.format === 'poster';
   const toDisk = (form.format === 'stems' || isVideo) && runtime?.canSaveToDisk() === true;
   const videoBlocked = isVideo && support?.ok !== true;
-  const cameras = videoCameras(piece);
-  const cameraHint = cameras.find((c) => c.id === form.videoCamera)?.hint;
   const mpe = form.midiMode === 'mpe';
   const notes = form.midiMode === 'notesOnly';
   const hint = MIDI_MODES.find((m) => m.id === form.midiMode)?.hint;
@@ -2167,16 +2261,7 @@ export function ExportDialog() {
                       Audio is Opus here (no AAC encoder).
                     </small>
                   )}
-                  <Radios
-                    legend="Camera"
-                    name={`${id}-camera`}
-                    value={form.videoCamera}
-                    options={cameras}
-                    disabled={running}
-                    testId="export-camera"
-                    onChange={(videoCamera) => patch({ videoCamera })}
-                  />
-                  <small className="export-hint">{cameraHint}</small>
+                  <CameraField value={camera} disabled={running} ctl={cameraCtl} />
                   {form.videoCamera === 'follow' && (
                     <WindowField form={form} duration={compiled.duration} disabled={running} />
                   )}
