@@ -169,8 +169,8 @@ function focusMarker(root: HTMLElement | null, i: number, fallback?: string): vo
 }
 
 /**
- * The key markers on the preview's timeline (`from`..`to`, the slider's range), placed in the
- * slider's wrapper. Click selects (and moves the preview there); drag moves in time; focused:
+ * The key markers on the preview's timeline (`from`..`to`, the slider's range; keys outside it
+ * aren't shown), placed in the slider's wrapper. Click selects (and moves the preview there); drag moves in time; focused:
  * arrows move, ↑ ↓ move the pitch, − = zoom, Delete removes.
  */
 export function KeyMarkers({
@@ -204,8 +204,10 @@ export function KeyMarkers({
     const step = keyStep(e.key, { shift: e.shiftKey, alt: e.altKey });
     let done = true;
     if (step !== null) {
-      const next = moveKey(keys, i, k.at + step);
-      edit((p) => withCameraKeys(p, moveKey(keysOf(p), i, k.at + step)), 'Move camera key');
+      // Kept on this timeline, so the focused marker stays.
+      const at = Math.min(Math.max(k.at + step, from), to);
+      const next = moveKey(keys, i, at);
+      edit((p) => withCameraKeys(p, moveKey(keysOf(p), i, at)), 'Move camera key');
       select(i);
       ctl.seek(next[i].at);
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -231,55 +233,58 @@ export function KeyMarkers({
         Arrow keys move it in time (Shift ten seconds, Alt a tenth); up and down move the view;
         minus and equals zoom; Delete removes it.
       </small>
-      {keys.map((k, i) => (
-        <button
-          key={i}
-          type="button"
-          className={picked === i ? 'camera-key on' : 'camera-key'}
-          aria-label={`Camera key at ${formatTime(k.at)}`}
-          aria-pressed={picked === i}
-          aria-describedby={`${id}-k`}
-          title={formatTime(k.at)}
-          disabled={disabled}
-          data-testid="camera-key"
-          data-key-index={i}
-          data-at={k.at.toFixed(3)}
-          style={{ left: pct(k.at) }}
-          onClick={() => {
-            select(i);
-            ctl.seek(k.at);
-          }}
-          onKeyDown={(e) => onKey(e, i)}
-          onPointerDown={(e) => {
-            if (disabled || e.button !== 0) return;
-            e.preventDefault();
-            e.currentTarget.focus();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            drag.current = { i, id: e.pointerId };
-            select(i);
-            ctl.seek(k.at);
-            beginGesture('Move camera key');
-          }}
-          onPointerMove={(e) => {
-            const d = drag.current;
-            if (!d || d.id !== e.pointerId) return;
-            const t = timeAt(e.clientX);
-            updateGesture((p) => withCameraKeys(p, moveKey(keysOf(p), d.i, t)));
-            const at = pieceKeys()[d.i]?.at;
-            if (at !== undefined) ctl.seek(at);
-          }}
-          onPointerUp={() => {
-            if (!drag.current) return;
-            drag.current = null;
-            endGesture();
-          }}
-          onPointerCancel={() => {
-            if (!drag.current) return;
-            drag.current = null;
-            endGesture();
-          }}
-        />
-      ))}
+      {keys.map((k, i) =>
+        // Keys outside the section aren't on this timeline (they'd pile up at its ends).
+        k.at < from - 1e-6 || k.at > to + 1e-6 ? null : (
+          <button
+            key={i}
+            type="button"
+            className={picked === i ? 'camera-key on' : 'camera-key'}
+            aria-label={`Camera key at ${formatTime(k.at)}`}
+            aria-pressed={picked === i}
+            aria-describedby={`${id}-k`}
+            title={formatTime(k.at)}
+            disabled={disabled}
+            data-testid="camera-key"
+            data-key-index={i}
+            data-at={k.at.toFixed(3)}
+            style={{ left: pct(k.at) }}
+            onClick={() => {
+              select(i);
+              ctl.seek(k.at);
+            }}
+            onKeyDown={(e) => onKey(e, i)}
+            onPointerDown={(e) => {
+              if (disabled || e.button !== 0) return;
+              e.preventDefault();
+              e.currentTarget.focus();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              drag.current = { i, id: e.pointerId };
+              select(i);
+              ctl.seek(k.at);
+              beginGesture('Move camera key');
+            }}
+            onPointerMove={(e) => {
+              const d = drag.current;
+              if (!d || d.id !== e.pointerId) return;
+              const t = timeAt(e.clientX);
+              updateGesture((p) => withCameraKeys(p, moveKey(keysOf(p), d.i, t)));
+              const at = pieceKeys()[d.i]?.at;
+              if (at !== undefined) ctl.seek(at);
+            }}
+            onPointerUp={() => {
+              if (!drag.current) return;
+              drag.current = null;
+              endGesture();
+            }}
+            onPointerCancel={() => {
+              if (!drag.current) return;
+              drag.current = null;
+              endGesture();
+            }}
+          />
+        ),
+      )}
     </div>
   );
 }
