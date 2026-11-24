@@ -105,6 +105,42 @@ for (const w of [1280, 1920]) {
   });
 }
 
+for (const w of [1440, 1200, 900]) {
+  test(`${w} px: Next is narrow and Add takes the room; no overflow, no card clipped`, async ({
+    page,
+  }) => {
+    await open(page, w, 900);
+    const g = await page.locator('.viewbar').evaluate((bar) => {
+      const r = (q: string) => document.querySelector(q)!.getBoundingClientRect();
+      const add = r('[data-testid="palette"]');
+      const next = r('[data-testid="suggestions"]');
+      const cut = (q: string, box: DOMRect): number =>
+        [...bar.querySelectorAll<HTMLElement>(q)].filter((c) => {
+          const b = c.getBoundingClientRect();
+          return (
+            b.bottom > box.bottom || b.right > box.right + 0.5 || c.scrollWidth > c.clientWidth
+          );
+        }).length;
+      return {
+        sameRow: Math.abs(add.top - next.top) < 4,
+        add: add.width,
+        next: next.width,
+        cut:
+          cut('[data-testid="suggestions"] button', next) +
+          cut('[data-testid="palette"] button', add),
+        cards: bar.querySelectorAll('[data-testid="suggestions"] button').length,
+        scroll: document.documentElement.scrollWidth,
+      };
+    });
+    expect(g.cards).toBeGreaterThan(0);
+    expect(g.cut).toBe(0);
+    expect(g.scroll).toBeLessThanOrEqual(w);
+    if (w >= 1200) expect(g.sameRow).toBe(true);
+    // Add takes the room left over (at 1200 px there is none to spare).
+    if (w >= 1440) expect(g.add).toBeGreaterThan(g.next);
+  });
+}
+
 test('View popover: opens, toggles theme and HUD, closes on Escape and outside press', async ({
   page,
 }) => {

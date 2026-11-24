@@ -30,8 +30,8 @@ function clock(t: number): string {
 /**
  * Next-move suggestions, "Next" (PLAN.md §11.3, revisions 6–7, 14): up to four cards appended at
  * the end of the piece's last moment (core/suggest.ts). In a key with chord theory, one card per
- * chord job: "<Chord> · <Job> (<numeral>)", the best fit marked ★, a short reason in the
- * tooltip. Otherwise the composer's moves with their icons. Its own group, styled
+ * chord job: "<Chord> · <Job>", the best fit marked ★; the numeral and a short reason go in the
+ * tooltip and the description. Otherwise the composer's moves with their icons. Its own group, styled
  * apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering for
  * 300 ms previews it silently on the score (../preview.ts).
  */
@@ -81,8 +81,9 @@ export function Suggestions() {
       {items.length === 0 && <span className="suggest-none">nothing sounding at the end</span>}
       {items.map((s, i) => {
         const desc = `${uid}-d${i}`;
-        // A theory card: "G7", " · " (narrow spaces), "Tension", then the numeral set smaller "(V7)".
+        // A theory card: "G7", " · " (narrow spaces), "Tension"; its numeral "V7" in the tooltip.
         const num = s.job ? /^(.*?) · (.*) \(([^)]+)\)$/.exec(s.label) : null;
+        const about = `${num ? `${num[3]}. ` : ''}${s.best ? 'Best fit. ' : ''}${s.tooltip}`;
         return (
           <Fragment key={suggestionKey(t, i, s)}>
             <button
@@ -92,7 +93,7 @@ export function Suggestions() {
               data-job={s.job}
               data-best={s.best || undefined}
               data-label={s.label}
-              title={`${s.best ? 'Best fit. ' : ''}${s.tooltip}`}
+              title={about}
               aria-describedby={desc}
               onPointerEnter={() => hover(s)}
               onPointerLeave={cancelHover}
@@ -107,14 +108,11 @@ export function Suggestions() {
                 </span>
               )}
               {num ? (
-                <>
-                  <span>
-                    {num[1]}
-                    <span className="suggest-sep"> · </span>
-                    {num[2]}
-                  </span>{' '}
-                  <span className="suggest-num">({num[3]})</span>
-                </>
+                <span>
+                  {num[1]}
+                  <span className="suggest-sep"> · </span>
+                  {num[2]}
+                </span>
               ) : (
                 s.label
               )}
@@ -125,8 +123,7 @@ export function Suggestions() {
               )}
             </button>
             <span id={desc} className="visually-hidden">
-              {s.best ? 'Best fit. ' : ''}
-              {s.tooltip}. Appends at {clock(s.moment.at)}.
+              {about}. Appends at {clock(s.moment.at)}.
             </span>
           </Fragment>
         );

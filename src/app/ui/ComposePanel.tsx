@@ -1,11 +1,11 @@
 import { useId } from 'react';
-import { closeCompose, composeAgain, finish, stopCompose, useCompose } from '../compose';
+import { closeCompose, composeAgain, stopCompose, useCompose } from '../compose';
 import { usePlayer } from '../store';
 import './compose.css';
 
 /**
  * The Compose for me side panel (PLAN.md §11.3 "Compose in New piece", "Compose builds in play
- * order", M12): the build's progress, Skip and Stop; afterwards "Compose again" reopens the setup
+ * order", M12): the build's progress and Stop; afterwards "Compose again" reopens the setup
  * (./ComposeSetup.tsx). It takes the inspector's column while open (it closes on the
  * user's own edit); in the player layout it sits under the score.
  */
@@ -38,14 +38,9 @@ export function ComposePanel() {
       </div>
       <div className="compose-actions">
         {building ? (
-          <>
-            <button type="button" data-testid="compose-stop" onClick={stopCompose}>
-              Stop
-            </button>
-            <button type="button" className="primary" data-testid="compose-skip" onClick={finish}>
-              Skip
-            </button>
-          </>
+          <button type="button" data-testid="compose-stop" onClick={stopCompose}>
+            Stop
+          </button>
         ) : (
           <>
             <button type="button" data-testid="compose-again" onClick={composeAgain}>

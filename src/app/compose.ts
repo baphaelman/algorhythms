@@ -4,11 +4,12 @@
  * the open piece; Compose opens an empty piece and a side panel, and the composer builds the piece
  * on screen, step by step (`composeDirected`), at the pace of ./compose-pace.ts. The structure
  * comes in play order: the camera follows the pen forward and the lines draw in up to it
- * (`composeView`). Then the whole piece is fitted in view and the detail sweep highlights each
- * detail as it is placed, left to right.
+ * (`composeView`). Then the whole piece is fitted in view and the detail sweep (when there are
+ * details) highlights each detail as it is placed, left to right. With "Watch the composer"
+ * unticked (remembered per browser), Compose opens the finished piece at once.
  *
  * The whole compose is one undo entry back to the empty piece: the build runs as one editor
- * gesture, closed when it finishes (or Skip, Stop). "Compose again" reopens the setup with the
+ * gesture, closed when it finishes (or Stop). "Compose again" reopens the setup with the
  * last answers and a new seed; its build first undoes the last build's entry when it is still the
  * newest, so it stays one entry. The user's own edit (any history change not made here: an edit,
  * undo, drag) stops a build and closes the panel; so does loading another piece.
@@ -26,8 +27,10 @@ import { composeTimeline, penAt, stepsAt, type Timeline } from './compose-pace';
 import {
   buildBrief,
   loadAnswers,
+  loadWatch,
   melodyOf,
   saveAnswers,
+  saveWatch,
   type ComposeAnswers,
   type MelodyNote,
 } from './compose-setup';
@@ -44,7 +47,15 @@ import {
 } from './editor/history';
 import { newSeed } from './generate-options';
 import { loadNewPiece } from './persist';
-import { camera, cameraOf, fitWindow, onLoadPiece, runOpen, usePlayer } from './store';
+import {
+  camera,
+  cameraOf,
+  fitWindow,
+  onLoadPiece,
+  recompileNow,
+  runOpen,
+  usePlayer,
+} from './store';
 
 /** `building`: steps are being placed; `done`: the whole piece; `stopped`: part of it. */
 export type ComposeStatus = 'building' | 'done' | 'stopped';
@@ -57,6 +68,8 @@ export interface ComposeUi {
   /** The setup's answers (remembered per browser) and the next build's seed. */
   answers: ComposeAnswers;
   seed: number;
+  /** "Watch the composer" (remembered per browser): unticked, Compose opens the finished piece. */
+  watch: boolean;
   /** Whether "The open piece's melody" can be offered. */
   hasMelody: boolean;
   /** The brief of the last build. */
@@ -75,6 +88,7 @@ export const useCompose = create<ComposeUi>()(() => ({
   setup: false,
   answers: loadAnswers(),
   seed: 0,
+  watch: loadWatch(),
   hasMelody: false,
   brief: null,
   status: 'done',
@@ -246,14 +260,17 @@ function restartCompose(brief: ComposeBrief): void {
   camera.start = 0;
   if (!show(0)) return;
   composeView.reveal = composeView.pen = 0;
-  run.raf = requestAnimationFrame(frame);
+  if (useCompose.getState().watch) run.raf = requestAnimationFrame(frame);
+  else finish();
 }
 
-/** Skip: the finished piece, all of it in view. */
+/** The finished piece at once, all of it in view (the build's end, or Watch unticked). */
 export function finish(): void {
   if (!run.comp || useCompose.getState().status !== 'building') return;
   if (!show(run.comp.steps.length)) return;
   settle('done');
+  // The fit needs the finished piece's length: compile it now (edits compile a frame later).
+  recompileNow();
   fitWindow();
 }
 
@@ -278,6 +295,12 @@ export function composeAgain(): void {
 /** Closes the setup screen without composing. */
 export function closeSetup(): void {
   useCompose.setState({ setup: false });
+}
+
+/** Ticks or unticks "Watch the composer" (remembered per browser). */
+export function setComposeWatch(watch: boolean): void {
+  useCompose.setState({ watch });
+  saveWatch(watch);
 }
 
 /** Changes the setup's answers (remembered per browser). */

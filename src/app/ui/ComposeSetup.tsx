@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { PROGRESSIONS } from '../../core/compose-brief';
-import { closeSetup, runCompose, setComposeAnswers, useCompose } from '../compose';
+import { closeSetup, runCompose, setComposeAnswers, setComposeWatch, useCompose } from '../compose';
 import {
   KEY_SCALES,
   LENGTHS,
@@ -73,13 +73,15 @@ function parseStart(v: string): StartAnswer {
 
 /**
  * Compose for me's setup screen (PLAN.md §11.3 "Compose for me, directed", M12): five questions,
- * each Surprise me by default, and More (key and scale, tempo). A native modal `<dialog>`: focus
+ * each Surprise me by default, More (key and scale, tempo), and "Watch the composer" beside
+ * Compose (unticked, the finished piece opens at once). A native modal `<dialog>`: focus
  * is trapped, Escape closes it, Compose has the focus (Enter composes).
  */
 export function ComposeSetup() {
   const open = useCompose((s) => s.setup);
   const answers = useCompose((s) => s.answers);
   const hasMelody = useCompose((s) => s.hasMelody);
+  const watch = useCompose((s) => s.watch);
   const a = shownAnswers(answers, hasMelody);
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -202,6 +204,15 @@ export function ComposeSetup() {
             <button type="button" onClick={closeSetup}>
               Cancel
             </button>
+            <label className="setup-watch">
+              <input
+                type="checkbox"
+                data-testid="compose-watch"
+                checked={watch}
+                onChange={(e) => setComposeWatch(e.target.checked)}
+              />
+              Watch the composer
+            </label>
             <button type="submit" className="primary" data-testid="compose-run">
               Compose
             </button>
