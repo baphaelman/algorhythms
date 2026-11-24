@@ -53,6 +53,10 @@ export const enum Purpose {
   TuneGen = 17,
   /** Melody that fits the chords (core/melody.ts): rhythm, contour and anchors. */
   Melody = 18,
+  /** Directed composer (core/compose-brief.ts, core/compose-directed.ts): every choice. */
+  Compose = 19,
+  /** Directed composer: moment ids. */
+  ComposeId = 20,
 }
 
 // ---------------------------------------------------------------------------------------------
