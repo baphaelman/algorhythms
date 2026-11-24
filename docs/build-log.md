@@ -2959,3 +2959,4 @@ PLAN §15 M11.5 (Export dialog Camera, editor Camera toggle).
 - **Fix: Keys markers with a Section.** Keys outside a custom section were clamped to the slider's ends and stacked there (clicking one moved the preview outside the section). Now only the section's keys are shown, and ←/→ keep a key inside it (`CameraKeys.tsx`).
 - **For the integrator:** a piece without a camera defaults to Auto in the dialog (and in the editor toggle), so "exports exactly as before" holds only with Follow picked.
 - Compositions kit `paste` compared moments (whole ms) against bar times (0.1 ms), dropping a moment on the first bar or admitting one on the end bar; now compares in integer ms. No built composition changed.
+- **Test fix: `live-take-random` timeout.** A seed takes 0.5–2.2 s alone but up to 7.1 s in the full suite (`--maxWorkers=2`), past Vitest's 5 s default; each seed now has an explicit 30 s timeout. Same renders and assertions, all 72 seeds kept.

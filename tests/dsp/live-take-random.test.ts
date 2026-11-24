@@ -69,18 +69,25 @@ const MEASURED = ((): [number, number] => {
   return m ? [Number(m[1]), Number(m[2])] : [73, 172];
 })();
 
+/** A seed runs ~0.5–2.2 s alone but passes 5 s (Vitest's default) when the suite loads the machine; 30 s is ~14× the slowest solo seed. */
+const SEED_TIMEOUT = 30_000;
+
 describe('random takes match the live paths (§15 M7)', () => {
   for (let s = 1; s <= 72; s++) {
-    it(`seed ${s}`, () => {
-      const settings = MODES[s % MODES.length];
-      const take = record(randomScript(s), settings);
-      const m = compare(take);
-      report(`seed ${s} ${JSON.stringify(settings)}`, m);
-      if (process.env.EXPLAIN) explain(take, m);
-      expect(m.misses.slice(0, 5)).toEqual([]);
-      expect(m.cents0).toBeLessThanOrEqual(1);
-      expect(m.frames).toBeLessThanOrEqual(BLOCK_FRAMES);
-    });
+    it(
+      `seed ${s}`,
+      () => {
+        const settings = MODES[s % MODES.length];
+        const take = record(randomScript(s), settings);
+        const m = compare(take);
+        report(`seed ${s} ${JSON.stringify(settings)}`, m);
+        if (process.env.EXPLAIN) explain(take, m);
+        expect(m.misses.slice(0, 5)).toEqual([]);
+        expect(m.cents0).toBeLessThanOrEqual(1);
+        expect(m.frames).toBeLessThanOrEqual(BLOCK_FRAMES);
+      },
+      SEED_TIMEOUT,
+    );
   }
   it.runIf(process.env.LIVE_TAKE_SEEDS)(
     `seeds ${MEASURED[0]}–${MEASURED[1]} (measured)`,
