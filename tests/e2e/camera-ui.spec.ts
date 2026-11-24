@@ -204,11 +204,13 @@ test('keys by mouse: add at the preview time, drag in time, delete; one undo eac
 
 test('keys by keyboard: Tab reaches the markers; arrows move; Delete removes; focus stays', async ({
   page,
+  browserName,
 }) => {
   await load(page, { mode: 'keys', keys: KEYS });
   await openVideo(page);
   await page.getByTestId('preview-time').focus();
-  await page.keyboard.press('Tab');
+  // WebKit (macOS) tabs to buttons with Option-Tab only (build log, M11 interactions pass).
+  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   const first = markers(page).nth(0);
   await expect(first).toBeFocused();
   // A visible ring.

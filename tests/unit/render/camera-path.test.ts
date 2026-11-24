@@ -181,7 +181,7 @@ describe('video frames on the camera path', () => {
     expect(videoCamera('whole', score, 6, opts)).toEqual(videoCamera('whole', score, 6, none));
   });
 
-  it('frameOptions takes the piece’s keys for Keys and Auto only; a piece without camera has none', () => {
+  it('frameOptions takes the piece’s keys for Keys only, Auto’s from the options; a piece without camera has none', () => {
     const base = {
       aspect: '16:9' as const,
       size: '720' as const,
@@ -192,7 +192,9 @@ describe('video frames on the camera path', () => {
     };
     const withKeys: Piece = { ...piece, camera: { mode: 'keys', keys: KEYS } };
     expect(frameOptions(withKeys, { ...base, camera: 'keys' }).keys).toBe(KEYS);
-    expect(frameOptions(withKeys, { ...base, camera: 'auto' }).keys).toBe(KEYS);
+    // Auto's keys are made from the score and come in the options (C3); the piece's are Keys'.
+    expect(frameOptions(withKeys, { ...base, camera: 'auto' })).not.toHaveProperty('keys');
+    expect(frameOptions(piece, { ...base, camera: 'auto', keys: KEYS }).keys).toBe(KEYS);
     expect(frameOptions(withKeys, { ...base, camera: 'follow' })).not.toHaveProperty('keys');
     expect(frameOptions(piece, { ...base, camera: 'keys' })).not.toHaveProperty('keys');
     // The camera field changes nothing for Follow and Whole.

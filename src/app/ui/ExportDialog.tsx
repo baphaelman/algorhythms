@@ -1923,6 +1923,26 @@ export function ExportDialog() {
   const wide = useWide();
   useFocusRescue(dialog, open);
 
+  // Undo and redo (camera edits) where no text field takes them. On the document: a clicked
+  // button keeps no focus in WebKit, so the key may come from the body.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      const text =
+        t instanceof HTMLTextAreaElement ||
+        (t instanceof HTMLInputElement && !['range', 'radio', 'checkbox'].includes(t.type));
+      const k = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || text || (k !== 'z' && k !== 'y')) return;
+      e.preventDefault();
+      if (useExportUi.getState().run.status === 'running') return;
+      if (k === 'y' || e.shiftKey) redo();
+      else undo();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   // The Camera follows the piece's (undo and redo change it too).
   const camera = cameraChoice(form, piece);
   useEffect(() => {
@@ -2045,18 +2065,6 @@ export function ExportDialog() {
           // Only the Export button starts an export: Enter in a field never submits.
           onKeyDown={(e) => {
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement) e.preventDefault();
-            // Undo and redo (camera edits) where no text field takes them.
-            const mod = e.metaKey || e.ctrlKey;
-            const text =
-              e.target instanceof HTMLTextAreaElement ||
-              (e.target instanceof HTMLInputElement &&
-                !['range', 'radio', 'checkbox'].includes(e.target.type));
-            if (mod && !e.altKey && !text && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
-              e.preventDefault();
-              if (running) return;
-              if (e.key === 'y' || e.shiftKey) redo();
-              else undo();
-            }
           }}
         >
           <h2 id={`${id}-title`}>Export</h2>
