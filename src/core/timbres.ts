@@ -189,7 +189,7 @@ export const BUILTIN_TIMBRES: Record<string, Timbre> = {
   flute: {
     harmonics: FLUTE_HARMONICS,
     stretch: 0,
-    noise: { level: 0.18, bandwidth: 0.35 },
+    noise: { level: 0.045, bandwidth: 0.35 },
     brightness: { tilt: -1, track: 0.3 },
     detuneSpread: 1,
     accent: 0.35,
