@@ -19,6 +19,8 @@ const env = vi.hoisted(() => {
   const clock = { now: 0 };
   return {
     clock,
+    /** Drops the composer's detail steps (a composition whose detail sweep is empty). */
+    noDetail: false,
     /** Runs the frames queued now, at the clock's time. */
     frame() {
       const cbs = [...queue.values()];
@@ -47,6 +49,17 @@ vi.mock('../../../src/app/persist', async () => {
   return { loadNewPiece: () => loadPiece(newPiece({ seed: 1 }), { source: 'new' }) };
 });
 
+vi.mock('../../../src/core/compose-directed', async (orig) => {
+  const m = await orig<typeof import('../../../src/core/compose-directed')>();
+  return {
+    ...m,
+    composeDirected: (...a: Parameters<typeof m.composeDirected>) => {
+      const c = m.composeDirected(...a);
+      return env.noDetail ? { ...c, steps: c.steps.filter((s) => s.phase === 'structure') } : c;
+    },
+  };
+});
+
 import { compile } from '../../../src/core/compiler/compile';
 import { composedPiece } from '../../../src/core/generate';
 import { parsePiece } from '../../../src/core/schema';
@@ -57,6 +70,7 @@ import {
   finish,
   openCompose,
   runCompose,
+  setComposeWatch,
   stopCompose,
   useCompose,
 } from '../../../src/app/compose';
@@ -184,6 +198,42 @@ describe('Compose for me', () => {
     finish();
     expect(ui().status).toBe('done');
     expect(piece().moments).toEqual(want(7).moments);
+  });
+
+  it('Watch the composer unticked: Compose opens the finished piece at once', () => {
+    setComposeWatch(false);
+    try {
+      open(8);
+      expect(ui().status).toBe('done');
+      expect(piece().moments).toEqual(want(8).moments);
+      expect(composeView.reveal).toBe(undefined);
+      // All of it in view at once (not the empty piece's length).
+      expect(usePlayer.getState().view.window).toBeGreaterThan(140);
+      undo();
+      expect(piece().moments).toEqual([]);
+    } finally {
+      setComposeWatch(true);
+    }
+  });
+
+  it('a composition with no detail steps finishes straight after the structure', () => {
+    env.noDetail = true;
+    try {
+      open(9);
+      const activities = new Set<string>();
+      let detail = false;
+      for (let t = 0; t < 60_000 && ui().status === 'building'; t += 16) {
+        run(16);
+        activities.add(ui().activity);
+        detail ||= composeView.detail;
+      }
+      expect(ui().status).toBe('done');
+      expect(detail).toBe(false);
+      expect([...activities].some((a) => a.startsWith('Adding details'))).toBe(false);
+      expect(piece().moments).toEqual(want(9).moments);
+    } finally {
+      env.noDetail = false;
+    }
   });
 
   it('Stop keeps a valid, playable partial piece; one undo empties it', () => {

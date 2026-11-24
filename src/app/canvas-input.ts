@@ -15,7 +15,8 @@
  *   Follow off);
  * - panning: wheel/trackpad, middle-button drag, or Space-drag (editor: Space then plays or
  *   pauses on release only when it did not pan);
- * - pinch, ⌘/Ctrl/Alt-scroll and Safari's gesture events change the window; two fingers also pan;
+ * - pinch, ⌘/Ctrl/Alt-scroll change the window (Safari's gesture events, and wheels over
+ *   whatever is drawn on the score: ./pinch-zoom); two fingers also pan;
  * - touch (§11.3b, ./touch): a larger drag slop and double-tap reach; a tap on a line also shows its
  *   readout (no hover); in the editor a long press opens the touch menu on the line's moment (or
  *   the background); the menu's latched Snap off / Select more act as Alt / Shift;
@@ -480,20 +481,6 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     }
   };
 
-  // Safari reports trackpad pinch as gesture events instead of ctrl-wheel.
-  let gestureWindow = 0;
-  // On iPad, a touch pinch fires these too: the pointers already zoom, so they are ignored then.
-  const onGestureStart = (e: Event): void => {
-    e.preventDefault();
-    gestureWindow = usePlayer.getState().view.window;
-  };
-  const onGestureChange = (e: Event): void => {
-    e.preventDefault();
-    if (pointers.size >= 2) return;
-    const scale = (e as Event & { scale?: number }).scale ?? 1;
-    const s = usePlayer.getState();
-    zoomBy(gestureWindow / Math.max(0.05, scale) / s.view.window);
-  };
   // Middle-button clicks would paste or open links on some systems.
   const onAux = (e: MouseEvent): void => {
     if (e.button === 1) e.preventDefault();
@@ -516,8 +503,6 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
   canvas.addEventListener('contextmenu', onContext);
   canvas.addEventListener('auxclick', onAux);
   canvas.addEventListener('wheel', onWheel, { passive: false });
-  canvas.addEventListener('gesturestart', onGestureStart);
-  canvas.addEventListener('gesturechange', onGestureChange);
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
@@ -538,8 +523,6 @@ export function attachCanvasInput(canvas: HTMLCanvasElement): () => void {
     canvas.removeEventListener('auxclick', onAux);
     clearHover();
     canvas.removeEventListener('wheel', onWheel);
-    canvas.removeEventListener('gesturestart', onGestureStart);
-    canvas.removeEventListener('gesturechange', onGestureChange);
   };
 }
 

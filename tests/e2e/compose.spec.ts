@@ -2,8 +2,9 @@
  * Compose for me (PLAN.md §11.3 "Compose in New piece", "Compose builds in play order", "Compose
  * for me, directed"; M4.5-28, M4.5-38, M12 D2): New → Compose for me opens the setup (every
  * answer Surprise me, keyboard-complete, remembered per browser); Compose builds the brief's piece
- * on screen, the camera and pen only moving forward; Skip shows all of it, Stop keeps a playable
- * part, Compose again reopens the setup with a new seed, and one undo goes back to the empty piece.
+ * on screen, the camera and pen only moving forward; with Watch the composer unticked (remembered)
+ * it opens the finished piece at once, Stop keeps a playable part, Compose again reopens the setup
+ * with a new seed, and one undo goes back to the empty piece.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { composedPiece } from '../../src/core/generate';
@@ -32,6 +33,18 @@ const expected = async (page: Page) => {
   expect(b).not.toBeNull();
   return composedPiece(composeDirected(b!));
 };
+/** The finished piece, all of it in view. */
+async function expectWhole(page: Page): Promise<void> {
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
+  await expect
+    .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.start))
+    .toBeLessThanOrEqual(0.01);
+  const end = (await expected(page)).moments.at(-1)!.at;
+  await expect
+    .poll(() => page.evaluate(() => window.__algorhythms!.store.getState().view.window))
+    .toBeGreaterThan(end);
+}
 /** The chip that is on in a question. */
 const chosen = (page: Page, q: string) => page.getByTestId(`compose-${q}`).locator('label.on');
 
@@ -94,8 +107,8 @@ test('every control works from the keyboard; Enter on Compose composes the brief
   const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
   const BACK = `Shift+${TAB}`;
   await openSetup(page);
-  // Back from Compose: Cancel, More, Start from, six Parts chips, Shape, Length, Mood.
-  for (let i = 0; i < 12; i++) await page.keyboard.press(BACK);
+  // Back from Compose: Watch, Cancel, More, Start from, six Parts chips, Shape, Length, Mood.
+  for (let i = 0; i < 13; i++) await page.keyboard.press(BACK);
   const mood = page.getByTestId('compose-mood');
   await expect(mood.getByRole('radio', { name: 'Surprise me' })).toBeFocused();
   await page.keyboard.press('ArrowRight');
@@ -135,11 +148,16 @@ test('every control works from the keyboard; Enter on Compose composes the brief
   await page.keyboard.press(TAB);
   await page.keyboard.type('100');
   await page.keyboard.press(TAB); // Cancel
+  await page.keyboard.press(TAB); // Watch the composer
+  await expect(page.getByTestId('compose-watch')).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('compose-watch')).not.toBeChecked();
   await page.keyboard.press(TAB); // Compose
   await expect(page.getByTestId('compose-run')).toBeFocused();
   await page.keyboard.press('Enter');
 
-  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  // Unwatched: the finished piece at once.
+  await expectWhole(page);
   const b = await brief(page);
   expect(b).toEqual({
     seed: b!.seed,
@@ -151,8 +169,6 @@ test('every control works from the keyboard; Enter on Compose composes the brief
     key: { tonic: 2, mode: 'dorian' },
     tempo: 100,
   });
-  await page.getByTestId('compose-skip').click();
-  expect((await piece(page)).moments).toEqual((await expected(page)).moments);
 });
 
 test('Compose for me places moments over time, then shows the full piece', async ({ page }) => {
@@ -218,13 +234,16 @@ interface Sample {
   status: string | null;
 }
 
-test('Skip ends with the full piece; one undo empties back to before the compose', async ({
+test('Watch the composer unticked opens the full piece; one undo empties back to before', async ({
   page,
 }) => {
-  await compose(page);
-  await page.waitForTimeout(800);
-  await page.getByTestId('compose-skip').click();
-  await expect(panel(page)).toHaveAttribute('data-status', 'done');
+  await openSetup(page);
+  await expect(page.getByTestId('compose-watch')).toBeChecked();
+  await page.getByTestId('compose-watch').uncheck();
+  await page.getByTestId('compose-run').click();
+  await expect(setup(page)).toBeHidden();
+  await expectWhole(page);
+  await expect(page.getByTestId('compose-stop')).toHaveCount(0);
   const done = await piece(page);
   const want = await expected(page);
   expect(done.title).toBe(want.meta.title);
@@ -245,6 +264,8 @@ test('Skip ends with the full piece; one undo empties back to before the compose
 test('Stop keeps a partial piece that plays', async ({ page }) => {
   await compose(page);
   await expect.poll(() => count(page), { timeout: 30_000 }).toBeGreaterThan(2);
+  // No Skip during the build; Stop stays.
+  await expect(page.getByTestId('compose-skip')).toHaveCount(0);
   await page.getByTestId('compose-stop').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'stopped');
   const kept = await count(page);
@@ -274,8 +295,8 @@ test('Compose again keeps the answers with a new seed, as one undo entry', async
   await openSetup(page);
   await page.getByTestId('compose-mood').getByRole('radio', { name: 'Dark' }).click();
   await page.getByTestId('compose-parts').getByRole('checkbox', { name: 'Bells' }).click();
+  await page.getByTestId('compose-watch').uncheck();
   await page.getByTestId('compose-run').click();
-  await page.getByTestId('compose-skip').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'done');
   const first = (await brief(page))!;
   expect(first).toEqual({ seed: first.seed, mood: 'dark', parts: ['bells'] });
@@ -284,6 +305,7 @@ test('Compose again keeps the answers with a new seed, as one undo entry', async
   await expect(setup(page)).toBeVisible();
   await expect(chosen(page, 'mood')).toHaveText(['Dark']);
   await expect(chosen(page, 'parts')).toHaveText(['Bells']);
+  await expect(page.getByTestId('compose-watch')).not.toBeChecked();
   // Escape leaves the finished piece and the panel as they were.
   const done = await piece(page);
   await page.keyboard.press('Escape');
@@ -293,11 +315,10 @@ test('Compose again keeps the answers with a new seed, as one undo entry', async
 
   await page.getByTestId('compose-again').click();
   await page.getByTestId('compose-run').click();
-  await expect(panel(page)).toHaveAttribute('data-status', 'building');
+  await expect(panel(page)).toHaveAttribute('data-status', 'done');
   const again = (await brief(page))!;
   expect(again.seed).not.toBe(first.seed);
   expect(again).toEqual({ ...first, seed: again.seed });
-  await page.getByTestId('compose-skip').click();
   expect((await piece(page)).moments).toEqual((await expected(page)).moments);
   // Still one undo entry back to the empty piece.
   await page.getByTestId('compose-close').click();
@@ -315,6 +336,7 @@ test('the answers survive a reload', async ({ page }) => {
   await page.getByTestId('compose-shape').getByRole('radio', { name: 'Journey' }).click();
   await page.getByTestId('compose-more').locator('summary').click();
   await page.getByTestId('compose-tempo').fill('84');
+  await page.getByTestId('compose-watch').uncheck();
   await page.keyboard.press('Escape');
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
@@ -325,6 +347,7 @@ test('the answers survive a reload', async ({ page }) => {
   // More opens by itself when it holds an answer.
   await expect(page.getByTestId('compose-more')).toHaveAttribute('open', '');
   await expect(page.getByTestId('compose-tempo')).toHaveValue('84');
+  await expect(page.getByTestId('compose-watch')).not.toBeChecked();
 });
 
 test("the open piece's melody is offered when it has one, and goes into the brief", async ({
@@ -360,7 +383,7 @@ test('the setup fits a narrow window and follows dark mode', async ({ page }) =>
   await expect.poll(bg).not.toBe(light);
 });
 
-/** Composes `answers` (radio names per question, Parts checkbox names) with `seed`, skipped to the end. */
+/** Composes `answers` (radio names per question, Parts checkbox names) with `seed`, unwatched. */
 async function composeWith(
   page: Page,
   seed: number,
@@ -372,8 +395,8 @@ async function composeWith(
   for (const p of answers.parts ?? [])
     await page.getByTestId('compose-parts').getByRole('checkbox', { name: p }).click();
   await page.evaluate((s) => window.__algorhythms!.composeSeed(s), seed);
+  await page.getByTestId('compose-watch').setChecked(false);
   await page.getByTestId('compose-run').click();
-  await page.getByTestId('compose-skip').click();
   await expect(panel(page)).toHaveAttribute('data-status', 'done');
   expect((await piece(page)).moments).toEqual((await expected(page)).moments);
   return page.evaluate(() => {

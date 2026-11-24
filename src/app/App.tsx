@@ -1,8 +1,9 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
 import { attachLiveKeys } from './live-ui';
 import { useCompose } from './compose';
 import './naming';
+import { attachPinchZoom } from './pinch-zoom';
 import { startPersistence } from './persist';
 import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
@@ -53,6 +54,7 @@ function useWide(): boolean {
 export function App() {
   const wide = useWide();
   const composing = useCompose((s) => s.open);
+  const timeline = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     startPersistence();
@@ -64,6 +66,9 @@ export function App() {
       detachLive();
     };
   }, []);
+
+  // A pinch or ⌘/Ctrl-scroll anywhere on the timeline zooms the editor, not the page.
+  useEffect(() => attachPinchZoom(timeline.current!), []);
 
   return (
     <div className="app" data-layout={wide ? 'full' : 'player'}>
@@ -80,7 +85,7 @@ export function App() {
       <Notices />
       <main className="workspace">
         {/* Everything on the shared time axis (§10); the editor's one playhead spans it all. */}
-        <div className="timeline" data-testid="timeline">
+        <div ref={timeline} className="timeline" data-testid="timeline">
           {wide && <Ruler />}
           <ScoreView editor={wide} />
           {wide && <Lane />}

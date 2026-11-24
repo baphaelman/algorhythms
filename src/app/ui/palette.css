@@ -49,19 +49,13 @@
   gap: 1px;
 }
 
-/* Add takes a quarter of the row's leftover width, Next the rest (all of it on narrow windows,
-   where its cards need it); the buttons share it. */
+/* Add takes the row's leftover width (Next keeps a fixed width, owner 2026-11-24); the buttons
+   share it. */
 .palette.palette-add {
   flex: 1 1 auto;
   gap: var(--vb-gap);
   height: auto;
   min-height: calc(var(--vb-btn-h) + 10px);
-}
-
-@media (max-width: 1199px) {
-  .palette.palette-add {
-    flex-grow: 0;
-  }
 }
 
 .palette.palette-add button {
@@ -160,8 +154,8 @@
   border-color: var(--accent);
 }
 
-/* Theory cards (§11.3 rev 14): "<Chord> · <Job> (<numeral>)" in the UI face, narrow spaces
-   around "·", the numeral smaller and dimmer; the best fit gets an accent edge and a ★. */
+/* Theory cards (§11.3 rev 14, rev 18): "<Chord> · <Job>" in the UI face, narrow spaces around
+   "·" (the numeral is in the tooltip); the best fit gets an accent edge and a ★. */
 .suggestions button[data-job] {
   gap: 0.25em;
   font-family: var(--f-sans);
@@ -169,10 +163,6 @@
 }
 .suggest-sep {
   word-spacing: -0.15em;
-}
-.suggest-num {
-  font-size: 0.86em;
-  color: var(--ink-2);
 }
 
 .suggestions button[data-best] {
@@ -189,12 +179,12 @@
   color: var(--ink-2);
 }
 
-/* One line, fixed height: a change of suggestions never reflows the score. Next joins Add's row
-   when 49 em are left (flex-basis: four typical cards with Linux's wider sans) and grows to fill
-   it, its cards stretching evenly; a card that doesn't fit wraps onto a clipped second line, so it
-   is hidden whole rather than cut. */
+/* One line, fixed height and width: a change of suggestions never reflows the score. Next is
+   42 em wide (four typical cards with Linux's wider sans) and joins Add's row when that is left;
+   its cards stretch evenly; a card that doesn't fit wraps onto a clipped second line, so it is
+   hidden whole rather than cut. */
 .palette.suggestions {
-  flex: 3 1 calc(49 * var(--vb-font));
+  flex: 0 1 calc(42 * var(--vb-font));
   align-content: flex-start;
   overflow: hidden;
   gap: var(--vb-gap);

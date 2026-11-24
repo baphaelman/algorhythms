@@ -4,9 +4,11 @@ import {
   DEFAULT_ANSWERS,
   buildBrief,
   loadAnswers,
+  loadWatch,
   melodyOf,
   parseAnswers,
   saveAnswers,
+  saveWatch,
   shownAnswers,
   type ComposeAnswers,
 } from '../../../src/app/compose-setup';
@@ -131,5 +133,25 @@ describe('remembered answers', () => {
       }),
     ).toEqual({ ...DEFAULT_ANSWERS, shape: 'arc', parts: ['bass'] });
     expect(parseAnswers({ parts: [] }).parts).toBe('surprise');
+  });
+
+  it('Watch the composer: ticked by default, remembered, ticked when storage fails', () => {
+    const st = store();
+    expect(loadWatch(st)).toBe(true);
+    expect(saveWatch(false, st)).toBe(true);
+    expect(loadWatch(st)).toBe(false);
+    expect(saveWatch(true, st)).toBe(true);
+    expect(loadWatch(st)).toBe(true);
+    const broken = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => {
+        throw new Error('denied');
+      },
+    };
+    expect(loadWatch(broken)).toBe(true);
+    expect(saveWatch(false, broken)).toBe(false);
+    expect(loadWatch(null)).toBe(true);
   });
 });

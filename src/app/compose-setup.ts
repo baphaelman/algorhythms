@@ -207,3 +207,26 @@ export function saveAnswers(a: ComposeAnswers, storage?: PrefsStorage | null): b
     return false;
   }
 }
+
+/** localStorage key of "Watch the composer" ('0' when unticked). */
+export const COMPOSE_WATCH_KEY = 'algorhythms.compose.watch';
+
+/** Whether to watch the build (ticked unless stored unticked, or when storage fails). */
+export function loadWatch(storage?: PrefsStorage | null): boolean {
+  try {
+    return storageOf(storage)?.getItem(COMPOSE_WATCH_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveWatch(watch: boolean, storage?: PrefsStorage | null): boolean {
+  try {
+    const st = storageOf(storage);
+    if (!st) return false;
+    st.setItem(COMPOSE_WATCH_KEY, watch ? '1' : '0');
+    return true;
+  } catch {
+    return false;
+  }
+}
