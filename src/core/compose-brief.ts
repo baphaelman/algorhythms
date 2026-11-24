@@ -206,6 +206,10 @@ export interface MoodRegion {
   waltz: number;
   /** Centre of the chord register (MIDI). */
   centre: readonly [number, number];
+  /** How quick the figures are, 0 (held, unhurried) to 1 (busy). */
+  pace: number;
+  /** How much the textures lean on arpeggios (a weight among the other textures). */
+  arp: number;
   sounds: Sounds;
 }
 
@@ -218,11 +222,13 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     sevenths: 0.4,
     waltz: 0.25,
     centre: [56, 62],
+    pace: 0.2,
+    arp: 0.15,
     sounds: {
-      chords: ['glass', 'choir', 'epiano'],
+      chords: ['glass', 'choir', 'organ'],
       bass: ['organ', 'sine'],
       melody: ['flute', 'reed', 'glass'],
-      pulse: ['epiano', 'pluck', 'marimba'],
+      pulse: ['glass', 'bell', 'sine'],
       bells: ['bell', 'glass'],
     },
   },
@@ -234,6 +240,8 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     sevenths: 0.15,
     waltz: 0.1,
     centre: [58, 65],
+    pace: 0.8,
+    arp: 0.6,
     sounds: {
       chords: ['epiano', 'glass', 'pluck'],
       bass: ['organ', 'pluck'],
@@ -250,27 +258,31 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     sevenths: 0.6,
     waltz: 0.3,
     centre: [57, 64],
+    pace: 0.1,
+    arp: 0.2,
     sounds: {
-      chords: ['choir', 'glass', 'wobble'],
+      chords: ['choir', 'glass', 'sine'],
       bass: ['sine', 'organ'],
       melody: ['flute', 'glass', 'sine'],
-      pulse: ['glass', 'epiano'],
+      pulse: ['glass', 'sine'],
       bells: ['bell', 'glass'],
     },
   },
   dark: {
     modes: ['aeolian', 'dorian', 'phrygian', 'harmonic-minor', 'pentatonic-minor'],
-    bpm: [62, 96],
-    density: [0.25, 0.6],
+    bpm: [54, 80],
+    density: [0.15, 0.45],
     glide: [0.4, 0.9],
     sevenths: 0.35,
     waltz: 0.15,
-    centre: [52, 59],
+    centre: [49, 55],
+    pace: 0,
+    arp: 0.05,
     sounds: {
       chords: ['organ', 'choir', 'brass'],
       bass: ['organ', 'sine'],
-      melody: ['reed', 'flute', 'sine'],
-      pulse: ['marimba', 'pluck'],
+      melody: ['reed', 'brass', 'sine'],
+      pulse: ['organ', 'bell'],
       bells: ['bell'],
     },
   },
@@ -282,6 +294,8 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
     sevenths: 0.1,
     waltz: 0,
     centre: [55, 62],
+    pace: 1,
+    arp: 0.45,
     sounds: {
       chords: ['brass', 'organ', 'epiano'],
       bass: ['organ', 'pluck'],
@@ -290,6 +304,24 @@ export const MOOD_REGIONS: Readonly<Record<Mood, MoodRegion>> = {
       bells: ['marimba', 'bell'],
     },
   },
+};
+
+/** The unhurried moods: held textures, nothing faster than eighths, no bouncy sounds. */
+export const SLOW_MOODS: readonly Mood[] = ['calm', 'dreamy', 'dark'];
+
+/** Bouncy sounds: struck and quick to die, never on Chords or Pulse in an unhurried piece. */
+export const BOUNCY: readonly string[] = ['pluck', 'marimba', 'epiano'];
+
+/**
+ * Moods a Surprise blend may mix (neighbours in mood space): the slow moods with each other,
+ * Calm with Bright, Bright with Driving. Never Dark with Driving or Bright.
+ */
+const NEIGHBOURS: Readonly<Record<Mood, readonly Mood[]>> = {
+  calm: ['dreamy', 'dark', 'bright'],
+  bright: ['calm', 'driving'],
+  dreamy: ['calm', 'dark'],
+  dark: ['dreamy', 'calm'],
+  driving: ['bright'],
 };
 
 /** The full ranges Surprise covers (the union of the moods'). */
@@ -337,6 +369,15 @@ export interface ResolvedBrief {
   meter: number;
   /** 0..1: how busy the textures are (rhythm, walk density, pulse rate). */
   density: number;
+  /** 0..1: how quick the figures are (the mood blend's pace). */
+  pace: number;
+  /** The textures' lean on arpeggios (the mood blend's weight). */
+  arp: number;
+  /**
+   * True when the slow moods (Calm, Dreamy, Dark) hold most of the blend: held and slow-moving
+   * textures, nothing faster than eighths, no bouncy sounds on Chords or Pulse.
+   */
+  unhurried: boolean;
   /** Timbre per part. */
   sounds: Readonly<Record<ComposePart, string>>;
   /** Chord-change glide length (s) and its stagger (s). */
@@ -434,16 +475,19 @@ function oneHot<T extends string>(all: readonly T[], k: T): Record<T, number> {
   return out;
 }
 
-/** One label, or a blend of two (Surprise): weights summing to 1. */
+/** One label, or a blend of two (Surprise; `near` limits the second label): weights summing to 1. */
 function blend<T extends string>(
   all: readonly T[],
   d: (s: string) => number,
   tag: string,
+  near?: Readonly<Record<T, readonly T[]>>,
 ): Record<T, number> {
   const a = all[Math.floor(d(`${tag}-a`) * all.length)];
   if (d(`${tag}-pure`) < 0.3) return oneHot(all, a);
   let b = all[Math.floor(d(`${tag}-b`) * (all.length - 1))];
   if (b === a) b = all[all.length - 1];
+  // Not a neighbour: one of a's neighbours instead.
+  if (near && !near[a].includes(b)) b = near[a][Math.floor(d(`${tag}-near`) * near[a].length)];
   const t = d(`${tag}-t`);
   const out = oneHot(all, a);
   out[a] = 1 - t;
@@ -528,9 +572,15 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     tempo: brief.tempo !== undefined && Number.isFinite(brief.tempo) && brief.tempo > 0,
   };
 
-  // Mood: one region, or a blend.
-  const mood = given.mood ? oneHot(MOODS, brief.mood!) : blend(MOODS, (s) => d(s), 'mood');
+  // Mood: one region, or a blend of neighbours (one point in mood space, from which the mode,
+  // sounds, tempo and pace all follow, so the title's mood is what you hear).
+  const mood = given.mood
+    ? oneHot(MOODS, brief.mood!)
+    : blend(MOODS, (s) => d(s), 'mood', NEIGHBOURS);
   const moodName = strongest(MOODS, mood);
+  let slow = 0;
+  for (const m of SLOW_MOODS) slow += mood[m];
+  const unhurried = slow >= 0.5;
 
   // Start.
   const progression =
@@ -558,17 +608,23 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     key = keyOfMelody(melody, mood);
   } else {
     let mode: ScaleName;
-    const fam = progression?.family;
+    const family = progression?.family;
     if (progression?.mode) mode = progression.mode;
     else {
-      const pool =
+      let pool =
         !given.mood && d('mode-any') < 0.25
           ? COMPOSE_MODES
           : MOOD_REGIONS[moodOf(mood, d('mode-mood'))].modes;
+      // Dark is minor and Bright major, whatever the blend drew.
+      const fam = moodName === 'dark' ? 'minor' : moodName === 'bright' ? 'major' : null;
+      if (fam && !given.mood) {
+        const same = pool.filter((m) => modeFamily(m) === fam);
+        pool = same.length > 0 ? same : MOOD_REGIONS[moodName].modes;
+      }
       // A named progression: a mode whose own chords it uses (Pop in major, not Lydian).
       const fit = progression ? pool.filter((m) => progressionFits(progression, m)) : pool;
       const list =
-        fit.length > 0 ? fit : fam === 'minor' ? (['aeolian'] as const) : (['major'] as const);
+        fit.length > 0 ? fit : family === 'minor' ? (['aeolian'] as const) : (['major'] as const);
       mode = list[Math.floor(d('mode') * list.length)];
     }
     key = { tonic: Math.floor(d('tonic') * 12), mode };
@@ -614,14 +670,18 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
   if (melody && !parts.includes('melody'))
     parts = PARTS.filter((p) => p === 'melody' || parts.includes(p));
 
-  // Sounds: per part, from a mood of the blend (any mood's sounds, sometimes).
+  // Sounds: per part, from a mood of the blend (any mood's sounds, sometimes: any slow mood's
+  // when the piece is unhurried). No bouncy chords or pulse in an unhurried piece.
   const sounds = {} as Record<ComposePart, string>;
+  const anyOf = unhurried ? SLOW_MOODS : MOODS;
   for (const p of PARTS) {
     const m =
       d(`sound-any-${p}`) < 0.2 && !given.mood
-        ? MOODS[Math.floor(d(`sound-m-${p}`) * 5)]
+        ? anyOf[Math.floor(d(`sound-m-${p}`) * anyOf.length)]
         : moodOf(mood, d(`sound-m-${p}`));
-    const list = MOOD_REGIONS[m].sounds[p];
+    let list = MOOD_REGIONS[m].sounds[p];
+    if (unhurried && (p === 'chords' || p === 'pulse') && list.some((x) => BOUNCY.includes(x)))
+      list = MOOD_REGIONS[moodName].sounds[p];
     sounds[p] = list[Math.floor(d(`sound-${p}`) * list.length)];
   }
 
@@ -629,6 +689,8 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
   const stagger = Math.round(glide * (0.15 + 0.25 * d('stagger')) * 100) / 100;
   const sevenths = d('sevenths') < inBlend(mood, (r) => [r.sevenths, r.sevenths], 0);
   const centre = Math.round(inBlend(mood, (r) => r.centre, d('centre')));
+  const pace = inBlend(mood, (r) => [r.pace, r.pace], 0);
+  const arp = inBlend(mood, (r) => [r.arp, r.arp], 0);
 
   return {
     seed,
@@ -644,6 +706,9 @@ export function resolveBrief(brief: ComposeBrief): ResolvedBrief {
     tempo,
     meter,
     density: Math.round(density * 1000) / 1000,
+    pace: Math.round(pace * 1000) / 1000,
+    arp: Math.round(arp * 1000) / 1000,
+    unhurried,
     sounds,
     glide,
     stagger,

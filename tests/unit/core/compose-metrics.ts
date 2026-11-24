@@ -3,7 +3,13 @@
  * "shape → the energy curve"): onsets, levels, line counts, pitch range, and a 4-bar fingerprint.
  */
 import { pitchAt } from '../../../src/core/query';
-import type { CompiledScore, CompiledVoice, Piece, Seconds } from '../../../src/core/types';
+import type {
+  CompiledScore,
+  CompiledVoice,
+  Piece,
+  PulseMoment,
+  Seconds,
+} from '../../../src/core/types';
 
 /** A voice's level at t (the compiled level timeline: linear ramps from the value before). */
 export function levelAt(v: CompiledVoice, t: Seconds): number {
@@ -131,4 +137,50 @@ export function corr(a: readonly number[], b: readonly number[]): number {
     sb += (b[i] - mb) ** 2;
   }
   return s / Math.sqrt(sa * sb || 1);
+}
+
+/**
+ * An arpeggio (PLAN M12 listening notes, round 2): lines one at a time (not 'together'), a beat
+ * or quicker, at least 60 % of the steps in its cycle (a bar when it restarts) sounding.
+ */
+export function isArp(m: PulseMoment, beat: number): boolean {
+  if (m.mode === 'together' || m.step > beat + 1e-6) return false;
+  const n = m.restart ? Math.max(1, Math.round(m.restart / m.step)) : m.pattern.length;
+  const cycle = Array.from({ length: n }, (_, j) => m.pattern[j % m.pattern.length]);
+  return cycle.filter((x) => x > 0).length >= 0.6 * n;
+}
+
+/** The share of the piece's length under an arpeggio. */
+export function arpShare(p: Piece): number {
+  const beat = 60 / (p.view.gridBpm ?? 60);
+  const iv = p.moments
+    .filter((m): m is PulseMoment => m.type === 'pulse' && isArp(m, beat))
+    .map((m) => [m.at, m.until] as const)
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let a = 0;
+  let b = -1;
+  for (const [x, y] of iv) {
+    if (x > b) {
+      total += Math.max(0, b - a);
+      a = x;
+      b = y;
+    } else b = Math.max(b, y);
+  }
+  total += Math.max(0, b - a);
+  return total / p.end.at!;
+}
+
+/** The shortest figure: pulse steps, walk grids and tune notes (each tune's last note excepted). */
+export function quickest(p: Piece): number {
+  let q = Infinity;
+  for (const m of p.moments) {
+    if (m.type === 'pulse') q = Math.min(q, m.step);
+    if (m.type === 'walk') q = Math.min(q, m.grid);
+    if (m.type === 'tune')
+      m.notes.slice(0, -1).forEach((n) => {
+        if (!n.rest) q = Math.min(q, n.len);
+      });
+  }
+  return q;
 }

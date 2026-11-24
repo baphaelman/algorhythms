@@ -49,6 +49,8 @@ export interface MelodyInput {
   register: readonly [Pitch, Pitch];
   /** The line's pitch before the melody, if any: the first note starts near it. */
   start?: Pitch;
+  /** An unhurried tune: mostly quarters and halves, fewer eighths (M12 listening notes). */
+  slow?: boolean;
 }
 
 /** A note before its pitch is chosen. */
@@ -80,13 +82,15 @@ function pick(w: readonly number[], u: number): number {
 /** Beat cells in eighths: quarter, two eighths, dotted quarter + eighth, half. */
 const CELLS: readonly (readonly number[])[] = [[2], [1, 1], [3, 1], [4]];
 const CELL_W = [0.45, 0.37, 0.11, 0.07];
+const SLOW_CELL_W = [0.5, 0.08, 0.12, 0.3];
 
 /** A body bar of `m` beats in eighths. Two-beat cells start on even beats only. */
-function bodyBar(m: number, draw: () => number): number[] {
+function bodyBar(m: number, draw: () => number, slow = false): number[] {
   const out: number[] = [];
+  const w = slow ? SLOW_CELL_W : CELL_W;
   for (let b = 0; b < m;) {
     const two = b % 2 === 0 && m - b >= 2;
-    const c = pick(two ? CELL_W : CELL_W.slice(0, 2), draw());
+    const c = pick(two ? w : w.slice(0, 2), draw());
     out.push(...CELLS[c]);
     b += c >= 2 ? 2 : 1;
   }
@@ -97,10 +101,10 @@ function bodyBar(m: number, draw: () => number): number[] {
  * A cadence bar: the first half moving, then a long note to the bar's end (or, when `whole`, now
  * and then the whole bar).
  */
-function cadenceBar(m: number, draw: () => number, whole: boolean): number[] {
-  if (m <= 2 || (whole && draw() < 0.25)) return [2 * m];
+function cadenceBar(m: number, draw: () => number, whole: boolean, slow = false): number[] {
+  if (m <= 2 || (whole && draw() < (slow ? 0.5 : 0.25))) return [2 * m];
   const h = m >= 4 ? 2 * Math.floor(m / 4) : 1;
-  return [...bodyBar(h, draw), 2 * (m - h)];
+  return [...bodyBar(h, draw, slow), 2 * (m - h)];
 }
 
 /** Phrase lengths in bars for `bars` bars. */
@@ -113,7 +117,7 @@ function phrasesOf(bars: number): number[] {
 }
 
 /** The rhythm as slots, filling `units` eighths; the last slot takes any remainder. */
-function rhythm(units: number, m: number, draw: () => number): Slot[] {
+function rhythm(units: number, m: number, draw: () => number, slow = false): Slot[] {
   const perBar = 2 * m;
   const bars = Math.floor(units / perBar);
   const slots: Slot[] = [];
@@ -143,14 +147,14 @@ function rhythm(units: number, m: number, draw: () => number): Slot[] {
     let motif: number[] | null = null;
     phrasesOf(bars).forEach((len, phrase) => {
       // Phrase 2 on: the same A half the time (a motif), else a new one.
-      const a: number[] = motif && draw() < 0.5 ? motif : bodyBar(m, draw);
+      const a: number[] = motif && draw() < 0.5 ? motif : bodyBar(m, draw, slow);
       motif = a;
-      const b = bodyBar(m, draw);
+      const b = bodyBar(m, draw, slow);
       const form = len === 4 ? [a, b, a] : len === 2 ? [a] : len === 3 ? [a, b] : [];
       const p0 = bar * perBar;
       const plen = len * perBar;
       for (const cells of form) push(cells, bar++ * perBar, phrase, p0, plen);
-      push(cadenceBar(m, draw, len > 1), bar++ * perBar, phrase, p0, plen);
+      push(cadenceBar(m, draw, len > 1, slow), bar++ * perBar, phrase, p0, plen);
       slots[slots.length - 1].end = true;
     });
     const last = slots[slots.length - 1];
@@ -220,7 +224,7 @@ export function fitMelody(input: MelodyInput): TunePitchNote[] {
   let k = 0;
   const draw = (): number => rand(seed, '', k++, Purpose.Melody);
   const units = Math.max(1, Math.floor(total / eighth + 1e-4));
-  const slots = rhythm(units, m, draw);
+  const slots = rhythm(units, m, draw, input.slow === true);
   const n = slots.length;
   const lo = Math.round(Math.min(input.register[0], input.register[1]));
   const hi = Math.max(lo + 7, Math.round(Math.max(input.register[0], input.register[1])));
