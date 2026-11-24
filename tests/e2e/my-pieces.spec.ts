@@ -83,7 +83,12 @@ test('an opened example is not saved until edited; an edit survives a reload and
   await expect(page.getByTestId('safari-note')).toHaveCount(0);
   await page.getByTestId('my-pieces-close').click();
 
+  // The address bar is the share link (§11.4): a reload reopens the edited piece, same entry.
+  await expect.poll(() => page.evaluate(() => location.hash)).toMatch(/^#p=/);
   await page.reload();
+  await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  expect(await title(page)).toBe('Edited tide 2');
+  await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   expect(await title(page)).toBe('Tidewater Hymn');
 

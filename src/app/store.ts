@@ -51,7 +51,8 @@ import {
 } from './audio';
 import { writeMeter } from './dom';
 import { foldOpeningKeys } from './editor/piece-key';
-import { featuredExample } from './examples';
+import { ownRecord, parseAddress, readRecord } from './address-rules';
+import { EXAMPLES, featuredExample } from './examples';
 import { clampLoop, type LoopSpan } from './ruler';
 import { decodeSharePayload, sharePayloadOf } from './share';
 
@@ -355,8 +356,12 @@ export function reloadAudio(): void {
 export interface LoadOptions {
   /** A compile of this exact piece, to skip recompiling. */
   compiled?: CompiledScore;
-  /** Keep the page's `#p=` fragment (set when the piece came from it). */
+  /** The piece came from the page's own fragment, which already names it (address.ts). */
   keepHash?: boolean;
+  /** The id of the bundled example this is, unedited: the URL reads `#<id>` (address.ts). */
+  example?: string;
+  /** The My pieces entry to keep saving to (a reload of this tab's own URL). */
+  entryId?: string;
   /** Notices to show after loading (parse warnings). Replaces the current ones. */
   notices?: Omit<Notice, 'id'>[];
   /** Keep the notices already showing (and add `notices` after them). */
@@ -366,20 +371,17 @@ export interface LoadOptions {
 }
 
 /** Counts `loadPiece` calls, so a `usePlayer.subscribe` listener can tell loads from edits. */
-const lastLoad = { count: 0, source: 'other' as NonNullable<LoadOptions['source']> };
+const lastLoad = {
+  count: 0,
+  source: 'other' as NonNullable<LoadOptions['source']>,
+  example: undefined as string | undefined,
+  keepHash: false,
+  entryId: undefined as string | undefined,
+};
 
 /** The number of loads so far and the latest one's source. */
 export function loadInfo(): Readonly<typeof lastLoad> {
   return lastLoad;
-}
-
-function clearShareHash(): void {
-  if (sharePayloadOf(location.hash) === null) return;
-  try {
-    history.replaceState(null, '', location.pathname + location.search);
-  } catch {
-    /* ignore */
-  }
 }
 
 const loadListeners: (() => void)[] = [];
@@ -420,6 +422,9 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   }
   lastLoad.count++;
   lastLoad.source = opts.source ?? 'other';
+  lastLoad.example = opts.example;
+  lastLoad.keepHash = opts.keepHash ?? false;
+  lastLoad.entryId = opts.entryId;
   camera.start = 0;
   set((s) => ({
     piece,
@@ -428,7 +433,6 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
     transport: { status: 'idle', scrubbing: false, audio: s.transport.audio },
     notices: opts.keepNotices ? [...s.notices, ...notices] : notices,
   }));
-  if (!opts.keepHash) clearShareHash();
   document.title =
     piece.meta.title === 'Untitled' ? 'AlgoRhythms' : `${piece.meta.title} · AlgoRhythms`;
   queueAudioLoad(piece, compiled);
@@ -550,12 +554,25 @@ export async function openFile(file: File): Promise<boolean> {
   return openPieceJson(text, file.name);
 }
 
-/** Opens a bundled example by its id. */
-export function openExample(json: unknown): void {
-  openPieceJson(json, 'the example');
+/** Opens a bundled example (`id`: its file stem, so the URL reads `#<id>`). */
+export function openExample(json: unknown, id?: string): void {
+  openPieceJson(json, 'the example', { example: id });
 }
 
-/** Opens the piece in a `#p=` fragment; on failure shows an error and keeps the current piece. */
+const isExample = (id: string): boolean => EXAMPLES.some((e) => e.id === id);
+
+function sessionStore(): Storage | undefined {
+  try {
+    return sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Opens the piece in a `#p=` fragment; on failure shows an error and keeps the current piece.
+ * This tab's own URL (a reload) reopens quietly, still saving to its My pieces entry.
+ */
 export async function openShareHash(hash: string): Promise<boolean> {
   const payload = sharePayloadOf(hash);
   if (payload === null) return false;
@@ -568,7 +585,34 @@ export async function openShareHash(hash: string): Promise<boolean> {
     ]);
     return false;
   }
+  const own = ownRecord(hash, readRecord(sessionStore()));
+  if (own) {
+    const r = parsePiece(json);
+    if (r.ok) {
+      const entry = own.entry ?? undefined;
+      runOpen(() =>
+        loadPiece(r.piece, { keepHash: true, source: entry ? 'library' : 'other', entryId: entry }),
+      );
+      return true;
+    }
+  }
   return openPieceJson(json, 'The shared piece', { keepHash: true });
+}
+
+/**
+ * Opens what a fragment names (a `hashchange`): an example (`#kite-day`) or a share link. False
+ * when it names nothing.
+ */
+export function openAddress(hash: string): boolean {
+  const a = parseAddress(hash, isExample);
+  if (a.kind === 'share') {
+    void openShareHash(hash);
+    return true;
+  }
+  const ex = a.kind === 'example' ? EXAMPLES.find((e) => e.id === a.id) : undefined;
+  if (!ex) return false;
+  openExample(ex.json, ex.id);
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -869,22 +913,31 @@ export function setTheme(theme: ThemePref): void {
 let started = false;
 
 /**
- * Starts the player: opens the piece in the page's `#p=` link, else the featured example (loaded,
- * not playing); warms the audio engine at idle or on the first gesture; follows `hashchange`.
+ * Starts the player: opens the piece the page's fragment names (`#p=…` or `#<example-id>`), else
+ * the featured example (loaded, not playing); warms the audio engine at idle or on the first
+ * gesture. address.ts follows `hashchange`.
  */
 export function startPlayer(): void {
   if (started) return;
   started = true;
   applyTheme(get().view.theme);
   const hash = location.hash;
-  if (sharePayloadOf(hash) !== null) {
+  const featured = featuredExample();
+  const openFeatured = (keepNotices = false): void =>
+    loadPiece(initialPiece, { compiled: initialCompiled, keepNotices, example: featured.id });
+  const a = parseAddress(hash, isExample);
+  const named = a.kind === 'example' ? EXAMPLES.find((e) => e.id === a.id) : undefined;
+  if (a.kind === 'share') {
     void openShareHash(hash).then((ok) => {
-      if (!ok) loadPiece(initialPiece, { compiled: initialCompiled, keepNotices: true });
+      if (!ok) openFeatured(true);
     });
+  } else if (named && named.id !== featured.id) {
+    const r = parsePiece(named.json);
+    if (r.ok) loadPiece(r.piece, { example: named.id });
+    else openFeatured();
   } else {
-    loadPiece(initialPiece, { compiled: initialCompiled });
+    openFeatured();
   }
-  window.addEventListener('hashchange', () => void openShareHash(location.hash));
   // First gesture: create the context and build wavetables if idle time hasn't already.
   window.addEventListener(
     'pointerdown',
