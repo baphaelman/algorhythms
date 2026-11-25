@@ -8,6 +8,12 @@
   position: relative;
 }
 
+/* The editor under the workspace overflows its box; clipped, it can't make the page scroll
+   (scrolling a control into view would carry the workspace off screen). */
+.app:is([data-mode='poster'], [data-mode='video']) {
+  overflow: clip;
+}
+
 /* The editor waits underneath at its old box (App.tsx sets left/top/width/height). */
 .app:is([data-mode='poster'], [data-mode='video']) > .workspace.frozen {
   position: absolute;

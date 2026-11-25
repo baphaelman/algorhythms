@@ -260,11 +260,14 @@ function focusMarker(root: HTMLElement | null, i: number, fallback?: string): vo
 export function KeyMarkers({
   from,
   to,
+  keep,
   disabled,
   ctl,
 }: {
   from: number;
   to: number;
+  /** The video's section on a wider axis (M15 timeline): arrows keep a key inside it there. */
+  keep?: { start: number; end: number };
   disabled: boolean;
   ctl: CameraCtl;
 }) {
@@ -288,8 +291,10 @@ export function KeyMarkers({
     const step = keyStep(e.key, { shift: e.shiftKey, alt: e.altKey });
     let done = true;
     if (step !== null) {
-      // Kept on this timeline, so the focused marker stays.
-      const at = Math.min(Math.max(k.at + step, from), to);
+      // Kept on this timeline (and a key in the section inside it), so the focused marker stays.
+      const lo = keep && k.at >= keep.start ? keep.start : from;
+      const hi = keep && k.at <= keep.end ? keep.end : to;
+      const at = Math.min(Math.max(k.at + step, lo), hi);
       const next = moveKey(keys, i, at);
       const tr = track();
       edit((p) => tr.with(p, moveKey(tr.of(p), i, at)), 'Move camera key');

@@ -519,7 +519,13 @@ function KeysRow({ form, disabled }: { form: ExportForm; disabled: boolean }) {
       {keys ? (
         <div className="timeline-keys">
           <div className="timeline-lane">
-            <KeyMarkers from={axis.from} to={axis.to} disabled={disabled} ctl={cameraCtl} />
+            <KeyMarkers
+              from={axis.from}
+              to={axis.to}
+              keep={sectionNow(form)}
+              disabled={disabled}
+              ctl={cameraCtl}
+            />
           </div>
           <KeyButtons disabled={disabled} ctl={cameraCtl} />
         </div>

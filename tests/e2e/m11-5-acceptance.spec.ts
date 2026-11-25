@@ -103,13 +103,17 @@ test('with a section, its keys are inside the range on the timeline; arrows keep
   // M15: the timeline is the piece's axis, the section a range on it; 20 s and 40 s fall inside
   // the range, 0 s and 70 s outside it.
   await expect(markers(page)).toHaveCount(4);
-  const range = (await page.getByTestId('section-range').boundingBox())!;
+  const handle = async (h: 'start' | 'end') => {
+    const r = (await page.getByTestId(`section-${h}`).boundingBox())!;
+    return r.x + r.width / 2;
+  };
+  const range = { from: await handle('start'), to: await handle('end') };
   const inside = await markers(page).evaluateAll(
     (els, r) =>
       els.map((e) => {
         const b = e.getBoundingClientRect();
         const x = b.x + b.width / 2;
-        return `${e.dataset.at} ${x >= r.x && x <= r.x + r.width ? 'in' : 'out'}`;
+        return `${e.dataset.at} ${x >= r.from && x <= r.to ? 'in' : 'out'}`;
       }),
     range,
   );
