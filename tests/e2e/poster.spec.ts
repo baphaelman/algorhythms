@@ -303,7 +303,7 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
     expect(r.root).toBe('svg');
     expect(r.attrs).toEqual({ width: '3840', height: '2160', viewBox: '0 0 3840 2160' });
     expect(texts.length).toBeGreaterThan(look ? 2 : 3);
-    expect(texts).toContain('AlgoRhythms');
+    expect(texts.some((t) => t.endsWith(' · AlgoRhythms'))).toBe(true);
     // The octave guides' labels: on in the player look, off in the export look.
     expect(texts.some((t) => /^A\d \d+ Hz$/.test(t))).toBe(!look);
     expect(r.psnr, `${name} PSNR`).toBeGreaterThanOrEqual(MIN_PSNR);

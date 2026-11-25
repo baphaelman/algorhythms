@@ -441,7 +441,7 @@ test('snap guides: on, a dragged text box lands on the centre line; off, it does
   const { k } = await toPage(page, 0, 0);
   // Drag so the box's centre ends 3 page px right of the artboard's centre.
   const dx = (L.width / 2 - (f.x + f.w / 2)) * k + 3;
-  const start = { x: f.x + 4 / k, y: f.y + f.h / 2 };
+  const start = { x: f.x + f.w * 0.25, y: f.y + f.h / 2 };
   const p = await toPage(page, start.x, start.y);
   await page.mouse.move(p.x, p.y);
   await page.mouse.down();
@@ -461,6 +461,7 @@ test('snap guides: on, a dragged text box lands on the centre line; off, it does
   ).toBeLessThan(0.5);
 
   await undo(page);
+  await expect.poll(async () => (await textFrame(page, 'credit')).x).toBeCloseTo(f.x, 1);
   await snapOff(page);
   await page.mouse.move(p.x, p.y);
   await page.mouse.down();
@@ -529,7 +530,7 @@ test('Re-fit layout after a rows change leaves a text box over the music', async
   const m = (await bounds(page, id))!;
   const { k } = await toPage(page, 0, 0);
   // Move the credit into the music: no hint (a move of yours).
-  await drag(page, { x: f.x + 2, y: f.y + f.h / 2 }, 0, (m.y + m.h / 2 - f.y) * k);
+  await drag(page, { x: f.x + f.w * 0.25, y: f.y + f.h / 2 }, 0, (m.y + m.h / 2 - f.y) * k);
   await expect
     .poll(async () => (await posterDoc(page))?.texts?.find((t) => t.id === 'credit')?.box)
     .toBeTruthy();
