@@ -116,15 +116,16 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
       };
       const seg = a.closest('.seg label');
       const r = a.getBoundingClientRect();
-      // Each panel scrolls on its own: positions in its content.
-      const panel = a.closest<HTMLElement>('.ws-side, .ws-bottom');
+      // Each panel scrolls on its own: positions in its content (every scroller's offset).
+      let scrolled = 0;
+      for (let p = a.parentElement; p && p !== d; p = p.parentElement) scrolled += p.scrollTop;
       return {
         id:
           a.getAttribute('data-testid') ??
           a.closest('[data-testid]')?.getAttribute('data-testid') ??
           a.tagName,
         x: r.left,
-        y: r.top + d.scrollTop + (panel?.scrollTop ?? 0),
+        y: r.top + d.scrollTop + scrolled,
         ring: shows(a) || (seg !== null && shows(seg)),
       };
     });

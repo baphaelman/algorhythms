@@ -213,10 +213,13 @@ test('keys by keyboard: Tab reaches the markers; arrows move; Delete removes; fo
 }) => {
   await load(page, { mode: 'keys', keys: KEYS });
   await openVideo(page);
-  await page.getByTestId('preview-time').focus();
+  // M15: the markers are on the timeline, after the Section's controls.
+  await dialog(page).getByTestId('export-section').locator('input:checked').focus();
   // WebKit (macOS) tabs to buttons with Option-Tab only (build log, M11 interactions pass).
-  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   const first = markers(page).nth(0);
+  for (let i = 0; i < 12 && !(await first.evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
+  }
   await expect(first).toBeFocused();
   // A visible ring.
   const ring = await first.evaluate((el) => getComputedStyle(el).outlineStyle);

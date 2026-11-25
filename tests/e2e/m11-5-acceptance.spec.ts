@@ -86,7 +86,7 @@ test('the camera survives Save as file and opening that file', async ({ page }) 
   await expect.poll(() => cameraOf(page)).toEqual(camera);
 });
 
-test('with a section, only its keys are on the timeline; arrows keep a key inside it', async ({
+test('with a section, its keys are inside the range on the timeline; arrows keep a key inside it', async ({
   page,
 }) => {
   await load(page, { mode: 'keys', keys: KEYS });
@@ -100,17 +100,25 @@ test('with a section, only its keys are on the timeline; arrows keep a key insid
   const end = page.getByTestId('section-end-text');
   await end.fill('45');
   await end.press('Enter');
-  // 20 s and 40 s are inside 15–45; 0 s and 70 s aren't drawn (they piled up at the ends).
-  await expect(markers(page)).toHaveCount(2);
-  expect(await markers(page).evaluateAll((els) => els.map((e) => e.dataset.at))).toEqual([
-    '20.000',
-    '40.000',
-  ]);
+  // M15: the timeline is the piece's axis, the section a range on it; 20 s and 40 s fall inside
+  // the range, 0 s and 70 s outside it.
+  await expect(markers(page)).toHaveCount(4);
+  const range = (await page.getByTestId('section-range').boundingBox())!;
+  const inside = await markers(page).evaluateAll(
+    (els, r) =>
+      els.map((e) => {
+        const b = e.getBoundingClientRect();
+        const x = b.x + b.width / 2;
+        return `${e.dataset.at} ${x >= r.x && x <= r.x + r.width ? 'in' : 'out'}`;
+      }),
+    range,
+  );
+  expect(inside).toEqual(['0.000 out', '20.000 in', '40.000 in', '70.000 out']);
   // Shift+→ (10 s) from 40 s stops at the section's end; the marker keeps focus.
-  await markers(page).nth(1).focus();
+  await markers(page).nth(2).focus();
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(markers(page).nth(1)).toHaveAttribute('data-at', '45.000');
-  await expect(markers(page).nth(1)).toBeFocused();
+  await expect(markers(page).nth(2)).toHaveAttribute('data-at', '45.000');
+  await expect(markers(page).nth(2)).toBeFocused();
   expect((await cameraOf(page))!.keys!.map((k) => k.at)).toEqual([0, 20, 45, 70]);
   // Whole piece shows them all again.
   await choose(page, 'export-section', 'Whole piece');
@@ -141,7 +149,8 @@ for (const [w, h] of SIZES) {
 
       await openVideo(page);
       await expect(markers(page)).toHaveCount(4);
-      const slider = (await page.getByTestId('preview-time').boundingBox())!;
+      // M15: on the timeline, under the section's range (the piece's axis).
+      const slider = (await page.getByTestId('section-range').boundingBox())!;
       const boxes = await markers(page).evaluateAll((els) =>
         els.map((e) => {
           const r = e.getBoundingClientRect();
@@ -150,7 +159,7 @@ for (const [w, h] of SIZES) {
         }),
       );
       for (const b of boxes) {
-        // Under the slider, within its width (± half a marker), and visible.
+        // Under the range, within its width (± half a marker), and visible.
         expect(b.y).toBeGreaterThanOrEqual(slider.y);
         expect(b.x + b.w / 2).toBeGreaterThanOrEqual(slider.x - 1);
         expect(b.x + b.w / 2).toBeLessThanOrEqual(slider.x + slider.width + 1);
@@ -171,7 +180,7 @@ for (const [w, h] of SIZES) {
   }
 }
 
-test('Tab: the preview slider, then each key in time order, then + Key and Delete', async ({
+test('Tab: the Section, then each key in time order, then + Key and Delete', async ({
   page,
   browserName,
 }) => {
@@ -179,11 +188,15 @@ test('Tab: the preview slider, then each key in time order, then + Key and Delet
   await openVideo(page);
   await expect(markers(page)).toHaveCount(4);
   await markers(page).nth(1).click();
-  await page.getByTestId('preview-time').focus();
+  // M15: the keys are on the timeline, after the Section's controls.
+  await dialog(page).getByTestId('export-section').locator('input:checked').focus();
   const tab = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+  const onKey = () =>
+    page.evaluate(() => (document.activeElement as HTMLElement).dataset.testid === 'camera-key');
+  for (let i = 0; i < 12 && !(await onKey()); i++) await page.keyboard.press(tab);
   const seen: string[] = [];
   for (let i = 0; i < 6; i++) {
-    await page.keyboard.press(tab);
+    if (i > 0) await page.keyboard.press(tab);
     seen.push(
       await page.evaluate(() => {
         const a = document.activeElement as HTMLElement;
