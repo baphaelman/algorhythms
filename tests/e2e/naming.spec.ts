@@ -127,7 +127,7 @@ test('an edited piece that kept its Generate title asks; an untouched one does n
     await expect(page.getByTestId('generate-panel')).toBeHidden();
   };
   await generate();
-  expect(await title(page)).toMatch(/^[A-Z][a-z]+ 99$/);
+  expect(await title(page)).toBe('Bright F Major 99');
   // Untouched: no question.
   await openExample(page, 'kite-day');
   await expect(prompt(page)).toBeHidden();

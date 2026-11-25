@@ -9,6 +9,7 @@ import { unzipSync } from 'fflate';
 import { expect, test, type Download, type Page } from '@playwright/test';
 import { clickExportForDownload } from './export-diag';
 import { parseWavHeader } from '../../src/audio/wav';
+import { generate } from '../../src/core/generate';
 import './app-hook';
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
@@ -41,17 +42,11 @@ async function loadShortPiece(page: Page, seconds = 6): Promise<void> {
   }, seconds);
 }
 
-/** Generates a piece with many voices through the Generate dialog. */
-async function generateMany(page: Page, voices: number): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-generate').click();
-  await page.getByTestId('generate-panel').getByLabel('Seed', { exact: true }).fill('77');
-  await page
-    .getByTestId('generate-panel')
-    .getByLabel('Notes', { exact: true })
-    .fill(String(voices));
-  await page.getByTestId('generate-run').click();
-  await expect(page.getByTestId('generate-panel')).toBeHidden();
+/** Opens a fixture piece with many voices (the old Generate's dorian 2:30 piece, seed 77). */
+async function openManyVoices(page: Page, voices: number): Promise<void> {
+  const piece = generate(77, { mode: 'dorian', voices, density: 0.45, length: 150 });
+  await page.evaluate((p) => window.__algorhythms!.actions.loadPiece(p), piece);
+  await expect(page.getByTestId('keyvoices')).toContainText(`/ ${voices} notes`);
 }
 
 async function exportAndDownload(page: Page): Promise<{ name: string; bytes: Uint8Array }> {
@@ -158,7 +153,7 @@ test('exports one MIDI file, and a zip when MPE needs several', async ({ page })
 
   // MPE with more than 15 voices: several files, zipped.
   await page.keyboard.press('Escape');
-  await generateMany(page, 20);
+  await openManyVoices(page, 20);
   await openExport(page);
   await pickFormat(page, 'MIDI');
   await choose(page, 'export-midi-mode', 'MPE');
@@ -260,7 +255,7 @@ test('streams stems straight to a file picked in the save dialog (Chromium)', as
 });
 
 test('cancel stops a running stems export and leaves the dialog usable', async ({ page }) => {
-  await generateMany(page, 24); // a long piece: many files, so it is still running when cancelled
+  await openManyVoices(page, 24); // a long piece: many files, so it is still running when cancelled
   await openExport(page);
   await pickFormat(page, 'Stems');
   let downloads = 0;
@@ -284,7 +279,7 @@ test('cancel stops a running stems export and leaves the dialog usable', async (
 });
 
 test('Escape cancels a running export; the dialog is keyboard operable', async ({ page }) => {
-  await generateMany(page, 24);
+  await openManyVoices(page, 24);
   await openExport(page);
   // Arrow keys move through a radio group; focus starts inside the dialog.
   await dialog(page).getByLabel('WAV', { exact: true }).focus();
@@ -307,7 +302,7 @@ test('Escape cancels a running export; the dialog is keyboard operable', async (
 });
 
 test('warns above 1 GB and says how to shrink it', async ({ page }) => {
-  await generateMany(page, 32);
+  await openManyVoices(page, 32);
   await page.evaluate(() => {
     const h = window.__algorhythms!;
     const p = structuredClone(h.store.getState().piece) as unknown as {
