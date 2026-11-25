@@ -131,7 +131,22 @@
 }
 
 .ws-overlay.text-tool {
-  cursor: text;
+  cursor: crosshair;
+}
+
+/* The Text tool's ghost: the new box where a click puts it ("Text" at its size and font). */
+.ws-ghost {
+  position: absolute;
+  pointer-events: none;
+  white-space: pre;
+  overflow: visible;
+  color: var(--accent);
+  opacity: 0.7;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.ws-ghost-drag {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .ws-margins {
@@ -155,9 +170,11 @@
 
 .ws-handle {
   position: absolute;
-  width: 9px;
-  height: 9px;
-  margin: -5px 0 0 -5px;
+  z-index: 3;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
   border: 1.5px solid var(--accent);
   background: var(--paper);
   border-radius: 1px;
@@ -204,14 +221,36 @@
 .ws-inline-text {
   position: absolute;
   z-index: 2;
+  box-sizing: content-box;
   margin: 0;
   padding: 0;
   border: 0;
-  outline: 1.5px solid var(--accent);
+  outline: none;
   resize: none;
   overflow: hidden;
+  white-space: pre;
+  /* The artboard draws the text as it is typed; the field shows the caret and selection. */
+  color: transparent;
+  background: transparent;
+}
+
+.ws-inline-text[wrap='soft'] {
+  white-space: pre-wrap;
+}
+
+.ws-inline-text::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Tokens show as written, on the paper, while typed. */
+.ws-inline-text.raw {
   color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  background: var(--paper);
+}
+
+.ws-inline-text.raw::selection {
+  color: var(--ink);
 }
 
 .ws-refit {
@@ -559,6 +598,11 @@
   gap: 8px 12px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--rule);
+}
+
+.ws-tool-hint {
+  font-size: 12px;
+  color: var(--ink-2);
 }
 
 .ws-tools .seg button {

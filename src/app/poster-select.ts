@@ -33,8 +33,12 @@ import {
   LINE_HEIGHT,
   isLabelGroup,
   isMarkGroup,
+  textDefaults,
+  textFont,
+  textPad,
   type PosterLayout,
   type Rect,
+  type TextObject,
 } from '../render/poster-layout';
 
 /**
@@ -128,6 +132,10 @@ export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null)
     if (isMarkGroup(sel.group)) return [];
     const m = sel.kind === 'member' ? sel.member : undefined;
     return groupObjects(layout, sel.group, m).map((o) => o.box);
+  }
+  if (sel.kind === 'text') {
+    const r = textOutline(layout, sel.id);
+    return r ? [r] : [];
   }
   const f = selectionFrame(layout, sel);
   return f ? [f] : [];
@@ -348,7 +356,7 @@ export function placeRect(
   }
   if (sel.kind === 'text') {
     const t = textOf(doc, sel.id);
-    return t ? putText(doc, { ...t, box: textBoxFor(layout, to) }) : doc;
+    return t ? placeText(doc, layout, t, from, to) : doc;
   }
   if (sel.kind === 'member') {
     const S = Math.min(layout.width, layout.height);
@@ -361,6 +369,99 @@ export function placeRect(
     });
   }
   return doc;
+}
+
+const textObject = (layout: PosterLayout, id: string): TextObject | undefined => {
+  for (const o of layout.objects) if (o.type === 'text' && o.member === id) return o;
+  return undefined;
+};
+
+/**
+ * Text box `t` with its frame `from` moved or resized to `to`. An automatic box (in the text
+ * band) becomes a placed one as wide as its text (`sizing: 'auto'`). A sized box: a change of
+ * height scales its type (an auto box stays as wide as its text, a wrapping one takes `to`'s
+ * width); a change of width alone makes it wrap at that width. A box without `sizing` takes
+ * `to` (its type follows the height).
+ */
+function placeText(
+  doc: PosterDoc | undefined,
+  layout: PosterLayout,
+  t: PosterText,
+  from: Rect,
+  to: Rect,
+): PosterDoc | undefined {
+  const box = textBoxFor(layout, to);
+  const sizing = t.sizing ?? (t.box ? undefined : 'auto');
+  if (!sizing) return putText(doc, { ...t, box });
+  const S = Math.min(layout.width, layout.height);
+  const o = textObject(layout, t.id);
+  const size0 = o ? o.size / S : (t.style?.size ?? textDefaults(t.kind).size);
+  const dh = from.h > 0 && Math.abs(to.h - from.h) > 1e-6;
+  const dw = Math.abs(to.w - from.w) > 1e-6;
+  const size = dh ? (size0 * to.h) / from.h : size0;
+  return putText(doc, {
+    ...t,
+    box,
+    sizing: !dh && dw ? 'wrap' : sizing,
+    style: { ...t.style, size: Math.round(size * 1e5) / 1e5 },
+  });
+}
+
+/**
+ * A new text box ("Text", in the free kind's type) with its top left at (x, y): as wide as its
+ * text, or `width` wide with wrapping lines (a drag with the Text tool).
+ */
+export function newText(
+  layout: PosterLayout,
+  id: string,
+  x: number,
+  y: number,
+  width?: number,
+): PosterText {
+  const r = newTextRect(layout, x, y, width);
+  return {
+    id,
+    kind: 'free',
+    text: 'Text',
+    sizing: width === undefined ? 'auto' : 'wrap',
+    box: textBoxFor(layout, r),
+  };
+}
+
+/** Where `newText` puts its box (artboard px): kept on the artboard. */
+export function newTextRect(layout: PosterLayout, x: number, y: number, width?: number): Rect {
+  const S = Math.min(layout.width, layout.height);
+  const size = textDefaults('free').size * S;
+  const h = LINE_HEIGHT * size;
+  const w = Math.max(1, width ?? layout.measure('Text', textFont(layout, 'free', size), 0));
+  return {
+    x: Math.max(0, Math.min(x, layout.width - Math.min(w, layout.width))),
+    y: Math.max(0, Math.min(y, layout.height - h)),
+    w,
+    h,
+  };
+}
+
+/** The Text tool's ghost at the pointer (x, y): the new box's rect, snapped unless `tol` is 0. */
+export function textGhost(
+  layout: PosterLayout,
+  x: number,
+  y: number,
+  tol: number,
+): { box: Rect; guides: SnapGuides } {
+  const r = newTextRect(layout, x, y);
+  return tol > 0 ? snapMove(r, snapTargets(layout, null), tol) : { box: r, guides: {} };
+}
+
+/**
+ * The outline a selected text box draws (artboard px): its frame, widened by the space its line
+ * box leaves above and below the ink, so the gap round the text is even.
+ */
+export function textOutline(layout: PosterLayout, id: string): Rect | null {
+  const o = textObject(layout, id);
+  if (!o) return null;
+  const p = textPad(o.size);
+  return { x: o.frame.x - p, y: o.frame.y, w: o.frame.w + 2 * p, h: o.frame.h };
 }
 
 /**
@@ -442,7 +543,7 @@ export function withTextSize(
 ): PosterDoc | undefined {
   const t = textOf(doc, id);
   if (!t || !(size > 0)) return doc;
-  if (!t.box) return putText(doc, { ...t, style: { ...t.style, size } });
+  if (!t.box || t.sizing) return putText(doc, { ...t, style: { ...t.style, size } });
   const S = Math.min(layout.width, layout.height);
   const lines = Math.max(1, t.text.split('\n').length);
   const h = (size * S * lines * LINE_HEIGHT) / layout.height;

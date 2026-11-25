@@ -6124,6 +6124,14 @@ This is the *input* form: fields with defaults are optional here.
                 ],
                 "additionalProperties": {}
               },
+              "sizing": {
+                "description": "A placed box: auto = as wide as its text; wrap = fixed width, lines wrap.",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wrap"
+                ]
+              },
               "style": {
                 "type": "object",
                 "properties": {
@@ -6719,6 +6727,14 @@ This is the *input* form: fields with defaults are optional here.
                   "h"
                 ],
                 "additionalProperties": {}
+              },
+              "sizing": {
+                "description": "A placed box: auto = as wide as its text; wrap = fixed width, lines wrap.",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wrap"
+                ]
               },
               "style": {
                 "type": "object",
