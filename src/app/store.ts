@@ -493,7 +493,10 @@ export function recompileNow(): CompiledScore {
 function commitCompile(piece: Piece, now: boolean): CompiledScore {
   const compiled = incremental.compile(piece);
   compiledPiece = piece;
-  void swapAudio(compiled, piece.timbres).catch(() => undefined);
+  // A load still waiting for idle would otherwise land after this swap and put the old score back
+  // (Play flushes it): the pending load takes the newest score instead.
+  if (deferredLoad) queueAudioLoad(piece, compiled);
+  else void swapAudio(compiled, piece.timbres).catch(() => undefined);
   if (now && !compiledInTask) {
     compiledInTask = true;
     queueMicrotask(() => {

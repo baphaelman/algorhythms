@@ -8,6 +8,11 @@ const frames = vi.hoisted(() => {
   g.document = { title: '', querySelector: () => null };
   g.location = { hash: '', pathname: '/', search: '' };
   g.history = { replaceState: () => undefined };
+  // Idle runs at once: the engine is loaded, so edits swap (a load still pending takes them instead).
+  g.requestIdleCallback = (cb: () => void) => {
+    cb();
+    return 0;
+  };
   const queue: ((t: number) => void)[] = [];
   g.requestAnimationFrame = (cb: (t: number) => void) => {
     queue.push(cb);
