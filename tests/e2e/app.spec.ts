@@ -337,7 +337,8 @@ test('menu offers Generate and Export; Escape closes it and returns focus', asyn
   await page.getByTestId('menu-button').click();
   const panel = page.getByTestId('menu-panel');
   await expect(panel.getByRole('button', { name: /Generate/ })).toBeEnabled();
-  await expect(panel.getByRole('button', { name: /Export/ })).toBeEnabled();
+  await expect(panel.getByTestId('open-export')).toBeEnabled();
+  await expect(panel.getByTestId('open-export-audio')).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await expect(page.getByTestId('menu-button')).toBeFocused();
