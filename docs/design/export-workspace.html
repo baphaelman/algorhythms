@@ -56,6 +56,7 @@ button kbd { background: transparent; color: inherit; border-color: currentColor
 .clock { font: 500 13px var(--f-mono); white-space: nowrap; }
 .status { font: 12px var(--f-mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .title { font: 500 15px var(--f-mono); white-space: nowrap; }
+.xbar { display: flex; align-items: center; gap: 10px; }
 .modes > button { padding: 8px 16px; font-size: 13px; min-width: 76px; }
 .modes > button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
@@ -112,13 +113,19 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
 .frame.checker { background-image: conic-gradient(var(--panel) 25%, var(--card) 0 50%, var(--panel) 0 75%, var(--card) 0); background-size: 16px 16px; }
 #pframe { touch-action: none; }
 #pframe.texttool { cursor: text; }
-.tbox { position: absolute; white-space: pre; line-height: 1.1; cursor: move; padding: 2px 4px; border: 1px dashed transparent; user-select: none; }
+.tbox { position: absolute; white-space: pre; line-height: 1.1; cursor: move; padding: 2px 4px; border: 1px dashed transparent; user-select: none; transform-origin: 0 0; }
 .tbox:hover { border-color: var(--ink-2); }
 .tbox.sel { border: 1px solid var(--accent); }
 .tbox[contenteditable="true"] { cursor: text; user-select: text; outline: 2px solid var(--accent); }
 .selbox { position: absolute; border: 1px solid var(--accent); pointer-events: none; }
-.selbox .h { position: absolute; width: 10px; height: 10px; background: var(--paper); border: 1.5px solid var(--accent); pointer-events: auto; cursor: nwse-resize; }
-.selbox .h.ne, .selbox .h.sw2 { cursor: nesw-resize; }
+.selbox .h { position: absolute; width: 10px; height: 10px; background: var(--paper); border: 1.5px solid var(--accent); pointer-events: auto; }
+.selbox .h.nw { left: -5px; top: -5px; cursor: nwse-resize; } .selbox .h.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.selbox .h.ne { right: -5px; top: -5px; cursor: nesw-resize; } .selbox .h.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.selbox .h.n { left: calc(50% - 5px); top: -5px; cursor: ns-resize; } .selbox .h.s { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
+.selbox .h.e { right: -5px; top: calc(50% - 5px); cursor: ew-resize; } .selbox .h.w { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
+.xywh { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.xywh label { display: flex; flex-direction: column; gap: 2px; font: 11px var(--f-mono); color: var(--ink-2); }
+.refit { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: var(--card); border-color: var(--accent); z-index: 4; }
 .selbox .tag { position: absolute; left: -1px; top: -20px; font: 11px/18px var(--f-mono); padding: 0 5px; background: var(--accent); color: var(--on-accent); border-radius: 2px; white-space: nowrap; }
 .guide { position: absolute; background: var(--accent); pointer-events: none; opacity: 0.85; }
 .phmark { position: absolute; top: -14px; width: 0; border-left: 1px dashed var(--accent); pointer-events: none; opacity: 0.7; }
@@ -166,7 +173,8 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
   .app { height: auto; }
   .topbar { grid-template-columns: minmax(0, 1fr) auto; }
   .tb-mid { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; }
-  .modes { display: flex; }
+  .xbar { flex-wrap: wrap; }
+  .modes { display: flex; flex: 1; }
   .modes > button { flex: 1; min-width: 0; }
   .status { display: none; }
   .ws { display: flex; flex-direction: column; }
@@ -191,7 +199,7 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
     </span>
   </div>
 
-  <div class="app" id="app" data-mode="poster">
+  <div class="app" id="app" data-mode="music">
     <header class="topbar">
       <div class="tb-left">
         <button type="button" id="play" aria-label="Play">Play</button>
@@ -199,8 +207,11 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
         <span class="status" id="status"></span>
       </div>
       <div class="tb-mid">
-        <div class="seg modes" role="group" aria-label="Editor mode" id="modes">
-          <button type="button" data-m="music" aria-pressed="false">Music</button><button type="button" data-m="poster" aria-pressed="true">Poster</button><button type="button" data-m="video" aria-pressed="false">Video</button>
+        <div class="xbar" data-for="poster video">
+          <button type="button" id="back" title="Back to the editor (Esc)">← Back to music</button>
+          <div class="seg modes" role="group" aria-label="Export" id="modes">
+            <button type="button" data-m="poster" aria-pressed="true">Poster</button><button type="button" data-m="video" aria-pressed="false">Video</button>
+          </div>
         </div>
       </div>
       <div class="tb-right">
@@ -215,7 +226,7 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
       <button type="button" class="mi" role="menuitem" data-stub>New</button>
       <button type="button" class="mi" role="menuitem" data-stub>Generate…</button>
       <hr>
-      <button type="button" class="mi" role="menuitem" id="mi-export">Export <small id="mi-export-to">opens Poster</small></button>
+      <button type="button" class="mi" role="menuitem" id="mi-export">Export… <small id="mi-export-to">Poster</small></button>
       <button type="button" class="mi" role="menuitem" id="mi-audio">Export audio… <small>WAV, stems, MIDI</small></button>
       <hr>
       <button type="button" class="mi" role="menuitem" data-stub>Help <small>?</small></button>
@@ -243,9 +254,10 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
           <canvas id="pcanvas"></canvas>
           <div id="texts"></div>
           <div class="phmark" id="phmark"><span></span></div>
-          <div class="selbox" id="selbox" hidden><span class="tag"></span><span class="h nw" data-h="nw"></span><span class="h ne" data-h="ne"></span><span class="h sw2" data-h="sw"></span><span class="h se" data-h="se"></span></div>
+          <div class="selbox" id="selbox" hidden><span class="tag"></span><span class="h nw" data-h="nw"></span><span class="h n" data-h="n"></span><span class="h ne" data-h="ne"></span><span class="h e" data-h="e"></span><span class="h se" data-h="se"></span><span class="h s" data-h="s"></span><span class="h sw" data-h="sw"></span><span class="h w" data-h="w"></span></div>
           <div id="guides"></div>
         </div>
+        <button type="button" class="refit" id="refit" data-for="poster" hidden>Text overlaps the music · Re-fit layout</button>
         <div class="frame" id="vframe" data-for="video" tabindex="0" aria-label="Video preview">
           <canvas id="vcanvas"></canvas>
         </div>
@@ -255,7 +267,7 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
 
       <aside class="side" aria-label="How it looks">
         <div class="side-scroll inspector" data-for="music">
-          <div class="hintchip" id="hint">Try it: click the score to move the playhead, change the zoom, then switch to <b>Video</b>. It opens at the same time and zoom.</div>
+          <div class="hintchip" id="hint"><b>Menu → Export</b> turns the editor into the poster and video workspace. Move the playhead or zoom first: Video opens there.</div>
           <h3>No moment selected</h3>
           <p>Select a block to edit it, or add one: <kbd>C</kbd> chord, <kbd>T</kbd> texture, <kbd>M</kbd> melody, <kbd>L</kbd> level, <kbd>S</kbd> sound, <kbd>K</kbd> key.</p>
           <h3 style="margin-top:14px">Bars</h3>
@@ -314,7 +326,7 @@ details.grp > .gbody { padding: 2px 10px 10px; display: flex; flex-direction: co
             <button type="button" id="resetlayout" class="icon">Reset layout</button>
           </div>
           <div class="layers" id="layers" role="list" aria-label="Layers"></div>
-          <div class="pnote">Parts and lines stay live: edit notes in Music and the poster follows. The layout is saved in the piece, like camera keys. Drawing single notes by hand here is deferred.</div>
+          <div class="pnote">Parts and lines stay live: edit notes in Music and the poster follows. A layer's colour also shows in the video; position and size are poster-only. The layout is saved in the piece, like camera keys. Drawing single notes by hand here is deferred.</div>
         </div>
 
         <div data-for="video">
@@ -379,25 +391,25 @@ const PART_DEFAULT = { Melody: '#d9643a', Chords: '#3a9d8f', Bass: '#4a74c9', Sp
 
 /* ---------- state ---------- */
 const S = {
-  mode: 'poster', lastExport: 'poster', t: 36, playing: false,
+  mode: 'music', lastExport: 'poster', t: 36, playing: false,
   zoom: 20, follow: 'smooth', mstart: 26,
   section: { mode: 'whole', a: 0, b: DUR },
   theme: 'current',
   col: { scheme: 'default', background: 'theme', bg: '#f4efe4', bgTo: '#efe6f6', lines: 'app', low: '#4f86ff', mid: '#b07cff', high: '#ffcf70', one: '#151a21', parts: { ...PART_DEFAULT }, text: null },
   look: { guides: 'off', beats: 'off', moments: 'labels', future: 0, followAt: null, playhead: true, level: true, thickness: true, pulse: true, dots: true, rings: true, hzl: true, width: 1, glow: 0, vignette: 0, minOp: 0 },
   hudV: ['formula', 'notes', 'time', 'chord', 'key', 'hz'], hudP: [],
-  poster: { size: '16:9', w: 3840, h: 2160, file: 'png', rows: 1, titleBlock: true, pieceRange: false },
+  poster: { size: '16:9', w: 3840, h: 2160, file: 'png', rows: 1, pieceRange: false },
   video: { preset: 'custom', aspect: '16:9', size: '1080', fps: 30, quality: 'high', camera: 'follow', window: null, loud: 'off', fadeIn: 0, leadIn: 0, titleCard: false, title: 'Kite Day', subtitle: '', fadeOut: 0, endCard: 0, credit: 'Made with AlgoRhythms' },
   camKeys: null, selKey: null, selCard: null, tau: null,
   audio: { format: 'wav', depth: 24, rate: 48000, midi: 'tracks', loud: 'off' },
 };
 // Poster layout: what is saved in the piece.
 const freshLayout = () => ({
-  parts: Object.fromEntries(PARTS.map((p) => [p, { dx: 0, dy: 0, s: 1, hidden: false, colour: null }])),
-  lines: Object.fromEntries(D.voices.map((v) => [v.id, { dx: 0, dy: 0, s: 1, hidden: false, colour: null }])),
+  parts: Object.fromEntries(PARTS.map((p) => [p, { dx: 0, dy: 0, sx: 1, sy: 1, hidden: false, colour: null }])),
+  lines: Object.fromEntries(D.voices.map((v) => [v.id, { dx: 0, dy: 0, sx: 1, sy: 1, hidden: false, colour: null }])),
   texts: [
-    { id: 'title', kind: 'Title', text: 'Kite Day', x: 0.06, y: 0.06, size: 0.085, font: 'serif', bold: false, colour: null, align: 'left', hidden: false },
-    { id: 'credit', kind: 'Credits', text: '1:48 · C pentatonic major · AlgoRhythms', x: 0.062, y: 0.165, size: 0.026, font: 'mono', bold: false, colour: null, align: 'left', hidden: false },
+    { id: 'title', kind: 'Title', text: 'Kite Day', x: 0, y: 0, size: 0, sx: 1, auto: true, font: 'serif', bold: false, colour: null, align: 'left', hidden: false },
+    { id: 'credit', kind: 'Credits', text: '1:48 · C pentatonic major · AlgoRhythms', x: 0, y: 0, size: 0, sx: 1, auto: true, font: 'mono', bold: false, colour: null, align: 'left', hidden: false },
   ],
   order: ['t:title', 't:credit', 'p:Sparkle', 'p:Melody', 'p:Chords', 'p:Bass'],
 });
@@ -671,11 +683,19 @@ $('#zout').onclick = () => setZoom(S.zoom * 1.4);
 $('#fit').onclick = () => setZoom(DUR);
 
 /* ---------- Poster geometry ---------- */
-const PM = { l: 0.06, r: 0.94 };
+// The default layout: margins and a text band from the artboard's short side; the music fills the rest.
+function textDefaults() {
+  const W = S.poster.w, H = S.poster.h, m = 0.06 * Math.min(W, H), ts = 0.075 * Math.min(W, H), cs = 0.024 * Math.min(W, H);
+  return {
+    title: { x: m / W, y: m / H, size: ts / H }, credit: { x: (m + 0.004 * Math.min(W, H)) / W, y: (m + ts * 1.25) / H, size: cs / H },
+    band: (m + ts * 1.25 + cs * 1.5 + 0.04 * Math.min(W, H)) / H, mx: m / W, my: m / H,
+  };
+}
+function applyAuto() { const d = textDefaults(); for (const t of L.texts) if (t.auto && d[t.id]) Object.assign(t, d[t.id], { sx: 1 }); }
+const marg = () => { const d = textDefaults(); return { l: d.mx, r: 1 - d.mx, t: d.my, b: 1 - d.my }; };
 function posterArea() {
-  const ar = S.poster.w / S.poster.h;
-  const top = S.poster.titleBlock ? (ar < 1 ? 0.15 : 0.27) : 0.08;
-  return { x0: PM.l, x1: PM.r, y0: top, y1: ar < 1 ? 0.94 : 0.9 };
+  const d = textDefaults(), text = L.texts.some((t) => !t.hidden);
+  return { x0: d.mx, x1: 1 - d.mx, y0: text ? d.band : d.my, y1: 1 - d.my };
 }
 const secSpan = () => (S.section.mode === 'whole' ? { a: 0, b: DUR } : { a: S.section.a, b: S.section.b });
 let geomKey = '', geom = null;
@@ -712,25 +732,19 @@ const partBox = (part) => {
   return B;
 };
 // Pixel-space transforms (frame W×H): line transform then part transform.
+// Axis-aligned scale and offset per axis, so x and y transform separately (strokes stay round).
 function xformOf(vi, W, H) {
   const v = D.voices[vi], lt = L.lines[v.id], pt = L.parts[v.part];
   const lb = posterGeom().bbox[vi], pb = partBox(v.part);
-  const lc = { x: (lb.l + lb.r) / 2 * W, y: (lb.t + lb.b) / 2 * H }, pc = { x: (pb.l + pb.r) / 2 * W, y: (pb.t + pb.b) / 2 * H };
-  return (X, Y) => {
-    let x = lc.x + (X - lc.x) * lt.s + lt.dx * W, y = lc.y + (Y - lc.y) * lt.s + lt.dy * H;
-    return [pc.x + (x - pc.x) * pt.s + pt.dx * W, pc.y + (y - pc.y) * pt.s + pt.dy * H];
-  };
-}
-function applyXform(g, vi, W, H) {
-  const v = D.voices[vi], lt = L.lines[v.id], pt = L.parts[v.part];
-  const lb = posterGeom().bbox[vi], pb = partBox(v.part);
   const lcx = (lb.l + lb.r) / 2 * W, lcy = (lb.t + lb.b) / 2 * H, pcx = (pb.l + pb.r) / 2 * W, pcy = (pb.t + pb.b) / 2 * H;
-  g.translate(pcx + pt.dx * W, pcy + pt.dy * H); g.scale(pt.s, pt.s); g.translate(-pcx, -pcy);
-  g.translate(lcx + lt.dx * W, lcy + lt.dy * H); g.scale(lt.s, lt.s); g.translate(-lcx, -lcy);
-  return pt.s * lt.s;
+  const fx = (X) => pcx + (lcx + (X - lcx) * lt.sx + lt.dx * W - pcx) * pt.sx + pt.dx * W;
+  const fy = (Y) => pcy + (lcy + (Y - lcy) * lt.sy + lt.dy * H - pcy) * pt.sy + pt.dy * H;
+  const f = (X, Y) => [fx(X), fy(Y)]; f.fx = fx; f.fy = fy;
+  return f;
 }
 function selBox(W, H) {
-  if (!sel || sel.startsWith('t:')) return null;
+  if (!sel) return null;
+  if (sel.startsWith('t:')) { const t = itemPos(sel); if (!t || t.hidden) return null; const B = itemBox(sel, W, H); return { l: B.l * W, t: B.t * H, r: B.r * W, b: B.b * H }; }
   const vis = sel.startsWith('p:') ? D.voices.map((v, i) => (v.part === sel.slice(2) ? i : -1)).filter((i) => i >= 0) : [D.voices.findIndex((v) => v.id === sel.slice(2))];
   const B = { l: 1e9, t: 1e9, r: -1e9, b: -1e9 }, G = posterGeom();
   for (const vi of vis) {
@@ -768,10 +782,9 @@ function drawPoster() {
       if (v.part !== part || L.lines[v.id].hidden) return;
       for (const row of G.rows) {
         g.save();
-        const sc = applyXform(g, vi, W, H);
-        const x = lx(row), y = ly(row);
+        const f = xformOf(vi, W, H), x0 = lx(row), y0 = ly(row), x = (t) => f.fx(x0(t)), y = (p) => f.fy(y0(p));
         g.strokeStyle = strokeFor(g, vi, y(PHI), y(PLO), fs, L.lines[v.id].colour ?? pl.colour);
-        g.lineWidth = Math.max(1, 1.6 * u * S.look.width) / sc;
+        g.lineWidth = Math.max(1, 1.6 * u * S.look.width);
         if (S.look.glow > 0) { g.shadowBlur = S.look.glow * 16 * u; g.shadowColor = fs.glow ?? L.lines[v.id].colour ?? pl.colour ?? midColour(vi, fs); }
         strokeVoice(g, vi, { t0: row.ta, t1: row.tb, x, y, level: S.look.level, minOp: S.look.minOp, tNow: null });
         g.restore();
@@ -819,8 +832,10 @@ function vignette(g, W, H) {
 /* ---------- Poster overlay: text boxes, selection, guides ---------- */
 const textsEl = $('#texts'), selEl = $('#selbox'), guidesEl = $('#guides'), phm = $('#phmark');
 let editing = null;
+let sizeChanged = false;
 function renderPoster() {
   if (S.mode !== 'poster') return;
+  applyAuto();
   const { w, h } = drawPoster();
   const fs = frameStyle();
   // text boxes
@@ -831,7 +846,7 @@ function renderPoster() {
     if (!el) { el = document.createElement('div'); el.className = 'tbox'; el.dataset.id = tx.id; el.tabIndex = -1; textsEl.append(el); }
     if (editing !== tx.id && el.textContent !== tx.text) el.textContent = tx.text;
     el.hidden = tx.hidden;
-    Object.assign(el.style, { left: `${tx.x * w}px`, top: `${tx.y * h}px`, fontSize: `${tx.size * h}px`, fontFamily: fontOf(tx.font), fontWeight: tx.bold ? '700' : '400', color: tx.colour ?? fs.title, textAlign: tx.align });
+    Object.assign(el.style, { left: `${tx.x * w}px`, top: `${tx.y * h}px`, fontSize: `${tx.size * h}px`, transform: `scaleX(${tx.sx ?? 1})`, fontFamily: fontOf(tx.font), fontWeight: tx.bold ? '700' : '400', color: tx.colour ?? fs.title, textAlign: tx.align });
     el.classList.toggle('sel', sel === `t:${tx.id}`);
   }
   for (const el of $$('.tbox', textsEl)) if (!have.has(el.dataset.id)) el.remove();
@@ -841,9 +856,9 @@ function renderPoster() {
   if (B) {
     Object.assign(selEl.style, { left: `${B.l - 4}px`, top: `${B.t - 4}px`, width: `${B.r - B.l + 8}px`, height: `${B.b - B.t + 8}px` });
     $('.tag', selEl).textContent = labelOf(sel);
-    const hs = { nw: [-5, -5], ne: [null, -5], sw: [-5, null], se: [null, null] };
-    for (const hEl of $$('.h', selEl)) { const [l, t] = hs[hEl.dataset.h]; hEl.style.left = l == null ? '' : `${l}px`; hEl.style.right = l == null ? '-5px' : ''; hEl.style.top = t == null ? '' : `${t}px`; hEl.style.bottom = t == null ? '-5px' : ''; }
   }
+  // a moved text box over the music after a size change
+  $('#refit').hidden = !(sizeChanged && overlaps(w, h));
   // playhead marker (not exported)
   const G = posterGeom(), row = G.rows.find((r) => S.t >= r.ta && S.t <= r.tb);
   phm.hidden = !row;
@@ -873,9 +888,17 @@ function hitLayer(px, py, w, h) {
   }
   return null;
 }
+function overlaps(w, h) {
+  const parts = PARTS.filter((p) => !L.parts[p].hidden).map((p) => selBoxFor(`p:${p}`, w, h));
+  return L.texts.some((t) => {
+    if (t.hidden) return false; const b = itemBox(`t:${t.id}`, w, h);
+    return parts.some((B) => b.l * w < B.r && b.r * w > B.l && b.t * h < B.b && b.b * h > B.t);
+  });
+}
+$('#refit').onclick = () => { edit(() => { for (const t of L.texts) if (t.id === 'title' || t.id === 'credit') t.auto = true; }); sizeChanged = false; renderPoster(); };
 // The moving item's box in frame fractions.
 function itemBox(id, w, h) {
-  if (id.startsWith('t:')) { const el = textsEl.querySelector(`[data-id="${id.slice(2)}"]`); return { l: el.offsetLeft / w, t: el.offsetTop / h, r: (el.offsetLeft + el.offsetWidth) / w, b: (el.offsetTop + el.offsetHeight) / h }; }
+  if (id.startsWith('t:')) { const el = textsEl.querySelector(`[data-id="${id.slice(2)}"]`), sx = itemPos(id).sx ?? 1; return { l: el.offsetLeft / w, t: el.offsetTop / h, r: (el.offsetLeft + el.offsetWidth * sx) / w, b: (el.offsetTop + el.offsetHeight) / h }; }
   const B = selBoxFor(id, w, h); return { l: B.l / w, t: B.t / h, r: B.r / w, b: B.b / h };
 }
 function selBoxFor(id, w, h) { const s0 = sel; sel = id; const B = selBox(w, h); sel = s0; return B; }
@@ -884,15 +907,49 @@ function itemPos(id) {
   if (id.startsWith('p:')) return L.parts[id.slice(2)];
   return L.lines[id.slice(2)];
 }
-function moveItem(id, dxf, dyf) { const o = itemPos(id); if (id.startsWith('t:')) { o.x += dxf; o.y += dyf; } else { o.dx += dxf; o.dy += dyf; } }
-const SNAPS = [PM.l, 0.5, PM.r];
+function moveItem(id, dxf, dyf) { const o = itemPos(id); if (id.startsWith('t:')) { o.x += dxf; o.y += dyf; o.auto = false; } else { o.dx += dxf; o.dy += dyf; } }
+// Gives item `id` the box B1 (frame px), from B0 with its transform `st` at B0.
+function setBox(id, B0, B1, st, w, h) {
+  const fx = (B1.r - B1.l) / Math.max(1e-6, B0.r - B0.l), fy = (B1.b - B1.t) / Math.max(1e-6, B0.b - B0.t);
+  const o = itemPos(id);
+  if (id.startsWith('t:')) { Object.assign(o, { size: st.size * fy, sx: (st.sx ?? 1) * fx / fy, x: B1.l / w, y: B1.t / h, auto: false }); return; }
+  let b0 = B0, b1 = B1, pc;
+  if (id.startsWith('l:')) {
+    // a line: undo its part's transform, then solve for the line's own
+    const v = D.voices.find((x) => x.id === id.slice(2)), pt = L.parts[v.part], pb = partBox(v.part), lb = posterGeom().bbox[D.voices.indexOf(v)];
+    const px = (pb.l + pb.r) / 2 * w, py = (pb.t + pb.b) / 2 * h;
+    const inv = (B) => ({ l: px + (B.l - px - pt.dx * w) / pt.sx, r: px + (B.r - px - pt.dx * w) / pt.sx, t: py + (B.t - py - pt.dy * h) / pt.sy, b: py + (B.b - py - pt.dy * h) / pt.sy });
+    b0 = inv(B0); b1 = inv(B1); pc = { x: (lb.l + lb.r) / 2 * w, y: (lb.t + lb.b) / 2 * h };
+  } else { const pb = partBox(id.slice(2)); pc = { x: (pb.l + pb.r) / 2 * w, y: (pb.t + pb.b) / 2 * h }; }
+  const ax = (b0.r - b0.l) > 1e-6 ? (b1.r - b1.l) / (b0.r - b0.l) : 1, ay = (b0.b - b0.t) > 1e-6 ? (b1.b - b1.t) / (b0.b - b0.t) : 1;
+  const c0x = (b0.l + b0.r) / 2, c0y = (b0.t + b0.b) / 2, c1x = (b1.l + b1.r) / 2, c1y = (b1.t + b1.b) / 2;
+  const nx = pc.x + (c0x - pc.x - st.dx * w) / st.sx, ny = pc.y + (c0y - pc.y - st.dy * h) / st.sy;
+  o.sx = st.sx * ax; o.sy = st.sy * ay;
+  o.dx = (c1x - pc.x - (nx - pc.x) * o.sx) / w; o.dy = (c1y - pc.y - (ny - pc.y) * o.sy) / h;
+}
+// The box a resize handle makes: corners both axes, edges one; Shift keeps proportions, Alt from the centre.
+function resizeBox(B, hnd, px, py, shift, alt) {
+  const cx = (B.l + B.r) / 2, cy = (B.t + B.b) / 2, w0 = B.r - B.l, h0 = B.b - B.t;
+  const hx = /[ew]/.test(hnd), hy = /[ns]/.test(hnd);
+  let fx = 1, fy = 1;
+  if (hx) fx = alt ? Math.abs(px - cx) * 2 / w0 : (hnd.includes('e') ? px - B.l : B.r - px) / w0;
+  if (hy) fy = alt ? Math.abs(py - cy) * 2 / h0 : (hnd.includes('s') ? py - B.t : B.b - py) / h0;
+  if (shift) { const f = hx && hy ? (Math.abs(fx - 1) > Math.abs(fy - 1) ? fx : fy) : hx ? fx : fy; fx = fy = f; }
+  fx = Math.max(fx, 8 / w0); fy = Math.max(fy, 8 / Math.max(1, h0));
+  const W1 = w0 * fx, H1 = h0 * fy;
+  const l = alt || !hx ? cx - W1 / 2 : hnd.includes('e') ? B.l : B.r - W1;
+  const t = alt || !hy ? cy - H1 / 2 : hnd.includes('s') ? B.t : B.b - H1;
+  return { l, t, r: l + W1, b: t + H1 };
+}
+const SNAPS = { get x() { const m = marg(); return [m.l, 0.5, m.r]; }, get y() { const m = marg(); return [m.t, 0.5, m.b]; } };
 function snapMove(id, w, h, ox, oy) {
   guidesEl.innerHTML = '';
   if (!snapOn) return [0, 0];
   const B = itemBox(id, w, h); let sx = 0, sy = 0, gx = null, gy = null;
   const thx = 6 / w, thy = 6 / h;
-  for (const [edge, val] of [['l', B.l], ['c', (B.l + B.r) / 2], ['r', B.r]]) for (const s of SNAPS) if (gx == null && Math.abs(val - s) < thx) { sx = s - val; gx = s; }
-  for (const val of [B.t, (B.t + B.b) / 2, B.b]) for (const s of [0.06, 0.5, 0.94]) if (gy == null && Math.abs(val - s) < thy) { sy = s - val; gy = s; }
+  const SX = SNAPS.x, SY = SNAPS.y;
+  for (const [edge, val] of [['l', B.l], ['c', (B.l + B.r) / 2], ['r', B.r]]) for (const s of SX) if (gx == null && Math.abs(val - s) < thx) { sx = s - val; gx = s; }
+  for (const val of [B.t, (B.t + B.b) / 2, B.b]) for (const s of SY) if (gy == null && Math.abs(val - s) < thy) { sy = s - val; gy = s; }
   if (ox) sx = 0; if (oy) sy = 0;
   if (gx != null && !ox) { const d = document.createElement('div'); d.className = 'guide'; Object.assign(d.style, { left: `${gx * w}px`, top: 0, width: '1px', height: '100%' }); guidesEl.append(d); }
   if (gy != null && !oy) { const d = document.createElement('div'); d.className = 'guide'; Object.assign(d.style, { top: `${gy * h}px`, left: 0, height: '1px', width: '100%' }); guidesEl.append(d); }
@@ -903,13 +960,13 @@ pframe.addEventListener('pointerdown', (e) => {
   if (editing) { if (e.target.closest('.tbox')?.dataset.id === editing) return; endEdit(); }
   const p = framePt(e);
   if (tool === 'text') {
-    edit(() => { const id = `x${Date.now().toString(36)}`; L.texts.push({ id, kind: 'Text', text: 'Text', x: p.x / p.w, y: p.y / p.h, size: 0.04, font: 'sans', bold: false, colour: null, align: 'left', hidden: false }); L.order.unshift(`t:${id}`); sel = `t:${id}`; });
+    edit(() => { const id = `x${Date.now().toString(36)}`; L.texts.push({ id, kind: 'Text', text: 'Text', x: p.x / p.w, y: p.y / p.h, size: 0.04, sx: 1, font: 'sans', bold: false, colour: null, align: 'left', hidden: false }); L.order.unshift(`t:${id}`); sel = `t:${id}`; });
     setTool('select'); renderPoster(); startEdit(sel.slice(2)); e.preventDefault(); return;
   }
   const hnd = e.target.closest('.h');
   const tb = e.target.closest('.tbox');
   let id = null, kind = 'move';
-  if (hnd && sel) { id = sel; kind = 'scale'; }
+  if (hnd && sel) { id = sel; kind = 'resize'; }
   else if (tb) id = `t:${tb.dataset.id}`;
   else {
     const hit = hitLayer(p.x, p.y, p.w, p.h);
@@ -924,8 +981,9 @@ pframe.addEventListener('pointerdown', (e) => {
   pframe.setPointerCapture(e.pointerId);
   const o = itemPos(id);
   const B = itemBox(id, p.w, p.h);
-  drag = { id, kind, x0: p.x, y0: p.y, snap: snapL(), moved: false, start: { ...o }, cx: (B.l + B.r) / 2 * p.w, cy: (B.t + B.b) / 2 * p.h };
-  drag.d0 = Math.hypot(p.x - drag.cx, p.y - drag.cy);
+  drag = { id, kind, hnd: hnd?.dataset.h, x0: p.x, y0: p.y, snap: snapL(), moved: false, start: { ...o }, B0: { l: B.l * p.w, t: B.t * p.h, r: B.r * p.w, b: B.b * p.h } };
+  // grab offset, so a handle doesn't jump to the pointer
+  if (hnd) { const h = hnd.dataset.h, B0 = drag.B0; drag.ox = h.includes('e') ? p.x - B0.r : h.includes('w') ? p.x - B0.l : 0; drag.oy = h.includes('s') ? p.y - B0.b : h.includes('n') ? p.y - B0.t : 0; }
   e.preventDefault();
 });
 pframe.addEventListener('pointermove', (e) => {
@@ -934,9 +992,9 @@ pframe.addEventListener('pointermove', (e) => {
   if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 2) drag.moved = true;
   if (!drag.moved) return;
   const o = itemPos(drag.id);
-  if (drag.kind === 'scale') {
-    const f = Math.hypot(p.x - drag.cx, p.y - drag.cy) / Math.max(4, drag.d0);
-    if (drag.id.startsWith('t:')) o.size = clamp(drag.start.size * f, 0.01, 0.4); else o.s = clamp(drag.start.s * f, 0.2, 4);
+  if (drag.kind === 'resize') {
+    Object.assign(o, drag.start);
+    setBox(drag.id, drag.B0, resizeBox(drag.B0, drag.hnd, p.x - drag.ox, p.y - drag.oy, e.shiftKey, e.altKey), drag.start, p.w, p.h);
   } else {
     Object.assign(o, drag.start);
     moveItem(drag.id, (p.x - drag.x0) / p.w, (p.y - drag.y0) / p.h);
@@ -974,7 +1032,7 @@ pframe.addEventListener('keydown', (e) => {
   if (ar && sel) { e.preventDefault(); const k = e.shiftKey ? 0.02 : 0.002; edit(() => moveItem(sel, ar[0] * k, ar[1] * k)); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); removeOrHide(sel); }
   else if (e.key === 'Enter' && sel?.startsWith('t:')) { e.preventDefault(); startEdit(sel.slice(2)); }
-  else if (e.key === 'Escape') select(null);
+  else if (e.key === 'Escape' && sel) { e.stopPropagation(); select(null); }
 });
 function removeOrHide(id) {
   edit(() => {
@@ -990,8 +1048,8 @@ $$('[data-addtext]').forEach((b) => b.onclick = () => {
   const kind = b.dataset.addtext;
   const id = `${kind}${Date.now().toString(36)}`;
   edit(() => {
-    const t = kind === 'title' ? { kind: 'Title', text: 'Kite Day', x: 0.06, y: 0.06, size: 0.085, font: 'serif' } : { kind: 'Credits', text: 'Music and lines: you · Made with AlgoRhythms', x: 0.06, y: 0.9, size: 0.024, font: 'mono' };
-    L.texts.push({ id, bold: false, colour: null, align: 'left', hidden: false, ...t }); L.order.unshift(`t:${id}`); sel = `t:${id}`;
+    const d = textDefaults(); const t = kind === 'title' ? { kind: 'Title', text: 'Kite Day', ...d.title, font: 'serif' } : { kind: 'Credits', text: 'Music and lines: you · Made with AlgoRhythms', x: d.mx, y: 1 - d.my - d.credit.size * 1.2, size: d.credit.size, font: 'mono' };
+    L.texts.push({ id, bold: false, colour: null, align: 'left', hidden: false, sx: 1, ...t }); L.order.unshift(`t:${id}`); sel = `t:${id}`;
   });
   renderPoster(); startEdit(id);
 });
@@ -1003,8 +1061,9 @@ $('#align').innerHTML = ALIGN.map(([k, l, p]) => `<button type="button" class="i
 $$('#align button').forEach((b) => b.onclick = () => {
   if (!sel) return toast('Select a layer or a text box first');
   const r = pframe.getBoundingClientRect(), B = itemBox(sel, r.width, r.height), k = b.dataset.al;
-  const dx = k === 'l' ? PM.l - B.l : k === 'c' ? 0.5 - (B.l + B.r) / 2 : k === 'r' ? PM.r - B.r : 0;
-  const dy = k === 't' ? 0.06 - B.t : k === 'm' ? 0.5 - (B.t + B.b) / 2 : k === 'b' ? 0.94 - B.b : 0;
+  const M = marg();
+  const dx = k === 'l' ? M.l - B.l : k === 'c' ? 0.5 - (B.l + B.r) / 2 : k === 'r' ? M.r - B.r : 0;
+  const dy = k === 't' ? M.t - B.t : k === 'm' ? 0.5 - (B.t + B.b) / 2 : k === 'b' ? M.b - B.b : 0;
   edit(() => moveItem(sel, dx, dy));
 });
 $('#snap').onclick = () => { snapOn = !snapOn; $('#snap').setAttribute('aria-checked', snapOn); };
@@ -1152,15 +1211,21 @@ function selGroup() {
     <div class="row"><span class="l">Align</span>${seg('sel.align', { label: 'Text align', get: () => o.align })}</div>
     <div class="row"><span class="l" id="l-sel-bold">Bold</span><button type="button" class="sw" role="switch" aria-checked="${o.bold}" aria-labelledby="l-sel-bold" data-tx="bold"></button></div>
     <div class="row"><span class="l">Colour</span><span class="swatches"><input type="color" data-tx="colour" value="${o.colour ?? frameStyle().title}" aria-label="Text colour">${o.colour ? '<button type="button" class="icon" data-tx="colourreset">Theme</button>' : ''}</span></div>
-    <div class="row"><span class="l">Position</span><span class="clock muted">${Math.round(o.x * 100)} %, ${Math.round(o.y * 100)} %</span></div>
+    ${xywh()}
   </div>`;
   const isPart = sel.startsWith('p:');
   return `<div class="selgrp" id="selgrp"><span class="cap">${esc(labelOf(sel))}</span>
-    ${slider('sel.s', 'Scale', 0.2, 4, 0.01, (n) => `${Math.round(n * 100)} %`, { get: () => o.s })}
+    ${xywh()}
     <div class="row"><span class="l">Colour</span><span class="swatches"><input type="color" data-ly="colour" value="${toHex(o.colour ?? swatchOf(sel))}" aria-label="Layer colour">${o.colour ? '<button type="button" class="icon" data-ly="colourreset">Follow Colours</button>' : ''}</span></div>
-    <div class="row"><span class="l">Offset</span><span class="clock muted">${Math.round(o.dx * 100)} %, ${Math.round(o.dy * 100)} %</span></div>
-    <small class="hint">${isPart ? 'Moves, scales and recolours the whole part.' : 'One line of its part; it still follows the music.'} Notes are edited in Music.</small>
+    <small class="hint">${isPart ? 'The whole part.' : 'One line of its part; it still follows the music.'} Its colour also shows in the video; position and size are poster-only. Notes are edited in Music.</small>
   </div>`;
+}
+// X, Y, W, H of the selection in poster pixels, typed to move or resize it.
+function xywh() {
+  const r = pframe.getBoundingClientRect(); if (!r.width || !sel) return '';
+  const B = itemBox(sel, r.width, r.height), k = S.poster.w;
+  const v = { x: B.l * k, y: B.t * S.poster.h, w: (B.r - B.l) * k, h: (B.b - B.t) * S.poster.h };
+  return `<div class="xywh">${['x', 'y', 'w', 'h'].map((n) => `<label>${n.toUpperCase()}<input type="number" data-box="${n}" value="${Math.round(v[n])}" aria-label="${{ x: 'X', y: 'Y', w: 'Width', h: 'Height' }[n]} in poster pixels"></label>`).join('')}</div>`;
 }
 function toHex(c) {
   if (/^#[0-9a-f]{6}$/i.test(c)) return c;
@@ -1180,7 +1245,6 @@ function buildSide() {
       ${field('File', seg('poster.file', { label: 'File' }))}
       ${field('Section', seg('section.mode', { label: 'Section' }) + sectionMini())}
       ${slider('poster.rows', 'Rows', 1, 8, 1, (n) => `${n}`)}
-      ${sw('poster.titleBlock', 'Title block (name, length, key)')}
       ${S.section.mode === 'custom' ? sw('poster.pieceRange', 'Piece’s pitch range') : ''}
       ${field('Theme', seg('theme', { label: 'Theme' }))}
       ${coloursGroup('poster')}${lookGroup('poster')}${hudGroup('poster')}`;
@@ -1222,13 +1286,13 @@ function onSlider(path, v, inp) {
   const out = (txt) => { const o = inp.parentElement.querySelector('output'); if (o) o.textContent = txt; };
   if (path.startsWith('sel.')) {
     if (!slideSnap) slideSnap = snapL();
-    const o = itemPos(sel); if (path === 'sel.size') { o.size = v; out(`${Math.round(v * S.poster.h)} px`); } else { o.s = v; out(`${Math.round(v * 100)} %`); }
+    const o = itemPos(sel); if (path === 'sel.size') { o.size = v; o.auto = false; out(`${Math.round(v * S.poster.h)} px`); }
     renderPoster(); return;
   }
   if (path === 'video.window') { const w = ZMIN * Math.pow(ZMAX / ZMIN, v / 1000); const tick = zToR(S.zoom); S.video.window = Math.abs(v - tick) < 25 ? null : w; const ww = videoWindow(); out(`${ww < 10 ? ww.toFixed(1) : Math.round(ww)} s`); if (S.video.window == null) inp.value = tick; markCustom(); draw(); return; }
   if (path === 'look.followAt') { S.look.followAt = v; out(`${Math.round(v * 100)} %`); draw(); return; }
-  if (path === 'poster.w' || path === 'poster.h') { S.poster[path.slice(7)] = v; S.poster.size = matchSize(); out(`${v} px`); $('#pfoot').textContent = `${S.poster.w} × ${S.poster.h}, ${S.poster.file.toUpperCase()}`; syncSegs($('#pside')); draw(); return; }
-  setPath(path, v);
+  if (path === 'poster.w' || path === 'poster.h') { sizeChanged = true; S.poster[path.slice(7)] = v; S.poster.size = matchSize(); out(`${v} px`); $('#pfoot').textContent = `${S.poster.w} × ${S.poster.h}, ${S.poster.file.toUpperCase()}`; syncSegs($('#pside')); draw(); return; }
+  setPath(path, v); if (path === 'poster.rows') sizeChanged = true;
   const fmtMap = { 'look.future': (n) => (n <= 0 ? 'Hidden' : n >= 1 ? 'Full' : `${Math.round(n * 100)} %`), 'look.width': (n) => `${Number(n.toFixed(2))}×`, 'poster.rows': (n) => `${n}` };
   out((fmtMap[path] ?? pct)(v));
   draw();
@@ -1244,7 +1308,7 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   const sg = b.closest('[data-seg]');
   if (sg && b.dataset.v != null) return onSeg(sg.dataset.seg, b.dataset.v, sg);
-  if (b.dataset.sw) { const p = b.dataset.sw; setPath(p, !getPath(p)); if (p === 'poster.titleBlock') { edit(() => L.texts.forEach((t) => { if (t.id === 'title' || t.id === 'credit') t.hidden = !S.poster.titleBlock; })); } rebuild(`[data-sw="${p}"]`); return; }
+  if (b.dataset.sw) { const p = b.dataset.sw; setPath(p, !getPath(p)); rebuild(`[data-sw="${p}"]`); return; }
   if (b.dataset.flag) { S.look[b.dataset.flag] = !S.look[b.dataset.flag]; rebuild(`[data-flag="${b.dataset.flag}"]`); return; }
   if (b.dataset.hud) { const [k, id] = b.dataset.hud.split(':'); const key = k === 'video' ? 'hudV' : 'hudP'; S[key] = S[key].includes(id) ? S[key].filter((x) => x !== id) : [...S[key], id]; rebuild(`[data-hud="${b.dataset.hud}"]`); return; }
   if (b.dataset.tx === 'bold') { edit(() => { const o = itemPos(sel); o.bold = !o.bold; }); refocus('[data-tx="bold"]'); return; }
@@ -1256,7 +1320,7 @@ document.addEventListener('click', (e) => {
 function onSeg(path, v, sg) {
   const cur = SEGS[path].find(([x]) => String(x) === v)[0];
   if (path === 'sel.font' || path === 'sel.align') { edit(() => { itemPos(sel)[path.slice(4)] = cur; }); refocus(`[data-seg="${path}"] [data-v="${v}"]`); return; }
-  if (path === 'poster.size') { S.poster.size = cur; [S.poster.w, S.poster.h] = SIZES[cur]; geomKey = ''; }
+  if (path === 'poster.size') { S.poster.size = cur; [S.poster.w, S.poster.h] = SIZES[cur]; geomKey = ''; sizeChanged = true; }
   else if (path === 'col.scheme') applyScheme(cur);
   else if (path === 'video.preset') applyPreset(cur);
   else if (path === 'section.mode') { S.section.mode = cur; if (cur === 'custom' && S.section.a === 0 && S.section.b === DUR) { S.section.a = 28.8; S.section.b = 67.2; } }
@@ -1290,6 +1354,16 @@ document.addEventListener('change', (e) => {
   const t = e.target;
   if ((t.dataset.tx === 'text' || t.dataset.tx === 'colour' || t.dataset.ly === 'colour') && slideSnap) { if (snapL() !== slideSnap) pushUndo(slideSnap); slideSnap = null; renderLayers(); buildSideSel(); }
   if (t.dataset.col || t.dataset.part) buildSide();
+  if (t.dataset.box && sel) {
+    const r = pframe.getBoundingClientRect(), B = itemBox(sel, r.width, r.height), kx = r.width / S.poster.w, ky = r.height / S.poster.h;
+    const B0 = { l: B.l * r.width, t: B.t * r.height, r: B.r * r.width, b: B.b * r.height };
+    const n = { x: B0.l, y: B0.t, w: B0.r - B0.l, h: B0.b - B0.t }, val = +t.value;
+    if (Number.isFinite(val)) {
+      n[t.dataset.box] = t.dataset.box === 'x' ? val * kx : t.dataset.box === 'y' ? val * ky : Math.max(8, (t.dataset.box === 'w' ? val * kx : val * ky));
+      edit(() => setBox(sel, B0, { l: n.x, t: n.y, r: n.x + n.w, b: n.y + n.h }, { ...itemPos(sel) }, r.width, r.height));
+    }
+    refocus(`[data-box="${t.dataset.box}"]`);
+  }
   if (t.dataset.sec) {
     const m = /^(\d+):(\d{1,2}(?:\.\d+)?)$/.exec(t.value.trim()) ?? /^()(\d+(?:\.\d+)?)$/.exec(t.value.trim());
     if (m) { const v = clamp((+m[1] || 0) * 60 + +m[2], 0, DUR); if (t.dataset.sec === 'a') S.section.a = Math.min(v, S.section.b - 2.4); else S.section.b = Math.max(v, S.section.a + 2.4); }
@@ -1596,13 +1670,16 @@ function setMode(m, quiet) {
   if (editing) endEdit();
   const from = S.mode; S.mode = m; $('#app').dataset.mode = m;
   for (const b of $$('#modes button')) b.setAttribute('aria-pressed', b.dataset.m === m);
-  if (m !== 'music') { S.lastExport = m; $('#mi-export-to').textContent = `opens ${m === 'poster' ? 'Poster' : 'Video'}`; }
+  if (m !== 'music') { S.lastExport = m; $('#mi-export-to').textContent = m === 'poster' ? 'Poster' : 'Video'; }
+  if (S.playing && from === 'video' && m !== 'video') S.tau = null;
   if (m === 'video') S.tau = null;
   if (m === 'music') { if (!(S.t >= S.mstart && S.t <= S.mstart + S.zoom)) S.mstart = clamp(S.t - 0.35 * S.zoom, 0, Math.max(0, DUR - S.zoom)); }
+  if (m === 'poster') renderPoster();
   buildSide(); renderLayers(); buildCtx(); draw();
-  if (!quiet && from !== m) badge(m === 'poster' ? `Same piece, same place: playhead ${clock(S.t)}` : m === 'video' ? `Kept your place: ${clock(S.t)}${S.video.camera === 'follow' && S.video.window == null ? `, ${Math.round(S.zoom)} s zoom` : ''}` : `Back at ${clock(S.t)}, ${Math.round(S.zoom)} s zoom`);
+  if (!quiet && from !== m) badge(m === 'poster' ? `The whole artboard · playhead ${clock(S.t)}` : m === 'video' ? `Kept your place: ${clock(S.t)}${S.video.camera === 'follow' && S.video.window == null ? `, ${Math.round(S.zoom)} s zoom` : ''}` : `Back at ${clock(S.t)}, ${Math.round(S.zoom)} s zoom`);
 }
 $$('#modes button').forEach((b) => b.onclick = () => setMode(b.dataset.m));
+$('#back').onclick = () => setMode('music');
 let badgeT = 0;
 function badge(txt) { const b = $('#badge'); b.textContent = txt; b.classList.add('on'); clearTimeout(badgeT); badgeT = setTimeout(() => b.classList.remove('on'), 2600); }
 let toastT = 0;
@@ -1636,7 +1713,13 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => rebu
 // keys
 document.addEventListener('keydown', (e) => {
   const t = e.target, typing = t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName) && !['range', 'color'].includes(t.type);
-  if (e.key === 'Escape') { if (!menu.hidden) { openMenu(false); mbtn.focus(); } if (!audio.hidden) { audio.hidden = true; mbtn.focus(); } }
+  if (e.key === 'Escape') {
+    if (!menu.hidden || !audio.hidden) { openMenu(false); audio.hidden = true; mbtn.focus(); return; }
+    if (typing || editing) return;
+    if (S.mode === 'video' && (S.selKey != null || S.selCard)) { S.selKey = null; S.selCard = null; rebuildVideo(); return; }
+    if ((S.mode === 'poster' && !sel) || S.mode === 'video') { setMode('music'); return; }
+    if (S.mode === 'poster' && sel) { select(null); return; }
+  }
   if (typing) return;
   if (e.key === ' ' && !(t.tagName === 'BUTTON')) { e.preventDefault(); S.playing ? stop() : play(); }
   if (S.mode === 'poster' && !e.metaKey && !e.ctrlKey) { if (e.key === 'v' || e.key === 'V') setTool('select'); if (e.key === 't' || e.key === 'T') setTool('text'); }
@@ -1658,6 +1741,6 @@ new ResizeObserver(() => { if (S.mode === 'video') drawTimeline(); }).observe(tl
 
 // init
 syncCtl(); zr.value = zToR(S.zoom); S.mstart = clamp(S.t - 0.35 * S.zoom, 0, DUR - S.zoom);
-syncHistory(); setMode('poster', true);
+syncHistory(); setMode('music', true);
 })();
 </script>
