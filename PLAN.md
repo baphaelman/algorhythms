@@ -1317,7 +1317,7 @@ These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, C
   - **Fades by default:** an establishing chord from silence fades in (default 0.5 s); tune rests and comebacks fade (about 0.2 s out, 50 ms in) instead of cutting in 20 ms; and `level` with `over: 0` gets a minimum 30 ms ramp. Each is an option.
 - *Accept when:* each item has a test that fails before it, and the gallery pieces that worked around these (Crease, Night Sleeper, Murmuration, Calling Changes) can drop their workarounds and still render within 0.5 dB per section.
 
-**Order (owner, 2026-11-24):** M14 Poster workspace, then M15 Video workspace, then M16 Piece panel, then M13.
+**Order (owner, 2026-11-24):** M14 Poster workspace, then M15 Play the poster, then M16 Piece panel, then M13.
 
 **M14. Poster workspace (owner, 2026-11-24: split the export workspace, poster first)**
 Export turns the editor into a poster workspace. The demo (`docs/design/export-workspace.html`, v2) sets the look; the owner's notes add depth: "if I'm giving this its own screen I really want customization", and the defaults must hold up at any size and setting.
@@ -1344,11 +1344,17 @@ Export turns the editor into a poster workspace. The demo (`docs/design/export-w
   - **P4** acceptance.
 - *Accept when:* every poster option of today's Export dialog is reachable in the workspace. At 16:9, square and A4 portrait, rows 1–8, whole piece and a section, every Song's default poster has no clipped text, no text outside the margins, no text over other text and no text box over the music (an automated check). Labels and lines toggle separately. Styling one Hz label restyles them all, and Alt-click styles one. Corner, edge, Shift and Alt resizing work by mouse and by typed numbers. Margins move everything inside them. Every edit undoes. The poster survives save, reload and a share link. PNG and SVG match the artboard. A poster layer's colour shows in the video export. Back to music restores the playhead and zoom. The specs pass on all three engines.
 
-**M15. Video workspace (after M14)**
-The Video side of the workspace, in the same shell. The demo's Video mode sets the look.
-- The **right panel** holds every video option of today's dialog (preset, size, frame rate, quality, loudness, camera, look, colours). The **bottom panel** is a timeline: the section's in and out handles, camera keys (add, drag, delete), opening and ending cards, and the thumbnail frame. The preview plays as today's does. The last button is Export MP4. Today's Export dialog then goes away.
-- The video opens at the editor's playhead and zoom. M14's label and line groups, margins and type scale apply to the frame where they make sense (HUD readouts, section and moment labels, guides).
-- *Accept when:* every video option of today's dialog is reachable; a video at the same settings draws the same frames as today's; camera keys and the section edit on the timeline; the video specs pass on all three engines.
+**M15. Play the poster (after M14; owner, 2026-11-24: "make the music, then its presentation")**
+The video plays the poster. The Poster workspace (M14) sets how the music is presented: colours, labels, text, margins, rows and layers. The video adds only what moves: the camera, timing, the frame, opening and ending, and encoding. It replaces the earlier Video workspace idea, in the same shell.
+- **Camera (owner: both):**
+  - **Over the poster:** the frame is a window that travels over the poster and follows the playhead's slice row by row, like reading a score. Follow, Whole (the whole poster in frame) and Keys work in poster space.
+  - **One row:** today's single long row at the video's shape, with the poster's styles.
+- **Stays or travels (owner: a setting):** each text box and HUD readout either stays on the poster or travels with the frame. Defaults: HUD readouts travel, text boxes stay. The title can be switched.
+- **Row breaks (owner: smooth pan by default, as a setting):** a smooth pan that lands as the next row starts, a scroll, or a cut.
+- **Moved layers (owner: ok):** a part moved away from the others lights up in its own place; the camera follows the main group.
+- **Ahead of the playhead:** the existing setting (hidden: the poster draws itself; dimmed; full, with the slice moving across). Default to be chosen by the owner.
+- **Panels:** the right panel holds the video-only options (preset, size, frame rate, quality, loudness, camera, opening and ending, thumbnail, description). The look options live in Poster, and the video reads them. The bottom panel is a timeline: the section's in and out handles, camera keys (add, drag, delete), opening and ending cards. The preview plays as today's does. The last button is Export MP4. Today's Export dialog then goes away.
+- *Accept when:* with One row and today's settings, a video draws the same frames as today's. Over the poster follows the slice across rows at every poster size and video aspect. The stays-or-travels setting and the row-break setting work. Every video option of today's dialog is reachable. Camera keys and the section edit on the timeline. The video specs pass on all three engines.
 
 **M16. Piece panel with a preview (after M15; owner, 2026-11-24)**
 In Music mode, when no moment is selected, the right panel shows the piece: a live video preview at the playhead, drawn as the export would draw it, so you can change the music and see how it looks. Below it are the piece's actions: New, My pieces, Open, Save, Share, Generate, Export (the menu keeps them too). Details to be mapped with the owner before it starts.
@@ -1421,7 +1427,7 @@ The original questions follow for reference.
 
 ### Revision 20 (2026-11-24): poster workspace first; video workspace; piece panel
 - **M14 becomes the Poster workspace** (owner, after demo v2): label and line groups styled as one (changing one Hz label changes all), labels and their lines toggled separately, margins, text styles and colours, defaults that hold up at every size; started.
-- **M15 Video workspace** and **M16 Piece panel with a preview** (owner) follow, then M13.
+- **M15 Play the poster** (owner: the video plays the poster; camera over the poster or one row; text stays or travels; row-break setting) and **M16 Piece panel with a preview** (owner) follow, then M13.
 
 ### Revision 19 (2026-11-24): export workspace (M14, proposed)
 - **M14:** the owner's Export workspace idea, after the demo: Export opens a Poster or Video workspace (no permanent three-mode switch), poster layers with corner/edge resizing, text boxes instead of the Title block switch, no text over the music by default, layer colours shared with the video.
