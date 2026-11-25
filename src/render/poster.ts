@@ -1,30 +1,17 @@
 /**
- * Poster frames (PLAN.md §12 "Poster export", revision 12): the whole piece drawn by `drawScore`
- * as if it had finished (t = duration: every line at full opacity, no ghost, no heads or
- * playhead, no editor overlays), with an optional title block. The same call draws a PNG on an
- * OffscreenCanvas and an SVG on `SvgContext`. DOM-free apart from the context it is handed.
- *
- * Title block: in the bottom band the HUD would use (`ScoreStyle.reserveHud`), below the plot and
- * the section markers' ends, so it never covers a line. The piece's name (HUD mono, 500 14 px,
- * ink) over "m:ss · key" (10.5 px, secondary ink) at the left inset, and "AlgoRhythms" (9.5 px,
- * secondary ink) right-aligned on the second line's baseline; the block is centred vertically in
- * the band.
- *
- * Rows (owner, 2026-11-23): the piece cut in time into rows stacked like systems in sheet music
- * (`posterRows`). Each row is a `drawScore` call on its own sub-rectangle (offset by `origin`, no
- * clip), one pitch range and one time scale for all; a row shorter than the longest is drawn
- * narrower, so it ends at its break. The HUD and title block are drawn once, in the bottom band
- * a one-row poster has.
+ * Posters (PLAN.md §12 "Poster export", §15 M14): the piece drawn as if it had finished (t =
+ * duration: every line at full opacity, no ghost, no heads or playhead, no editor overlays). Sizes,
+ * the poster style, rows and the title block's text; `drawPosterLayout` draws what
+ * `layoutPoster` (poster-layout.ts) laid out, as a PNG on an OffscreenCanvas or an SVG on
+ * `SvgContext`. DOM-free apart from the context it is handed.
  */
 
-import { keyAt } from '../core/query';
-import type { CompiledScore, Key, LineColors } from '../core/types';
-import { HUD_ROW, MIN_WINDOW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
+import type { CompiledScore, LineColors } from '../core/types';
+import { MIN_WINDOW, pitchExtentIn } from './camera';
 import { fillBackground } from './background';
-import { DEFAULT_MONO, drawScore, drawVignette, hudPlacement, keyName, type Ctx2D } from './draw';
-import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
+import { drawScore, drawVignette, type Ctx2D } from './draw';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
-import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
+import type { CameraState, MomentLabels, MomentTimes, ScoreStyle } from './types';
 import type { LayerLayout, PosterLayout, PosterObject } from './poster-layout';
 import { barSeconds, isWholeSpan, sectionText, type TimeSpan } from './section';
 import { videoCamera, videoSpan } from './video';
@@ -46,23 +33,6 @@ export function posterSize(kind: PosterSize | PosterDims): PosterDims {
   if (kind === '16:9') return { width: 3840, height: 2160 };
   if (kind === '1:1') return { width: 2160, height: 2160 };
   return { width: 2480, height: 3508 };
-}
-
-/**
- * Pixel ratio of every poster size: the 16:9 poster is the video's 853×480 layout at 4.5× (twice
- * its 1080p ratio), so type, dots and lines keep the player's proportions. One ratio for all
- * sizes keeps 10 px type at 45 px (about 11 pt on A4 at 300 dpi).
- */
-export const POSTER_DPR = 4.5;
-
-/** The layout size (CSS-like px) and pixel ratio `drawScore` is called with. */
-export function posterLayout(kind: PosterSize | PosterDims): {
-  width: number;
-  height: number;
-  dpr: number;
-} {
-  const p = posterSize(kind);
-  return { width: p.width / POSTER_DPR, height: p.height / POSTER_DPR, dpr: POSTER_DPR };
 }
 
 /**
@@ -97,7 +67,7 @@ export interface PosterStyleOptions {
   /**
    * The export Look (§12 "Export look"); replaces theme, thickness, transparent and colors
    * below. Its future, playhead and heads are ignored (the finished piece); its HUD is drawn as
-   * at the piece's end, above the title block.
+   * at the piece's end.
    */
   look?: Look;
   theme: 'light' | 'dark';
@@ -105,8 +75,6 @@ export interface PosterStyleOptions {
   thickness?: boolean;
   /** No background fill. @default false */
   transparent?: boolean;
-  /** Leave the bottom band for the title block. @default false */
-  title?: boolean;
   /** @default 'pitch' */
   colors?: LineColors;
   /** @default true */
@@ -121,9 +89,6 @@ export interface PosterStyleOptions {
   meter?: number;
   pieceName?: string;
 }
-
-/** Room below the HUD rows for the title block when both are on, layout px. */
-export const TITLE_EXTRA = 48;
 
 /**
  * The poster's ScoreStyle: finished (no ghost, heads or playhead), section labels on. Without a
@@ -152,55 +117,11 @@ export function posterStyle(o: PosterStyleOptions): ScoreStyle {
   style.heads = false;
   style.playhead = false;
   delete style.aheadHidden;
-  return withTitle(style, o.title === true);
-}
-
-/** `style` with the bottom band for the title block (or without it), copied only if it changes. */
-function withTitle(style: ScoreStyle, title: boolean): ScoreStyle {
-  const extra = title && hudRows(hudItems(style)) > 0 ? TITLE_EXTRA : undefined;
-  if ((style.reserveHud === true) === title && style.hudExtra === extra) return style;
-  const out: ScoreStyle = { ...style };
-  if (title) out.reserveHud = true;
-  else delete out.reserveHud;
-  if (extra !== undefined) out.hudExtra = extra;
-  else delete out.hudExtra;
-  return out;
-}
-
-/** What the title block shows besides the score. */
-export interface PosterInfo {
-  /** The piece's name; empty shows "Untitled". */
-  name: string;
-  /** Default: the score's key at 0 (at the section's start with a section). */
-  key?: Key;
-  /** The section drawn: the meta line gives its length and "0:45–1:30 of 2:28". */
-  section?: TimeSpan;
-}
-
-export interface PosterDrawOptions {
-  size: PosterSize | PosterDims;
-  /** From `posterStyle` (its `title` must match `title` here). */
-  style: ScoreStyle;
-  /** Draw the title block. */
-  title: boolean;
-  pitchRange?: [number, number];
-  /** Rows the piece is cut into, 1..POSTER_MAX_ROWS. @default 1 */
-  rows?: number;
-  /** The piece's bar grid (`view.gridBpm`, `view.meter`): row breaks snap to its bar lines. */
-  grid?: { bpm: number; meter?: number };
-  /**
-   * The section drawn (§12 rev 15); absent or the whole piece = the whole piece. Rows split it;
-   * the title block adds its times.
-   */
-  section?: TimeSpan;
-  /** With a section: keep the whole piece's pitch range instead of fitting the section's. */
-  pieceRange?: boolean;
+  return style;
 }
 
 /** Most rows a poster takes. */
 export const POSTER_MAX_ROWS = 8;
-/** Gap between rows, layout px. */
-export const ROW_GAP = 8;
 
 /** One row of a poster: the time it shows. */
 export interface PosterRow {
@@ -289,56 +210,6 @@ export function resetContext(ctx: Ctx2D): void {
   g.textAlign = 'start';
   g.textBaseline = 'alphabetic';
   if ('letterSpacing' in g) g.letterSpacing = '0px';
-}
-
-/**
- * Clears and draws the poster on a context whose canvas is `posterSize(size)` pixels (a canvas,
- * an OffscreenCanvas or an `SvgContext` through `asCtx2D`), or `scale` times that (the Export
- * dialog's preview: the same picture, smaller). Returns the score's view.
- */
-export function drawPoster(
-  ctx: Ctx2D,
-  compiled: CompiledScore,
-  info: PosterInfo,
-  opts: PosterDrawOptions,
-  scale = 1,
-): View {
-  const lay = posterLayout(opts.size);
-  const { width, height } = lay;
-  const dpr = lay.dpr * scale;
-  const px = posterSize(opts.size);
-  resetContext(ctx);
-  ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
-  let style = withTitle(opts.style, opts.title);
-  const span = posterSpan(compiled, opts.section);
-  const cam = posterCamera(compiled, opts.pitchRange, span, opts.pieceRange === true);
-  const tInfo: PosterInfo = span ? { ...info, section: span } : info;
-  const rows = span
-    ? posterRows(span.end, opts.rows ?? 1, opts.grid, span.start)
-    : posterRows(compiled.duration, opts.rows ?? 1, opts.grid);
-  if (rows.length > 1) {
-    const view = drawRows(ctx, compiled, cam, style, rows, { width, height }, dpr);
-    if (opts.title) drawTitleBlock(ctx, compiled, tInfo, style, view);
-    return view;
-  }
-  // A section shows only its own markers (as a row does).
-  if (span) style = { ...style, markerTimes: rowMarkers(compiled, style, span, true) };
-  const view = drawScore(ctx, compiled, cam, style, compiled.duration, { width, height }, dpr);
-  if (opts.title) drawTitleBlock(ctx, compiled, tInfo, style, view);
-  return view;
-}
-
-/**
- * Where `drawPoster` put each HUD readout (`view` is what it returned): the Export dialog's
- * overlay.
- */
-export function posterHudPlacement(
-  ctx: Ctx2D,
-  compiled: CompiledScore,
-  opts: PosterDrawOptions,
-  view: View,
-): HudPlacement {
-  return hudPlacement(ctx, compiled, withTitle(opts.style, opts.title), view);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -469,168 +340,4 @@ function drawObject(
   g.textBaseline = 'alphabetic';
   if ('letterSpacing' in g) g.letterSpacing = `${o.spacing}px`;
   for (const r of o.runs) g.fillText(r.text, r.x, r.y);
-}
-
-/** Type of the rows' time labels: the HUD's. */
-const ROW_LABEL_PX = 10.5;
-
-/**
- * The rows of a poster (see the file comment). Returns the one-row poster's view, which places
- * the HUD and the title block.
- */
-function drawRows(
-  ctx: Ctx2D,
-  compiled: CompiledScore,
-  cam: CameraState,
-  style: ScoreStyle,
-  rows: readonly PosterRow[],
-  size: { width: number; height: number },
-  dpr: number,
-): View {
-  const g = ctx as CanvasRenderingContext2D;
-  const { width: W, height: H } = size;
-  const items = hudItems(style);
-  const hud = hudRows(items);
-  const full = cameraAt(
-    cameraScore(compiled),
-    cam,
-    compiled.duration,
-    size,
-    hud > 0 ? hud : style.reserveHud === true,
-    style.hudExtra ?? 0,
-  );
-  const pitchRange: [number, number] = [full.pLo, full.pHi];
-  const band = hud > 0 || style.reserveHud === true ? full.padB : 0;
-  const n = rows.length;
-  const rowH = Math.max(1, (H - band - ROW_GAP * (n - 1)) / n);
-  let span = 0;
-  for (const r of rows) span = Math.max(span, r.end - r.start);
-  // The vignette darkens the whole poster once, after the rows.
-  const rowStyle: ScoreStyle = { ...style, hud: false };
-  delete rowStyle.vignette;
-  // A gradient or picture spans the whole poster, drawn once below: the rows draw no background.
-  if (style.paint?.background) {
-    if (style.tokens.paper !== 'transparent')
-      rowStyle.tokens = { ...style.tokens, paper: 'transparent' };
-    const paint = { ...style.paint };
-    delete paint.background;
-    rowStyle.paint = paint;
-  }
-  delete rowStyle.reserveHud;
-  delete rowStyle.hudExtra;
-  const MONO = style.fontMono ?? DEFAULT_MONO;
-
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  fillBackground(g, style.tokens.paper, style.paint, W, H);
-  for (let i = 0; i < n; i++) {
-    const r = rows[i];
-    // Rows start on whole device pixels.
-    const y = Math.round(i * (rowH + ROW_GAP) * dpr) / dpr;
-    const len = r.end - r.start;
-    const s: ScoreStyle = { ...rowStyle, markerTimes: rowMarkers(compiled, style, r, i === n - 1) };
-    const view = drawScore(
-      ctx,
-      compiled,
-      { start: r.start, window: len, pitchRange },
-      s,
-      compiled.duration,
-      { width: (W * len) / span, height: rowH },
-      dpr,
-      { x: 0, y },
-    );
-    if (i > 0) {
-      g.globalAlpha = 1;
-      g.font = `${ROW_LABEL_PX}px ${MONO}`;
-      g.fillStyle = style.paint?.labels ?? style.tokens.ink2;
-      g.textAlign = 'left';
-      g.textBaseline = 'alphabetic';
-      g.fillText(posterLength(r.start), full.padL, view.padT - 4);
-    }
-  }
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (style.vignette) drawVignette(g, W, H, Math.min(1, style.vignette));
-  if (hud > 0) drawHud(g, compiled, style, full, MONO, items);
-  return full;
-}
-
-/**
- * Marker times for one row: the markers in [start, end) (the last row also takes its end) at
- * their times, the rest out of every view (−∞), so a marker on a break shows only in the row it
- * starts.
- */
-function rowMarkers(
-  compiled: CompiledScore,
-  style: ScoreStyle,
-  row: PosterRow,
-  last: boolean,
-): MomentTimes {
-  const out: Record<string, number> = {};
-  for (const s of compiled.momentSpans) {
-    const t = style.markerTimes?.[s.id] ?? s.start;
-    out[s.id] = t >= row.start && (t < row.end || (last && t <= row.end)) ? t : -Infinity;
-  }
-  return out;
-}
-
-/** Line heights of the title block, layout px. */
-const NAME_PX = 14;
-const META_PX = 10.5;
-const CREDIT_PX = 9.5;
-const META_GAP = 17;
-
-/** The title block in the band below the plot (see the file comment). */
-export function drawTitleBlock(
-  ctx: Ctx2D,
-  compiled: CompiledScore,
-  info: PosterInfo,
-  style: ScoreStyle,
-  view: View,
-): void {
-  const g = ctx as CanvasRenderingContext2D;
-  const MONO = style.fontMono ?? DEFAULT_MONO;
-  const C = style.tokens;
-  const { width: W, height: H, padB, padL, padR } = view;
-  // The band starts below the section markers (they end 6 px under the plot), or below the HUD.
-  let top = H - padB + 6;
-  const rows = hudRows(hudItems(style));
-  if (rows > 0) {
-    const extra = style.hudExtra ?? 0;
-    const lines = hudLines(padB - extra, rows);
-    if (lines > 0) top = hudTop(view, lines, extra) + HUD_ROW * (lines - 1) + 8;
-  }
-  const block = NAME_PX + META_GAP;
-  const y1 = top + Math.max(4, (H - top - block) / 2) + NAME_PX * 0.75;
-  const y2 = y1 + META_GAP;
-  g.globalAlpha = 1;
-  g.textBaseline = 'alphabetic';
-  g.textAlign = 'left';
-
-  g.font = `500 ${NAME_PX}px ${MONO}`;
-  g.fillStyle = style.paint?.title ?? C.ink;
-  g.fillText(fitText(g, info.name.trim() || 'Untitled', W - padL - padR), padL, y1);
-
-  g.font = `${META_PX}px ${MONO}`;
-  g.fillStyle = style.paint?.title ?? C.ink2;
-  const sec = info.section;
-  const key = sec ? keyAt(compiled, sec.start) : (info.key ?? keyAt(compiled, 0));
-  g.fillText(posterMeta(compiled.duration, keyName(key), sec), padL, y2);
-
-  g.font = `${CREDIT_PX}px ${MONO}`;
-  g.textAlign = 'right';
-  g.fillText(POSTER_CREDIT, W - padR, y2);
-  g.textAlign = 'left';
-}
-
-/** `text`, cut with an ellipsis to fit `max` px in the current font. */
-function fitText(g: CanvasRenderingContext2D, text: string, max: number): string {
-  if (g.measureText(text).width <= max) return text;
-  const chars = [...text];
-  let lo = 0;
-  let hi = chars.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (g.measureText(chars.slice(0, mid).join('').trimEnd() + '…').width <= max) lo = mid;
-    else hi = mid - 1;
-  }
-  return chars.slice(0, lo).join('').trimEnd() + '…';
 }

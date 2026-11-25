@@ -27,6 +27,7 @@ import { addressSettled, openPoster, surface, workspace } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
+import { LOOK_CONTROLS } from '../../src/app/look-controls';
 
 interface HookWindow {
   __algorhythms: {
@@ -163,6 +164,43 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   for (const box of await page.getByTestId('look-hud').locator('input').all()) {
     await expect(box).not.toBeChecked();
   }
+});
+
+test('every poster option of the old Export dialog is in the workspace', async ({ page }) => {
+  await openExport(page);
+  const d = dialog(page);
+  // The old dialog's poster tab (before M14 P2): size picks, width, height, rows and the cap
+  // hint (its own test below: "Rows slider…"); the file format; theme; the section and the piece's pitch range; every Look control
+  // that applies to posters; guide lines at pitches; the HUD list and its placement on the
+  // preview; colours (schemes and swatches); Reset; Export. The Title block switch is replaced by
+  // the text boxes (layers list).
+  const ids = [
+    'export-psize',
+    'export-pwidth',
+    'export-pheight',
+    'export-prows',
+    'export-pformat',
+    'export-vtheme',
+    'export-section-field',
+    ...LOOK_CONTROLS.filter((c) => c.kinds.includes('poster')).map((c) => `look-${c.id}`),
+    'look-pitch-guides',
+    'look-hud-button',
+    'colours',
+    'colours-scheme',
+    'look-bg',
+    'look-reset',
+    'export-run',
+  ];
+  for (const id of ids) await expect(d.getByTestId(id), id).toBeVisible();
+  await expect(page.getByTestId('export-ptitle')).toHaveCount(0);
+  await expect(page.getByTestId('layer-text')).toHaveCount(2);
+  // The piece's pitch range, with a section.
+  await choose(page, 'export-section', 'Custom');
+  await expect(page.getByTestId('export-prange')).toBeVisible();
+  // A HUD readout shows on the artboard as a box to drag.
+  await openHud(page);
+  await setSwitch(page, 'hud-chord', true);
+  await expect(page.getByTestId('hud-overlay').getByTestId('hud-box-chord')).toBeVisible();
 });
 
 test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transparency', async ({

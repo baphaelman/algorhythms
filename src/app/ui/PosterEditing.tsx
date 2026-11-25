@@ -71,7 +71,14 @@ import {
   type AlignTo,
   type PosterSelection,
 } from '../poster-select';
-import { editPoster, editPosterRun, posterGesture, type PosterGesture } from '../poster-sync';
+import {
+  editPoster,
+  editPosterEntry,
+  editPosterJoin,
+  editPosterRun,
+  posterGesture,
+  type PosterGesture,
+} from '../poster-sync';
 import { linesText, posterLayers, useWorkspace, type WorkspaceTool } from '../poster-workspace';
 import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
@@ -132,6 +139,9 @@ export function alignSelection(how: AlignTo): void {
   editPoster((d) => placeRect(d, layout, sel, f, alignBox(f, layout.content, how)), 'Align');
 }
 
+/** The text box the Text tool just added and its undo entry: its first text joins that entry. */
+let added: { id: string; entry: object } | null = null;
+
 /** The Text tool: a new text box with its top left at (x, y), edited in place. */
 export function addTextAt(layout: PosterLayout, x: number, y: number): void {
   const doc = docNow();
@@ -150,7 +160,9 @@ export function addTextAt(layout: PosterLayout, x: number, y: number): void {
       h: h / layout.height,
     },
   };
-  if (editPoster((d) => putText(d, text), 'Add text box')) {
+  const entry = editPosterEntry((d) => putText(d, text), 'Add text box');
+  if (entry) {
+    added = { id, entry };
     useWorkspace.setState({ selected: { kind: 'text', id }, tool: 'select', editing: id });
   }
 }
@@ -457,11 +469,17 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
   const commit = (text: string) => {
     if (done.current) return;
     done.current = true;
+    const join = added?.id === id ? added.entry : null;
+    added = null;
     if (text !== t.text) {
-      editPoster((d) => {
-        const cur = textOf(d, id);
-        return cur ? putText(d, { ...cur, text }) : d;
-      }, 'Edit text');
+      editPosterJoin(
+        join,
+        (d) => {
+          const cur = textOf(d, id);
+          return cur ? putText(d, { ...cur, text }) : d;
+        },
+        join ? 'Add text box' : 'Edit text',
+      );
     }
     useWorkspace.setState({ editing: null });
   };
@@ -473,6 +491,7 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
       e.preventDefault();
       e.stopPropagation();
       done.current = true;
+      added = null;
       useWorkspace.setState({ editing: null });
     }
   };

@@ -8,19 +8,17 @@ import {
   EXPORT_LOOK,
   HUD_BASELINE,
   HUD_BOX_H,
-  POSTER_DPR,
   clampBox,
-  drawPoster,
+  drawPosterLayout,
   drawScore,
   drawVideoFrameAt,
   freeSpot,
   hudPlacement,
   hudPosText,
+  layoutPoster,
   parseHudPos,
   placeBox,
   posOfBox,
-  posterHudPlacement,
-  posterStyle,
   snapBox,
   videoLayout,
   videoStyle,
@@ -282,28 +280,25 @@ describe('placed HUD in exports', () => {
     }
   });
 
-  it('lands at its box in an SVG poster (device px)', () => {
+  it('lands at its box on a poster (artboard px), drawn there in the SVG', () => {
     const p: Piece = piece({ start: [48, 55, 64, 72], key: { tonic: 'C', scale: 'major' } });
+    p.meta.title = 'Kite';
     const compiled = compile(p);
-    const c = new SvgContext(3840, 2160);
-    const style = posterStyle({
-      theme: 'light',
+    const L = layoutPoster({
+      compiled,
+      piece: p,
+      doc: { texts: [] },
       look: { ...look, hud: ['title'], hudLayout: { title: { anchor: 'tl', x: 0.25, y: 0.5 } } },
-      pieceName: 'Kite',
     });
-    const opts = { size: { width: 3840, height: 2160 }, style, title: false };
-    const view = drawPoster(asCtx2D(c), compiled, { name: 'Kite' }, opts);
-    const svg = c.toSvg();
-    const m = svg.match(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>Kite<\/text>/);
+    const box = L.objects.find((o) => o.group === 'hud' && o.member === 'title')!.box;
+    expect(box.x).toBeCloseTo(L.width * 0.25, 6);
+    expect(box.y).toBeCloseTo(L.height * 0.5, 6);
+    const c = new SvgContext(L.width, L.height);
+    drawPosterLayout(asCtx2D(c), compiled, L);
+    const m = c.toSvg().match(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>Kite<\/text>/);
     expect(m).not.toBeNull();
-    expect(Number(m![1])).toBeCloseTo(3840 * 0.25, 1);
-    expect(Number(m![2])).toBeCloseTo((view.height * 0.5 + HUD_BASELINE) * POSTER_DPR, 1);
-    // The placement the dialog overlays is the same box.
-    const pl = posterHudPlacement(asCtx2D(c), compiled, opts, view);
-    expect(pl.boxes[0]).toMatchObject({
-      item: 'title',
-      x: view.width * 0.25,
-      y: view.height * 0.5,
-    });
+    expect(Number(m![1])).toBeCloseTo(box.x, 1);
+    expect(Number(m![2])).toBeGreaterThan(box.y);
+    expect(Number(m![2])).toBeLessThan(box.y + box.h);
   });
 });

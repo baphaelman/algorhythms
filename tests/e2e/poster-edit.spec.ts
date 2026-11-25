@@ -522,6 +522,158 @@ test('the layers list selects, hides and reorders; selecting there selects on th
   await expect(page.getByTestId('selection-title')).toHaveText('Row times');
 });
 
+test('every edit kind is one undo step (M14 acceptance)', async ({ page }) => {
+  test.setTimeout(120_000);
+  await snapOff(page);
+  const ws = page.getByTestId('poster-workspace');
+  const sectionLabel = async () =>
+    (await layout(page)).objects.find((o) => o.group === 'sectionLabels')!;
+  const clickAt = async (b: Box, mods: string[] = []) => {
+    const c = centre(b);
+    const at = await toPage(page, c.x, c.y);
+    for (const m of mods) await page.keyboard.down(m);
+    await page.mouse.click(at.x, at.y);
+    for (const m of mods) await page.keyboard.up(m);
+  };
+  const selectLayer = async () => {
+    const { id, p } = await layerPoint(page);
+    const at = await toPage(page, p.x, p.y);
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(() => selected(page)).toEqual({ kind: 'layer', id });
+  };
+  const addText = async () => {
+    await page.getByTestId('tool-text').click();
+    const L = await layout(page);
+    const at = await toPage(page, L.width * 0.3, L.height * 0.6);
+    await page.mouse.click(at.x, at.y);
+    await expect(page.getByTestId('inline-text')).toBeFocused();
+    await page.keyboard.type('Undo me');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('inline-text')).toHaveCount(0);
+  };
+  const selectTitle = () =>
+    page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click();
+  // [name, set-up (no edit), the edit]
+  const edits: [string, (() => Promise<void>) | null, () => Promise<void>][] = [
+    [
+      'size',
+      null,
+      () => page.getByTestId('export-psize').getByLabel('1:1', { exact: true }).click(),
+    ],
+    ['rows', null, () => setRange(page, 'export-prows', 3)],
+    [
+      'theme',
+      null,
+      () => page.getByTestId('export-vtheme').getByLabel('Dark', { exact: true }).click(),
+    ],
+    ['Look segment', null, () => chooseSegment(page, 'look-guides', 'Lines + labels')],
+    ['Look slider', null, () => setRange(page, 'look-width', 1.5)],
+    ['margins', null, () => setRange(page, 'margin-all', 10)],
+    ['label switch', null, () => page.getByTestId('show-sectionLabels').click()],
+    ['line switch', null, () => page.getByTestId('show-sectionLines').click()],
+    [
+      'rows by sections',
+      null,
+      () => page.getByTestId('rows-by').getByLabel('By sections', { exact: true }).click(),
+    ],
+    [
+      'group style',
+      async () => clickAt((await sectionLabel()).box),
+      () => setRange(page, 'sel-size', 150),
+    ],
+    [
+      'member style',
+      async () => clickAt((await sectionLabel()).box, ['Alt']),
+      () => page.getByTestId('sel-colour-hex').fill('#ff0000'),
+    ],
+    [
+      'layer drag',
+      null,
+      async () => {
+        const { p } = await layerPoint(page);
+        await drag(page, p, 50, 30);
+      },
+    ],
+    ['layer handle', selectLayer, () => dragHandle(page, 'se', -40, -30)],
+    [
+      'layer typed W',
+      selectLayer,
+      async () => {
+        await page.getByTestId('sel-w').fill('2000');
+        await page.getByTestId('sel-w').press('Enter');
+      },
+    ],
+    [
+      'layer nudge',
+      async () => {
+        await selectLayer();
+        await ws.focus();
+      },
+      () => page.keyboard.press('ArrowRight'),
+    ],
+    ['layer align', selectLayer, () => page.getByTestId('align-right').click()],
+    ['layer colour', selectLayer, () => page.getByTestId('sel-colour-hex').fill('#00ff00')],
+    [
+      'layer hide',
+      async () => {
+        await selectLayer();
+        await ws.focus();
+      },
+      () => page.keyboard.press('Delete'),
+    ],
+    [
+      'layer order',
+      null,
+      () => page.getByTestId('layer-part').nth(0).getByTestId('layer-forward').click(),
+    ],
+    ['text add', null, addText],
+    [
+      'text edit',
+      selectTitle,
+      async () => {
+        await page.getByTestId('sel-text').fill('Renamed');
+        await page.getByTestId('sel-text').press('Enter');
+      },
+    ],
+    [
+      'text style',
+      selectTitle,
+      () => page.getByTestId('sel-weight').getByLabel('Bold', { exact: true }).click(),
+    ],
+    [
+      'text move',
+      null,
+      async () => {
+        const f = await textFrame(page, 'title');
+        await drag(page, centre(f), 0, 40);
+      },
+    ],
+    [
+      'text remove',
+      async () => {
+        await selectTitle();
+        await ws.focus();
+      },
+      () => page.keyboard.press('Delete'),
+    ],
+  ];
+  for (const [name, setUp, edit] of edits) {
+    if (setUp) await setUp();
+    const before = JSON.stringify(await posterDoc(page));
+    await edit();
+    await expect
+      .poll(async () => JSON.stringify(await posterDoc(page)), { message: `${name}: edits` })
+      .not.toBe(before);
+    // Past the 1 s run window, so the next edit starts its own entry.
+    await page.waitForTimeout(1100);
+    await undo(page);
+    await expect
+      .poll(async () => JSON.stringify(await posterDoc(page)), { message: `${name}: one undo` })
+      .toBe(before);
+    await page.getByTestId('tool-select').click();
+  }
+});
+
 test('Re-fit layout after a rows change leaves a text box over the music', async ({ page }) => {
   await snapOff(page);
   const L = await layout(page);
@@ -678,7 +830,10 @@ test('PNG and SVG draw what the artboard shows', async ({ page }) => {
 
 test('the playhead moves on the artboard while the music plays; hidden when stopped', async ({
   page,
+  browserName,
 }) => {
+  // Playwright's WebKit can't be muted: it plays only on CI.
+  test.skip(browserName === 'webkit' && !process.env.CI, 'WebKit plays audio out loud: CI only');
   await expect(page.getByTestId('artboard-playhead')).toHaveCount(0);
   await page.getByTestId('poster-workspace').focus();
   await page.keyboard.press('Space');

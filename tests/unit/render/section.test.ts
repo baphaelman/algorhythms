@@ -13,16 +13,16 @@ import {
   barSeconds,
   clampSpan,
   clockText,
-  drawPoster,
+  drawPosterLayout,
   drawVideoFrame,
   isWholeSpan,
+  layoutPoster,
   pitchExtent,
   pitchExtentIn,
   posterCamera,
   posterMeta,
   posterRows,
   posterSpan,
-  posterStyle,
   sectionText,
   snapToBar,
   stepBar,
@@ -33,6 +33,7 @@ import {
   videoSpan,
   videoStyle,
   type Ctx2D,
+  type PosterBase,
 } from '../../../src/render';
 import { SvgContext, asCtx2D } from '../../../src/render/svg';
 
@@ -208,7 +209,6 @@ describe('video within a section', () => {
 
 describe('poster of a section', () => {
   const sec = { start: 45, end: 90 };
-  const style = posterStyle({ theme: 'light', title: true, ...videoMarkers(rain) });
 
   it('posterSpan: none for absent or whole', () => {
     expect(posterSpan(rainC)).toBeUndefined();
@@ -225,20 +225,11 @@ describe('poster of a section', () => {
     expect(posterCamera(rainC).start).toBe(0);
   });
 
-  function svgOf(o: Partial<Parameters<typeof drawPoster>[3]>): { svg: string; t: number } {
-    const svg = new SvgContext(3840, 2160);
-    const view = drawPoster(
-      asCtx2D(svg) as Ctx2D,
-      rainC,
-      { name: rain.meta.title },
-      {
-        size: '16:9',
-        style,
-        title: true,
-        ...o,
-      },
-    );
-    return { svg: svg.toSvg(), t: view.start };
+  function svgOf(base: PosterBase): { svg: string; t: number } {
+    const L = layoutPoster({ compiled: rainC, piece: rain, base });
+    const svg = new SvgContext(L.width, L.height);
+    drawPosterLayout(asCtx2D(svg) as Ctx2D, rainC, L);
+    return { svg: svg.toSvg(), t: L.rows[0].start };
   }
 
   it('draws the section, with its times in the title block; rows split it', () => {

@@ -7,16 +7,12 @@ import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 import {
-  POSTER_CREDIT,
-  POSTER_DPR,
   POSTER_MAX_ROWS,
-  ROW_GAP,
-  drawPoster,
-  posterLayout,
+  drawPosterLayout,
+  layoutPoster,
   posterLength,
   posterRows,
   posterSize,
-  posterStyle,
   videoMarkers,
   type Ctx2D,
   type PosterSize,
@@ -69,7 +65,7 @@ describe('posterRows', () => {
   });
 });
 
-/** A recording context: each stroke's points in device px (the transform applied). */
+/** A recording context: each stroked or filled path's points in device px (the transform applied). */
 function deviceStrokes(): { ctx: Ctx2D; strokes: [number, number][][]; nested: () => number } {
   const strokes: [number, number][][] = [];
   let pts: [number, number][] = [];
@@ -90,7 +86,7 @@ function deviceStrokes(): { ctx: Ctx2D; strokes: [number, number][][]; nested: (
         if (prop === 'moveTo' || prop === 'lineTo') {
           pts.push([m[0] * a[0] + m[2] * a[1] + m[4], m[1] * a[0] + m[3] * a[1] + m[5]]);
         }
-        if (prop === 'stroke') strokes.push(pts);
+        if (prop === 'stroke' || prop === 'fill') strokes.push(pts);
         if (prop === 'save') depth++;
         if (prop === 'restore') {
           depth--;
@@ -114,115 +110,87 @@ const texts = (svg: string) => [
   ...svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]*)<\/text>/g),
 ];
 
-describe('drawPoster with rows', () => {
+describe('a laid-out poster with rows', () => {
   const piece = load('examples/songs/tide-pools.algorhythms.json');
   const compiled = compile(piece);
-  const grid = { bpm: piece.view.gridBpm!, meter: piece.view.meter! };
-
-  it('rows = 1 is the poster as before', () => {
-    for (const size of SIZES) {
-      const style = posterStyle({ theme: 'light', title: true, ...videoMarkers(piece) });
-      const a = new SvgContext(3840, 2160);
-      drawPoster(asCtx2D(a), compiled, { name: 'n' }, { size, style, title: true });
-      const b = new SvgContext(3840, 2160);
-      drawPoster(asCtx2D(b), compiled, { name: 'n' }, { size, style, title: true, rows: 1, grid });
-      expect(b.toSvg()).toBe(a.toSvg());
-    }
-  });
+  const lay = (size: PosterSize, rows: number, doc: Piece['poster'] = {}) => {
+    const px = posterSize(size);
+    const base = { size: { w: px.width, h: px.height }, rows };
+    return layoutPoster({ compiled, piece, doc, base });
+  };
 
   it('takes explicit pixel sizes', () => {
     expect(posterSize({ width: 5000, height: 1200 })).toEqual({ width: 5000, height: 1200 });
-    expect(posterLayout({ width: 4500, height: 900 })).toEqual({
-      width: 1000,
-      height: 200,
-      dpr: POSTER_DPR,
-    });
   });
 
-  it('stacks the rows: time labels after the first, one title block, no nested clips', () => {
-    const style = posterStyle({ theme: 'light', title: true, ...videoMarkers(piece) });
-    const c = new SvgContext(3840, 2160);
-    const opts = { size: '16:9' as const, style, title: true, rows: 4, grid };
-    const view = drawPoster(asCtx2D(c), compiled, { name: 'Tide' }, opts);
-    const svg = c.toSvg();
-    // No clip path inside another (WebKit determinism, build log v67).
-    expect(svg).not.toMatch(/<clipPath id="[^"]+" clip-path=/);
-    const t = texts(svg);
-    const rows = posterRows(compiled.duration, 4, grid);
-    const labels = rows.slice(1).map((r) => posterLength(r.start));
-    const found = t.filter((m) => labels.includes(m[3]));
-    expect(found.map((m) => m[3])).toEqual(labels);
-    for (let i = 1; i < found.length; i++) {
-      expect(Number(found[i][2])).toBeGreaterThan(Number(found[i - 1][2]));
-    }
-    for (const m of found) expect(Number(m[1])).toBeCloseTo(view.padL * POSTER_DPR, 1);
-    expect(t.filter((m) => m[3] === 'Tide')).toHaveLength(1);
-    expect(t.filter((m) => m[3] === POSTER_CREDIT)).toHaveLength(1);
-    // Section labels are drawn, none twice.
-    const sect = Object.values(videoMarkers(piece).labels).map((l) => l.toUpperCase());
-    const drawn = t.filter((m) => sect.includes(m[3])).map((m) => `${m[3]}@${m[1]},${m[2]}`);
-    expect(drawn.length).toBeGreaterThan(0);
-    expect(new Set(drawn).size).toBe(drawn.length);
-    // Every path's points (lines, markers) are above the title band.
-    const bandTop = (view.height - view.padB + 6) * POSTER_DPR;
-    let maxY = 0;
-    for (const p of svg.matchAll(/<path d="([^"]+)"/g)) {
-      for (const run of p[1].matchAll(/[ML]([^A-Za-z]+)/g)) {
-        const nums = run[1].trim().split(/\s+/).map(Number);
-        for (let i = 1; i < nums.length; i += 2) maxY = Math.max(maxY, nums[i]);
+  it('stacks the rows: time labels after the first, one title, no nested clips', () => {
+    for (const size of SIZES) {
+      const L = lay(size, 4);
+      const c = new SvgContext(L.width, L.height);
+      drawPosterLayout(asCtx2D(c), compiled, L);
+      const svg = c.toSvg();
+      expect(svg).toMatch(/<svg[\s\S]*<\/svg>\s*$/);
+      // No clip path inside another (WebKit determinism, build log v67).
+      expect(svg).not.toMatch(/<clipPath id="[^"]+" clip-path=/);
+      const t = texts(svg);
+      const labels = L.rows.slice(1).map((r) => posterLength(r.start));
+      const found = t.filter((m) => labels.includes(m[3]));
+      expect(
+        found.map((m) => m[3]),
+        size,
+      ).toEqual(labels);
+      for (let i = 1; i < found.length; i++) {
+        expect(Number(found[i][2])).toBeGreaterThan(Number(found[i - 1][2]));
       }
+      expect(t.filter((m) => m[3] === piece.meta.title)).toHaveLength(1);
+      // Section labels are drawn, none twice.
+      const sect = Object.values(videoMarkers(piece).labels).map((l) => l.toUpperCase());
+      const drawn = t.filter((m) => sect.includes(m[3])).map((m) => `${m[3]}@${m[1]},${m[2]}`);
+      expect(drawn.length).toBeGreaterThan(0);
+      expect(new Set(drawn).size).toBe(drawn.length);
     }
-    expect(maxY).toBeLessThanOrEqual(bandTop + 0.01);
   });
 
   it('one time scale and pitch range; a line cut at a break continues in the next row', () => {
-    const style = posterStyle({ theme: 'light', thickness: false });
-    const n = 3;
+    const L = lay('16:9', 3, { look: { thickness: false } });
     const rec = deviceStrokes();
-    drawPoster(rec.ctx, compiled, { name: 'n' }, { size: '16:9', style, title: false, rows: n });
+    drawPosterLayout(rec.ctx, compiled, L);
     expect(rec.nested()).toBe(0);
-    const rows = posterRows(compiled.duration, n);
-    const px = posterSize('16:9');
-    const rowH = (px.height / POSTER_DPR - ROW_GAP * (n - 1)) / n;
-    const top = (i: number) => Math.round(i * (rowH + ROW_GAP) * POSTER_DPR);
-    const bottom = (i: number) => top(i) + rowH * POSTER_DPR;
-    const span = rows[0].end - rows[0].start;
-    const rowW = (i: number) => (px.width * (rows[i].end - rows[i].start)) / span;
-    // Lines ending at row 0's right edge and starting at row 1's left edge (y within the row).
+    const plots = L.rows.map((r) => r.plot);
+    const len = (i: number) => L.rows[i].end - L.rows[i].start;
+    for (const i of [1, 2]) expect(plots[i].w / len(i)).toBeCloseTo(plots[0].w / len(0), 6);
+    const inRow = (i: number, ys: number[]) =>
+      Math.min(...ys) >= plots[i].y - 0.5 && Math.max(...ys) <= plots[i].y + plots[i].h + 0.5;
+    const right0 = plots[0].x + plots[0].w;
+    const left1 = plots[1].x;
+    // Line ends (caps, half the ribbon's width) may reach a unit past the plot.
+    const tol = L.unit;
+    const meanY = (pts: [number, number][]) => pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    // Lines reaching row 0's right edge and leaving row 1's left edge (y within the row), as
+    // fractions of the row's height.
     const ends: number[] = [];
     const starts: number[] = [];
     for (const s of rec.strokes) {
-      if (s.length < 2) continue;
+      if (s.length < 3) continue;
+      const xs = s.map((p) => p[0]);
       const ys = s.map((p) => p[1]);
-      const inRow = (i: number) => Math.min(...ys) >= top(i) && Math.max(...ys) <= bottom(i);
-      const first = s[0];
-      const last = s[s.length - 1];
-      if (inRow(0) && Math.abs(last[0] - rowW(0)) < 1 && first[0] < last[0] - 4) {
-        ends.push(last[1] - top(0));
+      if (Math.max(...xs) - Math.min(...xs) < 4) continue;
+      if (inRow(0, ys) && Math.abs(Math.max(...xs) - right0) < tol) {
+        ends.push((meanY(s.filter((p) => p[0] > right0 - tol)) - plots[0].y) / plots[0].h);
       }
-      if (inRow(1) && Math.abs(first[0]) < 1 && last[0] > first[0] + 4) {
-        starts.push(first[1] - top(1));
+      if (inRow(1, ys) && Math.abs(Math.min(...xs) - left1) < tol) {
+        starts.push((meanY(s.filter((p) => p[0] < left1 + tol)) - plots[1].y) / plots[1].h);
       }
     }
     expect(ends.length).toBeGreaterThan(0);
-    for (const y of ends) expect(starts.some((s) => Math.abs(s - y) < 1.5)).toBe(true);
-    // Nothing drawn past a row's width.
+    for (const y of ends) expect(starts.some((s) => Math.abs(s - y) < 0.01)).toBe(true);
+    // Nothing drawn past a row's plot.
     for (const s of rec.strokes) {
       for (const [x, y] of s) {
-        for (let i = 0; i < n; i++) {
-          if (y >= top(i) && y <= bottom(i)) expect(x).toBeLessThanOrEqual(rowW(i) + 1);
+        for (let i = 0; i < plots.length; i++) {
+          if (inRow(i, [y])) expect(x).toBeLessThanOrEqual(plots[i].x + plots[i].w + tol);
         }
       }
-    }
-  });
-
-  it('a 4-row SVG of every size renders', () => {
-    for (const size of SIZES) {
-      const style = posterStyle({ theme: 'dark', title: true, ...videoMarkers(piece) });
-      const px = posterSize(size);
-      const c = new SvgContext(px.width, px.height);
-      drawPoster(asCtx2D(c), compiled, { name: 'n' }, { size, style, title: true, rows: 4, grid });
-      expect(c.toSvg()).toMatch(/<svg[\s\S]*<\/svg>\s*$/);
     }
   });
 });
