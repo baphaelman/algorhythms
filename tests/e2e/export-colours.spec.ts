@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { openExport, surface, switchMode } from './export-open';
+import { addressSettled, openExport, surface, switchMode } from './export-open';
 import { chooseSegment, clickExportForDownload, guarded, tap } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -139,7 +139,8 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
   await expect(scheme(page)).toHaveAttribute('data-value', 'saved:Moonlit');
   await expect(page.getByTestId('swatch-hud-hex')).toHaveValue('#ffffff');
 
-  // Remembered per viewer.
+  // Remembered (saved schemes per viewer; the colours in the piece).
+  await addressSettled(page);
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
@@ -205,8 +206,11 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
     mkdirSync(shots, { recursive: true });
     await dialog(page).screenshot({ path: join(shots, 'export-colours-gradient.png') });
   }
-  // The video reads the poster's background.
+  // The video reads the poster's background (One row: the poster's top is the frame's).
   await switchMode(page, 'Video');
+  const row = page.getByTestId('video-frame').getByLabel('One row', { exact: true });
+  await row.click();
+  await expect(row).toBeChecked();
   const preview = () =>
     page.evaluate((src) => {
       const c = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;

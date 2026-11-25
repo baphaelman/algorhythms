@@ -94,6 +94,10 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
   await expect(page.getByTestId('look-min-opacity-value')).toHaveText('90 %');
   await switchMode(page, 'Video');
   await expect(slider).toHaveCount(0);
+  // One row (the edit gave the piece a poster, whose frame is Over the poster).
+  const row = page.getByTestId('video-frame').getByLabel('One row', { exact: true });
+  await row.click();
+  await expect(row).toBeChecked();
   await drawnAt60(0.9);
   const lifted = await previewInk();
   expect(lifted, 'preview').toBeGreaterThan(plain * 1.05);
@@ -103,7 +107,7 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
     const h = (window as unknown as HookWindow).__algorhythms;
     const req = (await h.exportRun()).lastPreviewRequest()!;
     if (req.kind !== 'video') throw new Error('not video');
-    const piece = h.store.getState().piece as never;
+    const piece = h.store.getState().piece as Parameters<typeof VideoExport.referenceFrame>[0];
     const v = await h.videoExport();
     const c = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;
     const a = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
@@ -118,7 +122,10 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
       min: req.options.look!.minLineOpacity,
       bad: bad / (a.length / 4),
       on: ink(v.referenceFrame(piece, req.options, k).data),
-      off: ink(v.referenceFrame(piece, { ...req.options, look: off }, k).data),
+      // Without the doc, whose look would put the minimum back.
+      off: ink(
+        v.referenceFrame({ ...piece, poster: undefined }, { ...req.options, look: off }, k).data,
+      ),
     };
   }, INK);
   expect(r.min).toBe(0.9);

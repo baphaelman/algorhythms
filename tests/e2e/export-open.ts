@@ -89,3 +89,14 @@ export async function addressSettled(page: Page): Promise<void> {
     )
     .toBe(true);
 }
+
+/**
+ * Leaves the workspace by keyboard: Escape leaves a focused control first (it goes to the
+ * workspace), then the next Escape leaves the workspace; focus returns to Menu.
+ */
+export async function escapeOut(page: Page): Promise<void> {
+  const shown = () => surface(page).isVisible();
+  for (let i = 0; i < 2 && (await shown()); i++) await page.keyboard.press('Escape');
+  await expect(workspace(page)).toBeHidden();
+  await expect(videoWorkspace(page)).toBeHidden();
+}

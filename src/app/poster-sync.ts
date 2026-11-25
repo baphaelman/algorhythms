@@ -4,7 +4,8 @@
  * kept in step, and every poster edit is one entry on the piece's undo stack.
  *
  * - Form → doc: a change of the panel's options writes the doc (`docWithForm`). Changes to the
- *   same fields within `COALESCE_MS` of each other (a slider's drag, typing) join one entry.
+ *   same fields within `COALESCE_MS` of each other (a slider's drag, typing) join one entry. In
+ *   Video, they only update a doc the piece already has.
  * - Doc → form: when the doc changes from elsewhere (undo, redo, opening the workspace), the
  *   form shows it (`formWithDoc`); back to no doc, the form the workspace opened with.
  * - Object edits (layers, texts, groups, margins) go through `editPoster` (one entry) or
@@ -34,6 +35,7 @@ import {
   type PosterFields,
 } from './poster-doc';
 import { usePlayer } from './store';
+import { useExportSurface } from './export-surface';
 
 /** Panel changes this close together (ms) to the same fields are one undo entry. */
 export const COALESCE_MS = 1000;
@@ -85,6 +87,11 @@ function writeForm(f: PosterFields): void {
   if (!prev) return;
   const changed = changedFields(prev, f);
   if (changed.length === 0) return;
+  // Video changes (its section) on a piece without a poster stay the form's: a first doc only
+  // comes from Poster, so opening Video never turns One row into Over the poster (M15).
+  if (!usePlayer.getState().piece.poster && useExportSurface.getState().surface !== 'poster') {
+    return;
+  }
   const ctx = docContext();
   if (gestureBase) {
     const base = gestureBase;

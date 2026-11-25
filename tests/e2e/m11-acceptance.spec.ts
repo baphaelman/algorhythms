@@ -362,6 +362,8 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
       if (req.kind !== 'video') throw new Error('not video');
       const m = await h.videoExport();
       const piece = h.store.getState().piece as Parameters<typeof m.referenceFrame>[0];
+      // The controls' piece: without the poster doc, whose look would put the effects back.
+      const bare = { ...piece, poster: undefined };
       const { compiled } = h.store.getState() as unknown as {
         compiled: Parameters<typeof m.previewVideoFrame>[2];
       };
@@ -396,13 +398,13 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
         // Controls: the default Look; the same colours without glow, vignette and guide notes.
         control: await cmp(
           full,
-          await url(m.referenceFrame(piece, { ...req.options, look: plain }, k)),
+          await url(m.referenceFrame(bare, { ...req.options, look: plain }, k)),
           1920,
           1080,
         ),
         controlFx: await cmp(
           full,
-          await url(m.referenceFrame(piece, { ...req.options, look: noFx }, k)),
+          await url(m.referenceFrame(bare, { ...req.options, look: noFx }, k)),
           1920,
           1080,
         ),

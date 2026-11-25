@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { openVideoExport } from './export-open';
+import { escapeOut, openVideoExport } from './export-open';
 import type { CameraKey, PieceCamera } from '../../src/core/types';
 
 interface HookWindow {
@@ -199,10 +199,9 @@ test('Tab: the preview slider, then each key in time order, then + Key and Delet
     'camera-key-add',
     'camera-key-delete',
   ]);
-  // Escape from a marker closes the dialog, focus back on Menu.
+  // Escape from a marker leaves it, then the workspace; focus back on Menu.
   await markers(page).first().focus();
-  await page.keyboard.press('Escape');
-  await expect(dialog(page)).toBeHidden();
+  await escapeOut(page);
   await expect(page.getByTestId('menu-button')).toBeFocused();
   // The editor's toggle by keyboard (Enter; Space always plays).
   await page.getByTestId('camera-path-toggle').focus();

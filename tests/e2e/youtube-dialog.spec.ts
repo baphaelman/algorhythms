@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { openAudioExport, openVideoExport } from './export-open';
+import { openAudioExport, openVideoExport, surface, switchMode } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
 
@@ -27,8 +27,8 @@ interface HookWindow {
   };
 }
 
-/** The workspace's Video mode (M15: the old Export dialog's place). */
-const dialog = (page: Page) => page.getByTestId('video-workspace');
+/** The workspace's Video mode (M15: the old Export dialog's place), or the audio dialog. */
+const dialog = surface;
 const radio = (page: Page, testId: string, label: string) =>
   dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
 
@@ -215,40 +215,69 @@ test('Loudness shows the measured value and gain, and warns on Crease', async ({
 
 test('Glow, Vignette and guide notes change the preview', async ({ page }) => {
   await openVideo(page);
-  const plain = await page
-    .getByTestId('preview-canvas')
-    .evaluate((c: HTMLCanvasElement) => c.toDataURL());
-  const glow = await previewAfter(page, () => page.getByTestId('look-glow').fill('80'));
-  expect((await lastPreview(page))!.options.look!.glow).toBe(0.8);
-  await expect(page.getByTestId('look-glow-value')).toHaveText('80 %');
+  // M15: they are the poster's (set in Poster); the video's preview reads them. One row, as
+  // before (a poster edit would otherwise make Over the poster the frame).
+  await choose(page, 'video-frame', 'One row');
+  type Look = NonNullable<NonNullable<Awaited<ReturnType<typeof lastPreview>>>['options']['look']>;
+  /** Does `act` in Poster, then the Video preview once it draws a Look that passes `ok`. */
+  const videoAfter = async (act: () => Promise<void>, ok: (l: Look) => boolean) => {
+    await switchMode(page, 'Poster');
+    await act();
+    await switchMode(page, 'Video');
+    await expect
+      .poll(async () => {
+        const r = await lastPreview(page);
+        return r?.kind === 'video' && ok(r.options.look!);
+      })
+      .toBe(true);
+    await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    return page.getByTestId('preview-canvas').evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  };
+  const plain = await videoAfter(
+    async () => undefined,
+    (l) => !l.glow,
+  );
+  const glow = await videoAfter(
+    async () => {
+      await page.getByTestId('look-glow').fill('80');
+      await expect(page.getByTestId('look-glow-value')).toHaveText('80 %');
+    },
+    (l) => l.glow === 0.8,
+  );
   expect(await pixelDiff(page, plain, glow)).toBeGreaterThan(0.2);
-  const vig = await previewAfter(page, () => page.getByTestId('look-vignette').fill('100'));
-  expect((await lastPreview(page))!.options.look!.vignette).toBe(1);
+  const vig = await videoAfter(
+    () => page.getByTestId('look-vignette').fill('100'),
+    (l) => l.vignette === 1,
+  );
   expect(await pixelDiff(page, glow, vig)).toBeGreaterThan(0.2);
 
   const input = page.getByTestId('look-pitch-input');
-  const guides = await previewAfter(page, async () => {
-    await input.fill('A4, C5');
-    await input.press('Enter');
-  });
-  await expect(page.getByTestId('look-pitch-69')).toBeVisible();
-  await expect(page.getByTestId('look-pitch-72')).toBeVisible();
-  expect((await lastPreview(page))!.options.look!.pitchGuides).toEqual({
-    pitches: [69, 72],
-    labels: true,
-  });
+  const guides = await videoAfter(
+    async () => {
+      await input.fill('A4, C5');
+      await input.press('Enter');
+      await expect(page.getByTestId('look-pitch-69')).toBeVisible();
+      await expect(page.getByTestId('look-pitch-72')).toBeVisible();
+    },
+    (l) => JSON.stringify(l.pitchGuides) === JSON.stringify({ pitches: [69, 72], labels: true }),
+  );
   expect(await pixelDiff(page, vig, guides)).toBeGreaterThan(0.01);
-  const unlabelled = await previewAfter(page, () => page.getByTestId('look-pitch-labels').click());
-  expect((await lastPreview(page))!.options.look!.pitchGuides!.labels).toBe(false);
+  const unlabelled = await videoAfter(
+    () => page.getByTestId('look-pitch-labels').click(),
+    (l) => l.pitchGuides?.labels === false,
+  );
   expect(await pixelDiff(page, guides, unlabelled)).toBeGreaterThan(0);
   // A bad name is marked, not added; × removes a note.
-  await input.fill('H9');
-  await input.press('Enter');
-  await expect(input).toHaveAttribute('aria-invalid', 'true');
-  await page.getByTestId('look-pitch-72').click();
-  await expect
-    .poll(async () => (await lastPreview(page))!.options.look!.pitchGuides!.pitches)
-    .toEqual([69]);
+  await videoAfter(
+    async () => {
+      await input.fill('H9');
+      await input.press('Enter');
+      await expect(input).toHaveAttribute('aria-invalid', 'true');
+      await page.getByTestId('look-pitch-72').click();
+    },
+    (l) => JSON.stringify(l.pitchGuides?.pitches) === '[69]',
+  );
 });
 
 test('Opening & ending: the title card at its time, the end card the whole piece', async ({
