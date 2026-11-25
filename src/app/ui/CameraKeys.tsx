@@ -163,7 +163,9 @@ function focusMarker(root: HTMLElement | null, i: number, fallback?: string): vo
   requestAnimationFrame(() => {
     const el =
       root?.querySelector<HTMLElement>(`[data-key-index="${i}"]`) ??
-      (fallback ? root?.closest('.export-preview')?.querySelector<HTMLElement>(fallback) : null);
+      (fallback
+        ? root?.closest('.export-preview, .video-timeline')?.querySelector<HTMLElement>(fallback)
+        : null);
     el?.focus();
   });
 }

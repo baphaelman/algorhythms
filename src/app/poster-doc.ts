@@ -36,6 +36,33 @@ export const DOC_FIELDS = [
 
 export type PosterFields = Pick<ExportForm, (typeof DOC_FIELDS)[number]>;
 
+/**
+ * The Look keys only the video uses (Ahead of the playhead, the playhead line, the heads): the
+ * viewer's remembered video options (PLAN.md §15 M15 "Storage"), never in the poster's doc.
+ */
+export const VIDEO_LOOK_KEYS = [
+  'future',
+  'futureOpacity',
+  'playhead',
+  'dots',
+  'rings',
+  'hzLabels',
+] as const satisfies readonly (keyof ExportForm['look'])[];
+
+/** `look` without the video's own keys. */
+export function posterLook(look: ExportForm['look']): Partial<ExportForm['look']> {
+  const out: Record<string, unknown> = { ...look };
+  for (const k of VIDEO_LOOK_KEYS) delete out[k];
+  return out as Partial<ExportForm['look']>;
+}
+
+/** The video's own Look keys of `look`. */
+export function videoLook(look: ExportForm['look']): Partial<ExportForm['look']> {
+  const out: Record<string, unknown> = {};
+  for (const k of VIDEO_LOOK_KEYS) if (k in look) out[k] = look[k];
+  return out as Partial<ExportForm['look']>;
+}
+
 export function posterFields(form: ExportForm): PosterFields {
   const out = {} as Record<string, unknown>;
   for (const k of DOC_FIELDS) out[k] = form[k];
@@ -46,7 +73,9 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.str
 
 /** The fields whose values differ. */
 export function changedFields(a: PosterFields, b: PosterFields): string[] {
-  return DOC_FIELDS.filter((k) => !same(a[k], b[k]));
+  return DOC_FIELDS.filter((k) =>
+    k === 'look' ? !same(posterLook(a.look), posterLook(b.look)) : !same(a[k], b[k]),
+  );
 }
 
 /** What the doc's settings need from the app: its theme, and the piece's length and loop. */
@@ -133,7 +162,8 @@ function lookDiff(form: PosterFields, dark: boolean): Record<string, unknown> {
   const look = form.look as unknown as Record<string, unknown>;
   const def = DEFAULT_LOOK_FORM as unknown as Record<string, unknown>;
   for (const k of new Set([...Object.keys(def), ...Object.keys(look)])) {
-    if (k === 'theme' || k === 'colours') continue;
+    if (k === 'theme' || k === 'colours' || (VIDEO_LOOK_KEYS as readonly string[]).includes(k))
+      continue;
     if (look[k] !== undefined && !same(look[k], def[k])) out[k] = look[k];
   }
   out.theme = form.look.theme === 'current' ? (dark ? 'dark' : 'light') : form.look.theme;
@@ -180,7 +210,8 @@ export function formWithDoc(form: ExportForm, doc: PosterDoc): ExportForm {
     posterPieceRange: p.posterPieceRange ?? false,
     posterHud: p.posterHud ?? [],
     hudLayout: p.hudLayout ?? {},
-    look: p.look ?? DEFAULT_LOOK_FORM,
+    // The video's own keys stay the viewer's.
+    look: { ...(p.look ?? DEFAULT_LOOK_FORM), ...videoLook(form.look) },
   };
   // Look keys parseLook doesn't know (the label/line split) pass through as booleans.
   for (const k of ['sectionLines', 'momentLabels'] as const) {

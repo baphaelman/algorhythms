@@ -23,11 +23,11 @@ import {
 import {
   cancelExport,
   closeSurface,
-  openSurface,
   patch,
   patchLook,
   previewStats,
   startExport,
+  switchMode,
   useExportUi,
   useRuntime,
   videoContext,
@@ -49,7 +49,7 @@ import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
 import { artboardFit, useWorkspace } from '../poster-workspace';
 import { selectionExists } from '../poster-select';
-import { posterIsDefault, revertPoster, startPosterSync } from '../poster-sync';
+import { posterIsDefault, revertPoster } from '../poster-sync';
 import { lastEntry, undo, useEditor } from '../editor/history';
 import type { ExportForm } from '../export-options';
 import { togglePlay, usePlayer } from '../store';
@@ -78,8 +78,8 @@ export function backToMusic(): void {
 }
 
 /**
- * The workspace's top bar items (in the transport): Back to music and Poster | Video. Video
- * opens the video dialog until M15.
+ * The workspace's top bar items (in the transport): Back to music, Poster | Video (the workspace
+ * switches in place) and, in Poster, Revert.
  */
 export function WorkspaceBar() {
   const surface = useExportSurface((s) => s.surface);
@@ -93,12 +93,7 @@ export function WorkspaceBar() {
       <button type="button" className="ws-back" data-testid="back-to-music" onClick={backToMusic}>
         ← Back to music
       </button>
-      <ExportModeSwitch
-        value={surface === 'video' ? 'video' : 'poster'}
-        onChange={(m) => {
-          if (m === 'video') openSurface('video');
-        }}
-      />
+      <ExportModeSwitch value={surface === 'video' ? 'video' : 'poster'} onChange={switchMode} />
       {surface === 'poster' && <RevertPoster />}
     </div>
   );
@@ -374,8 +369,6 @@ export function PosterWorkspace() {
   const root = useRef<HTMLElement>(null);
   const running = run.status === 'running';
   useFocusRescue(root, true);
-  // The form's poster options and the piece's poster, in step while the workspace shows.
-  useLayoutEffect(() => startPosterSync(), []);
   // Space plays and pauses, as in the video dialog (a text field still types it).
   useEffect(() => setDialogSpace(togglePlay), []);
   useEffect(

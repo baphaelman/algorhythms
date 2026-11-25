@@ -363,6 +363,45 @@ function HudSection({
 }
 
 /**
+ * Some of the video's own Look controls (M15: the look lives in Poster; the video panel holds
+ * only what moves), by id, in the Look's order; `hud` adds the video's readouts.
+ */
+export function VideoLookRows({
+  form,
+  ids,
+  hud = false,
+  disabled,
+}: {
+  form: ExportForm;
+  ids: readonly string[];
+  hud?: boolean;
+  disabled: boolean;
+}) {
+  const follow = form.videoCamera === 'follow';
+  return (
+    <div className="look-grid">
+      {lookControls('video')
+        .filter((c) => ids.includes(c.id))
+        .map((c) => (
+          <Fragment key={c.id}>
+            <LookRow
+              control={c}
+              form={form}
+              disabled={disabled || (c.id === 'follow-at' && !follow)}
+            />
+            {c.id === 'follow-at' && (
+              <small className="look-note" data-testid="look-follow-at-hint">
+                {followAtHint(form)}
+              </small>
+            )}
+          </Fragment>
+        ))}
+      {hud && <HudSection form={form} kind="video" />}
+    </div>
+  );
+}
+
+/**
  * The Look section (PLAN.md §12 "Export look"), shared by video and poster: sliders, switches
  * and segments in a label / control grid, the HUD and Reset.
  */
@@ -868,7 +907,19 @@ function ClockInput({
  * when the piece has a tempo (Alt: free); each is a slider (arrows: a bar, or a second without a
  * tempo; Shift: four; Alt: 0.1 s; Home / End), and the times can be typed.
  */
-export function SectionField({ form, disabled }: { form: ExportForm; disabled: boolean }) {
+export function SectionField({
+  form,
+  disabled,
+  timeline = false,
+}: {
+  form: ExportForm;
+  disabled: boolean;
+  /**
+   * The video workspace's timeline (M15): the range always shows, with the preview's time on it;
+   * moving a handle makes the section Custom.
+   */
+  timeline?: boolean;
+}) {
   const id = useId();
   const piece = usePlayer((s) => s.piece);
   const compiled = usePlayer((s) => s.compiled);
@@ -885,7 +936,9 @@ export function SectionField({ form, disabled }: { form: ExportForm; disabled: b
   const kind = form.section === 'loop' && !loop ? 'whole' : form.section;
   const span = sectionNow(form);
   const custom = kind === 'custom';
-  const cspan = form.sectionSpan ?? span;
+  const ranged = custom || timeline;
+  const cspan = custom ? (form.sectionSpan ?? span) : span;
+  const previewT = useExportUi((s) => (timeline ? s.previewT : 0));
 
   const labels = useMemo(() => {
     const out: { t: number; text: string }[] = [];
@@ -901,18 +954,21 @@ export function SectionField({ form, disabled }: { form: ExportForm; disabled: b
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [custom]);
+  }, [ranged]);
 
   useEffect(() => {
-    if (custom && canvas.current && width > 0) {
+    if (ranged && canvas.current && width > 0) {
       drawOverview(canvas.current, compiled, labels, appDark());
     }
-  }, [custom, compiled, labels, width, appView]);
+  }, [ranged, compiled, labels, width, appView]);
 
   const setSpan = (next: TimeSpan) => {
-    const cur = useExportUi.getState().form.sectionSpan;
-    if (cur && cur.start === next.start && cur.end === next.end) return;
-    patch({ sectionSpan: next });
+    const f = useExportUi.getState().form;
+    const cur = f.sectionSpan;
+    if (f.section === 'custom' && cur && cur.start === next.start && cur.end === next.end) return;
+    patch(
+      f.section === 'custom' ? { sectionSpan: next } : { section: 'custom', sectionSpan: next },
+    );
   };
   const timeAt = (clientX: number) => {
     const r = track.current?.getBoundingClientRect();
@@ -922,7 +978,8 @@ export function SectionField({ form, disabled }: { form: ExportForm; disabled: b
   const onMove = (e: React.PointerEvent) => {
     const h = drag.current;
     if (!h) return;
-    const cur = useExportUi.getState().form.sectionSpan ?? cspan;
+    const f = useExportUi.getState().form;
+    const cur = f.section === 'custom' ? (f.sectionSpan ?? cspan) : cspan;
     setSpan(moveHandle(cur, h, timeAt(e.clientX), D, grid, e.altKey));
   };
   const startDrag = (e: React.PointerEvent, h: SectionHandle) => {
@@ -984,7 +1041,7 @@ export function SectionField({ form, disabled }: { form: ExportForm; disabled: b
           } else patch({ section });
         }}
       />
-      {custom && (
+      {ranged && (
         <>
           <div
             ref={track}
@@ -1016,6 +1073,14 @@ export function SectionField({ form, disabled }: { form: ExportForm; disabled: b
                 width: `calc(${pct(cspan.end)} - ${pct(cspan.start)})`,
               }}
             />
+            {timeline && (
+              <div
+                className="section-playhead"
+                aria-hidden="true"
+                data-testid="timeline-playhead"
+                style={{ left: pct(previewT) }}
+              />
+            )}
             {handle('start')}
             {handle('end')}
           </div>
