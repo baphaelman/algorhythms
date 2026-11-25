@@ -3211,3 +3211,51 @@ PLAN §15 M14 *Accept when*, the owner's notes. `docs/m14-acceptance.md`: every 
 - **Runs:** the 8 M14 specs: chromium-dev 56 passed; firefox-dev 54 passed (3 first-run failures passed on rerun); webkit-dev 54 passed (3 skipped). Unit 3304 passed. The audio clock worked again by the end of the run.
 
 - **Poster glow order:** `ScoreStyle.pass` (`glow`/`lines`); `drawPosterLayout` draws every part's glow, then every part's lines, as the video does (video unchanged). No goldens re-pinned. Test: `poster-glow-order`. poster + m11-acceptance e2e pass on chromium-dev and firefox-dev (PNG-vs-canvas diff 0).
+
+## M15 V1 contract (render + core; 2026-11-25)
+Commit a3a68ec (`git log --all --grep 'M15 V1 contract'`). Names V2 codes against; changes get noted here.
+- **core/types.ts:** `CameraFrame = 'poster' | 'row'`; `RowBreak = 'pan' | 'scroll' | 'cut'`; `PosterCameraKey {at, x, y, h, ease?}` (frame centre x, y as fractions of the artboard's width and height; h = frame height / artboard height; the width follows the video's aspect). `PieceCamera.frame?`, `.rowBreak?`, `.posterKeys?` (sorted by `at`). `PosterText.travels?` (default false); `PosterGroupStyle.travels?` (read for the `hud` group and its members only; default true). Schema, canonical rounding, share packing (`posterKeys` without an ease pack flat `[at, x, y, h, …]`). `travels` is not in `GROUP_FIELDS` (it's a video setting, not a poster style); `CLEAR_MEMBER` clears it.
+- **render/poster-video.ts** (exported from render/index): `pieceVideoFrame(piece) → CameraFrame` (absent: `poster` if `piece.poster`, else `row`); `pieceRowBreak(piece) → RowBreak` (absent: `pan`); `posterCameraAt(layout, t, {aspect, mode, window?, followAt?, rowBreak?, keys?}) → Rect` (artboard px; `auto` = Follow; `window` absent = one row's height); `posterWholeFrame(layout, aspect) → Rect`; `posterKeyFrame(layout, key, aspect) → Rect`; `posterKeyOfFrame(layout, rect, t, ease?) → PosterCameraKey`.
+- **render/video.ts `VideoFrameOptions`:** `frame?` (default `row`; `poster` needs `poster`), `rowBreak?`, `playhead?` (absent = the style's), `poster?: PosterLayout` (built once per export), `posterKeys?`. `drawVideoFrame` / `drawVideoFrameAt` / `drawEndCard` / `drawVideoMoment` / `drawThumbnail` keep their signatures and dispatch on `frame`.
+- **app/video-export.ts `VideoOptions`:** `frame?` (default `pieceVideoFrame(piece)`), `rowBreak?` (default `pieceRowBreak`), `playhead?`, `posterKeys?` (default `piece.camera.posterKeys`), `posterLayout?: PosterLayout` (the workspace's, wins), `poster?: PosterOptions` (to lay it out with `posterLayoutOf`). `frameOptions(piece, opts, compiled)` fills `VideoFrameOptions` from them. The ahead slider is the video Look's `future`/`futureOpacity` as today.
+
+## M15 V2: the workspace's Video mode (app; 2026-11-25)
+Merged V1's contract (`337a824`, with `a3a68ec`). No other V1 commits.
+- **Shell:** Poster | Video switches the workspace in place (`switchMode`: no stored options reloaded, so the poster in step stays). `App` shows `PosterWorkspace` or `VideoWorkspace`; `WorkspaceSync` keeps the form and `Piece.poster` in step in both modes (the video's section is the poster's). `posterShown` → `workspaceShown` (both modes). Revert shows in Poster only.
+- **Files:** `ui/VideoWorkspace.tsx` (panel, timeline, Export MP4), `ui/VideoPreview.tsx` (the reusable playing preview, for M16), `video-timeline.ts` (pure axis and cards math), `ui/AudioDialog.tsx` (the Export dialog is gone; Export audio… stays).
+- **Storage:** frame and row break write `Piece.camera` (`withCameraFrame`, `withRowBreak`; one undo entry each). `withCameraMode`/`withCameraKeys` now keep the camera's other fields (they dropped them). Travels: `poster.groups.hud.travels`, `poster.texts[i].travels` via `editPoster`. Ahead over the poster is a remembered form field `videoAheadPoster` (0..100, default 0); One row keeps the Look's `future`. The video-only Look keys (`future`, `futureOpacity`, `playhead`, `dots`, `rings`, `hzLabels`) are kept out of the poster doc (`VIDEO_LOOK_KEYS`), so they stay the viewer's.
+- **Mapping:** `videoOptions` passes `frame` (`pieceVideoFrame`), and over the poster `rowBreak` and `poster` (`posterOptions` of the form), with Ahead from `videoAheadPoster` (`videoForm`). Exact-equal test in export-options updated for `frame: 'row'`.
+- **Keys:** `CameraKeys` edits One row's keys or the poster keys by the piece's frame (a `Track`: of/with/fromView/nudge/zoom/pan). Poster keys come from `previewPosterFrame` (export-run: lays the poster out once per piece and options, `posterCameraAt` + `posterKeyOfFrame`). Over the poster, Camera offers Follow, Whole, Keys (Auto plays as Follow; shown as Follow).
+- **Timeline:** Section (radios, the range always shown with the preview's time; moving a handle makes it Custom; typed times), Keys (markers on the piece's axis, + Key, Delete), Video cards (Opening | Music | Ending, proportional; a card seeks and opens Opening & ending), then the status and **Export MP4** (`RUN_LABEL.video`).
+
+### Dialog options checklist (every video option of the old dialog)
+| Old dialog | Now |
+|---|---|
+| Poster \| Video | top bar |
+| Preview, Play/Pause, time slider, HUD boxes dragged on it | Video stage (`VideoPreview`) |
+| Key markers under the slider, + Key, Delete, count; pan/zoom the preview | timeline Keys row; preview |
+| Thumbnail, Copy description (+ link) | Video panel |
+| Preset (YouTube, Shorts, Custom; Shorts warning) | Video panel |
+| Section (Whole, Loop, Custom, handles, typed times, summary) | timeline (and Poster's panel, shared) |
+| Aspect, Size, Frame rate, Quality, AAC note | Video panel |
+| Camera (Follow, Auto, Keys, Whole piece; Edit) | Video panel → Camera (+ Frame, Row break) |
+| Window | Video panel → Camera (Follow) |
+| Playhead at | Video panel → Camera |
+| Ahead of the playhead, Playhead line, Heads | Video panel → Moving |
+| HUD readouts list, None, Default, Reset layout | Video panel → Moving |
+| Loudness | Video panel |
+| Opening & ending | Video panel (+ timeline cards) |
+| Theme, Guides, Beat lines, Moments, Louder brighter, Thicker, Pulse marks, Line width, Glow, Vignette, Min line opacity, Pitch guides, Colours (+ schemes), Reset to defaults | Poster panel (the video reads them) |
+| Codec, size, large/unsupported warnings, progress, Cancel, errors, Export | timeline foot (Export MP4) |
+| Close / Escape | Back to music / Escape |
+| ⌘Z / ⌘⇧Z | the app's undo keys (work in the workspace) |
+
+### M15 V2 handoff (context limit; 2026-11-25)
+- **Done:** everything above; unit (`tests/unit/app`, incl. `video-workspace.test.ts`), typecheck and lint pass. e2e: `export-open.ts` helpers rewritten (`videoWorkspace`, `switchMode` to Video = the workspace, `closeExport`/`backToMusic` for both modes); `export-workspace.spec` passes (chromium-dev). `export-diag.ts` reads the workspace when there's no dialog.
+- **Left: rewrite the video e2e specs.** In `auto-camera`, `camera-path`, `camera-ui`, `export`, `export-keys`, `m11-5-acceptance`, `video-bookends`, `video-dialog`, `youtube-dialog` only `dialog()` was pointed at `video-workspace` (mechanical); not yet touched: `export-colours`, `export-section`, `hud-place`, `min-line-opacity`, `mouse-only`, `app.spec`, `m11-acceptance`. Keep each assertion's intent; acceptance specs keep one test per criterion. First chromium-dev run of `export.spec` + `video-dialog.spec`: 15 passed, 25 failed. Failure kinds:
+  - **Look controls moved to Poster** (`look-reset`, `export-vtheme` "Current", glow, colours…): switch to Poster to set them (`switchMode(page,'Poster')`), then check the video (preview/`lastVideoRequest`) in Video. Only Ahead, Playhead at, Playhead line, Heads and the video HUD list remain in Video (`data-testid="look"` is the Moving fieldset).
+  - **Closing:** Escape/Close no longer closes a dialog. "Escape cancels a running export and closes" → Back to music (or Escape with nothing focused) cancels and leaves; the `export-close` button is gone for video.
+  - **Dialog layout tests** (preview sticky while options scroll, HUD never covers Export, phone fit, Window tick drag offset at line 960): redo for the workspace grid (preview on the stage, options in the right panel, Export MP4 in the bottom panel; stacks under 1100 px).
+  - **Timeouts** in `export.spec` (audio dialog tests, all 8): not diagnosed; probably its own open helper or a `dialog()` now pointing at `video-workspace` for audio tests. Audio tests should use `page.getByTestId('export-dialog')` (AudioDialog keeps that testid).
+  - Button text is now **Export MP4**.
+- **Traps:** `switchMode` must not reload prefs (the sync would write the stale form into the poster doc). Over the poster's Keys need V1's real `posterCameraAt` (still Whole in the contract) for meaningful key seeds. Run e2e with the JSON reporter and the fail summariser (it takes ~10 min per two specs on chromium-dev, mostly failing timeouts).

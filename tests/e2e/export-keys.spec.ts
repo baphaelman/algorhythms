@@ -8,7 +8,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openPoster, openVideoExport, workspace } from './export-open';
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 
 async function load(page: Page): Promise<void> {
   await page.goto('./?example=kite-day');
@@ -88,7 +89,7 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
   for (let i = 0; i < 200; i++) {
     const s = await page.evaluate(() => {
       const a = document.activeElement as HTMLElement;
-      const d = document.querySelector<HTMLElement>('[data-testid=export-dialog]')!;
+      const d = document.querySelector<HTMLElement>('[data-testid=video-workspace]')!;
       if (!d.contains(a) || a === d) return null;
       // The ring is on the control, or on the segment label of a visually hidden radio/checkbox.
       const shows = (el: Element) => {
@@ -750,7 +751,7 @@ for (const [w, h] of SIZES) {
         await page.getByTestId('look-hud-button').click();
         await page.getByTestId('bookends-button').click();
         const m = await page.evaluate(() => {
-          const d = document.querySelector<HTMLElement>('[data-testid=export-dialog]')!;
+          const d = document.querySelector<HTMLElement>('[data-testid=video-workspace]')!;
           const pv = d.querySelector('[data-testid=export-preview]')!.getBoundingClientRect();
           const opts = d.querySelector('.export-options')!.getBoundingClientRect();
           const over = [...d.querySelectorAll<HTMLElement>('.export-options *')]

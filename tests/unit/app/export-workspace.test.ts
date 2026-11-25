@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EXPORT_MODE_KEY,
   loadExportMode,
-  posterShown,
+  workspaceShown,
   saveExportMode,
   useExportSurface,
   workspaceEscape,
@@ -47,13 +47,15 @@ describe('export mode memory (Menu → Export opens the last one)', () => {
     expect(saveExportMode('video', bad)).toBe(false);
   });
 
-  it('posterShown follows the surface', () => {
+  it('workspaceShown follows the surface (Poster and Video, not the audio dialog)', () => {
     useExportSurface.setState({ surface: 'poster' });
-    expect(posterShown()).toBe(true);
+    expect(workspaceShown()).toBe(true);
     useExportSurface.setState({ surface: 'video' });
-    expect(posterShown()).toBe(false);
+    expect(workspaceShown()).toBe(true);
+    useExportSurface.setState({ surface: 'audio' });
+    expect(workspaceShown()).toBe(false);
     useExportSurface.setState({ surface: null });
-    expect(posterShown()).toBe(false);
+    expect(workspaceShown()).toBe(false);
   });
 });
 

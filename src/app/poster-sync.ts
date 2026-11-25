@@ -29,6 +29,7 @@ import {
   docWithForm,
   formWithDoc,
   posterFields,
+  videoLook,
   type DocContext,
   type PosterFields,
 } from './poster-doc';
@@ -68,7 +69,11 @@ function mine<T>(f: () => T): T {
 /** Shows `doc`'s settings in the form (none: the form the workspace opened with). */
 function showDoc(doc: PosterDoc | undefined): void {
   const { form } = useExportUi.getState();
-  const next = doc ? formWithDoc(form, doc) : baseline ? { ...form, ...baseline } : form;
+  const next = doc
+    ? formWithDoc(form, doc)
+    : baseline
+      ? { ...form, ...baseline, look: { ...baseline.look, ...videoLook(form.look) } }
+      : form;
   lastFields = posterFields(next);
   run = null;
   if (next !== form) useExportUi.setState({ form: next });

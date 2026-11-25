@@ -1,7 +1,7 @@
 /**
- * The export surfaces' shared state and actions (PLAN.md §12, §15 M14): the form, the run, the
- * lazily loaded runtime and the video preview's clock, used by the poster workspace and the
- * video and audio dialogs. Which surface shows lives in `../export-surface`.
+ * The export surfaces' shared state and actions (PLAN.md §12, §15 M14, M15): the form, the run,
+ * the lazily loaded runtime and the video preview's clock, used by the workspace (Poster and
+ * Video) and the audio dialog. Which surface shows lives in `../export-surface`.
  */
 
 import { useEffect } from 'react';
@@ -37,6 +37,7 @@ import {
   loadExportMode,
   saveExportMode,
   useExportSurface,
+  type ExportMode,
   type ExportSurface,
 } from '../export-surface';
 import {
@@ -85,7 +86,7 @@ export const RUN_LABEL: Record<ExportForm['format'], string> = {
   wav: 'Export WAV',
   stems: 'Export stems',
   midi: 'Export MIDI',
-  video: 'Export video',
+  video: 'Export MP4',
   poster: 'Export poster',
 };
 
@@ -266,7 +267,20 @@ export const cameraCtl: CameraCtl = {
     return runtime.previewAutoKeys({ piece, compiled }, form, videoContext());
   },
   setChoice: (videoCamera) => patch({ videoCamera }),
+  posterKeyAt: (t) => posterFrameAt(t)?.key ?? null,
+  posterAspects: () => {
+    const f = posterFrameAt(cameraCtl.time());
+    return f ? { art: f.art, video: f.video } : null;
+  },
 };
+
+/** Over the poster: the frame the preview shows at t (null: One row, or no engine room yet). */
+function posterFrameAt(t: number) {
+  const { runtime, form } = useExportUi.getState();
+  if (!runtime) return null;
+  const { piece, compiled } = usePlayer.getState();
+  return runtime.previewPosterFrame({ piece, compiled }, form, videoContext(), t);
+}
 
 /** Stops the preview and puts the editor's playhead back where it was when the dialog opened. */
 function restorePlayhead(): void {
@@ -331,6 +345,34 @@ export function openSurface(surface: ExportSurface): void {
   });
   if (surface !== 'audio') saveExportMode(surface);
   useExportSurface.setState({ surface });
+}
+
+/**
+ * Poster | Video in the workspace's top bar (M15): the workspace switches in place. The form
+ * keeps its choices (no stored options are reloaded, so the poster in step with the piece stays
+ * as it is); a running export is cancelled and the preview stops.
+ */
+export function switchMode(mode: ExportMode): void {
+  const cur = useExportSurface.getState().surface;
+  if (cur === mode) return;
+  if (cur !== 'poster' && cur !== 'video') {
+    openSurface(mode);
+    return;
+  }
+  cancelExport();
+  restorePlayhead();
+  openPlayhead = currentTime();
+  const s = useExportUi.getState();
+  const span = sectionNow({ ...s.form, format: mode });
+  useCameraKeys.setState({ selected: null });
+  useExportUi.setState({
+    form: { ...s.form, format: mode },
+    run: s.run.status === 'running' ? s.run : IDLE,
+    hudPlace: null,
+    previewT: Math.min(Math.max(s.previewT, span.start), span.end),
+  });
+  saveExportMode(mode);
+  useExportSurface.setState({ surface: mode });
 }
 
 /** Menu → Export: the mode used last (Poster or Video). */

@@ -687,21 +687,38 @@ export const CameraKeySchema = z.looseObject({
   ease: EaseSchema.optional().describe("Ease to the next key; absent = 'smootherstep'."),
 });
 
-/** `Piece.camera` (M11.5); keys sorted by `at`. */
+/** An Over-the-poster camera key (M15): a frame on the poster, fractions of the artboard. */
+export const PosterCameraKeySchema = z.looseObject({
+  at: seconds,
+  x: finite.describe("The frame's centre across the artboard."),
+  y: finite.describe("The frame's centre down the artboard."),
+  h: z.number().positive().describe("The frame's height, a fraction of the artboard's."),
+  ease: EaseSchema.optional().describe("Ease to the next key; absent = 'smootherstep'."),
+});
+
+/** `Piece.camera` (M11.5, M15); keys sorted by `at`. */
 export const CameraSchema = z
   .looseObject({
     mode: z.enum(['follow', 'auto', 'keys']),
     keys: z.array(CameraKeySchema).optional(),
+    frame: z
+      .enum(['poster', 'row'])
+      .optional()
+      .describe('Over the poster or One row; absent = poster when the piece has one.'),
+    rowBreak: z.enum(['pan', 'scroll', 'cut']).optional().describe("Absent = 'pan'."),
+    posterKeys: z.array(PosterCameraKeySchema).optional(),
   })
   .superRefine((c, ctx) => {
-    const keys = c.keys ?? [];
-    for (let i = 1; i < keys.length; i++) {
-      if (keys[i].at < keys[i - 1].at) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['keys', i, 'at'],
-          message: 'Camera keys must be in time order.',
-        });
+    for (const field of ['keys', 'posterKeys'] as const) {
+      const keys = c[field] ?? [];
+      for (let i = 1; i < keys.length; i++) {
+        if (keys[i].at < keys[i - 1].at) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field, i, 'at'],
+            message: 'Camera keys must be in time order.',
+          });
+        }
       }
     }
   });
@@ -734,6 +751,7 @@ const GroupStyleFields = {
   width: z.number().positive().max(20).optional().describe('Line width, × the default.'),
   dashed: z.boolean().optional(),
   extent: z.enum(['full', 'tick']).optional(),
+  travels: z.boolean().optional().describe('HUD readouts: travel with the video frame.'),
 };
 const PosterGroupStyleSchema = z.looseObject(GroupStyleFields);
 const PosterMemberStyleSchema = z.looseObject({
@@ -811,6 +829,7 @@ export const PosterSchema = z
             })
             .optional(),
           hidden: z.boolean().optional(),
+          travels: z.boolean().optional().describe('Travels with the video frame.'),
         }),
       )
       .optional(),

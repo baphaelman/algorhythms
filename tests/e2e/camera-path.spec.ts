@@ -28,7 +28,8 @@ const KEYS: CameraKey[] = [
   { at: 5, window: 6, place: 0.7, pitch: 60, range: 36 },
 ];
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 
 async function choose(page: Page, testId: string, label: string): Promise<void> {
   const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });

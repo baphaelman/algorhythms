@@ -43,7 +43,8 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 const SAMPLES = process.env.VIDEO_SAMPLES_DIR;
 /** Owner review images of the Look (dialog, default frame). */
 const LOOK_SAMPLES = process.env.LOOK_SAMPLES_DIR;

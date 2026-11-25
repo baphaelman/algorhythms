@@ -1623,7 +1623,7 @@ dialog.dialog.export.has-preview {
   padding-bottom: 14px;
 }
 
-.export-preview .camera-key-track {
+:is(.export-preview, .video-timeline) .camera-key-track {
   position: absolute;
   left: 8px;
   right: 8px;
@@ -1631,7 +1631,7 @@ dialog.dialog.export.has-preview {
   height: 14px;
 }
 
-.export-preview .camera-key {
+:is(.export-preview, .video-timeline) .camera-key {
   position: absolute;
   top: 1px;
   width: 11px;
@@ -1647,21 +1647,21 @@ dialog.dialog.export.has-preview {
   cursor: ew-resize;
 }
 
-.export-preview .camera-key.on {
+:is(.export-preview, .video-timeline) .camera-key.on {
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.export-preview .camera-key:focus-visible {
+:is(.export-preview, .video-timeline) .camera-key:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.export-preview .camera-key-buttons {
+:is(.export-preview, .video-timeline) .camera-key-buttons {
   margin-top: 4px;
 }
 
-.export-preview .camera-key-buttons output {
+:is(.export-preview, .video-timeline) .camera-key-buttons output {
   min-width: 0;
   text-align: left;
   font: inherit;

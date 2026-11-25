@@ -8,7 +8,8 @@
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
  *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
  *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
- *   `[at, window, place, pitch, range, …]` lists (M11.5), and the poster packed (M14: default
+ *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
+ *   (M15), and the poster packed (M14: default
  *   text boxes as their ids, boxes as `[x, y, w, h]`, linked margins as one number); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
@@ -182,13 +183,32 @@ function plainChord(c: unknown): c is { notes: string; len: number } {
 /** The fields of a camera key, in its flat `[at, window, place, pitch, range]` packing. */
 const KEY_FIELDS = ['at', 'window', 'place', 'pitch', 'range'] as const;
 
-/** A camera key that packs flat: exactly the five numbers (no ease). */
-function plainKey(k: unknown): k is Record<(typeof KEY_FIELDS)[number], number> {
-  return (
+/** A key that packs flat: exactly the numbers of `fields` (no ease). */
+function plainOf(fields: readonly string[]) {
+  return (k: unknown): k is Record<string, number> =>
     isRec(k) &&
-    Object.keys(k).length === KEY_FIELDS.length &&
-    KEY_FIELDS.every((f) => typeof k[f] === 'number')
-  );
+    Object.keys(k).length === fields.length &&
+    fields.every((f) => typeof k[f] === 'number');
+}
+
+/** A camera key that packs flat: exactly the five numbers (no ease). */
+const plainKey = plainOf(KEY_FIELDS);
+
+/** The fields of an Over-the-poster key (M15), in its flat `[at, x, y, h]` packing. */
+const POSTER_KEY_FIELDS = ['at', 'x', 'y', 'h'] as const;
+const plainPosterKey = plainOf(POSTER_KEY_FIELDS);
+
+/** Flat keys back to objects, or null when `v` isn't a flat list of `fields`. */
+function keysOf(v: unknown, fields: readonly string[]): Rec[] | null {
+  if (!Array.isArray(v) || v.length % fields.length !== 0) return null;
+  if (!v.every((x) => typeof x === 'number')) return null;
+  const keys: Rec[] = [];
+  for (let i = 0; i < v.length; i += fields.length) {
+    const k: Rec = {};
+    fields.forEach((f, j) => (k[f] = v[i + j]));
+    keys.push(k);
+  }
+  return keys;
 }
 
 const BOX_FIELDS = ['x', 'y', 'w', 'h'] as const;
@@ -302,11 +322,13 @@ export function packPiece(piece: Piece): Rec | null {
     }
     out.moments = moments;
   }
-  if (isRec(out.camera) && Array.isArray(out.camera.keys) && out.camera.keys.every(plainKey)) {
-    out.camera = {
-      ...out.camera,
-      keys: out.camera.keys.flatMap((k) => KEY_FIELDS.map((f) => k[f])),
-    };
+  if (isRec(out.camera)) {
+    const cam: Rec = { ...out.camera };
+    if (Array.isArray(cam.keys) && cam.keys.every(plainKey))
+      cam.keys = cam.keys.flatMap((k) => KEY_FIELDS.map((f) => k[f]));
+    if (Array.isArray(cam.posterKeys) && cam.posterKeys.every(plainPosterKey))
+      cam.posterKeys = cam.posterKeys.flatMap((k) => POSTER_KEY_FIELDS.map((f) => k[f]));
+    out.camera = cam;
   }
   if (isRec(out.poster)) out.poster = packPoster(out.poster);
   return out;
@@ -371,21 +393,13 @@ export function unpackPiece(packed: unknown): unknown {
       return m;
     });
   }
-  const cam = out.camera;
-  if (
-    isRec(cam) &&
-    Array.isArray(cam.keys) &&
-    cam.keys.length % KEY_FIELDS.length === 0 &&
-    cam.keys.every((x) => typeof x === 'number')
-  ) {
-    const flat = cam.keys as number[];
-    const keys: Rec[] = [];
-    for (let i = 0; i < flat.length; i += KEY_FIELDS.length) {
-      const k: Rec = {};
-      KEY_FIELDS.forEach((f, j) => (k[f] = flat[i + j]));
-      keys.push(k);
-    }
-    out.camera = { ...cam, keys };
+  if (isRec(out.camera)) {
+    const cam: Rec = { ...out.camera };
+    const keys = keysOf(cam.keys, KEY_FIELDS);
+    if (keys) cam.keys = keys;
+    const posterKeys = keysOf(cam.posterKeys, POSTER_KEY_FIELDS);
+    if (posterKeys) cam.posterKeys = posterKeys;
+    out.camera = cam;
   }
   if (isRec(out.poster)) out.poster = unpackPoster(out.poster);
   return out;

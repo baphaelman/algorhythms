@@ -17,7 +17,16 @@ import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
 import { spanFrames, type ExportLoudness, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
-import type { CameraKey, CompiledScore, LineColors, Piece, Seconds } from '../core/types';
+import type {
+  CameraFrame,
+  CameraKey,
+  CompiledScore,
+  LineColors,
+  Piece,
+  PosterCameraKey,
+  RowBreak,
+  Seconds,
+} from '../core/types';
 import { autoCameraKeys } from '../render/auto-camera';
 import { pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
@@ -25,7 +34,7 @@ import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
 import type { CameraState } from '../render/types';
 import { resetContext } from '../render/poster';
-import { posterVoiceColors } from '../render/poster-layout';
+import { posterVoiceColors, type PosterLayout } from '../render/poster-layout';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
   bookendsAt,
@@ -52,6 +61,7 @@ import {
 } from '../render/video';
 import { Mp4Muxer, chunkFrom, memorySink, type Mp4Sink } from '../video/mp4';
 import { abortError, drain, encodeFrames, plainMeta, type FrameJob } from './video-frames';
+import type { PosterOptions } from './poster-export';
 import type { VideoWorkerReply, VideoWorkerRequest } from './video.worker';
 
 export interface VideoOptions {
@@ -91,6 +101,23 @@ export interface VideoOptions {
    * lead-in delays the audio; silence pads it to the end card's end. Absent = none.
    */
   bookends?: VideoBookends;
+  /** M15: Over the poster or One row. @default the piece's (`pieceVideoFrame`) */
+  frame?: CameraFrame;
+  /** M15, Over the poster. @default the piece's (`pieceRowBreak`) */
+  rowBreak?: RowBreak;
+  /** M15: the playhead line (the slice over the poster). @default the Look's `playhead` */
+  playhead?: boolean;
+  /** M15, Over the poster with camera `keys`. @default the piece's `camera.posterKeys` */
+  posterKeys?: readonly PosterCameraKey[];
+  /**
+   * M15: the poster the video plays, already laid out (the workspace's). Wins over `poster`.
+   */
+  posterLayout?: PosterLayout;
+  /**
+   * M15: the viewer's remembered poster options, to lay the poster out with (`posterLayoutOf`)
+   * when `posterLayout` is absent. @default the video's theme and Look, the piece's poster
+   */
+  poster?: PosterOptions;
 }
 
 /**
