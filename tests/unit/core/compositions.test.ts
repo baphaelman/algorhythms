@@ -38,7 +38,10 @@ describe('compositions', () => {
         r.piece.voices.every((v) => (v.part ?? '') !== ''),
         f,
       ).toBe(true);
-      expect(r.piece.moments.length, f).toBeLessThan(f.includes('night-ferry') ? 150 : 100);
+      // Late Bloom (owner, 2026-11-25: added to Songs): every hand-voiced Rhodes and choir change
+      // is a chord moment, and its sustained voices fade at each phrase.
+      const cap = f.includes('night-ferry') ? 150 : f.includes('late-bloom') ? 210 : 100;
+      expect(r.piece.moments.length, f).toBeLessThan(cap);
       expect(r.piece.view.gridBpm, f).toBeGreaterThan(0);
     });
 

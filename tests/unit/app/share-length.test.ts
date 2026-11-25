@@ -27,6 +27,7 @@ const LONG_OK = new Set([
   'examples/songs/sunday-lane.algorhythms.json',
   'examples/experiments/night-sleeper.algorhythms.json',
   'examples/experiments/crease.algorhythms.json',
+  'examples/songs/late-bloom.algorhythms.json',
 ]);
 
 const pieces: [string, string][] = ['examples', 'examples/songs', 'examples/experiments'].flatMap(

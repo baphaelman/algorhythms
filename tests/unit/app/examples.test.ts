@@ -22,7 +22,7 @@ describe('examples', () => {
   });
 
   it('holds eight songs, four experiments, five originals', () => {
-    expect([SONGS.length, EXPERIMENTS.length, ORIGINALS.length]).toEqual([8, 4, 5]);
+    expect([SONGS.length, EXPERIMENTS.length, ORIGINALS.length]).toEqual([9, 4, 5]);
     expect(SONGS.map((e) => e.group)).toEqual(SONGS.map(() => 'songs'));
   });
 

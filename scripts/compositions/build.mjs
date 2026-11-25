@@ -31,6 +31,7 @@ const pieces = {
   'sunday-lane': await piece('./sunday-lane.ts', 'sundayLane'),
   'night-sleeper': await piece('./night-sleeper.ts', 'nightSleeper'),
   crease: await piece('./crease.ts', 'crease'),
+  'late-bloom': await piece('./late-bloom.ts', 'lateBloom'),
 };
 for (const [name, { make, folder }] of Object.entries(pieces)) {
   const file = fileURLToPath(
