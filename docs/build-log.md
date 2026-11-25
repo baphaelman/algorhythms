@@ -3164,3 +3164,4 @@ PLAN §15 M14. `src/app` (+ one debug hook); P1's engine untouched.
 - Full `pnpm test` (maxWorkers 2, under load): 3 timeouts (`measure-export` normalised export, `look` heads, `poster` bundled SVGs); all pass alone.
 
 - Export dialogs (video, audio) always return focus to the menu button on close (WebKit doesn't focus clicked buttons); app.spec menu test checks both Export items.
+- Poster PNG on Linux CI (run 45554399550): the PNG was drawn on an opaque canvas (`alpha: false`), which gets subpixel (LCD) text on Linux Chromium/Firefox, while the artboard and the reference use an alpha canvas, so text differed (tide-pools: max 87). `renderPosterLayoutPng` now always uses an alpha canvas, as the artboard; the opaque paper keeps the PNG opaque. poster.spec logs every case before asserting.

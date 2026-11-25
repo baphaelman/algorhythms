@@ -118,8 +118,9 @@ export async function renderPosterLayoutPng(
   layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
 ): Promise<Blob> {
   const canvas = new OffscreenCanvas(layout.width, layout.height);
-  const transparent = layout.style.tokens.paper === 'transparent';
-  const g = canvas.getContext('2d', { alpha: transparent });
+  // Alpha on, as on the artboard, even when the paper is opaque: an opaque canvas gets subpixel
+  // (LCD) text on Linux Chromium and Firefox, so the PNG would differ from the artboard.
+  const g = canvas.getContext('2d');
   if (!g) throw new Error('Poster export: this browser cannot draw on an OffscreenCanvas.');
   drawPosterLayout(g, compiled, layout);
   return canvas.convertToBlob({ type: 'image/png' });
