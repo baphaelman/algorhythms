@@ -1,9 +1,11 @@
 /**
- * The Generate panel (PLAN.md §11.3, §15 M3): open it from the menu, generate with a fixed seed,
- * check a piece loaded and that the same seed reproduces it; keyboard use and the phone layout.
+ * The Generate panel (PLAN.md §11.3, §15 M3, M12): a seed and Generate. It composes with every
+ * Compose for me answer on Surprise me and opens the finished piece in one load; the same seed
+ * reproduces it. Keyboard use and the phone layout.
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { composeDirectedPiece } from '../../src/core/compose-directed';
 import './app-hook';
 
 interface Snapshot {
@@ -46,32 +48,39 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 });
 
-test('generates a piece from a seed; the same seed and options reproduce it', async ({ page }) => {
+test('Generate = Compose for me on all Surprise me: one load, the same seed reproduces it', async ({
+  page,
+}) => {
   const before = await snapshot(page);
   expect(before.title).toBe('Tidewater Hymn');
 
   await openPanel(page);
+  // Only the seed: the old mode, length, notes and density inputs are gone.
+  for (const label of ['Lydian', 'Length', 'Notes', 'Walk density'])
+    await expect(panel(page).getByLabel(label, { exact: true })).toHaveCount(0);
   await panel(page).getByLabel('Seed', { exact: true }).fill('4242');
-  await panel(page).getByLabel('Lydian', { exact: true }).check();
-  await panel(page).getByLabel('Notes', { exact: true }).fill('6');
-  await panel(page).getByLabel('Walk density', { exact: true }).fill('70');
   await page.getByTestId('generate-run').click();
 
   await expect(page.getByTestId('generate-panel')).toBeHidden();
   const a = await snapshot(page);
-  expect(a.title).toBe('Lydian 4242');
+  const { meta, ...want } = composeDirectedPiece({ seed: 4242 });
+  expect(a.title).toBe(meta.title);
+  expect(a.title).toBe('Dark G♯ Harmonic Minor 4242');
   expect(a.seed).toBe(4242);
-  expect(a.scale).toBe('lydian');
-  expect(a.voices).toBe(6);
-  expect(a.duration).toBeGreaterThan(100);
-  expect(a.body).not.toBe(before.body);
-  await expect(page.getByTestId('title')).toHaveText('Lydian 4242');
-  await expect(page.getByTestId('keyvoices')).toContainText(/lydian · \d+ \/ 6 notes/);
-  expect(await page.evaluate(() => window.__algorhythms!.store.getState().transport.status)).toBe(
-    'idle',
-  );
+  expect(JSON.parse(a.body)).toEqual(JSON.parse(JSON.stringify(want)));
+  await expect(page.getByTestId('title')).toHaveText(a.title);
+  // The finished piece at once: no build show, nothing to undo.
+  await expect(page.getByTestId('compose-panel')).toHaveCount(0);
+  const st = await page.evaluate(() => {
+    const h = window.__algorhythms as unknown as {
+      store: { getState(): { transport: { status: string } } };
+      editor: { state: { getState(): { canUndo: boolean } } };
+    };
+    return { status: h.store.getState().transport.status, undo: h.editor.state.getState().canUndo };
+  });
+  expect(st).toEqual({ status: 'idle', undo: false });
 
-  // Again with the same seed and options (the panel remembers them).
+  // Again with the same seed (the panel remembers it).
   await openPanel(page);
   await expect(panel(page).getByLabel('Seed', { exact: true })).toHaveValue('4242');
   await page.getByTestId('generate-run').click();
@@ -80,33 +89,23 @@ test('generates a piece from a seed; the same seed and options reproduce it', as
   expect(b.body).toBe(a.body);
   expect(b.duration).toBe(a.duration);
 
-  // A different seed, or a different option, gives a different piece.
+  // A different seed gives a different piece.
   await openPanel(page);
   await panel(page).getByLabel('Seed', { exact: true }).fill('4243');
   await page.getByTestId('generate-run').click();
   const c = await snapshot(page);
-  expect(c.title).toBe('Lydian 4243');
+  expect(c.title).toBe('Bright G♭ Mixolydian 4243');
   expect(c.body).not.toBe(a.body);
-
-  await openPanel(page);
-  await panel(page).getByLabel('Seed', { exact: true }).fill('4242');
-  await panel(page).getByLabel('Notes', { exact: true }).fill('8');
-  await page.getByTestId('generate-run').click();
-  const d = await snapshot(page);
-  expect(d.voices).toBe(8);
-  expect(d.body).not.toBe(a.body);
 });
 
-test('text seeds work, "New seed" draws a number, blank seeds are refused, length applies', async ({
-  page,
-}) => {
+test('text seeds work, "New seed" draws a number, blank seeds are refused', async ({ page }) => {
   await openPanel(page);
   const seed = panel(page).getByLabel('Seed', { exact: true });
   await seed.fill('moonlight');
   await page.getByTestId('generate-run').click();
   await expect(page.getByTestId('generate-panel')).toBeHidden();
   const first = await snapshot(page);
-  expect(first.title).toMatch(/^Dorian \d+$/);
+  expect(first.title).toMatch(/^[A-Z][a-z]+ [A-G].* \d+$/);
 
   await openPanel(page);
   await seed.fill('moonlight');
@@ -125,15 +124,6 @@ test('text seeds work, "New seed" draws a number, blank seeds are refused, lengt
   await expect(page.getByRole('alert').filter({ hasText: 'Enter a seed' })).toBeVisible();
   await expect(page.getByTestId('generate-panel')).toBeVisible();
   await expect(seed).toHaveAttribute('aria-invalid', 'true');
-
-  // A chosen length: the slider is live by default; "natural length" turns it off.
-  await seed.fill('7');
-  await expect(panel(page).getByLabel('Length', { exact: true })).toBeEnabled();
-  await panel(page).getByLabel('Length', { exact: true }).fill('400');
-  await page.getByTestId('generate-run').click();
-  const long = await snapshot(page);
-  expect(long.duration).toBeGreaterThan(350);
-  expect(long.duration).toBeLessThan(460);
 });
 
 test('is keyboard operable: Escape closes it and focus returns to the menu button', async ({

@@ -1,29 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_FORM,
-  LENGTH_MAX,
-  LENGTH_MIN,
-  checkForm,
-  formatLength,
-  generateFromRequest,
+  checkSeed,
+  generateFromBrief,
   hashSeed,
   newSeed,
   parseSeed,
-  type GenerateForm,
 } from '../../../src/app/generate-options';
+import { composeDirectedPiece, isComposedTitle } from '../../../src/core/compose-directed';
 import { generate } from '../../../src/core/generate';
-
-const form = (over: Partial<GenerateForm> = {}): GenerateForm => ({
-  ...DEFAULT_FORM,
-  seed: '1234',
-  ...over,
-});
-
-function request(f: GenerateForm, now?: string) {
-  const c = checkForm(f, now);
-  if (!c.ok) throw new Error(JSON.stringify(c.errors));
-  return c.request;
-}
 
 describe('parseSeed', () => {
   it('takes whole numbers modulo 2^32', () => {
@@ -54,83 +38,39 @@ describe('parseSeed', () => {
   });
 });
 
-describe('checkForm: the mapping to generate()', () => {
-  it('maps the defaults to a 150 s piece', () => {
-    const r = request(form());
-    expect(r.seed).toBe(1234);
-    expect(r.options).toEqual({ mode: 'dorian', voices: 12, density: 0.45, length: 150 });
+describe('checkSeed: Generate = every answer on Surprise me (PLAN §15 M12)', () => {
+  it('gives a brief with only the seed', () => {
+    expect(checkSeed('1234')).toEqual({ ok: true, brief: { seed: 1234 } });
+    expect(checkSeed('moonlight')).toEqual({ ok: true, brief: { seed: hashSeed('moonlight') } });
   });
-  it('natural length sends no length', () => {
-    const r = request(form({ naturalLength: true }));
-    expect('length' in r.options).toBe(false);
-  });
-  it('passes mode, voices, density, length and now through', () => {
-    const r = request(
-      form({ mode: 'lydian', voices: 5, density: 0.8, naturalLength: false, length: 300 }),
-      '2026-01-02T03:04:05Z',
-    );
-    expect(r.options).toEqual({
-      mode: 'lydian',
-      voices: 5,
-      density: 0.8,
-      length: 300,
-      now: '2026-01-02T03:04:05Z',
-    });
-  });
-  it('ignores a stale length while the natural length is on', () => {
-    expect(request(form({ naturalLength: true, length: 9999 })).options.length).toBeUndefined();
-  });
-  it('rejects bad fields with a message each', () => {
-    const c = checkForm(
-      form({ seed: '', voices: 1, density: 1.5, naturalLength: false, length: LENGTH_MIN - 1 }),
-    );
+  it('refuses a blank seed', () => {
+    const c = checkSeed('  ');
     expect(c.ok).toBe(false);
-    if (!c.ok)
-      expect(Object.keys(c.errors).sort()).toEqual(['density', 'length', 'seed', 'voices']);
-    expect(checkForm(form({ voices: 33 })).ok).toBe(false);
-    expect(checkForm(form({ voices: 2.5 })).ok).toBe(false);
-    expect(checkForm(form({ density: Number.NaN })).ok).toBe(false);
-    expect(checkForm(form({ naturalLength: false, length: LENGTH_MAX + 1 })).ok).toBe(false);
-    expect(checkForm(form({ voices: 2, density: 0 })).ok).toBe(true);
-    expect(checkForm(form({ voices: 32, density: 1 })).ok).toBe(true);
+    if (!c.ok) expect(c.error).toMatch(/Enter a seed/);
   });
 });
 
-describe('generateFromRequest', () => {
-  it('is generate(): the same seed and options give the same piece', () => {
-    const f = form({
-      seed: 'hello',
-      mode: 'aeolian',
-      voices: 6,
-      density: 0.3,
-      naturalLength: true,
-    });
-    const a = generateFromRequest(request(f));
-    const b = generateFromRequest(request({ ...f }));
-    expect(b).toEqual(a);
-    expect(a).toEqual(generate(hashSeed('hello'), { mode: 'aeolian', voices: 6, density: 0.3 }));
-    expect(a.voices).toHaveLength(6);
+describe('generateFromBrief', () => {
+  it('is the directed composer with every answer on Surprise me', () => {
+    const a = generateFromBrief({ seed: 4242 });
+    expect(a).toEqual(composeDirectedPiece({ seed: 4242 }));
+    expect(generateFromBrief({ seed: 4242 })).toEqual(a);
+    expect(isComposedTitle(a.meta.title)).toBe(true);
+    expect(a.meta.title).toMatch(/ 4242$/);
+    expect(a.moments).not.toEqual(generate(4242).moments);
   });
-  it('differs when the seed or an option changes', () => {
-    const a = generateFromRequest(request(form()));
-    expect(generateFromRequest(request(form({ seed: '1235' }))).moments).not.toEqual(a.moments);
-    expect(generateFromRequest(request(form({ mode: 'pentatonic' }))).key.scale).toBe(
-      'pentatonic-major',
-    );
-    expect(generateFromRequest(request(form({ voices: 8 }))).voices).toHaveLength(8);
-  });
-  it('a longer chosen length gives a longer piece', () => {
-    const end = (f: GenerateForm) => generateFromRequest(request(f)).end?.at ?? 0;
-    expect(end(form({ naturalLength: false, length: 600 }))).toBeGreaterThan(
-      end(form({ naturalLength: false, length: 200 })),
+  it('differs when the seed changes', () => {
+    expect(generateFromBrief({ seed: 4243 }).moments).not.toEqual(
+      generateFromBrief({ seed: 4242 }).moments,
     );
   });
-});
-
-describe('formatLength', () => {
-  it('formats m:ss', () => {
-    expect(formatLength(150)).toBe('2:30');
-    expect(formatLength(600)).toBe('10:00');
-    expect(formatLength(100)).toBe('1:40');
+  it('stamps now as created and modified, nothing else changes', () => {
+    const now = '2026-01-02T03:04:05Z';
+    const a = generateFromBrief({ seed: 7 }, now);
+    expect(a.meta.created).toBe(now);
+    expect(a.meta.modified).toBe(now);
+    const { meta: _m, ...rest } = a;
+    const { meta: _n, ...plain } = generateFromBrief({ seed: 7 });
+    expect(rest).toEqual(plain);
   });
 });
