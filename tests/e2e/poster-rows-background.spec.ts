@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import './app-hook';
 import { chooseSegment, clickExportForDownload, setRange } from './export-diag';
-import { backToMusic, openPoster, workspace } from './export-open';
+import { addressSettled, backToMusic, openPoster, workspace } from './export-open';
 
 const posterOf = (page: Page) =>
   page.evaluate(() =>
@@ -204,8 +204,23 @@ test('a placed gradient and a picture show on the artboard and in the PNG; links
   await setRange(page, 'bg-picture-dim', 100);
   await expect.poll(() => artboardAt(page, 0.003, 0.997).then(reddish)).toBe(true);
 
+  // Dimming is one undo step; redo puts it back.
+  await workspace(page).getByTestId('undo').click();
+  await expect.poll(async () => (await posterOf(page)).picture.dim).toBeUndefined();
+  await workspace(page).getByTestId('redo').click();
+  await expect.poll(async () => (await posterOf(page)).picture.dim).toBe(1);
+
+  // A reload keeps the picture: the address has none, the tab's saved piece has it.
+  await addressSettled(page);
+  expect(await page.evaluate(() => location.hash)).toMatch(/^#p=/);
+  await page.reload();
+  await expect(page.getByTestId('title')).toHaveText('Kite Day');
+  await expect
+    .poll(async () => (await posterOf(page))?.picture ?? null)
+    .toMatchObject({ w: 64, h: 36, dim: 1 });
+  if (await workspace(page).isVisible()) await backToMusic(page);
+
   // Share: the picture stays out of the link, and the dialog says so.
-  await backToMusic(page);
   const link = await shareLink(page);
   await expect(page.getByTestId('share-no-picture')).toBeVisible();
   await page.getByTestId('share-close').click();

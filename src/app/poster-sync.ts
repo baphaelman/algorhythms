@@ -175,6 +175,23 @@ export function editPosterRun(key: string, fn: DocFn, label = 'Poster'): boolean
   });
 }
 
+/**
+ * The undo entry the last edit made (for `editPosterJoin`), or null when it changed nothing.
+ */
+export function editPosterEntry(fn: DocFn, label = 'Poster'): object | null {
+  run = null;
+  return mine(() => (edit(recipeOf(fn), label) ? lastEntry() : null));
+}
+
+/**
+ * A poster edit that joins `entry` while it is still the newest undo entry (a new text box and
+ * its first text: one step); otherwise its own entry.
+ */
+export function editPosterJoin(entry: object | null, fn: DocFn, label = 'Poster'): boolean {
+  run = null;
+  return mine(() => amend(entry, recipeOf(fn), label));
+}
+
 /** A drag on the artboard: `update` replaces the change so far; one undo entry at `end`. */
 export interface PosterGesture {
   update(fn: DocFn): void;
