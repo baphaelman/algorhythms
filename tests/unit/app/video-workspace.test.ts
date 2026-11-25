@@ -170,6 +170,13 @@ describe('form + piece → the video’s options (M15)', () => {
     expect(videoOptions(form({ videoAheadPoster: 100 }), withDoc, ctx).look!.future).toBe('full');
   });
 
+  it('Follow over the poster frames one row unless the Window is set', () => {
+    const follow = form({ videoCamera: 'follow' });
+    expect(videoOptions(follow, withDoc, ctx).window).toBeUndefined();
+    expect(videoOptions({ ...follow, videoWindow: 8 }, withDoc, ctx).window).toBeCloseTo(8);
+    expect(videoOptions(follow, withCameraFrame(withDoc, 'row'), ctx).window).toBe(12);
+  });
+
   it('the piece’s frame and row break win', () => {
     const row = withCameraFrame(withDoc, 'row');
     expect(videoOptions(form(), row, ctx).frame).toBe('row');

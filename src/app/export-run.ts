@@ -10,7 +10,7 @@ import type { StemsProgress, StemsTarget } from '../audio/stems-client';
 import { LOUDNESS_CEILING, wavExportSize } from '../audio/wav-export';
 import type { CameraKey, CompiledScore, Piece, PosterCameraKey, Seconds } from '../core/types';
 import { VIDEO_RATIO } from '../render/video';
-import { posterCameraAt, posterKeyOfFrame } from '../render/poster-video';
+import { posterKeyOfFrame } from '../render/poster-video';
 import { normalizePlan, type LoudnessMeasure } from '../dsp/loudness';
 import { videoSpan } from '../render/video';
 import type { TimeSpan } from '../render/section';
@@ -48,6 +48,7 @@ import {
   videoAudioFrames,
   videoCameraAt,
   videoLoudnessCeiling,
+  videoPosterFrameAt,
   videoAudioSpan,
   videoAutoKeys,
   videoSizes,
@@ -62,7 +63,6 @@ import {
 import {
   posterFileName,
   posterHudOf,
-  posterLayoutOf,
   previewPosterLayout,
   renderPosterLayoutPng,
   renderPosterLayoutSvg,
@@ -337,14 +337,10 @@ export function previewCamera(
   return videoCameraAt(src.piece, src.compiled, optionsOf(src, form, ctx), t);
 }
 
-/** The last poster laid out for the video's camera (the options and piece it was made from). */
-let posterFor: { piece: Piece; compiled: CompiledScore; key: string; layout: PosterLayout } | null =
-  null;
-
 /**
- * Over the poster (M15): the poster the video plays, laid out once per piece and options, and
- * the frame on it (artboard px) the camera shows at score time t, with the artboard's and the
- * video's width / height; null when the video plays One row.
+ * Over the poster (M15): the key for the frame the camera shows at score time t (the export's
+ * camera, held inside the section), with the artboard's and the video's width / height; null when
+ * the video plays One row. The poster is laid out once per piece and options (`frameOptions`).
  */
 export function previewPosterFrame(
   src: ExportSource,
@@ -353,33 +349,11 @@ export function previewPosterFrame(
   t: Seconds,
 ): { key: PosterCameraKey; art: number; video: number } | null {
   const o = optionsOf(src, form, ctx);
-  if (o.frame !== 'poster' || !o.poster) return null;
-  const key = JSON.stringify(o.poster);
-  if (
-    !posterFor ||
-    posterFor.piece !== src.piece ||
-    posterFor.compiled !== src.compiled ||
-    posterFor.key !== key
-  ) {
-    posterFor = {
-      piece: src.piece,
-      compiled: src.compiled,
-      key,
-      layout: posterLayoutOf(src.piece, o.poster, src.compiled),
-    };
-  }
-  const layout = posterFor.layout;
-  const rect = posterCameraAt(layout, t, {
-    aspect: o.aspect,
-    mode: o.camera,
-    ...(o.window !== undefined ? { window: o.window } : {}),
-    ...(o.followAt !== undefined ? { followAt: o.followAt } : {}),
-    ...(o.rowBreak ? { rowBreak: o.rowBreak } : {}),
-    keys: src.piece.camera?.posterKeys ?? [],
-  });
+  const at = videoPosterFrameAt(src.piece, src.compiled, o, t);
+  if (!at) return null;
   return {
-    key: posterKeyOfFrame(layout, rect, t),
-    art: layout.width / layout.height,
+    key: posterKeyOfFrame(at.layout, at.frame, t),
+    art: at.layout.width / at.layout.height,
     video: VIDEO_RATIO[o.aspect],
   };
 }

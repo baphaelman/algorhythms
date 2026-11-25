@@ -112,29 +112,34 @@ function useVideoSupport(form: ExportForm, runtime: Runtime | null): VideoSuppor
 
 /**
  * Follow’s Window (PLAN.md §12 "Video export"): seconds the frame shows at the chosen aspect, log
- * scale from 2 s to the whole piece. A tick under the track marks the editor's zoom; the slider
+ * scale from 2 s to the whole piece. A tick under the track marks the default: the editor's zoom
+ * (One row) or one row's height (Over the poster, placed at about a row's seconds); the slider
  * snaps to it when moved close, and on it the form keeps no window of its own (null).
  */
 function WindowField({
   form,
   duration,
+  poster,
   disabled,
 }: {
   form: ExportForm;
   duration: number;
+  poster: boolean;
   disabled: boolean;
 }) {
   const id = useId();
   /** The last slider input came from the keyboard (snaps only toward the tick). */
   const keyed = useRef(false);
   const ctx = { window: cameraOf().window, duration };
-  const shown = followWindowOf(form, ctx);
-  const zoom = followWindowOf({ ...form, videoWindow: null }, ctx);
+  const span = sectionNow(form);
+  const rowSeconds = (span.end - span.start) / Math.max(1, form.posterRows);
+  const zoom = followWindowOf({ ...form, videoWindow: poster ? rowSeconds : null }, ctx);
+  const onTick = form.videoWindow === null;
+  const shown = onTick ? zoom : followWindowOf(form, ctx);
   const at = followWindowToSlider(shown, duration);
   const tick = followWindowToSlider(zoom, duration);
-  const onTick = form.videoWindow === null;
-  const text = windowText(shown);
-  const tickLabel = `Editor’s zoom (${windowText(zoom)})`;
+  const text = poster && onTick ? 'One row' : windowText(shown);
+  const tickLabel = poster ? 'One row’s height' : `Editor’s zoom (${windowText(zoom)})`;
   return (
     <div className="field">
       <label htmlFor={`${id}-w`}>Window</label>
@@ -148,7 +153,7 @@ function WindowField({
             step={1}
             value={Math.round(at * 1000)}
             disabled={disabled}
-            aria-valuetext={onTick ? `${text}, editor’s zoom` : text}
+            aria-valuetext={onTick && !poster ? `${text}, editor’s zoom` : text}
             aria-describedby={`${id}-t`}
             data-testid="export-window"
             onChange={(e) => {
@@ -387,7 +392,7 @@ function VideoOptions({
         <FrameFields disabled={disabled} />
         <CameraField value={camera} poster={poster} disabled={disabled} ctl={cameraCtl} />
         {form.videoCamera === 'follow' && (
-          <WindowField form={form} duration={duration} disabled={disabled} />
+          <WindowField form={form} duration={duration} poster={poster} disabled={disabled} />
         )}
         <VideoLookRows form={form} ids={['follow-at']} disabled={disabled} />
       </div>

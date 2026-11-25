@@ -848,11 +848,14 @@ export function videoOptions(formIn: ExportForm, piece: Piece, ctx: VideoContext
   };
   // Keys without keys in the piece fall back to Follow, so they take Follow's window too.
   if (form.videoCamera !== 'whole') {
-    // The renderer takes the window as seen at 16:9; the form's is what this aspect shows.
-    o.window =
-      form.videoWindow === null
-        ? ctx.window
-        : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
+    // The renderer takes the window as seen at 16:9; the form's is what this aspect shows. Over
+    // the poster, no window of its own frames one row's height (M15).
+    if (frame === 'row' || form.videoWindow !== null) {
+      o.window =
+        form.videoWindow === null
+          ? ctx.window
+          : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
+    }
     o.followAt = followAtOf(form) / 100;
   }
   const section = sectionOf(form, ctx);

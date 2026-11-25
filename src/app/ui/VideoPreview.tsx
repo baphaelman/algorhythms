@@ -12,6 +12,8 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatTime } from '../../render/hud';
 import { videoSize } from '../../render/video';
+import { pieceVideoFrame } from '../../render/poster-video';
+import { picturesReady, usePictures } from '../poster-picture';
 import { bookendsOf, type ExportForm } from '../export-options';
 import { previewFit } from '../video-timeline';
 import { currentTime, pause, play, seekTo, usePlayer } from '../store';
@@ -118,6 +120,11 @@ export function VideoPreview({
   const compiled = usePlayer((s) => s.compiled);
   // The app's theme and line colours feed 'Current' and 'As in the app'.
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
+  // The poster's background picture is decoded on the page before a frame draws it.
+  const pictures = usePictures((s) => s.decoded);
+  useEffect(() => void picturesReady(piece), [piece]);
+  // Over the poster the readouts are the poster's (placed in Poster), not boxes on this frame.
+  const overPoster = pieceVideoFrame(piece) === 'poster';
   const t = useExportUi((s) => s.previewT);
   const playing = useExportUi((s) => s.previewPlaying);
   const box = useRef<HTMLDivElement>(null);
@@ -203,7 +210,7 @@ export function VideoPreview({
         run?.();
       });
     }
-  }, [runtime, piece, compiled, form, v, pxW, pxH, px.width, appView, avail.w]);
+  }, [runtime, piece, compiled, form, v, pxW, pxH, px.width, appView, avail.w, pictures]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -231,7 +238,7 @@ export function VideoPreview({
             data-tau={bookends ? shown.toFixed(3) : undefined}
             style={{ width: `${fit.w}px`, height: `${fit.h}px` }}
           />
-          <HudOverlay form={form} kind="video" disabled={disabled} />
+          {!overPoster && <HudOverlay form={form} kind="video" disabled={disabled} />}
         </div>
       </div>
       <div className="field-row preview-time">
