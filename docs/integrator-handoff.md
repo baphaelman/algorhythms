@@ -50,6 +50,9 @@ Last updated: 2026-11-20, fourth integrator session (M4 done).
   `pnpm test` skips the timing/GC gates (rtf, no-gc, compiler-perf); run `pnpm test:perf` alone, on a quiet box, only when DSP or compiler code changed. CI runs both (build log "Timing gates split from `pnpm test`").
 - **This Mac is often loaded, so timing tests flake.** The compiler perf guard is loose (100 ms); the strict 5 ms check runs only with `ALGORHYTHMS_PERF_STRICT=1`.
 
+## Integrate in your own worktree (2026-11-25)
+The owner's other sessions (e.g. a composer) work in `~/algorhythms` and switch its branch: on 2026-11-25 a session made branch `late-bloom` there, and my merge + status commit landed on it instead of main. So never merge or commit in `~/algorhythms`. Use `<scratchpad>/integrate` (a detached worktree): `git checkout --detach main`, merge/cherry-pick there, then `git update-ref refs/heads/main <new> <old>` and `git push origin main`. Check `git -C ~/algorhythms rev-parse --abbrev-ref HEAD` before trusting anything in that checkout.
+
 ## Merge routine in the cloud (this session)
 - `git merge --no-edit <branch>` aborts silently if the tree is dirty: commit doc edits first and check the merged files exist (once a commit was titled "Merge M4.5-12" with only a PLAN change; fixed by 694709e).
 - build-log conflicts: strip the conflict markers (keep both sides), `git add`, commit.
