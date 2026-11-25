@@ -196,6 +196,7 @@ describe('video', () => {
       colors: 'pitch',
       customColors: p.voices.map((v) => v.color),
       look,
+      frame: 'row',
     });
     expect(videoOptions(form(), p, { ...ctx, dark: false }).look!.theme).toBe('light');
   });

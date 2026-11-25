@@ -50,6 +50,7 @@ import {
   followAtHint,
   hudSummary,
   lookControls,
+  posterAheadControl,
   type LookControl,
   type LookFlags,
   type LookKind,
@@ -370,11 +371,14 @@ export function VideoLookRows({
   form,
   ids,
   hud = false,
+  poster = false,
   disabled,
 }: {
   form: ExportForm;
   ids: readonly string[];
   hud?: boolean;
+  /** Over the poster: Ahead of the playhead is its own (`videoAheadPoster`). */
+  poster?: boolean;
   disabled: boolean;
 }) {
   const follow = form.videoCamera === 'follow';
@@ -382,6 +386,7 @@ export function VideoLookRows({
     <div className="look-grid">
       {lookControls('video')
         .filter((c) => ids.includes(c.id))
+        .map((c) => (poster && c.id === 'future' ? posterAheadControl : c))
         .map((c) => (
           <Fragment key={c.id}>
             <LookRow

@@ -8,7 +8,24 @@ import {
   timelineAxis,
   timelineCards,
 } from '../../../src/app/video-timeline';
-import { DEFAULT_EXPORT_FORM } from '../../../src/app/export-options';
+import {
+  DEFAULT_EXPORT_FORM,
+  parsePrefs,
+  videoOptions,
+  type ExportForm,
+} from '../../../src/app/export-options';
+import {
+  panPosterKey,
+  posterKeysOf,
+  withCameraFrame,
+  withCameraKeys,
+  withCameraMode,
+  withPosterKeys,
+  withRowBreak,
+  zoomPosterKey,
+} from '../../../src/app/editor/camera-keys';
+import { generate } from '../../../src/core/generate';
+import type { Piece } from '../../../src/core/types';
 import {
   VIDEO_LOOK_KEYS,
   changedFields,
@@ -104,5 +121,83 @@ describe('the poster doc leaves the video’s own look to the viewer (M15 storag
     });
     expect(changedFields(a, c)).toEqual(['look']);
     expect(posterLook(DEFAULT_EXPORT_FORM.look)).not.toHaveProperty('future');
+  });
+});
+
+describe('form + piece → the video’s options (M15)', () => {
+  const ctx = { window: 12, duration: 60, dark: true, colors: 'pitch' as const, loop: null };
+  const form = (over: Partial<ExportForm> = {}): ExportForm => ({
+    ...DEFAULT_EXPORT_FORM,
+    format: 'video',
+    ...over,
+  });
+  const base = generate(5, { mode: 'dorian', voices: 3 });
+  const withDoc: Piece = { ...base, poster: { rows: 2 } };
+
+  it('a piece without a poster plays One row, as before', () => {
+    const o = videoOptions(form(), base, ctx);
+    expect(o.frame).toBe('row');
+    expect(o.poster).toBeUndefined();
+    expect(o.rowBreak).toBeUndefined();
+    // Ahead is the Look's.
+    expect(o.look!.future).toBe(DEFAULT_EXPORT_FORM.look.future);
+  });
+
+  it('a piece with a poster plays Over the poster: its poster, a pan, Ahead 0 %', () => {
+    const o = videoOptions(form(), withDoc, ctx);
+    expect(o.frame).toBe('poster');
+    expect(o.rowBreak).toBe('pan');
+    expect(o.poster?.rows).toBe(DEFAULT_EXPORT_FORM.posterRows);
+    expect(o.look!.future).toBe('hidden');
+    const half = videoOptions(form({ videoAheadPoster: 40 }), withDoc, ctx).look!;
+    expect([half.future, half.futureOpacity]).toEqual(['dimmed', 0.4]);
+    expect(videoOptions(form({ videoAheadPoster: 100 }), withDoc, ctx).look!.future).toBe('full');
+  });
+
+  it('the piece’s frame and row break win', () => {
+    const row = withCameraFrame(withDoc, 'row');
+    expect(videoOptions(form(), row, ctx).frame).toBe('row');
+    expect(videoOptions(form(), row, ctx).poster).toBeUndefined();
+    const cut = withRowBreak(withDoc, 'cut');
+    expect(videoOptions(form(), cut, ctx).rowBreak).toBe('cut');
+  });
+
+  it('remembers Ahead over the poster, clamped', () => {
+    expect(parsePrefs({ v: 4, videoAheadPoster: 140 }).videoAheadPoster).toBe(100);
+    expect(parsePrefs({ v: 4, videoAheadPoster: -3 }).videoAheadPoster).toBe(0);
+    expect(parsePrefs({ v: 4, videoAheadPoster: 'x' }).videoAheadPoster).toBeUndefined();
+  });
+});
+
+describe('camera edits keep the M15 fields', () => {
+  const p = generate(5, { mode: 'dorian', voices: 2 });
+  const key = { at: 3, x: 0.5, y: 0.4, h: 0.3 };
+
+  it('mode, keys, frame and row break leave each other alone', () => {
+    let q = withCameraFrame(p, 'poster');
+    q = withRowBreak(q, 'scroll');
+    q = withPosterKeys(q, [key]);
+    expect(q.camera).toEqual({
+      mode: 'keys',
+      frame: 'poster',
+      rowBreak: 'scroll',
+      posterKeys: [key],
+    });
+    q = withCameraMode(q, 'follow');
+    q = withCameraKeys(q, [{ at: 1, place: 0.5, window: 10, pitch: 60, range: 24 }]);
+    expect(q.camera?.frame).toBe('poster');
+    expect(q.camera?.rowBreak).toBe('scroll');
+    expect(posterKeysOf(q)).toEqual([key]);
+    expect(withCameraFrame(q, 'poster')).toBe(q);
+  });
+
+  it('panning a poster key moves its frame against the pointer; zoom keeps it in range', () => {
+    // A 16:9 frame on a 16:9 artboard: the frame's width is h of the artboard's width.
+    const moved = panPosterKey(key, 0.1, -0.2, 16 / 9, 16 / 9);
+    expect(moved.x).toBeCloseTo(0.5 - 0.1 * 0.3);
+    expect(moved.y).toBeCloseTo(0.4 + 0.2 * 0.3);
+    expect(zoomPosterKey(key, 2).h).toBeCloseTo(0.6);
+    expect(zoomPosterKey(key, 1e-6).h).toBeGreaterThan(0);
+    expect(zoomPosterKey(key, -1)).toBe(key);
   });
 });

@@ -1,14 +1,16 @@
 /**
- * The Export dialog's Camera (PLAN.md §15 M11.5 C3): Follow, Auto, Keys (and Whole piece). Follow,
+ * The video's Camera (PLAN.md §15 M11.5 C3, M15): Follow, Auto, Keys (and Whole piece). Follow,
  * Auto and Keys write the piece's camera mode, one undo entry each; Edit copies Auto's keys into
  * the piece. In Keys, markers on the preview's timeline select, move (drag, arrow keys) and
  * delete keys; with a key selected, dragging the preview pans its view and scrolling zooms it
- * (Shift: the pitch range), one undo entry per gesture.
+ * (Shift: the pitch range), one undo entry per gesture. Over the poster (M15) edits the piece's
+ * poster keys (frames in poster space) the same way.
  */
 
 import { useEffect, useId, useRef, type RefObject } from 'react';
 import { create } from 'zustand';
-import type { CameraKey, CameraMode } from '../../core/types';
+import type { CameraKey, CameraMode, Piece, PosterCameraKey } from '../../core/types';
+import { pieceVideoFrame } from '../../render/poster-video';
 import { formatTime } from '../../render/hud';
 import { keyOfCamera } from '../../render/camera-path';
 import type { VideoCameraMode } from '../../render/video';
@@ -21,10 +23,14 @@ import {
   keysOf,
   moveKey,
   panKey,
+  panPosterKey,
+  posterKeysOf,
   updateKey,
   withCameraKeys,
+  withPosterKeys,
   withCameraMode,
   zoomKey,
+  zoomPosterKey,
 } from '../editor/camera-keys';
 import { beginGesture, currentGesture, edit, endGesture, updateGesture } from '../editor/history';
 import { usePlayer } from '../store';
@@ -51,7 +57,66 @@ export interface CameraCtl {
   autoKeys(): readonly CameraKey[] | null;
   /** Sets the form's Camera. */
   setChoice(mode: VideoCameraMode): void;
+  /**
+   * Over the poster (M15): a key from the frame the preview shows at t, and the artboard's and
+   * the video's width / height; null before the engine room loads.
+   */
+  posterKeyAt(t: number): PosterCameraKey | null;
+  posterAspects(): { art: number; video: number } | null;
 }
+
+/** A key of either frame (One row's `CameraKey`, Over the poster's `PosterCameraKey`). */
+type AnyKey = CameraKey | PosterCameraKey;
+
+/** How a frame's keys are read, written and shaped (M15: One row or Over the poster). */
+interface Track {
+  of(p: Pick<Piece, 'camera'>): readonly AnyKey[];
+  with(p: Piece, keys: readonly AnyKey[]): Piece;
+  /** A key from the view the preview shows at t. */
+  fromView(ctl: CameraCtl, t: number): AnyKey | null;
+  /** ↑ ↓: the view up or down by `d` steps. */
+  nudge(k: AnyKey, d: number): AnyKey;
+  zoom(k: AnyKey, f: number, range: boolean): AnyKey;
+  /** Dragged by (dx, dy), fractions of the frame. */
+  pan(ctl: CameraCtl, k: AnyKey, dx: number, dy: number): AnyKey;
+}
+
+const ROW: Track = {
+  of: keysOf,
+  with: (p, keys) => withCameraKeys(p, keys as CameraKey[]),
+  fromView: (ctl, t) => {
+    const cam = ctl.cameraAt(t);
+    return cam ? keyOfCamera(cam, t, undefined, ctl.aspect()) : null;
+  },
+  nudge: (k, d) => ({ ...(k as CameraKey), pitch: (k as CameraKey).pitch + d }),
+  zoom: (k, f, range) => zoomKey(k as CameraKey, f, range ? 'range' : 'window'),
+  pan: (_ctl, k, dx, dy) => panKey(k as CameraKey, dx, dy),
+};
+
+/** One step of ↑ ↓ on the poster, a fraction of the frame's height. */
+const POSTER_NUDGE = 0.05;
+
+const POSTER: Track = {
+  of: posterKeysOf,
+  with: (p, keys) => withPosterKeys(p, keys as PosterCameraKey[]),
+  fromView: (ctl, t) => ctl.posterKeyAt(t),
+  nudge: (k, d) => {
+    const pk = k as PosterCameraKey;
+    return { ...pk, y: pk.y - d * POSTER_NUDGE * pk.h };
+  },
+  // The range (Shift) has no meaning on the poster: both zoom the frame.
+  zoom: (k, f) => zoomPosterKey(k as PosterCameraKey, f),
+  pan: (ctl, k, dx, dy) => {
+    const a = ctl.posterAspects();
+    return a ? panPosterKey(k as PosterCameraKey, dx, dy, a.art, a.video) : k;
+  },
+};
+
+/** The keys the piece's video frame uses. */
+const trackOf = (p: Pick<Piece, 'camera' | 'poster'>): Track =>
+  pieceVideoFrame(p) === 'poster' ? POSTER : ROW;
+
+const track = () => trackOf(usePlayer.getState().piece);
 
 /** The selected key's index (in the piece's keys), or null. */
 export const useCameraKeys = create<{ selected: number | null }>()(() => ({ selected: null }));
@@ -59,12 +124,12 @@ export const useCameraKeys = create<{ selected: number | null }>()(() => ({ sele
 const select = (i: number | null) => useCameraKeys.setState({ selected: i });
 
 /** The selected index if it still names a key. */
-function selectedIn(keys: readonly CameraKey[]): number | null {
+function selectedIn(keys: readonly AnyKey[]): number | null {
   const i = useCameraKeys.getState().selected;
   return i !== null && i < keys.length ? i : null;
 }
 
-const pieceKeys = () => keysOf(usePlayer.getState().piece);
+const pieceKeys = () => track().of(usePlayer.getState().piece);
 
 /** Wheel zooms within this pause of each other are one undo entry, ms. */
 const WHEEL_GESTURE_MS = 400;
@@ -73,14 +138,15 @@ const WHEEL_GESTURE_MS = 400;
  * Keys mode's keys: the piece's own (`fresh`: Auto's instead), else Auto's, else one key from
  * the view the preview shows now.
  */
-function startKeys(ctl: CameraCtl, fresh: boolean): readonly CameraKey[] {
-  const own = keysOf(usePlayer.getState().piece);
+function startKeys(ctl: CameraCtl, fresh: boolean): readonly AnyKey[] {
+  const tr = track();
+  const own = tr.of(usePlayer.getState().piece);
   if (!fresh && own.length > 0) return own;
-  const auto = ctl.autoKeys();
+  // Auto's keys are One row's.
+  const auto = tr === ROW ? ctl.autoKeys() : null;
   if (auto && auto.length > 0) return auto;
-  const t = ctl.time();
-  const cam = ctl.cameraAt(t);
-  return cam ? [keyOfCamera(cam, t, undefined, ctl.aspect())] : own;
+  const k = tr.fromView(ctl, ctl.time());
+  return k ? [k] : own;
 }
 
 /** Choosing a Camera: Follow, Auto and Keys write the piece; Whole piece is the dialog's. */
@@ -93,11 +159,12 @@ function choose(ctl: CameraCtl, mode: VideoCameraMode): void {
   if (m === 'keys') {
     // The seed key is the view shown before switching.
     const keys = startKeys(ctl, false);
+    const tr = track();
     edit(
       (p) =>
-        keys.length === 0 || (p.camera?.mode === 'keys' && keysOf(p) === keys)
+        keys.length === 0 || (p.camera?.mode === 'keys' && tr.of(p) === keys)
           ? withCameraMode(p, 'keys')
-          : withCameraKeys(p, keys),
+          : tr.with(p, keys),
       'Camera',
     );
     select(null);
@@ -105,25 +172,39 @@ function choose(ctl: CameraCtl, mode: VideoCameraMode): void {
   ctl.setChoice(m);
 }
 
+/** Over the poster's cameras (M15): Auto plays as Follow there, so it isn't offered. */
+const POSTER_CAMERAS = VIDEO_CAMERAS.filter((c) => c.id !== 'auto').map((c) =>
+  c.id === 'follow'
+    ? { ...c, hint: 'Follows the playhead row by row; Window sets how much it shows.' }
+    : c.id === 'whole'
+      ? { ...c, label: 'Whole', hint: 'The whole poster in frame.' }
+      : c,
+);
+
 /** The Camera group, its hint, and Edit (Auto). */
 export function CameraField({
-  value,
+  value: chosen,
+  poster = false,
   disabled,
   ctl,
 }: {
   value: VideoCameraMode;
+  /** Over the poster (M15): Follow, Whole and Keys in poster space. */
+  poster?: boolean;
   disabled: boolean;
   ctl: CameraCtl;
 }) {
   const id = useId();
-  const hint = VIDEO_CAMERAS.find((c) => c.id === value)?.hint;
+  const options = poster ? POSTER_CAMERAS : VIDEO_CAMERAS;
+  const value = poster && chosen === 'auto' ? 'follow' : chosen;
+  const hint = options.find((c) => c.id === value)?.hint;
   return (
     <>
       <Radios
         legend="Camera"
         name={`${id}-camera`}
         value={value}
-        options={VIDEO_CAMERAS}
+        options={options}
         disabled={disabled}
         testId="export-camera"
         onChange={(mode) => choose(ctl, mode)}
@@ -138,7 +219,7 @@ export function CameraField({
             data-testid="camera-edit"
             onClick={() => {
               const keys = startKeys(ctl, true);
-              edit((p) => withCameraKeys(p, keys), 'Edit camera');
+              edit((p) => track().with(p, keys), 'Edit camera');
               select(null);
               ctl.setChoice('keys');
             }}
@@ -152,10 +233,11 @@ export function CameraField({
 }
 
 /** Keys selected key, as an edit of its own: `fn` on the key. */
-function editSelected(fn: (k: CameraKey) => CameraKey, label: string): void {
+function editSelected(fn: (k: AnyKey) => AnyKey, label: string): void {
   const i = selectedIn(pieceKeys());
   if (i === null) return;
-  edit((p) => withCameraKeys(p, updateKey(keysOf(p), i, fn)), label);
+  const tr = track();
+  edit((p) => tr.with(p, updateKey(tr.of(p), i, fn)), label);
 }
 
 /** Focuses key marker i after the next render (or `fallback` when there is none). */
@@ -186,15 +268,15 @@ export function KeyMarkers({
   disabled: boolean;
   ctl: CameraCtl;
 }) {
-  const keys = usePlayer((s) => keysOf(s.piece));
+  const keys = usePlayer((s) => trackOf(s.piece).of(s.piece));
   const picked = useCameraKeys((s) => s.selected);
-  const track = useRef<HTMLDivElement>(null);
+  const lane = useRef<HTMLDivElement>(null);
   const drag = useRef<{ i: number; id: number } | null>(null);
   const id = useId();
   const span = Math.max(1e-6, to - from);
   const pct = (t: number) => `${(Math.min(1, Math.max(0, (t - from) / span)) * 100).toFixed(3)}%`;
   const timeAt = (clientX: number): number => {
-    const r = track.current?.getBoundingClientRect();
+    const r = lane.current?.getBoundingClientRect();
     if (!r || r.width === 0) return from;
     return from + (Math.min(Math.max(clientX - r.left, 0), r.width) / r.width) * span;
   };
@@ -209,28 +291,32 @@ export function KeyMarkers({
       // Kept on this timeline, so the focused marker stays.
       const at = Math.min(Math.max(k.at + step, from), to);
       const next = moveKey(keys, i, at);
-      edit((p) => withCameraKeys(p, moveKey(keysOf(p), i, at)), 'Move camera key');
+      const tr = track();
+      edit((p) => tr.with(p, moveKey(tr.of(p), i, at)), 'Move camera key');
       select(i);
       ctl.seek(next[i].at);
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const d = (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 12 : 1);
       select(i);
-      editSelected((x) => ({ ...x, pitch: x.pitch + d }), 'Camera view');
+      const tr = track();
+      editSelected((x) => tr.nudge(x, d), 'Camera view');
     } else if (e.key === '-' || e.key === '=' || e.key === '+') {
       select(i);
-      editSelected((x) => zoomKey(x, e.key === '-' ? 1.25 : 0.8, 'window'), 'Camera zoom');
+      const tr = track();
+      editSelected((x) => tr.zoom(x, e.key === '-' ? 1.25 : 0.8, false), 'Camera zoom');
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      edit((p) => withCameraKeys(p, deleteKey(keysOf(p), i)), 'Delete camera key');
+      const tr = track();
+      edit((p) => tr.with(p, deleteKey(tr.of(p), i)), 'Delete camera key');
       const left = keys.length - 1;
       const next = left === 0 ? -1 : Math.min(i, left - 1);
       select(next >= 0 ? next : null);
-      focusMarker(track.current, next, '[data-testid="camera-key-add"]');
+      focusMarker(lane.current, next, '[data-testid="camera-key-add"]');
     } else done = false;
     if (done) e.preventDefault();
   };
 
   return (
-    <div className="camera-key-track" ref={track} data-testid="camera-keys">
+    <div className="camera-key-track" ref={lane} data-testid="camera-keys">
       <small className="visually-hidden" id={`${id}-k`}>
         Arrow keys move it in time (Shift ten seconds, Alt a tenth); up and down move the view;
         minus and equals zoom; Delete removes it.
@@ -270,7 +356,8 @@ export function KeyMarkers({
               const d = drag.current;
               if (!d || d.id !== e.pointerId) return;
               const t = timeAt(e.clientX);
-              updateGesture((p) => withCameraKeys(p, moveKey(keysOf(p), d.i, t)));
+              const tr = track();
+              updateGesture((p) => tr.with(p, moveKey(tr.of(p), d.i, t)));
               const at = pieceKeys()[d.i]?.at;
               if (at !== undefined) ctl.seek(at);
             }}
@@ -293,7 +380,7 @@ export function KeyMarkers({
 
 /** Add (a key at the preview's time, from the view it shows) and Delete (the selected key). */
 export function KeyButtons({ disabled, ctl }: { disabled: boolean; ctl: CameraCtl }) {
-  const keys = usePlayer((s) => keysOf(s.piece));
+  const keys = usePlayer((s) => trackOf(s.piece).of(s.piece));
   const picked = useCameraKeys((s) => s.selected);
   const sel = picked !== null && picked < keys.length ? picked : null;
   const root = useRef<HTMLDivElement>(null);
@@ -311,13 +398,11 @@ export function KeyButtons({ disabled, ctl }: { disabled: boolean; ctl: CameraCt
             select(near);
             return;
           }
-          const cam = ctl.cameraAt(t);
-          if (!cam) return;
-          const { keys: next, index } = addKey(
-            pieceKeys(),
-            keyOfCamera(cam, t, undefined, ctl.aspect()),
-          );
-          edit((p) => withCameraKeys(p, next), 'Add camera key');
+          const tr = track();
+          const key = tr.fromView(ctl, t);
+          if (!key) return;
+          const { keys: next, index } = addKey(pieceKeys(), key);
+          edit((p) => tr.with(p, next), 'Add camera key');
           select(index);
         }}
       >
@@ -330,7 +415,8 @@ export function KeyButtons({ disabled, ctl }: { disabled: boolean; ctl: CameraCt
         data-testid="camera-key-delete"
         onClick={() => {
           if (sel === null) return;
-          edit((p) => withCameraKeys(p, deleteKey(keysOf(p), sel)), 'Delete camera key');
+          const tr = track();
+          edit((p) => tr.with(p, deleteKey(tr.of(p), sel)), 'Delete camera key');
           const left = keys.length - 1;
           select(left > 0 ? Math.min(sel, left - 1) : null);
           // This button disables itself when no key is left: focus Add.
@@ -365,16 +451,15 @@ export function useKeyView(
   useEffect(() => {
     const el = stage.current;
     if (!el || !on) return;
-    let pan: { i: number; k: CameraKey; x: number; y: number; id: number } | null = null;
-    let wheel: { i: number; k: CameraKey; f: number; range: boolean; g: object | null } | null =
-      null;
+    let pan: { i: number; k: AnyKey; x: number; y: number; id: number } | null = null;
+    let wheel: { i: number; k: AnyKey; f: number; range: boolean; g: object | null } | null = null;
     let wheelTimer = 0;
     const endWheel = () => {
       window.clearTimeout(wheelTimer);
       if (wheel && currentGesture() === wheel.g) endGesture();
       wheel = null;
     };
-    const target = (): { i: number; k: CameraKey } | null => {
+    const target = (): { i: number; k: AnyKey } | null => {
       const keys = pieceKeys();
       const i = selectedIn(keys);
       return i === null ? null : { i, k: keys[i] };
@@ -397,10 +482,11 @@ export function useKeyView(
       const dx = (e.clientX - pan.x) / Math.max(1, r.width);
       const dy = (e.clientY - pan.y) / Math.max(1, r.height);
       const { i, k } = pan;
+      const tr = track();
       updateGesture((p) =>
-        withCameraKeys(
+        tr.with(
           p,
-          updateKey(keysOf(p), i, () => panKey(k, dx, dy)),
+          updateKey(tr.of(p), i, () => tr.pan(ctl, k, dx, dy)),
         ),
       );
     };
@@ -426,10 +512,11 @@ export function useKeyView(
       }
       wheel.f *= Math.exp(px * (e.ctrlKey ? 0.01 : 0.002));
       const { i, k, f } = wheel;
+      const tr = track();
       updateGesture((p) =>
-        withCameraKeys(
+        tr.with(
           p,
-          updateKey(keysOf(p), i, () => zoomKey(k, f, range ? 'range' : 'window')),
+          updateKey(tr.of(p), i, () => tr.zoom(k, f, range)),
         ),
       );
       window.clearTimeout(wheelTimer);

@@ -14,6 +14,7 @@ import {
   FOLLOW_AT_MIN,
   FOLLOW_AT_SHOWN,
   HUD_CHOICES,
+  aheadLook,
   followAtOf,
   type ExportForm,
   type LookForm,
@@ -127,12 +128,23 @@ export function futurePercent(l: Pick<LookForm, 'future' | 'futureOpacity'>): nu
   return Math.min(99, Math.max(1, pct(l.futureOpacity)));
 }
 
-export function futureFromPercent(n: number): Pick<LookForm, 'future'> & Partial<LookForm> {
-  const r = Math.round(n);
-  if (!(r > 0)) return { future: 'hidden' };
-  if (r >= 100) return { future: 'full' };
-  return { future: 'dimmed', futureOpacity: r / 100 };
-}
+export const futureFromPercent = aheadLook;
+
+/** Over the poster's Ahead of the playhead (M15): its own value, 0 % by default. */
+export const posterAheadControl: LookSlider = {
+  type: 'slider',
+  id: 'future',
+  label: 'Ahead of the playhead',
+  kinds: VIDEO,
+  min: 0,
+  max: 100,
+  step: 1,
+  value: (form) => form.videoAheadPoster,
+  apply: (_form, n) =>
+    Number.isFinite(n) ? { videoAheadPoster: Math.min(100, Math.max(0, Math.round(n))) } : {},
+  text: (n) => (n <= 0 ? 'Hidden' : n >= 100 ? 'Full' : `${Math.round(n)} %`),
+  hint: 'Over the poster: 0 % draws the poster as the music plays; 100 % shows it whole.',
+};
 
 const futureControl: LookSlider = {
   type: 'slider',

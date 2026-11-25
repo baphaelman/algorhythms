@@ -31,9 +31,14 @@ import { cameraOf, usePlayer } from '../store';
 import { formatTime } from '../../render/hud';
 import { timelineAxis, timelineCards } from '../video-timeline';
 import { useFocusRescue } from './focus-rescue';
-import { Radios } from './export-controls';
+import { Radios, Switch } from './export-controls';
+import type { CameraFrame, PosterText, RowBreak } from '../../core/types';
+import { pieceRowBreak, pieceVideoFrame } from '../../render/poster-video';
+import { edit } from '../editor/history';
+import { withCameraFrame, withRowBreak } from '../editor/camera-keys';
+import { editPoster } from '../poster-sync';
 import { BookendsGroup, LoudnessField, PresetField, PreviewActions } from './ExportYoutube';
-import { CameraField, KeyButtons, KeyMarkers } from './CameraKeys';
+import { CameraField, KeyButtons, KeyMarkers, useCameraKeys } from './CameraKeys';
 import { RunStatus, SectionField, VideoLookRows } from './ExportFields';
 import { VideoPreview, scrubPreview } from './VideoPreview';
 import { backToMusic } from './PosterWorkspace';
@@ -173,6 +178,126 @@ function WindowField({
   );
 }
 
+const FRAMES: readonly { id: CameraFrame; label: string; hint: string }[] = [
+  {
+    id: 'poster',
+    label: 'Over the poster',
+    hint: 'A window over the poster, reading it row by row.',
+  },
+  { id: 'row', label: 'One row', hint: 'The music in one long row, with the poster’s styles.' },
+];
+
+const ROW_BREAKS: readonly { id: RowBreak; label: string }[] = [
+  { id: 'pan', label: 'Pan' },
+  { id: 'scroll', label: 'Scroll' },
+  { id: 'cut', label: 'Cut' },
+];
+
+/** Frame (Over the poster | One row) and, over the poster, the row break: the piece's. */
+function FrameFields({ disabled }: { disabled: boolean }) {
+  const id = useId();
+  const frame = usePlayer((s) => pieceVideoFrame(s.piece));
+  const rowBreak = usePlayer((s) => pieceRowBreak(s.piece));
+  return (
+    <>
+      <Radios
+        legend="Frame"
+        name={`${id}-frame`}
+        value={frame}
+        options={FRAMES}
+        disabled={disabled}
+        testId="video-frame"
+        hint={FRAMES.find((f) => f.id === frame)?.hint}
+        onChange={(f) => {
+          useCameraKeys.setState({ selected: null });
+          edit((p) => withCameraFrame(p, f), 'Camera frame');
+        }}
+      />
+      {frame === 'poster' && (
+        <Radios
+          legend="Row break"
+          name={`${id}-break`}
+          value={rowBreak}
+          options={ROW_BREAKS}
+          disabled={disabled}
+          testId="video-row-break"
+          hint="How the frame reaches the next row: a smooth pan that lands as it starts, a scroll, or a cut."
+          onChange={(b) => edit((p) => withRowBreak(p, b), 'Row break')}
+        />
+      )}
+    </>
+  );
+}
+
+/** A text box's name in the Travels list: its first line, else its kind. */
+function textName(t: PosterText): string {
+  const line = t.text.split('\n')[0].trim();
+  if (line) return line.length > 32 ? `${line.slice(0, 31)}…` : line;
+  return t.kind === 'free' ? 'Text' : t.kind[0].toUpperCase() + t.kind.slice(1);
+}
+
+/**
+ * Stays or travels (Over the poster): the HUD readouts (travel by default) and each text box
+ * (stays by default) either stay on the poster or travel with the frame. Stored in the poster.
+ */
+function TravelsFields({ disabled }: { disabled: boolean }) {
+  const doc = usePlayer((s) => s.piece.poster);
+  const hud = doc?.groups?.hud?.travels ?? true;
+  const texts = doc?.texts ?? [];
+  return (
+    <div
+      className="field travels"
+      role="group"
+      aria-label="Stays or travels"
+      data-testid="video-travels"
+    >
+      <span className="field-label">Travels with the frame</span>
+      <Switch
+        label="HUD readouts"
+        checked={hud}
+        disabled={disabled}
+        testId="travels-hud"
+        onChange={(on) =>
+          editPoster(
+            (d) => ({
+              ...d,
+              groups: { ...d?.groups, hud: { ...d?.groups?.hud, travels: on } },
+            }),
+            'Readouts travel',
+          )
+        }
+      />
+      {texts.map((t) => (
+        <Switch
+          key={t.id}
+          label={textName(t)}
+          checked={t.travels === true}
+          disabled={disabled}
+          testId={`travels-text-${t.id}`}
+          onChange={(on) =>
+            editPoster(
+              (d) => ({
+                ...d,
+                texts: (d?.texts ?? []).map((x) => {
+                  if (x.id !== t.id) return x;
+                  if (on) return { ...x, travels: true };
+                  const { travels: _t, ...rest } = x;
+                  return rest;
+                }),
+              }),
+              'Text travels',
+            )
+          }
+        />
+      ))}
+      <small className="export-hint">
+        Off: it stays on the poster where it is
+        {texts.length === 0 ? '. Text boxes are added in Poster' : ''}.
+      </small>
+    </div>
+  );
+}
+
 /** The right panel: the video-only options (the look is Poster's). */
 function VideoOptions({
   form,
@@ -199,6 +324,7 @@ function VideoOptions({
   );
   const camera = cameraChoice(form, piece);
   const span = sectionNow(form);
+  const poster = pieceVideoFrame(piece) === 'poster';
   return (
     <div className="ws-options" data-testid="video-options">
       <PresetField
@@ -258,7 +384,8 @@ function VideoOptions({
         </small>
       )}
       <div className="ws-group ws-camera" data-testid="video-camera">
-        <CameraField value={camera} disabled={disabled} ctl={cameraCtl} />
+        <FrameFields disabled={disabled} />
+        <CameraField value={camera} poster={poster} disabled={disabled} ctl={cameraCtl} />
         {form.videoCamera === 'follow' && (
           <WindowField form={form} duration={duration} disabled={disabled} />
         )}
@@ -266,7 +393,14 @@ function VideoOptions({
       </div>
       <fieldset className="look ws-moving" disabled={disabled} data-testid="look">
         <legend>Moving</legend>
-        <VideoLookRows form={form} ids={['future', 'playhead', 'heads']} hud disabled={disabled} />
+        <VideoLookRows
+          form={form}
+          ids={['future', 'playhead', 'heads']}
+          hud
+          poster={poster}
+          disabled={disabled}
+        />
+        {poster && <TravelsFields disabled={disabled} />}
         <small className="export-hint">
           Colours, lines, labels and the readouts’ style are the poster’s: set them in Poster.
         </small>

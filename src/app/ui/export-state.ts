@@ -267,7 +267,20 @@ export const cameraCtl: CameraCtl = {
     return runtime.previewAutoKeys({ piece, compiled }, form, videoContext());
   },
   setChoice: (videoCamera) => patch({ videoCamera }),
+  posterKeyAt: (t) => posterFrameAt(t)?.key ?? null,
+  posterAspects: () => {
+    const f = posterFrameAt(cameraCtl.time());
+    return f ? { art: f.art, video: f.video } : null;
+  },
 };
+
+/** Over the poster: the frame the preview shows at t (null: One row, or no engine room yet). */
+function posterFrameAt(t: number) {
+  const { runtime, form } = useExportUi.getState();
+  if (!runtime) return null;
+  const { piece, compiled } = usePlayer.getState();
+  return runtime.previewPosterFrame({ piece, compiled }, form, videoContext(), t);
+}
 
 /** Stops the preview and puts the editor's playhead back where it was when the dialog opened. */
 function restorePlayhead(): void {
