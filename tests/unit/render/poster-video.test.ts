@@ -322,6 +322,42 @@ describe('drawing over the poster', () => {
     expect(on.length).toBeGreaterThan(off.length);
   });
 
+  it('a moved layer lights up in its own place; the camera follows the main group', () => {
+    const box = { x: 0.55, y: 0.75, w: 0.3, h: 0.12 };
+    const moved = lay({ layers: [{ id: 'part:Melody', box }] }, 2);
+    const still = lay(undefined, 2);
+    const o: PosterCameraOptions = { aspect: '16:9', mode: 'follow' };
+    // The main group's frames are unchanged by the move (and leave the moved box out).
+    for (const t of [10, 50, 80]) {
+      expect(posterCameraAt(moved, t, o)).toEqual(posterCameraAt(still, t, o));
+    }
+    // Whole (the 16:9 poster at 16:9: artboard px / 3 on the 1280 canvas): the moved part's own
+    // slice, at half alpha, where its box is.
+    const by = { y0: (box.y * 2160) / 3, y1: ((box.y + box.h) * 2160) / 3 };
+    const slices = (t: number) =>
+      [
+        ...svgOf(moved, t, { camera: 'whole', playhead: true }).matchAll(
+          /<path d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)"[^>]*opacity="0\.5"/g,
+        ),
+      ].map((m) => m.slice(1).map(Number));
+    for (const t of [20, 50]) {
+      const mel = posterTimeAt(moved, t)!.layers.find((l) => l.layer === 'part:Melody')!;
+      const [x0, y0, x1, y1] = slices(t)[0];
+      expect(x0).toBeCloseTo(mel.x / 3, 1);
+      expect(x1).toBe(x0);
+      expect(y0).toBeLessThan(by.y0 + 1);
+      expect(y1).toBeGreaterThan(by.y0);
+      expect(y1).toBeLessThan(by.y1 + 3 * moved.unit);
+    }
+    // At 0 % ahead the part draws itself in its box: more of it later.
+    const inBox = (t: number) =>
+      [...svgOf(moved, t, { camera: 'whole' }).matchAll(/<path d="M[\d.]+ ([\d.]+)/g)].filter(
+        (m) => Number(m[1]) >= by.y0 - 2 && Number(m[1]) <= by.y1 + 2,
+      ).length;
+    expect(inBox(60)).toBeGreaterThan(inBox(15));
+    expect(inBox(15)).toBeGreaterThan(0);
+  });
+
   it('the end card is the finished poster: its texts, no HUD of the playing time', () => {
     const L = lay(TITLED, 3);
     const svg = new SvgContext(1280, 720);

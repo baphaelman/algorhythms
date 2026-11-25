@@ -86,7 +86,7 @@ test('the camera survives Save as file and opening that file', async ({ page }) 
   await expect.poll(() => cameraOf(page)).toEqual(camera);
 });
 
-test('with a section, its keys are inside the range on the timeline; arrows keep a key inside it', async ({
+test('with a section, only its keys are on the timeline; arrows keep a key inside it', async ({
   page,
 }) => {
   await load(page, { mode: 'keys', keys: KEYS });
@@ -100,29 +100,21 @@ test('with a section, its keys are inside the range on the timeline; arrows keep
   const end = page.getByTestId('section-end-text');
   await end.fill('45');
   await end.press('Enter');
-  // M15: the timeline is the piece's axis, the section a range on it; 20 s and 40 s fall inside
-  // the range, 0 s and 70 s outside it.
-  await expect(markers(page)).toHaveCount(4);
-  const handle = async (h: 'start' | 'end') => {
-    const r = (await page.getByTestId(`section-${h}`).boundingBox())!;
-    return r.x + r.width / 2;
-  };
-  const range = { from: await handle('start'), to: await handle('end') };
-  const inside = await markers(page).evaluateAll(
-    (els, r) =>
-      els.map((e) => {
-        const b = e.getBoundingClientRect();
-        const x = b.x + b.width / 2;
-        return `${e.dataset.at} ${x >= r.from && x <= r.to ? 'in' : 'out'}`;
-      }),
-    range,
-  );
-  expect(inside).toEqual(['0.000 out', '20.000 in', '40.000 in', '70.000 out']);
+  // M15: the Keys row spans the section; 20 s and 40 s are inside 15–45, 0 s and 70 s aren't drawn.
+  await expect(markers(page)).toHaveCount(2);
+  expect(await markers(page).evaluateAll((els) => els.map((e) => e.dataset.at))).toEqual([
+    '20.000',
+    '40.000',
+  ]);
+  // 20 s sits at (20 − 15) / 30 of the Keys lane.
+  const lane = (await page.getByTestId('camera-keys').boundingBox())!;
+  const m = (await markers(page).first().boundingBox())!;
+  expect(Math.abs(m.x + m.width / 2 - (lane.x + (lane.width * 5) / 30))).toBeLessThan(3);
   // Shift+→ (10 s) from 40 s stops at the section's end; the marker keeps focus.
-  await markers(page).nth(2).focus();
+  await markers(page).nth(1).focus();
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(markers(page).nth(2)).toHaveAttribute('data-at', '45.000');
-  await expect(markers(page).nth(2)).toBeFocused();
+  await expect(markers(page).nth(1)).toHaveAttribute('data-at', '45.000');
+  await expect(markers(page).nth(1)).toBeFocused();
   expect((await cameraOf(page))!.keys!.map((k) => k.at)).toEqual([0, 20, 45, 70]);
   // Whole piece shows them all again.
   await choose(page, 'export-section', 'Whole piece');
@@ -153,7 +145,7 @@ for (const [w, h] of SIZES) {
 
       await openVideo(page);
       await expect(markers(page)).toHaveCount(4);
-      // M15: on the timeline, under the section's range (the piece's axis).
+      // M15: on the timeline, under the section's range (the whole piece here).
       const slider = (await page.getByTestId('section-range').boundingBox())!;
       const boxes = await markers(page).evaluateAll((els) =>
         els.map((e) => {
