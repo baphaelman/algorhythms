@@ -602,7 +602,8 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'export-section',
     'export-prows',
     'export-vtheme',
-    'export-ptitle',
+    'margin-all',
+    'show-sectionLabels',
     'look-guides',
     'look-glow',
     'look-hud-button',
@@ -611,7 +612,8 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'look-reset',
     'export-run',
     'tool-select',
-    'layer-part',
+    'layer-text-row',
+    'layer-part-row',
   ];
   const at = order.map((id) => ids.indexOf(id));
   expect(
@@ -663,12 +665,20 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'export-pwidth',
   );
   await step(
-    'title block',
+    'margins',
     async () => {
-      await page.getByTestId('export-ptitle').focus();
+      await page.getByTestId('margin-all').focus();
+      await page.keyboard.press('ArrowRight');
+    },
+    'margin-all',
+  );
+  await step(
+    'section lines',
+    async () => {
+      await page.getByTestId('show-sectionLines').focus();
       await page.keyboard.press('Space');
     },
-    'export-ptitle',
+    'show-sectionLines',
   );
   await step(
     'section Custom',

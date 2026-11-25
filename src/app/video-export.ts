@@ -25,6 +25,7 @@ import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
 import type { CameraState } from '../render/types';
 import { resetContext } from '../render/poster';
+import { posterVoiceColors } from '../render/poster-layout';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
   bookendsAt,
@@ -563,6 +564,9 @@ export function frameOptions(
     ...videoMarkers(piece),
     ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
   });
+  // A poster layer's colour shows in the video too (M14, owner); its place and size don't.
+  const voiceColors = posterVoiceColors(piece.poster, piece.voices);
+  if (voiceColors) style.voiceColors = voiceColors;
   const o: VideoFrameOptions = { aspect: opts.aspect, size: opts.size, camera: opts.camera, style };
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;

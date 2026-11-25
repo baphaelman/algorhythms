@@ -23,7 +23,7 @@ import {
   setSwitch,
   tap,
 } from './export-diag';
-import { openPoster, surface, workspace } from './export-open';
+import { addressSettled, openPoster, surface, workspace } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -133,7 +133,11 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   for (const l of ['PNG', '16:9', 'Current']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
-  await expect(page.getByTestId('export-ptitle')).toBeChecked();
+  // Text boxes replace the Title block switch: a new poster has today's title block as two.
+  await expect(page.getByTestId('export-ptitle')).toHaveCount(0);
+  await expect(page.getByTestId('layer-text')).toHaveCount(2);
+  await expect(page.locator('[data-testid="layer-text"][data-id="title"]')).toContainText('Title');
+  await expect(page.locator('[data-testid="layer-text"][data-id="credit"]')).toContainText('Credits');
   await expect(page.getByTestId('export-size')).toHaveText('3840 × 2160 px, PNG');
   await choose(page, 'export-psize', 'A4 portrait');
   await choose(page, 'export-pformat', 'SVG');
@@ -147,7 +151,6 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
     await expect(page.getByTestId(t)).toHaveCount(0);
   }
   await expect(page.getByTestId('look-bg')).toHaveAttribute('data-value', 'theme');
-  await expect(page.getByTestId('export-ptitle')).toHaveAttribute('role', 'switch');
   await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'off');
   await expect(page.getByTestId('look-moments')).toHaveAttribute('data-value', 'labels');
   await expect(page.getByTestId('look-width')).toHaveValue('1');
@@ -203,7 +206,10 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   test.setTimeout(90_000);
   await openExport(page);
   await choose(page, 'export-psize', '1:1');
-  await setSwitch(page, 'export-ptitle', false);
+  // No title: its text box goes (selected in the layers list, then Delete).
+  await page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click();
+  await page.keyboard.press('Delete');
+  await expect(page.getByTestId('layer-text')).toHaveCount(1);
   await choose(page, 'export-vtheme', 'Dark');
   await openLook(page);
   await chooseSegment(page, 'look-guides', 'Lines + labels');
@@ -219,11 +225,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await expectUncovered(page, 'export-run');
   await download(page);
   const req = (await lastRequest(page))!;
-  expect(req.options).toMatchObject({
-    size: { width: 2160, height: 2160 },
-    title: false,
-    theme: 'dark',
-  });
+  expect(req.options).toMatchObject({ size: { width: 2160, height: 2160 }, theme: 'dark' });
   expect(req.options.look).toMatchObject({
     theme: 'dark',
     guides: true,
@@ -234,6 +236,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
     hud: ['key', 'title'],
   });
 
+  await addressSettled(page);
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
@@ -244,7 +247,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   }
   await expect(page.getByTestId('look-width')).toHaveValue('1.75');
   await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'one');
-  await expect(page.getByTestId('export-ptitle')).not.toBeChecked();
+  await expect(page.getByTestId('layer-text')).toHaveCount(1);
   await expect(page.getByTestId('swatch-one-hex')).toHaveValue('#336699');
   await openHud(page);
   await expect(page.getByTestId('hud-title')).toBeChecked();
@@ -534,6 +537,7 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
   expect(sq).toMatchObject({ width: 2160, height: 2160 });
 
   // Remembered after reload.
+  await addressSettled(page);
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);

@@ -69,3 +69,21 @@ export async function closeExport(page: Page): Promise<void> {
     await expect(page.getByTestId('export-dialog')).toBeHidden();
   }
 }
+
+/**
+ * Waits until the address bar (the piece's share link) holds still for 700 ms: poster edits
+ * live in the piece, and the address follows an edit after a debounce (400 ms + idle), so a
+ * reload right after an edit would reopen the piece as it was before it.
+ */
+export async function addressSettled(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const a = await page.evaluate(() => location.hash);
+        await page.waitForTimeout(700);
+        return a === (await page.evaluate(() => location.hash));
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+}

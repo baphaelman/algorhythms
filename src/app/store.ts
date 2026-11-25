@@ -20,6 +20,7 @@
 import { create } from 'zustand';
 import { canonicalPiece } from '../core/canonical';
 import { createIncrementalCompiler } from '../core/compiler/incremental';
+import { onlyPosterDiffers } from './poster-doc';
 import { parsePiece } from '../core/schema';
 import type {
   CompiledScore,
@@ -464,6 +465,12 @@ export function setPiece(next: Piece, opts: { now?: boolean } = {}): void {
     piece = { ...piece, view: withSnapBeats(piece.view, prev.view.snapBeats) };
   }
   if (piece.mix !== prev.mix) void mixAudio(piece.mix).catch(() => undefined);
+  // A poster edit (M14) changes nothing heard or compiled: no compile, no swap.
+  if (compiledPiece === prev && onlyPosterDiffers(prev, piece)) {
+    compiledPiece = piece;
+    set({ piece });
+    return;
+  }
   if (opts.now) {
     commitCompile(piece, true);
     return;

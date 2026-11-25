@@ -35,7 +35,7 @@ const json = (name: string): unknown =>
 
 interface HookWindow {
   __algorhythms: {
-    parsePiece(j: unknown): { ok: boolean; piece: Parameters<typeof Poster.renderPosterSvg>[0] };
+    parsePiece(j: unknown): { ok: boolean; piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0] };
     poster(): Promise<typeof Poster>;
     actions: { loadPiece(p: unknown): void };
     store: { getState(): { compiled: { duration: number } } };
@@ -89,8 +89,9 @@ async function pngVsReference(page: Page, name: string, opts: Poster.PosterOptio
       const h = (window as unknown as HookWindow).__algorhythms;
       const m = await h.poster();
       const piece = h.parsePiece(j).piece;
-      const blob = await m.renderPosterPng(piece, opts);
-      const ref = m.referencePoster(piece, opts);
+      const blob = await m.renderPosterLayoutPng(piece, opts);
+      const lay = m.posterLayoutOf(piece, opts);
+      const ref = m.referencePosterAt(piece, opts, 1, lay.width, lay.height);
       const bmp = await createImageBitmap(blob, {
         premultiplyAlpha: 'none',
         colorSpaceConversion: 'none',
@@ -143,7 +144,7 @@ async function pngVsReference(page: Page, name: string, opts: Poster.PosterOptio
   );
 }
 
-test('PNG equals a direct drawScore render (pixel-identical)', async ({ page, browserName }) => {
+test('PNG equals the layout drawn on a canvas, as the artboard draws it (pixel-identical)', async ({ page, browserName }) => {
   test.setTimeout(120_000);
   const cases: [string, Poster.PosterOptions][] = [
     ['tide-pools', BASE],
@@ -218,7 +219,7 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
         const h = (window as unknown as HookWindow).__algorhythms;
         const m = await h.poster();
         const piece = h.parsePiece(j).piece;
-        const svg = m.renderPosterSvg(piece, opts);
+        const svg = m.renderPosterLayoutSvg(piece, opts);
         const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
         const err = doc.getElementsByTagName('parsererror')[0];
         const root = doc.documentElement;
@@ -241,9 +242,9 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
           return g.getImageData(0, 0, W, H).data;
         };
         const svgPx = await pixels(new Blob([svg], { type: 'image/svg+xml' }));
-        const png = await pixels(await m.renderPosterPng(piece, opts));
+        const png = await pixels(await m.renderPosterLayoutPng(piece, opts));
         const other = await pixels(
-          await m.renderPosterPng(piece, {
+          await m.renderPosterLayoutPng(piece, {
             ...opts,
             theme: opts.theme === 'dark' ? 'light' : 'dark',
             ...(opts.look
@@ -319,7 +320,7 @@ test('speed at 4K and SVG size of every bundled piece', async ({ page, browserNa
     for (const { name, j } of jsons) {
       const piece = h.parsePiece(j).piece;
       const t0 = performance.now();
-      const svg = m.renderPosterSvg(piece, {
+      const svg = m.renderPosterLayoutSvg(piece, {
         size: '16:9',
         theme: 'dark',
         transparent: false,
@@ -358,12 +359,12 @@ test('speed at 4K and SVG size of every bundled piece', async ({ page, browserNa
       title: true,
       thickness: true,
     } as const;
-    await m.renderPosterPng(best.piece, opts);
+    await m.renderPosterLayoutPng(best.piece, opts);
     const ms: number[] = [];
     let bytes = 0;
     for (let i = 0; i < 3; i++) {
       const t0 = performance.now();
-      const b = await m.renderPosterPng(best.piece, opts);
+      const b = await m.renderPosterLayoutPng(best.piece, opts);
       ms.push(performance.now() - t0);
       bytes = b.size;
     }
@@ -391,12 +392,12 @@ test('speed at 4K and SVG size of every bundled piece', async ({ page, browserNa
       const base = { transparent: false, title: true, thickness: true } as const;
       return {
         a: await b64(
-          await m.renderPosterPng(get('kite-day'), { ...base, size: '16:9', theme: 'light' }),
+          await m.renderPosterLayoutPng(get('kite-day'), { ...base, size: '16:9', theme: 'light' }),
         ),
         b: await b64(
-          await m.renderPosterPng(get('night-ferry'), { ...base, size: 'a4', theme: 'dark' }),
+          await m.renderPosterLayoutPng(get('night-ferry'), { ...base, size: 'a4', theme: 'dark' }),
         ),
-        svg: m.renderPosterSvg(get('harbour-song'), { ...base, size: '16:9', theme: 'dark' }),
+        svg: m.renderPosterLayoutSvg(get('harbour-song'), { ...base, size: '16:9', theme: 'dark' }),
       };
     }, jsons);
     writeFileSync(join(OUT, 'kite-day-16x9-light.png'), Buffer.from(save.a, 'base64'));
@@ -430,8 +431,8 @@ test('EXPORT_LOOK poster: differs from the default one; saved for review', async
         return btoa(s);
       };
       return {
-        look: await b64(await m.renderPosterPng(piece, { ...base, look })),
-        plain: await b64(await m.renderPosterPng(piece, base)),
+        look: await b64(await m.renderPosterLayoutPng(piece, { ...base, look })),
+        plain: await b64(await m.renderPosterLayoutPng(piece, base)),
       };
     },
     { j: json('kite-day'), look: EXPORT_LOOK },
@@ -474,11 +475,11 @@ test('rows and explicit pixels: PNG and SVG follow them; 1 row is the poster as 
         size,
         ...(rows !== undefined ? { rows } : {}),
       });
-      const preset = await m.renderPosterPng(piece, opts('16:9'));
-      const one = await m.renderPosterPng(piece, opts(px(3840, 2160), 1));
-      const four = await m.renderPosterPng(piece, opts(px(3840, 2160), 4));
-      const odd = await m.renderPosterPng(piece, opts(px(5000, 1200), 2));
-      const svg = m.renderPosterSvg(piece, opts(px(3000, 3000), 4));
+      const preset = await m.renderPosterLayoutPng(piece, opts('16:9'));
+      const one = await m.renderPosterLayoutPng(piece, opts(px(3840, 2160), 1));
+      const four = await m.renderPosterLayoutPng(piece, opts(px(3840, 2160), 4));
+      const odd = await m.renderPosterLayoutPng(piece, opts(px(5000, 1200), 2));
+      const svg = m.renderPosterLayoutSvg(piece, opts(px(3000, 3000), 4));
       return {
         preset: await b64(preset),
         one: await b64(one),
