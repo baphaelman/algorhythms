@@ -6426,6 +6426,536 @@ This is the *input* form: fields with defaults are optional here.
         }
       },
       "additionalProperties": {}
+    },
+    "posterSaved": {
+      "description": "The poster's save point (M14).",
+      "type": "object",
+      "properties": {
+        "size": {
+          "description": "Artboard pixels.",
+          "type": "object",
+          "properties": {
+            "w": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            }
+          },
+          "required": [
+            "w",
+            "h"
+          ],
+          "additionalProperties": {}
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "section": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": {}
+        },
+        "pieceRange": {
+          "type": "boolean"
+        },
+        "margins": {
+          "description": "Fractions of the artboard's shorter side.",
+          "type": "object",
+          "properties": {
+            "top": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "right": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "bottom": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "left": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "linked": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "top",
+            "right",
+            "bottom",
+            "left"
+          ],
+          "additionalProperties": {}
+        },
+        "look": {
+          "description": "Export Look overrides.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^(part|line):"
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "h": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "additionalProperties": {}
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "colour": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "title",
+                  "subtitle",
+                  "credit",
+                  "free"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "h": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "additionalProperties": {}
+              },
+              "style": {
+                "type": "object",
+                "properties": {
+                  "font": {
+                    "type": "string",
+                    "enum": [
+                      "serif",
+                      "sans",
+                      "mono"
+                    ]
+                  },
+                  "size": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 900
+                  },
+                  "italic": {
+                    "type": "boolean"
+                  },
+                  "colour": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "opacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "travels": {
+                "description": "Travels with the video frame.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "text"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "groups": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "sectionLabels",
+              "momentLabels",
+              "rowLabels",
+              "rowNames",
+              "guideLabels",
+              "pitchLabels",
+              "hud",
+              "sectionLines",
+              "momentLines",
+              "guideLines",
+              "pitchLines",
+              "beatLines",
+              "pulseMarks"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "visible": {
+                "type": "boolean"
+              },
+              "size": {
+                "description": "Label size, × the default.",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 20
+              },
+              "weight": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 900
+              },
+              "colour": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "opacity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "out",
+                  "above",
+                  "below",
+                  "left",
+                  "right"
+                ]
+              },
+              "along": {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              "offset": {
+                "description": "Gap to the line, × the default.",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "width": {
+                "description": "Line width, × the default.",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 20
+              },
+              "dashed": {
+                "type": "boolean"
+              },
+              "extent": {
+                "type": "string",
+                "enum": [
+                  "full",
+                  "tick"
+                ]
+              },
+              "travels": {
+                "description": "HUD readouts: travel with the video frame.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "members": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "sectionLabels",
+              "momentLabels",
+              "rowLabels",
+              "rowNames",
+              "guideLabels",
+              "pitchLabels",
+              "hud",
+              "sectionLines",
+              "momentLines",
+              "guideLines",
+              "pitchLines",
+              "beatLines",
+              "pulseMarks"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "visible": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "description": "Label size, × the default.",
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 900
+                },
+                "colour": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "out",
+                    "above",
+                    "below",
+                    "left",
+                    "right"
+                  ]
+                },
+                "along": {
+                  "type": "string",
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "offset": {
+                  "description": "Gap to the line, × the default.",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 20
+                },
+                "width": {
+                  "description": "Line width, × the default.",
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "dashed": {
+                  "type": "boolean"
+                },
+                "extent": {
+                  "type": "string",
+                  "enum": [
+                    "full",
+                    "tick"
+                  ]
+                },
+                "travels": {
+                  "description": "HUD readouts: travel with the video frame.",
+                  "type": "boolean"
+                },
+                "dx": {
+                  "type": "number"
+                },
+                "dy": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": {}
+            }
+          }
+        },
+        "rowsBy": {
+          "description": "Absent = equal rows.",
+          "type": "string",
+          "const": "sections"
+        },
+        "rowSections": {
+          "description": "Rows by sections, per labelled moment id ('start' = before the first).",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "join": {
+                "type": "boolean"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "picture": {
+          "description": "Background picture; never in share links.",
+          "type": "object",
+          "properties": {
+            "src": {
+              "type": "string",
+              "maxLength": 40000000,
+              "pattern": "^data:image\\/[a-z+.-]+;base64,"
+            },
+            "w": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 16384
+            },
+            "h": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 16384
+            },
+            "fit": {
+              "type": "string",
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "src",
+            "w",
+            "h"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {}
     }
   },
   "required": [
