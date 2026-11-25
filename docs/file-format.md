@@ -5792,6 +5792,104 @@ This is the *input* form: fields with defaults are optional here.
             ],
             "additionalProperties": {}
           }
+        },
+        "frame": {
+          "description": "Over the poster or One row; absent = poster when the piece has one.",
+          "type": "string",
+          "enum": [
+            "poster",
+            "row"
+          ]
+        },
+        "rowBreak": {
+          "description": "Absent = 'pan'.",
+          "type": "string",
+          "enum": [
+            "pan",
+            "scroll",
+            "cut"
+          ]
+        },
+        "posterKeys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Seconds from the start of the piece."
+              },
+              "x": {
+                "type": "number",
+                "description": "The frame's centre across the artboard."
+              },
+              "y": {
+                "type": "number",
+                "description": "The frame's centre down the artboard."
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The frame's height, a fraction of the artboard's."
+              },
+              "ease": {
+                "description": "Ease to the next key; absent = 'smootherstep'.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "smootherstep",
+                      "smoothstep",
+                      "cosine",
+                      "linear",
+                      "expo"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "bezier"
+                      },
+                      "x1": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "y1": {
+                        "type": "number"
+                      },
+                      "x2": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "y2": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "x1",
+                      "y1",
+                      "x2",
+                      "y2"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "required": [
+              "at",
+              "x",
+              "y",
+              "h"
+            ],
+            "additionalProperties": {}
+          }
         }
       },
       "required": [
@@ -6039,6 +6137,10 @@ This is the *input* form: fields with defaults are optional here.
               },
               "hidden": {
                 "type": "boolean"
+              },
+              "travels": {
+                "description": "Travels with the video frame.",
+                "type": "boolean"
               }
             },
             "required": [
@@ -6133,6 +6235,10 @@ This is the *input* form: fields with defaults are optional here.
                   "full",
                   "tick"
                 ]
+              },
+              "travels": {
+                "description": "HUD readouts: travel with the video frame.",
+                "type": "boolean"
               }
             },
             "additionalProperties": {}
@@ -6227,6 +6333,10 @@ This is the *input* form: fields with defaults are optional here.
                     "full",
                     "tick"
                   ]
+                },
+                "travels": {
+                  "description": "HUD readouts: travel with the video frame.",
+                  "type": "boolean"
                 },
                 "dx": {
                   "type": "number"

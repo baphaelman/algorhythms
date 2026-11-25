@@ -176,6 +176,7 @@ const PIECE: Spec = obj({
         ease,
       }),
     ),
+    posterKeys: each(obj({ at: roundTime, x: roundPlace, y: roundPlace, h: roundPlace, ease })),
   }),
   poster: obj({
     section: obj({ start: roundTime, end: roundTime }),

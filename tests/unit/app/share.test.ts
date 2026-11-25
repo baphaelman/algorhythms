@@ -297,3 +297,55 @@ describe('poster pictures stay out of links (M14 P5)', () => {
     expect(bad.ok).toBe(false);
   });
 });
+
+describe('Play the poster fields (M15)', () => {
+  const base = () => newPiece({ seed: 4, title: 'Played' });
+  const camera = {
+    mode: 'keys' as const,
+    frame: 'poster' as const,
+    rowBreak: 'scroll' as const,
+    keys: [{ at: 0, window: 12, place: 0.35, pitch: 60, range: 24 }],
+    posterKeys: [
+      { at: 0, x: 0.5, y: 0.25, h: 0.3 },
+      { at: 4.5, x: 0.6, y: 0.75, h: 0.25, ease: 'linear' as const },
+      { at: 9, x: 0.4, y: 0.5, h: 1 },
+    ],
+  };
+  const poster = {
+    texts: [{ id: 'title', kind: 'title' as const, text: '{name}', travels: true }],
+    groups: { hud: { travels: false } },
+    members: { hud: { time: { travels: true } } },
+  };
+
+  it('frame, row break, poster keys and travels survive save and a share link', async () => {
+    const piece = parsed({ ...base(), camera, poster });
+    expect(piece.camera).toEqual(camera);
+    expect(piece.poster).toEqual(poster);
+    const back = await open(await encodeShareLink(piece, BASE));
+    expect(back).toEqual(piece);
+    // Keys without an ease pack flat; one with an ease stays an object.
+    const packed = packPiece(piece) as { camera: { posterKeys: unknown[] } };
+    expect(packed.camera.posterKeys.every((k) => typeof k === 'number')).toBe(false);
+    const plain = parsed({ ...base(), camera: { ...camera, posterKeys: [camera.posterKeys[0]] } });
+    expect((packPiece(plain) as { camera: { posterKeys: unknown } }).camera.posterKeys).toEqual([
+      0, 0.5, 0.25, 0.3,
+    ]);
+    expect(await open(await encodeShareLink(plain, BASE))).toEqual(plain);
+  });
+
+  it('the schema refuses a bad frame, row break or poster key', () => {
+    for (const cam of [
+      { mode: 'follow', frame: 'page' },
+      { mode: 'follow', rowBreak: 'wipe' },
+      { mode: 'keys', posterKeys: [{ at: 0, x: 0.5, y: 0.5, h: 0 }] },
+      {
+        mode: 'keys',
+        posterKeys: [
+          { at: 2, x: 0.5, y: 0.5, h: 1 },
+          { at: 1, x: 0.5, y: 0.5, h: 1 },
+        ],
+      },
+    ])
+      expect(parsePiece({ ...base(), camera: cam }).ok).toBe(false);
+  });
+});
