@@ -27,7 +27,8 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 const radio = (page: Page, testId: string, label: string) =>
   dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
 

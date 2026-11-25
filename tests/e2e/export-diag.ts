@@ -43,7 +43,7 @@ export function hitTest(page: Page, testId: string): Promise<HitReport> {
       };
     };
     const el = q(id);
-    const dlg = q('export-dialog') as HTMLDialogElement | null;
+    const dlg = (q('export-dialog') as HTMLDialogElement | null) ?? q('video-workspace');
     let at: Element | null = null;
     if (el) {
       el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -54,7 +54,7 @@ export function hitTest(page: Page, testId: string): Promise<HitReport> {
       ok: !!el && !!at && (at === el || el.contains(at)),
       testId: id,
       at: name(at),
-      dialogOpen: dlg?.open === true,
+      dialogOpen: dlg !== null && (!(dlg instanceof HTMLDialogElement) || dlg.open),
       focused: name(document.activeElement),
       scrollTop: Math.round(dlg?.scrollTop ?? 0),
       boxes: {

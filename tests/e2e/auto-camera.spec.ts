@@ -19,7 +19,8 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 
 async function choose(page: Page, testId: string, label: string): Promise<void> {
   const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
