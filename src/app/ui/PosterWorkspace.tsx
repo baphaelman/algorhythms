@@ -49,7 +49,15 @@ import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
 import { artboardFit, useWorkspace } from '../poster-workspace';
 import { selectionExists } from '../poster-select';
-import { posterIsDefault, revertPoster, startPosterSync } from '../poster-sync';
+import {
+  posterAtSavePoint,
+  posterIsDefault,
+  posterSaved,
+  revertPoster,
+  revertToSaved,
+  savePoster,
+  startPosterSync,
+} from '../poster-sync';
 import { lastEntry, undo, useEditor } from '../editor/history';
 import type { ExportForm } from '../export-options';
 import { togglePlay, usePlayer } from '../store';
@@ -89,7 +97,13 @@ export function WorkspaceBar() {
     bar.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
   }, []);
   return (
-    <div className="ws-bar" role="group" aria-label="Export workspace" ref={bar}>
+    <div
+      className="ws-bar"
+      data-testid="ws-bar"
+      role="group"
+      aria-label="Export workspace"
+      ref={bar}
+    >
       <button type="button" className="ws-back" data-testid="back-to-music" onClick={backToMusic}>
         ← Back to music
       </button>
@@ -99,7 +113,6 @@ export function WorkspaceBar() {
           if (m === 'video') openSurface('video');
         }}
       />
-      {surface === 'poster' && <RevertPoster />}
     </div>
   );
 }
@@ -108,11 +121,13 @@ export function WorkspaceBar() {
 const REVERTED_MS = 8000;
 
 /**
- * Revert, in the top bar so it never scrolls away: the poster back to its defaults as one undo
- * step, then "Reverted · Undo" in place while that step is the newest.
+ * Save, Revert and Full revert, always visible at the foot of the right panel (outside its
+ * scrolling options). Save stores a save point in the piece; Revert returns to it (else to the
+ * poster as the workspace opened); Full revert returns to the defaults, then "Reverted · Undo"
+ * shows while that step is the newest. Each is one undo step.
  */
-function RevertPoster() {
-  const doc = usePlayer((s) => s.piece.poster);
+function PosterSaveBar({ disabled }: { disabled: boolean }) {
+  const piece = usePlayer((s) => s.piece);
   // Re-checks the note when the history changes.
   useEditor((s) => s.undoLabel);
   const [entry, setEntry] = useState<object | null>(null);
@@ -122,53 +137,72 @@ function RevertPoster() {
     return () => clearTimeout(t);
   }, [entry]);
   const shown = entry !== null && lastEntry() === entry;
-  // Focus stays in the bar: on Undo once reverted, on Revert after.
+  // Focus stays in the bar: on Undo once fully reverted, on Full revert after.
   const focus = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
   useEffect(() => {
     if (moved.current) focus.current?.focus();
     moved.current = false;
   }, [shown]);
-  if (shown) {
-    return (
-      <span className="ws-revert-note" role="status" data-testid="poster-reverted">
-        <span className="ws-narrow-hide">Reverted ·</span>
+  const saved = posterSaved(piece);
+  return (
+    <div
+      className="ws-savebar"
+      role="group"
+      aria-label="Save and revert"
+      data-testid="poster-savebar"
+    >
+      <button
+        type="button"
+        data-testid="poster-save"
+        disabled={disabled || saved}
+        title="Keep the poster as a save point (Revert returns to it)"
+        onClick={() => savePoster()}
+      >
+        {saved ? 'Saved' : 'Save'}
+      </button>
+      <button
+        type="button"
+        data-testid="poster-revert"
+        disabled={disabled || posterAtSavePoint(piece)}
+        title="Back to the save point, or to the poster as you opened it (one undo step)"
+        onClick={() => revertToSaved()}
+      >
+        Revert
+      </button>
+      {shown ? (
+        <span className="ws-revert-note" role="status" data-testid="poster-reverted">
+          <span>Reverted ·</span>
+          <button
+            ref={focus}
+            type="button"
+            data-testid="poster-revert-undo"
+            onClick={() => {
+              moved.current = true;
+              undo();
+              setEntry(null);
+            }}
+          >
+            Undo
+          </button>
+        </span>
+      ) : (
         <button
           ref={focus}
           type="button"
-          data-testid="poster-revert-undo"
+          data-testid="poster-full-revert"
+          disabled={disabled || posterIsDefault(piece.poster)}
+          title="Back to the default poster (one undo step)"
           onClick={() => {
+            if (!revertPoster()) return;
             moved.current = true;
-            undo();
-            setEntry(null);
+            setEntry(lastEntry());
           }}
         >
-          Undo
+          Full revert
         </button>
-      </span>
-    );
-  }
-  return (
-    <button
-      ref={focus}
-      type="button"
-      data-testid="poster-revert"
-      disabled={posterIsDefault(doc)}
-      aria-label="Revert"
-      title="Back to the default poster (one undo step)"
-      onClick={() => {
-        if (!revertPoster()) return;
-        moved.current = true;
-        setEntry(lastEntry());
-      }}
-    >
-      <span aria-hidden="true" className="ws-narrow-only">
-        ↺
-      </span>
-      <span aria-hidden="true" className="ws-narrow-hide">
-        Revert
-      </span>
-    </button>
+      )}
+    </div>
   );
 }
 
@@ -419,8 +453,10 @@ export function PosterWorkspace() {
     >
       <Artboard form={form} runtime={runtime} />
       <aside className="ws-side export-panel" aria-label="Poster options">
-        <SelectionPanel />
-        <PosterOptions form={form} disabled={running} />
+        <SelectionPanel>
+          <PosterOptions form={form} disabled={running} />
+        </SelectionPanel>
+        <PosterSaveBar disabled={running} />
         <div className="ws-foot">
           <RunStatus run={run}>
             <p className="export-size" data-testid="export-size">

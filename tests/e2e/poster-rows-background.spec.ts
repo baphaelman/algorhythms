@@ -66,7 +66,9 @@ test('rows by sections with edited row labels survive a reload and a share link'
   await expect(page.getByTestId('export-prows')).toHaveCount(0);
   expect(await page.getByTestId('organize-item').count()).toBeGreaterThan(2);
   await page.getByTestId('organize-label-0').fill('A');
+  await page.getByTestId('organize-label-0').press('Enter');
   await page.getByTestId('organize-label-1').fill('B');
+  await page.getByTestId('organize-label-1').press('Enter');
   await page.getByTestId('organize-newrow-2').click();
   await expect(page.getByTestId('organize-newrow-2')).not.toBeChecked();
   const before = await organize(page);
@@ -268,6 +270,7 @@ test('rows by sections, row labels and the pulse-mark style draw on the artboard
   await openPoster(page);
   await page.getByTestId('rows-by').getByLabel('By sections', { exact: true }).click();
   await page.getByTestId('organize-label-0').fill('Alpha');
+  await page.getByTestId('organize-label-0').press('Enter');
   await expect.poll(async () => (await drawnRows(page))?.names ?? []).toContain('Alpha');
   const d = (await drawnRows(page))!;
   expect(d.rows.length).toBeGreaterThan(1);
@@ -275,12 +278,43 @@ test('rows by sections, row labels and the pulse-mark style draw on the artboard
 
   // Pulse marks: selected from the layers list, styled through the selection panel.
   await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
-  await expect(page.getByTestId('selection-title')).toHaveText('Pulse marks');
+  await expect(page.getByTestId('selection-title')).toContainText('Pulse marks');
   await setRange(page, 'sel-size', 200);
   await expect.poll(async () => (await drawnRows(page))?.pulseSize).toBe(2);
   expect((await posterOf(page)).groups.pulseMarks.size).toBe(2);
 
+  // The poster's options are back once the selection is cleared.
+  await page.getByRole('button', { name: 'Clear the selection' }).click();
   await page.getByTestId('export-pformat').getByLabel('SVG', { exact: true }).click();
   const dl = await clickExportForDownload(page);
   expect(readFileSync(await dl.path(), 'utf8')).toContain('>Alpha<');
+});
+
+test('a row label is edited in place: Enter saves, Escape cancels, the icon restores the default', async ({
+  page,
+}) => {
+  await open(page);
+  await openPoster(page);
+  await page.getByTestId('rows-by').getByLabel('By sections', { exact: true }).click();
+  const field = page.getByTestId('organize-label-0');
+  const first = await field.inputValue();
+  await expect(page.getByTestId('organize-label-reset-0')).toHaveCount(0);
+  await field.fill('Zed');
+  await field.press('Escape');
+  await expect(field).toHaveValue(first);
+  expect((await posterOf(page)).rowSections).toBeUndefined();
+  await field.fill('Zed');
+  await field.press('Enter');
+  await expect
+    .poll(async () => Object.values((await posterOf(page)).rowSections ?? {}))
+    .toEqual([{ label: 'Zed' }]);
+  const reset = page.getByTestId('organize-label-reset-0');
+  await expect(reset).toHaveAccessibleName('Default label');
+  await reset.click();
+  await expect(field).toHaveValue(first);
+  await expect(reset).toHaveCount(0);
+  // Blur saves too.
+  await field.fill('Blur');
+  await page.getByTestId('organize-newrow-1').focus();
+  await expect(reset).toBeVisible();
 });

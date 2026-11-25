@@ -1,6 +1,6 @@
 /**
  * The poster workspace's details (PLAN.md §15 M14, the owner's notes; M14 P6): a switch's
- * disclosure styles its group in place (remembered); Revert in the top bar resets the poster as
+ * disclosure styles its group in place (remembered); Full revert in the right panel's bar resets the poster as
  * one undo step; the background gradient's handles on the artboard (linear ends and stops,
  * radial centre), each drag one undo step and shown in the PNG.
  */
@@ -170,7 +170,7 @@ test("a switch's disclosure styles its group in place; remembered; one undo step
   ).toBeVisible();
 });
 
-test('Revert stays visible, resets to the default poster and undoes in one step', async ({
+test('Full revert stays visible, resets to the default poster and undoes in one step', async ({
   page,
 }) => {
   await setRange(page, 'margin-all', 12);
@@ -181,14 +181,16 @@ test('Revert stays visible, resets to the default poster and undoes in one step'
   const edited = await posterOf(page);
   expect(edited.rowsBy).toBe('sections');
 
-  // Scrolled to the panel's end, Revert is still on screen (the top bar).
+  // Scrolled to the panel's end, the bar is still on screen, and the top bar has no Revert.
   await page.getByTestId('poster-options').evaluate((el) => {
     el.scrollTop = el.scrollHeight;
   });
   await expect(page.getByTestId('look-reset')).toBeInViewport();
-  const revert = page.getByTestId('poster-revert');
-  await expect(revert).toBeInViewport();
-  await revert.click();
+  await expect(page.getByTestId('poster-savebar')).toBeInViewport();
+  await expect(page.getByTestId('ws-bar').getByTestId('poster-revert')).toHaveCount(0);
+  const full = page.getByTestId('poster-full-revert');
+  await expect(full).toBeInViewport();
+  await full.click();
   expect(await posterOf(page)).toEqual({ look: { theme: 'light' } });
   await expect(page.getByTestId('poster-reverted')).toContainText('Reverted');
   await expect(page.getByTestId('poster-revert-undo')).toBeFocused();
@@ -202,13 +204,65 @@ test('Revert stays visible, resets to the default poster and undoes in one step'
   await expect(
     page.getByTestId('rows-by').getByLabel('By sections', { exact: true }),
   ).toBeChecked();
-  await expect(page.getByTestId('poster-revert')).toBeFocused();
+  await expect(page.getByTestId('poster-full-revert')).toBeFocused();
   // Redo reverts again; the workspace's Undo takes it back too.
   await redo(page);
   expect(await posterOf(page)).toEqual({ look: { theme: 'light' } });
-  await expect(page.getByTestId('poster-revert')).toBeDisabled();
+  await expect(page.getByTestId('poster-full-revert')).toBeDisabled();
   await undo(page);
   expect(await posterOf(page)).toEqual(edited);
+});
+
+test('Save makes a save point, Revert returns to it, each undoes', async ({ page }) => {
+  const save = page.getByTestId('poster-save');
+  const revert = page.getByTestId('poster-revert');
+  // Nothing to revert yet: the poster is as it was when the workspace opened.
+  await expect(revert).toBeDisabled();
+  await setRange(page, 'margin-all', 12);
+  const one = await posterOf(page);
+  await expect(revert).toBeEnabled();
+  await expect(save).toHaveText('Save');
+  await save.click();
+  await expect(save).toHaveText('Saved');
+  await expect(save).toBeDisabled();
+  await expect(revert).toBeDisabled();
+  // Save is one undo step.
+  await undo(page);
+  await expect(save).toHaveText('Save');
+  expect(await posterOf(page)).toEqual(one);
+  await redo(page);
+  await expect(save).toHaveText('Saved');
+
+  // Edit past the save point; Revert returns to it, as one step.
+  await page.getByTestId('rows-by').getByLabel('By sections', { exact: true }).click();
+  await expect(save).toHaveText('Save');
+  await revert.click();
+  expect(await posterOf(page)).toEqual(one);
+  await expect(save).toHaveText('Saved');
+  await undo(page);
+  expect((await posterOf(page)).rowsBy).toBe('sections');
+  await redo(page);
+  expect(await posterOf(page)).toEqual(one);
+
+  // Full revert goes past the save point to the defaults; Revert then returns to it.
+  await page.getByTestId('poster-full-revert').click();
+  expect(await posterOf(page)).toEqual({ look: { theme: 'light' } });
+  await revert.click();
+  expect(await posterOf(page)).toEqual(one);
+});
+
+test('a selection takes the whole right panel; the save bar stays; clearing returns the poster options', async ({
+  page,
+}) => {
+  await expect(page.getByTestId('poster-options')).toBeVisible();
+  await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
+  await expect(page.getByTestId('selection-title')).toContainText('Pulse marks');
+  await expect(page.getByTestId('poster-options')).toHaveCount(0);
+  await expect(page.getByTestId('poster-savebar')).toBeInViewport();
+  await page.getByRole('button', { name: 'Clear the selection' }).click();
+  await expect(page.getByTestId('poster-options')).toBeVisible();
+  await expect(page.getByTestId('selection-panel')).toHaveCount(0);
+  await expect(page.getByTestId('poster-savebar')).toBeInViewport();
 });
 
 test('gradient handles: linear ends and stops, the radial centre; one undo step each; in the PNG', async ({

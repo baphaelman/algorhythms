@@ -1146,6 +1146,8 @@ export interface Piece {
   camera?: PieceCamera;
   /** The poster (§15 M14); absent = the defaults (the viewer's remembered Look). */
   poster?: PosterDoc;
+  /** The poster's save point (M14): Save stores a copy, Revert returns to it. Not in share links. */
+  posterSaved?: PosterDoc;
 }
 
 // ---------------------------------------------------------------------------------------------
