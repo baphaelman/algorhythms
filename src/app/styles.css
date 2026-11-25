@@ -779,7 +779,7 @@ dialog.dialog::backdrop {
   color: var(--ink-2);
 }
 
-.dialog .field {
+:is(.dialog, .export-panel) .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -789,8 +789,8 @@ dialog.dialog::backdrop {
   min-width: 0;
 }
 
-.dialog .field > label:not(.check),
-.dialog .field > legend {
+:is(.dialog, .export-panel) .field > label:not(.check),
+:is(.dialog, .export-panel) .field > legend {
   padding: 0;
   font: 500 12px/1.3 var(--f-mono);
   text-transform: uppercase;
@@ -798,12 +798,12 @@ dialog.dialog::backdrop {
   color: var(--ink-2);
 }
 
-.dialog .field small {
+:is(.dialog, .export-panel) .field small {
   font-size: 12px;
   color: var(--ink-2);
 }
 
-.dialog .field .field-error {
+:is(.dialog, .export-panel) .field .field-error {
   color: var(--accent);
 }
 
@@ -826,7 +826,7 @@ dialog.dialog::backdrop {
   font-variant-numeric: tabular-nums;
 }
 
-.dialog input[type='text'] {
+:is(.dialog, .export-panel) input[type='text'] {
   flex: 1;
   min-width: 0;
   min-height: 34px;
@@ -838,11 +838,11 @@ dialog.dialog::backdrop {
   border-radius: 3px;
 }
 
-.dialog input[aria-invalid='true'] {
+:is(.dialog, .export-panel) input[aria-invalid='true'] {
   border-color: var(--accent);
 }
 
-.dialog .check {
+:is(.dialog, .export-panel) .check {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -850,7 +850,7 @@ dialog.dialog::backdrop {
   cursor: pointer;
 }
 
-.dialog .check input {
+:is(.dialog, .export-panel) .check input {
   accent-color: var(--accent);
   margin: 0;
 }
@@ -990,7 +990,7 @@ dialog.dialog.export {
   width: min(480px, calc(100vw - 32px));
 }
 
-.dialog .field .check + .check {
+:is(.dialog, .export-panel) .field .check + .check {
   margin-top: 6px;
 }
 
@@ -1029,7 +1029,7 @@ dialog.dialog.export {
 }
 
 /* Two short radio groups side by side, wrapping on narrow screens. */
-.dialog .field-pair {
+:is(.dialog, .export-panel) .field-pair {
   display: flex;
   flex-wrap: wrap;
   column-gap: 20px;
@@ -1040,7 +1040,7 @@ dialog.dialog.export {
 }
 
 /* The export Look (video and poster): sliders, switches and segments in a label / control grid. */
-.dialog fieldset.look {
+:is(.dialog, .export-panel) fieldset.look {
   min-width: 0;
   margin: 0 0 14px;
   padding: 6px 11px 12px;
@@ -1048,7 +1048,7 @@ dialog.dialog.export {
   border-radius: 3px;
 }
 
-.dialog fieldset.look > legend {
+:is(.dialog, .export-panel) fieldset.look > legend {
   padding: 0 4px;
   font: 500 12px/1.3 var(--f-mono);
   text-transform: uppercase;
@@ -1056,7 +1056,7 @@ dialog.dialog.export {
   color: var(--ink-2);
 }
 
-.dialog .look-grid {
+:is(.dialog, .export-panel) .look-grid {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
@@ -1064,13 +1064,13 @@ dialog.dialog.export {
   margin-bottom: 10px;
 }
 
-.dialog .look-grid > label,
-.dialog .look-grid > .look-label {
+:is(.dialog, .export-panel) .look-grid > label,
+:is(.dialog, .export-panel) .look-grid > .look-label {
   font-size: 13px;
   color: var(--ink-2);
 }
 
-.dialog .look-grid > .look-note {
+:is(.dialog, .export-panel) .look-grid > .look-note {
   grid-column: 2;
   margin-top: -3px;
   font-size: 12px;
@@ -1078,7 +1078,7 @@ dialog.dialog.export {
 }
 
 /* Segments: one bar, never wrapping; the options share the width. */
-.dialog .seg.look-seg {
+:is(.dialog, .export-panel) .seg.look-seg {
   display: flex;
   flex-wrap: nowrap;
   align-self: stretch;
@@ -1087,7 +1087,7 @@ dialog.dialog.export {
   min-height: 32px;
 }
 
-.dialog .seg.look-seg label {
+:is(.dialog, .export-panel) .seg.look-seg label {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
@@ -1098,28 +1098,28 @@ dialog.dialog.export {
   text-align: center;
 }
 
-.dialog .seg.look-seg:has(input:disabled) {
+:is(.dialog, .export-panel) .seg.look-seg:has(input:disabled) {
   opacity: 0.5;
 }
 
-.dialog .look-range {
+:is(.dialog, .export-panel) .look-range {
   min-height: 32px;
   gap: 8px;
 }
 
-.dialog .look-range output {
+:is(.dialog, .export-panel) .look-range output {
   min-width: 6ch;
 }
 
-.dialog .look-range input:disabled,
-.dialog .look-range input:disabled + output {
+:is(.dialog, .export-panel) .look-range input:disabled,
+:is(.dialog, .export-panel) .look-range input:disabled + output {
   opacity: 0.5;
 }
 
 /* Yes/no choices: a full row, label left, switch at the right (out of the label column's sizing). */
-.dialog .look-grid > .look-switch,
-.dialog .field > .look-switch,
-.dialog .hud-inner > .look-switch {
+:is(.dialog, .export-panel) .look-grid > .look-switch,
+:is(.dialog, .export-panel) .field > .look-switch,
+:is(.dialog, .export-panel) .hud-inner > .look-switch {
   grid-column: 1 / -1;
   display: flex;
   justify-content: space-between;
@@ -1131,21 +1131,21 @@ dialog.dialog.export {
   cursor: pointer;
 }
 
-.dialog .field > label.look-switch {
+:is(.dialog, .export-panel) .field > label.look-switch {
   font: 13px/1.3 var(--f-sans);
   text-transform: none;
   letter-spacing: 0;
   color: var(--ink);
 }
 
-.dialog .look-switch .switch-text {
+:is(.dialog, .export-panel) .look-switch .switch-text {
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
 }
 
-.dialog .look-switch > input {
+:is(.dialog, .export-panel) .look-switch > input {
   appearance: none;
   position: relative;
   flex: none;
@@ -1159,7 +1159,7 @@ dialog.dialog.export {
   transition: background 0.12s;
 }
 
-.dialog .look-switch > input::before {
+:is(.dialog, .export-panel) .look-switch > input::before {
   content: '';
   position: absolute;
   top: 2px;
@@ -1172,32 +1172,32 @@ dialog.dialog.export {
   transition: transform 0.12s;
 }
 
-.dialog .look-switch > input:checked {
+:is(.dialog, .export-panel) .look-switch > input:checked {
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.dialog .look-switch > input:checked::before {
+:is(.dialog, .export-panel) .look-switch > input:checked::before {
   transform: translateX(16px);
 }
 
-.dialog .look-switch > input:focus-visible {
+:is(.dialog, .export-panel) .look-switch > input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.dialog .look-switch > input:disabled {
+:is(.dialog, .export-panel) .look-switch > input:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
 /* HUD: a disclosure row; its readout list swoops open in place (rows below move down). */
-.dialog .hud-section {
+:is(.dialog, .export-panel) .hud-section {
   grid-column: 1 / -1;
   min-width: 0;
 }
 
-.dialog .hud-row {
+:is(.dialog, .export-panel) .hud-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1216,12 +1216,12 @@ dialog.dialog.export {
   cursor: pointer;
 }
 
-.dialog .hud-row:focus-visible {
+:is(.dialog, .export-panel) .hud-row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.dialog .hud-chevron {
+:is(.dialog, .export-panel) .hud-chevron {
   flex: none;
   width: 8px;
   height: 8px;
@@ -1232,12 +1232,12 @@ dialog.dialog.export {
   transition: transform 0.22s ease;
 }
 
-.dialog .hud-row[aria-expanded='true'] .hud-chevron {
+:is(.dialog, .export-panel) .hud-row[aria-expanded='true'] .hud-chevron {
   transform: rotate(225deg) translate(-2px, -2px);
 }
 
 /* Height animation: a one-row grid from 0fr to 1fr. Hidden (after the animation) when closed. */
-.dialog .hud-panel {
+:is(.dialog, .export-panel) .hud-panel {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
@@ -1246,7 +1246,7 @@ dialog.dialog.export {
     visibility 0s linear 0.22s;
 }
 
-.dialog .hud-panel.open {
+:is(.dialog, .export-panel) .hud-panel.open {
   grid-template-rows: 1fr;
   visibility: visible;
   transition:
@@ -1254,7 +1254,7 @@ dialog.dialog.export {
     visibility 0s;
 }
 
-.dialog .hud-inner {
+:is(.dialog, .export-panel) .hud-inner {
   min-height: 0;
   /* clip, not hidden: a hidden box is a scroll container that scrollIntoView could scroll. */
   overflow: hidden;
@@ -1263,30 +1263,30 @@ dialog.dialog.export {
   border-left: 2px solid var(--rule);
 }
 
-.dialog .hud-inner > .look-switch {
+:is(.dialog, .export-panel) .hud-inner > .look-switch {
   min-height: 30px;
   padding: 2px 0;
 }
 
-.dialog .hud-sample {
+:is(.dialog, .export-panel) .hud-sample {
   font: 11px/1.3 var(--f-mono);
   color: var(--ink-2);
   opacity: 0.85;
   overflow-wrap: anywhere;
 }
 
-.dialog .hud-quick {
+:is(.dialog, .export-panel) .hud-quick {
   display: flex;
   gap: 8px;
   padding: 4px 0 6px;
 }
 
-.dialog .hud-quick button {
+:is(.dialog, .export-panel) .hud-quick button {
   padding: 4px 10px;
   font-size: 12px;
 }
 
-.dialog .look input[type='color'] {
+:is(.dialog, .export-panel) .look input[type='color'] {
   width: 44px;
   height: 30px;
   padding: 0;
@@ -1295,11 +1295,11 @@ dialog.dialog.export {
 }
 
 /* The Preset's Custom only lights up (it can't be chosen): the bar stays at full strength. */
-.dialog fieldset:enabled > .seg.radios.preset:has(input:disabled) {
+:is(.dialog, .export-panel) fieldset:enabled > .seg.radios.preset:has(input:disabled) {
   opacity: 1;
 }
 
-.dialog .seg.radios.preset label:has(input:disabled):not(.on) {
+:is(.dialog, .export-panel) .seg.radios.preset label:has(input:disabled):not(.on) {
   color: var(--ink-2);
   cursor: default;
 }
@@ -1309,7 +1309,7 @@ dialog.dialog.export {
   color: var(--accent);
 }
 
-.dialog .pitch-guides {
+:is(.dialog, .export-panel) .pitch-guides {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1318,24 +1318,24 @@ dialog.dialog.export {
   min-height: 32px;
 }
 
-.dialog .pitch-guides .chip {
+:is(.dialog, .export-panel) .pitch-guides .chip {
   padding: 3px 8px;
   font: 12px/1.3 var(--f-mono);
   border-radius: 12px;
 }
 
-.dialog .pitch-guides .chip.on {
+:is(.dialog, .export-panel) .pitch-guides .chip.on {
   color: var(--paper);
   background: var(--ink-2);
   border-color: var(--ink-2);
 }
 
-.dialog .pitch-guides .chip.pick {
+:is(.dialog, .export-panel) .pitch-guides .chip.pick {
   color: var(--ink-2);
   border-style: dashed;
 }
 
-.dialog .pitch-guides input {
+:is(.dialog, .export-panel) .pitch-guides input {
   flex: 1 1 6ch;
   min-width: 6ch;
   max-width: 12ch;
@@ -1343,43 +1343,43 @@ dialog.dialog.export {
   font: 12px/1.3 var(--f-mono);
 }
 
-.dialog .look-grid > input.look-text {
+:is(.dialog, .export-panel) .look-grid > input.look-text {
   min-width: 0;
   padding: 5px 8px;
   font-size: 13px;
 }
 
-.dialog .export-group {
+:is(.dialog, .export-panel) .export-group {
   margin: 0 0 14px;
   padding: 2px 11px;
   border: 1px solid var(--rule);
   border-radius: 3px;
 }
 
-.dialog .export-group > .group-row > span:first-child {
+:is(.dialog, .export-panel) .export-group > .group-row > span:first-child {
   font: 500 12px/1.3 var(--f-mono);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.dialog .export-group .group-summary {
+:is(.dialog, .export-panel) .export-group .group-summary {
   font: 12px/1.3 var(--f-sans);
   text-transform: none;
   letter-spacing: 0;
 }
 
-.dialog .export-group .hud-inner.look-grid {
+:is(.dialog, .export-panel) .export-group .hud-inner.look-grid {
   margin-bottom: 0;
   padding: 0;
   border-left: 0;
 }
 
-.dialog .export-group .hud-panel.open .hud-inner.look-grid {
+:is(.dialog, .export-panel) .export-group .hud-panel.open .hud-inner.look-grid {
   padding: 2px 0 10px;
 }
 
 /* Thumbnail and Copy description: under the video preview, or atop the options on phones. */
-.dialog .preview-actions {
+:is(.dialog, .export-panel) .preview-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
@@ -1390,28 +1390,28 @@ dialog.dialog.export {
   margin: 8px 0 0;
 }
 
-.dialog .preview-actions .field-row {
+:is(.dialog, .export-panel) .preview-actions .field-row {
   gap: 8px;
   align-items: center;
 }
 
-.dialog .preview-actions button {
+:is(.dialog, .export-panel) .preview-actions button {
   padding: 5px 10px;
   font-size: 12px;
 }
 
-.dialog .preview-actions .seg.look-seg {
+:is(.dialog, .export-panel) .preview-actions .seg.look-seg {
   display: flex;
   min-height: 28px;
 }
 
-.dialog .preview-actions .seg.look-seg label {
+:is(.dialog, .export-panel) .preview-actions .seg.look-seg label {
   padding: 4px 8px;
   font-size: 12px;
   white-space: nowrap;
 }
 
-.dialog .look-switch.inline {
+:is(.dialog, .export-panel) .look-switch.inline {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1495,7 +1495,7 @@ dialog.dialog.export.has-preview {
   }
 
   /* Labels wrap so the segments keep room for their text. */
-  .dialog .look-grid {
+  :is(.dialog, .export-panel) .look-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     column-gap: 8px;
   }
@@ -1503,24 +1503,24 @@ dialog.dialog.export.has-preview {
 
 /* Phones: label above its control; segments and sliders take the full width. */
 @media (max-width: 479px) {
-  .dialog .look-grid {
+  :is(.dialog, .export-panel) .look-grid {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 2px;
   }
 
-  .dialog .look-grid > label,
-  .dialog .look-grid > .look-label {
+  :is(.dialog, .export-panel) .look-grid > label,
+  :is(.dialog, .export-panel) .look-grid > .look-label {
     margin-top: 6px;
     padding-top: 0;
   }
 
-  .dialog .look-grid > .look-note {
+  :is(.dialog, .export-panel) .look-grid > .look-note {
     grid-column: 1;
     margin-top: 0;
   }
 
-  .dialog .look-grid > .look-switch,
-  .dialog .look-grid > .hud-section {
+  :is(.dialog, .export-panel) .look-grid > .look-switch,
+  :is(.dialog, .export-panel) .look-grid > .hud-section {
     margin-top: 6px;
   }
 }
@@ -1590,7 +1590,7 @@ dialog.dialog.export.has-preview {
   align-self: stretch;
 }
 
-.dialog .window-track input[type='range'] {
+:is(.dialog, .export-panel) .window-track input[type='range'] {
   width: 100%;
 }
 
@@ -1668,12 +1668,12 @@ dialog.dialog.export.has-preview {
   color: var(--ink-2);
 }
 
-.export-preview .preview-stage.keys {
+:is(.export-preview, .artboard) .preview-stage.keys {
   touch-action: none;
   cursor: grab;
 }
 
-.export-preview .preview-stage.keys.panning {
+:is(.export-preview, .artboard) .preview-stage.keys.panning {
   cursor: grabbing;
 }
 
@@ -1683,11 +1683,11 @@ dialog.dialog.export.has-preview {
 
 /* Export dialog: the Section (§12 rev 15). A two-handle range over the piece in miniature; x is
    t / duration across the whole track, for the overview and the handles alike. */
-.dialog .section-field {
+:is(.dialog, .export-panel) .section-field {
   margin-bottom: 4px;
 }
 
-.dialog .section-range {
+:is(.dialog, .export-panel) .section-range {
   position: relative;
   margin: 6px 0 4px;
   border: 1px solid var(--rule);
@@ -1698,19 +1698,19 @@ dialog.dialog.export.has-preview {
   user-select: none;
 }
 
-.dialog .section-range.disabled {
+:is(.dialog, .export-panel) .section-range.disabled {
   opacity: 0.5;
   pointer-events: none;
 }
 
-.dialog .section-overview {
+:is(.dialog, .export-panel) .section-overview {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.dialog .section-shade {
+:is(.dialog, .export-panel) .section-shade {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1719,7 +1719,7 @@ dialog.dialog.export.has-preview {
   pointer-events: none;
 }
 
-.dialog .section-sel {
+:is(.dialog, .export-panel) .section-sel {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1728,7 +1728,7 @@ dialog.dialog.export.has-preview {
   pointer-events: none;
 }
 
-.dialog .section-handle {
+:is(.dialog, .export-panel) .section-handle {
   position: absolute;
   top: -3px;
   bottom: -3px;
@@ -1738,7 +1738,7 @@ dialog.dialog.export.has-preview {
   touch-action: none;
 }
 
-.dialog .section-handle::before {
+:is(.dialog, .export-panel) .section-handle::before {
   content: '';
   position: absolute;
   left: 4px;
@@ -1749,42 +1749,42 @@ dialog.dialog.export.has-preview {
   background: var(--accent);
 }
 
-.dialog .section-handle:focus-visible {
+:is(.dialog, .export-panel) .section-handle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   border-radius: 3px;
 }
 
-.dialog .section-times {
+:is(.dialog, .export-panel) .section-times {
   gap: 12px;
 }
 
-.dialog .section-clock {
+:is(.dialog, .export-panel) .section-clock {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.dialog .section-clock input {
+:is(.dialog, .export-panel) .section-clock input {
   width: 8ch;
   font-variant-numeric: tabular-nums;
 }
 
 /* HUD readouts placed on the export preview (§12 "Exports you can shape"). */
-.export-preview .preview-stage {
+:is(.export-preview, .artboard) .preview-stage {
   position: relative;
 }
 
-.export-preview .hud-overlay {
+:is(.export-preview, .artboard) .hud-overlay {
   position: absolute;
   inset: 1px;
 }
 
-.export-preview .hud-overlay.disabled {
+:is(.export-preview, .artboard) .hud-overlay.disabled {
   pointer-events: none;
 }
 
-.export-preview .hud-box {
+:is(.export-preview, .artboard) .hud-box {
   position: absolute;
   outline: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
   outline-offset: 1px;
@@ -1792,17 +1792,17 @@ dialog.dialog.export.has-preview {
   touch-action: none;
 }
 
-.export-preview .hud-box:hover,
-.export-preview .hud-box:focus-visible,
-.export-preview .hud-box.dragging {
+:is(.export-preview, .artboard) .hud-box:hover,
+:is(.export-preview, .artboard) .hud-box:focus-visible,
+:is(.export-preview, .artboard) .hud-box.dragging {
   outline: 1.5px solid var(--accent);
 }
 
-.export-preview .hud-box.dragging {
+:is(.export-preview, .artboard) .hud-box.dragging {
   cursor: grabbing;
 }
 
-.export-preview .hud-x {
+:is(.export-preview, .artboard) .hud-x {
   position: absolute;
   top: -9px;
   right: -9px;
@@ -1818,30 +1818,30 @@ dialog.dialog.export.has-preview {
   cursor: pointer;
 }
 
-.export-preview .hud-box:hover .hud-x,
-.export-preview .hud-box:focus-within .hud-x {
+:is(.export-preview, .artboard) .hud-box:hover .hud-x,
+:is(.export-preview, .artboard) .hud-box:focus-within .hud-x {
   visibility: visible;
 }
 
-.export-preview .hud-guide {
+:is(.export-preview, .artboard) .hud-guide {
   position: absolute;
   pointer-events: none;
   background: var(--accent);
 }
 
-.export-preview .hud-guide.v {
+:is(.export-preview, .artboard) .hud-guide.v {
   top: 0;
   bottom: 0;
   width: 1px;
 }
 
-.export-preview .hud-guide.h {
+:is(.export-preview, .artboard) .hud-guide.h {
   left: 0;
   right: 0;
   height: 1px;
 }
 
-.dialog .hud-hint {
+:is(.dialog, .export-panel) .hud-hint {
   display: block;
   padding: 0 0 6px;
   color: var(--ink-2);
@@ -1850,13 +1850,13 @@ dialog.dialog.export.has-preview {
 
 /* ---- Export dialog: the Look's Colours group (§12 "Exports you can shape" → Colours) ---- */
 
-.dialog .colours {
+:is(.dialog, .export-panel) .colours {
   margin: 4px 0 10px;
   padding-top: 8px;
   border-top: 1px solid var(--rule);
 }
 
-.dialog .colours-title {
+:is(.dialog, .export-panel) .colours-title {
   margin: 0 0 8px;
   font: 500 12px/1.3 var(--f-mono);
   text-transform: uppercase;
@@ -1864,25 +1864,25 @@ dialog.dialog.export.has-preview {
   color: var(--ink-2);
 }
 
-.dialog .schemes {
+:is(.dialog, .export-panel) .schemes {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   min-width: 0;
 }
 
-.dialog .schemes .scheme {
+:is(.dialog, .export-panel) .schemes .scheme {
   padding: 4px 9px;
   font-size: 12px;
 }
 
-.dialog .schemes .scheme.on {
+:is(.dialog, .export-panel) .schemes .scheme.on {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper);
 }
 
-.dialog .schemes span.scheme.custom {
+:is(.dialog, .export-panel) .schemes span.scheme.custom {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--accent);
@@ -1890,48 +1890,48 @@ dialog.dialog.export.has-preview {
   font-size: 12px;
 }
 
-.dialog .scheme-saved {
+:is(.dialog, .export-panel) .scheme-saved {
   display: inline-flex;
 }
 
-.dialog .scheme-saved .scheme-delete {
+:is(.dialog, .export-panel) .scheme-saved .scheme-delete {
   padding: 4px 6px;
   font-size: 12px;
   margin-left: -1px;
 }
 
-.dialog .scheme-save {
+:is(.dialog, .export-panel) .scheme-save {
   min-width: 0;
 }
 
-.dialog .scheme-save input[type='text'] {
+:is(.dialog, .export-panel) .scheme-save input[type='text'] {
   flex: 1 1 auto;
   min-width: 0;
   width: 0;
 }
 
-.dialog .swatch {
+:is(.dialog, .export-panel) .swatch {
   flex-wrap: wrap;
   gap: 6px 8px;
   min-width: 0;
 }
 
-.dialog .swatch .swatch-hex {
+:is(.dialog, .export-panel) .swatch .swatch-hex {
   width: 8ch;
   font: 12px/1.3 var(--f-mono);
 }
 
-.dialog .swatch .swatch-reset {
+:is(.dialog, .export-panel) .swatch .swatch-reset {
   padding: 3px 8px;
   font-size: 12px;
 }
 
-.dialog .swatch .swatch-hint {
+:is(.dialog, .export-panel) .swatch .swatch-hint {
   font-size: 12px;
   color: var(--ink-2);
 }
 
-.dialog .colours-warning {
+:is(.dialog, .export-panel) .colours-warning {
   margin: 0 0 8px;
   font-size: 12px;
   color: var(--accent);

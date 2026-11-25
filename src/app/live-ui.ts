@@ -43,6 +43,7 @@ import {
   type MidiSink,
 } from './midi-input';
 import { play, pushNotice, togglePlay } from './store';
+import { posterShown } from './export-surface';
 import { DEFAULT_OCTAVE, letterCode, shiftOctave, typingAction } from './typing-keys';
 
 /** The panel's settings (a subset of `LiveSettings`). */
@@ -303,7 +304,7 @@ export function attachLiveKeys(): () => void {
       void stopRecord();
       return;
     }
-    if (!editorLayout()) return;
+    if (!editorLayout() || posterShown()) return;
     const s = useLive.getState();
     const a = typingAction(e, s.typing, s.octave);
     if (!a) return;

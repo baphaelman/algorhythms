@@ -11,7 +11,7 @@ import {
 } from '../persist';
 import { openExample, openFile, usePlayer } from '../store';
 import { openCompose } from '../compose';
-import { openExport } from './ExportDialog';
+import { openAudioExport, openExport } from './export-state';
 import { openGenerate } from './GeneratePanel';
 import { openShare } from './ShareDialog';
 import { MOD_KEY } from '../platform';
@@ -25,7 +25,7 @@ const EXAMPLE_GROUPS = [
 
 const MOD = MOD_KEY;
 
-/** The ⋯ menu: examples, pieces (New, My pieces, files), Generate, Export, and help. */
+/** The ⋯ menu: examples, pieces (New, My pieces, files), Generate, Export, Export audio, and help. */
 export function Menu() {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -242,6 +242,19 @@ export function Menu() {
                 }}
               >
                 Export…
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-testid="open-export-audio"
+                onClick={() => {
+                  close();
+                  openAudioExport();
+                }}
+              >
+                <span>Export audio…</span>
+                <small>WAV, stems, MIDI</small>
               </button>
             </li>
           </ul>

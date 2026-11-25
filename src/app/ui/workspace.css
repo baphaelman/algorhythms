@@ -1,0 +1,279 @@
+/*
+ * The poster workspace (PLAN.md §15 M14, demo docs/design/export-workspace.html): the artboard
+ * where the score was, the options on the right, tools and layers below. Wide (≥ 1100 px): a
+ * grid; narrower: the panels stack under the artboard and the workspace scrolls.
+ */
+
+.app {
+  position: relative;
+}
+
+/* The editor waits underneath at its old box (App.tsx sets left/top/width/height). */
+.app[data-mode='poster'] > .workspace.frozen {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.app[data-mode='poster'] :is(.loop-toggle, .typing-toggle, .live-record) {
+  display: none;
+}
+
+.ws-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-bar .export-mode label {
+  min-width: 64px;
+  text-align: center;
+}
+
+.poster-ws {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'stage side'
+    'bottom side';
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.poster-ws:focus {
+  outline: none;
+}
+
+.poster-ws:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- artboard ---------------------------------------------------------------------------- */
+
+.artboard {
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: color-mix(in srgb, var(--panel) 70%, var(--rule));
+}
+
+.artboard-badge {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 11px/1.4 var(--f-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.artboard-box {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.artboard-page {
+  flex: none;
+  box-shadow: 0 1px 10px color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+.artboard canvas {
+  display: block;
+}
+
+.artboard canvas.checker {
+  background: repeating-conic-gradient(#c9ced4 0% 25%, #f4f6f8 0% 50%) 0 0 / 12px 12px;
+}
+
+/* ---- right panel ------------------------------------------------------------------------- */
+
+.ws-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.ws-options {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 4px;
+  font-size: 13px;
+}
+
+.ws-foot {
+  flex: none;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--rule);
+}
+
+.ws-foot .export-status {
+  min-height: 0;
+}
+
+.ws-foot .dialog-actions {
+  margin: 0;
+}
+
+/* The Look grid in a narrow column: each label above its control, as on phones. */
+.ws-side.export-panel .look-grid {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
+}
+
+.ws-side.export-panel .look-grid > label,
+.ws-side.export-panel .look-grid > .look-label {
+  margin-top: 6px;
+  padding-top: 0;
+}
+
+.ws-side.export-panel .look-grid > .look-note {
+  grid-column: 1;
+  margin-top: 0;
+}
+
+.ws-side.export-panel .look-grid > .look-switch,
+.ws-side.export-panel .look-grid > .hud-section {
+  margin-top: 6px;
+}
+
+/* ---- bottom panel: tools and layers ------------------------------------------------------ */
+
+.ws-bottom {
+  grid-area: bottom;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(30vh, 220px);
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.ws-tools {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ws-tools .seg button {
+  padding: 6px 10px;
+  min-height: 30px;
+}
+
+.ws-tools .ws-align button {
+  min-width: 34px;
+  padding: 6px 8px;
+}
+
+.ws-tools .look-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.ws-tools .history {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.ws-layers {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.ws-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px 0 6px;
+}
+
+.ws-layer-row small {
+  margin-left: auto;
+  font: 11px/1 var(--f-mono);
+  color: var(--ink-2);
+}
+
+.ws-layer:not(:has(.ws-layer-toggle)) > .ws-layer-row {
+  padding-left: 40px;
+}
+
+.ws-layer-toggle {
+  min-height: 26px;
+  width: 26px;
+  padding: 0;
+  border-color: transparent;
+}
+
+.ws-layer-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 4px 46px;
+  color: var(--ink-2);
+}
+
+.ws-layer-lines li {
+  padding: 2px 0;
+}
+
+/* ---- narrower: stacked ------------------------------------------------------------------- */
+
+@media (max-width: 1099px) {
+  .poster-ws {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(240px, 52vh) max-content max-content;
+    grid-template-areas:
+      'stage'
+      'side'
+      'bottom';
+    overflow-y: auto;
+  }
+
+  .ws-side {
+    min-height: auto;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .ws-options {
+    flex: none;
+    overflow: visible;
+  }
+
+  .ws-bottom {
+    min-height: auto;
+    max-height: none;
+  }
+}
