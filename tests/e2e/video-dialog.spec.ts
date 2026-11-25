@@ -203,6 +203,8 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
 });
 
 test('the choices reach exportVideo; the download plays at the WAV length', async ({ page }) => {
+  // Two exports and two trips to Poster (Firefox encodes slower).
+  test.setTimeout(90_000);
   await loadShortPiece(page, 3);
   await setZoom(page, 5);
   await openExport(page);
