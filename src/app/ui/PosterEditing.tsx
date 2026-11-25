@@ -729,13 +729,17 @@ const pctText = (v: number) => `${Math.round(v)} %`;
 // The selection panel
 // ---------------------------------------------------------------------------------------------
 
-/** The selected object's style and X/Y/W/H, at the top of the right panel. */
-export function SelectionPanel() {
+/**
+ * The right panel while an object is selected: the whole panel is that object's settings (a
+ * header names it; × or Escape returns to the poster's). With nothing selected, `children` (the
+ * poster's options) show instead. Any selection kind plugs in by adding its title and body here.
+ */
+export function SelectionPanel({ children }: { children?: React.ReactNode }) {
   const sel = useWorkspace((s) => s.selected);
   const layout = useWorkspace((s) => s.layout);
   const doc = usePlayer((s) => s.piece.poster);
   const voices = usePlayer((s) => s.piece.voices);
-  if (!sel || !layout) return null;
+  if (!sel || !layout) return <>{children}</>;
   let title: string;
   let body: React.ReactNode;
   if (sel.kind === 'layer') {
@@ -745,7 +749,7 @@ export function SelectionPanel() {
     body = <LayerPanel sel={sel} layout={layout} doc={doc} />;
   } else if (sel.kind === 'text') {
     const t = textOf(doc, sel.id);
-    if (!t) return null;
+    if (!t) return <>{children}</>;
     title = textName(t);
     body = <TextPanel id={sel.id} t={t} layout={layout} />;
   } else {
@@ -758,6 +762,7 @@ export function SelectionPanel() {
         <h3 data-testid="selection-title">
           {title}
           {sel.kind === 'member' && <small> · one</small>}
+          {sel.kind === 'group' && <small> · all</small>}
         </h3>
         <button
           type="button"

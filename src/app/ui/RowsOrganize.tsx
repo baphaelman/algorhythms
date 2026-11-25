@@ -1,16 +1,16 @@
 /**
  * The poster's Rows group (PLAN.md §15 M14, the owner's notes): Rows are Equal (the Rows slider)
  * or By sections, where each labelled moment starts a row. By sections shows the Organize list:
- * the sections in order, each with a "New row" switch and its row label (default: the section's
- * label; A / B / A′ / B′ …). Both live in the piece's poster, each change one undo step.
+ * the sections in order, each one small line: its time, its row label (edited in place; default:
+ * the section's label; A / B / A′ / B′ …), a revert icon and a "New row" switch. Both live in the piece's poster, each change one undo step.
  */
 
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { posterLength } from '../../render/poster';
 import { posterSectionItems } from '../../render/poster-layout';
 import { setRowSection, setRowsBy } from '../../render/poster-edit';
 import { sectionOf, type ExportForm } from '../export-options';
-import { editPoster, editPosterRun } from '../poster-sync';
+import { editPoster } from '../poster-sync';
 import { usePlayer } from '../store';
 import { Radios, Switch } from './export-controls';
 import { RowsField } from './ExportFields';
@@ -50,7 +50,92 @@ export function RowsGroup({ form, disabled }: { form: ExportForm; disabled: bool
   );
 }
 
-/** The sections in order, each with its New row switch and row label. */
+type Item = ReturnType<typeof posterSectionItems>[number];
+
+/** One section's line: time, the row label in effect (edited in place), revert, New row. */
+function OrganizeItem({ it, i, disabled }: { it: Item; i: number; disabled: boolean }) {
+  const name = it.section || 'Start';
+  // What the field shows while you type; saved on Enter or blur, Escape puts the label back.
+  const [typed, setDraft] = useState<string | null>(null);
+  const draft = typed ?? it.label;
+  const commit = (text: string) => {
+    const label = text.trim() === '' ? undefined : text;
+    if (label !== it.label)
+      editPoster((d) => setRowSection(d, it.id, { label }, it.section), 'Row label');
+    setDraft(null);
+  };
+  return (
+    <li
+      key={it.id}
+      data-testid="organize-item"
+      data-id={it.id}
+      data-starts={it.starts ? 'yes' : 'no'}
+    >
+      <span className="ws-organize-time">{posterLength(it.t)}</span>
+      {it.newRow ? (
+        <input
+          type="text"
+          aria-label={`Row label for ${name}`}
+          placeholder={it.section || 'Row label'}
+          maxLength={200}
+          spellCheck={false}
+          disabled={disabled}
+          value={draft}
+          data-testid={`organize-label-${i}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit(e.currentTarget.value);
+            } else if (e.key === 'Escape' && typed !== null) {
+              // Cancels the edit only; a second Escape leaves the field.
+              e.preventDefault();
+              e.stopPropagation();
+              setDraft(null);
+            }
+          }}
+        />
+      ) : (
+        <span className="ws-organize-name">{name}</span>
+      )}
+      {it.newRow && it.label !== it.section ? (
+        <button
+          type="button"
+          className="ws-organize-reset"
+          disabled={disabled}
+          aria-label="Default label"
+          title={`Back to “${name}”`}
+          data-testid={`organize-label-reset-${i}`}
+          onClick={() => editPoster((d) => setRowSection(d, it.id, { label: undefined }), 'Rows')}
+        >
+          <span aria-hidden="true">↺</span>
+        </button>
+      ) : (
+        <span className="ws-organize-gap" />
+      )}
+      {it.canJoin ? (
+        <Switch
+          label="New row"
+          className="ws-organize-switch"
+          checked={it.newRow}
+          disabled={disabled}
+          testId={`organize-newrow-${i}`}
+          hint={
+            it.newRow && !it.starts
+              ? 'Joins the row before when off: at most 8 rows, none under 2 seconds.'
+              : undefined
+          }
+          onChange={(on) => editPoster((d) => setRowSection(d, it.id, { join: !on }), 'Rows')}
+        />
+      ) : (
+        <span />
+      )}
+    </li>
+  );
+}
+
+/** The sections in order, one small line each. */
 function Organize({ form, disabled }: { form: ExportForm; disabled: boolean }) {
   const piece = usePlayer((s) => s.piece);
   const compiled = usePlayer((s) => s.compiled);
@@ -65,71 +150,9 @@ function Organize({ form, disabled }: { form: ExportForm; disabled: boolean }) {
   }
   return (
     <ol className="ws-organize" aria-label="Organize rows" data-testid="organize">
-      {items.map((it, i) => {
-        const name = it.section || 'Start';
-        return (
-          <li
-            key={it.id}
-            data-testid="organize-item"
-            data-id={it.id}
-            data-starts={it.starts ? 'yes' : 'no'}
-          >
-            <span className="ws-organize-head">
-              <span className="ws-organize-time">{posterLength(it.t)}</span>
-              <span className="ws-organize-name">{name}</span>
-            </span>
-            {it.canJoin && (
-              <Switch
-                label="New row"
-                checked={it.newRow}
-                disabled={disabled}
-                testId={`organize-newrow-${i}`}
-                onChange={(on) => editPoster((d) => setRowSection(d, it.id, { join: !on }), 'Rows')}
-              />
-            )}
-            {it.newRow && (
-              <div className="field-row">
-                <input
-                  type="text"
-                  aria-label={`Row label for ${name}`}
-                  placeholder={it.section || 'Row label'}
-                  maxLength={200}
-                  spellCheck={false}
-                  disabled={disabled}
-                  value={it.label}
-                  data-testid={`organize-label-${i}`}
-                  onChange={(e) =>
-                    editPosterRun(
-                      `rowlabel:${it.id}`,
-                      (d) => setRowSection(d, it.id, { label: e.target.value }, it.section),
-                      'Row label',
-                    )
-                  }
-                />
-                {it.label !== it.section && (
-                  <button
-                    type="button"
-                    className="swatch-reset"
-                    disabled={disabled}
-                    aria-label={`${name}: row label back to the section's`}
-                    data-testid={`organize-label-reset-${i}`}
-                    onClick={() =>
-                      editPoster((d) => setRowSection(d, it.id, { label: undefined }), 'Rows')
-                    }
-                  >
-                    Default
-                  </button>
-                )}
-              </div>
-            )}
-            {it.newRow && !it.starts && (
-              <small className="look-note">
-                Joins the row before: at most 8 rows, none under 2 seconds.
-              </small>
-            )}
-          </li>
-        );
-      })}
+      {items.map((it, i) => (
+        <OrganizeItem key={it.id} it={it} i={i} disabled={disabled} />
+      ))}
     </ol>
   );
 }
