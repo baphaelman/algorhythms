@@ -809,7 +809,9 @@ function LayerPanel({
   const placed = row ? L?.frames[row.index]?.base !== undefined : false;
   return (
     <>
-      {sel.row !== undefined && <small className="hud-sample">Style applies in every row.</small>}
+      {sel.row !== undefined && (
+        <small className="hud-sample">Position and size: this row only.</small>
+      )}
       {frame ? (
         <BoxFields
           frame={frame}
@@ -847,6 +849,7 @@ function LayerPanel({
           Back in line with the other rows
         </button>
       )}
+      {sel.row !== undefined && <small className="hud-sample">Style: in every row.</small>}
       <Switch
         label="Hidden"
         checked={hidden}
