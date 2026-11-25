@@ -23,6 +23,7 @@ import {
 import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { fileBase } from './export-options';
+import { picturesReady } from './poster-picture';
 
 export interface PosterOptions {
   /** A preset or explicit pixels. */
@@ -117,6 +118,7 @@ export async function renderPosterLayoutPng(
   compiled: CompiledScore = compile(piece),
   layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
 ): Promise<Blob> {
+  await picturesReady(piece);
   const canvas = new OffscreenCanvas(layout.width, layout.height);
   // Alpha on, as on the artboard, even when the paper is opaque: an opaque canvas gets subpixel
   // (LCD) text on Linux Chromium and Firefox, so the PNG would differ from the artboard.

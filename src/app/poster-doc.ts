@@ -62,6 +62,10 @@ const GROUP_KEYS: Readonly<Partial<Record<PosterGroup, readonly string[]>>> = {
   momentLines: ['markers'],
   guideLabels: ['guides', 'guideLabels'],
   guideLines: ['guides'],
+  pitchLabels: ['pitchGuides'],
+  pitchLines: ['pitchGuides'],
+  beatLines: ['beats'],
+  pulseMarks: ['pulseMarks'],
 };
 
 /**
@@ -109,7 +113,18 @@ export function docWithForm(
   }
   if (groups) out.groups = groups;
   if (doc?.members) out.members = doc.members;
+  if (doc?.rowsBy) out.rowsBy = doc.rowsBy;
+  if (doc?.rowSections) out.rowSections = doc.rowSections;
+  if (doc?.picture) out.picture = doc.picture;
   return out;
+}
+
+/**
+ * The default poster as a doc (Revert, PLAN.md §15 M14): the export defaults' poster fields, no
+ * objects. Only the resolved theme is stored, as for every doc.
+ */
+export function defaultPosterDoc(ctx: DocContext): PosterDoc | undefined {
+  return docWithForm(undefined, posterFields(DEFAULT_EXPORT_FORM), ctx);
 }
 
 /** The form's Look as the doc stores it: what differs from the defaults, the theme resolved. */

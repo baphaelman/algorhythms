@@ -8,13 +8,13 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import { mixHex, toHex } from '../../render/colours';
 import { tokensOf } from '../../render/palettes';
+import { GradientHandlesSwitch } from './GradientHandles';
 import type { ThemeTokens } from '../../render/types';
 import {
   BACKGROUND_MODES,
   BUILTIN_SCHEMES,
   DEFAULT_COLOURS,
   ELEMENT_SWATCHES,
-  GRADIENT_DIRS,
   LINE_MODES,
   contrastWarning,
   deleteScheme,
@@ -30,11 +30,12 @@ import {
   type ColoursForm,
 } from '../export-colours';
 import type { LookForm } from '../export-options';
+import { GradientFields, PictureFields } from './BackgroundFields';
 import type { LookKind } from '../look-controls';
 import { usePlayer } from '../store';
 
 /** Segmented buttons (radios) in the Look grid, as the Look's own segments. */
-function Segs<T extends string>({
+export function Segs<T extends string>({
   label,
   testId,
   value,
@@ -323,31 +324,9 @@ export function ColoursGroup({
             onChange={(bg) => set({ bg })}
           />
         )}
-        {bgMode === 'gradient' && (
-          <>
-            <Swatch
-              label={c.bgDir === 'radial' ? 'Centre' : c.bgDir === 'vertical' ? 'Top' : 'Left'}
-              testId="swatch-bgFrom"
-              value={c.bgFrom ?? hex(t.paper)}
-              set={c.bgFrom !== null}
-              onChange={(bgFrom) => set({ bgFrom })}
-            />
-            <Swatch
-              label={c.bgDir === 'radial' ? 'Edge' : c.bgDir === 'vertical' ? 'Bottom' : 'Right'}
-              testId="swatch-bgTo"
-              value={c.bgTo ?? hex(t.panel)}
-              set={c.bgTo !== null}
-              onChange={(bgTo) => set({ bgTo })}
-            />
-            <Segs
-              label="Direction"
-              testId="look-bg-dir"
-              value={c.bgDir}
-              options={GRADIENT_DIRS}
-              onChange={(bgDir) => set({ bgDir })}
-            />
-          </>
-        )}
+        {bgMode === 'gradient' && <GradientFields c={c} t={t} set={set} />}
+        {bgMode === 'gradient' && kind === 'poster' && <GradientHandlesSwitch />}
+        {kind === 'poster' && <PictureFields />}
         <Segs
           label="Lines"
           testId="look-colors"

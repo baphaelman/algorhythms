@@ -8,6 +8,7 @@
  * proportions and 720p is the same picture as 1080p, only smaller.
  */
 
+import { backgroundColour } from './background';
 import type { CameraKey, CompiledScore, LineColors, MomentId, Piece, Seconds } from '../core/types';
 import {
   DEFAULT_FUTURE_OPACITY,
@@ -541,9 +542,7 @@ export function drawTitleText(
   const subPx = Math.max(9, px * 0.42);
   const y = H * at + px * 0.35;
   // The scrim: the background's colour, strongest behind the text, gone at its edges.
-  const bg = style.paint?.background;
-  const paper =
-    bg?.kind === 'solid' ? bg.color : bg?.kind === 'gradient' ? bg.from : style.tokens.paper;
+  const paper = backgroundColour(style.paint?.background, style.tokens.paper);
   const cy = H * at + (sub ? subPx * 0.6 : 0);
   const rx = Math.min(W * 0.48, Math.max(w, px * 4) * 0.62);
   g.save();

@@ -432,12 +432,12 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
   );
   await step('background Gradient', () => key('ArrowRight'), 'look-bg');
   await step(
-    'gradient direction',
+    'gradient shape',
     async () => {
-      await page.getByTestId('look-bg-dir').locator('input:checked').focus();
+      await page.getByTestId('bg-shape').locator('input:checked').focus();
       await key('ArrowRight');
     },
-    'look-bg-dir',
+    'bg-shape',
   );
   await step(
     'lines One',

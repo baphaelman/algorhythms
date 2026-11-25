@@ -30,6 +30,8 @@ export interface WorkspaceState {
   editing: string | null;
   /** A size, rows or margins change happened: "Re-fit layout" shows if text covers the music. */
   refit: boolean;
+  /** The background gradient's handles show on the artboard (Colours → Handles on the poster). */
+  gradientHandles: boolean;
 }
 
 export const useWorkspace = create<WorkspaceState>()(() => ({
@@ -41,6 +43,7 @@ export const useWorkspace = create<WorkspaceState>()(() => ({
   guides: null,
   editing: null,
   refit: false,
+  gradientHandles: true,
 }));
 
 /** Padding around the poster on the artboard, CSS px. */

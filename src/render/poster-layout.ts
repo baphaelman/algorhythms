@@ -40,12 +40,14 @@ import type {
   PosterLabelGroup,
   PosterLabelSide,
   PosterLineGroup,
+  PosterMarkGroup,
   PosterMargins,
   PosterMemberStyle,
   PosterText,
   PosterTextStyle,
   Seconds,
 } from '../core/types';
+import { withPicture } from './background';
 import { barGrid } from './bars';
 import { pitchExtent } from './camera';
 import { DEFAULT_MONO, PITCH_GUIDE_ALPHA, pitchGuideLabel } from './draw';
@@ -61,6 +63,7 @@ import {
   posterSpan,
   posterStyle,
 } from './poster';
+import { sectionRows, type SectionRowItem } from './poster-rows';
 import { MIN_SECTION, sectionText, type TimeSpan } from './section';
 import type { HudItem, ScoreStyle, View } from './types';
 import { DEFAULT_SERIF, videoMarkers } from './video';
@@ -282,6 +285,7 @@ export const LABEL_GROUPS: readonly PosterLabelGroup[] = [
   'sectionLabels',
   'momentLabels',
   'rowLabels',
+  'rowNames',
   'guideLabels',
   'pitchLabels',
   'hud',
@@ -293,11 +297,55 @@ export const LINE_GROUPS: readonly PosterLineGroup[] = [
   'pitchLines',
   'beatLines',
 ];
-export const POSTER_GROUPS: readonly PosterGroup[] = [...LABEL_GROUPS, ...LINE_GROUPS];
+/** Mark groups: marks on the lines (pulse hits), drawn by each layer. */
+export const MARK_GROUPS: readonly PosterMarkGroup[] = ['pulseMarks'];
+export const POSTER_GROUPS: readonly PosterGroup[] = [
+  ...LABEL_GROUPS,
+  ...LINE_GROUPS,
+  ...MARK_GROUPS,
+];
 
 export function isLabelGroup(g: string): g is PosterLabelGroup {
   return (LABEL_GROUPS as readonly string[]).includes(g);
 }
+
+export function isMarkGroup(g: string): g is PosterMarkGroup {
+  return (MARK_GROUPS as readonly string[]).includes(g);
+}
+
+/** A group style's fields. */
+export type GroupField = keyof PosterGroupStyle;
+
+const LABEL_FIELDS: readonly GroupField[] = ['visible', 'size', 'weight', 'colour', 'opacity'];
+const PLACED_FIELDS: readonly GroupField[] = [...LABEL_FIELDS, 'side', 'along', 'offset'];
+const LINE_FIELDS: readonly GroupField[] = [
+  'visible',
+  'colour',
+  'width',
+  'opacity',
+  'dashed',
+  'extent',
+];
+
+/**
+ * The style fields each group takes, for panels that show a group's controls (a field missing
+ * here has no effect on that group).
+ */
+export const GROUP_FIELDS: Readonly<Record<PosterGroup, readonly GroupField[]>> = {
+  sectionLabels: PLACED_FIELDS,
+  momentLabels: PLACED_FIELDS,
+  rowLabels: LABEL_FIELDS,
+  rowNames: LABEL_FIELDS,
+  guideLabels: PLACED_FIELDS,
+  pitchLabels: PLACED_FIELDS,
+  hud: LABEL_FIELDS,
+  sectionLines: LINE_FIELDS,
+  momentLines: LINE_FIELDS,
+  guideLines: LINE_FIELDS,
+  pitchLines: LINE_FIELDS,
+  beatLines: LINE_FIELDS,
+  pulseMarks: ['visible', 'size', 'width', 'opacity', 'colour'],
+};
 
 /** A label group's style with every field resolved (sizes, gaps and nudges in px). */
 export interface LabelStyle {
@@ -314,6 +362,19 @@ export interface LabelStyle {
   /** Letter spacing, px. */
   spacing: number;
   uppercase: boolean;
+}
+
+/**
+ * A mark group's style, resolved: `size` and `width` are factors of the marks' default length
+ * and stroke (drawScore scales them with the type unit), `opacity` multiplies theirs, `colour`
+ * absent = each line's colour.
+ */
+export interface MarkStyle {
+  visible: boolean;
+  size: number;
+  width: number;
+  opacity: number;
+  colour?: string;
 }
 
 /** A line group's style, resolved (width in px). */
@@ -343,6 +404,7 @@ const LABEL_DEFAULTS: Readonly<
   sectionLabels: { size: 9.5, weight: 500, side: 'right', along: 'start', offset: 4, opacity: 1 },
   momentLabels: { size: 8, weight: 400, side: 'right', along: 'start', offset: 3, opacity: 0.85 },
   rowLabels: { size: 10.5, weight: 400, side: 'right', along: 'start', offset: 0, opacity: 1 },
+  rowNames: { size: 14, weight: 500, side: 'left', along: 'start', offset: 8, opacity: 1 },
   guideLabels: { size: 9, weight: 400, side: 'out', along: 'start', offset: 6, opacity: 0.75 },
   pitchLabels: {
     size: 9,
@@ -437,7 +499,11 @@ export function groupStyles(
   style: ScoreStyle,
   doc: PosterDoc | undefined,
   u: number,
-): { labels: Record<PosterLabelGroup, LabelStyle>; lines: Record<PosterLineGroup, LineStyle> } {
+): {
+  labels: Record<PosterLabelGroup, LabelStyle>;
+  lines: Record<PosterLineGroup, LineStyle>;
+  marks: Record<PosterMarkGroup, MarkStyle>;
+} {
   const C = style.tokens;
   const P = style.paint;
   const g = (k: PosterGroup): PosterGroupStyle => doc?.groups?.[k] ?? {};
@@ -460,6 +526,13 @@ export function groupStyles(
       u,
     ),
     rowLabels: labelStyleOf('rowLabels', g('rowLabels'), true, P?.labels ?? C.ink2, u),
+    rowNames: labelStyleOf(
+      'rowNames',
+      g('rowNames'),
+      doc?.rowsBy === 'sections',
+      P?.labels ?? C.ink2,
+      u,
+    ),
     guideLabels: labelStyleOf(
       'guideLabels',
       g('guideLabels'),
@@ -522,7 +595,17 @@ export function groupStyles(
       u,
     ),
   };
-  return { labels, lines };
+  const pm = g('pulseMarks');
+  const marks = {
+    pulseMarks: {
+      visible: pm.visible ?? look.pulseMarks,
+      size: pos(pm.size, 1),
+      width: pos(pm.width, 1),
+      opacity: unit(pm.opacity, 1),
+      ...(typeof pm.colour === 'string' && pm.colour ? { colour: pm.colour } : {}),
+    },
+  };
+  return { labels, lines, marks };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -609,6 +692,9 @@ export interface RowLayout {
   index: number;
   start: Seconds;
   end: Seconds;
+  /** Rows by sections: the item that starts it (a labelled moment's id or `start`) and its label. */
+  section?: string;
+  name?: string;
   rect: Rect;
   plot: Rect;
 }
@@ -669,6 +755,9 @@ export interface PosterLayout {
   style: ScoreStyle;
   labels: Record<PosterLabelGroup, LabelStyle>;
   lines: Record<PosterLineGroup, LineStyle>;
+  marks: Record<PosterMarkGroup, MarkStyle>;
+  /** Rows by sections: the Organize list (null for equal rows). */
+  sectionRows: SectionRowItem[] | null;
   fonts: { mono: string; serif: string; sans: string };
   /** Line colours by pool index from the layers (`posterVoiceColors`), if any. */
   voiceColors?: (string | undefined)[];
@@ -901,7 +990,20 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     ...(piece.view.meter !== undefined ? { meter: piece.view.meter } : {}),
     pieceName: piece.meta.title,
   });
-  const { labels: LS, lines: LN } = groupStyles(look, style, doc, u);
+  const { labels: LS, lines: LN, marks: MK } = groupStyles(look, style, doc, u);
+  const bg = withPicture(style.paint?.background, doc?.picture);
+  if (bg && bg !== style.paint?.background) style.paint = { ...style.paint, background: bg };
+  const pm = MK.pulseMarks;
+  if (pm.visible) delete style.pulseMarks;
+  else style.pulseMarks = false;
+  if (pm.size !== 1 || pm.width !== 1 || pm.opacity !== 1 || pm.colour) {
+    style.pulseStyle = {
+      size: pm.size,
+      width: pm.width,
+      opacity: pm.opacity,
+      ...(pm.colour ? { colour: pm.colour } : {}),
+    };
+  }
 
   const mg = settings.margins;
   const margins: Margins = {
@@ -1028,7 +1130,21 @@ export function layoutPoster(input: PosterInput): PosterLayout {
           ...(piece.view.meter !== undefined ? { meter: piece.view.meter } : {}),
         }
       : undefined;
-  const times = posterRows(B, Math.min(settings.rows, maxRows), grid, A);
+  const markers = markersOf(compiled, piece);
+  const sections = markers.filter((m) => m.label !== undefined);
+  const moments = markers.filter((m) => m.label === undefined);
+  const plan =
+    doc?.rowsBy === 'sections'
+      ? sectionRows(
+          sections.map((m) => ({ id: m.id, t: m.t, label: m.label ?? '' })),
+          doc.rowSections,
+          A,
+          B,
+        )
+      : null;
+  const times: { start: Seconds; end: Seconds; id?: string; label?: string }[] = plan
+    ? plan.rows
+    : posterRows(B, Math.min(settings.rows, maxRows), grid, A);
   const n = times.length;
   let longest = 0;
   for (const r of times) longest = Math.max(longest, r.end - r.start);
@@ -1036,9 +1152,6 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   const pitchRange: [number, number] = cam.pitchRange ?? pitchExtent(compiled);
   const [pLo, pHi] = pitchRange;
 
-  const markers = markersOf(compiled, piece);
-  const sections = markers.filter((m) => m.label !== undefined);
-  const moments = markers.filter((m) => m.label === undefined);
   // Label zones: above the plot (labels along the start) and below (along the end).
   const vLabels = [LS.sectionLabels, LS.momentLabels].filter((s) => s.visible);
   const zoneOf = (along: 'start' | 'end'): number => {
@@ -1066,6 +1179,19 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   };
   gutterFor(LS.guideLabels, guidePitches.map(guideText));
   gutterFor(LS.pitchLabels, pgPitches.map(pitchGuideLabel));
+  // Row labels (rows by sections): a column at the left, before the guide labels' gutter.
+  const RN = LS.rowNames;
+  const nameFont = cssFont(RN.weight, RN.size, fonts.mono);
+  let nameW = 0;
+  if (plan && RN.visible) {
+    for (const r of times) {
+      const t = r.label?.trim();
+      if (t) nameW = Math.max(nameW, measure(t, nameFont, RN.spacing));
+    }
+    if (nameW > 0) nameW = Math.min(music.w * 0.3, nameW + RN.offset + TEXT_PAD * u);
+  }
+  const names = { x: music.x, w: nameW };
+  gutter.start += nameW;
 
   const rowH = Math.max(u, (music.h - POSTER_ROW_GAP * u * (n - 1)) / n);
   const plotW = Math.max(u, music.w - gutter.start - gutter.end);
@@ -1079,7 +1205,14 @@ export function layoutPoster(input: PosterInput): PosterLayout {
       w: pw,
       h: Math.max(u, rowH - zoneTop - zoneBottom),
     };
-    return { index: i, start: r.start, end: r.end, rect, plot };
+    return {
+      index: i,
+      start: r.start,
+      end: r.end,
+      ...(r.id !== undefined ? { section: r.id, name: r.label ?? '' } : {}),
+      rect,
+      plot,
+    };
   });
   const xOf = (row: RowLayout, t: Seconds): number =>
     row.plot.x + ((t - row.start) / Math.max(1e-9, row.end - row.start)) * row.plot.w;
@@ -1370,6 +1503,26 @@ export function layoutPoster(input: PosterInput): PosterLayout {
       ]);
     }
   }
+  // Row labels: left of each row, centred on its plot (else at its top), in their column.
+  if (nameW > 0) {
+    for (const r of rows) {
+      const text = r.name?.trim();
+      if (!text || r.section === undefined) continue;
+      const mid = r.plot.y + r.plot.h / 2 + (RN.size * (ASCENT - DESCENT)) / 2;
+      place(
+        'rowNames',
+        r.section,
+        r.index,
+        text,
+        RN,
+        () => [
+          { x: names.x, y: mid },
+          { x: names.x, y: r.plot.y + RN.size * ASCENT },
+        ],
+        { x: names.x, y: r.rect.y, w: names.w, h: r.rect.h },
+      );
+    }
+  }
   /** A vertical line's label: beside the line in the zone above or below the plot, shifting right past what it meets. */
   const vLabel = (group: 'sectionLabels' | 'momentLabels', list: Marker[]): void => {
     const s = LS[group];
@@ -1523,8 +1676,30 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     style,
     labels: LS,
     lines: LN,
+    marks: MK,
+    sectionRows: plan ? plan.items : null,
     fonts,
   };
+}
+
+/**
+ * The Organize list of rows by sections for a doc (whether or not its rows are by sections):
+ * the labelled moments in the poster's span, in order, with their row labels and switches.
+ */
+export function posterSectionItems(
+  compiled: CompiledScore,
+  piece: PosterPiece,
+  doc?: PosterDoc,
+  base?: PosterBase,
+): SectionRowItem[] {
+  const settings = posterSettings(doc, base);
+  const span = posterSpan(compiled, settings.section) ?? null;
+  const sections = markersOf(compiled, piece)
+    .filter((m) => m.label !== undefined)
+    .map((m) => ({ id: m.id, t: m.t, label: m.label ?? '' }));
+  const A = span ? span.start : 0;
+  const B = span ? span.end : compiled.duration;
+  return sectionRows(sections, doc?.rowSections, A, B).items;
 }
 
 /**

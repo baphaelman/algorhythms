@@ -25,6 +25,7 @@ import {
 import { appDark, useExportUi, videoContext } from './ui/export-state';
 import {
   changedFields,
+  defaultPosterDoc,
   docWithForm,
   formWithDoc,
   posterFields,
@@ -52,6 +53,8 @@ let writing = false;
 let lastFields: PosterFields | null = null;
 let baseline: PosterFields | null = null;
 let run: { key: string; at: number; entry: object | null } | null = null;
+/** The fields when a form gesture began (`posterFormGesture`); null when none is open. */
+let gestureBase: PosterFields | null = null;
 
 function mine<T>(f: () => T): T {
   writing = true;
@@ -78,6 +81,11 @@ function writeForm(f: PosterFields): void {
   const changed = changedFields(prev, f);
   if (changed.length === 0) return;
   const ctx = docContext();
+  if (gestureBase) {
+    const base = gestureBase;
+    mine(() => updateGesture((p) => withPoster(p, docWithForm(p.poster, f, ctx, base))));
+    return;
+  }
   const recipe = (p: Piece) => withPoster(p, docWithForm(p.poster, f, ctx, prev));
   const key = changed.join(',');
   const now = performance.now();
@@ -120,6 +128,7 @@ export function startPosterSync(): () => void {
     lastFields = null;
     baseline = null;
     run = null;
+    gestureBase = null;
   };
 }
 
@@ -181,4 +190,47 @@ export function posterGesture(label = 'Poster'): PosterGesture {
     end: () => mine(() => endGesture()),
     cancel: () => mine(() => cancelGesture()),
   };
+}
+
+/**
+ * A drag that writes the form (gradient handles): form changes until `end` are one undo entry.
+ * `cancel` puts the piece and the form back.
+ */
+export function posterFormGesture(label = 'Poster'): { end(): void; cancel(): void } {
+  run = null;
+  gestureBase = lastFields;
+  mine(() => beginGesture(label));
+  return {
+    end: () => {
+      gestureBase = null;
+      mine(() => endGesture());
+    },
+    cancel: () => {
+      gestureBase = null;
+      mine(() => cancelGesture());
+      if (active) showDoc(usePlayer.getState().piece.poster);
+    },
+  };
+}
+
+/**
+ * Back to the default poster (PLAN.md §15 M14 "Revert"): settings, objects and styles. One undo
+ * entry; false when the poster is already the default.
+ */
+export function revertPoster(): boolean {
+  run = null;
+  const doc = defaultPosterDoc(docContext());
+  const ok = mine(() =>
+    edit(
+      (p) => (JSON.stringify(p.poster) === JSON.stringify(doc) ? p : withPoster(p, doc)),
+      'Revert poster',
+    ),
+  );
+  if (ok && active) showDoc(doc);
+  return ok;
+}
+
+/** True when the piece's poster is the default one (Revert has nothing to do). */
+export function posterIsDefault(doc: PosterDoc | undefined): boolean {
+  return JSON.stringify(doc) === JSON.stringify(defaultPosterDoc(docContext()));
 }

@@ -1,23 +1,37 @@
 import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import { saveAsFile } from '../persist';
-import { LONG_LINK_CHARS, encodeShareLink } from '../share';
+import { LONG_LINK_CHARS, encodeShareLink, linkDropsPicture } from '../share';
 import { usePlayer } from '../store';
 
 interface ShareUi {
   open: boolean;
   /** The link for the piece as it was when the dialog opened ('' while it is being made). */
   link: string;
+  /** The piece has a poster picture, which the link leaves out. */
+  noPicture: boolean;
   error: string;
   copied: boolean;
 }
 
-const useShareUi = create<ShareUi>()(() => ({ open: false, link: '', error: '', copied: false }));
+const useShareUi = create<ShareUi>()(() => ({
+  open: false,
+  link: '',
+  noPicture: false,
+  error: '',
+  copied: false,
+}));
 
 /** Opens the Share dialog with a link to the open piece (the menu's "Share link…" calls this). */
 export function openShare(): void {
   const piece = usePlayer.getState().piece;
-  useShareUi.setState({ open: true, link: '', error: '', copied: false });
+  useShareUi.setState({
+    open: true,
+    link: '',
+    noPicture: linkDropsPicture(piece),
+    error: '',
+    copied: false,
+  });
   encodeShareLink(piece).then(
     (link) => useShareUi.setState({ link }),
     (e: unknown) => useShareUi.setState({ error: e instanceof Error ? e.message : String(e) }),
@@ -34,7 +48,7 @@ function closeShare(): void {
  * piece as a file instead.
  */
 export function ShareDialog() {
-  const { open, link, error, copied } = useShareUi();
+  const { open, link, noPicture, error, copied } = useShareUi();
   const dialog = useRef<HTMLDialogElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const id = useId();
@@ -96,6 +110,11 @@ export function ShareDialog() {
             )}
             {error && <small className="field-error">{error}</small>}
           </div>
+          {noPicture && (
+            <p className="dialog-note" data-testid="share-no-picture">
+              The poster’s background picture isn’t in links: they show its background colour.
+            </p>
+          )}
           {long && (
             <p className="share-long" role="status" data-testid="share-long">
               This link is longer than {LONG_LINK_CHARS.toLocaleString('en')} characters, and some

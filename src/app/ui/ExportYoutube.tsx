@@ -4,7 +4,15 @@
  * Thumbnail and Copy description buttons. Little text; explanations are tooltips.
  */
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { noteName, parsePitchClass } from '../../core/scales';
 import type { LoudnessMeasure } from '../../dsp/loudness';
 import type { VideoSize } from '../../render/video';
@@ -197,10 +205,13 @@ export function PitchGuidesRow({
   form,
   disabled,
   onLook,
+  aside,
 }: {
   form: ExportForm;
   disabled: boolean;
   onLook: (p: Partial<LookForm>) => void;
+  /** Beside the label: the details disclosure (poster workspace). */
+  aside?: ReactNode;
 }) {
   const id = useId();
   const compiled = usePlayer((s) => s.compiled);
@@ -253,15 +264,25 @@ export function PitchGuidesRow({
     add(ps);
   };
   const free = picks.filter((p) => !pg.pitches.includes(p));
+  const label = (
+    <span
+      className="look-label"
+      id={`${id}-label`}
+      title="Faint horizontal lines at the notes you choose."
+    >
+      Guide notes
+    </span>
+  );
   return (
     <>
-      <span
-        className="look-label"
-        id={`${id}-label`}
-        title="Faint horizontal lines at the notes you choose."
-      >
-        Guide notes
-      </span>
+      {aside ? (
+        <div className="look-label-row">
+          {label}
+          {aside}
+        </div>
+      ) : (
+        label
+      )}
       <div
         ref={group}
         className="pitch-guides"

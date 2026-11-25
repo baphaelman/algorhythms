@@ -930,15 +930,27 @@ export interface PosterText {
   hidden?: boolean;
 }
 
-/** Label groups (§15 M14): one style for every member. */
+/**
+ * Label groups (§15 M14): one style for every member. `rowLabels` are the rows' times;
+ * `rowNames` the row labels drawn left of each row (rows by sections).
+ */
 export type PosterLabelGroup =
-  'sectionLabels' | 'momentLabels' | 'rowLabels' | 'guideLabels' | 'pitchLabels' | 'hud';
+  | 'sectionLabels'
+  | 'momentLabels'
+  | 'rowLabels'
+  | 'rowNames'
+  | 'guideLabels'
+  | 'pitchLabels'
+  | 'hud';
 
 /** Line groups (§15 M14). */
 export type PosterLineGroup =
   'sectionLines' | 'momentLines' | 'guideLines' | 'pitchLines' | 'beatLines';
 
-export type PosterGroup = PosterLabelGroup | PosterLineGroup;
+/** Mark groups (M14 P5): marks drawn on the lines, styled by size, width, opacity and colour. */
+export type PosterMarkGroup = 'pulseMarks';
+
+export type PosterGroup = PosterLabelGroup | PosterLineGroup | PosterMarkGroup;
 
 /**
  * Where a label sits against its line. Vertical lines (sections, moments): `left` / `right` of
@@ -950,7 +962,7 @@ export type PosterLabelSide = 'out' | 'above' | 'below' | 'left' | 'right';
 /** A group's style; absent fields keep the defaults (from the Look and the type scale). */
 export interface PosterGroupStyle {
   visible?: boolean;
-  /** Labels: type size, × the group's default. */
+  /** Labels: type size, × the group's default. Marks: length, × the default. */
   size?: number;
   weight?: number;
   colour?: string;
@@ -960,7 +972,7 @@ export interface PosterGroupStyle {
   along?: 'start' | 'end';
   /** Labels: gap to the line, × the default gap. */
   offset?: number;
-  /** Lines: width, × the default. */
+  /** Lines and marks: width, × the default. */
   width?: number;
   dashed?: boolean;
   /** Lines: full height (or width) or a short tick. */
@@ -996,6 +1008,44 @@ export interface PosterDoc {
   groups?: Partial<Record<PosterGroup, PosterGroupStyle>>;
   /** `members[group][member id]`: a moment id, a guide's pitch, a row index, a HUD readout. */
   members?: Partial<Record<PosterGroup, Record<string, PosterMemberStyle>>>;
+  /** How rows split the piece: absent = equal rows (`rows` of them), `sections` = by sections. */
+  rowsBy?: 'sections';
+  /**
+   * Rows by sections, per labelled moment (by id; `start` = the part before the first one):
+   * `join` keeps it in the row before (its "New row" switch off), `label` its row label (absent =
+   * the section's label).
+   */
+  rowSections?: Record<string, PosterRowSection>;
+  /**
+   * A background picture (over the Look's background). Kept in the saved piece, never in share
+   * links (they fall back to the background colour).
+   */
+  picture?: PosterPicture;
+}
+
+/** One section's row in rows by sections. */
+export interface PosterRowSection {
+  join?: boolean;
+  label?: string;
+}
+
+/** How a background picture fills the poster. */
+export type PictureFit = 'cover' | 'contain' | 'tile';
+
+/** A background picture (`PosterDoc.picture`). */
+export interface PosterPicture {
+  /** A `data:image/…` URL. */
+  src: string;
+  /** Its pixel size. */
+  w: number;
+  h: number;
+  /** @default 'cover' */
+  fit?: PictureFit;
+  /** Where it sits when it doesn't fill the poster exactly, 0..1 each (0.5 = centred). */
+  x?: number;
+  y?: number;
+  /** A wash of the background over it, 0..1. @default 0 */
+  dim?: number;
 }
 
 /** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
