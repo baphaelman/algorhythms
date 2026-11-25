@@ -156,8 +156,22 @@ export interface ScoreStyle {
   guideLabels?: boolean;
   /** Short ticks of unlabelled moments. @default true */
   markers?: boolean;
-  /** Labelled moments' full-height lines and labels (sections). @default true */
+  /** Labelled moments' labels (sections), and their lines unless `sectionLines` says. @default true */
   sections?: boolean;
+  /** Labelled moments' full-height lines (M14: toggled apart from the labels). @default sections */
+  sectionLines?: boolean;
+  /**
+   * Draw only these voices (pool indices): lines, glow, pulse marks and heads (a poster layer,
+   * M14). Absent: every voice.
+   */
+  voices?: ReadonlySet<number>;
+  /** Line (and head) colours by pool index that beat every other colour rule (poster layers). */
+  voiceColors?: readonly (string | undefined)[];
+  /**
+   * The plot's top and bottom padding in px, replacing `scorePads` (a poster row's plot is laid
+   * out by the poster). Absent: as `cameraAt` gives them.
+   */
+  pads?: { top: number; bottom: number };
   /**
    * Nothing ahead of the playhead: markers, section labels and bar lines past `t` are not drawn
    * (lines and pulse marks follow `futureOpacity`, which should then be 0). @default false
