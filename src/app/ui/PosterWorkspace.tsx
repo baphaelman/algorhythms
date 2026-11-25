@@ -63,6 +63,7 @@ import { togglePlay, usePlayer } from '../store';
 import { setDialogSpace } from '../space-key';
 import {
   ArtboardOverlay,
+  disarmTextTool,
   ArtboardPlayhead,
   LayersList,
   MarginsField,
@@ -415,6 +416,11 @@ export function PosterWorkspace() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') {
         if (!e.defaultPrevented && workspaceKey(e)) e.preventDefault();
+        return;
+      }
+      // The armed Text tool goes back to Select first.
+      if (!e.defaultPrevented && !document.querySelector('dialog[open]') && disarmTextTool()) {
+        e.preventDefault();
         return;
       }
       const what = workspaceEscape({

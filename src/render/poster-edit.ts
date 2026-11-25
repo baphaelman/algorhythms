@@ -620,7 +620,7 @@ export function refitPoster(
     out = withTexts(
       out,
       doc.texts.map((t) => {
-        const { box: _box, ...rest } = t;
+        const { box: _box, sizing: _sizing, ...rest } = t;
         return rest;
       }),
     );

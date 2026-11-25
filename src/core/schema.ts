@@ -821,6 +821,10 @@ export const PosterSchema = z
           kind: z.enum(['title', 'subtitle', 'credit', 'free']),
           text: z.string().max(2000),
           box: PosterBoxSchema.optional(),
+          sizing: z
+            .enum(['auto', 'wrap'])
+            .optional()
+            .describe('A placed box: auto = as wide as its text; wrap = fixed width, lines wrap.'),
           style: z
             .looseObject({
               font: z.enum(['serif', 'sans', 'mono']).optional(),
