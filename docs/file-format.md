@@ -5798,6 +5798,445 @@ This is the *input* form: fields with defaults are optional here.
         "mode"
       ],
       "additionalProperties": {}
+    },
+    "poster": {
+      "description": "The poster (M14); absent = the defaults.",
+      "type": "object",
+      "properties": {
+        "size": {
+          "description": "Artboard pixels.",
+          "type": "object",
+          "properties": {
+            "w": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            }
+          },
+          "required": [
+            "w",
+            "h"
+          ],
+          "additionalProperties": {}
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "section": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": {}
+        },
+        "pieceRange": {
+          "type": "boolean"
+        },
+        "margins": {
+          "description": "Fractions of the artboard's shorter side.",
+          "type": "object",
+          "properties": {
+            "top": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "right": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "bottom": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "left": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.45
+            },
+            "linked": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "top",
+            "right",
+            "bottom",
+            "left"
+          ],
+          "additionalProperties": {}
+        },
+        "look": {
+          "description": "Export Look overrides.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^(part|line):"
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "h": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "additionalProperties": {}
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "colour": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "title",
+                  "subtitle",
+                  "credit",
+                  "free"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "h": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "additionalProperties": {}
+              },
+              "style": {
+                "type": "object",
+                "properties": {
+                  "font": {
+                    "type": "string",
+                    "enum": [
+                      "serif",
+                      "sans",
+                      "mono"
+                    ]
+                  },
+                  "size": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 900
+                  },
+                  "italic": {
+                    "type": "boolean"
+                  },
+                  "colour": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "opacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "hidden": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "text"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "groups": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "sectionLabels",
+              "momentLabels",
+              "rowLabels",
+              "guideLabels",
+              "pitchLabels",
+              "hud",
+              "sectionLines",
+              "momentLines",
+              "guideLines",
+              "pitchLines",
+              "beatLines"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "visible": {
+                "type": "boolean"
+              },
+              "size": {
+                "description": "Label size, × the default.",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 20
+              },
+              "weight": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 900
+              },
+              "colour": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "opacity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "out",
+                  "above",
+                  "below",
+                  "left",
+                  "right"
+                ]
+              },
+              "along": {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              "offset": {
+                "description": "Gap to the line, × the default.",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "width": {
+                "description": "Line width, × the default.",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 20
+              },
+              "dashed": {
+                "type": "boolean"
+              },
+              "extent": {
+                "type": "string",
+                "enum": [
+                  "full",
+                  "tick"
+                ]
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "members": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "sectionLabels",
+              "momentLabels",
+              "rowLabels",
+              "guideLabels",
+              "pitchLabels",
+              "hud",
+              "sectionLines",
+              "momentLines",
+              "guideLines",
+              "pitchLines",
+              "beatLines"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "visible": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "description": "Label size, × the default.",
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 900
+                },
+                "colour": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "out",
+                    "above",
+                    "below",
+                    "left",
+                    "right"
+                  ]
+                },
+                "along": {
+                  "type": "string",
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "offset": {
+                  "description": "Gap to the line, × the default.",
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 20
+                },
+                "width": {
+                  "description": "Line width, × the default.",
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "dashed": {
+                  "type": "boolean"
+                },
+                "extent": {
+                  "type": "string",
+                  "enum": [
+                    "full",
+                    "tick"
+                  ]
+                },
+                "dx": {
+                  "type": "number"
+                },
+                "dy": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": {}
+            }
+          }
+        }
+      },
+      "additionalProperties": {}
     }
   },
   "required": [

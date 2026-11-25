@@ -4,13 +4,14 @@
  */
 
 import { compile } from '../core/compiler/compile';
-import type { CompiledScore, LineColors, Piece } from '../core/types';
+import type { CompiledScore, LineColors, Piece, PosterDoc } from '../core/types';
 import { drawScore, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
-import { pieceLook, type Look } from '../render/look';
+import { PLAYER_LOOK, pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import {
   drawPoster,
+  drawPosterLayout,
   posterCamera,
   posterLayout,
   posterSize,
@@ -21,6 +22,13 @@ import {
   type PosterSize,
   posterHudPlacement,
 } from '../render/poster';
+import {
+  estimateText,
+  layoutPoster,
+  measureWith,
+  type Measure,
+  type PosterLayout,
+} from '../render/poster-layout';
 import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { videoMarkers } from '../render/video';
@@ -163,4 +171,106 @@ export function referencePoster(piece: Piece, opts: PosterOptions): ImageData {
   const lay = posterLayout(opts.size);
   drawScore(g, compiled, posterCamera(compiled), style, compiled.duration, lay, lay.dpr);
   return g.getImageData(0, 0, width, height);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The poster workspace (§15 M14): drawn from `layoutPoster`
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The poster's layout for a piece: `opts` are the viewer's remembered poster options (size, rows,
+ * section, Look) under the piece's `PosterDoc` (`doc`, default `piece.poster`), which wins. With
+ * `title: false` and a doc without text boxes, none are drawn (today's switch). Text is measured
+ * with `measure` (default: an OffscreenCanvas where there is one, else an estimate), so the PNG,
+ * the SVG and the artboard share one layout.
+ */
+export function posterLayoutOf(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore = compile(piece),
+  doc: PosterDoc | undefined = piece.poster,
+  measure: Measure = posterMeasure(),
+): PosterLayout {
+  const size = posterSize(opts.size);
+  const look: Look = opts.look ?? {
+    ...PLAYER_LOOK,
+    theme: opts.theme,
+    transparent: opts.transparent,
+    thickness: opts.thickness,
+    colors: opts.colors ?? 'pitch',
+    hud: [],
+  };
+  const d: PosterDoc | undefined = !opts.title && !doc?.texts ? { ...doc, texts: [] } : doc;
+  return layoutPoster({
+    compiled,
+    piece: opts.customColors
+      ? { ...piece, voices: piece.voices.map((v, i) => ({ ...v, color: opts.customColors?.[i] })) }
+      : piece,
+    ...(d ? { doc: d } : {}),
+    look,
+    base: {
+      size: { w: size.width, h: size.height },
+      ...(opts.rows !== undefined ? { rows: opts.rows } : {}),
+      ...(opts.section ? { section: opts.section } : {}),
+      ...(opts.pieceRange ? { pieceRange: true } : {}),
+    },
+    oklch: supportsOklch(),
+    measure,
+  });
+}
+
+let measurer: Measure | null = null;
+
+/** Text measured on an OffscreenCanvas (one per page), or the estimate where there is none. */
+export function posterMeasure(): Measure {
+  if (measurer) return measurer;
+  const g =
+    typeof OffscreenCanvas === 'undefined' ? null : new OffscreenCanvas(1, 1).getContext('2d');
+  measurer = g ? measureWith(g) : estimateText;
+  return measurer;
+}
+
+/** The poster as a PNG, drawn from its layout (default: `posterLayoutOf`). */
+export async function renderPosterLayoutPng(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore = compile(piece),
+  layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
+): Promise<Blob> {
+  const canvas = new OffscreenCanvas(layout.width, layout.height);
+  const transparent = layout.style.tokens.paper === 'transparent';
+  const g = canvas.getContext('2d', { alpha: transparent });
+  if (!g) throw new Error('Poster export: this browser cannot draw on an OffscreenCanvas.');
+  drawPosterLayout(g, compiled, layout);
+  return canvas.convertToBlob({ type: 'image/png' });
+}
+
+/** The poster as an SVG document, drawn from its layout (OKLCH colours, written as hex). */
+export function renderPosterLayoutSvg(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore = compile(piece),
+  layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
+): string {
+  const svg = new SvgContext(layout.width, layout.height);
+  const l = layout.style.oklch ? layout : { ...layout, style: { ...layout.style, oklch: true } };
+  drawPosterLayout(asCtx2D(svg), compiled, l);
+  return svg.toSvg();
+}
+
+/**
+ * The artboard: the poster drawn from its layout on a canvas `scale` times its pixel size.
+ * Returns the layout (for hit-testing and the overlays).
+ */
+export function previewPosterLayout(
+  ctx: Ctx2D,
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: PosterOptions,
+  scale: number,
+  doc: PosterDoc | undefined = piece.poster,
+): PosterLayout {
+  const layout = posterLayoutOf(piece, opts, compiled, doc);
+  drawPosterLayout(ctx, compiled, layout, scale);
+  return layout;
 }

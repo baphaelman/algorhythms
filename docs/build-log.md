@@ -3098,3 +3098,38 @@ PLAN §15 M12 ("Generate uses the same composer…", Acceptance), §11.3 "Genera
 - **Video opens on Follow** (the app's default for old pieces is Auto) so the carried-over zoom is visible; Auto and its keys are one click away.
 - **v2 (owner feedback):** opens in Music; Menu → Export opens the workspace (Poster | Video, last one remembered; Back to music or Esc keeps playhead and zoom). The default layout reserves a text band sized from the artboard's short side, so no text covers the music at any size or row count; a moved text box over the music after a size change shows Re-fit layout. Eight resize handles (Shift proportional, Alt from the centre) and typed X/Y/W/H; layers scale per axis (x and y transform separately, so strokes stay round). The Title block switch is gone. A layer's colour also shows in the video; position and size are poster-only.
 - **Not placed:** HUD placement (dragging readouts on the frame), Guide lines at pitches, the thumbnail's This frame / Whole piece choice and "With share link", the per-element colour swatches (one Text swatch stands in), Loop region (Kite Day has none).
+
+## M14 P1: poster model and layout engine (core + render + share; 2026-11-24)
+**Piece field.** `Piece.poster?: PosterDoc` (core/types.ts, `PosterSchema`, canonical rules, share packing). Only what differs from the defaults; absent = today. Fields: `size {w,h}` px, `rows`, `section`, `pieceRange`, `margins {top,right,bottom,left,linked?}` (fractions of the shorter side), `look` (partial Look, read by `posterLook`; invalid values ignored), `layers [{id: 'part:<name>' | 'line:<voice id>', box?, hidden?, colour?}]`, `texts [{id, kind, text, box?, style?, hidden?}]` (absent = the default title + credit; `[]` = none), `groups`, `members[group][member]` (+ `dx`/`dy` nudge). Canonical: boxes/margins/nudges 4 significant digits, factors and opacity as levels, section as times. Share v2 packs default text boxes as their ids, boxes as `[x,y,w,h]`, linked margins as one number: a typical poster (A4, 3 rows, margins, Look, 2 layers, 3 texts, group + member styles) adds 354 characters to Kite Day's link (1,274 → 1,628); rows + theme add 39.
+
+**Layout engine** (`render/poster-layout.ts`): `layoutPoster({compiled, piece, doc?, look?, base?, measure?}) → PosterLayout`.
+- Type unit = shorter side / 480 (`posterUnit`): 4.5 px at 3840×2160 and 2160², as today's poster ratio. Every size, gap and line width is in units.
+- Margins default 6 % of the shorter side; `content` is inside them. Auto text boxes stack at the top (the demo's band), music below (+4 % gap), a HUD band at the bottom when readouts show. Rows split the music area; each row has a label zone above the plot and gutters for guide labels set `out`.
+- Default texts (today's title block): `{name}` serif at 7.5 % of the shorter side, `{meta} · AlgoRhythms` mono at 2.4 %; shrunk to fit, never clipped. Tokens `{name} {key} {length} {section} {meta} {tempo}`.
+- Groups: labels `sectionLabels momentLabels rowLabels guideLabels pitchLabels hud`, lines `sectionLines momentLines guideLines pitchLines beatLines`. Defaults come from the Look; `groups[g]` restyles all members, `members[g][id]` one (member ids: moment id, guide pitch, row index, HUD readout, `beat:t`/`bar:t`).
+- Hz labels: 9 units, in a left gutter, right-aligned to the plot, centred on their line (was 10 layout px at the left edge, above the line).
+- Collisions: labels placed in priority order (row times, sections, HUD, guide, pitch-guide, moment labels), each sliding past what it meets (at most 2× its width, one character's gap), then the other side; else hidden (`layout.hidden`). Vertical-line labels stay out of the Hz gutter.
+- Layers: one per part (piece order; `doc.layers` part entries first, in their order). A part's box (artboard fractions) is where the rows' plots land (default: the plot area); a line with a box is its own layer, its box a fraction of its part's box. Each row of a layer is one `drawScore` frame (`pads` 0, its voices only), so stretching moves points, never scales the context.
+- **Look split:** `Look.sectionLines?` (absent = `sections`, so an old `sections: true` keeps both) and `Look.momentLabels?` (posters only); `ScoreStyle.sectionLines` lets the video draw labels without lines.
+- drawScore additions, all opt-in (absent = unchanged; video untouched): `ScoreStyle.voices`, `voiceColors`, `pads`, `sectionLines`.
+
+**Drawing:** `drawPosterLayout(ctx, compiled, layout, scale)` (poster.ts): background, lines, layers, vignette, labels, texts. PNG and SVG share it. App glue (`src/app/poster-export.ts`): `posterLayoutOf(piece, opts, compiled?, doc?, measure?)`, `renderPosterLayoutPng`, `renderPosterLayoutSvg`, `previewPosterLayout(ctx, piece, compiled, opts, scale, doc?) → layout`. Text is measured on one OffscreenCanvas so the PNG, the SVG and the artboard share a layout.
+
+**API for P3** (`render/poster-edit.ts`, all pure):
+- `hitTest(layout, x, y, tol?) → {object, group, member, index} | null` (topmost; artboard px); `groupObjects(layout, group, member?)`.
+- `resizeBox(box, handle, {dx,dy}, {shift, alt, min})`, `HANDLES`.
+- `layerBoxFor(layout, id, newBounds) → PosterBox` (inverse of the layer map; select and resize `layer.bounds`), `boundsWithBox`, `textBoxFor(layout, frame)`; a text box's frame is `TextObject.frame` (font size follows the box height).
+- `overlapsMusic` / `textsOverMusic` (the Re-fit hint), `refitPoster(doc, {layers?})`.
+- `posterTimeAt(layout, t) → {row, x, y0, y1, layers: [{layer, x, y0, y1}]} | null`: where t sits on the poster, per row and per layer after its transform (a layer only where it has lines) — for a video playing through the poster.
+- Doc updates returning a compact doc (or undefined): `setLayer`, `setLayerOrder`, `putText`, `removeText`, `newTextId`, `textsOf`, `setGroupStyle`, `setMemberStyle`, `setMargins`, `setPosterLook`, `setPosterField`.
+- `posterIssues(layout)`: the automated check's rules; `posterVoiceColors(doc, voices)`: layer colours by pool index for the video (not wired in the app yet).
+
+**Deviations.**
+- Today's dialog keeps its path (`drawPoster`, `renderPosterPng/Svg`, `previewPoster`) unchanged, so its e2e specs and P2's in-flight work don't break; the workspace must call the `…Layout…` functions. Remove the old path when the dialog's poster tab goes. No poster goldens or size checks re-pinned (none changed).
+- A line layer's box is a fraction of its part's box (not the artboard), so moving a part carries its split lines.
+- The text band sits at the top (the demo), not at the bottom as today's title block.
+- Guides, beats and marker lines stay on the base grid when a layer moves.
+- Rows are capped so none is under 2 s (the camera's shortest window).
+
+**Tests:** `tests/unit/app/poster-piece.test.ts` (schema, canonical, share size), `tests/unit/render/poster-layout.test.ts`, `poster-edit.test.ts`, `poster-draw.test.ts`, `poster-layout-check.test.ts` (8 Songs × 3 sizes × rows 1–8 × whole/section, default Look and a busy one with every group on; ~3 s). `tests/e2e/poster-long.spec.ts` takes `POSTER_LONG_PATH=layout`. Chromium, layout path: 4K PNG 65–79 ms (draw + encode) for 3–10-minute pieces, A4 74 ms; SVG ≤ 0.18 MB; the same as today's path.
+- Full `pnpm test`: two 5 s timeouts under load (`theory-next` Add → Chord, `poster.test` bundled SVGs); both pass alone.

@@ -157,7 +157,7 @@ export function drawScore(
   const items = hudItems(style);
   const rows = hudRows(items);
   const extra = style.hudExtra ?? 0;
-  const view = cameraAt(
+  const cv = cameraAt(
     cameraScore(compiled),
     camera,
     t,
@@ -165,6 +165,7 @@ export function drawScore(
     rows > 0 ? rows : style.reserveHud === true,
     extra,
   );
+  const view = style.pads ? { ...cv, padT: style.pads.top, padB: style.pads.bottom } : cv;
   const { padT, padB } = view;
   const scale = style.lineScale ?? 1;
   F.level = style.levelOpacity !== false;
@@ -303,7 +304,8 @@ function drawMarkers(
   const spans = compiled.momentSpans;
   const ticks = style.markers !== false;
   const sections = style.sections !== false;
-  if (spans.length === 0 || !(ticks || sections)) return;
+  const sectionLines = style.sectionLines ?? sections;
+  if (spans.length === 0 || !(ticks || sections || sectionLines)) return;
   const tMax = style.aheadHidden === true ? view.t : Infinity;
   const C = style.tokens;
   const { padT, padB, width: W, height: H } = view;
@@ -322,17 +324,19 @@ function drawMarkers(
     if (x > W + 1) break;
     if (x < -1) continue;
     const label = labels?.[s.id];
-    if (label ? !sections : !ticks) continue;
-    g.beginPath();
-    if (label) {
-      g.moveTo(x, labelY - 8);
-      g.lineTo(x, H - padB + 6);
-    } else {
-      g.moveTo(x, padT - 8);
-      g.lineTo(x, padT + 4);
+    if (label ? !(sections || sectionLines) : !ticks) continue;
+    if (!label || sectionLines) {
+      g.beginPath();
+      if (label) {
+        g.moveTo(x, labelY - 8);
+        g.lineTo(x, H - padB + 6);
+      } else {
+        g.moveTo(x, padT - 8);
+        g.lineTo(x, padT + 4);
+      }
+      g.stroke();
     }
-    g.stroke();
-    if (label) {
+    if (label && sections) {
       const text = label.toUpperCase();
       const w = g.measureText(text).width;
       if (x >= lastEnd + 8 && x + 4 + w < W) {
@@ -752,6 +756,18 @@ function traceSilent(
   g.setLineDash(NO_DASH);
 }
 const NO_DASH: number[] = [];
+
+/** The voices a style draws: all, or those in `style.voices` (cached per set). */
+const voiceLists = new WeakMap<ReadonlySet<number>, { of: CompiledScore; out: CompiledVoice[] }>();
+function voicesOf(compiled: CompiledScore, style: ScoreStyle): readonly CompiledVoice[] {
+  const only = style.voices;
+  if (!only) return compiled.voices;
+  const hit = voiceLists.get(only);
+  if (hit && hit.of === compiled) return hit.out;
+  const out = compiled.voices.filter((v) => only.has(v.index));
+  voiceLists.set(only, { of: compiled, out });
+  return out;
+}
 const NO_VOICES: readonly CompiledVoice[] = [];
 const NO_PITCHES: readonly number[] = [];
 
@@ -845,7 +861,7 @@ function drawLines(
     style.highlightVoices && style.highlightVoices.size > 0 ? style.highlightVoices : null;
   const hl: Highlight | null = ids || lines ? { ids: ids ?? NO_IDS, voices: lines } : null;
   const dim = hl ? DIM_ALPHA : 1;
-  const voices = compiled.voices;
+  const voices = voicesOf(compiled, style);
   // A translucent future where strands overlap goes through the ghost layer.
   // (No layer for a hidden future, unless a highlight shows it.)
   const gh =
@@ -1193,8 +1209,10 @@ function drawHeads(
   const groups = new Map<number, { p: number; y: number }>();
   const dots = style.dots !== false;
   const rings = style.rings !== false;
+  const only = style.voices;
   for (const i of activeAt(compiled, t)) {
     const v = compiled.voices[i];
+    if (only && !only.has(i)) continue;
     const p = pitchAt(v, t);
     if (p === null) continue;
     const lives = drawnLives(sf, v);
@@ -1203,7 +1221,8 @@ function drawHeads(
     let y = pitchToY(view, p);
     if (hasStrands(sf, v)) y += geometryAt(sf, v, t).off * F.lw;
     const mv = motionAt(v, t);
-    let color = (P?.voiceFirst && style.customColors?.[i]) || lineColor(style, i);
+    let color =
+      style.voiceColors?.[i] || (P?.voiceFirst && style.customColors?.[i]) || lineColor(style, i);
     if (color === null && stops) {
       const f = Math.min(1, Math.max(0, (p - view.pLo) / (view.pHi - view.pLo)));
       color = own ? stopsAt(own, f) : stops[Math.round(f * (stops.length - 1))].color;

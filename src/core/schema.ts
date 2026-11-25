@@ -707,6 +707,135 @@ export const CameraSchema = z
   });
 
 // ---------------------------------------------------------------------------------------------
+// Poster (§15 M14)
+// ---------------------------------------------------------------------------------------------
+
+const colour = z.string().max(64);
+/** A box as fractions of its frame (may lie partly outside it while being moved). */
+const PosterBoxSchema = z.looseObject({
+  x: finite,
+  y: finite,
+  w: z.number().positive(),
+  h: z.number().positive(),
+});
+const margin = z.number().min(0).max(0.45);
+
+const GroupStyleFields = {
+  visible: z.boolean().optional(),
+  size: z.number().positive().max(20).optional().describe('Label size, × the default.'),
+  weight: z.number().int().min(100).max(900).optional(),
+  colour: colour.optional(),
+  opacity: unitInterval.optional(),
+  side: z.enum(['out', 'above', 'below', 'left', 'right']).optional(),
+  along: z.enum(['start', 'end']).optional(),
+  offset: z.number().min(0).max(20).optional().describe('Gap to the line, × the default.'),
+  width: z.number().positive().max(20).optional().describe('Line width, × the default.'),
+  dashed: z.boolean().optional(),
+  extent: z.enum(['full', 'tick']).optional(),
+};
+const PosterGroupStyleSchema = z.looseObject(GroupStyleFields);
+const PosterMemberStyleSchema = z.looseObject({
+  ...GroupStyleFields,
+  dx: finite.optional(),
+  dy: finite.optional(),
+});
+const POSTER_GROUPS = [
+  'sectionLabels',
+  'momentLabels',
+  'rowLabels',
+  'guideLabels',
+  'pitchLabels',
+  'hud',
+  'sectionLines',
+  'momentLines',
+  'guideLines',
+  'pitchLines',
+  'beatLines',
+] as const;
+const groupKey = z.enum(POSTER_GROUPS);
+
+/** `Piece.poster` (M14): only what differs from the defaults. */
+export const PosterSchema = z
+  .looseObject({
+    size: z
+      .looseObject({
+        w: z.number().int().min(64).max(16384),
+        h: z.number().int().min(64).max(16384),
+      })
+      .optional()
+      .describe('Artboard pixels.'),
+    rows: z.number().int().min(1).max(8).optional(),
+    section: z.looseObject({ start: seconds, end: seconds }).optional(),
+    pieceRange: z.boolean().optional(),
+    margins: z
+      .looseObject({
+        top: margin,
+        right: margin,
+        bottom: margin,
+        left: margin,
+        linked: z.boolean().optional(),
+      })
+      .optional()
+      .describe("Fractions of the artboard's shorter side."),
+    look: z.record(z.string(), z.unknown()).optional().describe('Export Look overrides.'),
+    layers: z
+      .array(
+        z.looseObject({
+          id: z.string().regex(/^(part|line):/),
+          box: PosterBoxSchema.optional(),
+          hidden: z.boolean().optional(),
+          colour: colour.optional(),
+        }),
+      )
+      .optional(),
+    texts: z
+      .array(
+        z.looseObject({
+          id,
+          kind: z.enum(['title', 'subtitle', 'credit', 'free']),
+          text: z.string().max(2000),
+          box: PosterBoxSchema.optional(),
+          style: z
+            .looseObject({
+              font: z.enum(['serif', 'sans', 'mono']).optional(),
+              size: z.number().positive().max(1).optional(),
+              weight: z.number().int().min(100).max(900).optional(),
+              italic: z.boolean().optional(),
+              colour: colour.optional(),
+              opacity: unitInterval.optional(),
+              align: z.enum(['left', 'center', 'right']).optional(),
+            })
+            .optional(),
+          hidden: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    groups: z.partialRecord(groupKey, PosterGroupStyleSchema).optional(),
+    members: z.partialRecord(groupKey, z.record(z.string(), PosterMemberStyleSchema)).optional(),
+  })
+  .superRefine((p, ctx) => {
+    for (const key of ['layers', 'texts'] as const) {
+      const seen = new Set<string>();
+      (p[key] ?? []).forEach((x, i) => {
+        if (seen.has(x.id))
+          ctx.addIssue({
+            code: 'custom',
+            path: [key, i, 'id'],
+            message: `Duplicate id '${x.id}'.`,
+          });
+        seen.add(x.id);
+      });
+    }
+    if (p.section && !(p.section.end > p.section.start)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['section', 'end'],
+        message: 'The section must end after it starts.',
+      });
+    }
+  });
+
+// ---------------------------------------------------------------------------------------------
 // Piece
 // ---------------------------------------------------------------------------------------------
 
@@ -833,6 +962,7 @@ export const PieceSchema = z
       .prefault({}),
     view: ViewSchema.prefault({}),
     camera: CameraSchema.optional().describe('The video camera (M11.5); absent = Follow.'),
+    poster: PosterSchema.optional().describe('The poster (M14); absent = the defaults.'),
   })
   .superRefine(checkPiece);
 

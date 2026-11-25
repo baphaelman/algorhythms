@@ -45,10 +45,17 @@ export interface Look {
    * zoom as the editor does, 'every' draws every beat however dense (bars stronger).
    */
   beats: LookBeats;
-  /** Ticks of unlabelled moments. */
+  /** Lines (ticks) of unlabelled moments. */
   markers: boolean;
-  /** Section lines and labels (labelled moments). */
+  /** Section labels (labelled moments); their lines too unless `sectionLines` is set. */
   sections: boolean;
+  /**
+   * Section lines, toggled apart from the labels (M14). Absent = `sections`, so an older Look's
+   * `sections: true` keeps both.
+   */
+  sectionLines?: boolean;
+  /** Labels of unlabelled moments (M14, posters; video draws none yet). Absent = off. */
+  momentLabels?: boolean;
   /**
    * What is drawn ahead of the playhead: nothing (no lines, pulse marks, markers, labels or bar
    * lines), the lines at `futureOpacity`, or everything at full opacity. Posters ignore it.
@@ -196,6 +203,8 @@ export function lookStyle(look: Look = PLAYER_LOOK, ctx: LookContext = {}): Scor
   if (!look.guideLabels) style.guideLabels = false;
   if (!look.markers) style.markers = false;
   if (!look.sections) style.sections = false;
+  if (look.sectionLines !== undefined && look.sectionLines !== look.sections)
+    style.sectionLines = look.sectionLines;
   const beats = lookBeats(look.beats) ?? 'off';
   if (beats !== 'off')
     style.bars = { ...barsOf(ctx), ...(beats === 'every' ? { every: true } : {}) };

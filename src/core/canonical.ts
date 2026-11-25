@@ -12,7 +12,9 @@
  *   key's playhead place): 3
  *   significant digits;
  * - **other known numbers** (pitches, factors, ticks, béziers, Hz): 12 significant digits, which
- *   only removes float noise such as 0.30000000000000004.
+ *   only removes float noise such as 0.30000000000000004;
+ * - **the poster** (M14): boxes, margins and nudges (fractions of the artboard) to 4 significant
+ *   digits; style factors and opacities as levels; its section as times.
  *
  * Only the fields listed here change: unknown fields (and timbres and the mix, which have no
  * editor yet) are kept as written. Rounding is idempotent and copy-on-write: unchanged objects
@@ -50,6 +52,8 @@ export const roundStep: Rule = (x) => grid(x, 1_000_000);
 export const roundLevel: Rule = (x) => sig(x, 3);
 /** Other known numbers: 12 significant digits. */
 export const roundOther: Rule = (x) => sig(x, 12);
+/** Poster positions and sizes (fractions of the artboard): 4 significant digits. */
+export const roundPlace: Rule = (x) => sig(x, 4);
 
 /**
  * Where the rules apply: a number rule, the listed fields of an object, each element of an array,
@@ -135,6 +139,16 @@ const MOMENT_SPECS = new Map(
 );
 const UNKNOWN_MOMENT = obj(COMMON);
 
+const posterBox = obj({ x: roundPlace, y: roundPlace, w: roundPlace, h: roundPlace });
+const posterStyle = obj({
+  size: roundLevel,
+  opacity: roundLevel,
+  offset: roundLevel,
+  width: roundLevel,
+  dx: roundPlace,
+  dy: roundPlace,
+});
+
 const PIECE: Spec = obj({
   tuning: obj({ referenceHz: roundOther }),
   defaults: obj({ glide }),
@@ -161,6 +175,27 @@ const PIECE: Spec = obj({
         ease,
       }),
     ),
+  }),
+  poster: obj({
+    section: obj({ start: roundTime, end: roundTime }),
+    margins: obj({ top: roundPlace, right: roundPlace, bottom: roundPlace, left: roundPlace }),
+    layers: each(obj({ box: posterBox })),
+    texts: each(obj({ box: posterBox, style: obj({ size: roundPlace, opacity: roundLevel }) })),
+    groups: { pick: (g) => obj(Object.fromEntries(Object.keys(g).map((k) => [k, posterStyle]))) },
+    members: {
+      pick: (g) =>
+        obj(
+          Object.fromEntries(
+            Object.keys(g).map((k) => [
+              k,
+              {
+                pick: (m: Rec) =>
+                  obj(Object.fromEntries(Object.keys(m).map((id) => [id, posterStyle]))),
+              },
+            ]),
+          ),
+        ),
+    },
   }),
   view: obj({
     window: roundOther,

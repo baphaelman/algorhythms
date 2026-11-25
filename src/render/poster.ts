@@ -19,12 +19,13 @@
 
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
-import { HUD_ROW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
+import { HUD_ROW, MIN_WINDOW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
 import { fillBackground } from './colours';
 import { DEFAULT_MONO, drawScore, drawVignette, hudPlacement, keyName, type Ctx2D } from './draw';
 import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
+import type { LayerLayout, PosterLayout, PosterObject } from './poster-layout';
 import { barSeconds, isWholeSpan, sectionText, type TimeSpan } from './section';
 import { videoCamera, videoSpan } from './video';
 
@@ -338,6 +339,136 @@ export function posterHudPlacement(
   view: View,
 ): HudPlacement {
   return hudPlacement(ctx, compiled, withTitle(opts.style, opts.title), view);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The poster workspace's drawing (§15 M14): exactly what `layoutPoster` laid out
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Draws a laid-out poster (poster-layout.ts) on a context whose canvas is `layout.width ×
+ * layout.height` px, or `scale` times that (the artboard on screen). Back to front: the
+ * background, the guide, beat and marker lines, each layer's rows (one `drawScore` frame per row,
+ * so a stretched layer keeps its line widths), the vignette, the labels and the text boxes. PNG
+ * (OffscreenCanvas) and SVG (`SvgContext` through `asCtx2D`) alike.
+ */
+export function drawPosterLayout(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  layout: PosterLayout,
+  scale = 1,
+): void {
+  const g = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+  const { width: W, height: H, unit: u, style } = layout;
+  resetContext(ctx);
+  ctx.clearRect(0, 0, Math.ceil(W * scale), Math.ceil(H * scale));
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  fillBackground(g, style.tokens.paper, style.paint, W, H);
+  let k = 0;
+  const objs = layout.objects;
+  for (; k < objs.length && objs[k].type === 'line'; k++) drawObject(g, objs[k]);
+  const dpr = u * scale;
+  for (const L of layout.layers) {
+    if (L.hidden || L.voices.length === 0) continue;
+    const ls = layerStyle(layout, L);
+    for (const f of L.frames) {
+      const row = layout.rows[f.row];
+      if (!(f.rect.w > 0 && f.rect.h > 0)) continue;
+      // A row shorter than the shortest camera window is drawn wider and clipped to its frame.
+      const len = Math.max(1e-9, row.end - row.start);
+      const wide = Math.max(1, MIN_WINDOW / len);
+      if (wide > 1) {
+        g.save();
+        g.setTransform(scale, 0, 0, scale, 0, 0);
+        g.beginPath();
+        g.rect(f.rect.x, f.rect.y, f.rect.w, f.rect.h);
+        g.clip();
+      }
+      drawScore(
+        ctx,
+        compiled,
+        { start: row.start, window: len * wide, pitchRange: layout.pitchRange, free: true },
+        ls,
+        compiled.duration,
+        { width: (f.rect.w * wide) / u, height: f.rect.h / u },
+        dpr,
+        { x: f.rect.x / u, y: f.rect.y / u },
+      );
+      if (wide > 1) g.restore();
+    }
+  }
+  resetContext(ctx);
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  if (style.vignette) drawVignette(g, W, H, Math.min(1, style.vignette));
+  for (; k < objs.length; k++) if (objs[k].type !== 'layer') drawObject(g, objs[k]);
+  g.globalAlpha = 1;
+  g.textAlign = 'left';
+  if ('letterSpacing' in g) g.letterSpacing = '0px';
+}
+
+/**
+ * The ScoreStyle layer `L` draws its lines with: the music's style, its voices only, the layers'
+ * colours, nothing but the lines (the poster draws guides, markers and labels itself), the plot
+ * filling the frame.
+ */
+export function layerStyle(layout: PosterLayout, L: LayerLayout): ScoreStyle {
+  const s: ScoreStyle = {
+    ...layout.style,
+    tokens: { ...layout.style.tokens, paper: 'transparent' },
+    hud: false,
+    guides: false,
+    markers: false,
+    sections: false,
+    sectionLines: false,
+    voices: new Set(L.voices),
+    pads: { top: 0, bottom: 0 },
+  };
+  delete s.bars;
+  delete s.pitchGuides;
+  delete s.vignette;
+  delete s.reserveHud;
+  delete s.hudExtra;
+  delete s.hudLayout;
+  const own = L.colour;
+  const vc = layout.voiceColors;
+  if (own || vc)
+    s.voiceColors = L.voices.reduce<(string | undefined)[]>((a, v) => {
+      a[v] = (L.kind === 'line' ? own : undefined) ?? vc?.[v] ?? own;
+      return a;
+    }, []);
+  if (s.paint?.background) {
+    const paint = { ...s.paint };
+    delete paint.background;
+    s.paint = paint;
+  }
+  return s;
+}
+
+function drawObject(
+  g: CanvasRenderingContext2D & { letterSpacing?: string },
+  o: PosterObject,
+): void {
+  if (o.type === 'layer') return;
+  if (o.type === 'line') {
+    g.globalAlpha = o.opacity;
+    g.strokeStyle = o.colour;
+    g.lineWidth = o.width;
+    g.lineCap = 'butt';
+    g.setLineDash(o.dash ? [...o.dash] : []);
+    g.beginPath();
+    g.moveTo(o.x0, o.y0);
+    g.lineTo(o.x1, o.y1);
+    g.stroke();
+    g.setLineDash([]);
+    return;
+  }
+  g.globalAlpha = o.opacity;
+  g.fillStyle = o.colour;
+  g.font = o.font;
+  g.textAlign = o.align;
+  g.textBaseline = 'alphabetic';
+  if ('letterSpacing' in g) g.letterSpacing = `${o.spacing}px`;
+  for (const r of o.runs) g.fillText(r.text, r.x, r.y);
 }
 
 /** Type of the rows' time labels: the HUD's. */

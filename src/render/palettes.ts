@@ -120,6 +120,8 @@ export interface PaletteInput {
   lineInk?: string;
   /** Export colours: `voiceFirst` puts voice colours over the pitch gradient. */
   paint?: { voiceFirst?: boolean };
+  /** Colours by pool index that beat every other rule (poster layers, M14). */
+  voiceColors?: readonly (string | undefined)[];
 }
 
 /**
@@ -139,6 +141,8 @@ export function lineColor(p: PaletteInput, index: number): string | null {
  * when the export colours say so), else its solid colour, else the ink.
  */
 export function strokeOf<G>(p: PaletteInput, gradient: G | null, index: number): G | string {
+  const own = p.voiceColors?.[index];
+  if (own) return own;
   if (gradient) return (p.paint?.voiceFirst && p.customColors?.[index]) || gradient;
   return lineColor(p, index) ?? p.tokens.ink;
 }

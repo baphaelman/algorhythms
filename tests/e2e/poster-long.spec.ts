@@ -9,6 +9,8 @@
  *   and 600 s (its material ends at 108 s; its lines continue); each in the dialog's default Look
  *   (EXPORT_LOOK, no HUD, title on) and the player's look (guides and their labels on); the
  *   longest piece also at 1:1 and A4.
+ * - `POSTER_LONG_PATH=layout`: the poster workspace's export (`renderPosterLayoutPng` / `Svg`,
+ *   M14) instead of today's dialog's.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -74,9 +76,12 @@ test('4K PNG < 2 s and SVG < 10 MB: longest, ~3-minute and stretched pieces (rep
     j: JSON.parse(readFileSync(f, 'utf8')) as unknown,
   }));
   const rows = await page.evaluate(
-    async ({ jsons, exportLook }) => {
+    async ({ jsons, exportLook, layout }) => {
       const h = (window as unknown as HookWindow).__algorhythms;
-      const m = await h.poster();
+      const mod = await h.poster();
+      const m = layout
+        ? { renderPosterPng: mod.renderPosterLayoutPng, renderPosterSvg: mod.renderPosterLayoutSvg }
+        : mod;
       const load = (piece: unknown) => {
         h.actions.loadPiece(piece);
         const s = h.store.getState();
@@ -157,7 +162,7 @@ test('4K PNG < 2 s and SVG < 10 MB: longest, ~3-minute and stretched pieces (rep
       }
       return out;
     },
-    { jsons, exportLook: EXPORT_LOOK },
+    { jsons, exportLook: EXPORT_LOOK, layout: process.env.POSTER_LONG_PATH === 'layout' },
   );
   for (const r of rows)
     console.log(

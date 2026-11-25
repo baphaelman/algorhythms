@@ -8,7 +8,9 @@
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
  *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
  *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
- *   `[at, window, place, pitch, range, …]` lists (M11.5); then deflate-raw with a preset dictionary (share-dict.ts) via fflate.
+ *   `[at, window, place, pitch, range, …]` lists (M11.5), and the poster packed (M14: default
+ *   text boxes as their ids, boxes as `[x, y, w, h]`, linked margins as one number); then
+ *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
@@ -19,6 +21,7 @@ import { cloneJson } from '../core/defaults';
 import { TimbreSchema, jsonEqual, parsePiece, stripDefaults } from '../core/schema';
 import { BUILTIN_TIMBRES } from '../core/timbres';
 import type { Piece } from '../core/types';
+import { DEFAULT_POSTER_TEXTS } from '../render/poster-layout';
 import { SHARE_DICTIONARY_V2 } from './share-dict';
 
 /** The fragment key: `#p=<payload>`. */
@@ -185,6 +188,68 @@ function plainKey(k: unknown): k is Record<(typeof KEY_FIELDS)[number], number> 
   );
 }
 
+const BOX_FIELDS = ['x', 'y', 'w', 'h'] as const;
+
+/** A box that packs flat: exactly its four numbers. */
+function plainBox(b: unknown): b is Record<(typeof BOX_FIELDS)[number], number> {
+  return (
+    isRec(b) &&
+    Object.keys(b).length === BOX_FIELDS.length &&
+    BOX_FIELDS.every((f) => typeof b[f] === 'number')
+  );
+}
+
+const flatBox = (b: unknown): unknown => (plainBox(b) ? BOX_FIELDS.map((f) => b[f]) : b);
+
+function boxOf(v: unknown): unknown {
+  if (!Array.isArray(v) || v.length !== 4 || !v.every((x) => typeof x === 'number')) return v;
+  return { x: v[0], y: v[1], w: v[2], h: v[3] };
+}
+
+/** `o` with its `box` packed flat (or unpacked). */
+function withBox(o: unknown, f: (b: unknown) => unknown): unknown {
+  return isRec(o) && 'box' in o ? { ...o, box: f(o.box) } : o;
+}
+
+/** The poster's packing (M14): see the module comment. */
+function packPoster(poster: Rec): Rec {
+  const out: Rec = { ...poster };
+  const m = out.margins;
+  if (
+    isRec(m) &&
+    Object.keys(m).length === 4 &&
+    typeof m.top === 'number' &&
+    m.right === m.top &&
+    m.bottom === m.top &&
+    m.left === m.top
+  )
+    out.margins = m.top;
+  if (Array.isArray(out.layers)) out.layers = out.layers.map((l) => withBox(l, flatBox));
+  if (Array.isArray(out.texts)) {
+    out.texts = out.texts.map((t) => {
+      const d = DEFAULT_POSTER_TEXTS.find((x) => jsonEqual(x, t));
+      return d ? d.id : withBox(t, flatBox);
+    });
+  }
+  return out;
+}
+
+function unpackPoster(poster: Rec): Rec {
+  const out: Rec = { ...poster };
+  if (typeof out.margins === 'number') {
+    const v = out.margins;
+    out.margins = { top: v, right: v, bottom: v, left: v };
+  }
+  if (Array.isArray(out.layers)) out.layers = out.layers.map((l) => withBox(l, boxOf));
+  if (Array.isArray(out.texts)) {
+    out.texts = out.texts.map((t) => {
+      const d = typeof t === 'string' ? DEFAULT_POSTER_TEXTS.find((x) => x.id === t) : undefined;
+      return d ? cloneJson(d) : withBox(t, boxOf);
+    });
+  }
+  return out;
+}
+
 /** The v2 form of a piece (JSON data), or null when it can't express this piece exactly. */
 export function packPiece(piece: Piece): Rec | null {
   const out = stripDefaults(piece);
@@ -240,6 +305,7 @@ export function packPiece(piece: Piece): Rec | null {
       keys: out.camera.keys.flatMap((k) => KEY_FIELDS.map((f) => k[f])),
     };
   }
+  if (isRec(out.poster)) out.poster = packPoster(out.poster);
   return out;
 }
 
@@ -318,6 +384,7 @@ export function unpackPiece(packed: unknown): unknown {
     }
     out.camera = { ...cam, keys };
   }
+  if (isRec(out.poster)) out.poster = unpackPoster(out.poster);
   return out;
 }
 

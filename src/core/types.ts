@@ -861,6 +861,143 @@ export interface PieceCamera {
   keys?: CameraKey[];
 }
 
+// ---------------------------------------------------------------------------------------------
+// Poster (§15 M14)
+// ---------------------------------------------------------------------------------------------
+
+/** A box as fractions of its frame (the artboard, or a part layer's box for a line layer). */
+export interface PosterBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Poster margins as fractions of the artboard's shorter side. `linked` (absent = true): the four
+ * are edited as one.
+ */
+export interface PosterMargins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  linked?: boolean;
+}
+
+/**
+ * A music layer that differs from its default: a part (`part:<name>`; `part:` is the voices with
+ * no part) or one line split out of its part (`line:<voice id>`).
+ */
+export interface PosterLayer {
+  id: string;
+  /**
+   * Where the layer's music sits: a part's box is a fraction of the artboard (the default is the
+   * music area the layout fits); a line's is a fraction of its part's box (default 0, 0, 1, 1).
+   * Absent = the default.
+   */
+  box?: PosterBox;
+  hidden?: boolean;
+  /** Line colour (also used by the video export). */
+  colour?: string;
+}
+
+export type PosterTextKind = 'title' | 'subtitle' | 'credit' | 'free';
+
+/** How a text box's type looks. Absent fields take the kind's default. */
+export interface PosterTextStyle {
+  font?: 'serif' | 'sans' | 'mono';
+  /** Type size as a fraction of the artboard's shorter side (auto boxes; a placed box sizes to its height). */
+  size?: number;
+  weight?: number;
+  italic?: boolean;
+  colour?: string;
+  opacity?: number;
+  align?: 'left' | 'center' | 'right';
+}
+
+/**
+ * A text box. `text` may hold tokens: `{name}`, `{key}`, `{length}`, `{section}`, `{meta}`
+ * (length, section and key as today's title block writes them), `{tempo}`; `\n` breaks lines.
+ */
+export interface PosterText {
+  id: string;
+  kind: PosterTextKind;
+  text: string;
+  /** Fractions of the artboard; absent = placed automatically in the text band. */
+  box?: PosterBox;
+  style?: PosterTextStyle;
+  hidden?: boolean;
+}
+
+/** Label groups (§15 M14): one style for every member. */
+export type PosterLabelGroup =
+  'sectionLabels' | 'momentLabels' | 'rowLabels' | 'guideLabels' | 'pitchLabels' | 'hud';
+
+/** Line groups (§15 M14). */
+export type PosterLineGroup =
+  'sectionLines' | 'momentLines' | 'guideLines' | 'pitchLines' | 'beatLines';
+
+export type PosterGroup = PosterLabelGroup | PosterLineGroup;
+
+/**
+ * Where a label sits against its line. Vertical lines (sections, moments): `left` / `right` of
+ * the line; horizontal lines (guides): `out` (in a gutter past the row's end), `above` or `below`
+ * the line. HUD readouts and row labels ignore it.
+ */
+export type PosterLabelSide = 'out' | 'above' | 'below' | 'left' | 'right';
+
+/** A group's style; absent fields keep the defaults (from the Look and the type scale). */
+export interface PosterGroupStyle {
+  visible?: boolean;
+  /** Labels: type size, × the group's default. */
+  size?: number;
+  weight?: number;
+  colour?: string;
+  opacity?: number;
+  side?: PosterLabelSide;
+  /** Labels: which end of the line, `start` (top / left, default) or `end` (bottom / right). */
+  along?: 'start' | 'end';
+  /** Labels: gap to the line, × the default gap. */
+  offset?: number;
+  /** Lines: width, × the default. */
+  width?: number;
+  dashed?: boolean;
+  /** Lines: full height (or width) or a short tick. */
+  extent?: 'full' | 'tick';
+}
+
+/** One member's own style over its group's, plus a nudge (fractions of the shorter side). */
+export interface PosterMemberStyle extends PosterGroupStyle {
+  dx?: number;
+  dy?: number;
+}
+
+/**
+ * `Piece.poster` (§15 M14): the poster's layout and style, only what differs from the defaults.
+ * Absent (or any field absent) = the default, and a piece without one draws as before.
+ */
+export interface PosterDoc {
+  /** Artboard pixels. */
+  size?: { w: number; h: number };
+  /** Rows the piece is cut into, 1..8. */
+  rows?: number;
+  /** The section drawn; absent = the whole piece. */
+  section?: { start: Seconds; end: Seconds };
+  /** With a section: keep the whole piece's pitch range. */
+  pieceRange?: boolean;
+  margins?: PosterMargins;
+  /** Overrides of the export Look (a partial render/look.ts `Look`). */
+  look?: Record<string, unknown>;
+  /** Layers that differ from the default; part layers listed draw in this order (back to front) before the rest. */
+  layers?: PosterLayer[];
+  /** The text boxes; absent = the default title and credit, [] = none. */
+  texts?: PosterText[];
+  groups?: Partial<Record<PosterGroup, PosterGroupStyle>>;
+  /** `members[group][member id]`: a moment id, a guide's pitch, a row index, a HUD readout. */
+  members?: Partial<Record<PosterGroup, Record<string, PosterMemberStyle>>>;
+}
+
 /** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
 export interface LoopRegion {
   start: Seconds;
@@ -911,6 +1048,8 @@ export interface Piece {
   view: ViewSettings;
   /** The video camera (M11.5); absent = Follow, and the piece behaves exactly as before. */
   camera?: PieceCamera;
+  /** The poster (§15 M14); absent = the defaults (the viewer's remembered Look). */
+  poster?: PosterDoc;
 }
 
 // ---------------------------------------------------------------------------------------------
