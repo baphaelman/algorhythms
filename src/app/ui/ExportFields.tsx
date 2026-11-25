@@ -13,9 +13,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { evalSegment } from '../../core/segment';
+import { formatTime } from '../../render/hud';
 import { hudPosText, posOfBox } from '../../render/hud-layout';
 import { sectionText, type TimeSpan } from '../../render/section';
 import { tokensOf } from '../../render/palettes';
@@ -66,10 +68,12 @@ import { PitchGuidesRow } from './ExportYoutube';
 import {
   IDLE,
   appDark,
+  clockNow,
   hudList,
   hudListPatch,
   patch,
   patchLook,
+  scrubPreview,
   sectionNow,
   setReadout,
   useExportUi,
@@ -877,6 +881,8 @@ function ClockInput({
 }) {
   const shown = sectionClock(value);
   const [text, setText] = useState<string | null>(null);
+  // As wide as its text (never clipped); it reads as text until clicked or focused.
+  const len = (text ?? shown).length;
   const commit = () => {
     if (text === null) return;
     const t = parseClock(text);
@@ -893,7 +899,11 @@ function ClockInput({
         value={text ?? shown}
         disabled={disabled}
         aria-invalid={text !== null && parseClock(text) === null}
+        aria-label={`${label} time`}
+        title="Click to type a time"
+        style={{ '--len': len } as CSSProperties}
         data-testid={testId}
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -937,6 +947,8 @@ export function SectionField({
   const track = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<SectionHandle | null>(null);
+  /** On the timeline, a press on the strip moves the preview's time (dragging scrubs). */
+  const seeking = useRef(false);
   const [width, setWidth] = useState(0);
   const D = compiled.duration;
   const grid = gridOf(piece);
@@ -986,6 +998,10 @@ export function SectionField({
     return (Math.min(Math.max(clientX - r.left, 0), r.width) / r.width) * D;
   };
   const onMove = (e: React.PointerEvent) => {
+    if (seeking.current) {
+      scrubPreview(timeAt(e.clientX));
+      return;
+    }
     const h = drag.current;
     if (!h) return;
     const f = useExportUi.getState().form;
@@ -1059,13 +1075,28 @@ export function SectionField({
             data-testid="section-range"
             style={{ height: `${OVERVIEW_H}px` }}
             onPointerDown={(e) => {
-              // A press on the track moves the nearer handle there.
               const t = timeAt(e.clientX);
+              if (timeline) {
+                // On the timeline the strip is how you get around: a press moves the preview.
+                if (disabled || e.button !== 0) return;
+                e.preventDefault();
+                seeking.current = true;
+                track.current?.setPointerCapture(e.pointerId);
+                scrubPreview(t);
+                return;
+              }
+              // A press on the track moves the nearer handle there.
               startDrag(e, Math.abs(t - cspan.start) <= Math.abs(t - cspan.end) ? 'start' : 'end');
             }}
             onPointerMove={onMove}
-            onPointerUp={() => (drag.current = null)}
-            onPointerCancel={() => (drag.current = null)}
+            onPointerUp={() => {
+              drag.current = null;
+              seeking.current = false;
+            }}
+            onPointerCancel={() => {
+              drag.current = null;
+              seeking.current = false;
+            }}
           >
             <canvas
               ref={canvas}
@@ -1086,14 +1117,44 @@ export function SectionField({
             {timeline && (
               <div
                 className="section-playhead"
-                aria-hidden="true"
+                role="slider"
+                tabIndex={disabled ? -1 : 0}
+                aria-label="Preview time"
+                aria-valuemin={0}
+                aria-valuemax={Math.round(D * 10) / 10}
+                aria-valuenow={Math.round(previewT * 10) / 10}
+                aria-valuetext={formatTime(Math.max(0, previewT))}
+                aria-describedby={`${id}-seek`}
                 data-testid="timeline-playhead"
+                data-t={previewT.toFixed(3)}
                 style={{ left: pct(previewT) }}
+                onKeyDown={(e) => {
+                  if (disabled) return;
+                  const c = clockNow(form);
+                  const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                  const now = useExportUi.getState().previewT;
+                  let t: number | null = null;
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowUp') t = now + step;
+                  else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') t = now - step;
+                  else if (e.key === 'PageUp') t = now + 10;
+                  else if (e.key === 'PageDown') t = now - 10;
+                  else if (e.key === 'Home') t = c.from;
+                  else if (e.key === 'End') t = c.to;
+                  if (t === null) return;
+                  e.preventDefault();
+                  scrubPreview(t);
+                }}
               />
             )}
             {handle('start')}
             {handle('end')}
           </div>
+          {timeline && (
+            <small className="visually-hidden" id={`${id}-seek`}>
+              Arrow keys move the preview by a second, Shift by ten, Alt by a tenth; Home and End go
+              to the video&apos;s start and end. Click or drag the strip to move it.
+            </small>
+          )}
           <small className="visually-hidden" id={`${id}-keys`}>
             {grid
               ? 'Arrow keys move by a bar, Shift by four bars, Alt by a tenth of a second.'

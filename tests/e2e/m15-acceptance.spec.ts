@@ -8,7 +8,14 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { chooseSegment, setRange, setSwitch } from './export-diag';
-import { addressSettled, openPoster, switchMode, videoWorkspace, workspace } from './export-open';
+import {
+  addressSettled,
+  openPoster,
+  switchMode,
+  videoWorkspace,
+  workspace,
+  seekPreview,
+} from './export-open';
 import type { PieceCamera, PosterDoc } from '../../src/core/types';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -335,7 +342,7 @@ test('the section and camera keys edit on the timeline', async ({ page }) => {
   const markers = page.getByTestId('camera-key');
   await expect.poll(() => markers.count()).toBeGreaterThan(0);
   const n = await markers.count();
-  await page.getByTestId('preview-time').fill(String(Math.round(end * 0.6)));
+  await seekPreview(page, Math.round(end * 0.6));
   await page.getByTestId('camera-key-add').click();
   await expect(markers).toHaveCount(n + 1);
   const keys = (await hook(page)).camera!.posterKeys!;
@@ -431,7 +438,7 @@ test('each video edit is one undo step', async ({ page }) => {
     [
       '+ Key',
       async () => {
-        await page.getByTestId('preview-time').fill('33');
+        await seekPreview(page, 33);
         await page.getByTestId('camera-key-add').click();
       },
     ],
@@ -479,7 +486,7 @@ test('every video option of the old Export dialog is reachable', async ({ page }
   const video = [
     'preview-canvas',
     'preview-play',
-    'preview-time',
+    'timeline-playhead',
     'export-preset',
     'export-section-field',
     'export-aspect',
@@ -536,4 +543,204 @@ test('every video option of the old Export dialog is reachable', async ({ page }
     'look-reset',
   ])
     await expect(w.getByTestId(id).first(), id).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------------------------
+// The owner's notes on the Video workspace (2026-11-25)
+// ---------------------------------------------------------------------------------------------
+
+/** A hash of the preview canvas's pixels and the preview's time. */
+const previewShot = (page: Page) =>
+  page.evaluate(() => {
+    const c = document.querySelector<HTMLCanvasElement>('[data-testid="preview-canvas"]')!;
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) | 0;
+    return { h, draws: Number(c.dataset.draws) };
+  });
+
+/** Seeks the preview to t and waits for its redraw; the frame's hash. */
+async function shotAt(page: Page, t: number): Promise<number> {
+  const before = (await previewShot(page)).draws;
+  await seekPreview(page, t);
+  await expect.poll(async () => (await previewShot(page)).draws).toBeGreaterThan(before);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30))));
+  return (await previewShot(page)).h;
+}
+
+/** The video's clock: the music's end and the video's end (score time). */
+const clockOf = (page: Page) =>
+  page.evaluate(async () => {
+    const h = (window as unknown as HookWindow).__algorhythms;
+    const req = (await h.exportRun()).lastPreviewRequest();
+    const D = h.store.getState().compiled.duration;
+    const end = req?.kind === 'video' ? (req.options.section?.end ?? D) : D;
+    const el = document.querySelector<HTMLElement>('[data-testid="card-ending"]');
+    return { end, el: el !== null };
+  });
+
+test('the ending zooms out to the finished poster: the same after a Window change, after playing, and in the export', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(120_000);
+  await posterPiece(page, 3);
+  const be = videoWorkspace(page).getByTestId('bookends-button');
+  if ((await be.getAttribute('aria-expanded')) !== 'true') await be.click();
+  await chooseSegment(page, 'vb-end-card', '5 s');
+  const { end, el } = await clockOf(page);
+  expect(el).toBe(true);
+  const playhead = page.getByTestId('timeline-playhead');
+  await playhead.focus();
+  await page.keyboard.press('End');
+  await expect.poll(async () => Number(await playhead.getAttribute('data-t'))).toBeGreaterThan(end);
+  const videoEnd = Number(await playhead.getAttribute('data-t'));
+
+  const last = await shotAt(page, end - 0.01);
+  const zoom = await shotAt(page, end + 1);
+  const card = await shotAt(page, videoEnd);
+  expect(new Set([card, last, zoom]).size).toBe(3);
+  // The card holds until the video's end.
+  expect(await shotAt(page, videoEnd - 1)).toBe(card);
+
+  // A Window change moves the zoom's start, never the card.
+  await setRange(page, 'export-window', 300);
+  await expect(page.getByTestId('export-window-value')).not.toHaveText('One row');
+  expect(await shotAt(page, videoEnd)).toBe(card);
+
+  // Playing runs on through the ending to the card (WebKit can't mute here: no play).
+  if (browserName !== 'webkit') {
+    for (let run = 0; run < 2; run++) {
+      await seekPreview(page, end - 1.5);
+      await page.getByTestId('preview-play').click();
+      await expect(page.getByTestId('preview-play')).toHaveAttribute('data-playing', 'false', {
+        timeout: 20_000,
+      });
+      await expect
+        .poll(async () => Number(await playhead.getAttribute('data-t')))
+        .toBeCloseTo(videoEnd, 1);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))));
+      expect((await previewShot(page)).h, `play ${run + 1}`).toBe(card);
+    }
+  }
+
+  // The export draws the same ending (its frames, on the main thread): the last frames are the
+  // card, a frame a second into the ending is the zoom between the last frame and the card.
+  const frames = await page.evaluate(async () => {
+    const h = (window as unknown as HookWindow).__algorhythms;
+    const req = (await h.exportRun()).lastPreviewRequest();
+    if (req?.kind !== 'video') return null;
+    const ve = await h.videoExport();
+    const piece = h.store.getState().piece as unknown as Parameters<typeof ve.referenceFrame>[0];
+    const o = { ...req.options, size: '720' as const, fps: 30 as const };
+    const D = h.store.getState().compiled.duration;
+    const hash = (k: number) => {
+      const d = ve.referenceFrame(piece, o, k).data;
+      let x = 0;
+      for (let i = 0; i < d.length; i += 4) x = (x * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) | 0;
+      return x;
+    };
+    const k = (s: number) => Math.round(s * 30);
+    return {
+      before: hash(k(D - 0.1)),
+      zoom: hash(k(D + 1)),
+      card: hash(k(D + 4)),
+      card2: hash(k(D + 4.5)),
+    };
+  });
+  expect(frames).not.toBeNull();
+  expect(frames!.card).toBe(frames!.card2);
+  expect(new Set([frames!.before, frames!.zoom, frames!.card]).size).toBe(3);
+});
+
+test('the section’s times read as text, never clipped; a click edits one', async ({ page }) => {
+  await posterPiece(page, 3);
+  await choose(page, 'export-section', 'Custom');
+  const start = page.getByTestId('section-start-text');
+  const end = page.getByTestId('section-end-text');
+  const fits = (el: typeof start) =>
+    el.evaluate((e) => {
+      const i = e as HTMLInputElement;
+      const cs = getComputedStyle(i);
+      return {
+        fits: i.scrollWidth <= i.clientWidth + 1,
+        dims: `${i.value} ${i.scrollWidth}/${i.clientWidth} ${cs.font} ${cs.width} ${cs.paddingLeft}`,
+        border: cs.borderTopColor,
+        bg: cs.backgroundColor,
+      };
+    });
+  for (const el of [start, end]) {
+    const f = await fits(el);
+    expect(f.fits, f.dims).toBe(true);
+    // Text, not a box, until it's clicked.
+    expect(f.border).toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+  }
+  // A click edits it: Enter commits, Escape cancels, Tab reaches it.
+  await start.click();
+  await expect(start).toBeFocused();
+  await page.keyboard.type('1:05.5');
+  await page.keyboard.press('Enter');
+  await expect(start).toHaveValue(/^1:0[45]\.\d$/);
+  expect((await fits(start)).fits).toBe(true);
+  const span = (await previewOptions(page))!.section!;
+  expect(span.start).toBeGreaterThan(60);
+  await end.click();
+  await page.keyboard.type('9');
+  await page.keyboard.press('Escape');
+  await expect(end).not.toHaveValue('9');
+  expect((await previewOptions(page))!.section).toEqual(span);
+  await start.focus();
+  await page.keyboard.press('Tab');
+  await expect(end).toBeFocused();
+});
+
+test('the timeline’s strip moves the preview; Play sits under it on the right; no slider', async ({
+  page,
+}) => {
+  await posterPiece(page, 3);
+  const D = await page.evaluate(
+    () => (window as unknown as HookWindow).__algorhythms.store.getState().compiled.duration,
+  );
+  await expect(page.getByTestId('export-preview').locator('input[type="range"]')).toHaveCount(0);
+  // Play: under the preview, at its right.
+  const canvas = (await page.getByTestId('preview-canvas').boundingBox())!;
+  const play = (await page.getByTestId('preview-play').boundingBox())!;
+  expect(play.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+  expect(play.x + play.width).toBeGreaterThan(canvas.x + canvas.width * 0.75);
+
+  const strip = page.getByTestId('section-range');
+  const b = (await strip.boundingBox())!;
+  const tNow = async () =>
+    Number(await page.getByTestId('timeline-playhead').getAttribute('data-t'));
+  const canvasT = async () =>
+    Number(await page.getByTestId('preview-canvas').getAttribute('data-t'));
+  // A press seeks there; dragging scrubs.
+  await page.mouse.click(b.x + b.width * 0.5, b.y + b.height / 2);
+  await expect.poll(tNow).toBeCloseTo(D * 0.5, 0);
+  await expect.poll(canvasT).toBeCloseTo(D * 0.5, 0);
+  await page.mouse.move(b.x + b.width * 0.2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width * 0.7, b.y + b.height / 2, { steps: 5 });
+  await expect.poll(tNow).toBeCloseTo(D * 0.7, 0);
+  await page.mouse.up();
+  // The handles still move the section (Whole → Custom), not the preview.
+  const handle = (await page.getByTestId('section-end').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width * 0.8, handle.y + handle.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(
+    videoWorkspace(page).getByTestId('export-section').getByLabel('Custom', { exact: true }),
+  ).toBeChecked();
+  // The keyboard: the playhead is a slider (arrows a second, Shift ten, Home / End).
+  const ph = page.getByTestId('timeline-playhead');
+  await ph.focus();
+  await page.keyboard.press('Home');
+  await expect.poll(tNow).toBeCloseTo(0, 3);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(tNow).toBeCloseTo(1, 3);
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(tNow).toBeCloseTo(11, 3);
+  await expect(ph).toHaveAttribute('aria-valuetext', /0:11|00:11/);
+  await expect.poll(canvasT).toBeCloseTo(11, 3);
 });

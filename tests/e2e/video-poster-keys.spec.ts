@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { openPoster, switchMode, videoWorkspace } from './export-open';
+import { openPoster, switchMode, videoWorkspace, seekPreview } from './export-open';
 import { chooseSegment } from './export-diag';
 import type { PieceCamera } from '../../src/core/types';
 import type * as ExportRun from '../../src/app/export-run';
@@ -30,7 +30,7 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 }
 
 async function previewAt(page: Page, t: number): Promise<void> {
-  await page.getByTestId('preview-time').fill(String(t));
+  await seekPreview(page, t);
   await expect
     .poll(() =>
       page.evaluate(async () => {

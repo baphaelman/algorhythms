@@ -100,3 +100,17 @@ export async function escapeOut(page: Page): Promise<void> {
   await expect(workspace(page)).toBeHidden();
   await expect(videoWorkspace(page)).toBeHidden();
 }
+
+/**
+ * Moves the video preview to time t (on the preview's clock), as a press on the timeline's strip
+ * does, but exactly (M15: the preview has no slider of its own).
+ */
+export async function seekPreview(page: Page, t: number): Promise<void> {
+  await page.evaluate(
+    (t) =>
+      (
+        window as unknown as { __algorhythms: { previewSeek(t: number): void } }
+      ).__algorhythms.previewSeek(t),
+    t,
+  );
+}

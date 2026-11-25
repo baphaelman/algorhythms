@@ -8,7 +8,14 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { closeExport, openAudioExport, openExport, surface, switchMode } from './export-open';
+import {
+  closeExport,
+  openAudioExport,
+  openExport,
+  surface,
+  switchMode,
+  seekPreview,
+} from './export-open';
 import { clickExportForDownload, guarded, setSwitch } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
@@ -247,7 +254,7 @@ test('the Section is remembered per piece for the session; another piece starts 
   expect(await previewSection(page)).toBeUndefined();
 });
 
-test('video preview: the time slider covers the section; playing stays inside it', async ({
+test('video preview: the timeline’s playhead covers the section; playing stays inside it', async ({
   page,
 }) => {
   await openExport(page);
@@ -259,9 +266,13 @@ test('video preview: the time slider covers the section; playing stays inside it
   const end = page.getByTestId('section-end-text');
   await end.fill('23');
   await end.press('Enter');
-  const slider = page.getByTestId('preview-time');
-  await expect(slider).toHaveAttribute('min', '20');
-  await expect(slider).toHaveAttribute('max', '23');
+  // The timeline's playhead: Home and End go to the video's start and end (the section).
+  const playhead = page.getByTestId('timeline-playhead');
+  await playhead.focus();
+  await page.keyboard.press('Home');
+  await expect(playhead).toHaveAttribute('data-t', '20.000');
+  await page.keyboard.press('End');
+  await expect(playhead).toHaveAttribute('data-t', '23.000');
   const t = Number(await page.getByTestId('preview-canvas').getAttribute('data-t'));
   expect(t).toBeGreaterThanOrEqual(20);
   expect(t).toBeLessThanOrEqual(23);
@@ -277,7 +288,7 @@ test('video preview: the time slider covers the section; playing stays inside it
   await choose(page, 'export-section', 'Custom');
 
   // Play from the end: it starts at the section's start and stops at its end.
-  await slider.fill('23');
+  await seekPreview(page, 23);
   await page.getByTestId('preview-play').click();
   await expect(page.getByTestId('preview-play')).toHaveAttribute('data-playing', 'true');
   await expect(page.getByTestId('preview-play')).toHaveAttribute('data-playing', 'false', {

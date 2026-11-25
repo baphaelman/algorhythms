@@ -33,7 +33,13 @@ import { layerFor } from './layer';
 import { DEFAULT_HUD } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { PosterLayout } from './poster-layout';
-import { drawPosterEndCard, drawPosterFrame, drawRowTravellers, rowStyle } from './poster-video';
+import {
+  drawPosterEndCard,
+  drawPosterEndZoom,
+  drawPosterFrame,
+  drawRowTravellers,
+  rowStyle,
+} from './poster-video';
 import type { TimeSpan } from './section';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 
@@ -628,7 +634,10 @@ export function drawVideoMoment(
   const ch = Math.ceil(px.height * scale);
   let view: View;
   if (st.end >= 1) view = drawEndCard(ctx, compiled, opts, scale);
-  else {
+  else if (st.end > 0 && opts.frame === 'poster' && opts.poster) {
+    // Over the poster the ending zooms out from the last frame to the finished poster.
+    view = drawPosterEndZoom(ctx, compiled, opts, opts.poster, st.t, st.end, scale);
+  } else {
     view = drawVideoFrameAt(ctx, compiled, opts, st.t, scale);
     if (st.end > 0) {
       const layer = layerFor(ctx, 'end-card', cw, ch);

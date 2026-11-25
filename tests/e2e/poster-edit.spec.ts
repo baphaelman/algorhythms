@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { chooseSegment, clickExportForDownload, setRange } from './export-diag';
-import { addressSettled, openPoster, switchMode } from './export-open';
+import { addressSettled, openPoster, switchMode, seekPreview } from './export-open';
 import type { Piece } from '../../src/core/types';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
@@ -757,7 +757,7 @@ test('a recoloured layer shows in the video preview', async ({ page }) => {
   await expect.poll(() => magenta(page, POSTER)).toBeGreaterThan(base + 200);
   await switchMode(page, 'Video');
   // Over the poster, 40 s in: the part's lines so far are on screen.
-  await page.getByTestId('preview-time').fill('40');
+  await seekPreview(page, 40);
   await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeGreaterThan(200);
   // The colour comes from the piece, so undoing it takes it out of the video and the poster.
   await undo(page);

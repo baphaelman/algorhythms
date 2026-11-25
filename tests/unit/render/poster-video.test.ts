@@ -17,6 +17,7 @@ import {
   ROW_BREAK,
   drawPosterEndCard,
   drawPosterFrame,
+  posterEndZoomFrame,
   pieceRowBreak,
   pieceVideoFrame,
   posterCameraAt,
@@ -29,7 +30,10 @@ import {
 } from '../../../src/render/poster-video';
 import { SvgContext, asCtx2D } from '../../../src/render/svg';
 import {
+  END_FADE,
   VIDEO_RATIO,
+  bookendsAt,
+  drawVideoMoment,
   videoStyle,
   videoWindow,
   type VideoAspect,
@@ -356,6 +360,42 @@ describe('drawing over the poster', () => {
       ).length;
     expect(inBox(60)).toBeGreaterThan(inBox(15));
     expect(inBox(15)).toBeGreaterThan(0);
+  });
+
+  it('the ending zooms out from the last frame to the end card, the same every time', () => {
+    const L = lay(TITLED, 3);
+    const end = KITE_C.duration;
+    const o = frameOpts(L, { bookends: { endCard: 5, credit: 'Made' } });
+    // The zoom's frames: the last frame, then Whole; height geometric, aspect kept.
+    const a = posterEndZoomFrame(L, o, end, 0);
+    const b = posterEndZoomFrame(L, o, end, 1);
+    expect(a).toEqual(posterCameraAt(L, end, { aspect: '16:9', mode: 'follow' }));
+    for (const k of ['x', 'y', 'w', 'h'] as const)
+      expect(b[k]).toBe(posterWholeFrame(L, '16:9')[k]);
+    const m = posterEndZoomFrame(L, o, end, 0.5);
+    expect(m.h).toBeCloseTo(Math.sqrt(a.h * b.h), 6);
+    expect(m.w / m.h).toBeCloseTo(16 / 9, 6);
+    // The moments: the music's end, the zoom, the card. The card is drawPosterEndCard; a Window
+    // (the follow frame's size) changes the zoom's start, never the card.
+    const at = (tau: number, opts: VideoFrameOptions = o) => {
+      const svg = new SvgContext(1280, 720);
+      drawVideoMoment(asCtx2D(svg), KITE_C, opts, tau);
+      return svg.toSvg();
+    };
+    const card = new SvgContext(1280, 720);
+    drawPosterEndCard(asCtx2D(card), KITE_C, o, L);
+    const cardSvg = card.toSvg();
+    const span = { start: 0, end };
+    expect(bookendsAt(o.bookends, span, end + END_FADE).end).toBe(1);
+    expect(at(end + END_FADE)).toBe(cardSvg);
+    expect(at(end + END_FADE + 2)).toBe(cardSvg);
+    const zoom = at(end + 0.6);
+    expect(zoom).not.toBe(cardSvg);
+    expect(zoom).not.toBe(at(end - 0.01));
+    expect(at(end + 0.6)).toBe(zoom);
+    const wide = { ...o, window: 30 };
+    expect(at(end + END_FADE, wide)).toBe(cardSvg);
+    expect(at(end + 0.6, wide)).not.toBe(zoom);
   });
 
   it('the end card is the finished poster: its texts, no HUD of the playing time', () => {

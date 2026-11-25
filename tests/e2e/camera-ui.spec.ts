@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { backToMusic, escapeOut, openVideoExport } from './export-open';
+import { backToMusic, escapeOut, openVideoExport, seekPreview } from './export-open';
 import { guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -85,7 +85,7 @@ async function openVideo(page: Page): Promise<void> {
 
 /** Sets the preview's time and waits until it has drawn there. */
 async function previewAt(page: Page, t: number): Promise<void> {
-  await page.getByTestId('preview-time').fill(String(t));
+  await seekPreview(page, t);
   await previewDrawnAt(page, t);
 }
 

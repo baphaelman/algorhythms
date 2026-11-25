@@ -38,6 +38,7 @@ import { DEFAULT_KEY_EASE } from './camera-path';
 import { DEFAULT_SERIF } from './video';
 import { drawScore, drawVignette, type Ctx2D } from './draw';
 import { hudText } from './hud';
+import { layerFor } from './layer';
 import { drawObject, layerStyle, resetContext } from './poster';
 import { posterTimeAt } from './poster-edit';
 import {
@@ -592,19 +593,18 @@ export function drawPosterFrame(
 }
 
 /**
- * Clears and draws the end card of a video over the poster: the finished poster fitted to the
- * frame (as its PNG draws it), and the credit line in the band below it when there is one, else
- * at the frame's foot.
+ * The finished poster through frame `F`, and the credit line under it (the end card's): in the
+ * band below the poster when it has room, else at the frame's foot (`band`: only in the band).
  */
-export function drawPosterEndCard(
+function drawPosterFinished(
   ctx: Ctx2D,
   compiled: CompiledScore,
   opts: VideoFrameOptions,
   layout: PosterLayout,
-  scale = 1,
-  credit = true,
+  F: Rect,
+  scale: number,
+  credit: boolean | 'band',
 ): View {
-  const F = posterWholeFrame(layout, opts.aspect);
   const st: FrameState = {
     t: compiled.duration,
     finished: true,
@@ -620,6 +620,7 @@ export function drawPosterEndCard(
     const g = ctx as G;
     // The band below the poster, in layout px.
     const band = ((F.y + F.h - layout.height) * lay.height) / F.h;
+    if (credit === 'band' && band < 24) return view;
     g.setTransform(lay.dpr * scale, 0, 0, lay.dpr * scale, 0, 0);
     g.globalAlpha = 1;
     g.font = `italic 12px ${DEFAULT_SERIF}`;
@@ -630,6 +631,89 @@ export function drawPosterEndCard(
     g.fillText(text, lay.width / 2, y);
     g.textAlign = 'left';
   }
+  return view;
+}
+
+/**
+ * Clears and draws the end card of a video over the poster: the finished poster fitted to the
+ * frame (as its PNG draws it), and the credit line in the band below it when there is one, else
+ * at the frame's foot.
+ */
+export function drawPosterEndCard(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  layout: PosterLayout,
+  scale = 1,
+  credit = true,
+): View {
+  return drawPosterFinished(
+    ctx,
+    compiled,
+    opts,
+    layout,
+    posterWholeFrame(layout, opts.aspect),
+    scale,
+    credit,
+  );
+}
+
+/**
+ * The frame of the zoom out to the end card at `e` (0 the last frame at score time t, 1 Whole):
+ * centre linearly, height geometrically, so the zoom reads evenly.
+ */
+export function posterEndZoomFrame(
+  layout: PosterLayout,
+  opts: VideoFrameOptions,
+  t: Seconds,
+  e: number,
+): Rect {
+  const a = posterCameraAt(layout, t, posterCameraOptions(opts));
+  const b = posterWholeFrame(layout, opts.aspect);
+  const x = clamp01(e);
+  if (x === 0) return a;
+  if (x === 1) return b;
+  const h = Math.exp(Math.log(a.h) + (Math.log(b.h) - Math.log(a.h)) * x);
+  const w = (h * a.w) / a.h;
+  const cx = a.x + a.w / 2 + (b.x + b.w / 2 - (a.x + a.w / 2)) * x;
+  const cy = a.y + a.h / 2 + (b.y + b.h / 2 - (a.y + a.h / 2)) * x;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+
+/**
+ * Clears and draws the zoom out to the end card (M15 call: the end card is the finished poster,
+ * reached by zooming out from the last frame): the frame moves from the last frame at score time
+ * t to Whole as `e` goes 0 → 1, the playing poster under the finished one (with its credit) faded
+ * in by `e`. At e = 1 it is `drawPosterEndCard`.
+ */
+export function drawPosterEndZoom(
+  ctx: Ctx2D,
+  compiled: CompiledScore,
+  opts: VideoFrameOptions,
+  layout: PosterLayout,
+  t: Seconds,
+  e: number,
+  scale = 1,
+): View {
+  if (e >= 1) return drawPosterEndCard(ctx, compiled, opts, layout, scale);
+  const F = posterEndZoomFrame(layout, opts, t, e);
+  const view = drawPosterThrough(ctx, compiled, opts, layout, F, playingState(opts, t), scale);
+  if (!(e > 0)) return view;
+  const px = videoSize(opts.aspect, opts.size);
+  const cw = Math.ceil(px.width * scale);
+  const ch = Math.ceil(px.height * scale);
+  const layer = layerFor(ctx, 'end-zoom', cw, ch);
+  if (!layer) {
+    if (e >= 0.5) drawPosterFinished(ctx, compiled, opts, layout, F, scale, 'band');
+    return view;
+  }
+  drawPosterFinished(layer.g, compiled, opts, layout, F, scale, 'band');
+  const g = ctx as G;
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = e;
+  g.drawImage(layer.canvas, 0, 0, cw, ch, 0, 0, cw, ch);
+  g.restore();
   return view;
 }
 

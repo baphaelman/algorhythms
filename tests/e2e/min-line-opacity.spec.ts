@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { openExport, switchMode } from './export-open';
+import { openExport, switchMode, seekPreview } from './export-open';
 import { clickExportForDownload } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -73,7 +73,7 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
     );
   /** The preview has drawn at 60 s with this minimum. */
   const drawnAt60 = async (min: number | undefined) => {
-    await page.getByTestId('preview-time').fill('60');
+    await seekPreview(page, 60);
     await expect
       .poll(() =>
         page.evaluate(async () => {

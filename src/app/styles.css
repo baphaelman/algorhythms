@@ -1605,24 +1605,7 @@ dialog.dialog.export.has-preview {
   opacity: 0.6;
 }
 
-/* Export dialog: Camera keys (M11.5). Markers sit under the preview's slider, on the thumb's
-   travel (the track less one thumb width, as the Window tick). */
-.export-preview .preview-track {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.export-preview .preview-track input[type='range'] {
-  width: 100%;
-}
-
-.export-preview .preview-track.keys {
-  padding-bottom: 14px;
-}
-
+/* Camera key markers (M11.5; on the video timeline since M15). */
 :is(.export-preview, .video-timeline) .camera-key-track {
   position: absolute;
   left: 8px;
@@ -1766,7 +1749,10 @@ dialog.dialog.export.has-preview {
 }
 
 :is(.dialog, .export-panel) .section-clock input {
-  width: 8ch;
+  /* As wide as its text (--len characters, plus its padding), so a time is never clipped. */
+  box-sizing: content-box;
+  width: calc(var(--len, 7) * 1ch + 0.5ch);
+  min-width: 0;
   font-variant-numeric: tabular-nums;
 }
 

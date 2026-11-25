@@ -41,7 +41,7 @@ import { editPoster } from '../poster-sync';
 import { BookendsGroup, LoudnessField, PresetField, PreviewActions } from './ExportYoutube';
 import { CameraField, KeyButtons, KeyMarkers, useCameraKeys } from './CameraKeys';
 import { RunStatus, SectionField, VideoLookRows } from './ExportFields';
-import { VideoPreview, scrubPreview } from './VideoPreview';
+import { VideoPreview } from './VideoPreview';
 import { backToMusic } from './PosterWorkspace';
 import {
   RUN_LABEL,
@@ -52,6 +52,7 @@ import {
   clockNow,
   estimateFor,
   patch,
+  scrubPreview,
   sectionNow,
   sizesKey,
   startExport,
