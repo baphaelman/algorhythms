@@ -58,7 +58,7 @@ export function resetPosterLook(form: ExportForm, reset: ExportForm): ExportForm
   for (const k of VIDEO_LOOK_KEYS) look[k] = form.look[k];
   return {
     ...reset,
-    look: look as ExportForm['look'],
+    look: look as unknown as ExportForm['look'],
     videoFollowAt: form.videoFollowAt,
     videoHud: form.videoHud,
   };

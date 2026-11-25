@@ -33,6 +33,7 @@ import { layerFor } from './layer';
 import { DEFAULT_HUD } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { PosterLayout } from './poster-layout';
+import { drawPosterEndCard, drawPosterFrame, drawRowTravellers, rowStyle } from './poster-video';
 import type { TimeSpan } from './section';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle, View } from './types';
 
@@ -313,6 +314,8 @@ export function drawVideoFrameAt(
 ): View {
   const span = videoSpan(compiled.duration, opts.section);
   const t = Math.min(Math.max(span.start, time), span.end);
+  if (opts.frame === 'poster' && opts.poster)
+    return drawPosterFrame(ctx, compiled, opts, opts.poster, t, scale);
   const { width, height, dpr } = videoLayout(opts.aspect, opts.size);
   const cam = videoCamera(opts.camera, compiled, t, opts);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -326,7 +329,9 @@ export function drawVideoFrameAt(
   ctx.textAlign = 'left';
   const px = videoSize(opts.aspect, opts.size);
   ctx.clearRect(0, 0, Math.ceil(px.width * scale), Math.ceil(px.height * scale));
-  return drawScore(ctx, compiled, cam, opts.style, t, { width, height }, dpr * scale);
+  const view = drawScore(ctx, compiled, cam, rowStyle(opts), t, { width, height }, dpr * scale);
+  if (opts.poster) drawRowTravellers(ctx, opts, opts.poster, scale);
+  return view;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -513,6 +518,8 @@ export function drawEndCard(
   scale = 1,
   credit = true,
 ): View {
+  if (opts.frame === 'poster' && opts.poster)
+    return drawPosterEndCard(ctx, compiled, opts, opts.poster, scale, credit);
   const { width, height, dpr } = videoLayout(opts.aspect, opts.size);
   const px = videoSize(opts.aspect, opts.size);
   freshState(ctx);

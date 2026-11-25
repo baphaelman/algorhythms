@@ -11,6 +11,8 @@ import { chunkFrom, type Mp4Chunk, type Mp4DecoderConfig } from '../video/mp4';
 export interface FrameJob {
   compiled: CompiledScore;
   frame: VideoFrameOptions;
+  /** Decoded background pictures the frames draw, by data URL (a worker registers them). */
+  pictures?: { src: string; image: ImageBitmap }[];
   fps: number;
   /** Frames to encode (0..frames − 1). */
   frames: number;
@@ -80,6 +82,12 @@ export async function drain(
 
 export function abortError(): DOMException {
   return new DOMException('Video export cancelled', 'AbortError');
+}
+
+/** The data URL of the background picture a video's poster draws, if any. */
+export function framePicture(frame: VideoFrameOptions): string | null {
+  const bg = frame.poster?.style.paint?.background;
+  return bg?.kind === 'picture' ? bg.picture.src : null;
 }
 
 /** Draws and encodes every frame; resolves after the encoder is flushed and closed. */
