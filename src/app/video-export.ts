@@ -17,15 +17,36 @@ import { exportWavStream } from '../audio/export-client';
 import { exportFrameCount } from '../audio/offline';
 import { spanFrames, type ExportLoudness, type WavSpan } from '../audio/wav-export';
 import { compile } from '../core/compiler/compile';
-import type { CameraKey, CompiledScore, LineColors, Piece, Seconds } from '../core/types';
+import type {
+  CameraFrame,
+  CameraKey,
+  CompiledScore,
+  LineColors,
+  Piece,
+  PosterCameraKey,
+  RowBreak,
+  Seconds,
+} from '../core/types';
 import { autoCameraKeys } from '../render/auto-camera';
-import { pieceLook, type Look } from '../render/look';
+import { DEFAULT_HUD } from '../render/hud';
+import { PLAYER_LOOK, pieceLook, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
 import { drawScore, hudPlacement, type Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
 import type { CameraState } from '../render/types';
 import { resetContext } from '../render/poster';
-import { posterVoiceColors } from '../render/poster-layout';
+import {
+  posterLook,
+  posterVoiceColors,
+  type PosterLayout,
+  type Rect,
+} from '../render/poster-layout';
+import {
+  pieceRowBreak,
+  pieceVideoFrame,
+  posterCameraAt,
+  posterCameraOptions,
+} from '../render/poster-video';
 import { isWholeSpan, type TimeSpan } from '../render/section';
 import {
   bookendsAt,
@@ -51,7 +72,17 @@ import {
   type VideoSize,
 } from '../render/video';
 import { Mp4Muxer, chunkFrom, memorySink, type Mp4Sink } from '../video/mp4';
-import { abortError, drain, encodeFrames, plainMeta, type FrameJob } from './video-frames';
+import {
+  abortError,
+  drain,
+  encodeFrames,
+  framePicture,
+  plainMeta,
+  type FrameJob,
+} from './video-frames';
+import { ensurePicture } from './poster-picture';
+import { pictureImage } from '../render/background';
+import { posterLayoutOf, type PosterOptions } from './poster-export';
 import type { VideoWorkerReply, VideoWorkerRequest } from './video.worker';
 
 export interface VideoOptions {
@@ -91,6 +122,23 @@ export interface VideoOptions {
    * lead-in delays the audio; silence pads it to the end card's end. Absent = none.
    */
   bookends?: VideoBookends;
+  /** M15: Over the poster or One row. @default the piece's (`pieceVideoFrame`) */
+  frame?: CameraFrame;
+  /** M15, Over the poster. @default the piece's (`pieceRowBreak`) */
+  rowBreak?: RowBreak;
+  /** M15: the playhead line (the slice over the poster). @default the Look's `playhead` */
+  playhead?: boolean;
+  /** M15, Over the poster with camera `keys`. @default the piece's `camera.posterKeys` */
+  posterKeys?: readonly PosterCameraKey[];
+  /**
+   * M15: the poster the video plays, already laid out (the workspace's). Wins over `poster`.
+   */
+  posterLayout?: PosterLayout;
+  /**
+   * M15: the viewer's remembered poster options, to lay the poster out with (`posterLayoutOf`)
+   * when `posterLayout` is absent. @default the video's theme and Look, the piece's poster
+   */
+  poster?: PosterOptions;
 }
 
 /**
@@ -562,12 +610,24 @@ export function frameOptions(
     customColors: opts.customColors,
     oklch: supportsOklch(),
     ...videoMarkers(piece),
-    ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
+    ...(opts.look ? { look: posterLook(opts.look, piece.poster), ...pieceLook(piece) } : {}),
   });
-  // A poster layer's colour shows in the video too (M14, owner); its place and size don't.
+  // A poster layer's colour shows in the video too (M14, owner).
   const voiceColors = posterVoiceColors(piece.poster, piece.voices);
   if (voiceColors) style.voiceColors = voiceColors;
   const o: VideoFrameOptions = { aspect: opts.aspect, size: opts.size, camera: opts.camera, style };
+  // The poster the video plays (M15): Over the poster frames it; One row takes its styles.
+  const frame = opts.frame ?? pieceVideoFrame(piece);
+  if (frame === 'poster' || piece.poster || opts.posterLayout) {
+    o.poster =
+      opts.posterLayout ??
+      videoPosterLayout(piece, opts.poster ?? videoPoster(opts), (compiled ??= compile(piece)));
+    o.frame = frame;
+    o.rowBreak = opts.rowBreak ?? pieceRowBreak(piece);
+    const posterKeys = opts.posterKeys ?? piece.camera?.posterKeys;
+    if (posterKeys && posterKeys.length > 0) o.posterKeys = posterKeys;
+  }
+  if (opts.playhead !== undefined) o.playhead = opts.playhead;
   if (opts.window !== undefined) o.window = opts.window;
   if (opts.followAt !== undefined) o.followAt = opts.followAt;
   if (opts.section) o.section = opts.section;
@@ -583,6 +643,49 @@ export function frameOptions(
     o.length = tl.total / VIDEO_SAMPLE_RATE;
   }
   return o;
+}
+
+let lastLayout: {
+  piece: Piece;
+  compiled: CompiledScore;
+  key: string;
+  layout: PosterLayout;
+} | null = null;
+
+/** `posterLayoutOf`, kept for the same piece, score and options (previews call it per frame). */
+function videoPosterLayout(
+  piece: Piece,
+  opts: PosterOptions,
+  compiled: CompiledScore,
+): PosterLayout {
+  const key = JSON.stringify(opts);
+  const c = lastLayout;
+  if (c && c.piece === piece && c.compiled === compiled && c.key === key) return c.layout;
+  const layout = posterLayoutOf(piece, opts, compiled);
+  lastLayout = { piece, compiled, key, layout };
+  return layout;
+}
+
+/** The poster options a video lays its poster out with when the viewer's aren't given. */
+function videoPoster(opts: VideoOptions): PosterOptions {
+  return {
+    size: '16:9',
+    theme: opts.theme,
+    transparent: false,
+    title: true,
+    thickness: opts.thickness,
+    ...(opts.colors ? { colors: opts.colors } : {}),
+    ...(opts.customColors ? { customColors: opts.customColors } : {}),
+    look: opts.look
+      ? { ...opts.look, transparent: false }
+      : {
+          ...PLAYER_LOOK,
+          theme: opts.theme,
+          hud: opts.hud ? DEFAULT_HUD : [],
+          thickness: opts.thickness,
+          colors: opts.colors ?? 'pitch',
+        },
+  };
 }
 
 /** The Auto camera's keys for a video: its section (when not the whole piece) and aspect. */
@@ -654,6 +757,24 @@ export function videoCameraAt(
   const fo = frameOptions(piece, opts);
   const span = videoSpan(compiled.duration, fo.section);
   return videoCamera(fo.camera, compiled, Math.min(Math.max(span.start, t), span.end), fo);
+}
+
+/**
+ * Over the poster (M15): the frame on the poster (artboard px) at score time t (clamped to the
+ * section), as the export draws it, and the layout it's on; null for One row. For "add a key
+ * from this view": `posterKeyOfFrame(layout, frame, t)`.
+ */
+export function videoPosterFrameAt(
+  piece: Piece,
+  compiled: CompiledScore,
+  opts: VideoOptions,
+  t: Seconds,
+): { frame: Rect; layout: PosterLayout } | null {
+  const fo = frameOptions(piece, opts, compiled);
+  if (fo.frame !== 'poster' || !fo.poster) return null;
+  const span = videoSpan(compiled.duration, fo.section);
+  const tc = Math.min(Math.max(span.start, t), span.end);
+  return { frame: posterCameraAt(fo.poster, tc, posterCameraOptions(fo)), layout: fo.poster };
 }
 
 /**
@@ -788,6 +909,17 @@ export function etaText(seconds: number): string {
   return `About ${h} h${m ? ` ${m} min` : ''} left`;
 }
 
+/** The decoded picture of `src` as an ImageBitmap for the frame worker (none where it can't be). */
+async function pictureBitmaps(src: string | null): Promise<{ src: string; image: ImageBitmap }[]> {
+  const img = src ? pictureImage(src) : undefined;
+  if (!src || !img || typeof createImageBitmap !== 'function') return [];
+  try {
+    return [{ src, image: await createImageBitmap(img as ImageBitmapSource) }];
+  } catch {
+    return [];
+  }
+}
+
 /** Yields to the event loop (main-thread fallback: keeps the page responsive). */
 const yieldTask = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -920,9 +1052,13 @@ export async function exportVideo(
     }
   };
 
+  // The poster is laid out once per export (M15); its picture decoded once, for the worker too.
+  const frame = frameOptions(piece, opts, compiled);
+  const pictureSrc = framePicture(frame);
+  if (pictureSrc) await ensurePicture(pictureSrc);
   const job: FrameJob = {
     compiled,
-    frame: frameOptions(piece, opts, compiled),
+    frame,
     fps: opts.fps,
     frames,
     config: { ...videoConfig(videoCodec, opts), ...hooks.config },
@@ -998,7 +1134,16 @@ export async function exportVideo(
         if (!received) mainFrames().then(resolve, reject);
         else reject(new Error(e.message || 'Video export: the frame worker failed.'));
       };
-      w.postMessage({ type: 'start', job } satisfies VideoWorkerRequest);
+      void pictureBitmaps(pictureSrc).then((pictures) => {
+        const transfer = pictures.map((p) => p.image);
+        w.postMessage(
+          {
+            type: 'start',
+            job: pictures.length > 0 ? { ...job, pictures } : job,
+          } satisfies VideoWorkerRequest,
+          { transfer },
+        );
+      });
     });
 
   try {

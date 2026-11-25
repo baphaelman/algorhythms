@@ -349,8 +349,12 @@ export function drawGhost(
   }
   L.restore();
 
-  // Composited right of the cut by the source rectangle, not a clip.
-  g.setTransform(1, 0, 0, 1, 0, 0);
+  // Composited right of the cut by the source rectangle, not a clip; at the frame's origin (a
+  // poster row's offset, in whole device px), 0 for a frame at the canvas origin.
+  const m = typeof g.getTransform === 'function' ? g.getTransform() : null;
+  const ex = m ? m.e : 0;
+  const ey = m ? m.f : 0;
+  g.setTransform(1, 0, 0, 1, ex, ey);
   g.globalAlpha = alpha;
   for (let i = 0; i < boxes.length; i += 4) {
     const x = Math.max(boxes[i], cx);
@@ -360,6 +364,6 @@ export function drawGhost(
     if (w <= 0) continue;
     g.drawImage(gh.layer.canvas, x - ox, y - oy, w, h, x, y, w, h);
   }
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.setTransform(dpr, 0, 0, dpr, ex, ey);
   g.globalAlpha = 1;
 }

@@ -1,7 +1,8 @@
 /**
- * The poster in the video export (PLAN.md §15 M14 "Colours are shared"): a poster layer's colour
- * reaches the video's frames; its place, size and every other poster setting don't, so frames for
- * existing settings are unchanged.
+ * The poster in the video export (PLAN.md §15 M14 "Colours are shared", M15): a poster layer's
+ * colour reaches the video's frames; a piece with a poster plays it (Over the poster); with One
+ * row, its place, size, rows and groups leave the frames unchanged, a hidden layer isn't drawn and
+ * a travelling text box is.
  */
 
 import { readFileSync } from 'node:fs';
@@ -54,12 +55,38 @@ const PLACED: PosterDoc = {
 
 describe('the poster in the video', () => {
   const ks = [0, 600, 1500];
+  const ROW = { ...OPTS, frame: 'row' as const };
+  const rowFrame = (poster: PosterDoc | undefined, k: number): string => {
+    const piece: Piece = poster ? { ...KITE, poster } : KITE;
+    const svg = new SvgContext(1280, 720);
+    drawVideoFrame(asCtx2D(svg), KITE_C, frameOptions(piece, ROW, KITE_C), k, 30);
+    return svg.toSvg();
+  };
 
-  it('place, size, rows, Look, texts and groups leave every frame as it was', () => {
-    expect(frameOptions({ ...KITE, poster: PLACED }, OPTS, KITE_C)).toEqual(
-      frameOptions(KITE, OPTS, KITE_C),
-    );
-    for (const k of ks) expect(frame(PLACED, k), `frame ${k}`).toBe(frame(undefined, k));
+  it('a piece with a poster plays it (M15); one without plays One row', () => {
+    const o = frameOptions({ ...KITE, poster: PLACED }, OPTS, KITE_C);
+    expect(o.frame).toBe('poster');
+    expect(o.rowBreak).toBe('pan');
+    expect(o.poster?.width).toBe(2480);
+    expect(o.poster?.rows.length).toBeGreaterThan(1);
+    const plain = frameOptions(KITE, OPTS, KITE_C);
+    expect(plain.frame).toBeUndefined();
+    expect(plain.poster).toBeUndefined();
+    expect(frame(PLACED, 600)).not.toBe(frame(undefined, 600));
+  });
+
+  it('One row: place, size, rows, texts that stay and groups leave every frame as it was', () => {
+    const shown: PosterDoc = { ...PLACED, layers: [PLACED.layers![0]] };
+    for (const k of ks) expect(rowFrame(shown, k), `frame ${k}`).toBe(frame(undefined, k));
+  });
+
+  it('One row: a hidden layer is not drawn; a travelling text box is', () => {
+    for (const k of ks) expect(rowFrame(PLACED, k)).not.toBe(frame(undefined, k));
+    const go: PosterDoc = {
+      texts: [{ id: 'free1', kind: 'free', text: 'Hello there', travels: true }],
+    };
+    expect(rowFrame(go, 600)).toContain('Hello there');
+    expect(frame(undefined, 600)).not.toContain('Hello there');
   });
 
   it('a layer colour colours that part’s lines in the frames, and only those', () => {

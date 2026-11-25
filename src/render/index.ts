@@ -339,3 +339,19 @@ export {
   type TimeSpan,
 } from './section';
 export { MONO_ADVANCE, SvgContext, SvgGradient, asCtx2D, escapeXml, svgColor } from './svg';
+export {
+  ROW_BREAK,
+  drawPosterEndCard,
+  drawPosterFrame,
+  pieceRowBreak,
+  pieceVideoFrame,
+  posterCameraAt,
+  posterCameraOptions,
+  posterKeyFrame,
+  posterKeyOfFrame,
+  posterPoseAt,
+  posterRowAt,
+  posterWholeFrame,
+  type PosterCameraOptions,
+  type PosterPose,
+} from './poster-video';

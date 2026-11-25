@@ -628,6 +628,8 @@ interface ObjectBase {
   member: string;
   /** The row it belongs to, if any. */
   row?: number;
+  /** Text boxes and HUD readouts (M15): the video draws it with the frame, not on the poster. */
+  travels?: boolean;
 }
 
 /** A label (a member of a label group). */
@@ -1089,6 +1091,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
           ? (style.paint?.title ?? style.tokens.ink)
           : (style.paint?.title ?? style.tokens.ink2)),
       opacity: unit(st.opacity, 1),
+      ...(tx.travels === true ? { travels: true } : {}),
     });
   }
   const band: Rect | null = anyAuto
@@ -1635,6 +1638,9 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   hLabel('pitchLabels', pgPitches, pitchGuideLabel);
   vLabel('momentLabels', moments);
 
+  // HUD readouts travel with a video's frame unless set to stay (M15).
+  for (const o of labelObjs) if (o.group === 'hud' && hudTravels(doc, o.member)) o.travels = true;
+
   // --- objects, back to front ----------------------------------------------------------------------
   const LINE_ORDER: readonly PosterLineGroup[] = [
     'beatLines',
@@ -1680,6 +1686,11 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     sectionRows: plan ? plan.items : null,
     fonts,
   };
+}
+
+/** Whether HUD readout `item` travels with a video's frame (M15): its own switch, the group's, else yes. */
+export function hudTravels(doc: PosterDoc | undefined, item: string): boolean {
+  return doc?.members?.hud?.[item]?.travels ?? doc?.groups?.hud?.travels ?? true;
 }
 
 /**

@@ -136,9 +136,9 @@ function markersByTime(spans: readonly MomentSpan[], times?: MomentTimes): Marke
  * @param t      playhead time in seconds
  * @param size   canvas size in CSS pixels
  * @param dpr    device pixel ratio; the context is set to scale by it
- * @param origin where the frame's top-left corner sits on the canvas, CSS px (poster rows). Not
- *               for frames that use the ghost layer (a dimmed future or a highlight), which
- *               composites at the canvas origin.
+ * @param origin where the frame's top-left corner sits on the canvas, CSS px (poster rows). A
+ *               dimmed future or a highlight composites its ghost layer there too; keep
+ *               `origin · dpr` whole for a crisp composite.
  * @returns the resolved view (for hit-testing the same frame)
  */
 export function drawScore(
