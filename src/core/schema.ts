@@ -1017,6 +1017,7 @@ export const PieceSchema = z
     view: ViewSchema.prefault({}),
     camera: CameraSchema.optional().describe('The video camera (M11.5); absent = Follow.'),
     poster: PosterSchema.optional().describe('The poster (M14); absent = the defaults.'),
+    posterSaved: PosterSchema.optional().describe("The poster's save point (M14)."),
   })
   .superRefine(checkPiece);
 

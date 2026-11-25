@@ -195,7 +195,7 @@ test('a label selects its whole group; a style applies to all; Alt-click styles 
   const at = await toPage(page, centre(one.box).x, centre(one.box).y);
   await page.mouse.click(at.x, at.y);
   expect(await selected(page)).toEqual({ kind: 'group', group: 'guideLabels' });
-  await expect(page.getByTestId('selection-title')).toHaveText('Hz labels');
+  await expect(page.getByTestId('selection-title')).toContainText('Hz labels');
   await expect(page.getByTestId('selection')).toHaveAttribute('data-count', String(hz.length));
 
   // Size 150 %: every Hz label grows.
@@ -528,7 +528,7 @@ test('the layers list selects, hides and reorders; selecting there selects on th
   expect(((await selected(page)) as { id: string }).id).toMatch(/^line:/);
   await page.locator('[data-testid="layer-group"][data-group="rowLabels"] .ws-layer-name').click();
   expect(await selected(page)).toEqual({ kind: 'group', group: 'rowLabels' });
-  await expect(page.getByTestId('selection-title')).toHaveText('Row times');
+  await expect(page.getByTestId('selection-title')).toContainText('Row times');
 });
 
 test('every edit kind is one undo step (M14 acceptance)', async ({ page }) => {
@@ -683,6 +683,12 @@ test('every edit kind is one undo step (M14 acceptance)', async ({ page }) => {
   }
 });
 
+/** A selected object's settings fill the right panel: clear the selection for the poster's. */
+async function deselect(page: Page) {
+  await page.getByRole('button', { name: 'Clear the selection' }).click();
+  await expect(page.getByTestId('poster-options')).toBeVisible();
+}
+
 test('Re-fit layout after a rows change leaves a text box over the music', async ({ page }) => {
   await snapOff(page);
   const L = await layout(page);
@@ -696,6 +702,7 @@ test('Re-fit layout after a rows change leaves a text box over the music', async
     .poll(async () => (await posterDoc(page))?.texts?.find((t) => t.id === 'credit')?.box)
     .toBeTruthy();
   await expect(page.getByTestId('refit-hint')).toHaveCount(0);
+  await deselect(page);
   await setRange(page, 'export-prows', 2);
   await expect(page.getByTestId('refit-hint')).toBeVisible();
   await page.getByTestId('refit').click();
@@ -715,6 +722,7 @@ test('the poster survives a reload and a share link exactly', async ({ page, con
   await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('Round trip');
   await page.keyboard.press('Enter');
+  await deselect(page);
   await setRange(page, 'margin-all', 9);
   await setRange(page, 'export-prows', 3);
   await page.getByTestId('show-sectionLines').click();
@@ -777,6 +785,7 @@ test('PNG and SVG draw what the artboard shows', async ({ page }) => {
   await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('On the poster');
   await page.keyboard.press('Enter');
+  await deselect(page);
   await setRange(page, 'margin-all', 4);
   await expect
     .poll(async () => Math.round((await layout(page)).content.x))

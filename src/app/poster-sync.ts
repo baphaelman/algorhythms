@@ -50,6 +50,8 @@ export function withPoster(piece: Piece, doc: PosterDoc | undefined): Piece {
 let active = false;
 /** True while this module changes the piece (its own changes are not shown back). */
 let writing = false;
+/** The poster as the workspace opened (a doc; none = the defaults): Revert's target with no save point. */
+let opened: PosterDoc | undefined;
 let lastFields: PosterFields | null = null;
 let baseline: PosterFields | null = null;
 let run: { key: string; at: number; entry: object | null } | null = null;
@@ -108,6 +110,7 @@ export function startPosterSync(): () => void {
   active = true;
   baseline = posterFields(useExportUi.getState().form);
   lastFields = baseline;
+  opened = usePlayer.getState().piece.poster;
   run = null;
   const doc = usePlayer.getState().piece.poster;
   if (doc) showDoc(doc);
@@ -230,21 +233,55 @@ export function posterFormGesture(label = 'Poster'): { end(): void; cancel(): vo
   };
 }
 
-/**
- * Back to the default poster (PLAN.md §15 M14 "Revert"): settings, objects and styles. One undo
- * entry; false when the poster is already the default.
- */
-export function revertPoster(): boolean {
+/** `doc` as a comparable string: no doc is the default poster. */
+const keyOf = (doc: PosterDoc | undefined): string =>
+  JSON.stringify(doc ?? defaultPosterDoc(docContext()));
+
+function setPoster(doc: PosterDoc | undefined, label: string): boolean {
   run = null;
-  const doc = defaultPosterDoc(docContext());
   const ok = mine(() =>
-    edit(
-      (p) => (JSON.stringify(p.poster) === JSON.stringify(doc) ? p : withPoster(p, doc)),
-      'Revert poster',
-    ),
+    edit((p) => (keyOf(p.poster) === keyOf(doc) ? p : withPoster(p, doc)), label),
   );
   if (ok && active) showDoc(doc);
   return ok;
+}
+
+/** Full revert: the poster back to its defaults, as one undo entry; false when already so. */
+export function revertPoster(): boolean {
+  return setPoster(defaultPosterDoc(docContext()), 'Revert poster');
+}
+
+/** Where Revert goes: the save point, else the poster as the workspace opened. */
+const savePoint = (p: Piece): PosterDoc | undefined => p.posterSaved ?? opened;
+
+/** True when Revert has nothing to do (the poster is its save point). */
+export function posterAtSavePoint(piece: Piece): boolean {
+  return keyOf(piece.poster) === keyOf(savePoint(piece));
+}
+
+/** True when the poster is the save point (Save has nothing to do). */
+export function posterSaved(piece: Piece): boolean {
+  return !!piece.posterSaved && keyOf(piece.poster) === keyOf(piece.posterSaved);
+}
+
+/** Save: a copy of the poster stored in the piece, as one undo entry. */
+export function savePoster(): boolean {
+  run = null;
+  return mine(() =>
+    edit((p) => {
+      if (posterSaved(p)) return p;
+      return {
+        ...p,
+        posterSaved: structuredClone(p.poster ?? defaultPosterDoc(docContext()) ?? {}),
+      };
+    }, 'Save poster'),
+  );
+}
+
+/** Revert: the poster back to its save point (see `savePoint`), one undo entry. */
+export function revertToSaved(): boolean {
+  const doc = savePoint(usePlayer.getState().piece);
+  return setPoster(doc && structuredClone(doc), 'Revert to saved');
 }
 
 /** True when the piece's poster is the default one (Revert has nothing to do). */

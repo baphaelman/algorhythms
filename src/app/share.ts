@@ -430,10 +430,11 @@ export async function encodeSharePayload(value: unknown): Promise<string> {
   return toBase64Url(packed);
 }
 
-/** The piece as links carry it: without its poster's background picture. */
-export function shareablePiece(piece: Piece): Piece {
+/** The piece as links carry it: without its poster's background picture and save point. */
+export function shareablePiece(full: Piece): Piece {
+  const { posterSaved: _s, ...piece } = full;
   const poster = piece.poster;
-  if (!poster?.picture) return piece;
+  if (!poster?.picture) return _s === undefined ? full : piece;
   const { picture: _p, ...rest } = poster;
   if (Object.keys(rest).length > 0) return { ...piece, poster: rest };
   const { poster: _q, ...out } = piece;

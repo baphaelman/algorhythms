@@ -288,6 +288,20 @@ describe('poster pictures stay out of links (M14 P5)', () => {
     expect(linkDropsPicture(base)).toBe(false);
   });
 
+  it("a poster's save point is in the file but never in a link", () => {
+    const base = newPiece({ seed: 3 });
+    const r = parsePiece({
+      ...base,
+      poster: { rows: 2 },
+      posterSaved: { rows: 3, look: { theme: 'dark' } },
+    });
+    if (!r.ok) throw new Error(r.errors.join('; '));
+    expect(r.piece.posterSaved?.rows).toBe(3);
+    const link = shareablePiece(r.piece);
+    expect(link.posterSaved).toBeUndefined();
+    expect(link.poster?.rows).toBe(2);
+  });
+
   it('the schema refuses a picture that is not an image data URL', () => {
     const base = newPiece({ seed: 3 });
     const bad = parsePiece({
