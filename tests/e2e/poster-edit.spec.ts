@@ -370,13 +370,17 @@ test('the Text tool adds a text box edited in place; style; Delete removes it', 
   const t = (await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!;
   expect(t.style).toMatchObject({ weight: 700, align: 'right', colour: '#00aa55' });
 
-  // Double-click edits again; Escape drops the change.
+  // Double-click edits again; Escape keeps the text (as Figma), the box stays selected; undo.
   const c = centre(await textFrame(page, sel.id));
   const cp = await toPage(page, c.x, c.y);
   await page.mouse.dblclick(cp.x, cp.y);
   await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('xyz');
   await page.keyboard.press('Escape');
+  await expect(page.getByTestId('inline-text')).toHaveCount(0);
+  expect((await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!.text).toBe('xyz');
+  expect(await selected(page)).toEqual(sel);
+  await undo(page);
   expect((await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!.text).toBe('Hello {key}');
 
   await page.getByTestId('poster-workspace').focus();

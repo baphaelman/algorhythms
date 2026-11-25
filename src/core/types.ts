@@ -971,6 +971,13 @@ export interface PosterText {
   text: string;
   /** Fractions of the artboard; absent = placed automatically in the text band. */
   box?: PosterBox;
+  /**
+   * How a placed box sizes (with `box`; type size from `style.size`): `auto` = as wide as its
+   * text (`box` gives the position: its left, centre or right edge by `align`, and its top);
+   * `wrap` = `box.w` wide, lines wrap, as tall as its lines. Absent = the type sizes to
+   * `box.h` and shrinks to fit `box.w` (M14 P3's boxes).
+   */
+  sizing?: 'auto' | 'wrap';
   style?: PosterTextStyle;
   hidden?: boolean;
   /** M15: the video draws it with the frame (true) or on the poster where it is. @default false */

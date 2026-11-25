@@ -93,6 +93,8 @@ export const LINE_HEIGHT = 1.2;
 /** A text's ascent and descent above and below its baseline, × its size. */
 const ASCENT = 0.8;
 const DESCENT = 0.24;
+/** The space a line box leaves above and below its ink, px, for text of `size` px. */
+export const textPad = (size: number): number => ((LINE_HEIGHT - ASCENT - DESCENT) / 2) * size;
 /** Space kept clear round placed text, units. */
 const TEXT_PAD = 1.5;
 
@@ -769,6 +771,8 @@ export interface PosterLayout {
   /** Rows by sections: the Organize list (null for equal rows). */
   sectionRows: SectionRowItem[] | null;
   fonts: { mono: string; serif: string; sans: string };
+  /** How the layout measured text (the editor sizes new text boxes with it). */
+  measure: Measure;
   /** Line colours by pool index from the layers (`posterVoiceColors`), if any. */
   voiceColors?: (string | undefined)[];
 }
@@ -888,6 +892,48 @@ export function textTokens(
 export function fillTokens(text: string, tokens: TextTokens): string {
   return text.replace(/\{(\w+)\}/g, (m, k: string) =>
     Object.hasOwn(tokens, k) ? tokens[k as keyof TextTokens] : m,
+  );
+}
+
+/** `line` broken at spaces so each piece is at most `width` wide (a longer word stays whole). */
+export function wrapLine(line: string, width: number, w: (text: string) => number): string[] {
+  const words = line.split(' ');
+  const out: string[] = [];
+  let cur = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const next = `${cur} ${words[i]}`;
+    if (w(next) <= width) cur = next;
+    else {
+      out.push(cur);
+      cur = words[i];
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+/** The type size (fraction of the shorter side), font and weight a new box of `kind` gets. */
+export function textDefaults(kind: PosterText['kind']): {
+  size: number;
+  font: 'serif' | 'sans' | 'mono';
+  weight: number;
+} {
+  return TEXT_DEFAULTS[kind] ?? TEXT_DEFAULTS.free;
+}
+
+/** The CSS font of a text of `size` px with `style` (and `kind`'s defaults) in `layout`'s fonts. */
+export function textFont(
+  layout: Pick<PosterLayout, 'fonts'>,
+  kind: PosterText['kind'],
+  size: number,
+  style: PosterTextStyle = {},
+): string {
+  const def = textDefaults(kind);
+  return cssFont(
+    style.weight ?? def.weight,
+    size,
+    layout.fonts[style.font ?? def.font] ?? layout.fonts.sans,
+    style.italic === true,
   );
 }
 
@@ -1043,13 +1089,29 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     const weight = st.weight ?? def.weight;
     const italic = st.italic === true;
     const align = st.align ?? 'left';
-    const lines = fillTokens(tx.text, tokens).split('\n');
+    let lines = fillTokens(tx.text, tokens).split('\n');
     const widthAt = (size: number): number =>
       Math.max(0, ...lines.map((l) => measure(l, cssFont(weight, size, family, italic), 0)));
     const box = validBox(tx.box) ? fromFractions(tx.box, { x: 0, y: 0, w: W, h: H }) : null;
     let size: number;
     let frame: Rect;
-    if (box) {
+    if (box && tx.sizing) {
+      size = pos(st.size, def.size) * S;
+      if (tx.sizing === 'wrap') {
+        const f = cssFont(weight, size, family, italic);
+        lines = lines.flatMap((l) => wrapLine(l, box.w, (t) => measure(t, f, 0)));
+        frame = { ...box, h: lines.length * LINE_HEIGHT * size };
+      } else {
+        const w = widthAt(size);
+        const x =
+          align === 'left'
+            ? box.x
+            : align === 'right'
+              ? box.x + box.w - w
+              : box.x + (box.w - w) / 2;
+        frame = { x, y: box.y, w, h: lines.length * LINE_HEIGHT * size };
+      }
+    } else if (box) {
       size = box.h / (lines.length * LINE_HEIGHT);
       const w = widthAt(size);
       if (w > box.w && w > 0) size *= box.w / w;
@@ -1722,6 +1784,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     marks: MK,
     sectionRows: plan ? plan.items : null,
     fonts,
+    measure,
   };
 }
 

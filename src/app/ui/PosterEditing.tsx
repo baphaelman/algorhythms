@@ -39,6 +39,7 @@ import {
   setMargins,
   setMemberStyle,
   setRowBox,
+  textBoxFor,
   textsOf,
   type Handle,
 } from '../../render/poster-edit';
@@ -48,9 +49,15 @@ import {
   GROUP_FIELDS,
   LINE_GROUPS,
   MARK_GROUPS,
+  LINE_HEIGHT,
+  estimateText,
   isLabelGroup,
   isMarkGroup,
+  measureWith,
+  textDefaults,
+  textFont,
   type GroupField,
+  type Measure,
   type PosterLayout,
   type Rect,
 } from '../../render/poster-layout';
@@ -58,6 +65,8 @@ import {
   CLEAR_MEMBER,
   GROUP_NAMES,
   alignBox,
+  newText,
+  newTextRect,
   nudgeDoc,
   placeRect,
   resizable,
@@ -67,21 +76,16 @@ import {
   snapMove,
   snapResize,
   snapTargets,
+  textGhost,
   textName,
   textOf,
   textSizeOf,
   withTextSize,
   type AlignTo,
   type PosterSelection,
+  type SnapGuides,
 } from '../poster-select';
-import {
-  editPoster,
-  editPosterEntry,
-  editPosterJoin,
-  editPosterRun,
-  posterGesture,
-  type PosterGesture,
-} from '../poster-sync';
+import { editPoster, editPosterRun, posterGesture, type PosterGesture } from '../poster-sync';
 import { linesText, posterLayers, useWorkspace, type WorkspaceTool } from '../poster-workspace';
 import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
@@ -144,32 +148,73 @@ export function alignSelection(how: AlignTo): void {
   editPoster((d) => placeRect(d, layout, sel, f, alignBox(f, layout.content, how)), 'Align');
 }
 
-/** The text box the Text tool just added and its undo entry: its first text joins that entry. */
-let added: { id: string; entry: object } | null = null;
+/**
+ * The text box being typed into and its gesture: the text shows on the artboard as it is typed,
+ * and the whole edit (a new box and its first text) is one undo entry when it ends.
+ */
+let typed: { id: string; gesture: PosterGesture; base: PosterText; isNew: boolean } | null = null;
 
-/** The Text tool: a new text box with its top left at (x, y), edited in place. */
-export function addTextAt(layout: PosterLayout, x: number, y: number): void {
-  const doc = docNow();
-  const id = newTextId(doc);
-  const S = Math.min(layout.width, layout.height);
-  const w = Math.min(0.4 * layout.width, layout.width - x);
-  const h = 0.03 * S * 1.2;
-  const text: PosterText = {
-    id,
-    kind: 'free',
-    text: 'Text',
-    box: {
-      x: x / layout.width,
-      y: Math.min(y, layout.height - h) / layout.height,
-      w: Math.max(1, w) / layout.width,
-      h: h / layout.height,
-    },
-  };
-  const entry = editPosterEntry((d) => putText(d, text), 'Add text box');
-  if (entry) {
-    added = { id, entry };
-    useWorkspace.setState({ selected: { kind: 'text', id }, tool: 'select', editing: id });
+/**
+ * The Text tool: a new text box with its top left at (x, y), as wide as its text, or `width`
+ * wide with wrapping lines; edited in place. The tool goes back to Select (as Figma's does).
+ */
+export function addTextAt(layout: PosterLayout, x: number, y: number, width?: number): void {
+  const id = newTextId(docNow());
+  const text = newText(layout, id, x, y, width);
+  endTyping();
+  const gesture = posterGesture('Add text box');
+  gesture.update((d) => putText(d, text));
+  typed = { id, gesture, base: text, isNew: true };
+  useWorkspace.setState({
+    selected: { kind: 'text', id },
+    tool: 'select',
+    editing: id,
+    guides: null,
+  });
+}
+
+/** Starts typing into text box `id` (Enter, double-click): one undo entry for the edit. */
+function startTyping(id: string): void {
+  if (typed?.id === id) return;
+  endTyping();
+  const base = textOf(docNow(), id);
+  if (base) typed = { id, gesture: posterGesture('Edit text'), base, isNew: false };
+}
+
+/** Shows `text` in the box being typed into. */
+function typeText(text: string): void {
+  if (!typed) return;
+  const t = { ...typed.base, text };
+  typed.gesture.update((d) => putText(d, t));
+}
+
+/** Ends typing with `text` (none: as typed so far). An empty box goes (a new one leaves no trace). */
+function endTyping(text?: string): void {
+  const t = typed;
+  if (!t) return;
+  typed = null;
+  if (text !== undefined && text.trim() === '') {
+    if (t.isNew) t.gesture.cancel();
+    else {
+      t.gesture.update((d) => removeText(d, t.id));
+      t.gesture.end();
+    }
+    const sel = useWorkspace.getState().selected;
+    if (sel?.kind === 'text' && sel.id === t.id) useWorkspace.setState({ selected: null });
+    return;
   }
+  if (text !== undefined) {
+    const next = { ...t.base, text };
+    t.gesture.update((d) => putText(d, next));
+  }
+  t.gesture.end();
+}
+
+/** Escape with the Text tool armed: back to Select. True when it did. */
+export function disarmTextTool(): boolean {
+  if (useWorkspace.getState().tool !== 'text') return false;
+  useWorkspace.setState({ tool: 'select', guides: null });
+  return true;
 }
 
 /** Whether a key event's target takes typing (the workspace's keys stand down). */
@@ -243,10 +288,19 @@ interface Drag {
   raf: number;
 }
 
+/** A press with the Text tool: a click places a box as wide as its text, a drag sets its width. */
+interface Place {
+  x0: number;
+  y0: number;
+  /** The drag's box so far (artboard px), once it is a drag. */
+  box: Rect | null;
+}
+
 /**
  * Over the artboard's canvas, in the poster's own coordinates as percentages: the margins as
- * guides (not exported), the selection's outlines and handles, snap guides while dragging, and
- * the text box being edited. It takes the pointer for selecting, moving and resizing.
+ * guides (not exported), the selection's outlines and handles, snap guides while dragging, the
+ * Text tool's ghost and the text box being edited. It takes the pointer for selecting, moving,
+ * resizing and placing text.
  */
 export function ArtboardOverlay({ width }: { width: number }) {
   const layout = useWorkspace((s) => s.layout);
@@ -256,6 +310,9 @@ export function ArtboardOverlay({ width }: { width: number }) {
   const editing = useWorkspace((s) => s.editing);
   const root = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
+  const place = useRef<Place | null>(null);
+  // The Text tool's ghost: where a click puts the new box (artboard px).
+  const [ghost, setGhost] = useState<{ box: Rect; drag: boolean } | null>(null);
 
   useEffect(
     () => () => {
@@ -282,6 +339,8 @@ export function ArtboardOverlay({ width }: { width: number }) {
     const b = root.current!.getBoundingClientRect();
     return { x: ((e.clientX - b.left) / b.width) * W, y: ((e.clientY - b.top) / b.height) * H };
   };
+  const showGuides = (g: SnapGuides | null) =>
+    useWorkspace.setState({ guides: g && (g.x !== undefined || g.y !== undefined) ? g : null });
 
   const apply = (d: Drag) => {
     d.raf = 0;
@@ -314,7 +373,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
         min: 4 * d.layout.unit,
       });
     }
-    useWorkspace.setState({ guides: g && (g.x !== undefined || g.y !== undefined) ? g : null });
+    showGuides(g);
     const { sel, layout: L, frame } = d;
     d.gesture.update((doc) => placeRect(doc, L, sel, frame, to));
   };
@@ -332,6 +391,35 @@ export function ArtboardOverlay({ width }: { width: number }) {
     useWorkspace.setState({ guides: null });
   };
 
+  /** The Text tool's snap distance (none with Alt or the Snap switch off). */
+  const ghostTol = (alt: boolean) => (useWorkspace.getState().snap && !alt ? SNAP_CSS / scale : 0);
+
+  /** The Text tool's ghost at the pointer, snapped as the box will be. */
+  const hover = (e: React.PointerEvent<HTMLDivElement>) => {
+    const p = board(e);
+    const g = textGhost(layout, p.x, p.y, ghostTol(e.altKey));
+    setGhost({ box: g.box, drag: false });
+    showGuides(g.guides);
+  };
+
+  /** A Text tool drag: from the press to the pointer, its moving edge snapped. */
+  const placeDrag = (pl: Place, e: React.PointerEvent<HTMLDivElement>) => {
+    const p = board(e);
+    if (!pl.box && Math.abs(p.x - pl.x0) * scale < DRAG_CSS) return;
+    const handle: Handle = p.x >= pl.x0 ? 'e' : 'w';
+    const tol = ghostTol(e.altKey);
+    const start = { x: pl.x0, y: pl.y0, w: 0, h: 0 };
+    const s =
+      tol > 0
+        ? snapResize(start, handle, { dx: p.x - pl.x0, dy: 0 }, snapTargets(layout, null), tol)
+        : { dx: p.x - pl.x0, guides: {} };
+    const x1 = pl.x0 + s.dx;
+    const h = newTextRect(layout, pl.x0, pl.y0).h;
+    pl.box = { x: Math.min(pl.x0, x1), y: pl.y0, w: Math.abs(x1 - pl.x0), h };
+    setGhost({ box: pl.box, drag: true });
+    showGuides(s.guides);
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -340,7 +428,10 @@ export function ArtboardOverlay({ width }: { width: number }) {
     });
     const p = board(e);
     if (useWorkspace.getState().tool === 'text') {
-      addTextAt(layout, p.x, p.y);
+      const g = textGhost(layout, p.x, p.y, ghostTol(e.altKey)).box;
+      place.current = { x0: g.x, y0: g.y, box: null };
+      setGhost({ box: g, drag: false });
+      root.current?.setPointerCapture(e.pointerId);
       return;
     }
     const handle = ((e.target as HTMLElement).dataset.handle as Handle | undefined) ?? null;
@@ -380,8 +471,16 @@ export function ArtboardOverlay({ width }: { width: number }) {
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pl = place.current;
+    if (pl) {
+      placeDrag(pl, e);
+      return;
+    }
     const d = drag.current;
-    if (!d) return;
+    if (!d) {
+      if (useWorkspace.getState().tool === 'text') hover(e);
+      return;
+    }
     const p = board(e);
     if (!d.started) {
       if (Math.hypot(p.x - d.x0, p.y - d.y0) * scale < DRAG_CSS) return;
@@ -392,9 +491,25 @@ export function ArtboardOverlay({ width }: { width: number }) {
     if (!d.raf) d.raf = requestAnimationFrame(() => apply(d));
   };
 
+  const onPointerUp = () => {
+    const pl = place.current;
+    if (!pl) {
+      finish();
+      return;
+    }
+    place.current = null;
+    setGhost(null);
+    const min = 4 * layout.unit;
+    if (pl.box) addTextAt(layout, pl.box.x, pl.y0, Math.max(min, pl.box.w));
+    else addTextAt(layout, pl.x0, pl.y0);
+  };
+
   const boxes = selectedBoxes(layout, selected);
   const frame = resizable(selected) ? selectionFrame(layout, selected) : null;
+  // A text box's handles sit on its outline (its frame with even space round the ink).
+  const hRect = frame && selected?.kind === 'text' ? (boxes[0] ?? frame) : frame;
   const c = layout.content;
+  const ghostSize = textDefaults('free').size * Math.min(W, H) * scale;
   return (
     <div
       ref={root}
@@ -404,8 +519,17 @@ export function ArtboardOverlay({ width }: { width: number }) {
       data-height={H}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={finish}
-      onPointerCancel={finish}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        place.current = null;
+        setGhost(null);
+        finish();
+      }}
+      onPointerLeave={() => {
+        if (place.current || drag.current) return;
+        setGhost(null);
+        if (useWorkspace.getState().tool === 'text') showGuides(null);
+      }}
       onDoubleClick={() => {
         const s = useWorkspace.getState().selected;
         if (s?.kind === 'text') useWorkspace.setState({ editing: s.id });
@@ -425,7 +549,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
           ))}
         </div>
       )}
-      {frame &&
+      {hRect &&
         HANDLES.map((h) => (
           <div
             key={h}
@@ -433,8 +557,8 @@ export function ArtboardOverlay({ width }: { width: number }) {
             data-handle={h}
             data-testid={`handle-${h}`}
             style={{
-              left: `${((frame.x + (h.includes('w') ? 0 : h.includes('e') ? frame.w : frame.w / 2)) / W) * 100}%`,
-              top: `${((frame.y + (h.includes('n') ? 0 : h.includes('s') ? frame.h : frame.h / 2)) / H) * 100}%`,
+              left: `${((hRect.x + (h.includes('w') ? 0 : h.includes('e') ? hRect.w : hRect.w / 2)) / W) * 100}%`,
+              top: `${((hRect.y + (h.includes('n') ? 0 : h.includes('s') ? hRect.h : hRect.h / 2)) / H) * 100}%`,
             }}
           />
         ))}
@@ -452,24 +576,68 @@ export function ArtboardOverlay({ width }: { width: number }) {
           style={{ top: `${(guides.y / H) * 100}%` }}
         />
       )}
+      {tool === 'text' && ghost && (
+        <div
+          className={ghost.drag ? 'ws-ghost ws-ghost-drag' : 'ws-ghost'}
+          data-testid="text-ghost"
+          aria-hidden="true"
+          style={{
+            ...pct(ghost.box),
+            font: textFont(layout, 'free', ghostSize),
+            lineHeight: LINE_HEIGHT,
+          }}
+        >
+          Text
+        </div>
+      )}
       {editing && <InlineText key={editing} id={editing} layout={layout} scale={scale} />}
     </div>
   );
 }
 
-/** A text box edited in place: Enter (or leaving it) keeps the text, Escape drops the change. */
+/** Text widths in CSS px, for the box being typed into. */
+let cssMeasure: Measure | null = null;
+const measureCss: Measure = (text, font, spacing) => {
+  if (!cssMeasure) {
+    const g = document.createElement('canvas').getContext('2d');
+    cssMeasure = g ? measureWith(g) : estimateText;
+  }
+  return cssMeasure(text, font, spacing);
+};
+
+/**
+ * A text box edited in place. The artboard draws the text as it is typed (its real font, size
+ * and colour); the field over it shows only the caret and the selection. A text with tokens
+ * shows as written, on the paper, until it is done. Enter, Escape or leaving it keeps the text
+ * (an empty box goes); Shift+Enter breaks the line.
+ */
 function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; scale: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const t = textOf(docNow(), id);
   const o = layout.objects.find((x) => x.type === 'text' && x.member === id);
+  const [value, setValue] = useState(t?.text ?? '');
   const done = useRef(false);
+  const latest = useRef(value);
   // A new text box shows once the artboard has drawn it: focus it then.
   const ready = !!t && o?.type === 'text';
   useLayoutEffect(() => {
     if (!ready) return;
+    startTyping(id);
     ref.current?.focus();
     ref.current?.select();
-  }, [ready]);
+  }, [ready, id]);
+  // Undo, a selection change or closing the workspace ends the edit as typed so far (after a
+  // tick: StrictMode remounts at once).
+  const alive = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      setTimeout(() => {
+        if (!alive.current && !done.current && typed?.id === id) endTyping(latest.current);
+      }, 0);
+    };
+  }, [id]);
   if (!t || !o || o.type !== 'text') return null;
   const W = layout.width;
   const H = layout.height;
@@ -477,50 +645,60 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
   const commit = (text: string) => {
     if (done.current) return;
     done.current = true;
-    const join = added?.id === id ? added.entry : null;
-    added = null;
-    if (text !== t.text) {
-      editPosterJoin(
-        join,
-        (d) => {
-          const cur = textOf(d, id);
-          return cur ? putText(d, { ...cur, text }) : d;
-        },
-        join ? 'Add text box' : 'Edit text',
-      );
-    }
+    endTyping(text);
     useWorkspace.setState({ editing: null });
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      commit(e.currentTarget.value);
-    } else if (e.key === 'Escape') {
+    if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      done.current = true;
-      added = null;
-      useWorkspace.setState({ editing: null });
+      commit(e.currentTarget.value);
     }
   };
+  const px = o.size * scale;
+  const font = o.font.replace(/[\d.]+px/, `${px}px`);
+  const lines = value.split('\n');
+  const raw = /\{\w+\}/.test(value);
+  // As wide as the typed text (an auto box, or tokens shown as written), else the box.
+  const textW = Math.max(...lines.map((l) => measureCss(l, font, 0))) + 2;
+  const auto = t.sizing === 'auto' || (!t.box && !t.sizing);
+  const w = auto || raw ? Math.max(auto ? textW : f.w * scale, raw ? textW : 0) : f.w * scale;
+  const h = Math.max(f.h * scale, lines.length * LINE_HEIGHT * px);
+  const fx = f.x * scale;
+  const left = !auto
+    ? fx
+    : o.align === 'right'
+      ? fx + f.w * scale - w
+      : o.align === 'center'
+        ? fx + (f.w * scale - w) / 2
+        : fx;
   return (
     <textarea
       ref={ref}
-      className="ws-inline-text"
+      className={raw ? 'ws-inline-text raw' : 'ws-inline-text'}
       data-testid="inline-text"
       aria-label="Text"
-      defaultValue={t.text}
+      value={value}
+      rows={1}
+      wrap={auto ? 'off' : 'soft'}
       spellCheck={false}
       style={{
-        left: `${(f.x / W) * 100}%`,
+        left: `${(left / (W * scale)) * 100}%`,
         top: `${(f.y / H) * 100}%`,
-        width: `${(Math.max(f.w, o.size * 4) / W) * 100}%`,
-        minHeight: `${(f.h / H) * 100}%`,
-        font: o.font.replace(/[\d.]+px/, `${Math.max(8, o.size * scale)}px`),
-        lineHeight: 1.2,
+        width: `${w}px`,
+        height: `${h}px`,
+        font,
+        lineHeight: LINE_HEIGHT,
         textAlign: o.align,
+        caretColor: o.colour,
       }}
       onPointerDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.currentTarget.value;
+        latest.current = v;
+        setValue(v);
+        typeText(v);
+      }}
       onKeyDown={onKey}
       onBlur={(e) => commit(e.currentTarget.value)}
     />
@@ -956,6 +1134,8 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
       const s = { ...cur.style, ...patch };
       for (const k of Object.keys(s) as (keyof typeof s)[]) if (s[k] === undefined) delete s[k];
       const { style: _s, ...rest } = cur;
+      // An auto-width box keeps where it is drawn: its edge for the new alignment stays put.
+      if (cur.sizing === 'auto' && frame) rest.box = textBoxFor(layout, frame);
       return Object.keys(s).length > 0 ? { ...rest, style: s } : rest;
     });
   const size = textSizeOf(layout, id) * 100;
@@ -1393,6 +1573,11 @@ export function ToolRow() {
           </button>
         ))}
       </div>
+      {tool === 'text' && (
+        <span className="ws-tool-hint" role="status" data-testid="text-tool-hint">
+          Click to place text · drag to set its width · Esc to cancel
+        </span>
+      )}
       <div className="seg ws-align" role="group" aria-label="Align to the margins">
         {ALIGN_BUTTONS.map(([k, label, glyph]) => (
           <button
