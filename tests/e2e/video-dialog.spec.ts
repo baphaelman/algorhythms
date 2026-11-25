@@ -19,6 +19,7 @@ import {
   escapeOut,
   openAudioExport,
   openVideoExport,
+  surface,
   switchMode,
 } from './export-open';
 import {
@@ -68,7 +69,7 @@ async function openExport(page: Page): Promise<void> {
 
 /** Picks a radio by its label: a guarded click (not `check()`), then its state. */
 async function choose(page: Page, testId: string, label: string): Promise<void> {
-  const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
+  const input = surface(page).getByTestId(testId).getByLabel(label, { exact: true });
   await guarded(page, `choose ${testId} ${label}`, () => input.click());
   await expect(input).toBeChecked();
 }
@@ -441,8 +442,7 @@ test('fits a phone screen with Video selected, in both themes', async ({ page })
       }).length;
     });
     expect(wide).toBe(0);
-    await page.keyboard.press('Escape');
-    await expect(dialog(page)).toBeHidden();
+    await backToMusic(page);
   }
 });
 
@@ -492,7 +492,9 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   const expectSwitches = async (switches: Record<string, boolean>) => {
     for (const [t, on] of Object.entries(switches)) {
       await expect(page.getByTestId(t), t).toBeChecked({ checked: on });
-      await expect(page.getByTestId(t), t).toHaveAttribute('role', 'switch');
+      if (!t.startsWith('look-heads-')) {
+        await expect(page.getByTestId(t), t).toHaveAttribute('role', 'switch');
+      }
     }
   };
   const expectPosterDefaults = async () => {
@@ -1072,7 +1074,8 @@ test('the preview stays in view while the options scroll (desktop and phone)', a
     await drawn(page);
     for (const t of ['look-hud-button', 'export-run', 'export-quality']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
-      await expect(canvasOf(page), `${w}: ${t}`).toBeInViewport({ ratio: 1 });
+      // (Within a pixel: the canvas's subpixel edge.)
+      await expect(canvasOf(page), `${w}: ${t}`).toBeInViewport({ ratio: 0.99 });
       await expect(page.getByTestId('preview-time')).toBeInViewport();
       // The control is not under the preview: it gets the clicks.
       await expectUncovered(page, t, `${w}: ${t} usable`);

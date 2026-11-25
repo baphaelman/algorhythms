@@ -6,7 +6,15 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { openPoster, openVideoExport, workspace } from './export-open';
+import {
+  backToMusic,
+  escapeOut,
+  openPoster,
+  openVideoExport,
+  surface,
+  switchMode,
+  workspace,
+} from './export-open';
 
 /** The workspace's Video mode (M15: the old Export dialog's place). */
 const dialog = (page: Page) => page.getByTestId('video-workspace');
@@ -69,7 +77,7 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
   await page.keyboard.press('ArrowRight');
   await expect(dialog(page)).toBeVisible();
   await expect.poll(async () => (await focused(page)).id).toBe('export-mode');
-  await expect(dialog(page).getByTestId('export-mode').getByLabel('Video')).toBeChecked();
+  await expect(page.getByTestId('export-mode').getByLabel('Video')).toBeChecked();
   await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   // Open the collapsible groups by keys, so every control is a stop.
   for (const id of ['look-hud-button', 'bookends-button']) {
@@ -77,7 +85,14 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
     await page.keyboard.press('Enter');
     await expect(page.getByTestId(id)).toHaveAttribute('aria-expanded', 'true');
   }
-  await dialog(page).getByTestId('export-mode').getByLabel('Video').focus();
+  // From Poster | Video (in the top bar), Tab enters the workspace.
+  await page.getByTestId('export-mode').getByLabel('Video').focus();
+  const inside = () =>
+    page.evaluate(() => {
+      const d = document.querySelector('[data-testid=video-workspace]')!;
+      return d.contains(document.activeElement) && document.activeElement !== d;
+    });
+  for (let i = 0; i < 10 && !(await inside()); i++) await page.keyboard.press(TAB);
 
   interface Stop {
     id: string;
@@ -101,13 +116,15 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
       };
       const seg = a.closest('.seg label');
       const r = a.getBoundingClientRect();
+      // Each panel scrolls on its own: positions in its content.
+      const panel = a.closest<HTMLElement>('.ws-side, .ws-bottom');
       return {
         id:
           a.getAttribute('data-testid') ??
           a.closest('[data-testid]')?.getAttribute('data-testid') ??
           a.tagName,
         x: r.left,
-        y: r.top + d.scrollTop,
+        y: r.top + d.scrollTop + (panel?.scrollTop ?? 0),
         ring: shows(a) || (seg !== null && shows(seg)),
       };
     });
@@ -116,37 +133,30 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
     await page.keyboard.press(TAB);
   }
   const ids = stops.map((s) => s.id);
-  // Every group in order: Poster | Video, the preview (HUD boxes, play, time, thumbnail,
-  // description), then the options column top to bottom, ending on Close and Export.
+  // Every group in order (M15): the stage (HUD boxes, play, time), the options panel top to
+  // bottom (the look is Poster's), then the timeline, ending on Export MP4.
   const order = [
-    'export-mode',
     'hud-box-formula',
     'preview-play',
     'preview-time',
-    'export-thumbnail',
-    'export-description',
     'export-preset',
-    'export-section',
     'export-aspect',
     'export-vsize',
     'export-quality',
+    'video-frame',
     'export-camera',
-    'export-loudness',
-    'export-vtheme',
-    'look-guides',
-    'look-glow',
-    'look-pitch-input',
+    'look-future',
     'look-hud-button',
     'hud-formula',
-    'scheme-theme',
-    'look-bg',
-    'swatch-hud-hex',
-    'look-reset',
+    'export-loudness',
     'bookends-button',
     'vb-fade-in',
     'vb-title-card',
     'vb-end-card',
-    'export-close',
+    'export-thumbnail',
+    'export-description',
+    'export-section',
+    'card-music',
     'export-run',
   ];
   const at = order.map((id) => ids.indexOf(id));
@@ -155,23 +165,22 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
     `missing: ${order.filter((_, k) => at[k] < 0)}`,
   ).toBe(true);
   expect(at).toEqual([...at].sort((a, b) => a - b));
-  expect(stops.length).toBeGreaterThan(60);
+  expect(stops.length).toBeGreaterThan(30);
   // Each stop shows a ring.
   expect(stops.filter((s) => !s.ring).map((s) => s.id)).toEqual([]);
-  // The options column reads top to bottom.
-  const opts = stops.slice(ids.indexOf('export-preset'));
+  // The options panel reads top to bottom.
+  const opts = stops.slice(ids.indexOf('export-preset'), ids.indexOf('export-section'));
   for (let k = 1; k < opts.length; k++) {
     expect(opts[k].y, `${opts[k - 1].id} → ${opts[k].id}`).toBeGreaterThanOrEqual(
       opts[k - 1].y - 40,
     );
   }
-  // Escape closes; focus returns to the menu button.
-  await page.keyboard.press('Escape');
-  await expect(dialog(page)).toBeHidden();
+  // Escape leaves the focused control, then the workspace; focus returns to the menu button.
+  await escapeOut(page);
   await expect(page.getByTestId('menu-button')).toBeFocused();
 });
 
-test('every control by keyboard redraws the preview and keeps focus in the dialog', async ({
+test('every control by keyboard redraws the preview and keeps focus in the workspace', async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -180,8 +189,22 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
   await openDialog(page, 'Video (MP4)');
   const key = (k: string) => page.keyboard.press(k);
   const radio = (id: string, label: string) =>
-    dialog(page).getByTestId(id).getByLabel(label, { exact: true }).focus();
+    surface(page).getByTestId(id).getByLabel(label, { exact: true }).focus();
   const at = (id: string) => page.getByTestId(id).focus();
+  /**
+   * M15: the look's controls are Poster's, the moving ones Video's; each mode's preview redraws.
+   * Back in Video, One row (a poster edit would make Over the poster the frame).
+   */
+  const mode = async (m: 'Poster' | 'Video') => {
+    await switchMode(page, m);
+    await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
+    if (m === 'Video') {
+      const row = dialog(page).getByTestId('video-frame').getByLabel('One row', { exact: true });
+      if (!(await row.isChecked())) await row.click();
+      await expect(row).toBeChecked();
+    }
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  };
   /** Runs `act`, then expects a redraw and focus on `on` (default: the control acted on). */
   const step = async (name: string, act: () => Promise<void>, on?: string, redraw = true) => {
     const before = await draws(page);
@@ -267,6 +290,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'export-window',
   );
+  await mode('Poster');
   await step(
     'theme Dark',
     async () => {
@@ -291,6 +315,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'look-beats',
   );
+  await mode('Video');
   await step(
     'ahead',
     async () => {
@@ -315,6 +340,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'look-heads-rings',
   );
+  await mode('Poster');
   await step(
     'width',
     async () => {
@@ -360,6 +386,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     await key('Enter');
   });
   expect((await focused(page)).id).toMatch(/^look-pitch-/);
+  await mode('Video');
   await step(
     'HUD open',
     async () => {
@@ -394,6 +421,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'hud-default',
   );
+  await mode('Poster');
   await step(
     'scheme Night',
     async () => {
@@ -467,6 +495,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'swatch-hud-hex',
   );
+  await mode('Video');
   // The YouTube preset opened Opening & ending; Enter closes and reopens it.
   for (const want of ['false', 'true']) {
     await at('bookends-button');
@@ -528,6 +557,7 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
     },
     'preview-time',
   );
+  await mode('Poster');
   await step(
     'look reset',
     async () => {
@@ -750,37 +780,42 @@ for (const [w, h] of SIZES) {
         await openDialog(page, format);
         await page.getByTestId('look-hud-button').click();
         await page.getByTestId('bookends-button').click();
+        // M15: the stage, the options panel and the timeline never overlap; nothing sticks out.
         const m = await page.evaluate(() => {
           const d = document.querySelector<HTMLElement>('[data-testid=video-workspace]')!;
-          const pv = d.querySelector('[data-testid=export-preview]')!.getBoundingClientRect();
-          const opts = d.querySelector('.export-options')!.getBoundingClientRect();
-          const over = [...d.querySelectorAll<HTMLElement>('.export-options *')]
-            .filter((el) => el.getClientRects().length > 0 && !el.closest('.visually-hidden'))
-            .filter((el) => el.getBoundingClientRect().right > opts.right + 1)
-            .map((el) => el.getAttribute('data-testid') ?? el.className ?? el.tagName);
-          const bg = getComputedStyle(d).backgroundColor;
-          const ink = getComputedStyle(d.querySelector('h2')!).color;
+          d.scrollTop = 0;
+          const box = (sel: string) => d.querySelector(sel)!.getBoundingClientRect();
+          const stage = box('.video-stage');
+          const side = box('.ws-side');
+          const bottom = box('.ws-bottom');
+          const meets = (a: DOMRect, b: DOMRect) =>
+            a.right > b.left + 0.5 &&
+            a.left < b.right - 0.5 &&
+            a.bottom > b.top + 0.5 &&
+            a.top < b.bottom - 0.5;
+          const over = ['.ws-side', '.ws-bottom'].flatMap((sel) => {
+            const r = box(sel);
+            return [...d.querySelector(sel)!.querySelectorAll<HTMLElement>('*')]
+              .filter((el) => el.getClientRects().length > 0 && !el.closest('.visually-hidden'))
+              .filter((el) => el.getBoundingClientRect().right > r.right + 1)
+              .map((el) => el.getAttribute('data-testid') ?? el.className ?? el.tagName);
+          });
+          const panel = d.querySelector('.ws-side')!;
           return {
             sideways:
               d.scrollWidth > d.clientWidth + 1 ||
               document.documentElement.scrollWidth > innerWidth,
-            overlap:
-              innerWidth >= 900 &&
-              pv.right > opts.left &&
-              pv.left < opts.right &&
-              pv.bottom > opts.top &&
-              pv.top < opts.bottom,
+            overlap: meets(stage, side) || meets(stage, bottom) || meets(side, bottom),
             over: over.slice(0, 5),
-            bg,
-            ink,
+            bg: getComputedStyle(panel).backgroundColor,
+            ink: getComputedStyle(panel.querySelector('legend')!).color,
           };
         });
         expect(m.sideways, format).toBe(false);
         expect(m.overlap, format).toBe(false);
         expect(m.over, format).toEqual([]);
         expect(m.bg).not.toBe(m.ink);
-        // Scrolled to the end of the options, the preview is still fully on screen.
-        await dialog(page).evaluate((d) => (d.scrollTop = d.scrollHeight));
+        // Scrolled to Export MP4, the preview is still fully on screen.
         await page.getByTestId('export-run').scrollIntoViewIfNeeded();
         const c = (await page.getByTestId('preview-canvas').boundingBox())!;
         expect(c.y, format).toBeGreaterThanOrEqual(0);
@@ -789,11 +824,11 @@ for (const [w, h] of SIZES) {
         // The Export button is reachable without covering by the preview.
         const run = (await page.getByTestId('export-run').boundingBox())!;
         expect(run.y + run.height).toBeLessThanOrEqual(h);
-        if (w < 900) expect(run.y).toBeGreaterThanOrEqual(c.y + c.height);
+        if (w < 1100) expect(run.y).toBeGreaterThanOrEqual(c.y + c.height);
       }
       // The poster workspace: the artboard and the options never overlap; the poster stays fully
       // on screen with the options scrolled to Export (narrow: stacked, the artboard on top).
-      await page.getByTestId('export-close').click();
+      await backToMusic(page);
       await openDialog(page, 'Poster');
       await page.getByTestId('look-hud-button').click();
       const p = await page.evaluate(() => {
