@@ -13,7 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { openAudioExport, openVideoExport } from './export-open';
+import { backToMusic, openAudioExport, openVideoExport, switchMode } from './export-open';
 import {
   chooseSegment,
   clickExportForDownload,
@@ -66,10 +66,24 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
   await expect(input).toBeChecked();
 }
 
-/** The Look section (always shown for video and poster). */
+/** The video's Moving options (M15: the rest of the Look is the poster's). */
 async function openLook(page: Page): Promise<void> {
-  await expect(page.getByTestId('look-reset')).toBeAttached();
+  await expect(dialog(page).getByTestId('look')).toBeAttached();
 }
+
+/**
+ * Does `act` in Poster (where the look lives since M15), then comes back to Video and keeps One
+ * row: a poster edit gives the piece a poster, which would make Over the poster its frame.
+ */
+async function inPoster(page: Page, act: () => Promise<void>): Promise<void> {
+  await switchMode(page, 'Poster');
+  await act();
+  await switchMode(page, 'Video');
+  await oneRow(page);
+}
+
+/** Frame: One row. */
+const oneRow = (page: Page) => choose(page, 'video-frame', 'One row');
 
 /** Expands the HUD's readout list. */
 const openHud = (page: Page) => setHudOpen(page, true);
@@ -151,19 +165,21 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
   await openExport(page);
   const d = dialog(page);
   // A piece without a camera exports with Auto (M11.5).
-  for (const label of ['16:9', '1080p', '30 fps', 'Auto', 'Current']) {
+  for (const label of ['16:9', '1080p', '30 fps', 'Auto', 'One row']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
-  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Follow', 'Keys', 'Light', 'Dark']) {
+  for (const label of ['9:16', '1:1', '720p', '60 fps', 'Follow', 'Keys', 'Over the poster']) {
     await expect(d.getByLabel(label, { exact: true })).not.toBeChecked();
   }
+  // The theme and the rest of the look are the poster's (M15).
+  await expect(d.getByTestId('export-vtheme')).toHaveCount(0);
   // "Whole piece" also names the Section's default.
   const camera = d.getByTestId('export-camera');
   await expect(camera.getByLabel('Whole piece', { exact: true })).not.toBeChecked();
   await openLook(page);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).toBeChecked();
-  await expect(page.getByTestId('look-thickness')).toBeChecked();
+  await expect(page.getByTestId('look-thickness')).toHaveCount(0);
   await expect(page.getByTestId('export-depth')).toHaveCount(0);
   await expect(page.getByTestId('export-codec')).toHaveText(/^(H\.264|VP9) \+ (AAC|Opus)$/);
   const big = Number(
@@ -174,7 +190,7 @@ test('offers Video (MP4) with its options, the codecs and the size', async ({ pa
     /Up to ([\d.]+) MB/.exec(await page.getByTestId('export-size').innerText())![1],
   );
   expect(small).toBeLessThan(big * 0.6);
-  await expect(page.getByTestId('export-run')).toHaveText('Export video');
+  await expect(page.getByTestId('export-run')).toHaveText('Export MP4');
   await expect(page.getByTestId('export-run')).toBeEnabled();
 });
 
@@ -182,10 +198,10 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await loadShortPiece(page, 3);
   await setZoom(page, 5);
   await openExport(page);
+  await inPoster(page, () => choose(page, 'export-vtheme', 'Dark'));
   await choose(page, 'export-camera', 'Follow');
   await choose(page, 'export-aspect', '9:16');
   await choose(page, 'export-vsize', '720p');
-  await choose(page, 'export-vtheme', 'Dark');
   await openHud(page);
   await tap(page, 'hud-none');
   const download = await clickExportForDownload(page);
@@ -200,6 +216,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
     fps: 30,
     quality: 'high',
     camera: 'follow',
+    frame: 'row',
     window: 5,
     theme: 'dark',
     hud: false,
@@ -214,7 +231,7 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
 
   // Whole piece sends no window; Light is passed as is.
   await choose(page, 'export-camera', 'Whole piece');
-  await choose(page, 'export-vtheme', 'Light');
+  await inPoster(page, () => choose(page, 'export-vtheme', 'Light'));
   await choose(page, 'export-fps', '60 fps');
   await clickExportForDownload(page);
   const whole = (await lastRequest(page))!.options;
@@ -286,7 +303,7 @@ test('without WebCodecs it says why and disables Export for video only', async (
   await expect(page.getByTestId('export-unsupported')).toContainText('no video encoder');
   await expect(page.getByTestId('export-run')).toBeDisabled();
   await expect(page.getByTestId('export-size')).toHaveCount(0);
-  await page.getByTestId('export-close').click();
+  await backToMusic(page);
   await openAudioExport(page);
   await expect(page.getByTestId('export-unsupported')).toHaveCount(0);
   await expect(page.getByTestId('export-run')).toBeEnabled();
@@ -343,37 +360,41 @@ test('Cancel stops a video export; the picked file is left empty (Chromium)', as
   }
 });
 
-test('Escape cancels a running video export and closes the dialog', async ({ page }) => {
+test('Escape cancels a running video export and leaves the workspace', async ({ page }) => {
   await openExport(page);
   let downloads = 0;
   page.on('download', () => downloads++);
   await page.getByTestId('export-run').click();
   await expect(page.getByTestId('export-status')).toContainText(/\d+%/, { timeout: 30_000 });
+  // The first Escape leaves a focused control (if any), the next leaves the workspace.
   await page.keyboard.press('Escape');
+  if (await dialog(page).isVisible()) await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
-  await expect(page.getByTestId('menu-button')).toBeFocused();
   await page.waitForTimeout(800);
   expect(downloads).toBe(0);
   await openExport(page);
   await expect(page.getByTestId('export-progress')).toHaveCount(0);
-  await expect(page.getByTestId('export-run')).toHaveText('Export video');
+  await expect(page.getByTestId('export-run')).toHaveText('Export MP4');
 });
 
 test('remembers the video choices across closing and other formats', async ({ page }) => {
   await openExport(page);
+  await inPoster(page, async () => {
+    await choose(page, 'export-vtheme', 'Light');
+    await setSwitch(page, 'look-thickness', false);
+  });
   await choose(page, 'export-aspect', '1:1');
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-fps', '60 fps');
   await choose(page, 'export-camera', 'Whole piece');
-  await choose(page, 'export-vtheme', 'Light');
   await openHud(page);
   await tap(page, 'hud-none');
-  await setSwitch(page, 'look-thickness', false);
+  await backToMusic(page);
+  await openAudioExport(page);
   await page.getByTestId('export-close').click();
-  await expect(dialog(page)).toBeHidden();
   await openExport(page);
   const d = dialog(page);
-  for (const label of ['1:1', '720p', '60 fps', 'Light']) {
+  for (const label of ['1:1', '720p', '60 fps', 'One row']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
   }
   await expect(
@@ -382,6 +403,10 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await expect(page.getByTestId('look-hud-button')).toHaveText(/None/);
   await openHud(page);
   for (const it of DEFAULT_HUD) await expect(page.getByTestId(`hud-${it}`)).not.toBeChecked();
+  await switchMode(page, 'Poster');
+  await expect(
+    page.getByTestId('export-vtheme').getByLabel('Light', { exact: true }),
+  ).toBeChecked();
   await expect(page.getByTestId('look-thickness')).not.toBeChecked();
 });
 
@@ -399,7 +424,7 @@ test('fits a phone screen with Video selected, in both themes', async ({ page })
     expect(box.y + box.height).toBeLessThanOrEqual(640);
     expect(await dialog(page).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     // Every control is reachable (the dialog scrolls vertically).
-    for (const t of ['look-reset', 'look-hud-button', 'look-follow-at', 'export-run']) {
+    for (const t of ['look-future', 'look-hud-button', 'look-follow-at', 'export-run']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
       await expect(page.getByTestId(t)).toBeInViewport();
     }

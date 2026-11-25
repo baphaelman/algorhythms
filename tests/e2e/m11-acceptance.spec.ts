@@ -332,7 +332,23 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
   await load(page, 'kite-day');
   await openExport(page, 'Video (MP4)');
   await choose(page, 'export-camera', 'Whole piece');
+  // M15: the look is the poster's (set in Poster); the video reads it. One row, as before.
+  await switchMode(page, 'Poster');
   await shapeLook(page);
+  await switchMode(page, 'Video');
+  await choose(page, 'video-frame', 'One row');
+  await expect(
+    dialog(page).getByTestId('export-camera').getByLabel('Whole piece', { exact: true }),
+  ).toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const h = (window as unknown as HookWindow).__algorhythms;
+        const req = (await h.exportRun()).lastPreviewRequest();
+        return req?.kind === 'video' && (req.options.look?.glow ?? 0) > 0.5;
+      }),
+    )
+    .toBe(true);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 80))));
 
   // Video. The live preview is the preview code at its scale; that code at the export's scale is

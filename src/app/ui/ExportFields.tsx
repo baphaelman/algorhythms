@@ -58,6 +58,7 @@ import {
   type LookSlider,
 } from '../look-controls';
 import { EXPORT_MODES, type ExportMode } from '../export-surface';
+import { resetPosterLook } from '../poster-doc';
 import { cameraOf, loopRegion, usePlayer } from '../store';
 import { ColoursGroup } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
@@ -472,7 +473,11 @@ export function LookPanel({
         className="look-reset"
         data-testid="look-reset"
         onClick={() => {
-          useExportUi.setState((s) => ({ form: resetLook(s.form), run: IDLE }));
+          useExportUi.setState((s) => ({
+            form:
+              kind === 'poster' ? resetPosterLook(s.form, resetLook(s.form)) : resetLook(s.form),
+            run: IDLE,
+          }));
           saveExportPrefs(useExportUi.getState().form);
         }}
       >

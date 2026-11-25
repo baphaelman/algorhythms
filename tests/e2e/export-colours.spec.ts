@@ -2,7 +2,8 @@
  * Export colours (PLAN.md §12 "Exports you can shape" → Colours, §15 M11): schemes, a swatch
  * edit shows Custom, save / reapply / delete a scheme (remembered), the contrast warning, and a
  * gradient background in the preview, an exported video frame and a downloaded poster PNG.
- * $COLOURS_SHOTS_DIR gets two screenshots of the dialog for review.
+ * M15: the colours are the poster's (Poster mode); the video reads them.
+ * $COLOURS_SHOTS_DIR gets two screenshots of the workspace for review.
  */
 
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -76,8 +77,33 @@ test.beforeEach(async ({ page }) => {
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await switchMode(page, 'Video');
+  await switchMode(page, 'Poster');
 });
+
+type Look = NonNullable<
+  NonNullable<ReturnType<typeof ExportRun.lastPreviewRequest>>['options']['look']
+>;
+
+/**
+ * Switches to Video, waits until its preview has drawn with a Look that passes `ok`, and
+ * switches back to Poster: the video reads the poster's colours.
+ */
+async function videoLook(page: Page, ok: (l: Look) => boolean): Promise<void> {
+  await switchMode(page, 'Video');
+  const read = () =>
+    page.evaluate(async () => {
+      const r = await (window as unknown as HookWindow).__algorhythms.exportRun();
+      const req = r.lastPreviewRequest();
+      return req?.kind === 'video' ? req.options.look! : null;
+    });
+  await expect
+    .poll(async () => {
+      const l = await read();
+      return l !== null && ok(l);
+    })
+    .toBe(true);
+  await switchMode(page, 'Poster');
+}
 
 test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered', async ({
   page,
@@ -94,18 +120,13 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
     mkdirSync(shots, { recursive: true });
     await dialog(page).screenshot({ path: join(shots, 'export-colours-scheme.png') });
   }
-  // The scheme reaches the export's Look.
-  const look = () =>
-    page.evaluate(async () => {
-      const r = await (window as unknown as HookWindow).__algorhythms.exportRun();
-      return r.lastPreviewRequest()!.options.look!;
-    });
-  await expect.poll(async () => (await look()).colours?.hud).toBe('#c8d2e8');
+  // The scheme reaches the video's Look.
+  await videoLook(page, (l) => l.colours?.hud === '#c8d2e8');
 
   await setHex(page, 'swatch-hud', '#ffffff');
   await expect(scheme(page)).toHaveAttribute('data-value', 'custom');
   await expect(page.getByTestId('scheme-custom')).toBeVisible();
-  await expect.poll(async () => (await look()).colours?.hud).toBe('#ffffff');
+  await videoLook(page, (l) => l.colours?.hud === '#ffffff');
 
   await page.getByTestId('colours-scheme-name').fill('Moonlit');
   await tap(page, 'colours-scheme-save');
@@ -122,7 +143,7 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await switchMode(page, 'Video');
+  await switchMode(page, 'Poster');
   await expect(scheme(page)).toHaveAttribute('data-value', 'saved:Moonlit');
   await tap(page, 'scheme-delete-Moonlit');
   await expect(page.getByTestId('scheme-saved-Moonlit')).toHaveCount(0);
@@ -132,7 +153,7 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
   await expect(page.getByTestId('swatch-hud')).toHaveAttribute('data-set', 'no');
   await tap(page, 'scheme-theme');
   await expect(scheme(page)).toHaveAttribute('data-value', 'theme');
-  await expect.poll(async () => (await look()).colours).toBeUndefined();
+  await videoLook(page, (l) => l.colours === undefined);
 });
 
 test('swatches are labelled and keyboard reachable; low contrast warns', async ({
@@ -184,6 +205,8 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
     mkdirSync(shots, { recursive: true });
     await dialog(page).screenshot({ path: join(shots, 'export-colours-gradient.png') });
   }
+  // The video reads the poster's background.
+  await switchMode(page, 'Video');
   const preview = () =>
     page.evaluate((src) => {
       const c = document.querySelector<HTMLCanvasElement>('[data-testid=preview-canvas]')!;
@@ -220,11 +243,12 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
     { b64: png, src: ENDS },
   );
   expectRedToBlue(poster, 'poster PNG');
-  // Transparent stays a poster-only fourth choice.
+  // Transparent is a poster-only fourth choice: the video keeps the gradient.
   await chooseSegment(page, 'look-bg', 'Transparent');
-  await switchMode(page, 'Video');
-  await expect(page.getByTestId('look-bg')).toHaveAttribute('data-value', 'gradient');
-  await expect(page.getByTestId('look-bg').getByLabel('Transparent', { exact: true })).toHaveCount(
-    0,
+  await videoLook(
+    page,
+    (l) =>
+      !l.transparent &&
+      ['gradient', 'linear', 'radial'].includes(l.colours?.background?.kind ?? 'none'),
   );
 });

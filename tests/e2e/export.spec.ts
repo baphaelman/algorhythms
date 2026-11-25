@@ -13,8 +13,7 @@ import { parseWavHeader } from '../../src/audio/wav';
 import { generate } from '../../src/core/generate';
 import './app-hook';
 
-/** The workspace's Video mode (M15: the old Export dialog's place). */
-const dialog = (page: Page) => page.getByTestId('video-workspace');
+const dialog = (page: Page) => page.getByTestId('export-dialog');
 
 /** Menu → Export audio… (M14); the exporter loads on demand, the button is enabled once it has. */
 const openExport = openAudioExport;

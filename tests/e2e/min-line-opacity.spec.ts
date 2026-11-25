@@ -2,7 +2,7 @@
  * Minimum line opacity (PLAN.md §12 "Ready for YouTube", revision 17; §15 M11): the Look slider
  * reaches the preview, an exported video frame and the poster PNG, and each draws Kite Day's
  * pulsed lines (pulse floor 0.5, 48–86 s) brighter between hits; the preview is the export's
- * frame.
+ * frame. M15: the slider is the poster's (Poster mode); the video reads it.
  */
 
 import { readFileSync } from 'node:fs';
@@ -59,38 +59,42 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
   page,
 }) => {
   test.setTimeout(90_000);
-  await switchMode(page, 'Video');
   const slider = page.getByTestId('look-min-opacity');
+  await switchMode(page, 'Poster');
   await expect(slider).toHaveValue('0');
   await expect(page.getByTestId('look-min-opacity-value')).toHaveText('Off');
-  await page.getByTestId('preview-time').fill('60');
+  await switchMode(page, 'Video');
   const canvas = page.getByTestId('preview-canvas');
-  const drawn = async (act: () => Promise<void>) => {
-    const before = Number(await canvas.getAttribute('data-draws'));
-    await act();
-    await expect
-      .poll(async () => Number(await canvas.getAttribute('data-draws')))
-      .toBeGreaterThan(before);
-  };
   const previewInk = () =>
     canvas.evaluate(
       (c: HTMLCanvasElement, src) =>
         (0, eval)(src)(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data) as number,
       INK,
     );
-  // The preview has drawn at 60 s.
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const h = (window as unknown as HookWindow).__algorhythms;
-        const req = (await h.exportRun()).lastPreviewRequest();
-        return req?.kind === 'video' ? req.t : NaN;
-      }),
-    )
-    .toBeCloseTo(60, 3);
+  /** The preview has drawn at 60 s with this minimum. */
+  const drawnAt60 = async (min: number | undefined) => {
+    await page.getByTestId('preview-time').fill('60');
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const h = (window as unknown as HookWindow).__algorhythms;
+          const req = (await h.exportRun()).lastPreviewRequest();
+          return req?.kind === 'video' ? [req.t, req.options.look?.minLineOpacity ?? 0] : null;
+        }),
+      )
+      .toEqual([expect.closeTo(60, 3), min ?? 0]);
+    await expect(canvas).toHaveAttribute('data-draws', /\d+/);
+    await page.waitForTimeout(200);
+  };
+  await drawnAt60(0);
   const plain = await previewInk();
-  await drawn(() => slider.fill('90'));
+  // Set in Poster; the video's preview reads it.
+  await switchMode(page, 'Poster');
+  await slider.fill('90');
   await expect(page.getByTestId('look-min-opacity-value')).toHaveText('90 %');
+  await switchMode(page, 'Video');
+  await expect(slider).toHaveCount(0);
+  await drawnAt60(0.9);
   const lifted = await previewInk();
   expect(lifted, 'preview').toBeGreaterThan(plain * 1.05);
 
@@ -121,7 +125,7 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
   expect(r.bad, 'preview vs export frame').toBeLessThan(0.002);
   expect(r.on, 'video frame').toBeGreaterThan(r.off * 1.05);
 
-  // The poster: remembered across formats; brighter than at 0.
+  // The poster: the same slider; brighter than at 0.
   await switchMode(page, 'Poster');
   await expect(slider).toHaveValue('90');
   const on = await pngInk(page, (await (await clickExportForDownload(page)).path())!);

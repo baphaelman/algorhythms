@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_EXPORT_FORM,
   parsePrefs,
+  resetLook,
   videoOptions,
   type ExportForm,
 } from '../../../src/app/export-options';
@@ -33,6 +34,7 @@ import {
   formWithDoc,
   posterFields,
   posterLook,
+  resetPosterLook,
 } from '../../../src/app/poster-doc';
 
 describe('video timeline (M15)', () => {
@@ -121,6 +123,20 @@ describe('the poster doc leaves the video’s own look to the viewer (M15 storag
     });
     expect(changedFields(a, c)).toEqual(['look']);
     expect(posterLook(DEFAULT_EXPORT_FORM.look)).not.toHaveProperty('future');
+  });
+
+  it('Poster’s Reset leaves the video’s own options', () => {
+    const form: ExportForm = {
+      ...DEFAULT_EXPORT_FORM,
+      format: 'poster',
+      look: { ...DEFAULT_EXPORT_FORM.look, ...video, glow: 0.4 },
+      videoFollowAt: 0.6,
+      videoHud: ['chord'],
+    };
+    const r = resetPosterLook(form, resetLook(form));
+    expect(r.look.glow).toBe(DEFAULT_EXPORT_FORM.look.glow);
+    for (const k of VIDEO_LOOK_KEYS) expect(r.look[k]).toEqual(form.look[k]);
+    expect(r).toMatchObject({ videoFollowAt: 0.6, videoHud: ['chord'], posterHud: [] });
   });
 });
 

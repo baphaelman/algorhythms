@@ -49,6 +49,21 @@ export const VIDEO_LOOK_KEYS = [
   'hzLabels',
 ] as const satisfies readonly (keyof ExportForm['look'])[];
 
+/**
+ * Poster's Reset to defaults (M15): resets the poster's look and leaves the video's own options
+ * (its Look keys, Playhead at, its readouts) as they were; they are set in Video, not here.
+ */
+export function resetPosterLook(form: ExportForm, reset: ExportForm): ExportForm {
+  const look: Record<string, unknown> = { ...reset.look };
+  for (const k of VIDEO_LOOK_KEYS) look[k] = form.look[k];
+  return {
+    ...reset,
+    look: look as ExportForm['look'],
+    videoFollowAt: form.videoFollowAt,
+    videoHud: form.videoHud,
+  };
+}
+
 /** `look` without the video's own keys. */
 export function posterLook(look: ExportForm['look']): Partial<ExportForm['look']> {
   const out: Record<string, unknown> = { ...look };
