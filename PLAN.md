@@ -1317,6 +1317,24 @@ These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, C
   - **Fades by default:** an establishing chord from silence fades in (default 0.5 s); tune rests and comebacks fade (about 0.2 s out, 50 ms in) instead of cutting in 20 ms; and `level` with `over: 0` gets a minimum 30 ms ramp. Each is an option.
 - *Accept when:* each item has a test that fails before it, and the gallery pieces that worked around these (Crease, Night Sleeper, Murmuration, Calling Changes) can drop their workarounds and still render within 0.5 dB per section.
 
+**M14. Export workspace (proposed 2026-11-24, owner's idea; order vs M13 set by the owner)**
+Export turns the editor into a poster or video workspace. The demo (`docs/design/export-workspace.html`) sets the look, with the owner's notes below.
+- **Entry:** Menu → Export opens the workspace with a Poster | Video choice at the top (it remembers the last one). "Back to music" (or Escape with nothing selected) returns to the editor. There is no permanent Music | Poster | Video switch (owner, 2026-11-24). Audio exports (WAV, stems, MIDI) stay a small dialog (Menu → Export audio…).
+- **Layout:** the score area becomes the preview, the poster artboard or the video frame.
+  - The **right panel** is how it looks: size, theme and colours, glow, vignette, guides, readouts, presets; for video also quality, frame rate and loudness.
+  - The **bottom panel** is what's on it. Poster: tools (select, text, align, snap, undo/redo) and layers. Video: a timeline with the section, camera keys, opening and ending cards and the thumbnail frame.
+  - The last button is Export PNG / SVG or Export MP4. Today's Export dialog goes; every option moves, none is lost.
+- **Keeping your place:** Video opens at the editor's playhead and zoom. Poster opens on the whole artboard, not the editor's zoom (owner). Back to music keeps the playhead.
+- **Poster layers stay live:** parts and lines are layers you can select, move, resize, hide and recolour, and changing the music updates them. Single notes aren't dragged here.
+  - **Resizing (owner):** eight handles. A corner scales both axes and an edge stretches one, from the opposite side; Shift keeps the proportions, Alt scales from the centre. Position and size are also typed numbers in the right panel.
+  - **Text boxes** (title, credits, free text): add, drag, edit in place; size, weight, alignment and colour. They replace the Title block switch (owner); a new poster starts with today's title block as text boxes.
+  - **No overlap by default (owner: A4 portrait's text covered the music):** the default layout reserves a band for the text and fits the music into the rest, at every size and row count. Moves you make are kept, as fractions of the artboard; when a size change makes your boxes overlap the music, a hint offers to re-fit.
+  - Snap guides to the artboard's edges and centre and to other objects.
+- **Colours are shared (owner):** a layer's colour applies in the video too. Position and size are poster-only; the video frames things with the camera.
+- **Stored in the piece,** like camera keys: text boxes, layer transforms, hidden layers, colours. Share links carry them; old pieces open with the default layout. PNG and SVG both draw it.
+- **Builders (integrator):** W1 workspace shell + Video (the dialog's video options move to the panels, the timeline goes at the bottom, the export e2e specs are rewritten) and W2 the layout model in `core`/`render` (piece field, schema, share link, PNG/SVG drawing, default fit) run in parallel; then W3 the Poster UI on the shell; then W4 acceptance.
+- *Accept when:* every option of today's Export dialog is reachable in the workspace; a video at the same settings draws the same frames as today's; at each quick size (16:9, square, A4 portrait) and 1–8 rows the default poster has no text over the music; corner, edge, Shift and Alt resizing work by mouse and by typed numbers; every poster edit undoes; the layout survives save, reload and a share link; a colour set on a poster layer shows in the video export; Back to music restores the playhead and zoom; the export specs pass on all three engines.
+
 **Later, in no order:**
 - the Drift texture;
 - Scala tunings;
@@ -1381,6 +1399,9 @@ The original questions follow for reference.
 ---
 
 ## 18. Changelog
+
+### Revision 19 (2026-11-24): export workspace (M14, proposed)
+- **M14:** the owner's Export workspace idea, after the demo: Export opens a Poster or Video workspace (no permanent three-mode switch), poster layers with corner/edge resizing, text boxes instead of the Title block switch, no text over the music by default, layer colours shared with the video.
 
 ### Revision 18 (2026-11-24): the owner's M12 listening notes
 - **Compose (M12 D3):** a Watch the composer checkbox replaces Skip; staggered section transitions; the detail sweep is optional; a lone part leads instead of looping.
