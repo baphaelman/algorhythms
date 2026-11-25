@@ -318,7 +318,8 @@ export function layerStyle(layout: PosterLayout, L: LayerLayout): ScoreStyle {
   return s;
 }
 
-function drawObject(
+/** Draws one line, label or text object of a layout (layers draw through `drawScore`). */
+export function drawObject(
   g: CanvasRenderingContext2D & { letterSpacing?: string },
   o: PosterObject,
 ): void {

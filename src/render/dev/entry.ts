@@ -20,6 +20,10 @@ import {
   type VideoSize,
 } from '../video';
 import { EXPORT_LOOK, pieceLook, type Look } from '../look';
+import { drawEndCard } from '../video';
+import { drawPosterLayout } from '../poster';
+import { layoutPoster, measureWith, type PosterLayout } from '../poster-layout';
+import type { PosterDoc, RowBreak } from '../../core/types';
 
 function compileExample(json: unknown): { score: CompiledScore; piece: Piece } {
   const parsed = parsePiece(json);
@@ -216,6 +220,16 @@ interface VideoOptions {
   voices?: number;
   /** Draw with EXPORT_LOOK and these changes (theme and thickness from above). */
   exportLook?: Partial<Look>;
+  /** Over the poster (M15): the poster laid out from these. */
+  poster?: {
+    rows: number;
+    size: { w: number; h: number };
+    doc?: PosterDoc;
+    rowBreak?: RowBreak;
+    playhead?: boolean;
+    /** The Window slider; absent = one row's height. */
+    window?: number;
+  };
 }
 
 function videoSetup(json: unknown, o: VideoOptions) {
@@ -250,7 +264,85 @@ function videoSetup(json: unknown, o: VideoOptions) {
     window: o.window,
     style,
   };
-  return { score, canvas, g, opts };
+  let layout: PosterLayout | null = null;
+  if (o.poster) {
+    const look: Look = {
+      ...EXPORT_LOOK,
+      theme: o.dark ? 'dark' : 'light',
+      thickness: o.thickness,
+      ...o.exportLook,
+    };
+    layout = layoutPoster({
+      compiled: score,
+      piece,
+      ...(o.poster.doc ? { doc: o.poster.doc } : {}),
+      look,
+      base: { rows: o.poster.rows, size: o.poster.size },
+      oklch: supportsOklch(),
+      measure: measureWith(new OffscreenCanvas(1, 1).getContext('2d')!),
+    });
+    opts.frame = 'poster';
+    opts.poster = layout;
+    if (o.poster.window !== undefined) opts.window = o.poster.window;
+    else delete opts.window;
+    if (o.poster.rowBreak) opts.rowBreak = o.poster.rowBreak;
+    if (o.poster.playhead !== undefined) opts.playhead = o.poster.playhead;
+  }
+  return { score, canvas, g, opts, layout };
+}
+
+/**
+ * The end card over the poster against the poster drawn by `drawPosterLayout` at the same scale
+ * and place: pixels compared inside the poster's box (count differing by more than 48 of 255 in
+ * any channel, and the mean difference).
+ */
+async function posterEndCard(json: unknown, o: VideoOptions) {
+  const { score, canvas, g, opts, layout } = videoSetup(json, o);
+  if (!layout) throw new Error('no poster');
+  const { width: w, height: h } = canvas;
+  drawEndCard(g, score, opts);
+  const a = g.getImageData(0, 0, w, h).data;
+  const k = Math.min(w / layout.width, h / layout.height);
+  const pw = Math.round(layout.width * k);
+  const ph = Math.round(layout.height * k);
+  const off = new OffscreenCanvas(Math.ceil(layout.width * k), Math.ceil(layout.height * k));
+  const og = off.getContext('2d')!;
+  drawPosterLayout(og, score, layout, k);
+  const x0 = (w - layout.width * k) / 2;
+  const y0 = (h - layout.height * k) / 2;
+  const ref = new OffscreenCanvas(w, h).getContext('2d')!;
+  ref.drawImage(off, x0, y0);
+  const b = ref.getImageData(0, 0, w, h).data;
+  let n = 0;
+  let sum = 0;
+  let total = 0;
+  for (let y = Math.ceil(y0) + 1; y < Math.floor(y0 + ph) - 1; y++)
+    for (let x = Math.ceil(x0) + 1; x < Math.floor(x0 + pw) - 1; x++) {
+      const i = (y * w + x) * 4;
+      const d = Math.max(
+        Math.abs(a[i] - b[i]),
+        Math.abs(a[i + 1] - b[i + 1]),
+        Math.abs(a[i + 2] - b[i + 2]),
+      );
+      if (d > 48) n++;
+      sum += d;
+      total++;
+    }
+  const url = async (c: OffscreenCanvas): Promise<string> => {
+    const blob = await c.convertToBlob({ type: 'image/png' });
+    return new Promise<string>((res) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result as string);
+      r.readAsDataURL(blob);
+    });
+  };
+  return {
+    differ: n,
+    mean: sum / Math.max(1, total),
+    total,
+    png: await url(canvas),
+    ref: await url(ref.canvas),
+  };
 }
 
 /** FNV-1a over the pixels. */
@@ -343,4 +435,5 @@ function videoBench(json: unknown, o: VideoOptions, n: number) {
   bundles,
   videoFrames,
   videoBench,
+  posterEndCard,
 };

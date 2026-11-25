@@ -1,9 +1,11 @@
 /**
  * Video export worker (PLAN.md §12): draws and encodes the frames (video-frames.ts) and posts the
  * encoded chunks to the page, which muxes them with the audio. The page acks each chunk once the
- * muxer has taken it; the worker stays at most `CREDIT` chunks ahead. Cancel: terminate.
+ * muxer has taken it; the worker stays at most `CREDIT` chunks ahead. Cancel: terminate. A
+ * poster's background picture comes decoded with the job (`FrameJob.pictures`).
  */
 
+import { setPictureImage } from '../render/background';
 import { encodeFrames, type FrameJob } from './video-frames';
 import type { Mp4Chunk, Mp4DecoderConfig } from '../video/mp4';
 
@@ -38,6 +40,7 @@ function canEncode(): boolean {
 }
 
 async function run(job: FrameJob): Promise<void> {
+  for (const p of job.pictures ?? []) setPictureImage(p.src, p.image);
   await encodeFrames(job, {
     output(chunk, meta) {
       sent++;
