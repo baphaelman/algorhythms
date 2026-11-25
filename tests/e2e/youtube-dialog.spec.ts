@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { openAudioExport, openVideoExport } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
 
@@ -42,14 +43,15 @@ async function openVideo(page: Page, example = 'kite-day'): Promise<void> {
   await openDialog(page, 'Video (MP4)');
 }
 
-async function openDialog(page: Page, format: string): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await choose(page, 'export-format', format);
-  if (format === 'Video (MP4)') {
-    await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
+/** Video: Menu → Export → Video; WAV: Menu → Export audio… (M14). */
+async function openDialog(page: Page, format: 'Video (MP4)' | 'WAV'): Promise<void> {
+  if (format === 'WAV') {
+    await openAudioExport(page);
+    await choose(page, 'export-format', format);
+    return;
   }
+  await openVideoExport(page);
+  await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
 }
 
 /** The preview's last request (options, score time, video time). */

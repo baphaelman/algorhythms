@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { openVideoExport } from './export-open';
 import type { CameraKey, PieceCamera } from '../../src/core/types';
 
 interface HookWindow {
@@ -50,10 +51,7 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 }
 
 async function openVideo(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(dialog(page)).toBeVisible();
-  await choose(page, 'export-format', 'Video (MP4)');
+  await openVideoExport(page);
 }
 
 test.beforeEach(async ({ page }) => {

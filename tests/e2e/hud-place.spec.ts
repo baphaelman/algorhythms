@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { openExport, surface, switchMode } from './export-open';
 import { clickExportForDownload, guarded, setHudOpen, setSwitch, tap } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
@@ -21,14 +22,7 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
-
-async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByTestId('export-run')).toBeEnabled();
-}
+const dialog = surface;
 
 async function choose(page: Page, testId: string, label: string): Promise<void> {
   const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
@@ -103,7 +97,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await ready(page, 6);
 });
 
@@ -300,7 +294,7 @@ test('the exported frame and poster put the readout where the preview shows it',
   expectInBox(video.ink, box, video.dpr, browserName);
 
   // Poster: the same layout (shared); the downloaded PNG.
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await setHudOpen(page, true);
   await setSwitch(page, 'hud-time', true);
   await ready(page, 1);

@@ -253,7 +253,7 @@ test(
 
     // 9. Export a WAV from the menu.
     await page.getByTestId('menu-button').click();
-    await page.getByTestId('open-export').click();
+    await page.getByTestId('open-export-audio').click();
     const dialog = page.getByTestId('export-dialog');
     await expect(dialog).toBeVisible();
     await expect(page.getByTestId('export-run')).toBeEnabled();

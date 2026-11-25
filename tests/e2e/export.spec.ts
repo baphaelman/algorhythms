@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { expect, test, type Download, type Page } from '@playwright/test';
+import { openAudioExport } from './export-open';
 import { clickExportForDownload } from './export-diag';
 import { parseWavHeader } from '../../src/audio/wav';
 import { generate } from '../../src/core/generate';
@@ -14,13 +15,8 @@ import './app-hook';
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
 
-async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  // The exporter loads on demand; the button is enabled once it has.
-  await expect(page.getByTestId('export-run')).toBeEnabled();
-}
+/** Menu → Export audio… (M14); the exporter loads on demand, the button is enabled once it has. */
+const openExport = openAudioExport;
 
 async function pickFormat(page: Page, label: 'WAV' | 'Stems' | 'MIDI'): Promise<void> {
   await dialog(page).getByTestId('export-format').getByLabel(label, { exact: true }).check();
@@ -82,9 +78,9 @@ test.beforeEach(async ({ page }) => {
 
 test('is a live menu item that opens a labelled dialog', async ({ page }) => {
   await page.getByTestId('menu-button').click();
-  await expect(page.getByTestId('open-export')).toBeEnabled();
-  await page.getByTestId('open-export').click();
-  const d = page.getByRole('dialog', { name: 'Export' });
+  await expect(page.getByTestId('open-export-audio')).toBeEnabled();
+  await page.getByTestId('open-export-audio').click();
+  const d = page.getByRole('dialog', { name: 'Export audio' });
   await expect(d).toBeVisible();
   for (const label of [
     'WAV',

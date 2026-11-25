@@ -73,6 +73,7 @@ import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
 import { dialogSpace, isSpace, spaceKey, type SpaceHeld } from './space-key';
+import { posterShown } from './export-surface';
 import { wheelIntent } from './wheel';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
 
@@ -568,6 +569,8 @@ export function attachKeys(): () => void {
       else redo();
       return;
     }
+    // The poster workspace (M14) has no editor under it: only undo and redo reach here.
+    if (posterShown()) return;
     // ⌘/Ctrl+C, X, V, A (./clipboard).
     if (!e.defaultPrevented && onClipboardKey(e)) return;
     // A key another handler already used (e.g. Escape closing a menu) is not an editor key.
@@ -627,7 +630,8 @@ export function attachKeys(): () => void {
     if (!isSpace(e)) return;
     // ⌘/Ctrl/Alt+Space belong to the system; a release always ends the hold.
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
-    const dialog = document.querySelector('dialog[open]') !== null;
+    // The poster workspace (M14) takes Space as a dialog does: its controls keep it.
+    const dialog = document.querySelector('dialog[open]') !== null || posterShown();
     const own = dialog ? dialogSpace() : null;
     const out = spaceKey(e, space, { editor: editorLayout(), dialog, dialogPlay: own !== null });
     if (!out.consume) return;

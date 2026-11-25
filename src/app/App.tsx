@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
 import { attachLiveKeys } from './live-ui';
 import { useCompose } from './compose';
@@ -10,6 +10,8 @@ import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
 import { ComposeSetup } from './ui/ComposeSetup';
 import { ExportDialog } from './ui/ExportDialog';
+import { PosterWorkspace, WorkspaceBar } from './ui/PosterWorkspace';
+import { useExportSurface } from './export-surface';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
 import { Lane } from './ui/Lane';
@@ -47,15 +49,63 @@ function useWide(): boolean {
   );
 }
 
+/** The editor's box (px, within `.app`) while the poster workspace covers it. */
+interface Frozen {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 /**
  * The player and editor (PLAN.md §11.1–§11.5). The editor layout puts the ruler, score and lane
  * rows in one `.timeline` box under a single DOM playhead; screens under 900 px get the player
- * only (score and scrubber, the canvas drawing the playhead).
+ * only (score and scrubber, the canvas drawing the playhead). Export's poster workspace (M14)
+ * takes the editor's place; the editor stays mounted underneath, hidden, inert and at its size,
+ * so its playhead, zoom and scroll are exactly as they were when it returns.
  */
 export function App() {
   const wide = useWide();
   const composing = useCompose((s) => s.open);
+  const poster = useExportSurface((s) => s.surface === 'poster');
   const timeline = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLElement>(null);
+  /** The editor's last box in the flow: where it stays, hidden, while the workspace shows. */
+  const box = useRef<Frozen | null>(null);
+
+  useLayoutEffect(() => {
+    const el = main.current;
+    if (!el) return;
+    el.inert = poster;
+    if (poster) {
+      const b = box.current;
+      if (b) {
+        el.style.left = `${b.left}px`;
+        el.style.top = `${b.top}px`;
+        el.style.width = `${b.width}px`;
+        el.style.height = `${b.height}px`;
+      }
+      return () => {
+        el.style.left = el.style.top = el.style.width = el.style.height = '';
+      };
+    }
+    const measure = () => {
+      box.current = {
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+      };
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      removeEventListener('resize', measure);
+    };
+  }, [poster]);
 
   useEffect(() => {
     startPersistence();
@@ -73,8 +123,12 @@ export function App() {
   useEffect(() => attachPinchZoom(timeline.current!), []);
 
   return (
-    <div className="app" data-layout={wide ? 'full' : 'player'}>
-      <Transport history={wide && <UndoRedo />}>
+    <div
+      className="app"
+      data-layout={wide ? 'full' : 'player'}
+      data-mode={poster ? 'poster' : undefined}
+    >
+      <Transport history={poster ? <WorkspaceBar /> : wide && <UndoRedo />}>
         <Menu />
       </Transport>
       <GeneratePanel />
@@ -85,7 +139,12 @@ export function App() {
       <ShareDialog />
       <SilentHint />
       <Notices />
-      <main className="workspace">
+      {poster && <PosterWorkspace />}
+      <main
+        ref={main}
+        className={poster ? 'workspace frozen' : 'workspace'}
+        aria-hidden={poster || undefined}
+      >
         {/* Everything on the shared time axis (§10); the editor's one playhead spans it all. */}
         <div ref={timeline} className="timeline" data-testid="timeline">
           {wide && <Ruler />}
@@ -98,10 +157,10 @@ export function App() {
         <ViewBar />
         {composing ? <ComposePanel /> : wide && <Inspector />}
       </main>
-      {wide && <VoicesDrawer />}
-      {wide && <SoundDrawer />}
-      {wide && <LiveDrawer />}
-      {wide && <TouchMenu />}
+      {wide && !poster && <VoicesDrawer />}
+      {wide && !poster && <SoundDrawer />}
+      {wide && !poster && <LiveDrawer />}
+      {wide && !poster && <TouchMenu />}
     </div>
   );
 }

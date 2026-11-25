@@ -18,6 +18,7 @@ import { allMomentIds } from './editor/selection';
 import { playheadTime, takesText } from './editor/shortcuts';
 import { announce, momentsText } from './announce';
 import { usePlayer } from './store';
+import { posterShown } from './export-surface';
 
 /** The last copied clip's text: pasted when the system clipboard gives nothing. */
 let inApp: string | null = null;
@@ -41,7 +42,12 @@ function textSelected(): boolean {
 
 /** True when a clipboard shortcut or event at `target` is the editor's. */
 function ours(target: EventTarget | null): boolean {
-  return editorLayout() && !takesText(target) && document.querySelector('dialog[open]') === null;
+  return (
+    editorLayout() &&
+    !posterShown() &&
+    !takesText(target) &&
+    document.querySelector('dialog[open]') === null
+  );
 }
 
 /** Copies (and with `cut`, deletes) the selected moments; false when none is selected. */

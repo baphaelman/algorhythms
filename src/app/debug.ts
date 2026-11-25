@@ -18,7 +18,7 @@ import { useCompose } from './compose';
 import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
-import { previewStats } from './ui/ExportDialog';
+import { previewStats } from './ui/export-state';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
 export interface AlgoRhythmsDebug {
