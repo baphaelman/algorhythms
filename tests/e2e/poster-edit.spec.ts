@@ -756,7 +756,7 @@ test('the poster survives a reload and a share link exactly', async ({ page, con
 
 test('a recoloured layer shows in the video preview', async ({ page }) => {
   const POSTER = '[data-testid=poster-workspace] [data-testid=preview-canvas]';
-  const VIDEO = 'dialog[open] [data-testid=preview-canvas]';
+  const VIDEO = '[data-testid=video-workspace] [data-testid=preview-canvas]';
   const base = await magenta(page, POSTER);
   await page.getByTestId('layer-part').nth(0).locator('.ws-layer-name').click();
   await page.getByTestId('sel-colour-hex').fill('#ff00ff');
@@ -765,11 +765,13 @@ test('a recoloured layer shows in the video preview', async ({ page }) => {
     .toBe(true);
   await expect.poll(() => magenta(page, POSTER)).toBeGreaterThan(base + 200);
   await switchMode(page, 'Video');
+  // Over the poster, 40 s in: the part's lines so far are on screen.
+  await page.getByTestId('preview-time').fill('40');
   await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeGreaterThan(200);
-  // Position and size stay poster-only; the colour comes from the piece, so undoing it goes.
-  await page.keyboard.press('Escape');
+  // The colour comes from the piece, so undoing it takes it out of the video and the poster.
   await undo(page);
-  await openPoster(page);
+  await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeLessThanOrEqual(20);
+  await switchMode(page, 'Poster');
   await expect.poll(() => magenta(page, POSTER)).toBeLessThanOrEqual(base + 20);
 });
 
