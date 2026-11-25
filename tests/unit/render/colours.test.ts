@@ -8,12 +8,12 @@ import { parsePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 import {
   PLAYER_LOOK,
-  drawPoster,
+  drawPosterLayout,
+  layoutPoster,
   drawScore,
   drawVideoFrame,
   lookStyle,
   pieceLook,
-  posterStyle,
   videoMarkers,
   videoStyle,
   type Ctx2D,
@@ -216,14 +216,9 @@ describe('export colours in the renderer', () => {
   it('SVG poster: gradients as SVG gradients, title and labels in their colours', () => {
     const svgOf = (colours: LookColours, rows = 1) => {
       const look: Look = { ...PLAYER_LOOK, hud: ['chord'], colours };
-      const s = posterStyle({ theme: 'dark', title: true, look, ...MARKS });
-      const c = new SvgContext(3840, 2160);
-      drawPoster(
-        asCtx2D(c),
-        SCORE,
-        { name: 'Kite' },
-        { size: '16:9', style: s, title: true, rows },
-      );
+      const L = layoutPoster({ compiled: SCORE, piece: PIECE, look, base: { rows } });
+      const c = new SvgContext(L.width, L.height);
+      drawPosterLayout(asCtx2D(c), SCORE, L);
       return c.toSvg();
     };
     const lin = svgOf({

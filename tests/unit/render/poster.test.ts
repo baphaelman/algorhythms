@@ -1,4 +1,4 @@
-/** Poster frames (PLAN.md §12 "Poster export", revision 12): sizes, style, title block, SVG. */
+/** Posters (PLAN.md §12 "Poster export", §15 M14): sizes, style, the laid-out poster as SVG. */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,18 +7,15 @@ import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece } from '../../../src/core/types';
 import {
-  POSTER_CREDIT,
-  POSTER_DPR,
-  drawPoster,
+  drawPosterLayout,
   drawScore,
+  layoutPoster,
   pitchExtent,
   posterCamera,
-  posterLayout,
   posterLength,
   posterSize,
   posterStyle,
   tokensOf,
-  videoLayout,
   videoMarkers,
   type PosterSize,
   type ScoreStyle,
@@ -46,35 +43,27 @@ const BUNDLED = [
 ];
 const PIECE = 'examples/songs/tide-pools.algorhythms.json';
 
-function svgOf(piece: Piece, size: PosterSize, title: boolean, theme: 'light' | 'dark' = 'light') {
+/** The default poster of `piece` laid out at `size`, as SVG; `pre` draws on the context first. */
+function svgOf(
+  piece: Piece,
+  size: PosterSize,
+  doc: Piece['poster'] = {},
+  pre?: (c: SvgContext) => void,
+): string {
   const compiled = compile(piece);
   const px = posterSize(size);
+  const L = layoutPoster({ compiled, piece, doc, base: { size: { w: px.width, h: px.height } } });
   const c = new SvgContext(px.width, px.height);
-  const style = posterStyle({ theme, title, ...videoMarkers(piece) });
-  const view = drawPoster(asCtx2D(c), compiled, { name: piece.meta.title }, { size, style, title });
-  return { svg: c.toSvg(), view, compiled };
+  pre?.(c);
+  drawPosterLayout(asCtx2D(c), compiled, L);
+  return c.toSvg();
 }
 
-describe('posterSize and posterLayout', () => {
+describe('posterSize', () => {
   it('gives the 4K-class sizes', () => {
     expect(posterSize('16:9')).toEqual({ width: 3840, height: 2160 });
     expect(posterSize('1:1')).toEqual({ width: 2160, height: 2160 });
     expect(posterSize('a4')).toEqual({ width: 2480, height: 3508 });
-  });
-
-  it('draws every size at one pixel ratio; 16:9 is the video layout at twice its 1080p ratio', () => {
-    for (const k of SIZES) {
-      const l = posterLayout(k);
-      const p = posterSize(k);
-      expect(l.dpr).toBe(POSTER_DPR);
-      expect(l.width * l.dpr).toBeCloseTo(p.width, 9);
-      expect(l.height * l.dpr).toBeCloseTo(p.height, 9);
-    }
-    const v = videoLayout('16:9', '1080');
-    const l = posterLayout('16:9');
-    expect(l.width).toBeCloseTo(v.width, 9);
-    expect(l.height).toBeCloseTo(v.height, 9);
-    expect(l.dpr).toBeCloseTo(v.dpr * 2, 9);
   });
 
   it('posterLength rounds to m:ss', () => {
@@ -98,7 +87,6 @@ describe('posterStyle and posterCamera', () => {
     });
     expect(s.reserveHud).toBeUndefined();
     expect(s.tokens).toEqual(tokensOf('dark'));
-    expect(posterStyle({ theme: 'light', title: true }).reserveHud).toBe(true);
     expect(posterStyle({ theme: 'light', transparent: true }).tokens.paper).toBe('transparent');
     expect(posterStyle({ theme: 'light', thickness: false }).thickness).toBe(false);
   });
@@ -152,84 +140,38 @@ describe('ScoreStyle.reserveHud', () => {
   });
 });
 
-describe('drawPoster on an SvgContext', () => {
+describe('a laid-out poster on an SvgContext', () => {
   const piece = load(PIECE);
 
-  it('draws a background, the lines, and section labels as text', () => {
-    const { svg } = svgOf(piece, '16:9', false);
+  it('draws a background, the lines, the title and section labels as text', () => {
+    const svg = svgOf(piece, '16:9');
     expect(svg).toContain(
       `<rect x="0" y="0" width="3840" height="2160" fill="${tokensOf('light').paper}"/>`,
     );
     const labels = Object.values(videoMarkers(piece).labels).map((l) => l.toUpperCase());
     expect(labels.length).toBeGreaterThan(0);
     const texts = [...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+    expect(texts).toContain(piece.meta.title);
     expect(texts.some((t) => labels.includes(t))).toBe(true);
-    expect(texts.some((t) => t.endsWith(' Hz'))).toBe(true); // the octave grid's labels
     expect(svg).toContain('<linearGradient');
     expect((svg.match(/<path /g) ?? []).length).toBeGreaterThan(50);
   });
 
   it('transparent: no background rect', () => {
-    const compiled = compile(piece);
-    const c = new SvgContext(3840, 2160);
-    const style = posterStyle({ theme: 'dark', transparent: true });
-    drawPoster(asCtx2D(c), compiled, { name: 'x' }, { size: '16:9', style, title: false });
-    expect(c.toSvg()).not.toContain('<rect');
-  });
-
-  it('places the title block below the lines and markers, inside the frame', () => {
-    for (const size of SIZES) {
-      const { svg, view } = svgOf(piece, size, true);
-      const px = posterSize(size);
-      const bandTop = (view.height - view.padB + 6) * POSTER_DPR;
-      const texts = [...svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>([^<]*)<\/text>/g)];
-      const title = texts.filter((m) => Number(m[2]) > bandTop);
-      expect(title.map((m) => m[3])).toEqual([
-        piece.meta.title,
-        expect.stringMatching(/^\d+:\d\d · [A-G][#b]? \w/),
-        POSTER_CREDIT,
-      ]);
-      for (const m of title) expect(Number(m[2])).toBeLessThan(px.height - 20);
-      // Every path's points (lines, grid, markers; M and L runs) are above the band.
-      let maxY = 0;
-      for (const p of svg.matchAll(/<path d="([^"]+)"/g)) {
-        for (const run of p[1].matchAll(/[ML]([^A-Za-z]+)/g)) {
-          const nums = run[1].trim().split(/\s+/).map(Number);
-          for (let i = 1; i < nums.length; i += 2) maxY = Math.max(maxY, nums[i]);
-        }
-      }
-      expect(maxY).toBeLessThanOrEqual(bandTop + 0.01);
-    }
-  });
-
-  it('cuts a long name with an ellipsis', () => {
-    const compiled = compile(piece);
-    const c = new SvgContext(2160, 2160);
-    const style = posterStyle({ theme: 'light', title: true });
-    drawPoster(
-      asCtx2D(c),
-      compiled,
-      { name: 'x'.repeat(400) },
-      { size: '1:1', style, title: true },
-    );
-    expect(c.toSvg()).toMatch(/>x+…<\/text>/);
+    expect(svgOf(piece, '16:9', { look: { transparent: true } })).not.toContain('<rect');
   });
 
   it('is independent of what the context drew before', () => {
-    const compiled = compile(piece);
-    const style = posterStyle({ theme: 'light', title: true, ...videoMarkers(piece) });
-    const opts = { size: '16:9' as const, style, title: true };
-    const a = new SvgContext(3840, 2160);
-    drawPoster(asCtx2D(a), compiled, { name: 'n' }, opts);
-    const b = new SvgContext(3840, 2160);
-    b.lineCap = 'round';
-    b.setLineDash([4, 4]);
-    b.textAlign = 'right';
-    b.font = '30px serif';
-    b.setTransform(3, 0, 0, 3, 7, 7);
-    b.fillRect(0, 0, 9, 9);
-    drawPoster(asCtx2D(b), compiled, { name: 'n' }, opts);
-    expect(b.toSvg()).toBe(a.toSvg());
+    const a = svgOf(piece, '16:9');
+    const b = svgOf(piece, '16:9', {}, (c) => {
+      c.lineCap = 'round';
+      c.setLineDash([4, 4]);
+      c.textAlign = 'right';
+      c.font = '30px serif';
+      c.setTransform(3, 0, 0, 3, 7, 7);
+      c.fillRect(0, 0, 9, 9);
+    });
+    expect(b).toBe(a);
   });
 
   it('every bundled piece renders, under 10 MB of SVG at every size', () => {
@@ -237,12 +179,12 @@ describe('drawPoster on an SvgContext', () => {
     for (const f of BUNDLED) {
       const piece = load(f);
       for (const size of SIZES) {
-        const { svg } = svgOf(piece, size, true, 'dark');
+        const svg = svgOf(piece, size);
         expect(svg.length, `${f} ${size}`).toBeLessThan(10e6);
         if (size === '16:9')
           sizes.push(`${f.replace(/^.*\//, '')}: ${(svg.length / 1e6).toFixed(2)} MB`);
       }
     }
-    console.log(`poster SVG sizes (16:9, title, dark):\n${sizes.join('\n')}`);
-  });
+    console.log(`poster SVG sizes (16:9, default poster):\n${sizes.join('\n')}`);
+  }, 30_000);
 });

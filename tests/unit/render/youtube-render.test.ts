@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
-import type { Piece } from '../../../src/core/types';
+import type { Piece, PosterDoc } from '../../../src/core/types';
 import {
   END_FADE,
   EXPORT_LOOK,
@@ -22,16 +22,16 @@ import {
   bookendsOn,
   cameraAt,
   cameraScore,
-  drawPoster,
+  drawPosterLayout,
   drawScore,
   drawVideoFrame,
   drawVideoMoment,
   endCardCamera,
+  layoutPoster,
   lookStyle,
   pieceLook,
   pitchGuideLabel,
   pitchToY,
-  posterStyle,
   thumbnailSize,
   titleAlpha,
   videoCamera,
@@ -125,6 +125,19 @@ function recorder(log: Call[] = [], canvas?: { width: number; height: number }) 
 
 const look = (over: Partial<Look>): Look => ({ ...EXPORT_LOOK, future: 'full', ...over });
 const styleOf = (over: Partial<Look>) => lookStyle(look(over), CTX);
+
+/** Kite Day's poster with `over` on the export Look, as SVG. */
+function posterSvg(over: Partial<Look>, doc?: PosterDoc): string {
+  const L = layoutPoster({
+    compiled: SCORE,
+    piece: PIECE,
+    look: look({ hud: [], ...over }),
+    ...(doc ? { doc } : {}),
+  });
+  const svg = new SvgContext(L.width, L.height);
+  drawPosterLayout(asCtx2D(svg), SCORE, L);
+  return svg.toSvg();
+}
 
 function drawn(over: Partial<Look>, t = T): Call[] {
   const { ctx, log } = recorder();
@@ -222,9 +235,14 @@ describe('vignette', () => {
     );
   });
   it('a poster with rows darkens once', () => {
-    const style = posterStyle({ theme: 'dark', look: look({ vignette: 1, hud: [] }), ...CTX });
+    const L = layoutPoster({
+      compiled: SCORE,
+      piece: PIECE,
+      look: look({ vignette: 1, hud: [] }),
+      base: { rows: 3 },
+    });
     const { ctx, log } = recorder();
-    drawPoster(ctx, SCORE, { name: 'x' }, { size: '16:9', style, title: true, rows: 3 });
+    drawPosterLayout(ctx, SCORE, L);
     const fills = log.filter(
       (c) => c.op === 'fillRect' && (c.fill as { kind?: string }).kind === 'createRadialGradient',
     );
@@ -346,10 +364,9 @@ describe('glow', () => {
     });
   });
   it('SVG: the lines again under a Gaussian blur filter', () => {
-    const style = posterStyle({ theme: 'dark', look: look({ glow: 1, hud: [] }), ...CTX });
-    const svg = new SvgContext(3840, 2160);
-    drawPoster(asCtx2D(svg), SCORE, { name: 'x' }, { size: '16:9', style, title: false });
-    const out = svg.toSvg();
+    // One layer: each layer draws its glow, then its lines.
+    const hide = ['Chords', 'Bass', 'Sparkle'].map((p) => ({ id: `part:${p}`, hidden: true }));
+    const out = posterSvg({ glow: 1 }, { layers: hide });
     expect(out).toMatch(/<filter id="f\d+" filterUnits="userSpaceOnUse"[^>]*><feGaussianBlur/);
     // The blurred traces come first; the lines themselves follow, unfiltered.
     const els = out.split('\n').filter((l) => l.includes('fill="url(#g1)"'));
@@ -357,28 +374,10 @@ describe('glow', () => {
     expect(els[0]).toContain('filter="url(#f');
     expect(firstPlain).toBeGreaterThan(0);
     expect(els.slice(firstPlain).some((l) => l.includes('filter='))).toBe(false);
-    const flat = new SvgContext(3840, 2160);
-    drawPoster(
-      asCtx2D(flat),
-      SCORE,
-      { name: 'x' },
-      {
-        size: '16:9',
-        style: posterStyle({ theme: 'dark', look: look({ hud: [] }), ...CTX }),
-        title: false,
-      },
-    );
-    expect(flat.toSvg()).not.toContain('<filter');
+    expect(posterSvg({})).not.toContain('<filter');
   });
   it('SVG vignette and pitch guides', () => {
-    const style = posterStyle({
-      theme: 'dark',
-      look: look({ vignette: 1, pitchGuides: { pitches: [64], labels: true }, hud: [] }),
-      ...CTX,
-    });
-    const svg = new SvgContext(3840, 2160);
-    drawPoster(asCtx2D(svg), SCORE, { name: 'x' }, { size: '16:9', style, title: false });
-    const out = svg.toSvg();
+    const out = posterSvg({ vignette: 1, pitchGuides: { pitches: [64], labels: true } });
     expect(out).toContain('<radialGradient');
     expect(out).toContain('stop-opacity="0.7"');
     expect(out).toContain('>E4</text>');

@@ -14,17 +14,15 @@ import {
   HUD_ITEMS,
   LINE_WIDTH,
   PLAYER_LOOK,
-  TITLE_EXTRA,
-  drawPoster,
   drawScore,
   drawVideoFrame,
   gapsText,
   hudText,
   lookStyle,
   noteNamesText,
+  layoutPoster,
   pieceLook,
-  posterLayout,
-  posterSize,
+  posterIssues,
   posterStyle,
   soundingPitches,
   tokensOf,
@@ -435,39 +433,24 @@ describe('HUD layout with many readouts', () => {
     }
   });
 
-  it('fits on posters, with the title block below the HUD', () => {
-    for (const size of ['16:9', '1:1', 'a4'] as const) {
-      for (const title of [false, true]) {
-        const style = posterStyle({
-          theme: 'light',
-          look: { ...EXPORT_LOOK, hud: all },
-          title,
-          ...MARKS,
-          ...pieceLook(PIECE),
-        });
-        expect(style.hudExtra).toBe(title ? TITLE_EXTRA : undefined);
-        const { ctx, calls } = recorder();
-        const view = drawPoster(ctx, SCORE, { name: 'Poster' }, { size, style, title });
-        const lay = posterLayout(size);
-        expect(view.width * lay.dpr).toBeCloseTo(posterSize(size).width, 6);
-        const band = calls.filter(
-          (c) => c.op === 'fillText' && (c.args[2] as number) > view.height - view.padB,
-        );
-        const hud = band.filter(
-          (c) =>
-            !['Poster', 'AlgoRhythms'].includes(c.args[0] as string) &&
-            !/^\d+:\d\d · /.test(c.args[0] as string),
-        );
-        const want = all.filter((it) => hudText(it, SCORE, view, style) !== '').length;
-        expect(hud.length, `${size} ${title}`).toBe(want);
-        const ys = band.map((c) => c.args[2] as number);
-        expect(Math.max(...ys)).toBeLessThanOrEqual(view.height - 3);
-        if (title) {
-          const name = band.find((c) => c.args[0] === 'Poster')!;
-          const lastHud = Math.max(...hud.map((c) => c.args[2] as number));
-          expect(name.args[2] as number).toBeGreaterThan(lastHud + 12);
-        }
-      }
+  it('fits on posters: every readout below the music, none hidden, no text over text', () => {
+    for (const size of [
+      { w: 3840, h: 2160 },
+      { w: 2160, h: 2160 },
+      { w: 2480, h: 3508 },
+    ]) {
+      const L = layoutPoster({
+        compiled: SCORE,
+        piece: PIECE,
+        look: { ...EXPORT_LOOK, hud: all },
+        base: { size },
+      });
+      expect(posterIssues(L), `${size.w}×${size.h}`).toEqual([]);
+      const hud = L.objects.filter((o) => o.group === 'hud');
+      expect(hud.length).toBeGreaterThanOrEqual(all.length / 2);
+      expect(L.hidden.filter((o) => o.group === 'hud')).toEqual([]);
+      const music = Math.max(...L.rows.map((r) => r.plot.y + r.plot.h));
+      for (const o of hud) expect(o.box.y).toBeGreaterThan(music);
     }
   });
 
