@@ -38,12 +38,13 @@ import {
   HudOverlay,
   LookPanel,
   PosterSizeFields,
-  RowsField,
   RunStatus,
   SectionField,
   posterSummary,
 } from './ExportFields';
 import { Radios, Switch } from './export-controls';
+import { RowsGroup } from './RowsOrganize';
+import { usePictures } from '../poster-picture';
 import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
 import { artboardFit, useWorkspace } from '../poster-workspace';
@@ -111,6 +112,8 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
   // The app's theme and line colours feed 'Current' and 'As in the app'.
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
   const running = useExportUi((s) => s.run.status === 'running');
+  // A background picture decoded after the first draw redraws the artboard.
+  const pictures = usePictures((s) => s.decoded);
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [avail, setAvail] = useState({ w: 0, h: 0 });
@@ -190,7 +193,7 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
         run?.();
       });
     }
-  }, [runtime, piece, compiled, form, pxW, pxH, px.width, appView, avail.w]);
+  }, [runtime, piece, compiled, form, pxW, pxH, px.width, appView, avail.w, pictures]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -247,7 +250,7 @@ function PosterOptions({ form, disabled }: { form: ExportForm; disabled: boolean
         onChange={(posterFormat) => patch({ posterFormat })}
       />
       <SectionField form={form} disabled={disabled} />
-      <RowsField form={form} disabled={disabled} />
+      <RowsGroup form={form} disabled={disabled} />
       {sectionOf(form, videoContext()) && (
         <div className="field">
           <Switch

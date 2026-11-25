@@ -8,8 +8,10 @@ import {
   decodeSharePayload,
   encodeShareLink,
   encodeSharePayload,
+  linkDropsPicture,
   nextId,
   packPiece,
+  shareablePiece,
   sharePayloadOf,
   unpackPiece,
 } from '../../../src/app/share';
@@ -258,5 +260,40 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
     const back = await open(await encodeShareLink(piece, BASE));
     expect(back.moments[1]).toMatchObject({ at: 2, gain: 0.123 });
     expect(back).toEqual(parsed(piece));
+  });
+});
+
+describe('poster pictures stay out of links (M14 P5)', () => {
+  it('a link drops the picture and keeps the rest of the poster; the file keeps it', async () => {
+    const base = newPiece({ seed: 3, title: 'Pictured' });
+    const picture = { src: 'data:image/png;base64,iVBORw0KGgo=', w: 2, h: 1, dim: 0.25 };
+    const r = parsePiece({
+      ...base,
+      poster: { rowsBy: 'sections', rowSections: { start: { label: 'A′' } }, picture },
+    });
+    if (!r.ok) throw new Error(r.errors.join('; '));
+    const piece = r.piece;
+    expect(piece.poster?.picture).toEqual(picture);
+    expect(linkDropsPicture(piece)).toBe(true);
+    const back = parsePiece(await decodeShareLink(await encodeShareLink(piece, 'https://x/')));
+    if (!back.ok) throw new Error(back.errors.join('; '));
+    expect(back.piece.poster).toEqual({
+      rowsBy: 'sections',
+      rowSections: { start: { label: 'A′' } },
+    });
+    expect(shareablePiece(piece)).toEqual(back.piece);
+    const only = parsePiece({ ...base, poster: { picture } });
+    if (!only.ok) throw new Error(only.errors.join('; '));
+    expect(shareablePiece(only.piece).poster).toBeUndefined();
+    expect(linkDropsPicture(base)).toBe(false);
+  });
+
+  it('the schema refuses a picture that is not an image data URL', () => {
+    const base = newPiece({ seed: 3 });
+    const bad = parsePiece({
+      ...base,
+      poster: { picture: { src: 'https://example.com/x.png', w: 2, h: 1 } },
+    });
+    expect(bad.ok).toBe(false);
   });
 });

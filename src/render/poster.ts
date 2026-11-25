@@ -20,7 +20,7 @@
 import { keyAt } from '../core/query';
 import type { CompiledScore, Key, LineColors } from '../core/types';
 import { HUD_ROW, MIN_WINDOW, cameraAt, cameraScore, hudLines, pitchExtentIn } from './camera';
-import { fillBackground } from './colours';
+import { fillBackground } from './background';
 import { DEFAULT_MONO, drawScore, drawVignette, hudPlacement, keyName, type Ctx2D } from './draw';
 import { drawHud, hudItems, hudRows, hudTop, type HudPlacement } from './hud';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
@@ -508,9 +508,13 @@ function drawRows(
   // The vignette darkens the whole poster once, after the rows.
   const rowStyle: ScoreStyle = { ...style, hud: false };
   delete rowStyle.vignette;
-  // A gradient spans the whole poster, drawn once below: the rows draw no background.
-  if (style.paint?.background && style.tokens.paper !== 'transparent') {
-    rowStyle.tokens = { ...style.tokens, paper: 'transparent' };
+  // A gradient or picture spans the whole poster, drawn once below: the rows draw no background.
+  if (style.paint?.background) {
+    if (style.tokens.paper !== 'transparent')
+      rowStyle.tokens = { ...style.tokens, paper: 'transparent' };
+    const paint = { ...style.paint };
+    delete paint.background;
+    rowStyle.paint = paint;
   }
   delete rowStyle.reserveHud;
   delete rowStyle.hudExtra;

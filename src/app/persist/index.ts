@@ -12,7 +12,9 @@ import { downloadBlob } from '../download';
 import { select } from '../editor/history';
 import { PIECE_KEY_ID, requestPieceKeyFocus } from '../editor/piece-key';
 import { likeTheVideo } from '../editor/video-template';
-import { loadInfo, loadPiece, pushNotice, runOpen, usePlayer } from '../store';
+import { jsonEqual } from '../../core/schema';
+import { shareablePiece } from '../share';
+import { loadInfo, loadPiece, pushNotice, runOpen, setLinkedEntry, usePlayer } from '../store';
 import { Autosaver } from './autosave';
 import { idbLibrary } from './idb';
 import {
@@ -134,6 +136,7 @@ export function startPersistence(lib?: Library): Autosaver {
     onError,
   });
   saver = s;
+  setLinkedEntry((id, linked) => withEntryPicture(library, id, linked));
   let seen = loadInfo().count;
   usePlayer.subscribe((state, prev) => {
     const info = loadInfo();
@@ -160,6 +163,24 @@ export function startPersistence(lib?: Library): Autosaver {
     if (document.visibilityState === 'hidden') flush();
   });
   return s;
+}
+
+/**
+ * `linked` (a reload of this tab's link, which never carries a poster picture) with the picture
+ * of its My pieces entry, when the entry is the same piece apart from that (and its metadata).
+ */
+async function withEntryPicture(lib: Library, id: string, linked: Piece): Promise<Piece> {
+  try {
+    const e = await lib.get(id);
+    if (!e) return linked;
+    const r = parsePiece(JSON.parse(e.json));
+    const picture = r.ok ? r.piece.poster?.picture : undefined;
+    if (!r.ok || !picture) return linked;
+    const same = jsonEqual({ ...shareablePiece(r.piece), meta: linked.meta }, linked);
+    return same ? { ...linked, poster: { ...linked.poster, picture } } : linked;
+  } catch {
+    return linked;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

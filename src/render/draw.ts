@@ -28,7 +28,8 @@ import { drawGhost, ghostOf, type Reach } from './ghost';
 import { drawHud, hudBoxes, hudItems, hudMargin, hudRows, type HudPlacement } from './hud';
 import { OPACITY_EPS, baseOpacityIn, breaksIn, opacityIn, pulseHits } from './level';
 import { CutSink, outlineFrame, outlinePath } from './outline';
-import { fillBackground, stopsAt } from './colours';
+import { fillBackground } from './background';
+import { stopsAt } from './colours';
 import { blurInto, canFilter, layerFor } from './layer';
 import { lineColor, pitchStops, strokeOf } from './palettes';
 import { sampleInto, samples, stableScale, type Samples } from './sampling';
@@ -960,11 +961,12 @@ function drawLines(
     }
   }
   // Pulse hit marks (revision 10), past at full strength, future at the ghost opacity.
+  const ps = style.pulseStyle;
   for (const v of style.pulseMarks === false ? NO_VOICES : voices) {
     if (v.segments.length === 0 || !v.pulse) continue;
-    g.strokeStyle = strokeOf(style, gradient, v.index);
-    if (past) drawHits(g, view, v, tL, Math.min(t, tR), dim, sf);
-    if (ghost && t < tR) drawHits(g, view, v, Math.max(t, tL), tR, futureA, sf);
+    g.strokeStyle = ps?.colour ?? strokeOf(style, gradient, v.index);
+    if (past) drawHits(g, view, v, tL, Math.min(t, tR), dim, sf, ps);
+    if (ghost && t < tR) drawHits(g, view, v, Math.max(t, tL), tR, futureA, sf, ps);
   }
   // Dotted traces of silent lines (editor): the selection's and the hovered voice's.
   const hv = style.traceVoice;
@@ -1011,6 +1013,7 @@ function drawHits(
   b: Seconds,
   alpha: number,
   sf: StrandFrame,
+  ps?: ScoreStyle['pulseStyle'],
 ): void {
   const H = pulseHits(v);
   if (!H || !(b > a)) return;
@@ -1025,7 +1028,9 @@ function drawHits(
   if (lo >= n || H[lo * 2] >= b) return;
   const lives = drawnLives(sf, v);
   const shaped = (v.weight !== undefined && v.weight.length > 0 && !sf.flat) || hasStrands(sf, v);
-  g.lineWidth = F.hitW;
+  const size = ps?.size ?? 1;
+  const op = ps?.opacity ?? 1;
+  g.lineWidth = F.hitW * (ps?.width ?? 1);
   g.lineCap = 'butt';
   let lastX = -Infinity;
   let pathA = -1;
@@ -1036,7 +1041,7 @@ function drawHits(
     if (x - lastX < HIT_MIN_PX) continue;
     const base = F.level ? baseOpacityIn(v, lives, t) : 1;
     const acc = H[i * 2 + 1];
-    const al = alpha * base * (HIT_ALPHA_LO + (1 - HIT_ALPHA_LO) * acc);
+    const al = alpha * base * (HIT_ALPHA_LO + (1 - HIT_ALPHA_LO) * acc) * op;
     if (al < OPACITY_EPS) continue;
     const p = pitchAt(v, t);
     if (p === null) continue;
@@ -1047,7 +1052,7 @@ function drawHits(
       y += q.off * F.lw;
       u = q.u;
     }
-    const h = HIT_HALF_PX * (0.6 + 0.4 * acc) + (u - 1) * F.lw * 0.5;
+    const h = (HIT_HALF_PX * (0.6 + 0.4 * acc) + (u - 1) * F.lw * 0.5) * size;
     const qa = Math.round(al * 32) / 32;
     if (qa !== pathA) {
       if (pathA >= 0) g.stroke();

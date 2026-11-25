@@ -11,7 +11,8 @@
  * strokes with identical style are merged into one `<path>`.
  *
  * `filter` takes only `blur(Npx)` (an SVG `feGaussianBlur` over the whole canvas; the glow).
- * Not supported: drawImage, patterns, conic gradients, shadows, other filters and composite
+ * `drawImageUrl` writes an image by URL (a background picture): one `<image>` def per URL and
+ * size, a `<use>` per placement. Not supported: drawImage, patterns, conic gradients, shadows, other filters and composite
  * modes other than source-over (drawScore's ghost layer uses drawImage; the poster never needs
  * it). clearRect only clears when it covers the whole canvas.
  */
@@ -208,6 +209,9 @@ export class SvgContext {
   private els: string[] = [];
   private defs: string[] = [];
   private gradIds = new Map<string, string>();
+  /** Image defs by URL (a short key per URL) and size. */
+  private hrefKeys = new Map<string, number>();
+  private images = false;
   private ids = 0;
   /** Current path (device px), its last command letter, and whether it has a current point. */
   private d: string[] = [];
@@ -661,6 +665,39 @@ export class SvgContext {
     this.s.clip = id;
   }
 
+  /**
+   * Draws the image at `href` into the rectangle (a background picture; no source rect). Written
+   * once as an `<image>` def per URL and size, then a `<use>` per call. Rotated or skewed
+   * transforms are not supported (nothing is drawn).
+   */
+  drawImageUrl(href: string, x: number, y: number, w: number, h: number): void {
+    const m = this.s.m;
+    if (!(w > 0 && h > 0) || m[1] !== 0 || m[2] !== 0) return;
+    const [X0, Y0] = this.tx(x, y);
+    const [X1, Y1] = this.tx(x + w, y + h);
+    const W = Math.abs(X1 - X0);
+    const H = Math.abs(Y1 - Y0);
+    if (!(W > 0 && H > 0)) return;
+    let k = this.hrefKeys.get(href);
+    if (k === undefined) {
+      k = this.hrefKeys.size;
+      this.hrefKeys.set(href, k);
+    }
+    const key = `image ${k} ${num(W)} ${num(H)}`;
+    let id = this.gradIds.get(key);
+    if (!id) {
+      id = `i${++this.ids}`;
+      this.gradIds.set(key, id);
+      this.images = true;
+      this.defs.push(
+        `<image id="${id}" width="${num(W)}" height="${num(H)}" preserveAspectRatio="none" xlink:href="${escapeXml(href)}"/>`,
+      );
+    }
+    this.push(
+      `<use xlink:href="#${id}" x="${num(Math.min(X0, X1))}" y="${num(Math.min(Y0, Y1))}"${this.common(this.s.globalAlpha)}/>`,
+    );
+  }
+
   // --- text -------------------------------------------------------------------------------
 
   /** Advance width estimate: MONO_ADVANCE em per character plus the letter spacing. */
@@ -734,7 +771,7 @@ export class SvgContext {
     const head = o.xmlDeclaration === false ? '' : '<?xml version="1.0" encoding="UTF-8"?>\n';
     const defs = this.defs.length ? `<defs>${this.defs.join('')}</defs>\n` : '';
     return (
-      `${head}<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" ` +
+      `${head}<svg xmlns="http://www.w3.org/2000/svg"${this.images ? ' xmlns:xlink="http://www.w3.org/1999/xlink"' : ''} width="${W}" height="${H}" ` +
       `viewBox="0 0 ${W} ${H}" xml:space="preserve">\n${defs}${this.els.join('\n')}\n</svg>\n`
     );
   }

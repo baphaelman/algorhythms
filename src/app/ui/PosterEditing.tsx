@@ -43,8 +43,12 @@ import {
 import {
   DEFAULT_MARGIN,
   LABEL_GROUPS,
+  GROUP_FIELDS,
   LINE_GROUPS,
+  MARK_GROUPS,
   isLabelGroup,
+  isMarkGroup,
+  type GroupField,
   type PosterLayout,
   type Rect,
 } from '../../render/poster-layout';
@@ -988,18 +992,43 @@ const EXTENTS = [
   { id: 'tick', label: 'Tick' },
 ] as const;
 
-function GroupPanel({
-  sel,
+const ALONG = [
+  { id: 'start', label: 'Start' },
+  { id: 'end', label: 'End' },
+] as const;
+
+/** A group's resolved style (labels, lines or marks) as the panel shows it. */
+function resolvedOf(layout: PosterLayout, g: PosterGroup) {
+  if (isLabelGroup(g)) return { kind: 'label' as const, ...layout.labels[g] };
+  if (isMarkGroup(g)) return { kind: 'mark' as const, ...layout.marks[g] };
+  return { kind: 'line' as const, ...layout.lines[g] };
+}
+
+/** Whether a group shows on the poster now. */
+export const groupVisible = (layout: PosterLayout, g: PosterGroup): boolean =>
+  resolvedOf(layout, g).visible;
+
+/**
+ * A group's (or one member's) style controls: the fields `GROUP_FIELDS` lists for it, each a
+ * poster edit (a slider's run is one undo entry). Used by the selection panel and by a switch's
+ * details in the right panel (`testPrefix` tells them apart).
+ */
+export function GroupStyleFields({
+  group: g,
+  member = null,
   layout,
   doc,
+  testPrefix = 'sel',
+  showVisible = true,
 }: {
-  sel: Extract<PosterSelection, { kind: 'group' | 'member' }>;
+  group: PosterGroup;
+  member?: string | null;
   layout: PosterLayout;
   doc: PosterDoc | undefined;
+  testPrefix?: string;
+  showVisible?: boolean;
 }) {
   const fid = useId();
-  const g = sel.group;
-  const member = sel.kind === 'member' ? sel.member : null;
   const gs: PosterGroupStyle = doc?.groups?.[g] ?? {};
   const ms: PosterGroupStyle = member ? (doc?.members?.[g]?.[member] ?? {}) : {};
   const s: PosterGroupStyle = { ...gs, ...ms };
@@ -1010,32 +1039,35 @@ function GroupPanel({
       member ? (d) => setMemberStyle(d, g, member, patch) : (d) => setGroupStyle(d, g, patch),
       'Style',
     );
-  const label = isLabelGroup(g);
-  const resolved = label ? layout.labels[g] : layout.lines[g as PosterLineGroup];
-  const visible = s.visible ?? resolved.visible;
+  const has = (f: GroupField) => GROUP_FIELDS[g].includes(f);
+  const r = resolvedOf(layout, g);
+  const visible = s.visible ?? r.visible;
   const factor = (v: number | undefined) => Math.round((v ?? 1) * 100);
+  const t = (id: string) => `${testPrefix}-${id}`;
   return (
     <>
-      <Switch
-        label="Visible"
-        checked={visible}
-        testId="sel-visible"
-        onChange={(v) => set('visible', { visible: v })}
-      />
+      {showVisible && has('visible') && (
+        <Switch
+          label="Visible"
+          checked={visible}
+          testId={t('visible')}
+          onChange={(v) => set('visible', { visible: v })}
+        />
+      )}
       <div className="look-grid">
-        {label && (
+        {has('size') && (
           <Slider
-            label="Size"
-            min={50}
-            max={300}
+            label={r.kind === 'mark' ? 'Length' : 'Size'}
+            min={r.kind === 'mark' ? 25 : 50}
+            max={r.kind === 'mark' ? 400 : 300}
             step={5}
             value={factor(s.size)}
             text={pctText(factor(s.size))}
-            testId="sel-size"
+            testId={t('size')}
             onChange={(v) => set('size', { size: v === 100 ? undefined : v / 100 })}
           />
         )}
-        {!label && (
+        {has('width') && (
           <Slider
             label="Width"
             min={25}
@@ -1043,28 +1075,33 @@ function GroupPanel({
             step={5}
             value={factor(s.width)}
             text={pctText(factor(s.width))}
-            testId="sel-width"
+            testId={t('width')}
             onChange={(v) => set('width', { width: v === 100 ? undefined : v / 100 })}
           />
         )}
-        <Slider
-          label="Opacity"
-          min={0}
-          max={100}
-          step={1}
-          value={Math.round((s.opacity ?? resolved.opacity) * 100)}
-          text={pctText((s.opacity ?? resolved.opacity) * 100)}
-          testId="sel-opacity"
-          onChange={(v) => set('opacity', { opacity: v / 100 })}
-        />
-        <Swatch
-          label="Colour"
-          value={hex(s.colour ?? resolved.colour)}
-          set={!!s.colour}
-          testId="sel-colour"
-          onChange={(c) => set('colour', { colour: c ?? undefined })}
-        />
-        {label && (
+        {has('opacity') && (
+          <Slider
+            label="Opacity"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round((s.opacity ?? r.opacity) * 100)}
+            text={pctText((s.opacity ?? r.opacity) * 100)}
+            testId={t('opacity')}
+            onChange={(v) => set('opacity', { opacity: v / 100 })}
+          />
+        )}
+        {has('colour') && (
+          <Swatch
+            label="Colour"
+            value={hex(s.colour ?? r.colour)}
+            set={!!s.colour}
+            {...(r.kind === 'mark' && !s.colour ? { hint: 'each line’s own' } : {})}
+            testId={t('colour')}
+            onChange={(c) => set('colour', { colour: c ?? undefined })}
+          />
+        )}
+        {has('offset') && (
           <Slider
             label="Offset"
             min={0}
@@ -1072,49 +1109,78 @@ function GroupPanel({
             step={5}
             value={factor(s.offset)}
             text={pctText(factor(s.offset))}
-            testId="sel-offset"
+            testId={t('offset')}
             onChange={(v) => set('offset', { offset: v === 100 ? undefined : v / 100 })}
           />
         )}
       </div>
-      {label && (
+      {has('weight') && r.kind === 'label' && (
         <Radios
           legend="Weight"
           name={`${fid}-weight`}
-          value={s.weight ?? layout.labels[g].weight}
+          value={s.weight ?? r.weight}
           options={LABEL_WEIGHTS}
-          testId="sel-weight"
+          testId={t('weight')}
           onChange={(weight) => set('weight', { weight })}
         />
       )}
-      {label && SIDES[g] && (
+      {has('side') && r.kind === 'label' && SIDES[g as PosterLabelGroup] && (
         <Radios
           legend="Side"
           name={`${fid}-side`}
-          value={s.side ?? layout.labels[g].side}
-          options={SIDES[g]}
-          testId="sel-side"
+          value={s.side ?? r.side}
+          options={SIDES[g as PosterLabelGroup] ?? []}
+          testId={t('side')}
           onChange={(side) => set('side', { side })}
         />
       )}
-      {!label && (
-        <>
-          <Switch
-            label="Dashed"
-            checked={s.dashed ?? layout.lines[g as PosterLineGroup].dashed}
-            testId="sel-dashed"
-            onChange={(dashed) => set('dashed', { dashed })}
-          />
-          <Radios
-            legend="Length"
-            name={`${fid}-extent`}
-            value={s.extent ?? layout.lines[g as PosterLineGroup].extent}
-            options={EXTENTS}
-            testId="sel-extent"
-            onChange={(extent) => set('extent', { extent })}
-          />
-        </>
+      {has('along') && r.kind === 'label' && (
+        <Radios
+          legend="End of the line"
+          name={`${fid}-along`}
+          value={s.along ?? r.along}
+          options={ALONG}
+          testId={t('along')}
+          onChange={(along) => set('along', { along })}
+        />
       )}
+      {has('dashed') && r.kind === 'line' && (
+        <Switch
+          label="Dashed"
+          checked={s.dashed ?? r.dashed}
+          testId={t('dashed')}
+          onChange={(dashed) => set('dashed', { dashed })}
+        />
+      )}
+      {has('extent') && r.kind === 'line' && (
+        <Radios
+          legend="Length"
+          name={`${fid}-extent`}
+          value={s.extent ?? r.extent}
+          options={EXTENTS}
+          testId={t('extent')}
+          onChange={(extent) => set('extent', { extent })}
+        />
+      )}
+    </>
+  );
+}
+
+function GroupPanel({
+  sel,
+  layout,
+  doc,
+}: {
+  sel: Extract<PosterSelection, { kind: 'group' | 'member' }>;
+  layout: PosterLayout;
+  doc: PosterDoc | undefined;
+}) {
+  const g = sel.group;
+  const member = sel.kind === 'member' ? sel.member : null;
+  const ms: PosterGroupStyle = member ? (doc?.members?.[g]?.[member] ?? {}) : {};
+  return (
+    <>
+      <GroupStyleFields group={g} member={member} layout={layout} doc={doc} />
       {member ? (
         <button
           type="button"
@@ -1395,8 +1461,7 @@ export function LayersList() {
       (d) => setLayer(d, id, { hidden: shown ? undefined : true }),
       shown ? 'Show' : 'Hide',
     );
-  const groupShown = (g: PosterGroup) =>
-    layout ? (isLabelGroup(g) ? layout.labels[g].visible : layout.lines[g].visible) : false;
+  const groupShown = (g: PosterGroup) => (layout ? groupVisible(layout, g) : false);
 
   return (
     <div className="ws-layers" aria-label="Layers" data-testid="poster-layers">
@@ -1522,6 +1587,7 @@ export function LayersList() {
         [
           ['Labels', LABEL_GROUPS],
           ['Lines', LINE_GROUPS],
+          ['Marks', MARK_GROUPS],
         ] as const
       ).map(([head, groups]) => (
         <div key={head}>

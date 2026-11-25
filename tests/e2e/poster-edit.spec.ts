@@ -551,6 +551,7 @@ test('the poster survives a reload and a share link exactly', async ({ page, con
   const L = await layout(page);
   const at = await toPage(page, L.width * 0.6, L.height * 0.7);
   await page.mouse.click(at.x, at.y);
+  await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('Round trip');
   await page.keyboard.press('Enter');
   await setRange(page, 'margin-all', 9);
@@ -612,6 +613,7 @@ test('PNG and SVG draw what the artboard shows', async ({ page }) => {
   const L = await layout(page);
   const at = await toPage(page, L.width * 0.5, L.height * 0.5);
   await page.mouse.click(at.x, at.y);
+  await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('On the poster');
   await page.keyboard.press('Enter');
   await setRange(page, 'margin-all', 4);

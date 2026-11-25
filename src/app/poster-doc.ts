@@ -62,6 +62,10 @@ const GROUP_KEYS: Readonly<Partial<Record<PosterGroup, readonly string[]>>> = {
   momentLines: ['markers'],
   guideLabels: ['guides', 'guideLabels'],
   guideLines: ['guides'],
+  pitchLabels: ['pitchGuides'],
+  pitchLines: ['pitchGuides'],
+  beatLines: ['beats'],
+  pulseMarks: ['pulseMarks'],
 };
 
 /**
@@ -109,6 +113,9 @@ export function docWithForm(
   }
   if (groups) out.groups = groups;
   if (doc?.members) out.members = doc.members;
+  if (doc?.rowsBy) out.rowsBy = doc.rowsBy;
+  if (doc?.rowSections) out.rowSections = doc.rowSections;
+  if (doc?.picture) out.picture = doc.picture;
   return out;
 }
 

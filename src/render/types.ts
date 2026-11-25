@@ -181,6 +181,11 @@ export interface ScoreStyle {
   levelOpacity?: boolean;
   /** Pulse hit marks (§10 revision 10). @default true */
   pulseMarks?: boolean;
+  /**
+   * The pulse marks' style (M14 posters): length and stroke width as factors of the defaults,
+   * opacity × theirs, and one colour (absent: each line's). Absent: as before.
+   */
+  pulseStyle?: { size?: number; width?: number; opacity?: number; colour?: string };
   /** Line width factor (thin / normal / bold). @default 1 */
   lineScale?: number;
   /** Colour of 'ink' lines and the fallback of 'custom' ones. @default tokens.ink */

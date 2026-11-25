@@ -24,7 +24,13 @@ import {
   type Handle,
   type PosterHit,
 } from '../render/poster-edit';
-import { LINE_HEIGHT, isLabelGroup, type PosterLayout, type Rect } from '../render/poster-layout';
+import {
+  LINE_HEIGHT,
+  isLabelGroup,
+  isMarkGroup,
+  type PosterLayout,
+  type Rect,
+} from '../render/poster-layout';
 
 /**
  * What is selected: a music layer, a text box, a whole label or line group, or one member of
@@ -95,6 +101,8 @@ export const resizable = (sel: PosterSelection | null): boolean =>
 export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null): Rect[] {
   if (!sel) return [];
   if (sel.kind === 'group' || sel.kind === 'member') {
+    // Marks are drawn by the layers: nothing of their own to outline.
+    if (isMarkGroup(sel.group)) return [];
     const m = sel.kind === 'member' ? sel.member : undefined;
     return groupObjects(layout, sel.group, m).map((o) => o.box);
   }
@@ -244,6 +252,8 @@ export const GROUP_NAMES: Readonly<Record<PosterGroup, string>> = {
   guideLines: 'Octave guides',
   pitchLines: 'Pitch guides',
   beatLines: 'Bar and beat lines',
+  rowNames: 'Row labels',
+  pulseMarks: 'Pulse marks',
 };
 
 /** A text box's name in the panels: its kind, or its first words. */

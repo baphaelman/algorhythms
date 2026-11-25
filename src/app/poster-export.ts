@@ -23,6 +23,7 @@ import {
 import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { fileBase } from './export-options';
+import { picturesReady } from './poster-picture';
 
 export interface PosterOptions {
   /** A preset or explicit pixels. */
@@ -117,6 +118,7 @@ export async function renderPosterLayoutPng(
   compiled: CompiledScore = compile(piece),
   layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
 ): Promise<Blob> {
+  await picturesReady(piece);
   const canvas = new OffscreenCanvas(layout.width, layout.height);
   const transparent = layout.style.tokens.paper === 'transparent';
   const g = canvas.getContext('2d', { alpha: transparent });

@@ -6057,6 +6057,7 @@ This is the *input* form: fields with defaults are optional here.
               "sectionLabels",
               "momentLabels",
               "rowLabels",
+              "rowNames",
               "guideLabels",
               "pitchLabels",
               "hud",
@@ -6064,7 +6065,8 @@ This is the *input* form: fields with defaults are optional here.
               "momentLines",
               "guideLines",
               "pitchLines",
-              "beatLines"
+              "beatLines",
+              "pulseMarks"
             ]
           },
           "additionalProperties": {
@@ -6144,6 +6146,7 @@ This is the *input* form: fields with defaults are optional here.
               "sectionLabels",
               "momentLabels",
               "rowLabels",
+              "rowNames",
               "guideLabels",
               "pitchLabels",
               "hud",
@@ -6151,7 +6154,8 @@ This is the *input* form: fields with defaults are optional here.
               "momentLines",
               "guideLines",
               "pitchLines",
-              "beatLines"
+              "beatLines",
+              "pulseMarks"
             ]
           },
           "additionalProperties": {
@@ -6234,6 +6238,81 @@ This is the *input* form: fields with defaults are optional here.
               "additionalProperties": {}
             }
           }
+        },
+        "rowsBy": {
+          "description": "Absent = equal rows.",
+          "type": "string",
+          "const": "sections"
+        },
+        "rowSections": {
+          "description": "Rows by sections, per labelled moment id ('start' = before the first).",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "join": {
+                "type": "boolean"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "picture": {
+          "description": "Background picture; never in share links.",
+          "type": "object",
+          "properties": {
+            "src": {
+              "type": "string",
+              "maxLength": 40000000,
+              "pattern": "^data:image\\/[a-z+.-]+;base64,"
+            },
+            "w": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 16384
+            },
+            "h": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 16384
+            },
+            "fit": {
+              "type": "string",
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "src",
+            "w",
+            "h"
+          ],
+          "additionalProperties": {}
         }
       },
       "additionalProperties": {}
