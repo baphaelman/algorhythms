@@ -630,13 +630,10 @@ export function attachKeys(): () => void {
     if (!isSpace(e)) return;
     // ⌘/Ctrl/Alt+Space belong to the system; a release always ends the hold.
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
-    const dialog = document.querySelector('dialog[open]') !== null;
+    // The poster workspace (M14) takes Space as a dialog does: its controls keep it.
+    const dialog = document.querySelector('dialog[open]') !== null || posterShown();
     const own = dialog ? dialogSpace() : null;
-    const out = spaceKey(e, space, {
-      editor: editorLayout() && !posterShown(),
-      dialog,
-      dialogPlay: own !== null,
-    });
+    const out = spaceKey(e, space, { editor: editorLayout(), dialog, dialogPlay: own !== null });
     if (!out.consume) return;
     e.preventDefault();
     e.stopPropagation();

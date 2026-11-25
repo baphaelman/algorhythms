@@ -25,7 +25,8 @@ export async function switchMode(page: Page, mode: 'Poster' | 'Video'): Promise<
   }
 }
 
-async function menuExport(page: Page): Promise<void> {
+/** Menu → Export: the workspace's last mode (the poster workspace, or the video dialog). */
+export async function openExport(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
   await page.getByTestId('open-export').click();
   await expect(surface(page)).toBeVisible();
@@ -33,7 +34,7 @@ async function menuExport(page: Page): Promise<void> {
 
 /** Menu → Export, then Poster if Video was remembered; waits for the exporter. */
 export async function openPoster(page: Page): Promise<void> {
-  await menuExport(page);
+  await openExport(page);
   if (!(await workspace(page).isVisible())) await switchMode(page, 'Poster');
   await expect(page.getByTestId('export-run')).toBeEnabled();
   await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
@@ -41,7 +42,7 @@ export async function openPoster(page: Page): Promise<void> {
 
 /** Menu → Export, then Video if Poster was remembered: the video dialog. */
 export async function openVideoExport(page: Page): Promise<void> {
-  await menuExport(page);
+  await openExport(page);
   if (await workspace(page).isVisible()) await switchMode(page, 'Video');
   await expect(page.getByRole('dialog', { name: 'Export video' })).toBeVisible();
 }
@@ -58,4 +59,13 @@ export async function openAudioExport(page: Page): Promise<void> {
 export async function backToMusic(page: Page): Promise<void> {
   await page.getByTestId('back-to-music').click();
   await expect(workspace(page)).toBeHidden();
+}
+
+/** Leaves whichever surface shows: Back to music, or the dialog's Close. */
+export async function closeExport(page: Page): Promise<void> {
+  if (await workspace(page).isVisible()) await backToMusic(page);
+  else {
+    await page.getByTestId('export-close').click();
+    await expect(page.getByTestId('export-dialog')).toBeHidden();
+  }
 }

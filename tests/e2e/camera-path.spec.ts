@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { openVideoExport } from './export-open';
 import { clickExportForDownload, guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -45,10 +46,7 @@ async function openWithKeys(page: Page, keys: CameraKey[]): Promise<void> {
     p.camera = { mode: 'keys', keys };
     h.actions.loadPiece(p);
   }, keys);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(dialog(page)).toBeVisible();
-  await choose(page, 'export-format', 'Video (MP4)');
+  await openVideoExport(page);
   await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-camera', 'Keys');

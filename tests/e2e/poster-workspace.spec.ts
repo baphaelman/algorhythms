@@ -1,13 +1,13 @@
 /**
- * Poster in the Export dialog (PLAN.md §12 "Poster export", "Export look"): the format and its
- * defaults, PNG and SVG saves (download, or a stubbed save picker in Chromium), the PNG's size
+ * The poster workspace (PLAN.md §12 "Poster export", "Export look"; §15 M14): its defaults, PNG and SVG saves (download, or a stubbed save picker in Chromium), the PNG's size
  * and transparent background, Look and HUD choices reaching the export, Reset, remembered
- * choices and the phone layout; the live preview (matches a direct render, checkerboard).
+ * choices and the phone layout (panels stacked); the artboard (matches a direct render,
+ * checkerboard).
  *
  * Interactions go through export-diag's guards (a hang logs the page's state).
  *
  * Owner samples: with LOOK_SAMPLES_DIR set, Chromium saves dialog-poster.png and
- * poster-default.png (the dialog's default poster of Little Round) there.
+ * poster-default.png (the workspace's default poster of Little Round) there.
  */
 
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -23,6 +23,7 @@ import {
   setSwitch,
   tap,
 } from './export-diag';
+import { openPoster, surface, workspace } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -35,16 +36,18 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+const dialog = surface;
 const SAMPLES = process.env.LOOK_SAMPLES_DIR;
 /** Review screenshot: poster.png (Little Round, light, 1280×800). */
 const PREVIEW_DIR = process.env.EXPORT_PREVIEW_DIR;
 
-async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByTestId('export-run')).toBeEnabled();
+const openExport = openPoster;
+
+/** Escape twice: the first lets go of the focused control, the second goes back to music. */
+async function escapeOut(page: Page): Promise<void> {
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(workspace(page)).toBeHidden();
 }
 
 /** Picks a radio by its label: a guarded click (not `check()`), then its state. */
@@ -53,8 +56,6 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
   await guarded(page, `choose ${testId} ${label}`, () => input.click());
   await expect(input).toBeChecked();
 }
-
-const pickPoster = (page: Page) => choose(page, 'export-format', 'Poster');
 
 /** The Look section (always shown for video and poster). */
 async function openLook(page: Page): Promise<void> {
@@ -128,7 +129,6 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   page,
 }) => {
   await openExport(page);
-  await pickPoster(page);
   const d = dialog(page);
   for (const l of ['PNG', '16:9', 'Current']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
@@ -140,7 +140,7 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   await expect(page.getByTestId('export-size')).toHaveText('2480 × 3508 px, SVG');
   await choose(page, 'export-psize', '1:1');
   await expect(page.getByTestId('export-size')).toHaveText('2160 × 2160 px, SVG');
-  await expect(page.getByTestId('export-run')).toHaveText('Export poster');
+  await expect(page.getByTestId('export-run')).toHaveText('Export SVG');
   await expect(page.getByTestId('export-codec')).toHaveCount(0);
   await openLook(page);
   for (const t of ['look-future', 'look-follow-at', 'look-playhead', 'look-heads']) {
@@ -165,7 +165,6 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 }) => {
   test.setTimeout(90_000);
   await openExport(page);
-  await pickPoster(page);
   const png = await download(page);
   expect(png.name).toBe('Tidewater-Hymn.png');
   await expect(page.getByTestId('export-message')).toContainText(
@@ -203,7 +202,6 @@ test('PNG and SVG downloads: defaults are EXPORT_LOOK, no HUD; size and transpar
 test('Look and HUD choices reach the poster; remembered after reload; Reset', async ({ page }) => {
   test.setTimeout(90_000);
   await openExport(page);
-  await pickPoster(page);
   await choose(page, 'export-psize', '1:1');
   await setSwitch(page, 'export-ptitle', false);
   await choose(page, 'export-vtheme', 'Dark');
@@ -239,7 +237,6 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickPoster(page);
   await openLook(page);
   const d = dialog(page);
   for (const l of ['1:1', 'Dark']) {
@@ -288,7 +285,6 @@ test('saves PNG and SVG to a file picked in the save dialog (Chromium)', async (
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickPoster(page);
   await choose(page, 'export-psize', '1:1');
   let downloads = 0;
   page.on('download', () => downloads++);
@@ -324,10 +320,9 @@ test('saves PNG and SVG to a file picked in the save dialog (Chromium)', async (
   expect(saved.svg).toContain('<svg');
 });
 
-test('fits a phone screen with Poster and the Look open', async ({ page }) => {
+test('fits a phone screen: panels stacked, the artboard stays in view', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 640 });
   await openExport(page);
-  await pickPoster(page);
   await openLook(page);
   const box = (await dialog(page).boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);
@@ -401,7 +396,6 @@ test('Beat lines: Every beat draws more than Bars and beats; reaches the poster'
   page,
 }) => {
   await openExport(page);
-  await pickPoster(page);
   let n = await drawn(page);
   await expect(page.getByTestId('look-beats')).toHaveAttribute('data-value', 'off');
   const off = await previewHash(page);
@@ -422,10 +416,9 @@ test('the poster preview draws the export’s poster; transparent on a checkerbo
   page,
 }) => {
   await openExport(page);
-  await pickPoster(page);
   let n = await drawn(page);
   const canvas = page.getByTestId('preview-canvas');
-  await expect(canvas).toHaveAttribute('aria-label', 'Preview of the poster, 16:9');
+  await expect(canvas).toHaveAttribute('aria-label', 'The poster, 16:9');
   const first = await comparePreview(page);
   expect(first.bad / first.total).toBeLessThan(0.002);
   expect(first).toMatchObject({ cornerAlpha: 255, title: true });
@@ -452,7 +445,6 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
 }) => {
   test.setTimeout(90_000);
   await openExport(page);
-  await pickPoster(page);
   let n = await drawn(page);
   const canvas = page.getByTestId('preview-canvas');
   await expect(page.getByTestId('export-prows')).toHaveValue('1');
@@ -461,7 +453,7 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
   await expect(page.getByTestId('export-prows-value')).toHaveText('4 rows');
   n = await drawn(page, n);
   expect(await previewHash(page)).not.toBe(one);
-  await expect(canvas).toHaveAttribute('aria-label', 'Preview of the poster, 16:9, 4 rows');
+  await expect(canvas).toHaveAttribute('aria-label', 'The poster, 16:9, 4 rows');
   const rows = await comparePreview(page);
   expect(rows.bad / rows.total).toBeLessThan(0.002);
 
@@ -545,7 +537,6 @@ test('Rows slider redraws the preview; Width/Height sliders and quick picks set 
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickPoster(page);
   await expect(page.getByTestId('export-prows')).toHaveValue('4');
   await expect(dialog(page).getByLabel('1:1', { exact: true })).toBeChecked();
   await labelsMatch();
@@ -561,22 +552,19 @@ test('the expanded HUD never covers the Export button (desktop and phone)', asyn
       await page.goto('./?example=little-round');
       await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
       await openExport(page);
-      await pickPoster(page);
       await drawn(page);
       await page.screenshot({ path: join(PREVIEW_DIR, 'poster.png') });
     } else {
       await openExport(page);
-      await pickPoster(page);
     }
     await openHud(page);
     for (const t of ['look-hud', 'hud-title', 'look-reset', 'export-run']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
       await expectUncovered(page, t, `${w}: ${t} not covered`);
     }
-    // The row collapses it again; Escape closes the dialog (no popup to close first).
+    // The row collapses it again; Escape (twice: the focused row first) goes back to music.
     await setHudOpen(page, false);
-    await page.keyboard.press('Escape');
-    await expect(dialog(page)).toBeHidden();
+    await escapeOut(page);
   }
 });
 
@@ -587,19 +575,20 @@ test('the Look segments fit, one line each, at 375 and 1280 px; no dropdowns', a
   ] as const) {
     await page.setViewportSize({ width: w, height: h });
     await openExport(page);
-    await pickPoster(page);
     await openLook(page);
     expect(await badSegments(page), `${w}`).toEqual([]);
     await chooseSegment(page, 'look-guides', 'Lines + labels');
     await chooseSegment(page, 'look-moments', 'Both');
     await chooseSegment(page, 'look-colors', 'One');
     expect(await badSegments(page), `${w}`).toEqual([]);
-    await page.keyboard.press('Escape');
-    await expect(dialog(page)).toBeHidden();
+    await escapeOut(page);
   }
 });
 
-test('owner samples: the Poster dialog and the default poster', async ({ page, browserName }) => {
+test('owner samples: the poster workspace and the default poster', async ({
+  page,
+  browserName,
+}) => {
   test.skip(!SAMPLES || browserName !== 'chromium', 'set LOOK_SAMPLES_DIR (Chromium)');
   test.setTimeout(60_000);
   mkdirSync(SAMPLES!, { recursive: true });
@@ -607,7 +596,6 @@ test('owner samples: the Poster dialog and the default poster', async ({ page, b
   await page.goto('./?example=little-round');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickPoster(page);
   await openLook(page);
   await dialog(page).screenshot({ path: join(SAMPLES!, 'dialog-poster.png') });
   const { dl } = await download(page);

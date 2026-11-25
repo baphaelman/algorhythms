@@ -1,11 +1,12 @@
 /**
- * The Export dialog's interactions pass (PLAN.md §12 "UI and interactions", §15 M11): the whole
- * dialog by keyboard alone (focus order, visible focus, Escape, focus kept when the focused
- * control goes away), the preview redrawing after every control, and the layout at 1280, 1440,
- * 1920 px and a narrow window, light and dark.
+ * The export surfaces' interactions pass (PLAN.md §12 "UI and interactions", §15 M11, M14): the
+ * video dialog and the poster workspace by keyboard alone (focus order, visible focus, Escape,
+ * focus kept when the focused control goes away), the preview redrawing after every control, and
+ * the layout at 1280, 1440, 1920 px and a narrow window, light and dark.
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { openPoster, openVideoExport, workspace } from './export-open';
 
 const dialog = (page: Page) => page.getByTestId('export-dialog');
 
@@ -14,16 +15,14 @@ async function load(page: Page): Promise<void> {
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
 }
 
+/** The video dialog (Menu → Export → Video) or the poster workspace (→ Poster). */
 async function openDialog(page: Page, format: 'Video (MP4)' | 'Poster'): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(dialog(page)).toBeVisible();
-  const input = dialog(page).getByTestId('export-format').getByLabel(format, { exact: true });
-  await input.click();
-  await expect(input).toBeChecked();
-  if (format === 'Video (MP4)') {
-    await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
+  if (format === 'Poster') {
+    await openPoster(page);
+    return;
   }
+  await openVideoExport(page);
+  await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
 }
 
@@ -47,7 +46,7 @@ const draws = (page: Page) =>
     Number(document.querySelector('[data-testid=preview-canvas]')?.getAttribute('data-draws')),
   );
 
-test('the whole dialog by keyboard alone: order, visible focus, Escape', async ({
+test('the whole video dialog by keyboard alone: order, visible focus, Escape', async ({
   page,
   browserName,
 }) => {
@@ -63,14 +62,13 @@ test('the whole dialog by keyboard alone: order, visible focus, Escape', async (
     await page.keyboard.press(TAB);
   }
   await page.keyboard.press('Enter');
+  // The poster workspace opens on Poster | Video; the arrow picks Video (the dialog, until M15).
+  await expect(workspace(page)).toBeVisible();
+  await expect.poll(async () => (await focused(page)).id).toBe('export-mode');
+  await page.keyboard.press('ArrowRight');
   await expect(dialog(page)).toBeVisible();
-  await expect.poll(async () => (await focused(page)).id).toBe('export-format');
-  for (let i = 0; i < 6; i++) {
-    if (await dialog(page).getByTestId('export-format').getByLabel('Video (MP4)').isChecked())
-      break;
-    await page.keyboard.press('ArrowRight');
-  }
-  await expect(dialog(page).getByTestId('export-format').getByLabel('Video (MP4)')).toBeChecked();
+  await expect.poll(async () => (await focused(page)).id).toBe('export-mode');
+  await expect(dialog(page).getByTestId('export-mode').getByLabel('Video')).toBeChecked();
   await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   // Open the collapsible groups by keys, so every control is a stop.
   for (const id of ['look-hud-button', 'bookends-button']) {
@@ -78,7 +76,7 @@ test('the whole dialog by keyboard alone: order, visible focus, Escape', async (
     await page.keyboard.press('Enter');
     await expect(page.getByTestId(id)).toHaveAttribute('aria-expanded', 'true');
   }
-  await dialog(page).getByTestId('export-format').getByLabel('Video (MP4)').focus();
+  await dialog(page).getByTestId('export-mode').getByLabel('Video').focus();
 
   interface Stop {
     id: string;
@@ -117,10 +115,10 @@ test('the whole dialog by keyboard alone: order, visible focus, Escape', async (
     await page.keyboard.press(TAB);
   }
   const ids = stops.map((s) => s.id);
-  // Every group in order: format, the preview (HUD boxes, play, time, thumbnail, description),
-  // then the options column top to bottom, ending on Close and Export.
+  // Every group in order: Poster | Video, the preview (HUD boxes, play, time, thumbnail,
+  // description), then the options column top to bottom, ending on Close and Export.
   const order = [
-    'export-format',
+    'export-mode',
     'hud-box-formula',
     'preview-play',
     'preview-time',
@@ -542,6 +540,95 @@ test('every control by keyboard redraws the preview and keeps focus in the dialo
   await expect(page.getByTestId('export-message')).toHaveCount(0);
 });
 
+test('the poster workspace by keyboard alone: order, visible focus, Escape back to music', async ({
+  page,
+  browserName,
+}) => {
+  test.setTimeout(60_000);
+  const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await load(page);
+  await page.getByTestId('menu-button').focus();
+  await page.keyboard.press('Enter');
+  for (let i = 0; i < 30 && (await focused(page)).id !== 'open-export'; i++) {
+    await page.keyboard.press(TAB);
+  }
+  await page.keyboard.press('Enter');
+  await expect(workspace(page)).toBeVisible();
+  await expect.poll(async () => (await focused(page)).id).toBe('export-mode');
+  await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
+  // Shift+Tab reaches Back to music, before the mode.
+  await page.keyboard.press(`Shift+${TAB}`);
+  await expect.poll(async () => (await focused(page)).id).toBe('back-to-music');
+  await page.keyboard.press(TAB);
+  await page.getByTestId('look-hud-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('look-hud-button')).toHaveAttribute('aria-expanded', 'true');
+  await page.getByTestId('export-psize').locator('input:checked').focus();
+
+  const stops: { id: string; ring: boolean }[] = [];
+  for (let i = 0; i < 200; i++) {
+    const s = await page.evaluate(() => {
+      const a = document.activeElement as HTMLElement;
+      const ws = document.querySelector<HTMLElement>('[data-testid=poster-workspace]')!;
+      if (!ws.contains(a) || a === ws) return null;
+      const shows = (el: Element) => {
+        const st = getComputedStyle(el);
+        return (
+          (st.outlineStyle !== 'none' && parseFloat(st.outlineWidth) >= 1) ||
+          /\d+px/.test(st.boxShadow)
+        );
+      };
+      const seg = a.closest('.seg label');
+      return {
+        id:
+          a.getAttribute('data-testid') ??
+          a.closest('[data-testid]')?.getAttribute('data-testid') ??
+          a.tagName,
+        ring: shows(a) || (seg !== null && shows(seg)),
+      };
+    });
+    if (!s) break;
+    stops.push(s);
+    await page.keyboard.press(TAB);
+  }
+  const ids = stops.map((s) => s.id);
+  // The options top to bottom, Export, then the tools and the layers.
+  const order = [
+    'export-psize',
+    'export-pwidth',
+    'export-pheight',
+    'export-pformat',
+    'export-section',
+    'export-prows',
+    'export-vtheme',
+    'export-ptitle',
+    'look-guides',
+    'look-glow',
+    'look-hud-button',
+    'hud-formula',
+    'look-bg',
+    'look-reset',
+    'export-run',
+    'tool-select',
+    'layer-part',
+  ];
+  const at = order.map((id) => ids.indexOf(id));
+  expect(
+    at.every((i) => i >= 0),
+    `missing: ${order.filter((_, k) => at[k] < 0)}`,
+  ).toBe(true);
+  expect(at).toEqual([...at].sort((a, b) => a - b));
+  expect(stops.filter((s) => !s.ring).map((s) => s.id)).toEqual([]);
+  // Escape lets go of the focused control, then returns to the music; focus on the menu.
+  await page.getByTestId('export-prows').focus();
+  await page.keyboard.press('Escape');
+  await expect(workspace(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(workspace(page)).toBeHidden();
+  await expect(page.getByTestId('menu-button')).toBeFocused();
+});
+
 test('poster controls by keyboard redraw the preview', async ({ page }) => {
   await load(page);
   await openDialog(page, 'Poster');
@@ -586,7 +673,7 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
   await step(
     'section Custom',
     async () => {
-      await dialog(page).getByTestId('export-section').getByLabel('Whole piece').focus();
+      await page.getByTestId('export-section').getByLabel('Whole piece').focus();
       await page.keyboard.press('ArrowRight');
     },
     'export-section',
@@ -603,7 +690,7 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'background Transparent',
     async () => {
       // Transparent is last (WebKit's arrows don't wrap from the first).
-      await dialog(page).getByTestId('look-bg').getByLabel('Gradient').focus();
+      await page.getByTestId('look-bg').getByLabel('Gradient').focus();
       await page.keyboard.press('ArrowRight');
     },
     'look-bg',
@@ -646,11 +733,11 @@ for (const [w, h] of SIZES) {
       await page.setViewportSize({ width: w, height: h });
       await page.emulateMedia({ colorScheme: scheme });
       await load(page);
-      for (const format of ['Video (MP4)', 'Poster'] as const) {
-        if (format === 'Poster') await page.getByTestId('export-close').click();
+      {
+        const format = 'Video (MP4)';
         await openDialog(page, format);
         await page.getByTestId('look-hud-button').click();
-        if (format === 'Video (MP4)') await page.getByTestId('bookends-button').click();
+        await page.getByTestId('bookends-button').click();
         const m = await page.evaluate(() => {
           const d = document.querySelector<HTMLElement>('[data-testid=export-dialog]')!;
           const pv = d.querySelector('[data-testid=export-preview]')!.getBoundingClientRect();
@@ -692,6 +779,48 @@ for (const [w, h] of SIZES) {
         expect(run.y + run.height).toBeLessThanOrEqual(h);
         if (w < 900) expect(run.y).toBeGreaterThanOrEqual(c.y + c.height);
       }
+      // The poster workspace: the artboard and the options never overlap; the poster stays fully
+      // on screen with the options scrolled to Export (narrow: stacked, the artboard on top).
+      await page.getByTestId('export-close').click();
+      await openDialog(page, 'Poster');
+      await page.getByTestId('look-hud-button').click();
+      const p = await page.evaluate(() => {
+        const ws = document.querySelector<HTMLElement>('[data-testid=poster-workspace]')!;
+        // Narrow: the options scroll under the sticky artboard; compare them unscrolled.
+        ws.scrollTop = 0;
+        const art = ws.querySelector('[data-testid=poster-artboard]')!.getBoundingClientRect();
+        const side = ws.querySelector('.ws-side')!;
+        const sr = side.getBoundingClientRect();
+        const over = [...side.querySelectorAll<HTMLElement>('*')]
+          .filter((el) => el.getClientRects().length > 0 && !el.closest('.visually-hidden'))
+          .filter((el) => el.getBoundingClientRect().right > sr.right + 1)
+          .map((el) => el.getAttribute('data-testid') ?? el.className ?? el.tagName);
+        return {
+          sideways:
+            ws.scrollWidth > ws.clientWidth + 1 ||
+            document.documentElement.scrollWidth > innerWidth,
+          overlap:
+            art.right > sr.left + 0.5 &&
+            art.left < sr.right &&
+            art.bottom > sr.top + 0.5 &&
+            art.top < sr.bottom,
+          over: over.slice(0, 5),
+          bg: getComputedStyle(side).backgroundColor,
+          ink: getComputedStyle(side.querySelector('legend')!).color,
+        };
+      });
+      expect(p.sideways, 'poster').toBe(false);
+      expect(p.overlap, 'poster').toBe(false);
+      expect(p.over, 'poster').toEqual([]);
+      expect(p.bg).not.toBe(p.ink);
+      await page.getByTestId('export-run').scrollIntoViewIfNeeded();
+      const c = (await page.getByTestId('preview-canvas').boundingBox())!;
+      expect(c.y, 'poster').toBeGreaterThanOrEqual(0);
+      expect(c.y + c.height, 'poster').toBeLessThanOrEqual(h);
+      expect(c.x + c.width, 'poster').toBeLessThanOrEqual(w);
+      const run = (await page.getByTestId('export-run').boundingBox())!;
+      expect(run.y + run.height).toBeLessThanOrEqual(h);
+      expect(run.y + 1).toBeGreaterThanOrEqual(w < 1100 ? c.y + c.height : 0);
     });
   }
 }

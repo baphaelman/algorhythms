@@ -13,6 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { openAudioExport, openVideoExport } from './export-open';
 import {
   chooseSegment,
   clickExportForDownload,
@@ -49,11 +50,12 @@ const LOOK_SAMPLES = process.env.LOOK_SAMPLES_DIR;
 /** Review screenshots (Little Round, light, HUD expanded): video.png (1280×800), phone.png (375×640). */
 const PREVIEW_DIR = process.env.EXPORT_PREVIEW_DIR;
 
+/** Menu → Export → Video (M14: the video dialog), once the exporter has loaded. */
 async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByTestId('export-run')).toBeEnabled();
+  await openVideoExport(page);
+  await expect(
+    page.getByTestId('export-codec').or(page.getByTestId('export-unsupported')),
+  ).toBeVisible();
 }
 
 /** Picks a radio by its label: a guarded click (not `check()`), then its state. */
@@ -62,8 +64,6 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
   await guarded(page, `choose ${testId} ${label}`, () => input.click());
   await expect(input).toBeChecked();
 }
-
-const pickVideo = (page: Page) => choose(page, 'export-format', 'Video (MP4)');
 
 /** The Look section (always shown for video and poster). */
 async function openLook(page: Page): Promise<void> {
@@ -148,7 +148,6 @@ test.beforeEach(async ({ page }) => {
 
 test('offers Video (MP4) with its options, the codecs and the size', async ({ page }) => {
   await openExport(page);
-  await pickVideo(page);
   const d = dialog(page);
   // A piece without a camera exports with Auto (M11.5).
   for (const label of ['16:9', '1080p', '30 fps', 'Auto', 'Current']) {
@@ -182,7 +181,6 @@ test('the choices reach exportVideo; the download plays at the WAV length', asyn
   await loadShortPiece(page, 3);
   await setZoom(page, 5);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-camera', 'Follow');
   await choose(page, 'export-aspect', '9:16');
   await choose(page, 'export-vsize', '720p');
@@ -243,7 +241,6 @@ test('streams the MP4 to a file picked in the save dialog (Chromium)', async ({
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await loadShortPiece(page, 3);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-vsize', '720p');
   let downloads = 0;
   page.on('download', () => downloads++);
@@ -285,11 +282,11 @@ test('without WebCodecs it says why and disables Export for video only', async (
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await expect(page.getByTestId('export-unsupported')).toContainText('no video encoder');
   await expect(page.getByTestId('export-run')).toBeDisabled();
   await expect(page.getByTestId('export-size')).toHaveCount(0);
-  await choose(page, 'export-format', 'WAV');
+  await page.getByTestId('export-close').click();
+  await openAudioExport(page);
   await expect(page.getByTestId('export-unsupported')).toHaveCount(0);
   await expect(page.getByTestId('export-run')).toBeEnabled();
 });
@@ -309,7 +306,6 @@ test('Cancel stops a video export; the picked file is left empty (Chromium)', as
     await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   }
   await openExport(page);
-  await pickVideo(page);
   let downloads = 0;
   page.on('download', () => downloads++);
   await page.getByTestId('export-run').click();
@@ -348,7 +344,6 @@ test('Cancel stops a video export; the picked file is left empty (Chromium)', as
 
 test('Escape cancels a running video export and closes the dialog', async ({ page }) => {
   await openExport(page);
-  await pickVideo(page);
   let downloads = 0;
   page.on('download', () => downloads++);
   await page.getByTestId('export-run').click();
@@ -365,7 +360,6 @@ test('Escape cancels a running video export and closes the dialog', async ({ pag
 
 test('remembers the video choices across closing and other formats', async ({ page }) => {
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-aspect', '1:1');
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-fps', '60 fps');
@@ -377,9 +371,6 @@ test('remembers the video choices across closing and other formats', async ({ pa
   await page.getByTestId('export-close').click();
   await expect(dialog(page)).toBeHidden();
   await openExport(page);
-  await expect(dialog(page).getByLabel('Video (MP4)', { exact: true })).toBeChecked();
-  await choose(page, 'export-format', 'MIDI');
-  await pickVideo(page);
   const d = dialog(page);
   for (const label of ['1:1', '720p', '60 fps', 'Light']) {
     await expect(d.getByLabel(label, { exact: true })).toBeChecked();
@@ -398,7 +389,6 @@ test('fits a phone screen with Video selected, in both themes', async ({ page })
   for (const theme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await openExport(page);
-    await pickVideo(page);
     await expect(page.getByTestId('export-codec')).toBeVisible();
     await openLook(page);
     const box = (await dialog(page).boundingBox())!;
@@ -432,7 +422,6 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await page.emulateMedia({ colorScheme: 'light' });
   await loadShortPiece(page, 2);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-camera', 'Follow');
   await choose(page, 'export-vsize', '720p');
   await openLook(page);
@@ -556,7 +545,6 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await openLook(page);
   await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'labels');
   await expect(page.getByTestId('look-width')).toHaveValue('1.5');
@@ -578,14 +566,12 @@ test('Look: defaults are EXPORT_LOOK; the controls reach exportVideo; remembered
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await openLook(page);
   await expectDefaults();
 });
 
 test('Look sliders work from the keyboard (focused, arrows / Home / End)', async ({ page }) => {
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-camera', 'Follow');
   const future = page.getByTestId('look-future');
   await guarded(page, 'focus look-future', () => future.focus());
@@ -613,7 +599,6 @@ test('line colours follow the app by default; By pitch overrides it', async ({ p
   await page.getByRole('button', { name: 'Ink', exact: true }).click();
   await page.keyboard.press('Escape');
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-vsize', '720p');
   await openLook(page);
   await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'app');
@@ -702,7 +687,6 @@ test('the preview draws the export’s frame; redraws on changes; the time slide
   page,
 }) => {
   await openExport(page);
-  await pickVideo(page);
   let n = await drawn(page);
   // The playhead is at the start, so the preview starts a third into the piece.
   const duration = await page.evaluate(
@@ -754,7 +738,6 @@ test('the preview starts at the editor’s playhead', async ({ page }) => {
     ).actions.seek(12.5),
   );
   await openExport(page);
-  await pickVideo(page);
   await drawn(page);
   await expect(canvasOf(page)).toHaveAttribute('data-t', '12.500');
   await expect(page.getByTestId('preview-time')).toHaveValue('12.5');
@@ -786,7 +769,6 @@ test('the preview plays: the time follows the playhead and redraws; the slider s
 }) => {
   await seekEditor(page, 4);
   await openExport(page);
-  await pickVideo(page);
   const n = await drawn(page);
   await expect(playBtn(page)).toHaveAccessibleName('Play preview');
   await expect(playBtn(page)).toHaveAttribute('aria-keyshortcuts', 'Space');
@@ -828,7 +810,6 @@ test('the preview plays: the time follows the playhead and redraws; the slider s
 test('the preview stops at the piece’s end', async ({ page }) => {
   await loadShortPiece(page, 2);
   await openExport(page);
-  await pickVideo(page);
   await drawn(page);
   await page.getByTestId('preview-time').fill('1.5');
   await tap(page, 'preview-play');
@@ -840,7 +821,6 @@ test('Space anywhere in the dialog plays and pauses the preview; the control doe
   page,
 }) => {
   await openExport(page);
-  await pickVideo(page);
   await drawn(page);
   const playing = () => playBtn(page).getAttribute('data-playing');
   const spaceToggles = async () => {
@@ -869,7 +849,9 @@ test('Space anywhere in the dialog plays and pauses the preview; the control doe
   // A slider.
   await page.getByTestId('preview-time').focus();
   await spaceToggles();
-  // Other formats: Space keeps the browser's (a focused switch toggles; nothing plays).
+  // The audio dialog: Space keeps the browser's (a focused switch toggles; nothing plays).
+  await page.getByTestId('export-close').click();
+  await openAudioExport(page);
   await choose(page, 'export-format', 'Stems');
   const mono = page.getByTestId('export-mono');
   await mono.focus();
@@ -884,7 +866,6 @@ test('closing the dialog stops the preview and returns the editor’s playhead',
   await expect(page.getByTestId('time')).toHaveText(/^00:07\.0/);
   for (const close of ['Escape', 'button'] as const) {
     await openExport(page);
-    await pickVideo(page);
     await drawn(page);
     await page.getByTestId('preview-time').fill('30');
     await tap(page, 'preview-play');
@@ -903,7 +884,6 @@ test('Follow’s Window slider sets the seconds shown; the preview and the expor
 }) => {
   await setZoom(page, 10);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-camera', 'Follow');
   let n = await drawn(page);
   const slider = page.getByTestId('export-window');
@@ -962,7 +942,6 @@ test('Window: the editor’s zoom is a tick the slider snaps to when dragged clo
 }) => {
   await setZoom(page, 20);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-camera', 'Follow');
   const slider = page.getByTestId('export-window');
   const tickEl = page.getByTestId('export-window-tick');
@@ -1027,7 +1006,6 @@ test('the preview stays in view while the options scroll (desktop and phone)', a
   ] as const) {
     await page.setViewportSize({ width: w, height: h });
     await openExport(page);
-    await pickVideo(page);
     await drawn(page);
     for (const t of ['look-reset', 'export-run', 'look-guides']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
@@ -1058,7 +1036,6 @@ test('the expanded HUD never covers the Export button (desktop and phone)', asyn
       await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
     }
     await openExport(page);
-    await pickVideo(page);
     await openHud(page);
     for (const t of ['look-hud', 'hud-title', 'look-reset', 'export-run']) {
       await page.getByTestId(t).scrollIntoViewIfNeeded();
@@ -1081,7 +1058,6 @@ test('phone: the Look segments fit, one line each; no dropdowns', async ({ page 
   ] as const) {
     await page.setViewportSize({ width: w, height: h });
     await openExport(page);
-    await pickVideo(page);
     await openLook(page);
     expect(await badSegments(page), `${w}`).toEqual([]);
     // Every choice selected in turn still fits.
@@ -1100,7 +1076,6 @@ test('HUD: expands in place, one switch per readout; each reaches the export; ke
   test.setTimeout(120_000);
   await loadShortPiece(page, 1);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-vsize', '720p');
   const button = page.getByTestId('look-hud-button');
   const list = page.getByTestId('look-hud');
@@ -1174,7 +1149,6 @@ test('HUD: expands in place, one switch per readout; each reaches the export; ke
 
 test('HUD: reduced motion opens it at once; otherwise it animates its height', async ({ page }) => {
   await openExport(page);
-  await pickVideo(page);
   const heights = () =>
     page.getByTestId('look-hud').evaluate(async (el) => {
       const out: number[] = [];
@@ -1213,7 +1187,6 @@ test('renders without storage (localStorage throws)', async ({ page }) => {
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await openLook(page);
   await chooseSegment(page, 'look-guides', 'Lines + labels');
   await expect(page.getByTestId('look-guides')).toHaveAttribute('data-value', 'labels');
@@ -1232,7 +1205,6 @@ test('owner look samples: the dialog with the Look open, a default frame', async
   await page.goto('./?example=little-round');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await openLook(page);
   await expect(page.getByTestId('export-codec')).toHaveText(/\+/);
   await dialog(page).screenshot({ path: join(LOOK_SAMPLES!, 'dialog-video.png') });
@@ -1276,7 +1248,6 @@ test('owner samples: Little Round at 16:9 and 9:16, 720p30 Follow', async ({
   await page.goto('./?example=little-round');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await pickVideo(page);
   await choose(page, 'export-vsize', '720p');
   await expect(page.getByTestId('export-codec')).toBeVisible();
   await dialog(page).screenshot({ path: join(SAMPLES!, 'dialog.png') });

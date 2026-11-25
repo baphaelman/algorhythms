@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { closeExport, openAudioExport, openExport, surface, switchMode } from './export-open';
 import { clickExportForDownload, guarded, setSwitch } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
@@ -23,21 +24,9 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+const dialog = surface;
 /** Kite Day's grid: 100 bpm in 4/4. */
 const BAR = 2.4;
-
-async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByTestId('export-run')).toBeEnabled();
-}
-
-async function closeExport(page: Page): Promise<void> {
-  await page.getByTestId('export-close').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeHidden();
-}
 
 async function choose(page: Page, testId: string, label: string): Promise<void> {
   const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
@@ -113,10 +102,12 @@ test.beforeEach(async ({ page }) => {
 test('Section: Whole by default; Loop only with a loop region; Custom shows the range', async ({
   page,
 }) => {
-  await openExport(page);
   // WAV, stems and MIDI have no Section.
+  await openAudioExport(page);
   await expect(page.getByTestId('export-section')).toHaveCount(0);
-  await choose(page, 'export-format', 'Poster');
+  await closeExport(page);
+  await openExport(page);
+  await switchMode(page, 'Poster');
   const sec = page.getByTestId('export-section');
   await expect(sec.getByLabel('Whole piece', { exact: true })).toBeChecked();
   await expect(sec.getByLabel('Loop region', { exact: true })).toHaveCount(0);
@@ -148,7 +139,7 @@ test('Custom: handles snap to bars when dragged, Alt places freely; typed times'
   page,
 }) => {
   await openExport(page);
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await choose(page, 'export-section', 'Custom');
   await dragHandle(page, 'end', 50.3);
   let s = (await previewSection(page))!;
@@ -187,7 +178,7 @@ test('Custom by keyboard: arrows step a bar, Shift four, Alt 0.1 s; without a te
   page,
 }) => {
   await openExport(page);
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await choose(page, 'export-section', 'Custom');
   const start = page.getByTestId('section-start');
   await start.focus();
@@ -227,7 +218,7 @@ test('the Section is remembered per piece for the session; another piece starts 
   page,
 }) => {
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await choose(page, 'export-section', 'Custom');
   const start = page.getByTestId('section-start-text');
   await start.fill('20');
@@ -260,7 +251,7 @@ test('video preview: the time slider covers the section; playing stays inside it
   page,
 }) => {
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await choose(page, 'export-section', 'Custom');
   const start = page.getByTestId('section-start-text');
   await start.fill('20');
@@ -304,7 +295,7 @@ test('poster of a 45 s section of a 3-minute piece: only the section, fitted, ro
   await page.goto('./?example=the-cartographers-rain');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await choose(page, 'export-section', 'Custom');
   await page.getByTestId('section-start-text').fill('2:00');
   await page.getByTestId('section-start-text').press('Enter');
@@ -365,7 +356,7 @@ test('a short video section: its length to a frame, frame 0 = its start, the spa
   test.skip(info.project.name.endsWith('-prod'), 'once');
   test.setTimeout(180_000);
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await choose(page, 'export-vsize', '720p');
   await choose(page, 'export-camera', 'Whole piece');
   await choose(page, 'export-section', 'Custom');

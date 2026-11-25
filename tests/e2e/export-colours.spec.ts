@@ -8,6 +8,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { openExport, surface, switchMode } from './export-open';
 import { chooseSegment, clickExportForDownload, guarded, tap } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -20,19 +21,12 @@ interface HookWindow {
   };
 }
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+const dialog = surface;
 
 async function choose(page: Page, testId: string, label: string): Promise<void> {
   const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
   await guarded(page, `choose ${testId} ${label}`, () => input.click());
   await expect(input).toBeChecked();
-}
-
-async function openExport(page: Page): Promise<void> {
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByTestId('export-run')).toBeEnabled();
 }
 
 /** Types a swatch's hex (applied once valid). */
@@ -82,7 +76,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('./?example=tidewater-hymn');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
 });
 
 test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered', async ({
@@ -128,7 +122,7 @@ test('schemes: pick, edit a swatch → Custom, save, reapply, delete; remembered
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openExport(page);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await expect(scheme(page)).toHaveAttribute('data-value', 'saved:Moonlit');
   await tap(page, 'scheme-delete-Moonlit');
   await expect(page.getByTestId('scheme-saved-Moonlit')).toHaveCount(0);
@@ -200,7 +194,7 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
   }, ENDS);
   expectRedToBlue(frame, 'video frame');
 
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await expect(page.getByTestId('look-bg')).toHaveAttribute('data-value', 'gradient');
   const dl = await clickExportForDownload(page);
   const png = readFileSync(await dl.path()).toString('base64');
@@ -219,7 +213,7 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
   expectRedToBlue(poster, 'poster PNG');
   // Transparent stays a poster-only fourth choice.
   await chooseSegment(page, 'look-bg', 'Transparent');
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   await expect(page.getByTestId('look-bg')).toHaveAttribute('data-value', 'gradient');
   await expect(page.getByTestId('look-bg').getByLabel('Transparent', { exact: true })).toHaveCount(
     0,

@@ -10,6 +10,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { openVideoExport } from './export-open';
 import { guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -73,10 +74,7 @@ test('a video with a lead-in, title card, end card and fades; the thumbnail', as
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('./?example=kite-day');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await choose(page, 'export-format', 'Video (MP4)');
+  await openVideoExport(page);
   await choose(page, 'export-vsize', '720p');
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))));
 

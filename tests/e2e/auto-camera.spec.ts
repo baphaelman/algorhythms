@@ -6,6 +6,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { openVideoExport } from './export-open';
 import { guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -30,10 +31,7 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 async function openCrease(page: Page): Promise<void> {
   await page.goto('./?example=crease');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(dialog(page)).toBeVisible();
-  await choose(page, 'export-format', 'Video (MP4)');
+  await openVideoExport(page);
   await expect(page.getByTestId('export-codec')).not.toHaveText(/Checking/, { timeout: 20_000 });
   await choose(page, 'export-vsize', '720p');
   await expect(

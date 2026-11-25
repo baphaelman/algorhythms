@@ -253,12 +253,20 @@
 @media (max-width: 1099px) {
   .poster-ws {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(240px, 52vh) max-content max-content;
+    grid-template-rows: clamp(160px, 34vh, 420px) max-content max-content;
     grid-template-areas:
       'stage'
       'side'
       'bottom';
     overflow-y: auto;
+  }
+
+  /* The poster stays in view while the options scroll under it. */
+  .artboard {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    border-bottom: 1px solid var(--rule);
   }
 
   .ws-side {
@@ -276,4 +284,9 @@
     min-height: auto;
     max-height: none;
   }
+}
+
+/* Poster | Video atop the video dialog (until M15's video workspace). */
+.export-format .export-mode {
+  margin-bottom: 12px;
 }

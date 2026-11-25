@@ -78,7 +78,14 @@ const AUDIO_FORMATS = EXPORT_FORMATS.filter(
 /** The dialog closed (Escape, Close, a backdrop click): back to the editor, unless the surface moved on. */
 function closeDialog(): void {
   const { surface } = useExportSurface.getState();
-  if (surface === 'video' || surface === 'audio') closeSurface();
+  if (surface !== 'video' && surface !== 'audio') return;
+  closeSurface();
+  // Opened from the workspace, the dialog's opener is gone: focus goes back to the menu.
+  requestAnimationFrame(() => {
+    if (document.activeElement === document.body || !document.activeElement) {
+      document.querySelector<HTMLElement>('[data-testid="menu-button"]')?.focus();
+    }
+  });
 }
 
 /** Wide screens show the preview beside the options (styles.css uses the same width). */

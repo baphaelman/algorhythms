@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { openExport, switchMode } from './export-open';
 import { clickExportForDownload } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -17,14 +18,6 @@ interface HookWindow {
     exportRun(): Promise<typeof ExportRun>;
     videoExport(): Promise<typeof VideoExport>;
   };
-}
-
-const dialog = (page: Page) => page.getByTestId('export-dialog');
-
-async function choose(page: Page, testId: string, label: string): Promise<void> {
-  const input = dialog(page).getByTestId(testId).getByLabel(label, { exact: true });
-  await input.click();
-  await expect(input).toBeChecked();
 }
 
 /** In-page: total distance (0..255 per channel) of an RGBA image's pixels from its corner's. */
@@ -59,16 +52,14 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('./?example=kite-day');
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
-  await page.getByTestId('menu-button').click();
-  await page.getByTestId('open-export').click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
+  await openExport(page);
 });
 
 test('the preview, a video frame and the poster PNG draw gated lines at the minimum', async ({
   page,
 }) => {
   test.setTimeout(90_000);
-  await choose(page, 'export-format', 'Video (MP4)');
+  await switchMode(page, 'Video');
   const slider = page.getByTestId('look-min-opacity');
   await expect(slider).toHaveValue('0');
   await expect(page.getByTestId('look-min-opacity-value')).toHaveText('Off');
@@ -131,7 +122,7 @@ test('the preview, a video frame and the poster PNG draw gated lines at the mini
   expect(r.on, 'video frame').toBeGreaterThan(r.off * 1.05);
 
   // The poster: remembered across formats; brighter than at 0.
-  await choose(page, 'export-format', 'Poster');
+  await switchMode(page, 'Poster');
   await expect(slider).toHaveValue('90');
   const on = await pngInk(page, (await (await clickExportForDownload(page)).path())!);
   await slider.fill('0');
