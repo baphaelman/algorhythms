@@ -43,7 +43,11 @@ const lay = (doc?: PosterDoc) =>
     compiled: KITE_C,
     piece: KITE,
     ...(doc ? { doc } : {}),
-    look: { ...layoutPoster({ compiled: KITE_C, piece: KITE }).look, guides: true, guideLabels: true },
+    look: {
+      ...layoutPoster({ compiled: KITE_C, piece: KITE }).look,
+      guides: true,
+      guideLabels: true,
+    },
   });
 const CTX = { dark: false, duration: KITE_C.duration, loop: null };
 
@@ -140,12 +144,18 @@ describe('selection', () => {
     });
     // The group outlines every member; one member only itself.
     expect(selectedBoxes(L, { kind: 'group', group: 'guideLabels' })).toHaveLength(hz.length);
-    expect(selectedBoxes(L, { kind: 'member', group: 'guideLabels', member: o.member })).toHaveLength(1);
+    expect(
+      selectedBoxes(L, { kind: 'member', group: 'guideLabels', member: o.member }),
+    ).toHaveLength(1);
   });
 
   it('layers and text boxes select themselves, with a frame for the handles', () => {
     const layerObj = L.objects.find((o) => o.type === 'layer')!;
-    const sel = selectionOfHit(L, { object: layerObj, index: 0, group: 'layers', member: '' }, true);
+    const sel = selectionOfHit(
+      L,
+      { object: layerObj, index: 0, group: 'layers', member: '' },
+      true,
+    );
     expect(sel.kind).toBe('layer');
     expect(selectionFrame(L, sel)).toEqual(layerOf(L, (sel as { id: string }).id)!.bounds);
     const title = L.objects.find((o) => o.type === 'text' && o.member === 'title')!;
@@ -221,7 +231,13 @@ describe('placing', () => {
 
   it('a moved label member is a nudge; Reset to group clears it', () => {
     const sel = { kind: 'member', group: 'guideLabels', member: 'x' } as const;
-    const d = placeRect(undefined, L, sel, { x: 0, y: 0, w: 1, h: 1 }, { x: 24, y: -12, w: 1, h: 1 });
+    const d = placeRect(
+      undefined,
+      L,
+      sel,
+      { x: 0, y: 0, w: 1, h: 1 },
+      { x: 24, y: -12, w: 1, h: 1 },
+    );
     const S = Math.min(L.width, L.height);
     expect(d!.members!.guideLabels!.x).toEqual({
       dx: Math.round((24 / S) * 1e4) / 1e4,

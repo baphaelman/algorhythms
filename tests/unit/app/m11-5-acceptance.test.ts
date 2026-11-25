@@ -11,7 +11,10 @@ import { parsePiece } from '../../../src/core/schema';
 import type { CameraKey, Piece } from '../../../src/core/types';
 import { autoCameraKeys } from '../../../src/render/auto-camera';
 import { cameraPoseAt } from '../../../src/render/camera-path';
-import { renderPosterLayoutSvg as renderPosterSvg, type PosterOptions } from '../../../src/app/poster-export';
+import {
+  renderPosterLayoutSvg as renderPosterSvg,
+  type PosterOptions,
+} from '../../../src/app/poster-export';
 
 const EXAMPLES = join(import.meta.dirname, '../../../examples');
 const load = (file: string): Piece => {

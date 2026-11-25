@@ -137,7 +137,9 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   await expect(page.getByTestId('export-ptitle')).toHaveCount(0);
   await expect(page.getByTestId('layer-text')).toHaveCount(2);
   await expect(page.locator('[data-testid="layer-text"][data-id="title"]')).toContainText('Title');
-  await expect(page.locator('[data-testid="layer-text"][data-id="credit"]')).toContainText('Credits');
+  await expect(page.locator('[data-testid="layer-text"][data-id="credit"]')).toContainText(
+    'Credits',
+  );
   await expect(page.getByTestId('export-size')).toHaveText('3840 × 2160 px, PNG');
   await choose(page, 'export-psize', 'A4 portrait');
   await choose(page, 'export-pformat', 'SVG');

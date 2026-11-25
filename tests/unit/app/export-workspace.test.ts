@@ -82,7 +82,9 @@ describe('Escape in the workspace', () => {
   it('clears a selection before leaving; a focused control still blurs first', () => {
     expect(workspaceEscape({ ...base, selected: true })).toBe('deselect');
     expect(workspaceEscape({ ...base, selected: true, focused: root })).toBe('deselect');
-    expect(workspaceEscape({ ...base, selected: true, focused: { tagName: 'INPUT' } })).toBe('blur');
+    expect(workspaceEscape({ ...base, selected: true, focused: { tagName: 'INPUT' } })).toBe(
+      'blur',
+    );
   });
 
   it('does nothing with a dialog, a used key or another key', () => {

@@ -81,6 +81,7 @@ export function workspaceEscape(e: {
   if (e.key !== 'Escape' || e.defaultPrevented || e.dialog) return null;
   const f = e.focused;
   const tag = f?.tagName?.toLowerCase();
-  if (!f || f === e.root || tag === 'body' || tag === 'html') return e.selected ? 'deselect' : 'leave';
+  if (!f || f === e.root || tag === 'body' || tag === 'html')
+    return e.selected ? 'deselect' : 'leave';
   return 'blur';
 }

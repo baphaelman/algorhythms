@@ -12,12 +12,7 @@ import type { HudItem } from '../render/types';
 import { posOfBox } from '../render/hud-layout';
 import { PLAYER_LOOK, type Look } from '../render/look';
 import { supportsOklch } from '../render/palettes';
-import {
-  drawPosterLayout,
-  posterSize,
-  type PosterDims,
-  type PosterSize,
-} from '../render/poster';
+import { drawPosterLayout, posterSize, type PosterDims, type PosterSize } from '../render/poster';
 import {
   estimateText,
   layoutPoster,

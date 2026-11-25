@@ -50,9 +50,11 @@ import { artboardFit, useWorkspace } from '../poster-workspace';
 import { selectionExists } from '../poster-select';
 import { startPosterSync } from '../poster-sync';
 import type { ExportForm } from '../export-options';
-import { usePlayer } from '../store';
+import { togglePlay, usePlayer } from '../store';
+import { setDialogSpace } from '../space-key';
 import {
   ArtboardOverlay,
+  ArtboardPlayhead,
   LabelLineToggles,
   LayersList,
   MarginsField,
@@ -163,7 +165,8 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
           prevSet.height !== set.height ||
           prevSet.rows !== set.rows ||
           JSON.stringify(prevSet.margins) !== JSON.stringify(set.margins));
-      const sel = ws.selected && selectionExists(layout, piece.poster, ws.selected) ? ws.selected : null;
+      const sel =
+        ws.selected && selectionExists(layout, piece.poster, ws.selected) ? ws.selected : null;
       useWorkspace.setState({
         layout,
         ...(sel !== ws.selected ? { selected: sel, editing: null } : {}),
@@ -219,6 +222,7 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
             style={{ width: fit.w, height: fit.h }}
           />
           <ArtboardOverlay width={fit.w} />
+          <ArtboardPlayhead />
           <HudOverlay form={form} kind="poster" disabled={running} />
         </div>
       </div>
@@ -283,8 +287,11 @@ export function PosterWorkspace() {
   useFocusRescue(root, true);
   // The form's poster options and the piece's poster, in step while the workspace shows.
   useLayoutEffect(() => startPosterSync(), []);
+  // Space plays and pauses, as in the video dialog (a text field still types it).
+  useEffect(() => setDialogSpace(togglePlay), []);
   useEffect(
-    () => () => useWorkspace.setState({ selected: null, editing: null, layout: null, guides: null }),
+    () => () =>
+      useWorkspace.setState({ selected: null, editing: null, layout: null, guides: null }),
     [],
   );
 

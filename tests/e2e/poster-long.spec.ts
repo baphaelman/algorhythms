@@ -27,7 +27,10 @@ const FILES = ['examples', 'examples/songs', 'examples/experiments'].flatMap((d)
 
 interface HookWindow {
   __algorhythms: {
-    parsePiece(j: unknown): { ok: boolean; piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0] };
+    parsePiece(j: unknown): {
+      ok: boolean;
+      piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0];
+    };
     poster(): Promise<typeof Poster>;
     actions: { loadPiece(p: unknown): void };
     store: {
@@ -78,7 +81,10 @@ test('4K PNG < 2 s and SVG < 10 MB: longest, ~3-minute and stretched pieces (rep
     async ({ jsons, exportLook }) => {
       const h = (window as unknown as HookWindow).__algorhythms;
       const mod = await h.poster();
-      const m = { renderPosterPng: mod.renderPosterLayoutPng, renderPosterSvg: mod.renderPosterLayoutSvg };
+      const m = {
+        renderPosterPng: mod.renderPosterLayoutPng,
+        renderPosterSvg: mod.renderPosterLayoutSvg,
+      };
       const load = (piece: unknown) => {
         h.actions.loadPiece(piece);
         const s = h.store.getState();

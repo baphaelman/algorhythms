@@ -35,7 +35,10 @@ const json = (name: string): unknown =>
 
 interface HookWindow {
   __algorhythms: {
-    parsePiece(j: unknown): { ok: boolean; piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0] };
+    parsePiece(j: unknown): {
+      ok: boolean;
+      piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0];
+    };
     poster(): Promise<typeof Poster>;
     actions: { loadPiece(p: unknown): void };
     store: { getState(): { compiled: { duration: number } } };
@@ -144,7 +147,10 @@ async function pngVsReference(page: Page, name: string, opts: Poster.PosterOptio
   );
 }
 
-test('PNG equals the layout drawn on a canvas, as the artboard draws it (pixel-identical)', async ({ page, browserName }) => {
+test('PNG equals the layout drawn on a canvas, as the artboard draws it (pixel-identical)', async ({
+  page,
+  browserName,
+}) => {
   test.setTimeout(120_000);
   const cases: [string, Poster.PosterOptions][] = [
     ['tide-pools', BASE],

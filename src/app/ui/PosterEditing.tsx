@@ -27,6 +27,7 @@ import {
   layerOf,
   newTextId,
   overlapsMusic,
+  posterTimeAt,
   putText,
   refitPoster,
   removeText,
@@ -51,6 +52,7 @@ import {
   CLEAR_MEMBER,
   GROUP_NAMES,
   alignBox,
+  nudgeDoc,
   placeRect,
   resizable,
   selectedBoxes,
@@ -68,7 +70,7 @@ import {
 } from '../poster-select';
 import { editPoster, editPosterRun, posterGesture, type PosterGesture } from '../poster-sync';
 import { linesText, posterLayers, useWorkspace, type WorkspaceTool } from '../poster-workspace';
-import { usePlayer } from '../store';
+import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
 import { UndoRedo } from './UndoRedo';
@@ -86,8 +88,7 @@ const DRAG_CSS = 3;
 /** Hit tolerance at least this, CSS px. */
 const HIT_CSS = 4;
 
-const hex = (c: string | undefined, fallback = '#808080'): string =>
-  (c && toHex(c)) || fallback;
+const hex = (c: string | undefined, fallback = '#808080'): string => (c && toHex(c)) || fallback;
 
 // ---------------------------------------------------------------------------------------------
 // Actions
@@ -112,10 +113,12 @@ export function deleteSelection(): void {
 /** Moves the selection by (dx, dy) artboard px (arrow keys); a run of nudges is one entry. */
 export function nudgeSelection(dx: number, dy: number): boolean {
   const { selected: sel, layout } = useWorkspace.getState();
-  const f = layout && selectionFrame(layout, sel);
-  if (!sel || !layout || !f) return false;
-  const to = { ...f, x: f.x + dx, y: f.y + dy };
-  return editPosterRun(`nudge ${JSON.stringify(sel)}`, (d) => placeRect(d, layout, sel, f, to), 'Move');
+  if (!sel || !layout || !selectionFrame(layout, sel)) return false;
+  return editPosterRun(
+    `nudge ${JSON.stringify(sel)}`,
+    (d) => nudgeDoc(d, layout, sel, dx, dy),
+    'Move',
+  );
 }
 
 /** Align buttons: the selection against the margins. */
@@ -437,10 +440,13 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
   const t = textOf(docNow(), id);
   const o = layout.objects.find((x) => x.type === 'text' && x.member === id);
   const done = useRef(false);
+  // A new text box shows once the artboard has drawn it: focus it then.
+  const ready = !!t && o?.type === 'text';
   useLayoutEffect(() => {
+    if (!ready) return;
     ref.current?.focus();
     ref.current?.select();
-  }, []);
+  }, [ready]);
   if (!t || !o || o.type !== 'text') return null;
   const W = layout.width;
   const H = layout.height;
@@ -490,6 +496,75 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
     />
   );
 }
+
+/**
+ * The playhead while the music plays (owner): a thin line at the playing time's slice on its
+ * row (`posterTimeAt`), moving row by row, and a fainter one on each moved layer's own slice.
+ * Drawn every frame outside React; never exported; hidden when stopped.
+ */
+export function ArtboardPlayhead() {
+  const playing = usePlayer((s) => s.transport.status === 'playing');
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const el = root.current;
+      const layout = useWorkspace.getState().layout;
+      if (!el || !layout) return;
+      const at = posterTimeAt(layout, currentTime());
+      const lines = el.children;
+      if (!at) {
+        el.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      el.dataset.row = String(at.row);
+      const W = layout.width;
+      const H = layout.height;
+      const place = (k: number, x: number, y0: number, y1: number) => {
+        const line = lines[k] as HTMLElement | undefined;
+        if (!line) return;
+        line.hidden = false;
+        line.style.left = `${(x / W) * 100}%`;
+        line.style.top = `${(y0 / H) * 100}%`;
+        line.style.height = `${((y1 - y0) / H) * 100}%`;
+      };
+      place(0, at.x, at.y0, at.y1);
+      el.dataset.x = String(Math.round(at.x));
+      // Moved layers: where their own slice is, if it isn't on the row's.
+      const moved = at.layers.filter(
+        (l) => Math.abs(l.x - at.x) > 0.5 || l.y0 < at.y0 - 0.5 || l.y1 > at.y1 + 0.5,
+      );
+      for (let k = 1; k < lines.length; k++) {
+        const m = moved[k - 1];
+        if (m) place(k, m.x, m.y0, m.y1);
+        else (lines[k] as HTMLElement).hidden = true;
+      }
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+  if (!playing) return null;
+  return (
+    <div
+      ref={root}
+      className="ws-playhead"
+      data-testid="artboard-playhead"
+      aria-hidden="true"
+      hidden
+    >
+      <div className="ws-playhead-line" />
+      {Array.from({ length: PLAYHEAD_LAYERS }, (_, k) => (
+        <div key={k} className="ws-playhead-line ws-playhead-layer" hidden />
+      ))}
+    </div>
+  );
+}
+
+/** Moved layers the playhead marks at most. */
+const PLAYHEAD_LAYERS = 8;
 
 /** "Re-fit layout" after a size, rows or margins change leaves text boxes over the music. */
 export function RefitHint() {
@@ -733,7 +808,11 @@ function LayerPanel({
           testId="sel-colour"
           hint="also in the video"
           onChange={(c) =>
-            editPosterRun(`colour ${sel.id}`, (d) => setLayer(d, sel.id, { colour: c ?? undefined }), 'Colour')
+            editPosterRun(
+              `colour ${sel.id}`,
+              (d) => setLayer(d, sel.id, { colour: c ?? undefined }),
+              'Colour',
+            )
           }
         />
       </div>
@@ -877,7 +956,9 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
   );
 }
 
-const SIDES: Readonly<Partial<Record<PosterLabelGroup, readonly { id: PosterLabelSide; label: string }[]>>> = {
+const SIDES: Readonly<
+  Partial<Record<PosterLabelGroup, readonly { id: PosterLabelSide; label: string }[]>>
+> = {
   sectionLabels: [
     { id: 'left', label: 'Left' },
     { id: 'right', label: 'Right' },
@@ -926,9 +1007,7 @@ function GroupPanel({
   const set = (k: string, patch: PosterGroupStyle) =>
     editPosterRun(
       `style ${key} ${k}`,
-      member
-        ? (d) => setMemberStyle(d, g, member, patch)
-        : (d) => setGroupStyle(d, g, patch),
+      member ? (d) => setMemberStyle(d, g, member, patch) : (d) => setGroupStyle(d, g, patch),
       'Style',
     );
   const label = isLabelGroup(g);
@@ -1041,7 +1120,9 @@ function GroupPanel({
           type="button"
           data-testid="sel-reset-member"
           disabled={Object.keys(ms).length === 0}
-          onClick={() => editPoster((d) => setMemberStyle(d, g, member, CLEAR_MEMBER), 'Reset to group')}
+          onClick={() =>
+            editPoster((d) => setMemberStyle(d, g, member, CLEAR_MEMBER), 'Reset to group')
+          }
         >
           Reset to group
         </button>
@@ -1223,7 +1304,17 @@ export function ToolRow() {
 // The layers list
 // ---------------------------------------------------------------------------------------------
 
-function Eye({ shown, name, testId, onChange }: { shown: boolean; name: string; testId: string; onChange: (shown: boolean) => void }) {
+function Eye({
+  shown,
+  name,
+  testId,
+  onChange,
+}: {
+  shown: boolean;
+  name: string;
+  testId: string;
+  onChange: (shown: boolean) => void;
+}) {
   return (
     <button
       type="button"
@@ -1300,7 +1391,10 @@ export function LayersList() {
     editPoster((d) => setLayerOrder(d, ids), 'Reorder layers');
   };
   const hide = (id: string, shown: boolean) =>
-    editPoster((d) => setLayer(d, id, { hidden: shown ? undefined : true }), shown ? 'Show' : 'Hide');
+    editPoster(
+      (d) => setLayer(d, id, { hidden: shown ? undefined : true }),
+      shown ? 'Show' : 'Hide',
+    );
   const groupShown = (g: PosterGroup) =>
     layout ? (isLabelGroup(g) ? layout.labels[g].visible : layout.lines[g].visible) : false;
 
@@ -1438,13 +1532,21 @@ export function LayersList() {
               const shown = groupShown(g);
               return (
                 <li key={g} className="ws-layer" data-testid="layer-group" data-group={g}>
-                  <Row name={GROUP_NAMES[g]} on={isSel(s)} testId="layer-group-row" onSelect={() => select(s)}>
+                  <Row
+                    name={GROUP_NAMES[g]}
+                    on={isSel(s)}
+                    testId="layer-group-row"
+                    onSelect={() => select(s)}
+                  >
                     <Eye
                       shown={shown}
                       name={GROUP_NAMES[g]}
                       testId="layer-eye"
                       onChange={(on) =>
-                        editPoster((d) => setGroupStyle(d, g, { visible: on }), on ? 'Show' : 'Hide')
+                        editPoster(
+                          (d) => setGroupStyle(d, g, { visible: on }),
+                          on ? 'Show' : 'Hide',
+                        )
                       }
                     />
                   </Row>
@@ -1457,4 +1559,3 @@ export function LayersList() {
     </div>
   );
 }
-

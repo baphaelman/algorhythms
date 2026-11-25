@@ -151,7 +151,10 @@ export function formWithDoc(form: ExportForm, doc: PosterDoc): ExportForm {
     hudLayout: hudLayout && typeof hudLayout === 'object' ? hudLayout : {},
     look: {
       ...look,
-      colours: { ...DEFAULT_COLOURS, ...(coloursForm && typeof coloursForm === 'object' ? coloursForm : {}) },
+      colours: {
+        ...DEFAULT_COLOURS,
+        ...(coloursForm && typeof coloursForm === 'object' ? coloursForm : {}),
+      },
     },
   });
   const out: ExportForm = {

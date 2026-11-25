@@ -4,7 +4,13 @@
  * outlines, snapping while moving and resizing, align to the margins. Pure, in artboard px.
  */
 
-import type { PosterDoc, PosterGroup, PosterMemberStyle, PosterText } from '../core/types';
+import type {
+  PosterBox,
+  PosterDoc,
+  PosterGroup,
+  PosterMemberStyle,
+  PosterText,
+} from '../core/types';
 import {
   groupObjects,
   hitTest,
@@ -35,7 +41,11 @@ export function sameSelection(a: PosterSelection | null, b: PosterSelection | nu
 }
 
 /** The selection a hit makes: a label or line selects its whole group, or (Alt) itself. */
-export function selectionOfHit(layout: PosterLayout, hit: PosterHit, alt: boolean): PosterSelection {
+export function selectionOfHit(
+  layout: PosterLayout,
+  hit: PosterHit,
+  alt: boolean,
+): PosterSelection {
   const o = hit.object;
   if (o.type === 'layer') return { kind: 'layer', id: layout.layers[o.layer].id };
   if (o.type === 'text') return { kind: 'text', id: o.member };
@@ -300,6 +310,40 @@ export function placeRect(
     });
   }
   return doc;
+}
+
+/**
+ * The doc with the selection moved by (dx, dy) artboard px from where the doc has it (so a
+ * quick run of nudges adds up before the artboard redraws): a stored box shifts; an automatic
+ * one is placed from `layout` first.
+ */
+export function nudgeDoc(
+  doc: PosterDoc | undefined,
+  layout: PosterLayout,
+  sel: PosterSelection,
+  dx: number,
+  dy: number,
+): PosterDoc | undefined {
+  const shift = (b: PosterBox, fw: number, fh: number): PosterBox => ({
+    ...b,
+    x: b.x + dx / fw,
+    y: b.y + dy / fh,
+  });
+  if (sel.kind === 'layer') {
+    const box = doc?.layers?.find((l) => l.id === sel.id)?.box;
+    const L = layerOf(layout, sel.id);
+    if (box && L) {
+      const frame = L.kind === 'line' ? layerOf(layout, `part:${L.part}`)?.box : null;
+      const fw = frame ? frame.w : layout.width;
+      const fh = frame ? frame.h : layout.height;
+      return setLayer(doc, sel.id, { box: shift(box, fw, fh) });
+    }
+  } else if (sel.kind === 'text') {
+    const t = textOf(doc, sel.id);
+    if (t?.box) return putText(doc, { ...t, box: shift(t.box, layout.width, layout.height) });
+  }
+  const f = selectionFrame(layout, sel);
+  return f ? placeRect(doc, layout, sel, f, { ...f, x: f.x + dx, y: f.y + dy }) : doc;
 }
 
 /** Every member style field, cleared: "Reset to group". */

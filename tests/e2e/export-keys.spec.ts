@@ -632,6 +632,7 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
 });
 
 test('poster controls by keyboard redraw the preview', async ({ page }) => {
+  // Space plays and pauses in the workspace (M14), so switches take Enter.
   await load(page);
   await openDialog(page, 'Poster');
   const step = async (name: string, act: () => Promise<void>, on: string) => {
@@ -676,7 +677,7 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'section lines',
     async () => {
       await page.getByTestId('show-sectionLines').focus();
-      await page.keyboard.press('Space');
+      await page.keyboard.press('Enter');
     },
     'show-sectionLines',
   );
@@ -692,7 +693,7 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'piece range',
     async () => {
       await page.getByTestId('export-prange').focus();
-      await page.keyboard.press('Space');
+      await page.keyboard.press('Enter');
     },
     'export-prange',
   );
