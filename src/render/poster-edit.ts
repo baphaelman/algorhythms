@@ -27,6 +27,7 @@ import {
   union,
   type LayerLayout,
   type PosterLayout,
+  type RowLayout,
   type PosterObject,
   type Rect,
 } from './poster-layout';
@@ -168,6 +169,47 @@ export function layerBoxFor(layout: PosterLayout, id: string, bounds: Rect): Pos
     return toFractions(box, part ? part.box : artboard(layout));
   }
   return toFractions(box, artboard(layout));
+}
+
+/**
+ * The box to store for layer `id` in row `row` alone (`PosterLayer.rows`) so that its lines
+ * there land on `bounds` (artboard px): a fraction of the layer's unmoved frame in that row. Use
+ * it after `resizeBox` on the row's `rowBounds`, or a move of it. Null when it has no lines there.
+ */
+export function layerRowBoxFor(
+  layout: PosterLayout,
+  id: string,
+  row: number,
+  bounds: Rect,
+): PosterBox | null {
+  const L = layerOf(layout, id);
+  const b = L?.rowBounds[row];
+  const fr = L?.frames[row];
+  if (!b || !fr) return null;
+  const F = fr.rect;
+  const kx = b.w > 0 ? bounds.w / b.w : 1;
+  const ky = b.h > 0 ? bounds.h / b.h : 1;
+  const to: Rect = {
+    x: bounds.x - (b.x - F.x) * kx,
+    y: bounds.y - (b.y - F.y) * ky,
+    w: F.w * kx,
+    h: F.h * ky,
+  };
+  return toFractions(to, fr.base ?? F);
+}
+
+/** A row block's stored box for an on-screen rect (artboard px). */
+export function rowBoxFor(layout: PosterLayout, rect: Rect): PosterBox {
+  return toFractions(rect, artboard(layout));
+}
+
+/** The row whose rect holds (x, y), or null. */
+export function rowAt(layout: PosterLayout, x: number, y: number): RowLayout | null {
+  for (let i = layout.rows.length - 1; i >= 0; i--) {
+    const r = layout.rows[i].rect;
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return layout.rows[i];
+  }
+  return null;
 }
 
 /** A text box's stored box for an on-screen frame (artboard px). */
@@ -322,13 +364,64 @@ function withField<K extends keyof PosterDoc>(
   return pruned({ ...doc, [k]: v } as PosterDoc);
 }
 
-/** Sets the artboard size, rows, section or piece range (undefined clears it). */
+/**
+ * Sets the artboard size, rows, section or piece range (undefined clears it). A new row split
+ * drops the per-row placements (`keepRowPlacements`).
+ */
 export function setPosterField<K extends 'size' | 'rows' | 'section' | 'pieceRange'>(
   doc: PosterDoc | undefined,
   k: K,
   v: PosterDoc[K] | undefined,
 ): PosterDoc | undefined {
-  return withField(doc, k, v);
+  return keepRowPlacements(doc, withField(doc, k, v));
+}
+
+/** What the rows are cut by: placements stored per row hold only for the split they were made in. */
+const rowSplit = (doc: PosterDoc | undefined): string =>
+  JSON.stringify([doc?.rows ?? 1, doc?.rowsBy ?? null, doc?.section ?? null]);
+
+/** The doc without per-row placements (row blocks, layers in one row). */
+export function withoutRowPlacements(doc: PosterDoc | undefined): PosterDoc | undefined {
+  if (!doc?.rowBoxes && !doc?.layers?.some((l) => l.rows)) return doc;
+  let out = withField(doc, 'rowBoxes', undefined);
+  for (const l of doc.layers ?? []) if (l.rows) out = setLayer(out, l.id, { rows: undefined });
+  return out;
+}
+
+/**
+ * `next` (an edit of `prev`) with its per-row placements dropped when the row split changed
+ * (rows, rows by sections, the section): a placement made for one row means nothing in another.
+ */
+export function keepRowPlacements(
+  prev: PosterDoc | undefined,
+  next: PosterDoc | undefined,
+): PosterDoc | undefined {
+  return rowSplit(prev) === rowSplit(next) ? next : withoutRowPlacements(next);
+}
+
+/** Sets (or with undefined clears) layer `id`'s own box in the row with key `row`. */
+export function setLayerRow(
+  doc: PosterDoc | undefined,
+  id: string,
+  row: string,
+  box: PosterBox | undefined,
+): PosterDoc | undefined {
+  const rows = { ...doc?.layers?.find((l) => l.id === id)?.rows };
+  if (box) rows[row] = box;
+  else delete rows[row];
+  return setLayer(doc, id, { rows: Object.keys(rows).length > 0 ? rows : undefined });
+}
+
+/** Sets (or with undefined clears) the box of the row with key `row`, moved as a block. */
+export function setRowBox(
+  doc: PosterDoc | undefined,
+  row: string,
+  box: PosterBox | undefined,
+): PosterDoc | undefined {
+  const all = { ...doc?.rowBoxes };
+  if (box) all[row] = box;
+  else delete all[row];
+  return withField(doc, 'rowBoxes', pruned(all));
 }
 
 /** Sets the margins (fractions of the shorter side); linked margins all take `top`. */
@@ -455,7 +548,10 @@ export function setRowsBy(
   doc: PosterDoc | undefined,
   by: 'equal' | 'sections',
 ): PosterDoc | undefined {
-  return withField(doc, 'rowsBy', by === 'sections' ? 'sections' : undefined);
+  return keepRowPlacements(
+    doc,
+    withField(doc, 'rowsBy', by === 'sections' ? 'sections' : undefined),
+  );
 }
 
 /**
@@ -513,7 +609,7 @@ function compactPicture(p: PosterPicture): PosterPicture {
 
 /**
  * Re-fit layout: text boxes go back to the text band (their boxes cleared) and, with `layers`,
- * layers back to the music area (their boxes cleared).
+ * layers and rows back to the music area (their boxes and per-row placements cleared).
  */
 export function refitPoster(
   doc: PosterDoc | undefined,
@@ -529,6 +625,9 @@ export function refitPoster(
       }),
     );
   }
-  if (opts.layers) for (const l of doc?.layers ?? []) out = setLayer(out, l.id, { box: undefined });
+  if (opts.layers) {
+    for (const l of doc?.layers ?? []) out = setLayer(out, l.id, { box: undefined });
+    out = withoutRowPlacements(out);
+  }
   return out;
 }

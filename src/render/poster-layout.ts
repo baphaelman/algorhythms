@@ -16,6 +16,8 @@
  * - **Layers.** Each part is a layer; a layer's box is where the music area's rows land (default:
  *   the music area). A line with a box of its own is a layer inside its part's box. Lines keep
  *   their thickness at any stretch: each row of a layer is a `drawScore` frame of its own size.
+ * - **Per row** (owner, 2026-11-25): a row moved as a block carries everything in it (its plot,
+ *   lines, labels and layers); a layer in one row can be moved on its own, inside its frame there.
  * - **Labels** are placed in priority order (row times, sections, HUD, guides, pitch guides,
  *   moments), each avoiding the text placed before it: one that collides shifts, and one that
  *   still can't fit inside the margins is hidden (listed in `hidden`).
@@ -697,14 +699,20 @@ export interface RowLayout {
   /** Rows by sections: the item that starts it (a labelled moment's id or `start`) and its label. */
   section?: string;
   name?: string;
+  /** What its own placements are stored under (`PosterDoc.rowBoxes`, `PosterLayer.rows`). */
+  key: string;
   rect: Rect;
   plot: Rect;
+  /** Moved as a block: where `rect` would be. */
+  home?: Rect;
 }
 
 /** One frame `drawScore` draws a layer's row in (artboard px): the row's plot, transformed. */
 export interface LayerFrame {
   row: number;
   rect: Rect;
+  /** Moved in this row on its own (`PosterLayer.rows`): where `rect` would be. */
+  base?: Rect;
 }
 
 /** A music layer: a part, or a line with a box of its own. */
@@ -1213,6 +1221,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
       start: r.start,
       end: r.end,
       ...(r.id !== undefined ? { section: r.id, name: r.label ?? '' } : {}),
+      key: r.id ?? String(i),
       rect,
       plot,
     };
@@ -1225,6 +1234,23 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   let plots: Rect | null = null;
   for (const r of rows) plots = union(plots, r.plot);
   const plotArea = plots ?? music;
+  // Rows moved as blocks: the plot keeps its insets in the row (label zone, gutters).
+  const artboard: Rect = { x: 0, y: 0, w: W, h: H };
+  for (const r of rows) {
+    const b = doc?.rowBoxes?.[r.key];
+    if (!validBox(b)) continue;
+    const to = fromFractions(b, artboard);
+    const home = r.rect;
+    const p = r.plot;
+    r.plot = {
+      x: to.x + (p.x - home.x),
+      y: to.y + (p.y - home.y),
+      w: Math.max(u, to.w - (home.w - p.w)),
+      h: Math.max(u, to.h - (home.h - p.h)),
+    };
+    r.rect = to;
+    r.home = home;
+  }
 
   // --- layers -----------------------------------------------------------------------------------------
   const layerDocs = new Map((doc?.layers ?? []).map((l) => [l.id, l]));
@@ -1262,12 +1288,16 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     voices: number[],
     box: Rect,
     hidden: boolean,
-    colour?: string,
+    colour: string | undefined,
+    own: Record<string, PosterBox> | undefined,
   ): void => {
-    const frames: LayerFrame[] = rows.map((r) => ({
-      row: r.index,
-      rect: mapRect(r.plot, plotArea, box),
-    }));
+    const frames: LayerFrame[] = rows.map((r) => {
+      const base = mapRect(r.plot, plotArea, box);
+      const f = own?.[r.key];
+      return validBox(f)
+        ? { row: r.index, rect: fromFractions(f, base), base }
+        : { row: r.index, rect: base };
+    });
     const rowBounds = rows.map((r, ri) => {
       let b: Rect | null = null;
       for (const v of voices) {
@@ -1279,7 +1309,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
         const y1 = yOf(r, e.lo);
         b = union(b, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
       }
-      return b ? mapRect(b, plotArea, box) : null;
+      return b ? mapRect(b, r.plot, frames[ri].rect) : null;
     });
     let bounds: Rect | null = null;
     for (const b of rowBounds) bounds = union(bounds, b);
@@ -1296,13 +1326,19 @@ export function layoutPoster(input: PosterInput): PosterLayout {
       bounds,
     });
   };
-  const artboard: Rect = { x: 0, y: 0, w: W, h: H };
   for (const p of ordered) {
     const ld = layerDocs.get(`part:${p}`);
     const pbox = validBox(ld?.box) ? fromFractions(ld.box, artboard) : plotArea;
     const all = partVoices.get(p) ?? [];
     const own: number[] = [];
-    const split: { id: string; v: number; box: Rect; hidden: boolean; colour?: string }[] = [];
+    const split: {
+      id: string;
+      v: number;
+      box: Rect;
+      hidden: boolean;
+      colour?: string;
+      rows?: Record<string, PosterBox>;
+    }[] = [];
     for (const v of all) {
       const vid = piece.voices[v].id;
       const lineDoc = layerDocs.get(`line:${vid}`);
@@ -1315,11 +1351,12 @@ export function layoutPoster(input: PosterInput): PosterLayout {
           box: fromFractions(lineDoc.box, pbox),
           hidden: ld?.hidden === true,
           ...(c ? { colour: c } : {}),
+          ...(lineDoc.rows ? { rows: lineDoc.rows } : {}),
         });
       } else own.push(v);
     }
-    addLayer(`part:${p}`, 'part', p, own, pbox, ld?.hidden === true, ld?.colour);
-    for (const s of split) addLayer(s.id, 'line', p, [s.v], s.box, s.hidden, s.colour);
+    addLayer(`part:${p}`, 'part', p, own, pbox, ld?.hidden === true, ld?.colour, ld?.rows);
+    for (const s of split) addLayer(s.id, 'line', p, [s.v], s.box, s.hidden, s.colour, s.rows);
   }
 
   // --- lines (guides, beats, markers) ---------------------------------------------------------------

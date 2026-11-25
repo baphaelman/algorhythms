@@ -6029,6 +6029,39 @@ This is the *input* form: fields with defaults are optional here.
                 ],
                 "additionalProperties": {}
               },
+              "rows": {
+                "description": "Per row key: the layer in that row, a fraction of its unmoved place.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "h": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "w",
+                    "h"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
               "hidden": {
                 "type": "boolean"
               },
@@ -6371,6 +6404,39 @@ This is the *input* form: fields with defaults are optional here.
                 "maxLength": 200
               }
             },
+            "additionalProperties": {}
+          }
+        },
+        "rowBoxes": {
+          "description": "Rows moved as blocks, per row key: fractions of the artboard.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
             "additionalProperties": {}
           }
         },
