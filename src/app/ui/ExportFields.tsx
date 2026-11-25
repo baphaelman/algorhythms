@@ -79,18 +79,30 @@ function LookSegmentsRow({
   control,
   form,
   disabled,
+  aside,
 }: {
   control: LookSegments;
   form: ExportForm;
   disabled?: boolean;
+  aside?: ReactNode;
 }) {
   const id = useId();
   const value = control.value(form);
+  const label = (
+    <span className="look-label" id={`${id}-label`}>
+      {control.label}
+    </span>
+  );
   return (
     <>
-      <span className="look-label" id={`${id}-label`}>
-        {control.label}
-      </span>
+      {aside ? (
+        <div className="look-label-row">
+          {label}
+          {aside}
+        </div>
+      ) : (
+        label
+      )}
       <div
         className="seg radios look-seg"
         role="radiogroup"
@@ -204,14 +216,17 @@ function LookRow({
   control,
   form,
   disabled,
+  aside,
 }: {
   control: LookControl;
   form: ExportForm;
   disabled?: boolean;
+  /** Beside the control: a switch's details disclosure (poster workspace). */
+  aside?: ReactNode;
 }) {
   switch (control.type) {
-    case 'toggle':
-      return (
+    case 'toggle': {
+      const sw = (
         <Switch
           label={control.label}
           checked={control.value(form)}
@@ -220,8 +235,17 @@ function LookRow({
           onChange={(on) => patch(control.apply(useExportUi.getState().form, on))}
         />
       );
+      return aside ? (
+        <div className="look-switch-row">
+          {sw}
+          {aside}
+        </div>
+      ) : (
+        sw
+      );
+    }
     case 'segments':
-      return <LookSegmentsRow control={control} form={form} disabled={disabled} />;
+      return <LookSegmentsRow control={control} form={form} disabled={disabled} aside={aside} />;
     case 'flags':
       return <LookFlagsRow control={control} form={form} disabled={disabled} />;
     case 'slider':
@@ -235,7 +259,15 @@ function LookRow({
  * Default. No popup and no document listeners: it stays open until its row is pressed again.
  * Collapsed, the list stays in the DOM (so it can animate) but is inert and hidden.
  */
-function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
+function HudSection({
+  form,
+  kind,
+  aside,
+}: {
+  form: ExportForm;
+  kind: LookKind;
+  aside?: ReactNode;
+}) {
   const open = useExportUi((s) => s.hudOpen);
   const pieceName = usePlayer((s) => s.piece.meta.title);
   const id = useId();
@@ -250,18 +282,36 @@ function HudSection({ form, kind }: { form: ExportForm; kind: LookKind }) {
 
   return (
     <div className="hud-section">
-      <button
-        type="button"
-        className="hud-row"
-        id={`${id}-button`}
-        aria-expanded={open}
-        aria-controls={`${id}-list`}
-        data-testid="look-hud-button"
-        onClick={() => useExportUi.setState({ hudOpen: !open })}
-      >
-        <span>HUD · {hudSummary(hud)}</span>
-        <span className="hud-chevron" aria-hidden="true" />
-      </button>
+      {aside ? (
+        <div className="look-switch-row">
+          <button
+            type="button"
+            className="hud-row"
+            id={`${id}-button`}
+            aria-expanded={open}
+            aria-controls={`${id}-list`}
+            data-testid="look-hud-button"
+            onClick={() => useExportUi.setState({ hudOpen: !open })}
+          >
+            <span>HUD · {hudSummary(hud)}</span>
+            <span className="hud-chevron" aria-hidden="true" />
+          </button>
+          {aside}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="hud-row"
+          id={`${id}-button`}
+          aria-expanded={open}
+          aria-controls={`${id}-list`}
+          data-testid="look-hud-button"
+          onClick={() => useExportUi.setState({ hudOpen: !open })}
+        >
+          <span>HUD · {hudSummary(hud)}</span>
+          <span className="hud-chevron" aria-hidden="true" />
+        </button>
+      )}
       <div
         ref={panel}
         className={open ? 'hud-panel open' : 'hud-panel'}
@@ -320,31 +370,50 @@ export function LookPanel({
   form,
   kind,
   disabled,
+  details,
 }: {
   form: ExportForm;
   kind: LookKind;
   disabled: boolean;
+  /**
+   * A control's details (the poster workspace): a disclosure beside it and its panel below, by
+   * control id (`pitch-guides` and `hud` for those rows).
+   */
+  details?: (id: string) => { button: ReactNode; panel: ReactNode } | null;
 }) {
   const look = form.look;
   const follow = form.videoCamera === 'follow';
   const dark = look.theme === 'current' ? appDark() : look.theme === 'dark';
+  const pitch = details?.('pitch-guides');
+  const hud = details?.('hud');
 
   return (
     <fieldset className="look" disabled={disabled} data-testid="look">
       <legend>Look</legend>
       <div className="look-grid">
-        {lookControls(kind).map((c) => (
-          <Fragment key={c.id}>
-            <LookRow control={c} form={form} disabled={c.id === 'follow-at' && !follow} />
-            {c.id === 'follow-at' && (
-              <small className="look-note" data-testid="look-follow-at-hint">
-                {followAtHint(form)}
-              </small>
-            )}
-          </Fragment>
-        ))}
-        <PitchGuidesRow form={form} disabled={disabled} onLook={patchLook} />
-        <HudSection form={form} kind={kind} />
+        {lookControls(kind).map((c) => {
+          const d = details?.(c.id);
+          return (
+            <Fragment key={c.id}>
+              <LookRow
+                control={c}
+                form={form}
+                disabled={c.id === 'follow-at' && !follow}
+                aside={d?.button}
+              />
+              {c.id === 'follow-at' && (
+                <small className="look-note" data-testid="look-follow-at-hint">
+                  {followAtHint(form)}
+                </small>
+              )}
+              {d?.panel}
+            </Fragment>
+          );
+        })}
+        <PitchGuidesRow form={form} disabled={disabled} onLook={patchLook} aside={pitch?.button} />
+        {pitch?.panel}
+        <HudSection form={form} kind={kind} aside={hud?.button} />
+        {hud?.panel}
       </div>
       <ColoursGroup
         look={look}

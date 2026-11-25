@@ -8,6 +8,7 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import { mixHex, toHex } from '../../render/colours';
 import { tokensOf } from '../../render/palettes';
+import { GradientHandlesSwitch } from './GradientHandles';
 import type { ThemeTokens } from '../../render/types';
 import {
   BACKGROUND_MODES,
@@ -324,6 +325,7 @@ export function ColoursGroup({
           />
         )}
         {bgMode === 'gradient' && <GradientFields c={c} t={t} set={set} />}
+        {bgMode === 'gradient' && kind === 'poster' && <GradientHandlesSwitch />}
         {kind === 'poster' && <PictureFields />}
         <Segs
           label="Lines"

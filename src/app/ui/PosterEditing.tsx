@@ -18,7 +18,6 @@ import type {
   PosterGroupStyle,
   PosterLabelGroup,
   PosterLabelSide,
-  PosterLineGroup,
   PosterText,
 } from '../../core/types';
 import { toHex } from '../../render/colours';
@@ -1258,42 +1257,6 @@ export function MarginsField({ disabled }: { disabled: boolean }) {
           ))
         )}
       </div>
-    </fieldset>
-  );
-}
-
-const SPLIT: readonly { name: string; labels: PosterLabelGroup; lines: PosterLineGroup }[] = [
-  { name: 'Sections', labels: 'sectionLabels', lines: 'sectionLines' },
-  { name: 'Moments', labels: 'momentLabels', lines: 'momentLines' },
-  { name: 'Guides', labels: 'guideLabels', lines: 'guideLines' },
-];
-
-/** Labels and their lines, switched apart, for sections, moments and guides. */
-export function LabelLineToggles({ disabled }: { disabled: boolean }) {
-  const layout = useWorkspace((s) => s.layout);
-  if (!layout) return null;
-  const toggle = (g: PosterGroup, on: boolean) =>
-    editPoster((d) => setGroupStyle(d, g, { visible: on }), on ? 'Show' : 'Hide');
-  return (
-    <fieldset className="field ws-split" disabled={disabled} data-testid="label-line-toggles">
-      <legend>Labels and lines</legend>
-      {SPLIT.map((r) => (
-        <div key={r.name} className="ws-split-row">
-          <span>{r.name}</span>
-          <Switch
-            label="Labels"
-            checked={layout.labels[r.labels].visible}
-            testId={`show-${r.labels}`}
-            onChange={(on) => toggle(r.labels, on)}
-          />
-          <Switch
-            label="Lines"
-            checked={layout.lines[r.lines].visible}
-            testId={`show-${r.lines}`}
-            onChange={(on) => toggle(r.lines, on)}
-          />
-        </div>
-      ))}
     </fieldset>
   );
 }

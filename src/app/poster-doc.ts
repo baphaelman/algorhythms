@@ -119,6 +119,14 @@ export function docWithForm(
   return out;
 }
 
+/**
+ * The default poster as a doc (Revert, PLAN.md §15 M14): the export defaults' poster fields, no
+ * objects. Only the resolved theme is stored, as for every doc.
+ */
+export function defaultPosterDoc(ctx: DocContext): PosterDoc | undefined {
+  return docWithForm(undefined, posterFields(DEFAULT_EXPORT_FORM), ctx);
+}
+
 /** The form's Look as the doc stores it: what differs from the defaults, the theme resolved. */
 function lookDiff(form: PosterFields, dark: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = {};

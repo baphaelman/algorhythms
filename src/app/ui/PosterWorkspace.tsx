@@ -49,14 +49,14 @@ import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
 import { artboardFit, useWorkspace } from '../poster-workspace';
 import { selectionExists } from '../poster-select';
-import { startPosterSync } from '../poster-sync';
+import { posterIsDefault, revertPoster, startPosterSync } from '../poster-sync';
+import { lastEntry, undo, useEditor } from '../editor/history';
 import type { ExportForm } from '../export-options';
 import { togglePlay, usePlayer } from '../store';
 import { setDialogSpace } from '../space-key';
 import {
   ArtboardOverlay,
   ArtboardPlayhead,
-  LabelLineToggles,
   LayersList,
   MarginsField,
   RefitHint,
@@ -64,6 +64,9 @@ import {
   ToolRow,
   workspaceKey,
 } from './PosterEditing';
+import { GradientHandles } from './GradientHandles';
+import { DetailsButton, DetailsPanel, LabelLineToggles } from './PosterDetails';
+import type { DetailsId } from '../poster-details';
 import './workspace.css';
 
 /** Back to the editor; focus returns to the menu button (where Export was chosen). */
@@ -96,7 +99,76 @@ export function WorkspaceBar() {
           if (m === 'video') openSurface('video');
         }}
       />
+      {surface === 'poster' && <RevertPoster />}
     </div>
+  );
+}
+
+/** How long "Reverted · Undo" stays (ms), unless something else is edited first. */
+const REVERTED_MS = 8000;
+
+/**
+ * Revert, in the top bar so it never scrolls away: the poster back to its defaults as one undo
+ * step, then "Reverted · Undo" in place while that step is the newest.
+ */
+function RevertPoster() {
+  const doc = usePlayer((s) => s.piece.poster);
+  // Re-checks the note when the history changes.
+  useEditor((s) => s.undoLabel);
+  const [entry, setEntry] = useState<object | null>(null);
+  useEffect(() => {
+    if (!entry) return;
+    const t = setTimeout(() => setEntry(null), REVERTED_MS);
+    return () => clearTimeout(t);
+  }, [entry]);
+  const shown = entry !== null && lastEntry() === entry;
+  // Focus stays in the bar: on Undo once reverted, on Revert after.
+  const focus = useRef<HTMLButtonElement>(null);
+  const moved = useRef(false);
+  useEffect(() => {
+    if (moved.current) focus.current?.focus();
+    moved.current = false;
+  }, [shown]);
+  if (shown) {
+    return (
+      <span className="ws-revert-note" role="status" data-testid="poster-reverted">
+        <span className="ws-narrow-hide">Reverted ·</span>
+        <button
+          ref={focus}
+          type="button"
+          data-testid="poster-revert-undo"
+          onClick={() => {
+            moved.current = true;
+            undo();
+            setEntry(null);
+          }}
+        >
+          Undo
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      ref={focus}
+      type="button"
+      data-testid="poster-revert"
+      disabled={posterIsDefault(doc)}
+      aria-label="Revert"
+      title="Back to the default poster (one undo step)"
+      onClick={() => {
+        if (!revertPoster()) return;
+        moved.current = true;
+        setEntry(lastEntry());
+      }}
+    >
+      <span aria-hidden="true" className="ws-narrow-only">
+        ↺
+      </span>
+      <span aria-hidden="true" className="ws-narrow-hide">
+        Revert
+      </span>
+    </button>
   );
 }
 
@@ -225,6 +297,7 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
             style={{ width: fit.w, height: fit.h }}
           />
           <ArtboardOverlay width={fit.w} />
+          <GradientHandles form={form} />
           <ArtboardPlayhead />
           <HudOverlay form={form} kind="poster" disabled={running} />
         </div>
@@ -232,6 +305,19 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
       <RefitHint />
     </section>
   );
+}
+
+/** The Look controls whose things have a style, and the details they open. */
+const LOOK_DETAILS: Readonly<Record<string, DetailsId>> = {
+  pulse: 'pulseMarks',
+  beats: 'beatLines',
+  'pitch-guides': 'pitchGuides',
+  hud: 'hud',
+};
+
+function lookDetails(control: string) {
+  const id = LOOK_DETAILS[control];
+  return id ? { button: <DetailsButton id={id} />, panel: <DetailsPanel id={id} /> } : null;
 }
 
 /** The poster's options, in the right panel (every poster option of the old dialog). */
@@ -275,7 +361,7 @@ function PosterOptions({ form, disabled }: { form: ExportForm; disabled: boolean
       />
       <MarginsField disabled={disabled} />
       <LabelLineToggles disabled={disabled} />
-      <LookPanel form={form} kind="poster" disabled={disabled} />
+      <LookPanel form={form} kind="poster" disabled={disabled} details={lookDetails} />
     </div>
   );
 }

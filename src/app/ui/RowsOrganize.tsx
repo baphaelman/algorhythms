@@ -14,6 +14,7 @@ import { editPoster, editPosterRun } from '../poster-sync';
 import { usePlayer } from '../store';
 import { Radios, Switch } from './export-controls';
 import { RowsField } from './ExportFields';
+import { GroupSwitch } from './PosterDetails';
 import { videoContext } from './export-state';
 import './rows-background.css';
 
@@ -41,6 +42,10 @@ export function RowsGroup({ form, disabled }: { form: ExportForm; disabled: bool
       ) : (
         <Organize form={form} disabled={disabled} />
       )}
+      {by === 'sections' && (
+        <GroupSwitch group="rowNames" label="Row labels" details="rowNames" disabled={disabled} />
+      )}
+      <GroupSwitch group="rowLabels" label="Row times" details="rowLabels" disabled={disabled} />
     </div>
   );
 }
