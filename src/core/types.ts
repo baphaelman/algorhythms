@@ -854,11 +854,50 @@ export interface CameraKey {
   ease?: EaseRef;
 }
 
+/**
+ * What a video's frame shows (M15): `poster` = Over the poster (a window travelling over the
+ * poster's layout), `row` = One row (today's single long row at the video's shape).
+ */
+export type CameraFrame = 'poster' | 'row';
+
+/** Over the poster: how the frame moves to the next row (M15). */
+export type RowBreak = 'pan' | 'scroll' | 'cut';
+
+/**
+ * One Over-the-poster camera key (M15): a frame on the poster at time `at`, eased to the next
+ * key; held before the first and after the last. The frame's centre and height are fractions of
+ * the artboard; its width follows the video's aspect. Evaluate with render/poster-video.ts
+ * `posterCameraAt`.
+ */
+export interface PosterCameraKey {
+  /** Score time of the key, s (≥ 0). */
+  at: Seconds;
+  /** The frame's centre, fractions of the artboard's width and height. */
+  x: number;
+  y: number;
+  /** The frame's height, a fraction of the artboard's height (> 0). */
+  h: number;
+  /** Ease from this key to the next. @default 'smootherstep' */
+  ease?: EaseRef;
+}
+
 /** `Piece.camera` (M11.5). */
 export interface PieceCamera {
   mode: CameraMode;
   /** Sorted by `at` (the schema checks). Absent or empty with mode `keys` = Follow. */
   keys?: CameraKey[];
+  /**
+   * M15: absent = `poster` when the piece has a poster, else `row` (old pieces play as before;
+   * render `pieceVideoFrame`).
+   */
+  frame?: CameraFrame;
+  /** M15, Over the poster. @default 'pan' */
+  rowBreak?: RowBreak;
+  /**
+   * M15: Over the poster's keys (mode `keys`), in poster space, sorted by `at`. One row uses
+   * `keys`.
+   */
+  posterKeys?: PosterCameraKey[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -928,6 +967,8 @@ export interface PosterText {
   box?: PosterBox;
   style?: PosterTextStyle;
   hidden?: boolean;
+  /** M15: the video draws it with the frame (true) or on the poster where it is. @default false */
+  travels?: boolean;
 }
 
 /**
@@ -977,6 +1018,11 @@ export interface PosterGroupStyle {
   dashed?: boolean;
   /** Lines: full height (or width) or a short tick. */
   extent?: 'full' | 'tick';
+  /**
+   * M15, HUD readouts only: the video draws them with the frame (true) or on the poster where
+   * they are. @default true
+   */
+  travels?: boolean;
 }
 
 /** One member's own style over its group's, plus a nudge (fractions of the shorter side). */

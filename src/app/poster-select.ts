@@ -369,6 +369,7 @@ export const CLEAR_MEMBER: { [K in keyof Required<PosterMemberStyle>]: undefined
   width: undefined,
   dashed: undefined,
   extent: undefined,
+  travels: undefined,
   dx: undefined,
   dy: undefined,
 };
