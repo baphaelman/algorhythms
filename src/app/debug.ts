@@ -19,6 +19,7 @@ import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
 import { previewStats } from './ui/export-state';
+import { useWorkspace } from './poster-workspace';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
 export interface AlgoRhythmsDebug {
@@ -80,8 +81,10 @@ export interface AlgoRhythmsDebug {
   exportRun(): Promise<typeof import('./export-run')>;
   /** The Export dialog preview's counters: measure and scroll-padding callbacks, draws. */
   exportPreview: typeof previewStats;
-  /** Poster export (M9-a): `renderPosterPng`, `renderPosterSvg`, `referencePoster`. */
+  /** Poster export (M14): `renderPosterLayoutPng` / `Svg`, `posterLayoutOf`, `referencePosterAt`. */
   poster(): Promise<typeof import('./poster-export')>;
+  /** The poster workspace's state (M14 P3): tool, selection, the artboard's last layout. */
+  posterWorkspace: typeof useWorkspace;
   /** `parsePiece` (core/schema), for tests that load example files. */
   parsePiece: typeof parsePiece;
 }
@@ -115,6 +118,7 @@ export function installDebug(): void {
     },
     frameStats,
     exportPreview: previewStats,
+    posterWorkspace: useWorkspace,
     actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,
     editor: { state: useEditor, select, undo, redo },

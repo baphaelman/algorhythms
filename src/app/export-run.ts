@@ -14,6 +14,7 @@ import { videoSpan } from '../render/video';
 import type { TimeSpan } from '../render/section';
 import type { Ctx2D } from '../render/draw';
 import type { HudPlacement } from '../render/hud';
+import type { PosterLayout } from '../render/poster-layout';
 import type { CameraState } from '../render/types';
 import { exportMidi, zipFiles } from '../midi/export';
 import {
@@ -56,7 +57,13 @@ import {
   type VideoSink,
 } from './video-export';
 
-import { posterFileName, previewPoster, renderPosterPng, renderPosterSvg } from './poster-export';
+import {
+  posterFileName,
+  posterHudOf,
+  previewPosterLayout,
+  renderPosterLayoutPng,
+  renderPosterLayoutSvg,
+} from './poster-export';
 import type { PosterOptions } from './poster-export';
 
 import { youtubeDescription } from './youtube-description';
@@ -257,8 +264,10 @@ export async function runPoster(
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
   const blob =
     format === 'png'
-      ? await renderPosterPng(src.piece, options, src.compiled)
-      : new Blob([renderPosterSvg(src.piece, options, src.compiled)], { type: 'image/svg+xml' });
+      ? await renderPosterLayoutPng(src.piece, options, src.compiled)
+      : new Blob([renderPosterLayoutSvg(src.piece, options, src.compiled)], {
+          type: 'image/svg+xml',
+        });
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
   if (!hooks.target) return { name, blob, bytes: blob.size, files: 1 };
   const w = await hooks.target.createWritable();
@@ -453,17 +462,21 @@ export function measureExportLoudness(
   return p;
 }
 
-/** The dialog's preview of a poster export (as `previewVideo`; the whole poster). */
+/**
+ * The workspace's artboard: the poster as the export draws it, from its layout (returned, for
+ * hit-testing), and the HUD readouts' boxes.
+ */
 export function previewPosterOf(
   g: Ctx2D,
   src: ExportSource,
   form: ExportForm,
   ctx: LookAppContext & SectionContext,
   scale: number,
-): HudPlacement {
+): { layout: PosterLayout; hud: HudPlacement } {
   const options = posterOptions(form, src.piece, ctx);
   lastPreview = { kind: 'poster', options, scale };
-  return previewPoster(g, src.piece, src.compiled, options, scale);
+  const layout = previewPosterLayout(g, src.piece, src.compiled, options, scale);
+  return { layout, hud: posterHudOf(layout) };
 }
 
 const PHASE_LABEL: Record<VideoPhase, string> = {

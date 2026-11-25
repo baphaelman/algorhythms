@@ -9,8 +9,7 @@
  *   and 600 s (its material ends at 108 s; its lines continue); each in the dialog's default Look
  *   (EXPORT_LOOK, no HUD, title on) and the player's look (guides and their labels on); the
  *   longest piece also at 1:1 and A4.
- * - `POSTER_LONG_PATH=layout`: the poster workspace's export (`renderPosterLayoutPng` / `Svg`,
- *   M14) instead of today's dialog's.
+ * - drawn by the poster workspace's export (`renderPosterLayoutPng` / `Svg`, M14).
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -28,13 +27,16 @@ const FILES = ['examples', 'examples/songs', 'examples/experiments'].flatMap((d)
 
 interface HookWindow {
   __algorhythms: {
-    parsePiece(j: unknown): { ok: boolean; piece: Parameters<typeof Poster.renderPosterSvg>[0] };
+    parsePiece(j: unknown): {
+      ok: boolean;
+      piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0];
+    };
     poster(): Promise<typeof Poster>;
     actions: { loadPiece(p: unknown): void };
     store: {
       getState(): {
-        piece: Parameters<typeof Poster.renderPosterSvg>[0];
-        compiled: Parameters<typeof Poster.renderPosterPng>[2] & { duration: number };
+        piece: Parameters<typeof Poster.renderPosterLayoutSvg>[0];
+        compiled: Parameters<typeof Poster.renderPosterLayoutPng>[2] & { duration: number };
       };
     };
   };
@@ -76,12 +78,13 @@ test('4K PNG < 2 s and SVG < 10 MB: longest, ~3-minute and stretched pieces (rep
     j: JSON.parse(readFileSync(f, 'utf8')) as unknown,
   }));
   const rows = await page.evaluate(
-    async ({ jsons, exportLook, layout }) => {
+    async ({ jsons, exportLook }) => {
       const h = (window as unknown as HookWindow).__algorhythms;
       const mod = await h.poster();
-      const m = layout
-        ? { renderPosterPng: mod.renderPosterLayoutPng, renderPosterSvg: mod.renderPosterLayoutSvg }
-        : mod;
+      const m = {
+        renderPosterPng: mod.renderPosterLayoutPng,
+        renderPosterSvg: mod.renderPosterLayoutSvg,
+      };
       const load = (piece: unknown) => {
         h.actions.loadPiece(piece);
         const s = h.store.getState();
@@ -162,7 +165,7 @@ test('4K PNG < 2 s and SVG < 10 MB: longest, ~3-minute and stretched pieces (rep
       }
       return out;
     },
-    { jsons, exportLook: EXPORT_LOOK, layout: process.env.POSTER_LONG_PATH === 'layout' },
+    { jsons, exportLook: EXPORT_LOOK },
   );
   for (const r of rows)
     console.log(

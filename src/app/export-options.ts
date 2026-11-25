@@ -871,7 +871,8 @@ export function posterOptions(
     rows: form.posterRows,
     theme: look.theme,
     transparent: look.transparent,
-    title: form.posterTitle,
+    // Text boxes replaced the Title block switch (M14): the doc's, else the default title.
+    title: true,
     thickness: look.thickness,
     colors: look.colors,
     customColors: piece.voices.map((v) => v.color),

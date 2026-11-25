@@ -61,9 +61,10 @@ interface KeyTarget {
 }
 
 /**
- * What Escape does in the workspace: 'leave' (back to music) when nothing is focused or
- * selected, 'blur' when a control has focus (a second Escape then leaves), else nothing (a
- * selection is P3's to clear; a key already used, e.g. by the menu or a text field, is not ours).
+ * What Escape does in the workspace: 'blur' when a control has focus (a second Escape then
+ * goes on); with nothing focused, 'deselect' when an object on the artboard is selected, else
+ * 'leave' (back to music). A key already used (the menu, a text field) or an open dialog is
+ * not ours.
  */
 export function workspaceEscape(e: {
   key: string;
@@ -72,14 +73,15 @@ export function workspaceEscape(e: {
   focused: KeyTarget | null;
   /** The workspace's own root (focusing it counts as nothing focused). */
   root: unknown;
-  /** P3: an object on the artboard is selected. */
+  /** An object on the artboard is selected. */
   selected: boolean;
   /** A modal dialog is open. */
   dialog: boolean;
-}): 'leave' | 'blur' | null {
-  if (e.key !== 'Escape' || e.defaultPrevented || e.dialog || e.selected) return null;
+}): 'leave' | 'blur' | 'deselect' | null {
+  if (e.key !== 'Escape' || e.defaultPrevented || e.dialog) return null;
   const f = e.focused;
   const tag = f?.tagName?.toLowerCase();
-  if (!f || f === e.root || tag === 'body' || tag === 'html') return 'leave';
+  if (!f || f === e.root || tag === 'body' || tag === 'html')
+    return e.selected ? 'deselect' : 'leave';
   return 'blur';
 }

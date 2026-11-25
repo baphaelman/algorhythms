@@ -102,6 +102,237 @@
   background: repeating-conic-gradient(#c9ced4 0% 25%, #f4f6f8 0% 50%) 0 0 / 12px 12px;
 }
 
+/* ---- editing over the artboard (P3) -------------------------------------------------------- */
+
+.artboard-page {
+  position: relative;
+}
+
+/* The readouts' boxes take the pointer; the rest of their layer lets it through to the overlay. */
+.artboard .hud-overlay {
+  pointer-events: none;
+}
+
+.artboard .hud-overlay:not(.disabled) .hud-box {
+  pointer-events: auto;
+}
+
+.ws-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: default;
+  touch-action: none;
+}
+
+.ws-overlay.text-tool {
+  cursor: text;
+}
+
+.ws-margins {
+  position: absolute;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+}
+
+.ws-selection,
+.ws-sel-box {
+  pointer-events: none;
+}
+
+.ws-sel-box {
+  position: absolute;
+  min-width: 2px;
+  min-height: 2px;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ws-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid var(--accent);
+  background: var(--paper);
+  border-radius: 1px;
+}
+
+.ws-handle-nw,
+.ws-handle-se {
+  cursor: nwse-resize;
+}
+
+.ws-handle-ne,
+.ws-handle-sw {
+  cursor: nesw-resize;
+}
+
+.ws-handle-n,
+.ws-handle-s {
+  cursor: ns-resize;
+}
+
+.ws-handle-e,
+.ws-handle-w {
+  cursor: ew-resize;
+}
+
+.ws-guide {
+  position: absolute;
+  pointer-events: none;
+  background: #e0408a;
+}
+
+.ws-guide-x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.ws-guide-y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.ws-inline-text {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 1.5px solid var(--accent);
+  resize: none;
+  overflow: hidden;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+}
+
+.ws-refit {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font-size: 13px;
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+/* The playhead while playing (never exported). */
+.ws-playhead {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ws-playhead-line {
+  position: absolute;
+  width: 0;
+  border-left: 1.5px solid var(--accent);
+  transform: translateX(-0.75px);
+}
+
+.ws-playhead-layer {
+  border-left-style: dashed;
+  opacity: 0.55;
+}
+
+/* ---- the selection panel ------------------------------------------------------------------ */
+
+.ws-selpanel {
+  flex: none;
+  max-height: 46%;
+  overflow-y: auto;
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--panel) 50%, var(--paper));
+}
+
+.ws-selpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ws-selpanel h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ws-selpanel h3 small {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.ws-deselect {
+  min-height: 26px;
+  width: 26px;
+  padding: 0;
+}
+
+.ws-selpanel .look-grid {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
+  margin: 6px 0;
+}
+
+.ws-selpanel .look-grid > label {
+  margin-top: 6px;
+}
+
+.ws-box-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.ws-num {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: 11px/1.2 var(--f-mono);
+  color: var(--ink-2);
+}
+
+.ws-num input {
+  width: 100%;
+  min-width: 0;
+  font: 13px/1.2 var(--f-mono);
+}
+
+.ws-textfield {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ws-textfield textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.ws-remove {
+  margin-top: 8px;
+}
+
+.ws-split-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
 /* ---- right panel ------------------------------------------------------------------------- */
 
 .ws-side {
@@ -206,10 +437,46 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  list-style: none;
-  margin: 0;
   padding: 4px 0;
   font-size: 13px;
+}
+
+.ws-layers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ws-layers-head {
+  margin: 6px 12px 2px;
+  font: 600 11px/1.4 var(--f-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+
+.ws-layer-row.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.ws-layer-name {
+  min-height: 26px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: none;
+  text-align: left;
+}
+
+.ws-eye,
+.ws-order {
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.ws-eye[aria-pressed='false'] {
+  color: var(--ink-2);
+  text-decoration: line-through;
 }
 
 .ws-layer-row {
@@ -230,6 +497,10 @@
   padding-left: 40px;
 }
 
+.ws-layer-lines .ws-layer-row {
+  padding-left: 0;
+}
+
 .ws-layer-toggle {
   min-height: 26px;
   width: 26px;
@@ -245,7 +516,7 @@
 }
 
 .ws-layer-lines li {
-  padding: 2px 0;
+  padding: 0;
 }
 
 /* ---- narrower: stacked ------------------------------------------------------------------- */
@@ -282,6 +553,10 @@
 
   .ws-bottom {
     min-height: auto;
+    max-height: none;
+  }
+
+  .ws-selpanel {
     max-height: none;
   }
 }

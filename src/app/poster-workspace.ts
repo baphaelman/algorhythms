@@ -6,24 +6,41 @@
 import { create } from 'zustand';
 import type { Piece } from '../core/types';
 import { partOf } from '../core/parts';
+import type { PosterLayout } from '../render/poster-layout';
+import type { PosterSelection, SnapGuides } from './poster-select';
 
 export type WorkspaceTool = 'select' | 'text';
 
 export interface WorkspaceState {
   tool: WorkspaceTool;
   /**
-   * P3: what is selected on the artboard (a layer, text box, or a label or line group or one
+   * What is selected on the artboard (a layer, text box, or a label or line group or one
    * member). Null = nothing; Escape leaves the workspace only then.
    */
-  selected: unknown;
+  selected: PosterSelection | null;
   /** Parts whose lines are listed in the layers panel. */
   expanded: readonly string[];
+  /** The layout the artboard drew last (hit-testing, outlines, the panels). */
+  layout: PosterLayout | null;
+  /** Snap guides on (the tool row's switch; Alt while dragging turns them off). */
+  snap: boolean;
+  /** The snap lines a drag hits now. */
+  guides: SnapGuides | null;
+  /** The text box being edited in place. */
+  editing: string | null;
+  /** A size, rows or margins change happened: "Re-fit layout" shows if text covers the music. */
+  refit: boolean;
 }
 
 export const useWorkspace = create<WorkspaceState>()(() => ({
   tool: 'select',
   selected: null,
   expanded: [],
+  layout: null,
+  snap: true,
+  guides: null,
+  editing: null,
+  refit: false,
 }));
 
 /** Padding around the poster on the artboard, CSS px. */

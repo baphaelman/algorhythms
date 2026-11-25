@@ -602,7 +602,8 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'export-section',
     'export-prows',
     'export-vtheme',
-    'export-ptitle',
+    'margin-all',
+    'show-sectionLabels',
     'look-guides',
     'look-glow',
     'look-hud-button',
@@ -611,7 +612,8 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'look-reset',
     'export-run',
     'tool-select',
-    'layer-part',
+    'layer-text-row',
+    'layer-part-row',
   ];
   const at = order.map((id) => ids.indexOf(id));
   expect(
@@ -630,6 +632,7 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
 });
 
 test('poster controls by keyboard redraw the preview', async ({ page }) => {
+  // Space plays and pauses in the workspace (M14), so switches take Enter.
   await load(page);
   await openDialog(page, 'Poster');
   const step = async (name: string, act: () => Promise<void>, on: string) => {
@@ -663,12 +666,20 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'export-pwidth',
   );
   await step(
-    'title block',
+    'margins',
     async () => {
-      await page.getByTestId('export-ptitle').focus();
-      await page.keyboard.press('Space');
+      await page.getByTestId('margin-all').focus();
+      await page.keyboard.press('ArrowRight');
     },
-    'export-ptitle',
+    'margin-all',
+  );
+  await step(
+    'section lines',
+    async () => {
+      await page.getByTestId('show-sectionLines').focus();
+      await page.keyboard.press('Enter');
+    },
+    'show-sectionLines',
   );
   await step(
     'section Custom',
@@ -682,7 +693,7 @@ test('poster controls by keyboard redraw the preview', async ({ page }) => {
     'piece range',
     async () => {
       await page.getByTestId('export-prange').focus();
-      await page.keyboard.press('Space');
+      await page.keyboard.press('Enter');
     },
     'export-prange',
   );

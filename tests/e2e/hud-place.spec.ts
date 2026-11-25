@@ -318,7 +318,9 @@ test('the exported frame and poster put the readout where the preview shows it',
         ...opts,
         look: { ...opts.look!, hudLayout: { time: { anchor: 'bl' as const, x: 0.5, y: -0.02 } } },
       };
-      const b = (await h.poster()).referencePosterAt(piece, away, 1, a.width, a.height);
+      // The piece's poster doc holds the same settings as the options (M14): left out here, so
+      // the moved readout is the only difference.
+      const b = (await h.poster()).referencePosterAt(piece, away, 1, a.width, a.height, {});
       const dpr = a.width / bx.W;
       const pad = 12 * dpr;
       let ink: Ink = null;
@@ -348,19 +350,22 @@ test('the exported frame and poster put the readout where the preview shows it',
     },
     { b64: png, bx: pbox },
   );
-  expectInBox(poster.ink, pbox, poster.dpr, browserName);
+  // The poster's layout is in artboard px; its type unit plays the layout px's part.
+  const unit = Math.min(pbox.W, pbox.H) / 480;
+  expectInBox(poster.ink, pbox, poster.dpr, browserName, unit * poster.dpr);
 });
 
 /**
  * The readout's ink lies inside the preview's box at export scale (±1 px), and fills it across:
- * left-aligned text starts at the box's left edge (side bearing ≤ 1 layout px) and reaches near
- * its right.
+ * left-aligned text starts at the box's left edge (side bearing ≤ 1.5 layout px) and reaches near
+ * its right. `px`: export px per layout px (the poster's: its type unit, M14).
  */
 function expectInBox(
   ink: Ink,
   box: { x: number; y: number; w: number; h: number },
   dpr: number,
   browser: string,
+  px = dpr,
 ): void {
   expect(ink, 'readout ink found').not.toBeNull();
   const i = ink!;
@@ -369,6 +374,6 @@ function expectInBox(
   expect(i.y0, msg).toBeGreaterThanOrEqual(box.y * dpr - 1);
   expect(i.x1, msg).toBeLessThanOrEqual((box.x + box.w) * dpr + 1);
   expect(i.y1, msg).toBeLessThanOrEqual((box.y + box.h) * dpr + 1);
-  expect(i.x0 - box.x * dpr, msg).toBeLessThanOrEqual(1.5 * dpr);
-  expect((box.x + box.w) * dpr - i.x1, msg).toBeLessThanOrEqual(2 * dpr);
+  expect(i.x0 - box.x * dpr, msg).toBeLessThanOrEqual(1.5 * px);
+  expect((box.x + box.w) * dpr - i.x1, msg).toBeLessThanOrEqual(2 * px);
 }

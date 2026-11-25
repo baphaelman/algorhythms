@@ -536,7 +536,7 @@ describe('poster', () => {
     expect(o.rows).toBe(4);
   });
 
-  it('passes size, title, transparency and the HUD', () => {
+  it('passes size, transparency and the HUD; the default texts always (M14: text boxes)', () => {
     const o = posterOptions(
       form({
         posterWidth: 2480,
@@ -550,7 +550,7 @@ describe('poster', () => {
     );
     expect(o).toMatchObject({
       size: { width: 2480, height: 3508 },
-      title: false,
+      title: true,
       transparent: true,
       theme: 'light',
     });

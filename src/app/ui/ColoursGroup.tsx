@@ -81,7 +81,7 @@ function Segs<T extends string>({
  * One colour: a label, the colour picker, its hex (typed: applied once valid, Enter or blur;
  * Escape reverts) and, when set, a button back to the default.
  */
-function Swatch({
+export function Swatch({
   label,
   value,
   set,

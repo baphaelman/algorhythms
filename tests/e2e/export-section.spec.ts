@@ -325,10 +325,10 @@ test('poster of a 45 s section of a 3-minute piece: only the section, fitted, ro
   const [fit, piece] = await page.evaluate(async (opts) => {
     const h = (window as unknown as HookWindow).__algorhythms;
     const m = await h.poster();
-    const piece = h.store.getState().piece as Parameters<typeof m.renderPosterSvg>[0];
+    const piece = h.store.getState().piece as Parameters<typeof m.renderPosterLayoutSvg>[0];
     return [
-      m.renderPosterSvg(piece, opts),
-      m.renderPosterSvg(piece, { ...opts, pieceRange: true }),
+      m.renderPosterLayoutSvg(piece, opts),
+      m.renderPosterLayoutSvg(piece, { ...opts, pieceRange: true }),
     ];
   }, req.options);
   expect(fit).toBe(svg);
