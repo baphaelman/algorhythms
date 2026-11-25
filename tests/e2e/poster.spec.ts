@@ -163,9 +163,15 @@ test('PNG equals the layout drawn on a canvas, as the artboard draws it (pixel-i
       { ...BASE, size: 'a4', look: { ...EXPORT_LOOK, theme: 'dark', hud: HUD_ITEMS } },
     ],
   ];
+  // Measure (and log) every case before asserting, so one failure doesn't hide the others.
+  const results: Diff[] = [];
   for (const [name, opts] of cases) {
     const r = await pngVsReference(page, name, opts);
     console.log(`[${browserName}] ${name} ${opts.size} ${opts.theme}: ${JSON.stringify(r)}`);
+    results.push(r);
+  }
+  for (const [i, [name, opts]] of cases.entries()) {
+    const r = results[i];
     expect([r.width, r.height]).toEqual(
       opts.size === '16:9' ? [3840, 2160] : opts.size === '1:1' ? [2160, 2160] : [2480, 3508],
     );
