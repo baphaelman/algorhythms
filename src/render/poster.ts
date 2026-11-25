@@ -239,35 +239,38 @@ export function drawPosterLayout(
   const objs = layout.objects;
   for (; k < objs.length && objs[k].type === 'line'; k++) drawObject(g, objs[k]);
   const dpr = u * scale;
-  for (const L of layout.layers) {
-    if (L.hidden || L.voices.length === 0) continue;
-    const ls = layerStyle(layout, L);
-    for (const f of L.frames) {
-      const row = layout.rows[f.row];
-      if (!(f.rect.w > 0 && f.rect.h > 0)) continue;
-      // A row shorter than the shortest camera window is drawn wider and clipped to its frame.
-      const len = Math.max(1e-9, row.end - row.start);
-      const wide = Math.max(1, MIN_WINDOW / len);
-      if (wide > 1) {
-        g.save();
-        g.setTransform(scale, 0, 0, scale, 0, 0);
-        g.beginPath();
-        g.rect(f.rect.x, f.rect.y, f.rect.w, f.rect.h);
-        g.clip();
+  // Every part's glow under every part's lines, as the video draws it.
+  const passes: ('glow' | 'lines')[] = style.glow ? ['glow', 'lines'] : ['lines'];
+  for (const pass of passes)
+    for (const L of layout.layers) {
+      if (L.hidden || L.voices.length === 0) continue;
+      const ls = { ...layerStyle(layout, L), pass };
+      for (const f of L.frames) {
+        const row = layout.rows[f.row];
+        if (!(f.rect.w > 0 && f.rect.h > 0)) continue;
+        // A row shorter than the shortest camera window is drawn wider and clipped to its frame.
+        const len = Math.max(1e-9, row.end - row.start);
+        const wide = Math.max(1, MIN_WINDOW / len);
+        if (wide > 1) {
+          g.save();
+          g.setTransform(scale, 0, 0, scale, 0, 0);
+          g.beginPath();
+          g.rect(f.rect.x, f.rect.y, f.rect.w, f.rect.h);
+          g.clip();
+        }
+        drawScore(
+          ctx,
+          compiled,
+          { start: row.start, window: len * wide, pitchRange: layout.pitchRange, free: true },
+          ls,
+          compiled.duration,
+          { width: (f.rect.w * wide) / u, height: f.rect.h / u },
+          dpr,
+          { x: f.rect.x / u, y: f.rect.y / u },
+        );
+        if (wide > 1) g.restore();
       }
-      drawScore(
-        ctx,
-        compiled,
-        { start: row.start, window: len * wide, pitchRange: layout.pitchRange, free: true },
-        ls,
-        compiled.duration,
-        { width: (f.rect.w * wide) / u, height: f.rect.h / u },
-        dpr,
-        { x: f.rect.x / u, y: f.rect.y / u },
-      );
-      if (wide > 1) g.restore();
     }
-  }
   resetContext(ctx);
   g.setTransform(scale, 0, 0, scale, 0, 0);
   if (style.vignette) drawVignette(g, W, H, Math.min(1, style.vignette));
