@@ -332,7 +332,23 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
   await load(page, 'kite-day');
   await openExport(page, 'Video (MP4)');
   await choose(page, 'export-camera', 'Whole piece');
+  // M15: the look is the poster's (set in Poster); the video reads it. One row, as before.
+  await switchMode(page, 'Poster');
   await shapeLook(page);
+  await switchMode(page, 'Video');
+  await choose(page, 'video-frame', 'One row');
+  await expect(
+    dialog(page).getByTestId('export-camera').getByLabel('Whole piece', { exact: true }),
+  ).toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const h = (window as unknown as HookWindow).__algorhythms;
+        const req = (await h.exportRun()).lastPreviewRequest();
+        return req?.kind === 'video' && (req.options.look?.glow ?? 0) > 0.5;
+      }),
+    )
+    .toBe(true);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 80))));
 
   // Video. The live preview is the preview code at its scale; that code at the export's scale is
@@ -346,6 +362,8 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
       if (req.kind !== 'video') throw new Error('not video');
       const m = await h.videoExport();
       const piece = h.store.getState().piece as Parameters<typeof m.referenceFrame>[0];
+      // The controls' piece: without the poster doc, whose look would put the effects back.
+      const bare = { ...piece, poster: undefined };
       const { compiled } = h.store.getState() as unknown as {
         compiled: Parameters<typeof m.previewVideoFrame>[2];
       };
@@ -380,13 +398,13 @@ test('colours, glow, vignette and guide notes: the preview, the video frame and 
         // Controls: the default Look; the same colours without glow, vignette and guide notes.
         control: await cmp(
           full,
-          await url(m.referenceFrame(piece, { ...req.options, look: plain }, k)),
+          await url(m.referenceFrame(bare, { ...req.options, look: plain }, k)),
           1920,
           1080,
         ),
         controlFx: await cmp(
           full,
-          await url(m.referenceFrame(piece, { ...req.options, look: noFx }, k)),
+          await url(m.referenceFrame(bare, { ...req.options, look: noFx }, k)),
           1920,
           1080,
         ),

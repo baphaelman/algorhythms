@@ -14,6 +14,7 @@ import {
   openPoster,
   openVideoExport,
   switchMode,
+  videoWorkspace,
   workspace,
 } from './export-open';
 
@@ -113,28 +114,37 @@ test('Escape: a focused control first lets go, then Escape returns to the music'
   await expect(workspace(page)).toBeVisible();
 });
 
-test('Poster | Video is remembered; Video is the dialog with video options only', async ({
+test('Poster | Video is remembered; Video switches the workspace in place, video options only', async ({
   page,
 }) => {
   await openPoster(page);
   await switchMode(page, 'Video');
-  const d = page.getByRole('dialog', { name: 'Export video' });
+  const v = videoWorkspace(page);
   await expect(workspace(page)).toBeHidden();
-  await expect(d.getByTestId('export-format')).toHaveCount(0);
-  await expect(d.getByTestId('export-pformat')).toHaveCount(0);
-  await expect(d.getByTestId('export-aspect')).toBeVisible();
-  await expect(d.getByTestId('preview-canvas')).toBeVisible();
-  await expect(d.getByTestId('export-run')).toHaveText('Export video');
-  // Closing the video dialog goes back to the music.
+  await expect(page.getByTestId('export-dialog')).toBeHidden();
+  await expect(v.getByTestId('export-format')).toHaveCount(0);
+  await expect(v.getByTestId('export-pformat')).toHaveCount(0);
+  // The look is the poster's: no theme, glow or colours in Video.
+  await expect(v.getByTestId('export-vtheme')).toHaveCount(0);
+  await expect(v.getByTestId('look-glow')).toHaveCount(0);
+  await expect(v.getByTestId('colours-scheme')).toHaveCount(0);
+  await expect(v.getByTestId('export-aspect')).toBeVisible();
+  await expect(v.getByTestId('preview-canvas')).toBeVisible();
+  await expect(v.getByTestId('export-run')).toHaveText('Export MP4');
+  // The top bar stays; Revert is the poster's.
+  await expect(page.getByTestId('back-to-music')).toBeVisible();
+  await expect(page.getByTestId('poster-revert')).toHaveCount(0);
+  // Escape (nothing focused) goes back to the music.
+  await v.focus();
   await page.keyboard.press('Escape');
-  await expect(d).toBeHidden();
+  await expect(v).toBeHidden();
   await expect(page.getByTestId('timeline')).toBeVisible();
 
   // Menu → Export opens Video now, also after a reload.
   await page.getByTestId('menu-button').click();
   await page.getByTestId('open-export').click();
-  await expect(d).toBeVisible();
-  await page.getByTestId('export-close').click();
+  await expect(v).toBeVisible();
+  await backToMusic(page);
   await page.reload();
   await expect(page.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
   await openVideoExport(page);

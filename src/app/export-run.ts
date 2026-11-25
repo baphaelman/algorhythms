@@ -8,7 +8,9 @@ import { exportWav, measureInWorker } from '../audio/export-client';
 import { canSaveToDisk, exportStems, pickStemsFile, planStems } from '../audio/stems-client';
 import type { StemsProgress, StemsTarget } from '../audio/stems-client';
 import { LOUDNESS_CEILING, wavExportSize } from '../audio/wav-export';
-import type { CameraKey, CompiledScore, Piece, Seconds } from '../core/types';
+import type { CameraKey, CompiledScore, Piece, PosterCameraKey, Seconds } from '../core/types';
+import { VIDEO_RATIO } from '../render/video';
+import { posterKeyOfFrame } from '../render/poster-video';
 import { normalizePlan, type LoudnessMeasure } from '../dsp/loudness';
 import { videoSpan } from '../render/video';
 import type { TimeSpan } from '../render/section';
@@ -46,6 +48,7 @@ import {
   videoAudioFrames,
   videoCameraAt,
   videoLoudnessCeiling,
+  videoPosterFrameAt,
   videoAudioSpan,
   videoAutoKeys,
   videoSizes,
@@ -332,6 +335,27 @@ export function previewCamera(
   t: Seconds,
 ): CameraState {
   return videoCameraAt(src.piece, src.compiled, optionsOf(src, form, ctx), t);
+}
+
+/**
+ * Over the poster (M15): the key for the frame the camera shows at score time t (the export's
+ * camera, held inside the section), with the artboard's and the video's width / height; null when
+ * the video plays One row. The poster is laid out once per piece and options (`frameOptions`).
+ */
+export function previewPosterFrame(
+  src: ExportSource,
+  form: ExportForm,
+  ctx: VideoContext,
+  t: Seconds,
+): { key: PosterCameraKey; art: number; video: number } | null {
+  const o = optionsOf(src, form, ctx);
+  const at = videoPosterFrameAt(src.piece, src.compiled, o, t);
+  if (!at) return null;
+  return {
+    key: posterKeyOfFrame(at.layout, at.frame, t),
+    art: at.layout.width / at.layout.height,
+    video: VIDEO_RATIO[o.aspect],
+  };
 }
 
 /**

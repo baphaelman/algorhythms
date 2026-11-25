@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { openVideoExport } from './export-open';
+import { backToMusic, escapeOut, openVideoExport } from './export-open';
 import { guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -47,7 +47,8 @@ const KEYS: CameraKey[] = [
   { at: 5, window: 6, place: 0.7, pitch: 60, range: 36 },
 ];
 
-const dialog = (page: Page) => page.getByTestId('export-dialog');
+/** The workspace's Video mode (M15: the old Export dialog's place). */
+const dialog = (page: Page) => page.getByTestId('video-workspace');
 const markers = (page: Page) => page.getByTestId('camera-key');
 
 const cameraOf = (page: Page) =>
@@ -212,10 +213,13 @@ test('keys by keyboard: Tab reaches the markers; arrows move; Delete removes; fo
 }) => {
   await load(page, { mode: 'keys', keys: KEYS });
   await openVideo(page);
-  await page.getByTestId('preview-time').focus();
+  // M15: the markers are on the timeline, after the Section's controls.
+  await dialog(page).getByTestId('export-section').locator('input:checked').focus();
   // WebKit (macOS) tabs to buttons with Option-Tab only (build log, M11 interactions pass).
-  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   const first = markers(page).nth(0);
+  for (let i = 0; i < 12 && !(await first.evaluate((el) => el === document.activeElement)); i++) {
+    await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
+  }
   await expect(first).toBeFocused();
   // A visible ring.
   const ring = await first.evaluate((el) => getComputedStyle(el).outlineStyle);
@@ -247,10 +251,9 @@ test('keys by keyboard: Tab reaches the markers; arrows move; Delete removes; fo
   await page.getByTestId('camera-key-add').focus();
   await page.keyboard.press('Enter');
   await expect(markers(page)).toHaveCount(3);
-  // Escape still closes the dialog.
+  // Escape still leaves (the marker, then the workspace).
   await markers(page).nth(2).focus();
-  await page.keyboard.press('Escape');
-  await expect(dialog(page)).toBeHidden();
+  await escapeOut(page);
 });
 
 test('the preview shapes the selected key: drag pans, wheel zooms; the export frame matches', async ({
@@ -424,7 +427,7 @@ test('the camera survives a reload (My pieces) and a share link', async ({ page,
   await previewAt(page, 4.3);
   await page.getByTestId('camera-key-add').click();
   await expect(markers(page)).toHaveCount(n + 1);
-  await page.getByTestId('export-close').click();
+  await backToMusic(page);
   const camera = await cameraOf(page);
   expect(camera?.keys).toHaveLength(n + 1);
   // The autosave (500 ms debounce) has stored it: a quick reload can beat the pagehide flush.

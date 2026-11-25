@@ -18,7 +18,7 @@ import { allMomentIds } from './editor/selection';
 import { playheadTime, takesText } from './editor/shortcuts';
 import { announce, momentsText } from './announce';
 import { usePlayer } from './store';
-import { posterShown } from './export-surface';
+import { workspaceShown } from './export-surface';
 
 /** The last copied clip's text: pasted when the system clipboard gives nothing. */
 let inApp: string | null = null;
@@ -44,7 +44,7 @@ function textSelected(): boolean {
 function ours(target: EventTarget | null): boolean {
   return (
     editorLayout() &&
-    !posterShown() &&
+    !workspaceShown() &&
     !takesText(target) &&
     document.querySelector('dialog[open]') === null
   );

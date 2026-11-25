@@ -9,8 +9,10 @@ import { startAddressBar } from './address';
 import { startPlayer } from './store';
 import { ComposePanel } from './ui/ComposePanel';
 import { ComposeSetup } from './ui/ComposeSetup';
-import { ExportDialog } from './ui/ExportDialog';
+import { AudioDialog } from './ui/AudioDialog';
 import { PosterWorkspace, WorkspaceBar } from './ui/PosterWorkspace';
+import { VideoWorkspace } from './ui/VideoWorkspace';
+import { startPosterSync } from './poster-sync';
 import { useExportSurface } from './export-surface';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
@@ -61,13 +63,15 @@ interface Frozen {
  * The player and editor (PLAN.md §11.1–§11.5). The editor layout puts the ruler, score and lane
  * rows in one `.timeline` box under a single DOM playhead; screens under 900 px get the player
  * only (score and scrubber, the canvas drawing the playhead). Export's poster workspace (M14)
- * takes the editor's place; the editor stays mounted underneath, hidden, inert and at its size,
+ * (and its Video mode, M15) takes the editor's place; the editor stays mounted underneath, hidden, inert and at its size,
  * so its playhead, zoom and scroll are exactly as they were when it returns.
  */
 export function App() {
   const wide = useWide();
   const composing = useCompose((s) => s.open);
-  const poster = useExportSurface((s) => s.surface === 'poster');
+  const surface = useExportSurface((s) => s.surface);
+  // The workspace (Poster or Video) shows in the editor's place.
+  const poster = surface === 'poster' || surface === 'video';
   const timeline = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLElement>(null);
   /** The editor's last box in the flow: where it stays, hidden, while the workspace shows. */
@@ -126,20 +130,22 @@ export function App() {
     <div
       className="app"
       data-layout={wide ? 'full' : 'player'}
-      data-mode={poster ? 'poster' : undefined}
+      data-mode={poster ? surface : undefined}
     >
       <Transport history={poster ? <WorkspaceBar /> : wide && <UndoRedo />}>
         <Menu />
       </Transport>
       <GeneratePanel />
       <ComposeSetup />
-      <ExportDialog />
+      <AudioDialog />
       <MyPieces />
       <NamePrompt />
       <ShareDialog />
       <SilentHint />
       <Notices />
-      {poster && <PosterWorkspace />}
+      {poster && <WorkspaceSync />}
+      {surface === 'poster' && <PosterWorkspace />}
+      {surface === 'video' && <VideoWorkspace />}
       <main
         ref={main}
         className={poster ? 'workspace frozen' : 'workspace'}
@@ -163,4 +169,13 @@ export function App() {
       {wide && !poster && <TouchMenu />}
     </div>
   );
+}
+
+/**
+ * While the workspace shows (either mode), the form's poster options and the piece's poster stay
+ * in step (./poster-sync): the video plays the poster, and its section is the poster's.
+ */
+function WorkspaceSync() {
+  useLayoutEffect(() => startPosterSync(), []);
+  return null;
 }

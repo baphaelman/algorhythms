@@ -1,8 +1,8 @@
 /**
- * Which export surface is showing (PLAN.md §15 M14 "Entry"): the poster workspace (in place of
- * the editor), the video dialog (until M15) or the audio dialog. Menu → Export opens the
- * workspace's mode used last (Poster or Video), remembered per viewer. A standalone store, so
- * the editor's key handlers can ask `posterShown()` without importing the export UI.
+ * Which export surface is showing (PLAN.md §15 M14 "Entry", M15): the workspace (in place of
+ * the editor) in its Poster or Video mode, or the audio dialog. Menu → Export opens the
+ * workspace's mode used last, remembered per viewer. A standalone store, so the editor's key
+ * handlers can ask `workspaceShown()` without importing the export UI.
  */
 
 import { create } from 'zustand';
@@ -49,9 +49,10 @@ export const useExportSurface = create<{ surface: ExportSurface | null }>()(() =
   surface: null,
 }));
 
-/** The poster workspace is showing (the editor's keys stand down). */
-export function posterShown(): boolean {
-  return useExportSurface.getState().surface === 'poster';
+/** The workspace (Poster or Video) is showing: the editor's keys stand down. */
+export function workspaceShown(): boolean {
+  const s = useExportSurface.getState().surface;
+  return s === 'poster' || s === 'video';
 }
 
 /** Something a key event's target may be (DOM-free, for tests). */

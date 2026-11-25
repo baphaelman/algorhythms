@@ -50,6 +50,7 @@ import {
   type VideoSize,
 } from '../render/video';
 import type { PosterOptions } from './poster-export';
+import { pieceRowBreak, pieceVideoFrame } from '../render/poster-video';
 import type { VideoOptions, VideoQuality, VideoSupport } from './video-export';
 import type { ExportLoudness } from '../audio/wav-export';
 
@@ -235,6 +236,11 @@ export interface ExportForm {
   videoWindow: number | null;
   /** HUD readouts of a video, in `HUD_ITEMS` order. */
   videoHud: readonly HudItem[];
+  /**
+   * Over the poster (M15): Ahead of the playhead, 0..100 % (0 = the poster draws itself). One
+   * row keeps the Look's `future`.
+   */
+  videoAheadPoster: number;
   /** Opening (§12 "Ready for YouTube"): fade in from black and lead-in, s (0..3). */
   videoFadeIn: number;
   videoLeadIn: number;
@@ -418,6 +424,7 @@ export const DEFAULT_EXPORT_FORM: ExportForm = {
   videoFollowAt: null,
   videoWindow: null,
   videoHud: DEFAULT_HUD,
+  videoAheadPoster: 0,
   videoFadeIn: 0,
   videoLeadIn: 0,
   videoTitleCard: false,
@@ -802,7 +809,29 @@ export function lookOf(form: ExportForm, kind: 'video' | 'poster', app: LookAppC
 /** Each voice's part, for per-part colours. */
 const partsOf = (piece: Piece) => piece.voices.map((v) => v.part);
 
-export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
+/**
+ * Ahead of the playhead as the Look holds it, from 0..100 %: 0 = hidden, 100 = full, between =
+ * dimmed at that opacity.
+ */
+export function aheadLook(n: number): Pick<LookForm, 'future'> & Partial<LookForm> {
+  const r = Math.round(n);
+  if (!(r > 0)) return { future: 'hidden' };
+  if (r >= 100) return { future: 'full' };
+  return { future: 'dimmed', futureOpacity: r / 100 };
+}
+
+/**
+ * The form as the video reads it: Over the poster (M15) takes Ahead of the playhead from
+ * `videoAheadPoster`; One row keeps the Look's.
+ */
+export function videoForm(form: ExportForm, piece: Pick<Piece, 'camera' | 'poster'>): ExportForm {
+  if (pieceVideoFrame(piece) !== 'poster') return form;
+  return { ...form, look: { ...form.look, ...aheadLook(form.videoAheadPoster) } };
+}
+
+export function videoOptions(formIn: ExportForm, piece: Piece, ctx: VideoContext): VideoOptions {
+  const form = videoForm(formIn, piece);
+  const frame = pieceVideoFrame(piece);
   const look = lookOf(form, 'video', { ...ctx, parts: partsOf(piece) });
   const o: VideoOptions = {
     aspect: form.videoAspect,
@@ -819,11 +848,14 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
   };
   // Keys without keys in the piece fall back to Follow, so they take Follow's window too.
   if (form.videoCamera !== 'whole') {
-    // The renderer takes the window as seen at 16:9; the form's is what this aspect shows.
-    o.window =
-      form.videoWindow === null
-        ? ctx.window
-        : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
+    // The renderer takes the window as seen at 16:9; the form's is what this aspect shows. Over
+    // the poster, no window of its own frames one row's height (M15).
+    if (frame === 'row' || form.videoWindow !== null) {
+      o.window =
+        form.videoWindow === null
+          ? ctx.window
+          : videoWindowAt16x9(followWindowOf(form, ctx), form.videoAspect);
+    }
     o.followAt = followAtOf(form) / 100;
   }
   const section = sectionOf(form, ctx);
@@ -831,6 +863,12 @@ export function videoOptions(form: ExportForm, piece: Piece, ctx: VideoContext):
   const bookends = bookendsOf(form, piece);
   if (bookends) o.bookends = bookends;
   if (form.loudness !== 'off') o.loudness = form.loudness;
+  // M15: the frame, and Over the poster's row break and poster (the workspace's options).
+  o.frame = frame;
+  if (frame === 'poster') {
+    o.rowBreak = pieceRowBreak(piece);
+    o.poster = posterOptions(form, piece, ctx);
+  }
   return o;
 }
 
@@ -912,6 +950,7 @@ const REMEMBERED = [
   'videoFollowAt',
   'videoWindow',
   'videoHud',
+  'videoAheadPoster',
   'videoFadeIn',
   'videoLeadIn',
   'videoTitleCard',
@@ -994,6 +1033,9 @@ export function parsePrefs(raw: unknown): ExportPrefs {
     p.videoWindow = Math.max(MIN_WINDOW, r.videoWindow);
   }
   if (Array.isArray(r.videoHud)) p.videoHud = hudInOrder(r.videoHud);
+  if (num(r.videoAheadPoster)) {
+    p.videoAheadPoster = Math.min(100, Math.max(0, Math.round(r.videoAheadPoster)));
+  }
   if (num(r.videoFadeIn)) p.videoFadeIn = fade(r.videoFadeIn);
   if (num(r.videoLeadIn)) p.videoLeadIn = fade(r.videoLeadIn);
   if (isBool(r.videoTitleCard)) p.videoTitleCard = r.videoTitleCard;
