@@ -6,15 +6,13 @@
 
 import type { LineColors } from '../core/types';
 import {
-  PAINT_KEYS,
-  toHex,
+  sortedStops,
+  stopColorAt,
   worstContrast,
-  themeSwatch,
   type BackgroundPaint,
-  type GradientDir,
-  type LookColours,
-  type PaintKey,
-} from '../render/colours';
+  type GradientStop,
+} from '../render/background';
+import { PAINT_KEYS, toHex, themeSwatch, type LookColours, type PaintKey } from '../render/colours';
 import { lchColor, pitchStops } from '../render/palettes';
 import type { ThemeTokens } from '../render/types';
 
@@ -26,6 +24,21 @@ export type BackgroundMode = 'theme' | 'solid' | 'gradient' | 'transparent';
 /** `#rrggbb`, or null for the theme's colour. */
 type Swatch = string | null;
 
+/**
+ * A gradient's direction: M11's three (kept as stored), or `linear` at `bgAngle`. The panel shows
+ * vertical and horizontal as Linear at 180° and 90°.
+ */
+export type GradientForm = 'vertical' | 'horizontal' | 'radial' | 'linear';
+/** The panel's gradient shapes. */
+export type GradientShape = 'linear' | 'radial';
+
+/** Gradient stops kept: 2..8. */
+export const MIN_STOPS = 2;
+export const MAX_STOPS = 8;
+/** The radial radius' range (a fraction of the half-diagonal). */
+export const RADIUS_MIN = 0.05;
+export const RADIUS_MAX = 2;
+
 /** What the Colours group holds. Null swatches draw the theme's colour (as before). */
 export type ColoursForm = {
   lines: LineMode;
@@ -34,7 +47,15 @@ export type ColoursForm = {
   bg: Swatch;
   bgFrom: Swatch;
   bgTo: Swatch;
-  bgDir: GradientDir;
+  bgDir: GradientForm;
+  /** Linear: the angle in CSS degrees (0 = to the top, 180 = to the bottom). */
+  bgAngle: number;
+  /** Radial: the centre (fractions of the frame) and radius (of the half-diagonal). */
+  bgCx: number;
+  bgCy: number;
+  bgR: number;
+  /** Two or more stops; null = `bgFrom` at 0 and `bgTo` at 1 (M11's two colours). */
+  bgStops: readonly GradientStop[] | null;
   /** By pitch: low and high (both null: the theme's hues) and an optional middle. */
   low: Swatch;
   mid: Swatch;
@@ -52,6 +73,11 @@ export const DEFAULT_COLOURS: ColoursForm = {
   bgFrom: null,
   bgTo: null,
   bgDir: 'vertical',
+  bgAngle: 180,
+  bgCx: 0.5,
+  bgCy: 0.5,
+  bgR: 1,
+  bgStops: null,
   low: null,
   mid: null,
   high: null,
@@ -83,9 +109,15 @@ export const BACKGROUND_MODES: readonly { id: BackgroundMode; label: string }[] 
   { id: 'transparent', label: 'Transparent' },
 ];
 
-export const GRADIENT_DIRS: readonly { id: GradientDir; label: string }[] = [
+export const GRADIENT_DIRS: readonly { id: GradientForm; label: string }[] = [
   { id: 'vertical', label: 'Vertical' },
   { id: 'horizontal', label: 'Horizontal' },
+  { id: 'radial', label: 'Radial' },
+  { id: 'linear', label: 'Linear' },
+];
+
+export const GRADIENT_SHAPES: readonly { id: GradientShape; label: string }[] = [
+  { id: 'linear', label: 'Linear' },
   { id: 'radial', label: 'Radial' },
 ];
 
@@ -160,13 +192,106 @@ export function pitchEnds(dark: boolean): [string, string] {
   return [toHex(s[0].color) ?? '#000000', toHex(s[s.length - 1].color) ?? '#000000'];
 }
 
+/** The gradient's shape as the panel shows it. */
+export const gradientShape = (c: ColoursForm): GradientShape =>
+  c.bgDir === 'radial' ? 'radial' : 'linear';
+
+/** The linear gradient's angle as the panel shows it (vertical 180°, horizontal 90°). */
+export function gradientAngle(c: ColoursForm): number {
+  return c.bgDir === 'vertical' ? 180 : c.bgDir === 'horizontal' ? 90 : c.bgAngle;
+}
+
+/** The gradient's stops as the panel shows them (M11's two colours at 0 and 1). */
+export function gradientStops(c: ColoursForm, t: ThemeTokens): GradientStop[] {
+  if (c.bgStops && c.bgStops.length >= MIN_STOPS) return c.bgStops.map((s) => ({ ...s }));
+  return [
+    { color: c.bgFrom ?? hexOr(t.paper), at: 0 },
+    { color: c.bgTo ?? hexOr(t.panel), at: 1 },
+  ];
+}
+
+const hexOr = (c: string): string => toHex(c) ?? c;
+
+/** True when the form's gradient is M11's two-colour one (drawn as it was stored). */
+function twoColour(c: ColoursForm): boolean {
+  return (
+    c.bgStops === null &&
+    (c.bgDir === 'vertical' ||
+      c.bgDir === 'horizontal' ||
+      (c.bgDir === 'radial' && c.bgCx === 0.5 && c.bgCy === 0.5 && c.bgR === 1))
+  );
+}
+
 /** The background a form draws (undefined = the theme's paper). */
 export function backgroundOf(c: ColoursForm, t: ThemeTokens): BackgroundPaint | undefined {
   if (c.background === 'solid') return { kind: 'solid', color: c.bg ?? t.paper };
   if (c.background === 'gradient') {
-    return { kind: 'gradient', from: c.bgFrom ?? t.paper, to: c.bgTo ?? t.panel, dir: c.bgDir };
+    if (twoColour(c) && c.bgDir !== 'linear') {
+      return { kind: 'gradient', from: c.bgFrom ?? t.paper, to: c.bgTo ?? t.panel, dir: c.bgDir };
+    }
+    const stops = sortedStops(
+      c.bgStops && c.bgStops.length >= MIN_STOPS
+        ? c.bgStops
+        : [
+            { color: c.bgFrom ?? t.paper, at: 0 },
+            { color: c.bgTo ?? t.panel, at: 1 },
+          ],
+    );
+    if (c.bgDir === 'radial') return { kind: 'radial', stops, cx: c.bgCx, cy: c.bgCy, r: c.bgR };
+    return { kind: 'linear', stops, angle: gradientAngle(c) };
   }
   return undefined;
+}
+
+/** The form with its gradient as Linear at `angle` (from vertical or horizontal too). */
+export function withAngle(angle: number): Partial<ColoursForm> {
+  return { bgDir: 'linear', bgAngle: Math.round(((angle % 360) + 360) % 360) };
+}
+
+/** The form with its gradient's shape set (Linear keeps the angle shown). */
+export function withShape(c: ColoursForm, shape: GradientShape): Partial<ColoursForm> {
+  if (shape === 'radial') return { bgDir: 'radial' };
+  return c.bgDir === 'radial' ? { bgDir: 'linear' } : {};
+}
+
+/** The stops after stop `i` is changed (colour or position). */
+export function withStop(
+  c: ColoursForm,
+  t: ThemeTokens,
+  i: number,
+  patch: Partial<GradientStop>,
+): Partial<ColoursForm> {
+  const stops = gradientStops(c, t);
+  if (!stops[i]) return {};
+  stops[i] = { ...stops[i], ...patch };
+  return { bgStops: stops };
+}
+
+/**
+ * The stops with one added in the widest gap (at its middle, the gradient's colour there); none
+ * past MAX_STOPS.
+ */
+export function addStop(c: ColoursForm, t: ThemeTokens): Partial<ColoursForm> {
+  const stops = gradientStops(c, t);
+  if (stops.length >= MAX_STOPS) return {};
+  const s = sortedStops(stops);
+  let at = 0.5;
+  let gap = -1;
+  for (let i = 1; i < s.length; i++) {
+    if (s[i].at - s[i - 1].at > gap) {
+      gap = s[i].at - s[i - 1].at;
+      at = (s[i].at + s[i - 1].at) / 2;
+    }
+  }
+  at = Math.round(at * 100) / 100;
+  return { bgStops: [...stops, { color: hexOr(stopColorAt(s, at)), at }] };
+}
+
+/** The stops without stop `i` (at least MIN_STOPS stay). */
+export function removeStop(c: ColoursForm, t: ThemeTokens, i: number): Partial<ColoursForm> {
+  const stops = gradientStops(c, t);
+  if (stops.length <= MIN_STOPS) return {};
+  return { bgStops: stops.filter((_, k) => k !== i) };
 }
 
 /** The colour a swatch shows: its own, or the theme's (heads and glow: the ink). */
@@ -417,6 +542,21 @@ export function parseColours(raw: unknown): ColoursForm {
   if (r.background === 'theme' || r.background === 'solid' || r.background === 'gradient')
     c.background = r.background;
   if (oneOf(GRADIENT_DIRS, r.bgDir)) c.bgDir = r.bgDir;
+  const num = (v: unknown, lo: number, hi: number): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+  if (num(r.bgAngle, 0, 360)) c.bgAngle = r.bgAngle;
+  if (num(r.bgCx, 0, 1)) c.bgCx = r.bgCx;
+  if (num(r.bgCy, 0, 1)) c.bgCy = r.bgCy;
+  if (num(r.bgR, RADIUS_MIN, RADIUS_MAX)) c.bgR = r.bgR;
+  if (Array.isArray(r.bgStops)) {
+    const stops: GradientStop[] = [];
+    for (const x of r.bgStops as unknown[]) {
+      const s = x as { color?: unknown; at?: unknown } | null;
+      const color = hexOrNull(s?.color);
+      if (color && num(s?.at, 0, 1)) stops.push({ color, at: s.at });
+    }
+    if (stops.length >= MIN_STOPS && stops.length <= MAX_STOPS) c.bgStops = stops;
+  }
   for (const k of ['bg', 'bgFrom', 'bgTo', 'low', 'mid', 'high', 'one', ...PAINT_KEYS] as const) {
     const v = hexOrNull(r[k]);
     if (v !== undefined) c[k] = v;

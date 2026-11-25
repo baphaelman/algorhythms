@@ -1,0 +1,44 @@
+/* M14 P5: the Rows group's Organize list. */
+
+.ws-organize {
+  list-style: none;
+  margin: 4px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ws-organize > li {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.ws-organize > li[data-starts='no'] {
+  border-style: dashed;
+}
+
+.ws-organize-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.ws-organize-time {
+  font: 11px/1 var(--f-mono);
+  color: var(--ink-2);
+}
+
+.ws-organize-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-organize input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}

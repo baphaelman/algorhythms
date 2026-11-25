@@ -569,6 +569,17 @@ function sessionStore(): Storage | undefined {
   }
 }
 
+type LinkedEntry = (entryId: string, linked: Piece) => Promise<Piece>;
+let linkedEntry: LinkedEntry | null = null;
+
+/**
+ * How a reload of this tab's link gets back what links leave out (a poster picture) from its My
+ * pieces entry (persistence sets it).
+ */
+export function setLinkedEntry(fn: LinkedEntry | null): void {
+  linkedEntry = fn;
+}
+
 /**
  * Opens the piece in a `#p=` fragment; on failure shows an error and keeps the current piece.
  * This tab's own URL (a reload) reopens quietly, still saving to its My pieces entry.
@@ -590,8 +601,9 @@ export async function openShareHash(hash: string): Promise<boolean> {
     const r = parsePiece(json);
     if (r.ok) {
       const entry = own.entry ?? undefined;
+      const piece = entry && linkedEntry ? await linkedEntry(entry, r.piece) : r.piece;
       runOpen(() =>
-        loadPiece(r.piece, { keepHash: true, source: entry ? 'library' : 'other', entryId: entry }),
+        loadPiece(piece, { keepHash: true, source: entry ? 'library' : 'other', entryId: entry }),
       );
       return true;
     }

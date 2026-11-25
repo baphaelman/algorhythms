@@ -14,7 +14,6 @@ import {
   BUILTIN_SCHEMES,
   DEFAULT_COLOURS,
   ELEMENT_SWATCHES,
-  GRADIENT_DIRS,
   LINE_MODES,
   contrastWarning,
   deleteScheme,
@@ -30,11 +29,12 @@ import {
   type ColoursForm,
 } from '../export-colours';
 import type { LookForm } from '../export-options';
+import { GradientFields, PictureFields } from './BackgroundFields';
 import type { LookKind } from '../look-controls';
 import { usePlayer } from '../store';
 
 /** Segmented buttons (radios) in the Look grid, as the Look's own segments. */
-function Segs<T extends string>({
+export function Segs<T extends string>({
   label,
   testId,
   value,
@@ -81,7 +81,7 @@ function Segs<T extends string>({
  * One colour: a label, the colour picker, its hex (typed: applied once valid, Enter or blur;
  * Escape reverts) and, when set, a button back to the default.
  */
-function Swatch({
+export function Swatch({
   label,
   value,
   set,
@@ -323,31 +323,8 @@ export function ColoursGroup({
             onChange={(bg) => set({ bg })}
           />
         )}
-        {bgMode === 'gradient' && (
-          <>
-            <Swatch
-              label={c.bgDir === 'radial' ? 'Centre' : c.bgDir === 'vertical' ? 'Top' : 'Left'}
-              testId="swatch-bgFrom"
-              value={c.bgFrom ?? hex(t.paper)}
-              set={c.bgFrom !== null}
-              onChange={(bgFrom) => set({ bgFrom })}
-            />
-            <Swatch
-              label={c.bgDir === 'radial' ? 'Edge' : c.bgDir === 'vertical' ? 'Bottom' : 'Right'}
-              testId="swatch-bgTo"
-              value={c.bgTo ?? hex(t.panel)}
-              set={c.bgTo !== null}
-              onChange={(bgTo) => set({ bgTo })}
-            />
-            <Segs
-              label="Direction"
-              testId="look-bg-dir"
-              value={c.bgDir}
-              options={GRADIENT_DIRS}
-              onChange={(bgDir) => set({ bgDir })}
-            />
-          </>
-        )}
+        {bgMode === 'gradient' && <GradientFields c={c} t={t} set={set} />}
+        {kind === 'poster' && <PictureFields />}
         <Segs
           label="Lines"
           testId="look-colors"

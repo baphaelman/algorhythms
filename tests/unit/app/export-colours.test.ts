@@ -16,7 +16,8 @@ import {
   schemeOf,
   type ColoursForm,
 } from '../../../src/app/export-colours';
-import { contrastRatio, worstContrast } from '../../../src/render/colours';
+import { worstContrast } from '../../../src/render/background';
+import { contrastRatio } from '../../../src/render/colours';
 import { DARK_TOKENS, LIGHT_TOKENS } from '../../../src/render/palettes';
 
 const c = (p: Partial<ColoursForm>): ColoursForm => ({ ...DEFAULT_COLOURS, ...p });

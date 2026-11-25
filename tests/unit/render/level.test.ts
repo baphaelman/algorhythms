@@ -370,6 +370,19 @@ describe('pulse drawing (revision 10)', () => {
     g.marks.forEach((m, i) => expect(m.alpha).toBeCloseTo(want[i], 1));
   });
 
+  it('pulseStyle scales the marks: length, width, opacity and one colour (M14)', () => {
+    const s = pulsed();
+    const base = draw(s).marks;
+    const p = pathCtx();
+    const ps = { size: 2, width: 1.5, opacity: 0.5, colour: '#123456' };
+    drawScore(p.ctx, s, cam, style({ pulseStyle: ps }), 11, SIZE, 1);
+    const ticks = p.strokes.filter((k) => k.style === '#123456' && k.pts.length >= 2);
+    expect(ticks.every((k) => k.width === HIT_WIDTH * 1.5)).toBe(true);
+    const first = ticks[0];
+    expect(Math.abs(first.pts[1][1] - first.pts[0][1]) / 2).toBeCloseTo(2 * base[0].h, 9);
+    expect(first.alpha).toBeCloseTo(0.5 * base[0].alpha, 1);
+  });
+
   it('no hit marks and an unchanged drawing without a pulse', () => {
     const s = score([voice(0, 60, [{ t: 10, gain: 0, over: 2 }]), voice(1, 67)]);
     const p = pathCtx();

@@ -167,9 +167,18 @@ test('a gradient background: in the preview, a video frame and the poster PNG', 
 }) => {
   test.setTimeout(90_000);
   await chooseSegment(page, 'look-bg', 'Gradient');
-  await setHex(page, 'swatch-bgFrom', '#ff0000');
-  await setHex(page, 'swatch-bgTo', '#0000ff');
-  await expect(page.getByTestId('look-bg-dir')).toHaveAttribute('data-value', 'vertical');
+  // The stops (M14 P5): the first at the top, the last at the bottom (Linear, 180°).
+  for (const [i, c] of [
+    [0, '#ff0000'],
+    [1, '#0000ff'],
+  ] as const) {
+    const f = page.getByTestId(`bg-stop-${i}-hex`);
+    await f.fill(c);
+    await f.press('Enter');
+    await expect(page.getByTestId(`bg-stop-${i}-pick`)).toHaveValue(c);
+  }
+  await expect(page.getByTestId('bg-shape')).toHaveAttribute('data-value', 'linear');
+  await expect(page.getByTestId('bg-angle')).toHaveValue('180');
   const shots = process.env.COLOURS_SHOTS_DIR;
   if (shots) {
     mkdirSync(shots, { recursive: true });

@@ -719,6 +719,8 @@ const PosterBoxSchema = z.looseObject({
   h: z.number().positive(),
 });
 const margin = z.number().min(0).max(0.45);
+/** Longest background picture data URL kept (characters). */
+export const PICTURE_MAX_CHARS = 40_000_000;
 
 const GroupStyleFields = {
   visible: z.boolean().optional(),
@@ -743,6 +745,7 @@ const POSTER_GROUPS = [
   'sectionLabels',
   'momentLabels',
   'rowLabels',
+  'rowNames',
   'guideLabels',
   'pitchLabels',
   'hud',
@@ -751,6 +754,7 @@ const POSTER_GROUPS = [
   'guideLines',
   'pitchLines',
   'beatLines',
+  'pulseMarks',
 ] as const;
 const groupKey = z.enum(POSTER_GROUPS);
 
@@ -812,6 +816,29 @@ export const PosterSchema = z
       .optional(),
     groups: z.partialRecord(groupKey, PosterGroupStyleSchema).optional(),
     members: z.partialRecord(groupKey, z.record(z.string(), PosterMemberStyleSchema)).optional(),
+    rowsBy: z.literal('sections').optional().describe('Absent = equal rows.'),
+    rowSections: z
+      .record(
+        z.string(),
+        z.looseObject({ join: z.boolean().optional(), label: z.string().max(200).optional() }),
+      )
+      .optional()
+      .describe("Rows by sections, per labelled moment id ('start' = before the first)."),
+    picture: z
+      .looseObject({
+        src: z
+          .string()
+          .max(PICTURE_MAX_CHARS)
+          .regex(/^data:image\/[a-z+.-]+;base64,/),
+        w: z.number().int().positive().max(16384),
+        h: z.number().int().positive().max(16384),
+        fit: z.enum(['cover', 'contain', 'tile']).optional(),
+        x: unitInterval.optional(),
+        y: unitInterval.optional(),
+        dim: unitInterval.optional(),
+      })
+      .optional()
+      .describe('Background picture; never in share links.'),
   })
   .superRefine((p, ctx) => {
     for (const key of ['layers', 'texts'] as const) {

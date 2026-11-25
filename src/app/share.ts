@@ -13,6 +13,9 @@
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
+ * A poster's background picture (M14) is never in a link (`shareablePiece`): the link's poster
+ * falls back to its background colour.
+ *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
  * `decode(encode(p))` is exactly `p` and `encode(decode(link))` gives the same link back.
  */
@@ -399,11 +402,26 @@ export async function encodeSharePayload(value: unknown): Promise<string> {
   return toBase64Url(packed);
 }
 
+/** The piece as links carry it: without its poster's background picture. */
+export function shareablePiece(piece: Piece): Piece {
+  const poster = piece.poster;
+  if (!poster?.picture) return piece;
+  const { picture: _p, ...rest } = poster;
+  if (Object.keys(rest).length > 0) return { ...piece, poster: rest };
+  const { poster: _q, ...out } = piece;
+  return out;
+}
+
+/** True when a link to the piece leaves out its poster's picture. */
+export const linkDropsPicture = (piece: Piece): boolean => piece.poster?.picture !== undefined;
+
 /**
- * The shortest exact payload for a piece: v2 when it packs, else v1 of the stripped piece. A
- * piece that is not canonical (not as `parsePiece` returns it) is written as v1, unstripped.
+ * The shortest exact payload for a piece (its poster picture left out): v2 when it packs, else
+ * v1 of the stripped piece. A piece that is not canonical (not as `parsePiece` returns it) is
+ * written as v1, unstripped.
  */
-export async function encodePiecePayload(piece: Piece): Promise<string> {
+export async function encodePiecePayload(full: Piece): Promise<string> {
+  const piece = shareablePiece(full);
   const read = (json: unknown): Piece | null => {
     const r = parsePiece(json);
     return r.ok ? r.piece : null;

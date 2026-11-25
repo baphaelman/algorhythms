@@ -32,7 +32,9 @@ import {
 import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { videoMarkers } from '../render/video';
+import { withPicture } from '../render/background';
 import { fileBase } from './export-options';
+import { picturesReady } from './poster-picture';
 
 export interface PosterOptions {
   /** A preset or explicit pixels. */
@@ -78,6 +80,8 @@ export function posterDrawOptions(
     ...videoMarkers(piece),
     ...(opts.look ? { look: opts.look, ...pieceLook(piece) } : {}),
   });
+  const bg = withPicture(style.paint?.background, piece.poster?.picture);
+  if (bg && bg !== style.paint?.background) style.paint = { ...style.paint, background: bg };
   const o: PosterDrawOptions = { size: opts.size, style, title: opts.title };
   if (opts.rows !== undefined && opts.rows !== 1) o.rows = opts.rows;
   if (opts.section) o.section = opts.section;
@@ -100,6 +104,7 @@ export async function renderPosterPng(
   compiled: CompiledScore = compile(piece),
 ): Promise<Blob> {
   const { width, height } = posterSize(opts.size);
+  await picturesReady(piece);
   const canvas = new OffscreenCanvas(width, height);
   const g = canvas.getContext('2d', { alpha: opts.transparent });
   if (!g) throw new Error('Poster export: this browser cannot draw on an OffscreenCanvas.');
@@ -237,6 +242,7 @@ export async function renderPosterLayoutPng(
   compiled: CompiledScore = compile(piece),
   layout: PosterLayout = posterLayoutOf(piece, opts, compiled),
 ): Promise<Blob> {
+  await picturesReady(piece);
   const canvas = new OffscreenCanvas(layout.width, layout.height);
   const transparent = layout.style.tokens.paper === 'transparent';
   const g = canvas.getContext('2d', { alpha: transparent });

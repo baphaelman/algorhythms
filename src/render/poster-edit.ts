@@ -13,6 +13,8 @@ import type {
   PosterLayer,
   PosterMargins,
   PosterMemberStyle,
+  PosterPicture,
+  PosterRowSection,
   PosterText,
   Seconds,
 } from '../core/types';
@@ -446,6 +448,67 @@ export function setMemberStyle(
   if (Object.keys(g).length > 0) members[group] = g;
   else delete members[group];
   return withField(doc, 'members', pruned(members));
+}
+
+/** Rows equal (`rows` of them) or by sections. */
+export function setRowsBy(
+  doc: PosterDoc | undefined,
+  by: 'equal' | 'sections',
+): PosterDoc | undefined {
+  return withField(doc, 'rowsBy', by === 'sections' ? 'sections' : undefined);
+}
+
+/**
+ * Sets a section's row (by sections): `join` (its "New row" switch off) and its row `label`
+ * (equal to `sectionLabel`, or undefined, goes back to the default).
+ */
+export function setRowSection(
+  doc: PosterDoc | undefined,
+  id: string,
+  patch: { join?: boolean; label?: string | undefined },
+  sectionLabel?: string,
+): PosterDoc | undefined {
+  const all = { ...doc?.rowSections };
+  const prev = all[id] ?? {};
+  const next: PosterRowSection = { ...prev };
+  if ('join' in patch) {
+    if (patch.join) next.join = true;
+    else delete next.join;
+  }
+  if ('label' in patch) {
+    if (patch.label === undefined || patch.label === sectionLabel) delete next.label;
+    else next.label = patch.label;
+  }
+  if (Object.keys(next).length > 0) all[id] = next;
+  else delete all[id];
+  return withField(doc, 'rowSections', pruned(all));
+}
+
+/** Sets the background picture (undefined removes it). */
+export function setPicture(
+  doc: PosterDoc | undefined,
+  picture: PosterPicture | undefined,
+): PosterDoc | undefined {
+  return withField(doc, 'picture', picture ? compactPicture(picture) : undefined);
+}
+
+/** Patches the background picture's fit, place or dimming (nothing without a picture). */
+export function patchPicture(
+  doc: PosterDoc | undefined,
+  patch: Partial<Pick<PosterPicture, 'fit' | 'x' | 'y' | 'dim'>>,
+): PosterDoc | undefined {
+  const p = doc?.picture;
+  return p ? setPicture(doc, { ...p, ...patch }) : doc;
+}
+
+/** A picture without its default fields (cover, centred, no dimming). */
+function compactPicture(p: PosterPicture): PosterPicture {
+  const out: PosterPicture = { src: p.src, w: p.w, h: p.h };
+  if (p.fit && p.fit !== 'cover') out.fit = p.fit;
+  if (p.x !== undefined && p.x !== 0.5) out.x = p.x;
+  if (p.y !== undefined && p.y !== 0.5) out.y = p.y;
+  if (p.dim) out.dim = p.dim;
+  return out;
 }
 
 /**

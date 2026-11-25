@@ -5,16 +5,11 @@
  * Colour maths (hex parsing, mixing, WCAG contrast) lives here too. Pure; no DOM.
  */
 
+import type { BackgroundPaint } from './background';
 import type { ThemeTokens } from './types';
 import { svgColor } from './svg';
 
-export type GradientDir = 'vertical' | 'horizontal' | 'radial';
-
-/** A background other than the theme's paper. Transparent stays `Look.transparent`. */
-export type BackgroundPaint =
-  | { kind: 'solid'; color: string }
-  /** `from` at the top (vertical), the left (horizontal) or the centre (radial). */
-  | { kind: 'gradient'; from: string; to: string; dir: GradientDir };
+export type { BackgroundPaint, GradientDir } from './background';
 
 /**
  * Line colours other than the app's: by pitch (2 or 3 stops, low → high; none = the theme's hues),
@@ -124,63 +119,6 @@ export function contrastRatio(a: string, b: string): number {
   const hi = Math.max(la, lb);
   const lo = Math.min(la, lb);
   return (hi + 0.05) / (lo + 0.05);
-}
-
-/** The background's colours to test text against: the solid colour, or 9 points of a gradient. */
-export function backgroundSamples(bg: BackgroundPaint | undefined, paper: string): string[] {
-  if (!bg) return [paper];
-  if (bg.kind === 'solid') return [bg.color];
-  const out: string[] = [];
-  for (let i = 0; i <= 8; i++) out.push(mixHex(bg.from, bg.to, i / 8));
-  return out;
-}
-
-/** The worst contrast of `text` against a background (every sampled point of a gradient). */
-export function worstContrast(
-  text: string,
-  bg: BackgroundPaint | undefined,
-  paper: string,
-): number {
-  let worst = Infinity;
-  for (const c of backgroundSamples(bg, paper)) worst = Math.min(worst, contrastRatio(text, c));
-  return worst;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Drawing
-// ---------------------------------------------------------------------------------------------
-
-type Grad2D = Pick<CanvasRenderingContext2D, 'createLinearGradient' | 'createRadialGradient'>;
-
-/** The gradient of a background over a W × H frame (canvas, OffscreenCanvas or SvgContext). */
-export function backgroundGradient(
-  g: Grad2D,
-  bg: Extract<BackgroundPaint, { kind: 'gradient' }>,
-  W: number,
-  H: number,
-): CanvasGradient {
-  let grad: CanvasGradient;
-  if (bg.dir === 'radial') {
-    grad = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 2);
-  } else if (bg.dir === 'horizontal') grad = g.createLinearGradient(0, 0, W, 0);
-  else grad = g.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, bg.from);
-  grad.addColorStop(1, bg.to);
-  return grad;
-}
-
-/** Fills a W × H frame with the style's background: its paint, else the paper as before. */
-export function fillBackground(
-  g: CanvasRenderingContext2D,
-  paper: string,
-  paint: StylePaint | undefined,
-  W: number,
-  H: number,
-): void {
-  const bg = paint?.background;
-  if (!bg || paper === 'transparent') g.fillStyle = paper;
-  else g.fillStyle = bg.kind === 'solid' ? bg.color : backgroundGradient(g, bg, W, H);
-  g.fillRect(0, 0, W, H);
 }
 
 /** The StylePaint of a Look's colours, or undefined when they set nothing. */
