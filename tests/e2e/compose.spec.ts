@@ -122,7 +122,9 @@ test('every control works from the keyboard; Enter on Compose composes the brief
   await page.keyboard.press('ArrowRight');
   await expect(chosen(page, 'shape')).toHaveText(['Build up']);
   await page.keyboard.press(TAB);
-  await expect(page.getByTestId('compose-speed').getByRole('radio', { name: 'Surprise me' })).toBeFocused();
+  await expect(
+    page.getByTestId('compose-speed').getByRole('radio', { name: 'Surprise me' }),
+  ).toBeFocused();
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight'); // Slow, Medium, Fast (WebKit radios don't wrap)
   await expect(chosen(page, 'speed')).toHaveText(['Fast']);
   await page.keyboard.press(TAB); // Parts: Surprise me
