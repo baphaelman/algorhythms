@@ -5,7 +5,8 @@
  * drag is one entry.
  *
  * - Click selects the topmost object; a label or line selects its whole group, Alt-click one
- *   member. Drag moves (snapping to the artboard, the margins and other objects; Alt: free),
+ *   member. With two rows or more, a part's lines select that part in their row (Alt-click: in
+ *   every row, as the layers list does), and a row's empty space selects the row. Drag moves (snapping to the artboard, the margins and other objects; Alt: free),
  *   the eight handles resize (`resizeBox`: Shift proportional, Alt from the centre).
  * - Keys (nothing typed into): arrows nudge (Shift: ten times), Delete removes a text box or
  *   hides the rest, Enter edits a text box, V / T pick the tool. Escape clears the selection.
@@ -34,8 +35,10 @@ import {
   setGroupStyle,
   setLayer,
   setLayerOrder,
+  setLayerRow,
   setMargins,
   setMemberStyle,
+  setRowBox,
   textsOf,
   type Handle,
 } from '../../render/poster-edit';
@@ -113,6 +116,8 @@ export function deleteSelection(): void {
     select(null);
   } else if (sel.kind === 'layer') {
     editPoster((d) => setLayer(d, sel.id, { hidden: true }), 'Hide layer');
+  } else if (sel.kind === 'row') {
+    return;
   } else if (sel.kind === 'group') {
     editPoster((d) => setGroupStyle(d, sel.group, { visible: false }), 'Hide');
   } else {
@@ -341,6 +346,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
     const handle = ((e.target as HTMLElement).dataset.handle as Handle | undefined) ?? null;
     let sel = useWorkspace.getState().selected;
     let frame = selectionFrame(layout, sel);
+    const tol = Math.max(1.5 * layout.unit, HIT_CSS / scale);
     const onFrame =
       frame &&
       !e.altKey &&
@@ -348,9 +354,11 @@ export function ArtboardOverlay({ width }: { width: number }) {
       p.x >= frame.x &&
       p.x <= frame.x + frame.w &&
       p.y >= frame.y &&
-      p.y <= frame.y + frame.h;
+      p.y <= frame.y + frame.h &&
+      // A row moves from its empty space: what is drawn in it stays clickable.
+      (sel?.kind !== 'row' || selectionAt(layout, p.x, p.y, false, tol)?.kind === 'row');
     if (!(handle && frame) && !onFrame) {
-      sel = selectionAt(layout, p.x, p.y, e.altKey, Math.max(1.5 * layout.unit, HIT_CSS / scale));
+      sel = selectionAt(layout, p.x, p.y, e.altKey, tol);
       select(sel);
       frame = selectionFrame(layout, sel);
     }
@@ -742,7 +750,11 @@ export function SelectionPanel() {
     const vid = sel.id.startsWith('line:') ? sel.id.slice(5) : null;
     const v = vid ? voices.find((x) => x.id === vid) : null;
     title = vid ? (v?.name ?? 'Line') : sel.id.slice(5) || 'Lines';
+    if (sel.row !== undefined) title += ` · row ${sel.row + 1}`;
     body = <LayerPanel sel={sel} layout={layout} doc={doc} />;
+  } else if (sel.kind === 'row') {
+    title = `Row ${sel.row + 1}`;
+    body = <RowPanel row={sel.row} layout={layout} doc={doc} />;
   } else if (sel.kind === 'text') {
     const t = textOf(doc, sel.id);
     if (!t) return null;
@@ -784,17 +796,24 @@ function LayerPanel({
 }) {
   const entry = doc?.layers?.find((l) => l.id === sel.id);
   const L = layerOf(layout, sel.id);
-  const frame = L?.bounds ?? null;
+  const frame = selectionFrame(layout, sel);
   const hidden = entry?.hidden === true;
   const ink = hex(layout.style.tokens.ink);
   const isLine = sel.id.startsWith('line:');
+  const row = sel.row !== undefined ? layout.rows[sel.row] : undefined;
+  const placed = row ? L?.frames[row.index]?.base !== undefined : false;
   return (
     <>
+      {sel.row !== undefined && <small className="hud-sample">Style applies in every row.</small>}
       {frame ? (
         <BoxFields
           frame={frame}
           onBox={(r) =>
-            editPosterRun(`box ${sel.id}`, (d) => placeRect(d, layout, sel, frame, r), 'Move')
+            editPosterRun(
+              `box ${sel.id} ${sel.row ?? ''}`,
+              (d) => placeRect(d, layout, sel, frame, r),
+              'Move',
+            )
           }
         />
       ) : (
@@ -813,6 +832,15 @@ function LayerPanel({
             Move on its own
           </button>
         )
+      )}
+      {row && placed && (
+        <button
+          type="button"
+          data-testid="sel-row-reset"
+          onClick={() => editPoster((d) => setLayerRow(d, sel.id, row.key, undefined), 'Reset row')}
+        >
+          Back in line with the other rows
+        </button>
       )}
       <Switch
         label="Hidden"
@@ -838,6 +866,42 @@ function LayerPanel({
           }
         />
       </div>
+    </>
+  );
+}
+
+/** A row moved as a block: X/Y/W/H and a reset. */
+function RowPanel({
+  row,
+  layout,
+  doc,
+}: {
+  row: number;
+  layout: PosterLayout;
+  doc: PosterDoc | undefined;
+}) {
+  const r = layout.rows[row];
+  if (!r) return null;
+  const sel: PosterSelection = { kind: 'row', row };
+  const frame = r.rect;
+  return (
+    <>
+      <small className="hud-sample">Everything in the row moves with it.</small>
+      <BoxFields
+        frame={frame}
+        onBox={(to) =>
+          editPosterRun(`box row ${row}`, (d) => placeRect(d, layout, sel, frame, to), 'Move row')
+        }
+      />
+      {doc?.rowBoxes?.[r.key] && (
+        <button
+          type="button"
+          data-testid="sel-row-reset"
+          onClick={() => editPoster((d) => setRowBox(d, r.key, undefined), 'Reset row')}
+        >
+          Back to its place
+        </button>
+      )}
     </>
   );
 }

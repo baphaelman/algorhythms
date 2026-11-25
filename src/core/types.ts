@@ -936,6 +936,12 @@ export interface PosterLayer {
    * Absent = the default.
    */
   box?: PosterBox;
+  /**
+   * The layer in one row moved or resized on its own, by row key (the row's index, or with rows
+   * by sections its section id): a fraction of where it would be in that row (0, 0, 1, 1 =
+   * unmoved). Style (colour, hidden) stays the layer's, in every row.
+   */
+  rows?: Record<string, PosterBox>;
   hidden?: boolean;
   /** Line colour (also used by the video export). */
   colour?: string;
@@ -1062,6 +1068,12 @@ export interface PosterDoc {
    * the section's label).
    */
   rowSections?: Record<string, PosterRowSection>;
+  /**
+   * Rows moved or resized as blocks (everything in the row follows), by row key (as
+   * `PosterLayer.rows`): the row's box as a fraction of the artboard. Per-row placements are
+   * dropped when the row split (rows, rows by, section) changes.
+   */
+  rowBoxes?: Record<string, PosterBox>;
   /**
    * A background picture (over the Look's background). Kept in the saved piece, never in share
    * links (they fall back to the background colour).

@@ -805,6 +805,10 @@ export const PosterSchema = z
         z.looseObject({
           id: z.string().regex(/^(part|line):/),
           box: PosterBoxSchema.optional(),
+          rows: z
+            .record(z.string(), PosterBoxSchema)
+            .optional()
+            .describe('Per row key: the layer in that row, a fraction of its unmoved place.'),
           hidden: z.boolean().optional(),
           colour: colour.optional(),
         }),
@@ -843,6 +847,10 @@ export const PosterSchema = z
       )
       .optional()
       .describe("Rows by sections, per labelled moment id ('start' = before the first)."),
+    rowBoxes: z
+      .record(z.string(), PosterBoxSchema)
+      .optional()
+      .describe('Rows moved as blocks, per row key: fractions of the artboard.'),
     picture: z
       .looseObject({
         src: z
