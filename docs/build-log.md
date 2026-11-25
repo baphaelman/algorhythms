@@ -3209,3 +3209,5 @@ PLAN §15 M14 *Accept when*, the owner's notes. `docs/m14-acceptance.md`: every 
 - **New tests:** e2e "every poster option of the old Export dialog is in the workspace" (poster-workspace) and "every edit kind is one undo step" (poster-edit: 24 kinds); the picture undoes and survives a tab reload (poster-rows-background); unit `app/poster-video.test` (a layer colour reaches `frameOptions` and the frames; other poster settings leave the frames identical).
 - **WebKit:** poster-edit's playhead test is skipped on local WebKit (it plays audio; CI runs it).
 - **Runs:** the 8 M14 specs: chromium-dev 56 passed; firefox-dev 54 passed (3 first-run failures passed on rerun); webkit-dev 54 passed (3 skipped). Unit 3304 passed. The audio clock worked again by the end of the run.
+
+- **Poster glow order:** `ScoreStyle.pass` (`glow`/`lines`); `drawPosterLayout` draws every part's glow, then every part's lines, as the video does (video unchanged). No goldens re-pinned. Test: `poster-glow-order`. poster + m11-acceptance e2e pass on chromium-dev and firefox-dev (PNG-vs-canvas diff 0).

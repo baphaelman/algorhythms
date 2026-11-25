@@ -226,7 +226,12 @@ export function drawScore(
   }
   const sf = strandFrame(compiled, view.pps, style.thickness === false);
   const glow = style.glow ?? 0;
-  if (glow > 0) drawGlow(g, compiled, style, view, sf, dpr, Math.min(1, glow));
+  if (glow > 0 && style.pass !== 'lines')
+    drawGlow(g, compiled, style, view, sf, dpr, Math.min(1, glow));
+  if (style.pass === 'glow') {
+    if (clip) g.restore();
+    return view;
+  }
   drawLines(g, compiled, style, view, sf, dpr);
   if (clip) g.restore();
   if (style.preview) drawPreview(g, style.preview.score, style.preview.from, style, view);

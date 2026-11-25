@@ -252,6 +252,11 @@ export interface ScoreStyle {
    * `paint.glow` or the lines' own colours. Absent or 0: none.
    */
   glow?: number;
+  /**
+   * Draw only the glow (`'glow'`) or everything but it (`'lines'`): a poster draws every part's
+   * glow before any part's lines, as the video does. Absent: both.
+   */
+  pass?: 'glow' | 'lines';
   /** Vignette, 0..1: the frame's edges darkened. Absent or 0: none. */
   vignette?: number;
   /**
