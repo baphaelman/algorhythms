@@ -154,6 +154,8 @@ test('the bottom panel is its bar; the caret or the bar slides the layers up; Es
   const part = page.getByTestId('layer-part').nth(0);
   await part.locator('.ws-layer-name').click();
   expect(await selected(page)).toMatchObject({ kind: 'layer' });
+  // (WebKit doesn't focus a clicked button.)
+  await part.locator('.ws-layer-name').focus();
   await page.keyboard.press('Escape');
   await expect(layers).toBeHidden();
   await expect(caret).toBeFocused();
@@ -206,7 +208,10 @@ test('text editing shows the words drawn; an unchanged box keeps its tokens; an 
   // An edit: the words as typed, no tokens.
   await page.mouse.dblclick(c.x, c.y);
   await expect(edit).toBeFocused();
-  await page.keyboard.press('End');
+  await expect(edit).toHaveValue(drawn);
+  await edit.evaluate((el: HTMLTextAreaElement) =>
+    el.setSelectionRange(el.value.length, el.value.length),
+  );
   await page.keyboard.type(' · 2026');
   await page.keyboard.press('Enter');
   await expect

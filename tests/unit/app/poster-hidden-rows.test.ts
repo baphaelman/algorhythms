@@ -20,6 +20,7 @@ import {
   layerOf,
   layoutPoster,
   posterTimeAt,
+  refitPoster,
   setLayer,
   setLayerRowHidden,
   setPosterField,
@@ -78,6 +79,8 @@ describe('storage', () => {
     ]) {
       expect(d?.layers?.some((l) => l.hiddenRows)).toBeFalsy();
     }
+    // Re-fit layout drops placements, not what is hidden.
+    expect(refitPoster(doc, { layers: true })!.layers![0].hiddenRows).toEqual(['1']);
   });
 });
 

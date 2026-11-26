@@ -275,8 +275,10 @@ test('a moved and resized title keeps a tidy selection', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(h.x + 40, h.y + 30, { steps: 5 });
   await page.mouse.up();
+  await expect
+    .poll(async () => (await textObj(page, 'title'))!.size)
+    .toBeGreaterThan(o.size * 1.05);
   const t = (await textObj(page, 'title'))!;
-  expect(t.size).toBeGreaterThan(o.size * 1.05);
   const sel = await toBoard(page, (await page.locator('.ws-sel-box').boundingBox())!);
   const tol = 4 / s.k + 0.1 * t.size;
   near(sel.x, t.box.x, tol);

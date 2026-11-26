@@ -380,13 +380,24 @@ export function setPosterField<K extends 'size' | 'rows' | 'section' | 'pieceRan
 const rowSplit = (doc: PosterDoc | undefined): string =>
   JSON.stringify([doc?.rows ?? 1, doc?.rowsBy ?? null, doc?.section ?? null]);
 
-/** The doc without per-row placements (row blocks, layers in one row, layers hidden in a row). */
-export function withoutRowPlacements(doc: PosterDoc | undefined): PosterDoc | undefined {
-  if (!doc?.rowBoxes && !doc?.layers?.some((l) => l.rows || l.hiddenRows)) return doc;
+/**
+ * The doc without per-row placements (row blocks, layers in one row) and, unless `keepHidden`
+ * (Re-fit layout), without layers hidden in a row.
+ */
+export function withoutRowPlacements(
+  doc: PosterDoc | undefined,
+  keepHidden = false,
+): PosterDoc | undefined {
+  const per = (l: PosterLayer) => l.rows || (!keepHidden && l.hiddenRows);
+  if (!doc?.rowBoxes && !doc?.layers?.some(per)) return doc;
   let out = withField(doc, 'rowBoxes', undefined);
   for (const l of doc.layers ?? []) {
-    if (l.rows || l.hiddenRows)
-      out = setLayer(out, l.id, { rows: undefined, hiddenRows: undefined });
+    if (per(l))
+      out = setLayer(
+        out,
+        l.id,
+        keepHidden ? { rows: undefined } : { rows: undefined, hiddenRows: undefined },
+      );
   }
   return out;
 }
@@ -652,7 +663,7 @@ export function refitPoster(
   }
   if (opts.layers) {
     for (const l of doc?.layers ?? []) out = setLayer(out, l.id, { box: undefined });
-    out = withoutRowPlacements(out);
+    out = withoutRowPlacements(out, true);
   }
   return out;
 }
