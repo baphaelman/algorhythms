@@ -191,3 +191,19 @@ describe('wrapLine', () => {
     expect(wrapLine('', 4, w)).toEqual(['']);
   });
 });
+
+describe('the video export', () => {
+  it('a layout with auto and wrap boxes is posted to the frame worker whole (structured clone)', () => {
+    // The video job carries the poster layout to `video.worker.ts` by postMessage: nothing in
+    // it may be a function (a `measure` on the layout broke every video export, 254b0e3).
+    let doc = add(newText(L0, 'text1', 400, 500));
+    doc = add({ ...newText(L0, 'text2', 400, 900, 300), text: 'one two three four five six' }, doc);
+    const L = lay(doc);
+    const copy = structuredClone(L);
+    for (const id of ['text1', 'text2']) {
+      expect(textObj(copy, id).frame).toEqual(textObj(L, id).frame);
+      expect(textObj(copy, id).runs).toEqual(textObj(L, id).runs);
+    }
+    expect(textObj(L, 'text2').runs.length).toBeGreaterThan(1);
+  });
+});

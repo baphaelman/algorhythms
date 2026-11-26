@@ -29,6 +29,7 @@ import {
   type Handle,
   type PosterHit,
 } from '../render/poster-edit';
+import { posterMeasure } from './poster-export';
 import {
   LINE_HEIGHT,
   isLabelGroup,
@@ -433,7 +434,7 @@ export function newTextRect(layout: PosterLayout, x: number, y: number, width?: 
   const S = Math.min(layout.width, layout.height);
   const size = textDefaults('free').size * S;
   const h = LINE_HEIGHT * size;
-  const w = Math.max(1, width ?? layout.measure('Text', textFont(layout, 'free', size), 0));
+  const w = Math.max(1, width ?? posterMeasure()('Text', textFont(layout, 'free', size), 0));
   return {
     x: Math.max(0, Math.min(x, layout.width - Math.min(w, layout.width))),
     y: Math.max(0, Math.min(y, layout.height - h)),
