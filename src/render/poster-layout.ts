@@ -771,8 +771,6 @@ export interface PosterLayout {
   /** Rows by sections: the Organize list (null for equal rows). */
   sectionRows: SectionRowItem[] | null;
   fonts: { mono: string; serif: string; sans: string };
-  /** How the layout measured text (the editor sizes new text boxes with it). */
-  measure: Measure;
   /** Line colours by pool index from the layers (`posterVoiceColors`), if any. */
   voiceColors?: (string | undefined)[];
 }
@@ -1784,7 +1782,6 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     marks: MK,
     sectionRows: plan ? plan.items : null,
     fonts,
-    measure,
   };
 }
 
