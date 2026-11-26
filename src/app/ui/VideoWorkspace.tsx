@@ -29,18 +29,19 @@ import { setDialogSpace } from '../space-key';
 import { workspaceEscape } from '../export-surface';
 import { cameraOf, usePlayer } from '../store';
 import { formatTime } from '../../render/hud';
-import { timelineAxis, timelineCards } from '../video-timeline';
+import { timelineCards } from '../video-timeline';
 import { useFocusRescue } from './focus-rescue';
 import { Radios, Switch } from './export-controls';
 import type { CameraFrame, PosterText, RowBreak } from '../../core/types';
 import { pieceRowBreak, pieceVideoFrame } from '../../render/poster-video';
+import { textsOf } from '../../render/poster-edit';
 import { edit } from '../editor/history';
 import { withCameraFrame, withRowBreak } from '../editor/camera-keys';
 import { editPoster } from '../poster-sync';
 import { BookendsGroup, LoudnessField, PresetField, PreviewActions } from './ExportYoutube';
 import { CameraField, KeyButtons, KeyMarkers, useCameraKeys } from './CameraKeys';
 import { RunStatus, SectionField, VideoLookRows } from './ExportFields';
-import { VideoPreview, scrubPreview } from './VideoPreview';
+import { VideoPreview } from './VideoPreview';
 import { backToMusic } from './PosterWorkspace';
 import {
   RUN_LABEL,
@@ -51,6 +52,7 @@ import {
   clockNow,
   estimateFor,
   patch,
+  scrubPreview,
   sectionNow,
   sizesKey,
   startExport,
@@ -234,10 +236,10 @@ function FrameFields({ disabled }: { disabled: boolean }) {
   );
 }
 
-/** A text box's name in the Travels list: its first line, else its kind. */
+/** A text box's name in the Travels list: its first line, else (or a template) its kind. */
 function textName(t: PosterText): string {
   const line = t.text.split('\n')[0].trim();
-  if (line) return line.length > 32 ? `${line.slice(0, 31)}…` : line;
+  if (line && !/\{\w+\}/.test(line)) return line.length > 32 ? `${line.slice(0, 31)}…` : line;
   return t.kind === 'free' ? 'Text' : t.kind[0].toUpperCase() + t.kind.slice(1);
 }
 
@@ -248,7 +250,8 @@ function textName(t: PosterText): string {
 function TravelsFields({ disabled }: { disabled: boolean }) {
   const doc = usePlayer((s) => s.piece.poster);
   const hud = doc?.groups?.hud?.travels ?? true;
-  const texts = doc?.texts ?? [];
+  // The default title and credit too (a doc without texts has them).
+  const texts = textsOf(doc);
   return (
     <div
       className="field travels"
@@ -283,7 +286,7 @@ function TravelsFields({ disabled }: { disabled: boolean }) {
             editPoster(
               (d) => ({
                 ...d,
-                texts: (d?.texts ?? []).map((x) => {
+                texts: textsOf(d).map((x) => {
                   if (x.id !== t.id) return x;
                   if (on) return { ...x, travels: true };
                   const { travels: _t, ...rest } = x;
@@ -330,6 +333,9 @@ function VideoOptions({
   const camera = cameraChoice(form, piece);
   const span = sectionNow(form);
   const poster = pieceVideoFrame(piece) === 'poster';
+  // Over the poster, Auto plays (and shows) as Follow: its Window and Playhead at apply.
+  const shown: ExportForm =
+    poster && form.videoCamera === 'auto' ? { ...form, videoCamera: 'follow' } : form;
   return (
     <div className="ws-options" data-testid="video-options">
       <PresetField
@@ -391,10 +397,10 @@ function VideoOptions({
       <div className="ws-group ws-camera" data-testid="video-camera">
         <FrameFields disabled={disabled} />
         <CameraField value={camera} poster={poster} disabled={disabled} ctl={cameraCtl} />
-        {form.videoCamera === 'follow' && (
-          <WindowField form={form} duration={duration} poster={poster} disabled={disabled} />
+        {shown.videoCamera === 'follow' && (
+          <WindowField form={shown} duration={duration} poster={poster} disabled={disabled} />
         )}
-        <VideoLookRows form={form} ids={['follow-at']} disabled={disabled} />
+        <VideoLookRows form={shown} ids={['follow-at']} disabled={disabled} />
       </div>
       <fieldset className="look ws-moving" disabled={disabled} data-testid="look">
         <legend>Moving</legend>
@@ -508,24 +514,21 @@ function CardsRow({ form, runtime }: { form: ExportForm; runtime: Runtime | null
   );
 }
 
-/** Camera keys on the timeline (Keys), on the piece's axis as the section's range above. */
+/**
+ * Camera keys on the timeline (Keys), across the section's range only: keys outside the section
+ * aren't on it, and a key stays inside it (as the old dialog's markers under its slider).
+ */
 function KeysRow({ form, disabled }: { form: ExportForm; disabled: boolean }) {
-  const duration = usePlayer((s) => s.compiled.duration);
+  usePlayer((s) => s.compiled.duration);
   const keys = form.videoCamera === 'keys';
-  const axis = timelineAxis(duration);
+  const span = sectionNow(form);
   return (
     <div className="timeline-row" data-testid="timeline-keys">
       <span className="timeline-label">Keys</span>
       {keys ? (
         <div className="timeline-keys">
           <div className="timeline-lane">
-            <KeyMarkers
-              from={axis.from}
-              to={axis.to}
-              keep={sectionNow(form)}
-              disabled={disabled}
-              ctl={cameraCtl}
-            />
+            <KeyMarkers from={span.start} to={span.end} disabled={disabled} ctl={cameraCtl} />
           </div>
           <KeyButtons disabled={disabled} ctl={cameraCtl} />
         </div>

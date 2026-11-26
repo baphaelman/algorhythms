@@ -233,6 +233,25 @@ export function pausePreview(): void {
   useExportUi.setState({ previewPlaying: false, previewT: currentTime() });
 }
 
+/** Moves the preview to clock time x; while playing, the music follows (cards run silently). */
+export function scrubPreview(x: number): void {
+  const c = clockNow();
+  const v = Math.min(Math.max(x, c.from), c.to);
+  useExportUi.setState({ previewT: v });
+  if (!useExportUi.getState().previewPlaying) return;
+  const span = c.span;
+  if (v >= span.start && v < span.end - 0.05) {
+    if (quiet.now) {
+      quiet.now = null;
+      seekTo(v);
+      play();
+    } else seekTo(v);
+  } else {
+    if (!quiet.now) pause();
+    quiet.now = { v, at: performance.now() };
+  }
+}
+
 /** Play/Pause preview, and Space anywhere in the dialog while the video preview shows. */
 export function togglePreview(): void {
   if (useExportUi.getState().previewPlaying) pausePreview();

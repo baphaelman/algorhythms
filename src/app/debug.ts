@@ -18,7 +18,7 @@ import { useCompose } from './compose';
 import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
 import { encodeShareLink } from './share';
-import { previewStats } from './ui/export-state';
+import { previewStats, scrubPreview } from './ui/export-state';
 import { useWorkspace } from './poster-workspace';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
 
@@ -81,6 +81,8 @@ export interface AlgoRhythmsDebug {
   exportRun(): Promise<typeof import('./export-run')>;
   /** The Export dialog preview's counters: measure and scroll-padding callbacks, draws. */
   exportPreview: typeof previewStats;
+  /** Moves the video preview to clock time t, as the timeline's strip does (M15). */
+  previewSeek: typeof scrubPreview;
   /** Poster export (M14): `renderPosterLayoutPng` / `Svg`, `posterLayoutOf`, `referencePosterAt`. */
   poster(): Promise<typeof import('./poster-export')>;
   /** The poster workspace's state (M14 P3): tool, selection, the artboard's last layout. */
@@ -118,6 +120,7 @@ export function installDebug(): void {
     },
     frameStats,
     exportPreview: previewStats,
+    previewSeek: scrubPreview,
     posterWorkspace: useWorkspace,
     actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,

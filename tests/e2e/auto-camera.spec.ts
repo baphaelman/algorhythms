@@ -6,7 +6,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { openVideoExport } from './export-open';
+import { openVideoExport, seekPreview } from './export-open';
 import { guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -105,7 +105,7 @@ test('Auto on Crease: the preview is the export frame; Auto is not Follow', asyn
 
   // The dialog's own Auto preview (its canvas) is the exported Auto frame.
   for (const t of [20, 79.5]) {
-    await page.getByTestId('preview-time').fill(String(t));
+    await seekPreview(page, t);
     await expect
       .poll(() =>
         page.evaluate(async () => {

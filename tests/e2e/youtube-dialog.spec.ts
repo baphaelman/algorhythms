@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { openAudioExport, openVideoExport, surface, switchMode } from './export-open';
+import { openAudioExport, openVideoExport, surface, switchMode, seekPreview } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
 
@@ -289,18 +289,24 @@ test('Opening & ending: the title card at its time, the end card the whole piece
   await page.getByTestId('vb-lead-in').fill('1');
   await expect(page.getByTestId('vb-lead-in-value')).toHaveText('1.0 s');
   await page.getByTestId('vb-end-card').getByLabel('5 s', { exact: true }).click();
-  const slider = page.getByTestId('preview-time');
-  const min = Number(await slider.getAttribute('min'));
-  const max = Number(await slider.getAttribute('max'));
+  // The timeline's playhead (a slider): Home and End go to the video's start and end.
+  const playhead = page.getByTestId('timeline-playhead');
+  await playhead.focus();
+  await page.keyboard.press('Home');
+  await expect(playhead).toHaveAttribute('data-t', '-1.000');
+  const min = Number(await playhead.getAttribute('data-t'));
+  await page.keyboard.press('End');
+  await expect.poll(async () => Number(await playhead.getAttribute('data-t'))).toBeGreaterThan(0);
+  const max = Number(await playhead.getAttribute('data-t'));
   const D = await page.evaluate(
     () => (window as unknown as HookWindow).__algorhythms.store.getState().compiled.duration,
   );
-  // The slider spans the lead-in, the piece and the end card (and any ring-out).
+  // The clock spans the lead-in, the piece and the end card (and any ring-out).
   expect(min).toBeCloseTo(-1, 5);
   expect(max - min).toBeGreaterThanOrEqual(1 + D + 5 - 1e-6);
 
   // τ = 2.5 s: the title card fully in (0.5 s + 1 s fade in).
-  const noTitle = await previewAfter(page, () => slider.fill(String(min + 2.5)));
+  const noTitle = await previewAfter(page, () => seekPreview(page, min + 2.5));
   const req = await lastPreview(page);
   expect(req?.kind === 'video' && req.tau).toBeCloseTo(2.5, 5);
   await expect(page.getByTestId('preview-time-value')).toHaveText(/00:02\.5/);
@@ -326,9 +332,9 @@ test('Opening & ending: the title card at its time, the end card the whole piece
   expect(same).toBeLessThan(0.5);
 
   // The end: the whole-piece view, no HUD boxes.
-  const end = await previewAfter(page, () => slider.fill(String(max)));
+  const end = await previewAfter(page, () => seekPreview(page, max));
   await expect(page.getByTestId('hud-overlay')).toHaveCount(0);
-  const last = await previewAfter(page, () => slider.fill(String(min + 1 + D - 0.1)));
+  const last = await previewAfter(page, () => seekPreview(page, min + 1 + D - 0.1));
   expect(await pixelDiff(page, end, last)).toBeGreaterThan(1);
   await expect(page.getByTestId('hud-overlay')).toHaveCount(1);
 });

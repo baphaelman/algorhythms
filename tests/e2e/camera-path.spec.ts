@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { openVideoExport } from './export-open';
+import { openVideoExport, seekPreview } from './export-open';
 import { clickExportForDownload, guarded } from './export-diag';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as VideoExport from '../../src/app/video-export';
@@ -55,7 +55,7 @@ async function openWithKeys(page: Page, keys: CameraKey[]): Promise<void> {
 
 /** Sets the preview's time and waits until it has drawn there. */
 async function previewAt(page: Page, t: number): Promise<void> {
-  await page.getByTestId('preview-time').fill(String(t));
+  await seekPreview(page, t);
   await expect
     .poll(() =>
       page.evaluate(async () => {

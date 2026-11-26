@@ -1,15 +1,15 @@
 /**
  * The live video preview (PLAN.md §12 "Preview and layout", §15 M15 "Panels"): the video frame
  * at the preview's time, drawn by the export's own code (`export-run` preview functions) to fit
- * its box, redrawn at most once per animation frame on any change; Play / Pause and a time
- * slider under it. Playing runs the section through the app's player, the lead-in and end card
+ * its box, redrawn at most once per animation frame on any change; the time and Play / Pause
+ * under it (the workspace's timeline moves the time, `scrubPreview`). Playing runs the section through the app's player, the lead-in and end card
  * silently. A component of its own so the editor's piece panel (M16) can show it too.
  *
  * In Keys, dragging the frame pans the selected key's view and the wheel zooms it
  * (`useKeyView`); the HUD readouts drag on it.
  */
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatTime } from '../../render/hud';
 import { videoSize } from '../../render/video';
 import { pieceVideoFrame } from '../../render/poster-video';
@@ -58,16 +58,19 @@ function usePreviewClock(playing: boolean): void {
       }
       const now = currentTime();
       const span = c.span;
-      if (usePlayer.getState().transport.status !== 'playing') {
+      const stopped = usePlayer.getState().transport.status !== 'playing';
+      // The player stops by itself at the piece's end: that is the section's end too.
+      const atEnd = now >= span.end - (stopped ? 0.05 : 1e-3);
+      if (stopped && !atEnd) {
         useExportUi.setState({ previewPlaying: false, previewT: now });
         return;
       }
       // Only the section plays: stop at its end (or if the player left it, e.g. a loop's wrap);
       // an end card (or ring-out) after it runs on silently.
-      if (now >= span.end - 1e-3 || now < span.start - 0.05) {
-        pause();
+      if (atEnd || now < span.start - 0.05) {
+        if (!stopped) pause();
         const at = Math.min(Math.max(now, span.start), span.end);
-        if (now >= span.end - 1e-3 && c.to > span.end + 0.05) {
+        if (atEnd && c.to > span.end + 0.05) {
           quiet.now = { v: at, at: performance.now() };
           useExportUi.setState({ previewT: at });
           raf = requestAnimationFrame(tick);
@@ -82,25 +85,6 @@ function usePreviewClock(playing: boolean): void {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing]);
-}
-
-/** Moves the preview to clock time x; while playing, the music follows (cards run silently). */
-export function scrubPreview(x: number): void {
-  const c = clockNow();
-  const v = Math.min(Math.max(x, c.from), c.to);
-  useExportUi.setState({ previewT: v });
-  if (!useExportUi.getState().previewPlaying) return;
-  const span = c.span;
-  if (v >= span.start && v < span.end - 0.05) {
-    if (quiet.now) {
-      quiet.now = null;
-      seekTo(v);
-      play();
-    } else seekTo(v);
-  } else {
-    if (!quiet.now) pause();
-    quiet.now = { v, at: performance.now() };
-  }
 }
 
 export function VideoPreview({
@@ -134,7 +118,6 @@ export function VideoPreview({
   const draws = useRef(0);
   const frame = useRef(0);
   const job = useRef<(() => void) | null>(null);
-  const id = useId();
   useKeyView(stage, cameraCtl, keys && !disabled);
   usePreviewClock(playing);
   // Leaving stops the preview.
@@ -241,7 +224,11 @@ export function VideoPreview({
           {!overPoster && <HudOverlay form={form} kind="video" disabled={disabled} />}
         </div>
       </div>
+      {/* The time, and Play / Pause on the right; the timeline's strip moves the time (M15). */}
       <div className="field-row preview-time">
+        <output data-testid="preview-time-value" aria-live="off">
+          {formatTime(shown)}
+        </output>
         <button
           type="button"
           className="preview-play"
@@ -255,25 +242,6 @@ export function VideoPreview({
         >
           {playing ? 'Pause' : 'Play'}
         </button>
-        <label htmlFor={`${id}-t`} className="visually-hidden">
-          Preview time
-        </label>
-        <span className="preview-track">
-          <input
-            id={`${id}-t`}
-            type="range"
-            min={clock.from}
-            max={Math.max(clock.from + 0.1, clock.to)}
-            step={0.1}
-            value={v}
-            aria-valuetext={formatTime(shown)}
-            data-testid="preview-time"
-            onChange={(e) => scrubPreview(Number(e.target.value))}
-          />
-        </span>
-        <output htmlFor={`${id}-t`} data-testid="preview-time-value">
-          {formatTime(shown)}
-        </output>
       </div>
     </div>
   );

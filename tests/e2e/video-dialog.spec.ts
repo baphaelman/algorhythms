@@ -21,6 +21,7 @@ import {
   openVideoExport,
   surface,
   switchMode,
+  seekPreview,
 } from './export-open';
 import {
   chooseSegment,
@@ -747,7 +748,7 @@ const previewReq = (page: Page) =>
     (await (window as unknown as HookWindow).__algorhythms.exportRun()).lastPreviewRequest(),
   );
 
-test('the preview draws the export’s frame; redraws on changes; the time slider scrubs', async ({
+test('the preview draws the export’s frame; redraws on changes; the timeline strip scrubs', async ({
   page,
 }) => {
   await openExport(page);
@@ -776,8 +777,14 @@ test('the preview draws the export’s frame; redraws on changes; the time slide
   const req = (await previewReq(page))!;
   expect(req.kind === 'video' && req.options.look!.guides).toBe(true);
 
-  // The slider picks the frame.
-  await page.getByTestId('preview-time').fill('5');
+  // A press on the timeline's strip picks the frame (M15: no slider under the preview).
+  const strip = (await page.getByTestId('section-range').boundingBox())!;
+  await page.mouse.click(strip.x + (strip.width * 5) / duration, strip.y + strip.height / 2);
+  n = await drawn(page, n);
+  expect(Math.abs(Number(await canvasOf(page).getAttribute('data-t')) - 5)).toBeLessThan(
+    (duration / strip.width) * 1.5,
+  );
+  await seekPreview(page, 5);
   n = await drawn(page, n);
   await expect(canvasOf(page)).toHaveAttribute('data-t', '5.000');
   const later = await comparePreview(page);
@@ -804,7 +811,7 @@ test('the preview starts at the editor’s playhead', async ({ page }) => {
   await openExport(page);
   await drawn(page);
   await expect(canvasOf(page)).toHaveAttribute('data-t', '12.500');
-  await expect(page.getByTestId('preview-time')).toHaveValue('12.5');
+  await expect(page.getByTestId('timeline-playhead')).toHaveAttribute('aria-valuenow', '12.5');
 });
 
 /** The player's transport status and playhead (s). */
@@ -858,7 +865,7 @@ test('the preview plays: the time follows the playhead and redraws; the slider s
   );
 
   // Dragging the slider seeks the player.
-  await page.getByTestId('preview-time').fill('20');
+  await seekPreview(page, 20);
   await expect.poll(() => previewT(page)).toBeGreaterThanOrEqual(20);
   await expect.poll(() => previewT(page), { timeout: 10_000 }).toBeGreaterThan(20.2);
   await expect.poll(() => previewT(page)).toBeLessThan(30);
@@ -875,7 +882,7 @@ test('the preview stops at the piece’s end', async ({ page }) => {
   await loadShortPiece(page, 2);
   await openExport(page);
   await drawn(page);
-  await page.getByTestId('preview-time').fill('1.5');
+  await seekPreview(page, 1.5);
   await tap(page, 'preview-play');
   await expect(playBtn(page)).toHaveAccessibleName('Play preview', { timeout: 10_000 });
   await expect.poll(async () => (await transport(page)).status).not.toBe('playing');
@@ -910,8 +917,8 @@ test('Space anywhere in the dialog plays and pauses the preview; the control doe
   // The Play button toggles once per press.
   await playBtn(page).focus();
   await spaceToggles();
-  // A slider.
-  await page.getByTestId('preview-time').focus();
+  // A slider (the timeline's playhead).
+  await page.getByTestId('timeline-playhead').focus();
   await spaceToggles();
   // The audio dialog: Space keeps the browser's (a focused switch toggles; nothing plays).
   await backToMusic(page);
@@ -933,7 +940,7 @@ test('leaving the workspace stops the preview and returns the editor’s playhea
   for (const close of ['Escape', 'button'] as const) {
     await openExport(page);
     await drawn(page);
-    await page.getByTestId('preview-time').fill('30');
+    await seekPreview(page, 30);
     await tap(page, 'preview-play');
     await expect.poll(async () => (await transport(page)).status).toBe('playing');
     await expect.poll(() => previewT(page)).toBeGreaterThan(30);
@@ -1078,7 +1085,7 @@ test('the preview stays in view while the options scroll (desktop and phone)', a
       await page.getByTestId(t).scrollIntoViewIfNeeded();
       // (Within a pixel: the canvas's subpixel edge.)
       await expect(canvasOf(page), `${w}: ${t}`).toBeInViewport({ ratio: 0.99 });
-      await expect(page.getByTestId('preview-time')).toBeInViewport();
+      await expect(page.getByTestId('preview-play')).toBeInViewport();
       // The control is not under the preview: it gets the clicks.
       await expectUncovered(page, t, `${w}: ${t} usable`);
     }
