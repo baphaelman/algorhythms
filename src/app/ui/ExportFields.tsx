@@ -881,6 +881,7 @@ function ClockInput({
 }) {
   const shown = sectionClock(value);
   const [text, setText] = useState<string | null>(null);
+  const focusedNow = useRef(false);
   // As wide as its text (never clipped); it reads as text until clicked or focused.
   const len = (text ?? shown).length;
   const commit = () => {
@@ -903,9 +904,20 @@ function ClockInput({
         title="Click to type a time"
         style={{ '--len': len } as CSSProperties}
         data-testid={testId}
-        onFocus={(e) => e.currentTarget.select()}
+        onFocus={(e) => {
+          e.currentTarget.select();
+          focusedNow.current = true;
+        }}
+        onMouseUp={(e) => {
+          // The click that focused it keeps the selection (WebKit's mouseup would clear it).
+          if (focusedNow.current) e.preventDefault();
+          focusedNow.current = false;
+        }}
         onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
+        onBlur={() => {
+          focusedNow.current = false;
+          commit();
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();

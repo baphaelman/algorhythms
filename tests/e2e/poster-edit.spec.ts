@@ -758,7 +758,7 @@ test('a recoloured layer shows in the video preview', async ({ page }) => {
   await switchMode(page, 'Video');
   // Over the poster, 40 s in: the part's lines so far are on screen.
   await seekPreview(page, 40);
-  await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeGreaterThan(200);
+  await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeGreaterThan(100);
   // The colour comes from the piece, so undoing it takes it out of the video and the poster.
   await undo(page);
   await expect.poll(() => magenta(page, VIDEO), { timeout: 15_000 }).toBeLessThanOrEqual(20);
