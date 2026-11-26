@@ -147,6 +147,17 @@ describe('spaceKey', () => {
       expect(spaceKey(up(el('textarea')), held, ctx)).toEqual({ consume: false, toggle: false });
     }
   });
+
+  it('the poster workspace (pan): the release plays unless the hold panned', () => {
+    const ctx = { editor: false, dialog: true, dialogPlay: true, pan: true };
+    const held = fresh();
+    expect(spaceKey(down(), held, ctx)).toEqual({ consume: true, toggle: false });
+    expect(held.down).toBe(true);
+    expect(spaceKey(up(), held, ctx)).toEqual({ consume: true, toggle: true });
+    spaceKey(down(), held, ctx);
+    held.panned = true; // the artboard's Space-drag
+    expect(spaceKey(up(), held, ctx)).toEqual({ consume: true, toggle: false });
+  });
 });
 
 describe('setDialogSpace', () => {

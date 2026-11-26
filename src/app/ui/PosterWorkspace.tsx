@@ -47,7 +47,9 @@ import { RowsGroup } from './RowsOrganize';
 import { usePictures } from '../poster-picture';
 import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
-import { artboardFit, useWorkspace } from '../poster-workspace';
+import { useWorkspace } from '../poster-workspace';
+import { pageRect, visibleRegion } from '../artboard-view';
+import { useArtboardZoom, ZoomReadout } from './ArtboardZoom';
 import { selectionExists } from '../poster-select';
 import {
   posterAtSavePoint,
@@ -201,6 +203,25 @@ function PosterSaveBar({ disabled }: { disabled: boolean }) {
   );
 }
 
+/** The canvas bitmap drawn last: its region of the page (device px) and its scale. */
+type Drawn = ReturnType<typeof visibleRegion>;
+
+/**
+ * Places the bitmap drawn last on the page at `zoom` (CSS px per poster px) until the next
+ * draw: the whole page, or its region.
+ */
+function placeCanvas(c: HTMLCanvasElement, d: Drawn, zoom: number): void {
+  if (d.whole) {
+    c.style.left = c.style.top = c.style.width = c.style.height = '';
+    return;
+  }
+  const k = zoom / d.scale;
+  c.style.left = `${d.x * k}px`;
+  c.style.top = `${d.y * k}px`;
+  c.style.width = `${d.w * k}px`;
+  c.style.height = `${d.h * k}px`;
+}
+
 /**
  * The artboard: the whole poster, fitted with a little padding, drawn by the export's own code
  * (`previewPosterOf`, from the poster's layout) at most once per animation frame on any change;
@@ -216,6 +237,7 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
   // A background picture decoded after the first draw redraws the artboard.
   const pictures = usePictures((s) => s.decoded);
   const box = useRef<HTMLDivElement>(null);
+  const section = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [avail, setAvail] = useState({ w: 0, h: 0 });
   const draws = useRef(0);
@@ -238,10 +260,18 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
   }, []);
 
   const px = { width: form.posterWidth, height: form.posterHeight };
-  const fit = artboardFit(avail, px);
+  const zoom = useArtboardZoom(box, section, avail, px);
+  const page = pageRect(zoom.view, avail, px);
   const dpr = Math.min(2, devicePixelRatio || 1);
-  const pxW = Math.round(fit.w * dpr);
-  const pxH = Math.max(1, Math.round((px.height * pxW) / px.width));
+  // Zoomed in, the canvas holds only the part of the page in view (drawn sharp at the zoom).
+  const region = visibleRegion(page, avail, px, dpr);
+  const { x: rx, y: ry, w: pxW, h: pxH, scale: rScale, whole } = region;
+  const drawn = useRef<Drawn | null>(null);
+  useLayoutEffect(() => {
+    const c = canvas.current;
+    const d = drawn.current;
+    if (c && d) placeCanvas(c, d, page.w / px.width);
+  });
 
   useEffect(() => {
     if (!runtime || avail.w === 0) return;
@@ -257,8 +287,12 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
         { piece, compiled },
         form,
         videoContext(),
-        pxW / px.width,
+        rScale,
+        whole ? undefined : { x: rx, y: ry },
       );
+      const d = { x: rx, y: ry, w: pxW, h: pxH, scale: rScale, whole };
+      drawn.current = d;
+      placeCanvas(c, d, page.w / px.width);
       const ws = useWorkspace.getState();
       // A size, rows or margins change arms the Re-fit hint.
       const prevSet = ws.layout?.settings;
@@ -294,7 +328,23 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
         run?.();
       });
     }
-  }, [runtime, piece, compiled, form, pxW, pxH, px.width, appView, avail.w, pictures]);
+  }, [
+    runtime,
+    piece,
+    compiled,
+    form,
+    pxW,
+    pxH,
+    rx,
+    ry,
+    rScale,
+    whole,
+    page.w,
+    px.width,
+    appView,
+    avail.w,
+    pictures,
+  ]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -311,21 +361,37 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
     (transparent ? ', transparent background' : '');
 
   return (
-    <section className="artboard" aria-label="Artboard" data-testid="poster-artboard">
+    <section
+      className="artboard"
+      ref={section}
+      aria-label="Artboard"
+      data-testid="poster-artboard"
+      data-zoom={zoom.view.zoom}
+      data-fit={zoom.view.fit}
+    >
       <p className="artboard-badge" data-testid="artboard-badge">
         The whole poster · {px.width} × {px.height}
       </p>
-      <div className="artboard-box" ref={box}>
-        <div className="preview-stage artboard-page" style={{ width: fit.w, height: fit.h }}>
+      <ZoomReadout zoom={zoom.view.zoom} zoomTo={zoom.zoomTo} />
+      <div
+        className={
+          zoom.panning ? 'artboard-box panning' : zoom.grab ? 'artboard-box grab' : 'artboard-box'
+        }
+        ref={box}
+        data-testid="artboard-box"
+      >
+        <div
+          className="preview-stage artboard-page"
+          style={{ left: page.left, top: page.top, width: page.w, height: page.h }}
+        >
           <canvas
             ref={canvas}
             role="img"
             aria-label={what}
             className={transparent ? 'checker' : undefined}
             data-testid="preview-canvas"
-            style={{ width: fit.w, height: fit.h }}
           />
-          <ArtboardOverlay width={fit.w} />
+          <ArtboardOverlay width={page.w} />
           <GradientHandles form={form} />
           <ArtboardPlayhead />
           <HudOverlay form={form} kind="poster" disabled={running} />
