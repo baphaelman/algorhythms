@@ -805,6 +805,10 @@ export const PosterSchema = z
         z.looseObject({
           id: z.string().regex(/^(part|line):/),
           box: PosterBoxSchema.optional(),
+          rows: z
+            .record(z.string(), PosterBoxSchema)
+            .optional()
+            .describe('Per row key: the layer in that row, a fraction of its unmoved place.'),
           hidden: z.boolean().optional(),
           colour: colour.optional(),
         }),
@@ -817,6 +821,10 @@ export const PosterSchema = z
           kind: z.enum(['title', 'subtitle', 'credit', 'free']),
           text: z.string().max(2000),
           box: PosterBoxSchema.optional(),
+          sizing: z
+            .enum(['auto', 'wrap'])
+            .optional()
+            .describe('A placed box: auto = as wide as its text; wrap = fixed width, lines wrap.'),
           style: z
             .looseObject({
               font: z.enum(['serif', 'sans', 'mono']).optional(),
@@ -843,6 +851,10 @@ export const PosterSchema = z
       )
       .optional()
       .describe("Rows by sections, per labelled moment id ('start' = before the first)."),
+    rowBoxes: z
+      .record(z.string(), PosterBoxSchema)
+      .optional()
+      .describe('Rows moved as blocks, per row key: fractions of the artboard.'),
     picture: z
       .looseObject({
         src: z

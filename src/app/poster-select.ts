@@ -16,9 +16,14 @@ import {
   hitTest,
   layerBoxFor,
   layerOf,
+  layerRowBoxFor,
   putText,
+  rowAt,
+  rowBoxFor,
   setLayer,
+  setLayerRow,
   setMemberStyle,
+  setRowBox,
   textBoxFor,
   textsOf,
   type Handle,
@@ -28,16 +33,21 @@ import {
   LINE_HEIGHT,
   isLabelGroup,
   isMarkGroup,
+  textDefaults,
+  textFont,
+  textPad,
   type PosterLayout,
   type Rect,
+  type TextObject,
 } from '../render/poster-layout';
 
 /**
- * What is selected: a music layer, a text box, a whole label or line group, or one member of
- * a group (Alt-click).
+ * What is selected: a music layer (with `row`, that layer in one row only), a row as a block,
+ * a text box, a whole label or line group, or one member of a group (Alt-click).
  */
 export type PosterSelection =
-  | { kind: 'layer'; id: string }
+  | { kind: 'layer'; id: string; row?: number }
+  | { kind: 'row'; row: number }
   | { kind: 'text'; id: string }
   | { kind: 'group'; group: PosterGroup }
   | { kind: 'member'; group: PosterGroup; member: string };
@@ -46,21 +56,32 @@ export function sameSelection(a: PosterSelection | null, b: PosterSelection | nu
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** The selection a hit makes: a label or line selects its whole group, or (Alt) itself. */
+/**
+ * The selection a hit makes: a label or line selects its whole group, or (Alt) itself; a
+ * layer's lines select that layer in their row, or (Alt) in every row. With one row, the layer.
+ */
 export function selectionOfHit(
   layout: PosterLayout,
   hit: PosterHit,
   alt: boolean,
 ): PosterSelection {
   const o = hit.object;
-  if (o.type === 'layer') return { kind: 'layer', id: layout.layers[o.layer].id };
+  if (o.type === 'layer') {
+    const id = layout.layers[o.layer].id;
+    return alt || layout.rows.length < 2
+      ? { kind: 'layer', id }
+      : { kind: 'layer', id, row: o.row };
+  }
   if (o.type === 'text') return { kind: 'text', id: o.member };
   return alt
     ? { kind: 'member', group: o.group, member: o.member }
     : { kind: 'group', group: o.group };
 }
 
-/** What a click at (x, y) selects (the topmost object), or null on nothing. */
+/**
+ * What a click at (x, y) selects: the topmost object; else, with two rows or more, the row
+ * under it (its empty plot or label zone); else null.
+ */
 export function selectionAt(
   layout: PosterLayout,
   x: number,
@@ -69,7 +90,9 @@ export function selectionAt(
   tolerance?: number,
 ): PosterSelection | null {
   const hit = hitTest(layout, x, y, tolerance);
-  return hit ? selectionOfHit(layout, hit, alt) : null;
+  if (hit) return selectionOfHit(layout, hit, alt);
+  const r = layout.rows.length > 1 ? rowAt(layout, x, y) : null;
+  return r ? { kind: 'row', row: r.index } : null;
 }
 
 /** A text object's frame (the box its handles sit on). */
@@ -79,12 +102,16 @@ function textFrame(layout: PosterLayout, id: string): Rect | null {
 }
 
 /**
- * The box a selection moves and resizes by (layer: its lines' bounds; text: its frame; one
- * label: its box, moved only), or null (a group, or nothing drawn).
+ * The box a selection moves and resizes by (layer: its lines' bounds, in one row or all; row:
+ * its rect; text: its frame; one label: its box, moved only), or null (a group, or nothing drawn).
  */
 export function selectionFrame(layout: PosterLayout, sel: PosterSelection | null): Rect | null {
   if (!sel) return null;
-  if (sel.kind === 'layer') return layerOf(layout, sel.id)?.bounds ?? null;
+  if (sel.kind === 'layer') {
+    const L = layerOf(layout, sel.id);
+    return (sel.row === undefined ? L?.bounds : L?.rowBounds[sel.row]) ?? null;
+  }
+  if (sel.kind === 'row') return layout.rows[sel.row]?.rect ?? null;
   if (sel.kind === 'text') return textFrame(layout, sel.id);
   if (sel.kind === 'member' && isLabelGroup(sel.group)) {
     const o = groupObjects(layout, sel.group, sel.member)[0];
@@ -93,9 +120,9 @@ export function selectionFrame(layout: PosterLayout, sel: PosterSelection | null
   return null;
 }
 
-/** Whether the selection has resize handles (layers and text boxes). */
+/** Whether the selection has resize handles (layers, rows and text boxes). */
 export const resizable = (sel: PosterSelection | null): boolean =>
-  sel?.kind === 'layer' || sel?.kind === 'text';
+  sel?.kind === 'layer' || sel?.kind === 'row' || sel?.kind === 'text';
 
 /** The outlines a selection draws: every member of a group, else the selection's frame. */
 export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null): Rect[] {
@@ -105,6 +132,10 @@ export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null)
     if (isMarkGroup(sel.group)) return [];
     const m = sel.kind === 'member' ? sel.member : undefined;
     return groupObjects(layout, sel.group, m).map((o) => o.box);
+  }
+  if (sel.kind === 'text') {
+    const r = textOutline(layout, sel.id);
+    return r ? [r] : [];
   }
   const f = selectionFrame(layout, sel);
   return f ? [f] : [];
@@ -122,7 +153,8 @@ export interface SnapTargets {
 
 /**
  * The snap lines for moving `sel`: the artboard's edges and centre, the margins (the content
- * box's edges and centre) and every other layer's and text box's edges and centre.
+ * box's edges and centre), every other layer's (or, for a layer in one row, its other rows')
+ * and text box's edges and centre, and the other rows' (for a row).
  */
 export function snapTargets(layout: PosterLayout, sel: PosterSelection | null): SnapTargets {
   const W = layout.width;
@@ -136,8 +168,12 @@ export function snapTargets(layout: PosterLayout, sel: PosterSelection | null): 
     ys.push(r.y, r.y + r.h / 2, r.y + r.h);
   };
   for (const L of layout.layers) {
-    if (!L.hidden && !(sel?.kind === 'layer' && sel.id === L.id)) add(L.bounds);
+    if (L.hidden) continue;
+    if (sel?.kind === 'layer' && sel.id === L.id) {
+      if (sel.row !== undefined) L.rowBounds.forEach((b, i) => i !== sel.row && add(b));
+    } else if (sel?.kind !== 'row') add(L.bounds);
   }
+  if (sel?.kind === 'row') for (const r of layout.rows) if (r.index !== sel.row) add(r.rect);
   for (const o of layout.objects) {
     if (o.type === 'text' && !(sel?.kind === 'text' && sel.id === o.member)) add(o.frame);
   }
@@ -276,8 +312,11 @@ export function selectionExists(
   sel: PosterSelection,
 ): boolean {
   // A line without a layer of its own (or hidden) is still listed: it stays selectable.
-  if (sel.kind === 'layer')
+  if (sel.kind === 'row') return sel.row < layout.rows.length;
+  if (sel.kind === 'layer') {
+    if (sel.row !== undefined && sel.row >= layout.rows.length) return false;
     return sel.id.startsWith('line:') || layout.layers.some((l) => l.id === sel.id);
+  }
   if (sel.kind === 'text') return textOf(doc, sel.id) !== undefined;
   return true;
 }
@@ -291,8 +330,9 @@ const round4 = (v: number): number => Math.round(v * 1e4) / 1e4;
 
 /**
  * The doc with the selection's frame (`from`, in `layout`) moved or resized to `to` (artboard
- * px): a layer's box (`layerBoxFor`), a text box's box (`textBoxFor`; an automatic box becomes a
- * placed one), or one label's nudge. Unchanged for a group or a layer that draws nothing.
+ * px): a layer's box (`layerBoxFor`) or its box in one row (`layerRowBoxFor`), a row's box, a
+ * text box's box (`textBoxFor`; an automatic box becomes a placed one), or one label's nudge.
+ * Unchanged for a group or a layer that draws nothing.
  */
 export function placeRect(
   doc: PosterDoc | undefined,
@@ -301,13 +341,22 @@ export function placeRect(
   from: Rect,
   to: Rect,
 ): PosterDoc | undefined {
+  if (sel.kind === 'layer' && sel.row !== undefined) {
+    const r = layout.rows[sel.row];
+    const box = r && layerRowBoxFor(layout, sel.id, sel.row, to);
+    return box ? setLayerRow(doc, sel.id, r.key, box) : doc;
+  }
   if (sel.kind === 'layer') {
     const box = layerBoxFor(layout, sel.id, to);
     return box ? setLayer(doc, sel.id, { box }) : doc;
   }
+  if (sel.kind === 'row') {
+    const r = layout.rows[sel.row];
+    return r ? setRowBox(doc, r.key, rowBoxFor(layout, to)) : doc;
+  }
   if (sel.kind === 'text') {
     const t = textOf(doc, sel.id);
-    return t ? putText(doc, { ...t, box: textBoxFor(layout, to) }) : doc;
+    return t ? placeText(doc, layout, t, from, to) : doc;
   }
   if (sel.kind === 'member') {
     const S = Math.min(layout.width, layout.height);
@@ -320,6 +369,99 @@ export function placeRect(
     });
   }
   return doc;
+}
+
+const textObject = (layout: PosterLayout, id: string): TextObject | undefined => {
+  for (const o of layout.objects) if (o.type === 'text' && o.member === id) return o;
+  return undefined;
+};
+
+/**
+ * Text box `t` with its frame `from` moved or resized to `to`. An automatic box (in the text
+ * band) becomes a placed one as wide as its text (`sizing: 'auto'`). A sized box: a change of
+ * height scales its type (an auto box stays as wide as its text, a wrapping one takes `to`'s
+ * width); a change of width alone makes it wrap at that width. A box without `sizing` takes
+ * `to` (its type follows the height).
+ */
+function placeText(
+  doc: PosterDoc | undefined,
+  layout: PosterLayout,
+  t: PosterText,
+  from: Rect,
+  to: Rect,
+): PosterDoc | undefined {
+  const box = textBoxFor(layout, to);
+  const sizing = t.sizing ?? (t.box ? undefined : 'auto');
+  if (!sizing) return putText(doc, { ...t, box });
+  const S = Math.min(layout.width, layout.height);
+  const o = textObject(layout, t.id);
+  const size0 = o ? o.size / S : (t.style?.size ?? textDefaults(t.kind).size);
+  const dh = from.h > 0 && Math.abs(to.h - from.h) > 1e-6;
+  const dw = Math.abs(to.w - from.w) > 1e-6;
+  const size = dh ? (size0 * to.h) / from.h : size0;
+  return putText(doc, {
+    ...t,
+    box,
+    sizing: !dh && dw ? 'wrap' : sizing,
+    style: { ...t.style, size: Math.round(size * 1e5) / 1e5 },
+  });
+}
+
+/**
+ * A new text box ("Text", in the free kind's type) with its top left at (x, y): as wide as its
+ * text, or `width` wide with wrapping lines (a drag with the Text tool).
+ */
+export function newText(
+  layout: PosterLayout,
+  id: string,
+  x: number,
+  y: number,
+  width?: number,
+): PosterText {
+  const r = newTextRect(layout, x, y, width);
+  return {
+    id,
+    kind: 'free',
+    text: 'Text',
+    sizing: width === undefined ? 'auto' : 'wrap',
+    box: textBoxFor(layout, r),
+  };
+}
+
+/** Where `newText` puts its box (artboard px): kept on the artboard. */
+export function newTextRect(layout: PosterLayout, x: number, y: number, width?: number): Rect {
+  const S = Math.min(layout.width, layout.height);
+  const size = textDefaults('free').size * S;
+  const h = LINE_HEIGHT * size;
+  const w = Math.max(1, width ?? layout.measure('Text', textFont(layout, 'free', size), 0));
+  return {
+    x: Math.max(0, Math.min(x, layout.width - Math.min(w, layout.width))),
+    y: Math.max(0, Math.min(y, layout.height - h)),
+    w,
+    h,
+  };
+}
+
+/** The Text tool's ghost at the pointer (x, y): the new box's rect, snapped unless `tol` is 0. */
+export function textGhost(
+  layout: PosterLayout,
+  x: number,
+  y: number,
+  tol: number,
+): { box: Rect; guides: SnapGuides } {
+  const r = newTextRect(layout, x, y);
+  return tol > 0 ? snapMove(r, snapTargets(layout, null), tol) : { box: r, guides: {} };
+}
+
+/**
+ * The outline a selected text box draws (artboard px): its frame, widened by the space its line
+ * box leaves above and below the ink, so the gap round the text is even.
+ */
+export function textOutline(layout: PosterLayout, id: string): Rect | null {
+  const o = textObject(layout, id);
+  if (!o) return null;
+  const p = textPad(o.size);
+  return { x: o.frame.x - p, y: o.frame.y, w: o.frame.w + 2 * p, h: o.frame.h };
 }
 
 /**
@@ -339,7 +481,16 @@ export function nudgeDoc(
     x: b.x + dx / fw,
     y: b.y + dy / fh,
   });
-  if (sel.kind === 'layer') {
+  if (sel.kind === 'layer' && sel.row !== undefined) {
+    const r = layout.rows[sel.row];
+    const fr = layerOf(layout, sel.id)?.frames[sel.row];
+    const box = r && doc?.layers?.find((l) => l.id === sel.id)?.rows?.[r.key];
+    if (box && fr?.base) return setLayerRow(doc, sel.id, r.key, shift(box, fr.base.w, fr.base.h));
+  } else if (sel.kind === 'row') {
+    const r = layout.rows[sel.row];
+    const box = r && doc?.rowBoxes?.[r.key];
+    if (box) return setRowBox(doc, r.key, shift(box, layout.width, layout.height));
+  } else if (sel.kind === 'layer') {
     const box = doc?.layers?.find((l) => l.id === sel.id)?.box;
     const L = layerOf(layout, sel.id);
     if (box && L) {
@@ -392,7 +543,7 @@ export function withTextSize(
 ): PosterDoc | undefined {
   const t = textOf(doc, id);
   if (!t || !(size > 0)) return doc;
-  if (!t.box) return putText(doc, { ...t, style: { ...t.style, size } });
+  if (!t.box || t.sizing) return putText(doc, { ...t, style: { ...t.style, size } });
   const S = Math.min(layout.width, layout.height);
   const lines = Math.max(1, t.text.split('\n').length);
   const h = (size * S * lines * LINE_HEIGHT) / layout.height;

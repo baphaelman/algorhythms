@@ -936,6 +936,12 @@ export interface PosterLayer {
    * Absent = the default.
    */
   box?: PosterBox;
+  /**
+   * The layer in one row moved or resized on its own, by row key (the row's index, or with rows
+   * by sections its section id): a fraction of where it would be in that row (0, 0, 1, 1 =
+   * unmoved). Style (colour, hidden) stays the layer's, in every row.
+   */
+  rows?: Record<string, PosterBox>;
   hidden?: boolean;
   /** Line colour (also used by the video export). */
   colour?: string;
@@ -965,6 +971,13 @@ export interface PosterText {
   text: string;
   /** Fractions of the artboard; absent = placed automatically in the text band. */
   box?: PosterBox;
+  /**
+   * How a placed box sizes (with `box`; type size from `style.size`): `auto` = as wide as its
+   * text (`box` gives the position: its left, centre or right edge by `align`, and its top);
+   * `wrap` = `box.w` wide, lines wrap, as tall as its lines. Absent = the type sizes to
+   * `box.h` and shrinks to fit `box.w` (M14 P3's boxes).
+   */
+  sizing?: 'auto' | 'wrap';
   style?: PosterTextStyle;
   hidden?: boolean;
   /** M15: the video draws it with the frame (true) or on the poster where it is. @default false */
@@ -1062,6 +1075,12 @@ export interface PosterDoc {
    * the section's label).
    */
   rowSections?: Record<string, PosterRowSection>;
+  /**
+   * Rows moved or resized as blocks (everything in the row follows), by row key (as
+   * `PosterLayer.rows`): the row's box as a fraction of the artboard. Per-row placements are
+   * dropped when the row split (rows, rows by, section) changes.
+   */
+  rowBoxes?: Record<string, PosterBox>;
   /**
    * A background picture (over the Look's background). Kept in the saved piece, never in share
    * links (they fall back to the background colour).

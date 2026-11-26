@@ -10,7 +10,7 @@
  *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
  *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
  *   (M15), and the poster packed (M14: default
- *   text boxes as their ids, boxes as `[x, y, w, h]`, linked margins as one number); then
+ *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
@@ -229,9 +229,21 @@ function boxOf(v: unknown): unknown {
   return { x: v[0], y: v[1], w: v[2], h: v[3] };
 }
 
-/** `o` with its `box` packed flat (or unpacked). */
+/** A record of boxes, each packed flat (or unpacked). */
+function boxesOf(v: unknown, f: (b: unknown) => unknown): unknown {
+  if (!isRec(v)) return v;
+  const out: Rec = {};
+  for (const [k, b] of Object.entries(v)) out[k] = f(b);
+  return out;
+}
+
+/** `o` with its `box` and per-row `rows` packed flat (or unpacked). */
 function withBox(o: unknown, f: (b: unknown) => unknown): unknown {
-  return isRec(o) && 'box' in o ? { ...o, box: f(o.box) } : o;
+  if (!isRec(o)) return o;
+  const out: Rec = { ...o };
+  if ('box' in o) out.box = f(o.box);
+  if ('rows' in o) out.rows = boxesOf(o.rows, f);
+  return out;
 }
 
 /** The poster's packing (M14): see the module comment. */
@@ -248,6 +260,7 @@ function packPoster(poster: Rec): Rec {
   )
     out.margins = m.top;
   if (Array.isArray(out.layers)) out.layers = out.layers.map((l) => withBox(l, flatBox));
+  if (out.rowBoxes !== undefined) out.rowBoxes = boxesOf(out.rowBoxes, flatBox);
   if (Array.isArray(out.texts)) {
     out.texts = out.texts.map((t) => {
       const d = DEFAULT_POSTER_TEXTS.find((x) => jsonEqual(x, t));
@@ -264,6 +277,7 @@ function unpackPoster(poster: Rec): Rec {
     out.margins = { top: v, right: v, bottom: v, left: v };
   }
   if (Array.isArray(out.layers)) out.layers = out.layers.map((l) => withBox(l, boxOf));
+  if (out.rowBoxes !== undefined) out.rowBoxes = boxesOf(out.rowBoxes, boxOf);
   if (Array.isArray(out.texts)) {
     out.texts = out.texts.map((t) => {
       const d = typeof t === 'string' ? DEFAULT_POSTER_TEXTS.find((x) => x.id === t) : undefined;

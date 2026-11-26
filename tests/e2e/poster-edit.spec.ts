@@ -35,13 +35,15 @@ interface Obj {
   member: string;
   box: Box;
   frame?: Box;
+  row?: number;
 }
 interface Lay {
   width: number;
   height: number;
   unit: number;
   content: Box;
-  layers: { id: string; bounds: Box | null }[];
+  layers: { id: string; bounds: Box | null; rowBounds: (Box | null)[] }[];
+  rows: Box[];
   objects: Obj[];
 }
 
@@ -54,12 +56,14 @@ const layout = (page: Page): Promise<Lay> =>
       height: L.height,
       unit: L.unit,
       content: L.content,
-      layers: L.layers.map((l) => ({ id: l.id, bounds: l.bounds })),
+      layers: L.layers.map((l) => ({ id: l.id, bounds: l.bounds, rowBounds: l.rowBounds })),
+      rows: L.rows.map((r) => r.rect),
       objects: L.objects.map((o) => ({
         type: o.type,
         group: o.group,
         member: o.member,
         box: o.box,
+        ...(o.row !== undefined ? { row: o.row } : {}),
         ...(o.type === 'text' ? { frame: o.frame } : {}),
       })),
     };
@@ -115,11 +119,16 @@ async function dragHandle(page: Page, h: string, dx: number, dy: number, mods: s
   for (const m of mods) await page.keyboard.up(m);
 }
 
-/** A point inside the first part layer's lines, clear of every label and text box. */
-async function layerPoint(page: Page) {
+/**
+ * A point inside the first part layer's lines (in row `row`, else any), clear of every label
+ * and text box.
+ */
+async function layerPoint(page: Page, row?: number) {
   const L = await layout(page);
   const id = L.layers[0].id;
-  const rows = L.objects.filter((o) => o.type === 'layer' && o.member === id);
+  const rows = L.objects.filter(
+    (o) => o.type === 'layer' && o.member === id && (row === undefined || o.row === row),
+  );
   const other = L.objects.filter((o) => o.type === 'label' || o.type === 'text');
   for (const r of rows) {
     for (const fx of [0.5, 0.3, 0.7, 0.2, 0.8]) {
@@ -361,13 +370,17 @@ test('the Text tool adds a text box edited in place; style; Delete removes it', 
   const t = (await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!;
   expect(t.style).toMatchObject({ weight: 700, align: 'right', colour: '#00aa55' });
 
-  // Double-click edits again; Escape drops the change.
+  // Double-click edits again; Escape keeps the text (as Figma), the box stays selected; undo.
   const c = centre(await textFrame(page, sel.id));
   const cp = await toPage(page, c.x, c.y);
   await page.mouse.dblclick(cp.x, cp.y);
   await expect(page.getByTestId('inline-text')).toBeFocused();
   await page.keyboard.type('xyz');
   await page.keyboard.press('Escape');
+  await expect(page.getByTestId('inline-text')).toHaveCount(0);
+  expect((await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!.text).toBe('xyz');
+  expect(await selected(page)).toEqual(sel);
+  await undo(page);
   expect((await posterDoc(page))!.texts!.find((x) => x.id === sel.id)!.text).toBe('Hello {key}');
 
   await page.getByTestId('poster-workspace').focus();
@@ -856,4 +869,97 @@ test('the playhead moves on the artboard while the music plays; hidden when stop
     .toBeGreaterThan(x0 + 5);
   await page.keyboard.press('Space');
   await expect(ph).toHaveCount(0);
+});
+
+test('two rows: a part in one row moves alone; a row moves as a block; undo; share link', async ({
+  page,
+  context,
+}) => {
+  await snapOff(page);
+  await setRange(page, 'export-prows', 2);
+  await expect.poll(async () => (await layout(page)).rows.length).toBe(2);
+  const { id, p } = await layerPoint(page, 1);
+  const L0 = await layout(page);
+  const piece = (L: Lay, row: number) => L.layers.find((l) => l.id === id)!.rowBounds[row]!;
+  const before = await posterDoc(page);
+  const { k } = await toPage(page, 0, 0);
+
+  // Drag the part in row 2: only row 2's piece moves.
+  await drag(page, p, 60, 30);
+  expect(await selected(page)).toEqual({ kind: 'layer', id, row: 1 });
+  await expect(page.getByTestId('selection-title')).toContainText('row 2');
+  await expect
+    .poll(async () => piece(await layout(page), 1).x - piece(L0, 1).x)
+    .toBeGreaterThan(50 / k);
+  const L1 = await layout(page);
+  near(piece(L1, 1).y - piece(L0, 1).y, 30 / k, 2 / k);
+  expect(piece(L1, 0)).toEqual(piece(L0, 0));
+  expect(L1.rows).toEqual(L0.rows);
+  // Its handles hug the piece: a corner resizes it alone.
+  await dragHandle(page, 'se', -40, -20);
+  await expect
+    .poll(async () => piece(await layout(page), 1).w)
+    .toBeLessThan(piece(L1, 1).w - 30 / k);
+  const L2 = await layout(page);
+  near(piece(L2, 1).x, piece(L1, 1).x);
+  expect(piece(L2, 0)).toEqual(piece(L0, 0));
+  const moved = await posterDoc(page);
+  expect(moved?.layers?.find((l) => l.id === id)?.rows?.['1']).toBeTruthy();
+
+  // The share link keeps it.
+  const link = await page.evaluate(() =>
+    (window as unknown as HookWindow).__algorhythms.encodeShareLink(
+      (window as unknown as HookWindow).__algorhythms.store.getState().piece,
+    ),
+  );
+  const other = await context.newPage();
+  await other.goto(link);
+  await expect(other.getByTestId('time')).toHaveText(/\d\d:\d\d\.\d/);
+  expect(await posterDoc(other)).toEqual(moved);
+  await other.close();
+
+  // Undo: the resize, then the drag (one step each).
+  await undo(page);
+  await expect.poll(async () => piece(await layout(page), 1).w).toBeCloseTo(piece(L1, 1).w, 3);
+  await undo(page);
+  expect(await posterDoc(page)).toEqual(before);
+  await expect.poll(async () => piece(await layout(page), 1).x).toBeCloseTo(piece(L0, 1).x, 3);
+
+  // A row's empty space selects the row; dragging it carries its parts; a handle resizes it.
+  const L3 = await layout(page);
+  const rr = L3.rows[1];
+  const hits = L3.objects.filter((o) => o.type !== 'line');
+  let at: { x: number; y: number } | null = null;
+  for (let fx = 0.03; fx < 1 && !at; fx += 0.04) {
+    for (const fy of [0.08, 0.5, 0.92]) {
+      const q = { x: rr.x + rr.w * fx, y: rr.y + rr.h * fy };
+      const pad = 3 * L3.unit;
+      const near = (b: Box) =>
+        q.x >= b.x - pad && q.x <= b.x + b.w + pad && q.y >= b.y - pad && q.y <= b.y + b.h + pad;
+      if (!hits.some((o) => near(o.box))) {
+        at = q;
+        break;
+      }
+    }
+  }
+  expect(at).not.toBeNull();
+  await drag(page, at!, 0, 40);
+  expect(await selected(page)).toEqual({ kind: 'row', row: 1 });
+  await expect(page.getByTestId('selection-title')).toHaveText('Row 2');
+  await expect.poll(async () => (await layout(page)).rows[1].y - rr.y).toBeGreaterThan(30 / k);
+  const L4 = await layout(page);
+  expect(L4.rows[0]).toEqual(L3.rows[0]);
+  near(piece(L4, 1).y - piece(L3, 1).y, L4.rows[1].y - rr.y, 0.5);
+  expect(piece(L4, 0)).toEqual(piece(L3, 0));
+  await dragHandle(page, 'e', -60, 0);
+  await expect.poll(async () => (await layout(page)).rows[1].w).toBeLessThan(rr.w - 40 / k);
+  expect((await posterDoc(page))?.rowBoxes?.['1']).toBeTruthy();
+
+  // Alt-click selects the part in every row, as the layers list does.
+  const q = (await layerPoint(page, 0)).p;
+  const pq = await toPage(page, q.x, q.y);
+  await page.keyboard.down('Alt');
+  await page.mouse.click(pq.x, pq.y);
+  await page.keyboard.up('Alt');
+  expect(await selected(page)).toEqual({ kind: 'layer', id });
 });

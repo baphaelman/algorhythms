@@ -19,6 +19,7 @@ import {
   type ExportForm,
   type SectionContext,
 } from './export-options';
+import { keepRowPlacements } from '../render/poster-edit';
 import { DEFAULT_COLOURS } from './export-colours';
 
 /** The form fields a poster doc holds. */
@@ -159,8 +160,9 @@ export function docWithForm(
   if (doc?.members) out.members = doc.members;
   if (doc?.rowsBy) out.rowsBy = doc.rowsBy;
   if (doc?.rowSections) out.rowSections = doc.rowSections;
+  if (doc?.rowBoxes) out.rowBoxes = doc.rowBoxes;
   if (doc?.picture) out.picture = doc.picture;
-  return out;
+  return keepRowPlacements(doc, out) ?? {};
 }
 
 /**
