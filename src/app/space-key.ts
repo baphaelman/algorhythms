@@ -28,6 +28,8 @@ export interface SpaceContext {
   dialog: boolean;
   /** The open dialog plays and pauses on Space itself (`dialogSpace()`); a text field still types. */
   dialogPlay?: boolean;
+  /** Space-drag pans here too (the poster workspace's artboard), as in the editor layout. */
+  pan?: boolean;
 }
 
 export interface SpaceOutcome {
@@ -49,6 +51,9 @@ export function typesSpace(target: unknown): boolean {
 export function isSpace(e: { key: string; code?: string }): boolean {
   return e.code === 'Space' || e.key === ' ';
 }
+
+/** The one Space hold (canvas-input keeps it; the poster artboard pans while it is down). */
+export const spaceHold: SpaceHeld = { down: false, panned: false };
 
 let dialogToggle: (() => void) | null = null;
 
@@ -74,14 +79,14 @@ export function spaceKey(e: SpaceEvent, held: SpaceHeld, ctx: SpaceContext): Spa
   if (e.type === 'keyup') {
     if (held.down) {
       held.down = false;
-      return { consume: true, toggle: !held.panned && !ctx.dialog };
+      return { consume: true, toggle: !held.panned && (!ctx.dialog || ctx.pan === true) };
     }
     return pass || typesSpace(e.target) ? PASS : { consume: true, toggle: false };
   }
   if (pass || typesSpace(e.target)) return PASS;
   if (e.repeat || held.down) return { consume: true, toggle: false };
   // A dialog has no Space-drag pan: it toggles on the press.
-  if (!ctx.editor || ctx.dialog) return { consume: true, toggle: true };
+  if (!ctx.pan && (!ctx.editor || ctx.dialog)) return { consume: true, toggle: true };
   held.down = true;
   held.panned = false;
   return { consume: true, toggle: false };

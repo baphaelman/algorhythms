@@ -142,8 +142,9 @@ export function renderPosterLayoutSvg(
 }
 
 /**
- * The artboard: the poster drawn from its layout on a canvas `scale` times its pixel size.
- * Returns the layout (for hit-testing and the overlays).
+ * The artboard: the poster drawn from its layout on a canvas `scale` times its pixel size (or
+ * the part of it from `offset`, canvas px, when zoomed in). Returns the layout (for hit-testing
+ * and the overlays).
  */
 export function previewPosterLayout(
   ctx: Ctx2D,
@@ -152,9 +153,10 @@ export function previewPosterLayout(
   opts: PosterOptions,
   scale: number,
   doc: PosterDoc | undefined = piece.poster,
+  offset?: { x: number; y: number },
 ): PosterLayout {
   const layout = posterLayoutOf(piece, opts, compiled, doc);
-  drawPosterLayout(ctx, compiled, layout, scale);
+  drawPosterLayout(ctx, compiled, layout, scale, offset);
   return layout;
 }
 
@@ -179,8 +181,8 @@ export function posterHudOf(layout: PosterLayout): HudPlacement {
 }
 
 /**
- * Tests: the poster at `scale` drawn from its layout on a fresh canvas `width` x `height` pixels,
- * to compare with the artboard.
+ * Tests: the poster at `scale` drawn from its layout on a fresh canvas `width` x `height` pixels
+ * (from `offset`, canvas px), to compare with the artboard.
  */
 export function referencePosterAt(
   piece: Piece,
@@ -189,10 +191,11 @@ export function referencePosterAt(
   width: number,
   height: number,
   doc: PosterDoc | undefined = piece.poster,
+  offset?: { x: number; y: number },
 ): ImageData {
   const canvas = new OffscreenCanvas(width, height);
   const g = canvas.getContext('2d')!;
   const compiled = compile(piece);
-  drawPosterLayout(g, compiled, posterLayoutOf(piece, opts, compiled, doc), scale);
+  drawPosterLayout(g, compiled, posterLayoutOf(piece, opts, compiled, doc), scale, offset);
   return g.getImageData(0, 0, width, height);
 }

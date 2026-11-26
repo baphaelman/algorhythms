@@ -287,7 +287,13 @@ export async function runPoster(
 /** What the dialog's preview last drew (tests compare it with a direct render). */
 export type PreviewRequest =
   | { kind: 'video'; options: VideoOptions; t: Seconds; tau?: Seconds; scale: number }
-  | { kind: 'poster'; options: PosterOptions; scale: number };
+  | {
+      kind: 'poster';
+      options: PosterOptions;
+      scale: number;
+      /** Zoomed in: the canvas holds the part from here (canvas px). */
+      offset?: { x: number; y: number };
+    };
 
 let lastPreview: PreviewRequest | null = null;
 
@@ -496,10 +502,19 @@ export function previewPosterOf(
   form: ExportForm,
   ctx: LookAppContext & SectionContext,
   scale: number,
+  offset?: { x: number; y: number },
 ): { layout: PosterLayout; hud: HudPlacement } {
   const options = posterOptions(form, src.piece, ctx);
-  lastPreview = { kind: 'poster', options, scale };
-  const layout = previewPosterLayout(g, src.piece, src.compiled, options, scale);
+  lastPreview = { kind: 'poster', options, scale, ...(offset ? { offset } : {}) };
+  const layout = previewPosterLayout(
+    g,
+    src.piece,
+    src.compiled,
+    options,
+    scale,
+    src.piece.poster,
+    offset,
+  );
   return { layout, hud: posterHudOf(layout) };
 }
 

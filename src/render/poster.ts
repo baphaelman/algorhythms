@@ -218,7 +218,8 @@ export function resetContext(ctx: Ctx2D): void {
 
 /**
  * Draws a laid-out poster (poster-layout.ts) on a context whose canvas is `layout.width ×
- * layout.height` px, or `scale` times that (the artboard on screen). Back to front: the
+ * layout.height` px, or `scale` times that (the artboard on screen); with an `offset` (canvas
+ * px), the canvas holds only the part from there (a zoomed-in artboard). Back to front: the
  * background, the guide, beat and marker lines, each layer's rows (one `drawScore` frame per row,
  * so a stretched layer keeps its line widths), the vignette, the labels and the text boxes. PNG
  * (OffscreenCanvas) and SVG (`SvgContext` through `asCtx2D`) alike.
@@ -228,12 +229,15 @@ export function drawPosterLayout(
   compiled: CompiledScore,
   layout: PosterLayout,
   scale = 1,
+  offset: { x: number; y: number } = { x: 0, y: 0 },
 ): void {
   const g = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
   const { width: W, height: H, unit: u, style } = layout;
+  const ox = -offset.x;
+  const oy = -offset.y;
   resetContext(ctx);
   ctx.clearRect(0, 0, Math.ceil(W * scale), Math.ceil(H * scale));
-  g.setTransform(scale, 0, 0, scale, 0, 0);
+  g.setTransform(scale, 0, 0, scale, ox, oy);
   fillBackground(g, style.tokens.paper, style.paint, W, H);
   let k = 0;
   const objs = layout.objects;
@@ -253,7 +257,7 @@ export function drawPosterLayout(
         const wide = Math.max(1, MIN_WINDOW / len);
         if (wide > 1) {
           g.save();
-          g.setTransform(scale, 0, 0, scale, 0, 0);
+          g.setTransform(scale, 0, 0, scale, ox, oy);
           g.beginPath();
           g.rect(f.rect.x, f.rect.y, f.rect.w, f.rect.h);
           g.clip();
@@ -266,13 +270,13 @@ export function drawPosterLayout(
           compiled.duration,
           { width: (f.rect.w * wide) / u, height: f.rect.h / u },
           dpr,
-          { x: f.rect.x / u, y: f.rect.y / u },
+          { x: f.rect.x / u + ox / dpr, y: f.rect.y / u + oy / dpr },
         );
         if (wide > 1) g.restore();
       }
     }
   resetContext(ctx);
-  g.setTransform(scale, 0, 0, scale, 0, 0);
+  g.setTransform(scale, 0, 0, scale, ox, oy);
   if (style.vignette) drawVignette(g, W, H, Math.min(1, style.vignette));
   for (; k < objs.length; k++) if (objs[k].type !== 'layer') drawObject(g, objs[k]);
   g.globalAlpha = 1;

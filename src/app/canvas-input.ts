@@ -72,7 +72,7 @@ import {
 import { currentPps, onScoreFrame } from './loop';
 import { marquee } from './marquee';
 import { hideOctaves, showOctaves } from './octave-guide';
-import { dialogSpace, isSpace, spaceKey, type SpaceHeld } from './space-key';
+import { dialogSpace, isSpace, spaceHold, spaceKey } from './space-key';
 import { workspaceShown } from './export-surface';
 import { wheelIntent } from './wheel';
 import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomBy } from './store';
@@ -81,7 +81,7 @@ import { camera, panBy, seekBy, seekTo, toggleLoop, togglePlay, usePlayer, zoomB
 const DRAG_SLOP = 4;
 
 /** Space held (editor layout): a drag pans, and the release plays/pauses only if none did. */
-const space: SpaceHeld = { down: false, panned: false };
+const space = spaceHold;
 
 interface PointerInfo {
   x: number;
@@ -631,9 +631,17 @@ export function attachKeys(): () => void {
     // ⌘/Ctrl/Alt+Space belong to the system; a release always ends the hold.
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
     // The poster workspace (M14) takes Space as a dialog does: its controls keep it.
-    const dialog = document.querySelector('dialog[open]') !== null || workspaceShown();
+    const modal = document.querySelector('dialog[open]') !== null;
+    const dialog = modal || workspaceShown();
     const own = dialog ? dialogSpace() : null;
-    const out = spaceKey(e, space, { editor: editorLayout(), dialog, dialogPlay: own !== null });
+    // The poster artboard pans on Space-drag (its release plays only if it didn't pan).
+    const pan = !modal && workspaceShown() && document.querySelector('.artboard') !== null;
+    const out = spaceKey(e, space, {
+      editor: editorLayout(),
+      dialog,
+      dialogPlay: own !== null,
+      pan,
+    });
     if (!out.consume) return;
     e.preventDefault();
     e.stopPropagation();

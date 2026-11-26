@@ -87,21 +87,94 @@
 }
 
 .artboard-box {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
 }
 
+/* Space held: the artboard pans on a drag. */
+.artboard-box.grab,
+.artboard-box.grab .ws-overlay {
+  cursor: grab;
+}
+
+.artboard-box.panning,
+.artboard-box.panning * {
+  cursor: grabbing;
+}
+
 .artboard-page {
-  flex: none;
+  position: absolute;
   box-shadow: 0 1px 10px color-mix(in srgb, var(--ink) 22%, transparent);
 }
 
+/* The whole page, or (zoomed in) the part in view, placed by the artboard. */
 .artboard canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   display: block;
+}
+
+/* The zoom readout and its menu, in the artboard's top right corner. */
+.ws-zoom {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+}
+
+.ws-zoom-readout {
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 11px/1.4 var(--f-mono);
+  cursor: pointer;
+}
+
+.ws-zoom-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+}
+
+.ws-zoom-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: 13px var(--f-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-zoom-menu button:hover,
+.ws-zoom-menu button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.ws-zoom-menu kbd {
+  color: var(--ink-2);
+  font: 11px var(--f-mono);
 }
 
 .artboard canvas.checker {
@@ -109,10 +182,6 @@
 }
 
 /* ---- editing over the artboard (P3) -------------------------------------------------------- */
-
-.artboard-page {
-  position: relative;
-}
 
 /* The readouts' boxes take the pointer; the rest of their layer lets it through to the overlay. */
 .artboard .hud-overlay {
