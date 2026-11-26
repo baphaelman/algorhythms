@@ -24,7 +24,7 @@ describe('artboard zoom', () => {
     const p = pageRect(v, box, poster);
     expect(p.w).toBe(f.w);
     expect(p.h).toBe(f.h);
-    expect(p.left).toBe(Math.round((box.w - f.w) / 2));
+    expect(p.left).toBe((box.w - f.w) / 2);
     expect(zoomText(v.zoom)).toBe('26 %');
   });
 

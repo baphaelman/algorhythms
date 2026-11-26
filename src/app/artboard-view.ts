@@ -134,8 +134,8 @@ export function pageRect(v: ArtboardView, box: Size, poster: Poster) {
   const f = v.fit ? artboardFit(box, poster) : null;
   const w = f ? f.w : poster.width * v.zoom;
   const h = f ? f.h : poster.height * v.zoom;
-  const left = f ? Math.round((box.w - w) / 2) : box.w / 2 - v.cx * v.zoom;
-  const top = f ? Math.round((box.h - h) / 2) : box.h / 2 - v.cy * v.zoom;
+  const left = f ? (box.w - w) / 2 : box.w / 2 - v.cx * v.zoom;
+  const top = f ? (box.h - h) / 2 : box.h / 2 - v.cy * v.zoom;
   return { left, top, w, h };
 }
 
