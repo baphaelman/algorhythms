@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import './app-hook';
 import { chooseSegment, clickExportForDownload, setRange } from './export-diag';
-import { addressSettled, backToMusic, openPoster, workspace } from './export-open';
+import { addressSettled, backToMusic, openLayers, openPoster, workspace } from './export-open';
 
 const posterOf = (page: Page) =>
   page.evaluate(() =>
@@ -277,6 +277,7 @@ test('rows by sections, row labels and the pulse-mark style draw on the artboard
   expect(d.rows[0]).toBe('Alpha');
 
   // Pulse marks: selected from the layers list, styled through the selection panel.
+  await openLayers(page);
   await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
   await expect(page.getByTestId('selection-title')).toContainText('Pulse marks');
   await setRange(page, 'sel-size', 200);

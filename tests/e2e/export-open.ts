@@ -40,6 +40,27 @@ export async function openPoster(page: Page): Promise<void> {
   await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-draws', /\d+/);
 }
 
+/**
+ * Slides the poster workspace's Layers list up (the bottom bar's caret), if it isn't up, and
+ * waits until it has settled.
+ */
+export async function openLayers(page: Page): Promise<void> {
+  const caret = page.getByTestId('layers-toggle');
+  if ((await caret.getAttribute('aria-expanded')) !== 'true') await caret.click();
+  await expect(caret).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('poster-layers')).toBeVisible();
+  await expect
+    .poll(() => page.getByTestId('poster-layers').evaluate((el) => el.getAnimations().length))
+    .toBe(0);
+}
+
+/** Slides the Layers list back down (the caret), if it is up. */
+export async function closeLayers(page: Page): Promise<void> {
+  const caret = page.getByTestId('layers-toggle');
+  if ((await caret.getAttribute('aria-expanded')) === 'true') await caret.click();
+  await expect(page.getByTestId('poster-layers')).toBeHidden();
+}
+
 /** Menu → Export, then Video if Poster was remembered: the workspace's Video mode. */
 export async function openVideoExport(page: Page): Promise<void> {
   await openExport(page);

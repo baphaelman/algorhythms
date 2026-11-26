@@ -1,6 +1,7 @@
 /**
  * The background gradient's handles on the artboard (PLAN.md §15 M14 "Backgrounds"): shown while
- * the poster's background is a gradient (Colours → Handles on the poster turns them off). Linear:
+ * the poster's background is a gradient and the background is selected (a click on the paper
+ * where nothing is; owner, 2026-11-26: only the selection shows handles). Linear:
  * the two ends and a handle per stop between; radial: the centre and the radius. Each drag
  * writes the Colours form (../gradient-handles) and is one undo step. Never exported: they are
  * page elements over the canvas.
@@ -19,7 +20,6 @@ import {
 import { posterFormGesture } from '../poster-sync';
 import { useWorkspace } from '../poster-workspace';
 import { appDark, patchLook, useExportUi } from './export-state';
-import { Switch } from './export-controls';
 
 const NAMES: Readonly<Record<GradientHandleKind, string>> = {
   start: 'Gradient start',
@@ -46,7 +46,7 @@ const tokensFor = (form: ExportForm) =>
 
 export function GradientHandles({ form }: { form: ExportForm }) {
   const layout = useWorkspace((s) => s.layout);
-  const on = useWorkspace((s) => s.gradientHandles);
+  const on = useWorkspace((s) => s.selected?.kind === 'background');
   const root = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   useEffect(
@@ -159,15 +159,11 @@ export function GradientHandles({ form }: { form: ExportForm }) {
   );
 }
 
-/** Colours → Handles on the poster: shows or hides the gradient's handles on the artboard. */
-export function GradientHandlesSwitch() {
-  const on = useWorkspace((s) => s.gradientHandles);
+/** Colours, with a gradient on the poster: how to reach its handles on the artboard. */
+export function GradientHandlesHint() {
   return (
-    <Switch
-      label="Handles on the poster"
-      checked={on}
-      testId="bg-handles"
-      onChange={(gradientHandles) => useWorkspace.setState({ gradientHandles })}
-    />
+    <small className="look-note" data-testid="bg-handles-hint">
+      Click the poster’s background to drag the gradient’s handles.
+    </small>
   );
 }

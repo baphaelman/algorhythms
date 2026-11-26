@@ -23,7 +23,7 @@ import {
   setSwitch,
   tap,
 } from './export-diag';
-import { addressSettled, openPoster, surface, workspace } from './export-open';
+import { addressSettled, openLayers, openPoster, surface, workspace } from './export-open';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
 import { EXPORT_LOOK } from '../../src/render/look';
@@ -247,6 +247,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await openExport(page);
   await choose(page, 'export-psize', '1:1');
   // No title: its text box goes (selected in the layers list, then Delete).
+  await openLayers(page);
   await page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click();
   await page.keyboard.press('Delete');
   await expect(page.getByTestId('layer-text')).toHaveCount(1);

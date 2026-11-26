@@ -235,7 +235,10 @@ test('a drag sets the width: lines wrap; click away commits; undo', async ({ pag
   await page.mouse.down();
   await page.mouse.move(a.x + dx / 2, a.y, { steps: 3 });
   await expect(page.getByTestId('text-ghost')).toHaveClass(/ws-ghost-drag/);
-  near((await page.getByTestId('text-ghost').boundingBox())!.width, dx / 2, 3);
+  // The ghost is the outline the box will draw: its frame and the even gap each side.
+  // (`textPad`: (1.2 − 0.8 − 0.24) / 2 of the type size, 3 % of the shorter side.)
+  const pad = 0.08 * 0.03 * Math.min(s.w, s.h);
+  near((await page.getByTestId('text-ghost').boundingBox())!.width, dx / 2 + 2 * pad, 1.5);
   await page.mouse.move(a.x + dx, a.y, { steps: 3 });
   await page.mouse.up();
   await expect(page.getByTestId('inline-text')).toBeFocused();
@@ -272,8 +275,10 @@ test('a moved and resized title keeps a tidy selection', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(h.x + 40, h.y + 30, { steps: 5 });
   await page.mouse.up();
+  await expect
+    .poll(async () => (await textObj(page, 'title'))!.size)
+    .toBeGreaterThan(o.size * 1.05);
   const t = (await textObj(page, 'title'))!;
-  expect(t.size).toBeGreaterThan(o.size * 1.05);
   const sel = await toBoard(page, (await page.locator('.ws-sel-box').boundingBox())!);
   const tol = 4 / s.k + 0.1 * t.size;
   near(sel.x, t.box.x, tol);

@@ -290,6 +290,7 @@ export {
   rowAt,
   rowBoxFor,
   setLayerRow,
+  setLayerRowHidden,
   setRowBox,
   withoutRowPlacements,
   textBoxFor,

@@ -8,8 +8,11 @@
  *   member. With two rows or more, a part's lines select that part in their row (Alt-click: in
  *   every row, as the layers list does), and a row's empty space selects the row. Drag moves (snapping to the artboard, the margins and other objects; Alt: free),
  *   the eight handles resize (`resizeBox`: Shift proportional, Alt from the centre).
+ * - A click on the paper where nothing is selects the background (its gradient's handles show
+ *   only then). Snapping works on the outlines drawn (`drawnFrame`, `snapTargets`).
  * - Keys (nothing typed into): arrows nudge (Shift: ten times), Delete removes a text box or
- *   hides the rest, Enter edits a text box, V / T pick the tool. Escape clears the selection.
+ *   hides the rest (a part in one row: in that row only), Enter edits a text box, V / T pick the
+ *   tool. Escape clears the selection.
  */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -36,6 +39,7 @@ import {
   setLayer,
   setLayerOrder,
   setLayerRow,
+  setLayerRowHidden,
   setMargins,
   setMemberStyle,
   setRowBox,
@@ -51,6 +55,7 @@ import {
   MARK_GROUPS,
   LINE_HEIGHT,
   estimateText,
+  fillTokens,
   isLabelGroup,
   isMarkGroup,
   measureWith,
@@ -65,7 +70,10 @@ import {
   CLEAR_MEMBER,
   GROUP_NAMES,
   alignBox,
+  drawnFrame,
   newText,
+  newTextPad,
+  outlineOf,
   newTextRect,
   nudgeDoc,
   placeRect,
@@ -86,7 +94,15 @@ import {
   type SnapGuides,
 } from '../poster-select';
 import { editPoster, editPosterRun, posterGesture, type PosterGesture } from '../poster-sync';
-import { linesText, posterLayers, useWorkspace, type WorkspaceTool } from '../poster-workspace';
+import {
+  layerRowsState,
+  linesText,
+  posterLayers,
+  rowName,
+  setLayersOpen,
+  useWorkspace,
+  type WorkspaceTool,
+} from '../poster-workspace';
 import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
@@ -111,16 +127,31 @@ const hex = (c: string | undefined, fallback = '#808080'): string => (c && toHex
 // Actions
 // ---------------------------------------------------------------------------------------------
 
-/** Delete: removes a text box; hides a layer, a group or one member. */
+/** Hides (or shows) layer `id` in row `row` of `layout`: one undo step. */
+export function hideInRow(layout: PosterLayout, id: string, row: number, hidden: boolean): void {
+  const r = layout.rows[row];
+  if (!r) return;
+  const keys = layout.rows.map((x) => x.key);
+  editPoster(
+    (d) => setLayerRowHidden(d, id, r.key, hidden, keys),
+    `${hidden ? 'Hide' : 'Show'} in ${rowName(layout, row)}`,
+  );
+}
+
+/**
+ * Delete: removes a text box; hides a layer (a layer in one row: in that row), a group or one
+ * member.
+ */
 export function deleteSelection(): void {
-  const sel = useWorkspace.getState().selected;
+  const { selected: sel, layout } = useWorkspace.getState();
   if (!sel) return;
   if (sel.kind === 'text') {
     editPoster((d) => removeText(d, sel.id), 'Remove text box');
     select(null);
   } else if (sel.kind === 'layer') {
-    editPoster((d) => setLayer(d, sel.id, { hidden: true }), 'Hide layer');
-  } else if (sel.kind === 'row') {
+    if (sel.row !== undefined && layout) hideInRow(layout, sel.id, sel.row, true);
+    else editPoster((d) => setLayer(d, sel.id, { hidden: true }), 'Hide layer');
+  } else if (sel.kind === 'row' || sel.kind === 'background') {
     return;
   } else if (sel.kind === 'group') {
     editPoster((d) => setGroupStyle(d, sel.group, { visible: false }), 'Hide');
@@ -152,7 +183,18 @@ export function alignSelection(how: AlignTo): void {
  * The text box being typed into and its gesture: the text shows on the artboard as it is typed,
  * and the whole edit (a new box and its first text) is one undo entry when it ends.
  */
-let typed: { id: string; gesture: PosterGesture; base: PosterText; isNew: boolean } | null = null;
+let typed: {
+  id: string;
+  gesture: PosterGesture;
+  base: PosterText;
+  /** The text as the editor shows it (tokens filled): kept as `base.text` while unchanged. */
+  filled: string;
+  isNew: boolean;
+} | null = null;
+
+/** The text to store for `text` as typed: an unchanged box keeps its tokens. */
+const storedText = (t: NonNullable<typeof typed>, text: string): string =>
+  text === t.filled ? t.base.text : text;
 
 /**
  * The Text tool: a new text box with its top left at (x, y), as wide as its text, or `width`
@@ -164,7 +206,7 @@ export function addTextAt(layout: PosterLayout, x: number, y: number, width?: nu
   endTyping();
   const gesture = posterGesture('Add text box');
   gesture.update((d) => putText(d, text));
-  typed = { id, gesture, base: text, isNew: true };
+  typed = { id, gesture, base: text, filled: text.text, isNew: true };
   useWorkspace.setState({
     selected: { kind: 'text', id },
     tool: 'select',
@@ -173,18 +215,21 @@ export function addTextAt(layout: PosterLayout, x: number, y: number, width?: nu
   });
 }
 
-/** Starts typing into text box `id` (Enter, double-click): one undo entry for the edit. */
-function startTyping(id: string): void {
+/**
+ * Starts typing into text box `id` (Enter, double-click): one undo entry for the edit. `filled`
+ * is its text as shown (tokens filled in); a changed text is stored as plain words.
+ */
+function startTyping(id: string, filled: string): void {
   if (typed?.id === id) return;
   endTyping();
   const base = textOf(docNow(), id);
-  if (base) typed = { id, gesture: posterGesture('Edit text'), base, isNew: false };
+  if (base) typed = { id, gesture: posterGesture('Edit text'), base, filled, isNew: false };
 }
 
 /** Shows `text` in the box being typed into. */
 function typeText(text: string): void {
   if (!typed) return;
-  const t = { ...typed.base, text };
+  const t = { ...typed.base, text: storedText(typed, text) };
   typed.gesture.update((d) => putText(d, t));
 }
 
@@ -204,7 +249,7 @@ function endTyping(text?: string): void {
     return;
   }
   if (text !== undefined) {
-    const next = { ...t.base, text };
+    const next = { ...t.base, text: storedText(t, text) };
     t.gesture.update((d) => putText(d, next));
   }
   t.gesture.end();
@@ -280,6 +325,8 @@ interface Drag {
   sel: PosterSelection;
   layout: PosterLayout;
   frame: Rect;
+  /** The outline drawn (`drawnFrame`): snapped by, its shift is the frame's. */
+  drawn: Rect;
   x0: number;
   y0: number;
   started: boolean;
@@ -290,9 +337,10 @@ interface Drag {
 
 /** A press with the Text tool: a click places a box as wide as its text, a drag sets its width. */
 interface Place {
+  /** The new box's frame's top left (artboard px). */
   x0: number;
   y0: number;
-  /** The drag's box so far (artboard px), once it is a drag. */
+  /** The drag's frame so far (artboard px), once it is a drag. */
   box: Rect | null;
 }
 
@@ -356,14 +404,15 @@ export function ArtboardOverlay({ width }: { width: number }) {
       to = { ...d.frame, x: d.frame.x + dx, y: d.frame.y + dy };
       // Alt moves freely.
       if (snapOn && !p.alt) {
-        const s = snapMove(to, snapTargets(d.layout, d.sel), tol);
-        to = s.box;
+        const at = { ...d.drawn, x: d.drawn.x + dx, y: d.drawn.y + dy };
+        const s = snapMove(at, snapTargets(d.layout, d.sel), tol);
+        to = { ...to, x: to.x + s.box.x - at.x, y: to.y + s.box.y - at.y };
         g = s.guides;
       }
     } else {
       let delta = { dx, dy };
       if (snapOn) {
-        const s = snapResize(d.frame, d.handle!, delta, snapTargets(d.layout, d.sel), tol);
+        const s = snapResize(d.drawn, d.handle!, delta, snapTargets(d.layout, d.sel), tol);
         delta = s;
         g = s.guides;
       }
@@ -402,13 +451,14 @@ export function ArtboardOverlay({ width }: { width: number }) {
     showGuides(g.guides);
   };
 
-  /** A Text tool drag: from the press to the pointer, its moving edge snapped. */
+  /** A Text tool drag: from the press to the pointer, the moving edge of its outline snapped. */
   const placeDrag = (pl: Place, e: React.PointerEvent<HTMLDivElement>) => {
     const p = board(e);
     if (!pl.box && Math.abs(p.x - pl.x0) * scale < DRAG_CSS) return;
     const handle: Handle = p.x >= pl.x0 ? 'e' : 'w';
     const tol = ghostTol(e.altKey);
-    const start = { x: pl.x0, y: pl.y0, w: 0, h: 0 };
+    const pad = newTextPad(layout);
+    const start = outlineOf({ x: pl.x0, y: pl.y0, w: 0, h: 0 }, pad);
     const s =
       tol > 0
         ? snapResize(start, handle, { dx: p.x - pl.x0, dy: 0 }, snapTargets(layout, null), tol)
@@ -416,7 +466,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
     const x1 = pl.x0 + s.dx;
     const h = newTextRect(layout, pl.x0, pl.y0).h;
     pl.box = { x: Math.min(pl.x0, x1), y: pl.y0, w: Math.abs(x1 - pl.x0), h };
-    setGhost({ box: pl.box, drag: true });
+    setGhost({ box: outlineOf(pl.box, pad), drag: true });
     showGuides(s.guides);
   };
 
@@ -428,9 +478,9 @@ export function ArtboardOverlay({ width }: { width: number }) {
     });
     const p = board(e);
     if (useWorkspace.getState().tool === 'text') {
-      const g = textGhost(layout, p.x, p.y, ghostTol(e.altKey)).box;
-      place.current = { x0: g.x, y0: g.y, box: null };
-      setGhost({ box: g, drag: false });
+      const g = textGhost(layout, p.x, p.y, ghostTol(e.altKey));
+      place.current = { x0: g.frame.x, y0: g.frame.y, box: null };
+      setGhost({ box: g.box, drag: false });
       root.current?.setPointerCapture(e.pointerId);
       return;
     }
@@ -461,6 +511,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
       sel,
       layout,
       frame,
+      drawn: drawnFrame(layout, sel) ?? frame,
       x0: p.x,
       y0: p.y,
       started: false,
@@ -510,6 +561,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
   const hRect = frame && selected?.kind === 'text' ? (boxes[0] ?? frame) : frame;
   const c = layout.content;
   const ghostSize = textDefaults('free').size * Math.min(W, H) * scale;
+  const ghostPad = newTextPad(layout) * scale;
   return (
     <div
       ref={root}
@@ -583,6 +635,7 @@ export function ArtboardOverlay({ width }: { width: number }) {
           aria-hidden="true"
           style={{
             ...pct(ghost.box),
+            paddingLeft: ghostPad,
             font: textFont(layout, 'free', ghostSize),
             lineHeight: LINE_HEIGHT,
           }}
@@ -607,25 +660,27 @@ const measureCss: Measure = (text, font, spacing) => {
 
 /**
  * A text box edited in place. The artboard draws the text as it is typed (its real font, size
- * and colour); the field over it shows only the caret and the selection. A text with tokens
- * shows as written, on the paper, until it is done. Enter, Escape or leaving it keeps the text
- * (an empty box goes); Shift+Enter breaks the line.
+ * and colour); the field over it shows only the caret and the selection. It shows the words as
+ * drawn (tokens filled in); a changed text is stored as written, an unchanged one keeps its
+ * tokens. Enter, Escape or leaving it keeps the text (an empty box goes); Shift+Enter breaks the
+ * line.
  */
 function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; scale: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const t = textOf(docNow(), id);
   const o = layout.objects.find((x) => x.type === 'text' && x.member === id);
-  const [value, setValue] = useState(t?.text ?? '');
+  const [filled] = useState(() => (t ? fillTokens(t.text, layout.tokens) : ''));
+  const [value, setValue] = useState(filled);
   const done = useRef(false);
   const latest = useRef(value);
   // A new text box shows once the artboard has drawn it: focus it then.
   const ready = !!t && o?.type === 'text';
   useLayoutEffect(() => {
     if (!ready) return;
-    startTyping(id);
+    startTyping(id, filled);
     ref.current?.focus();
     ref.current?.select();
-  }, [ready, id]);
+  }, [ready, id, filled]);
   // Undo, a selection change or closing the workspace ends the edit as typed so far (after a
   // tick: StrictMode remounts at once).
   const alive = useRef(false);
@@ -658,11 +713,9 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
   const px = o.size * scale;
   const font = o.font.replace(/[\d.]+px/, `${px}px`);
   const lines = value.split('\n');
-  const raw = /\{\w+\}/.test(value);
-  // As wide as the typed text (an auto box, or tokens shown as written), else the box.
-  const textW = Math.max(...lines.map((l) => measureCss(l, font, 0))) + 2;
+  // As wide as the typed text (an auto box), else the box.
   const auto = t.sizing === 'auto' || (!t.box && !t.sizing);
-  const w = auto || raw ? Math.max(auto ? textW : f.w * scale, raw ? textW : 0) : f.w * scale;
+  const w = auto ? Math.max(...lines.map((l) => measureCss(l, font, 0))) + 2 : f.w * scale;
   const h = Math.max(f.h * scale, lines.length * LINE_HEIGHT * px);
   const fx = f.x * scale;
   const left = !auto
@@ -675,7 +728,7 @@ function InlineText({ id, layout, scale }: { id: string; layout: PosterLayout; s
   return (
     <textarea
       ref={ref}
-      className={raw ? 'ws-inline-text raw' : 'ws-inline-text'}
+      className="ws-inline-text"
       data-testid="inline-text"
       aria-label="Text"
       value={value}
@@ -925,7 +978,8 @@ export function SelectionPanel({ children }: { children?: React.ReactNode }) {
   const layout = useWorkspace((s) => s.layout);
   const doc = usePlayer((s) => s.piece.poster);
   const voices = usePlayer((s) => s.piece.voices);
-  if (!sel || !layout) return <>{children}</>;
+  // The background's settings are the poster's (Colours): its handles show on the artboard.
+  if (!sel || !layout || sel.kind === 'background') return <>{children}</>;
   let title: string;
   let body: React.ReactNode;
   if (sel.kind === 'layer') {
@@ -985,6 +1039,7 @@ function LayerPanel({
   const isLine = sel.id.startsWith('line:');
   const row = sel.row !== undefined ? layout.rows[sel.row] : undefined;
   const placed = row ? L?.frames[row.index]?.base !== undefined : false;
+  const rowShown = row ? layerRowsState(layout, entry).rows[row.index] : true;
   return (
     <>
       {sel.row !== undefined && (
@@ -1028,12 +1083,23 @@ function LayerPanel({
         </button>
       )}
       {sel.row !== undefined && <small className="hud-sample">Style: in every row.</small>}
+      {row && (
+        <Switch
+          label="Hidden in this row"
+          checked={!rowShown}
+          testId="sel-hidden-row"
+          onChange={(v) => hideInRow(layout, sel.id, row.index, v)}
+        />
+      )}
       <Switch
-        label="Hidden"
+        label={row ? 'Hidden in every row' : 'Hidden'}
         checked={hidden}
         testId="sel-hidden"
         onChange={(v) =>
-          editPoster((d) => setLayer(d, sel.id, { hidden: v || undefined }), v ? 'Hide' : 'Show')
+          editPoster(
+            (d) => setLayer(d, sel.id, { hidden: v || undefined, hiddenRows: undefined }),
+            v ? 'Hide' : 'Show',
+          )
         }
       />
       <div className="look-grid">
@@ -1148,7 +1214,7 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
         <textarea
           id={fid}
           rows={2}
-          value={t.text}
+          value={fillTokens(t.text, layout.tokens)}
           spellCheck={false}
           data-testid="sel-text"
           onChange={(e) => {
@@ -1157,9 +1223,6 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
           }}
         />
       </label>
-      <small className="hud-sample">
-        Tokens: <code>{'{name}'}</code> <code>{'{key}'}</code> <code>{'{length}'}</code>
-      </small>
       <Radios
         legend="Font"
         name={`${fid}-font`}
@@ -1550,8 +1613,12 @@ const ALIGN_BUTTONS: readonly [AlignTo, string, string][] = [
   ['bottom', 'Align bottom', '⤓'],
 ];
 
-/** Select and Text, align to the margins, snap guides, undo and redo. */
-export function ToolRow() {
+/**
+ * Select and Text, align to the margins, snap guides, undo and redo, and the caret that brings
+ * the Layers list up over the artboard (`drawer`: its element's id).
+ */
+export function ToolRow({ drawer }: { drawer?: string }) {
+  const layersOpen = useWorkspace((s) => s.layersOpen);
   const tool = useWorkspace((s) => s.tool);
   const snap = useWorkspace((s) => s.snap);
   const sel = useWorkspace((s) => s.selected);
@@ -1601,6 +1668,19 @@ export function ToolRow() {
         onChange={(on) => useWorkspace.setState({ snap: on })}
       />
       <UndoRedo />
+      {drawer && (
+        <button
+          type="button"
+          className="ws-caret"
+          aria-expanded={layersOpen}
+          aria-controls={drawer}
+          title={layersOpen ? 'Hide the layers' : 'Show the layers'}
+          data-testid="layers-toggle"
+          onClick={() => setLayersOpen(!layersOpen)}
+        >
+          Layers <span aria-hidden="true">{layersOpen ? '˅' : '˄'}</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -1609,13 +1689,16 @@ export function ToolRow() {
 // The layers list
 // ---------------------------------------------------------------------------------------------
 
+/** A show/hide toggle; `mixed` (shown in some rows): a click shows it everywhere. */
 function Eye({
   shown,
+  mixed = false,
   name,
   testId,
   onChange,
 }: {
   shown: boolean;
+  mixed?: boolean;
   name: string;
   testId: string;
   onChange: (shown: boolean) => void;
@@ -1623,13 +1706,22 @@ function Eye({
   return (
     <button
       type="button"
+      role="checkbox"
       className="ws-eye"
-      aria-pressed={shown}
-      aria-label={shown ? `Hide ${name}` : `Show ${name}`}
+      aria-checked={mixed ? 'mixed' : shown}
+      aria-label={`Show ${name}`}
       data-testid={testId}
-      onClick={() => onChange(!shown)}
+      onClick={() => onChange(mixed || !shown)}
     >
-      {shown ? 'Shown' : 'Hidden'}
+      {mixed ? (
+        <>
+          <span aria-hidden="true">◐</span> Some rows
+        </>
+      ) : shown ? (
+        'Shown'
+      ) : (
+        'Hidden'
+      )}
     </button>
   );
 }
@@ -1672,6 +1764,7 @@ export function LayersList() {
   const voices = usePlayer((s) => s.piece.voices);
   const doc = usePlayer((s) => s.piece.poster);
   const expanded = useWorkspace((s) => s.expanded);
+  const rowsOpen = useWorkspace((s) => s.rowsOpen);
   const sel = useWorkspace((s) => s.selected);
   const layout = useWorkspace((s) => s.layout);
   const parts = posterLayers({ voices });
@@ -1697,9 +1790,13 @@ export function LayersList() {
   };
   const hide = (id: string, shown: boolean) =>
     editPoster(
-      (d) => setLayer(d, id, { hidden: shown ? undefined : true }),
+      (d) => setLayer(d, id, { hidden: shown ? undefined : true, hiddenRows: undefined }),
       shown ? 'Show' : 'Hide',
     );
+  const toggleRows = (part: string) =>
+    useWorkspace.setState({
+      rowsOpen: rowsOpen.includes(part) ? rowsOpen.filter((p) => p !== part) : [...rowsOpen, part],
+    });
   const groupShown = (g: PosterGroup) => (layout ? groupVisible(layout, g) : false);
 
   return (
@@ -1745,6 +1842,10 @@ export function LayersList() {
           const open = expanded.includes(l.part);
           const listId = `layer-lines-${l.part || 'lines'}`;
           const s: PosterSelection = { kind: 'layer', id };
+          const st = layout ? layerRowsState(layout, entry(id)) : null;
+          const mixed = st?.state === 'mixed';
+          const rowsShown = mixed && rowsOpen.includes(l.part);
+          const rowsId = `layer-rows-${l.part || 'lines'}`;
           return (
             <li key={l.part} className="ws-layer" data-testid="layer-part" data-part={l.part}>
               <Row
@@ -1768,10 +1869,24 @@ export function LayersList() {
               >
                 <Eye
                   shown={entry(id)?.hidden !== true}
+                  mixed={mixed}
                   name={l.label}
                   testId="layer-eye"
                   onChange={(shown) => hide(id, shown)}
                 />
+                {mixed && (
+                  <button
+                    type="button"
+                    className="ws-rows-toggle"
+                    aria-expanded={rowsShown}
+                    aria-controls={rowsShown ? rowsId : undefined}
+                    aria-label={`${rowsShown ? 'Hide' : 'Show'} the rows of ${l.label}`}
+                    data-testid="layer-rows-toggle"
+                    onClick={() => toggleRows(l.part)}
+                  >
+                    <span aria-hidden="true">{rowsShown ? '▾' : '▸'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ws-order"
@@ -1793,6 +1908,26 @@ export function LayersList() {
                   ↓
                 </button>
               </Row>
+              {rowsShown && layout && st && (
+                <ul id={rowsId} className="ws-layer-lines" aria-label={`${l.label} by row`}>
+                  {layout.rows.map((r) => {
+                    const name = rowName(layout, r.index);
+                    return (
+                      <li key={r.key} data-testid="layer-row" data-row={r.key}>
+                        <span className="ws-layer-row">
+                          <span className="ws-layer-name">{name}</span>
+                          <Eye
+                            shown={st.rows[r.index]}
+                            name={`${l.label} in ${name}`}
+                            testId="layer-row-eye"
+                            onChange={(shown) => hideInRow(layout, id, r.index, !shown)}
+                          />
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               {open && (
                 <ul id={listId} className="ws-layer-lines">
                   {l.lines.map((v) => {
