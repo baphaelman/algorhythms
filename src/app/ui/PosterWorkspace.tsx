@@ -2,7 +2,8 @@
  * The poster workspace (PLAN.md §15 M14 "Entry", "Layout"): Export turns the editor into a
  * poster workspace. The score area becomes the artboard (the whole poster, drawn by the export's
  * own code); the right panel holds every poster option and ends with Export PNG / SVG; the
- * bottom panel holds the tools and the layers. "Back to music" (or Escape with nothing focused
+ * bottom bar holds the tools, and its caret (or a click on its empty part) slides the Layers list
+ * up over the artboard. "Back to music" (or Escape with nothing focused
  * or selected) returns to the editor, which stays mounted underneath, so its playhead and zoom
  * are kept.
  *
@@ -47,7 +48,7 @@ import { RowsGroup } from './RowsOrganize';
 import { usePictures } from '../poster-picture';
 import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
-import { artboardFit, useWorkspace } from '../poster-workspace';
+import { artboardFit, setLayersOpen, useWorkspace } from '../poster-workspace';
 import { selectionExists } from '../poster-select';
 import {
   posterAtSavePoint,
@@ -395,6 +396,44 @@ function PosterOptions({ form, disabled }: { form: ExportForm; disabled: boolean
   );
 }
 
+/** What a click on the bottom bar leaves to its own controls (not a toggle of the drawer). */
+const BAR_CONTROLS = 'button, input, label, select, textarea, a, [role="status"], .ws-drawer';
+
+/**
+ * The bottom bar: the tool row; a click on its empty part or its caret slides the Layers list up
+ * over the bottom of the artboard (again, or Escape, slides it back).
+ */
+function BottomBar() {
+  const open = useWorkspace((s) => s.layersOpen);
+  const id = useId();
+  const drawer = useRef<HTMLDivElement>(null);
+  // Closed, the list stays in the DOM (so it can slide) but is inert and hidden.
+  useLayoutEffect(() => {
+    if (drawer.current) drawer.current.inert = !open;
+  }, [open]);
+  return (
+    <section
+      className="ws-bottom ws-toolbar export-panel"
+      aria-label="Tools and layers"
+      data-open={open}
+      onClick={(e) => {
+        if ((e.target as Element).closest(BAR_CONTROLS)) return;
+        setLayersOpen(!open);
+      }}
+    >
+      <ToolRow drawer={id} />
+      <div
+        ref={drawer}
+        id={id}
+        className={open ? 'ws-drawer open' : 'ws-drawer'}
+        data-testid="layers-drawer"
+      >
+        <LayersList />
+      </div>
+    </section>
+  );
+}
+
 /** The workspace, in place of the editor while the poster surface shows. */
 export function PosterWorkspace() {
   const form = useExportUi((s) => s.form);
@@ -418,9 +457,28 @@ export function PosterWorkspace() {
         if (!e.defaultPrevented && workspaceKey(e)) e.preventDefault();
         return;
       }
-      // The armed Text tool goes back to Select first.
+      // The armed Text tool goes back to Select first, then the Layers list slides away.
       if (!e.defaultPrevented && !document.querySelector('dialog[open]') && disarmTextTool()) {
         e.preventDefault();
+        return;
+      }
+      // (Focus in the list or the bar, or nowhere in particular: a focused option in the right
+      // panel lets go first.)
+      const focused = document.activeElement;
+      if (
+        !e.defaultPrevented &&
+        !document.querySelector('dialog[open]') &&
+        useWorkspace.getState().layersOpen &&
+        (!focused ||
+          focused === document.body ||
+          focused === root.current ||
+          focused.closest('.ws-toolbar') !== null)
+      ) {
+        e.preventDefault();
+        const inside = focused?.closest('.ws-drawer');
+        setLayersOpen(false);
+        if (inside)
+          root.current?.querySelector<HTMLElement>('[data-testid="layers-toggle"]')?.focus();
         return;
       }
       const what = workspaceEscape({
@@ -479,10 +537,7 @@ export function PosterWorkspace() {
           </div>
         </div>
       </aside>
-      <section className="ws-bottom export-panel" aria-label="Tools and layers">
-        <ToolRow />
-        <LayersList />
-      </section>
+      <BottomBar />
     </main>
   );
 }

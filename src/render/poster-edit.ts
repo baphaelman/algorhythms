@@ -380,11 +380,14 @@ export function setPosterField<K extends 'size' | 'rows' | 'section' | 'pieceRan
 const rowSplit = (doc: PosterDoc | undefined): string =>
   JSON.stringify([doc?.rows ?? 1, doc?.rowsBy ?? null, doc?.section ?? null]);
 
-/** The doc without per-row placements (row blocks, layers in one row). */
+/** The doc without per-row placements (row blocks, layers in one row, layers hidden in a row). */
 export function withoutRowPlacements(doc: PosterDoc | undefined): PosterDoc | undefined {
-  if (!doc?.rowBoxes && !doc?.layers?.some((l) => l.rows)) return doc;
+  if (!doc?.rowBoxes && !doc?.layers?.some((l) => l.rows || l.hiddenRows)) return doc;
   let out = withField(doc, 'rowBoxes', undefined);
-  for (const l of doc.layers ?? []) if (l.rows) out = setLayer(out, l.id, { rows: undefined });
+  for (const l of doc.layers ?? []) {
+    if (l.rows || l.hiddenRows)
+      out = setLayer(out, l.id, { rows: undefined, hiddenRows: undefined });
+  }
   return out;
 }
 
@@ -410,6 +413,28 @@ export function setLayerRow(
   if (box) rows[row] = box;
   else delete rows[row];
   return setLayer(doc, id, { rows: Object.keys(rows).length > 0 ? rows : undefined });
+}
+
+/**
+ * Hides (or shows) layer `id` in the row with key `row`; `keys` are every row's key. Hidden in
+ * every row becomes `hidden` (no `hiddenRows`); showing a row of a hidden layer hides it in the
+ * others instead.
+ */
+export function setLayerRowHidden(
+  doc: PosterDoc | undefined,
+  id: string,
+  row: string,
+  hidden: boolean,
+  keys: readonly string[],
+): PosterDoc | undefined {
+  const l = doc?.layers?.find((x) => x.id === id);
+  const now = new Set(l?.hidden ? keys : (l?.hiddenRows ?? []).filter((k) => keys.includes(k)));
+  if (hidden) now.add(row);
+  else now.delete(row);
+  if (keys.length > 0 && keys.every((k) => now.has(k)))
+    return setLayer(doc, id, { hidden: true, hiddenRows: undefined });
+  const list = keys.filter((k) => now.has(k));
+  return setLayer(doc, id, { hidden: undefined, hiddenRows: list.length > 0 ? list : undefined });
 }
 
 /** Sets (or with undefined clears) the box of the row with key `row`, moved as a block. */

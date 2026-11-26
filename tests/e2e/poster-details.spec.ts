@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import './app-hook';
 import { chooseSegment, clickExportForDownload, setRange } from './export-diag';
-import { openPoster, workspace } from './export-open';
+import { closeLayers, openLayers, openPoster, workspace } from './export-open';
 
 const posterOf = (page: Page) =>
   page.evaluate(() =>
@@ -106,6 +106,24 @@ async function dragTo(page: Page, testId: string, fx: number, fy: number): Promi
   );
 }
 
+/** A click on the paper where nothing is (the bottom left corner, in the margins). */
+async function selectBackground(page: Page): Promise<void> {
+  const a = (await page.getByTestId('preview-canvas').boundingBox())!;
+  await page.mouse.click(a.x + 0.015 * a.width, a.y + 0.97 * a.height);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __algorhythms: { posterWorkspace: { getState(): { selected: unknown } } };
+            }
+          ).__algorhythms.posterWorkspace.getState().selected,
+      ),
+    )
+    .toEqual({ kind: 'background' });
+}
+
 const undo = (page: Page) => workspace(page).getByTestId('undo').click();
 const redo = (page: Page) => workspace(page).getByTestId('redo').click();
 
@@ -147,7 +165,9 @@ test("a switch's disclosure styles its group in place; remembered; one undo step
   expect((await posterOf(page)).groups.pulseMarks.size).toBe(3);
   await expect.poll(() => artboardSum(page)).not.toBe(before);
   // The selection panel shows the same value.
+  await openLayers(page);
   await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
+  await closeLayers(page);
   await expect(page.getByTestId('sel-size')).toHaveValue('300');
 
   await undo(page);
@@ -255,6 +275,7 @@ test('a selection takes the whole right panel; the save bar stays; clearing retu
   page,
 }) => {
   await expect(page.getByTestId('poster-options')).toBeVisible();
+  await openLayers(page);
   await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
   await expect(page.getByTestId('selection-title')).toContainText('Pulse marks');
   await expect(page.getByTestId('poster-options')).toHaveCount(0);
@@ -274,6 +295,9 @@ test('gradient handles: linear ends and stops, the radial centre; one undo step 
   await setRange(page, 'bg-angle', 90);
   await hex(page, 'bg-stop-0', '#ff0000');
   await hex(page, 'bg-stop-1', '#0000ff');
+  // Only the selected background shows its handles (owner, 2026-11-26).
+  await expect(page.getByTestId('gradient-handles')).toHaveCount(0);
+  await selectBackground(page);
   await expect(page.getByTestId('gradient-handles')).toHaveAttribute('data-shape', 'linear');
 
   // The end (right edge) dragged to the bottom: 90° → 180°, red at the top, blue at the bottom.
@@ -325,9 +349,31 @@ test('gradient handles: linear ends and stops, the radial centre; one undo step 
   expect(reddish(px[0]), String(px[0])).toBe(true);
   expect(bluish(px[1]), String(px[1])).toBe(true);
 
-  // The handles are page elements, never drawn: hidden by their switch, the artboard is the same.
+  // The handles are page elements, never drawn: deselected, they go; the artboard is the same.
   const sum = await artboardSum(page);
-  await page.getByTestId('bg-handles').click();
+  await workspace(page).focus();
+  await page.keyboard.press('Escape');
   await expect(page.getByTestId('gradient-handles')).toHaveCount(0);
   expect(await artboardSum(page)).toBe(sum);
+});
+
+test('gradient handles show only while the background is selected', async ({ page }) => {
+  await chooseSegment(page, 'look-bg', 'Gradient');
+  await expect(page.getByTestId('bg-handles-hint')).toBeVisible();
+  await expect(page.getByTestId('gradient-handles')).toHaveCount(0);
+  await selectBackground(page);
+  await expect(page.getByTestId('gradient-handles')).toBeVisible();
+  // The panel stays the poster's (the background's settings are its Colours).
+  await expect(page.getByTestId('poster-options')).toBeVisible();
+  // Selecting something else, or clearing the selection, hides them.
+  await openLayers(page);
+  await page.locator('[data-testid=layer-group][data-group=pulseMarks] .ws-layer-name').click();
+  await expect(page.getByTestId('gradient-handles')).toHaveCount(0);
+  await closeLayers(page);
+  await selectBackground(page);
+  await expect(page.getByTestId('gradient-handles')).toBeVisible();
+  await workspace(page).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('gradient-handles')).toHaveCount(0);
+  await expect(page.getByTestId('selection')).toHaveCount(0);
 });

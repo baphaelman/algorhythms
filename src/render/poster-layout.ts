@@ -715,6 +715,8 @@ export interface LayerFrame {
   rect: Rect;
   /** Moved in this row on its own (`PosterLayer.rows`): where `rect` would be. */
   base?: Rect;
+  /** Hidden in this row (`PosterLayer.hiddenRows`): not drawn, its `rowBounds` null. */
+  hidden?: true;
 }
 
 /** A music layer: a part, or a line with a box of its own. */
@@ -771,6 +773,8 @@ export interface PosterLayout {
   /** Rows by sections: the Organize list (null for equal rows). */
   sectionRows: SectionRowItem[] | null;
   fonts: { mono: string; serif: string; sans: string };
+  /** The text tokens' values (the editor shows a text filled with them). */
+  tokens: TextTokens;
   /** Line colours by pool index from the layers (`posterVoiceColors`), if any. */
   voiceColors?: (string | undefined)[];
 }
@@ -1350,15 +1354,19 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     hidden: boolean,
     colour: string | undefined,
     own: Record<string, PosterBox> | undefined,
+    off: ReadonlySet<string>,
   ): void => {
     const frames: LayerFrame[] = rows.map((r) => {
       const base = mapRect(r.plot, plotArea, box);
       const f = own?.[r.key];
-      return validBox(f)
+      const fr: LayerFrame = validBox(f)
         ? { row: r.index, rect: fromFractions(f, base), base }
         : { row: r.index, rect: base };
+      if (off.has(r.key)) fr.hidden = true;
+      return fr;
     });
     const rowBounds = rows.map((r, ri) => {
+      if (frames[ri].hidden) return null;
       let b: Rect | null = null;
       for (const v of voices) {
         const e = extentOf(v, ri);
@@ -1398,7 +1406,10 @@ export function layoutPoster(input: PosterInput): PosterLayout {
       hidden: boolean;
       colour?: string;
       rows?: Record<string, PosterBox>;
+      off: ReadonlySet<string>;
     }[] = [];
+    // Hidden in a row: the part's rows hide its split lines there too.
+    const partOff = ld?.hiddenRows ?? [];
     for (const v of all) {
       const vid = piece.voices[v].id;
       const lineDoc = layerDocs.get(`line:${vid}`);
@@ -1412,11 +1423,14 @@ export function layoutPoster(input: PosterInput): PosterLayout {
           hidden: ld?.hidden === true,
           ...(c ? { colour: c } : {}),
           ...(lineDoc.rows ? { rows: lineDoc.rows } : {}),
+          off: new Set([...partOff, ...(lineDoc.hiddenRows ?? [])]),
         });
       } else own.push(v);
     }
-    addLayer(`part:${p}`, 'part', p, own, pbox, ld?.hidden === true, ld?.colour, ld?.rows);
-    for (const s of split) addLayer(s.id, 'line', p, [s.v], s.box, s.hidden, s.colour, s.rows);
+    const off = new Set(partOff);
+    addLayer(`part:${p}`, 'part', p, own, pbox, ld?.hidden === true, ld?.colour, ld?.rows, off);
+    for (const s of split)
+      addLayer(s.id, 'line', p, [s.v], s.box, s.hidden, s.colour, s.rows, s.off);
   }
 
   // --- lines (guides, beats, markers) ---------------------------------------------------------------
@@ -1782,6 +1796,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     marks: MK,
     sectionRows: plan ? plan.items : null,
     fonts,
+    tokens,
   };
 }
 

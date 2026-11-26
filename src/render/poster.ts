@@ -247,7 +247,7 @@ export function drawPosterLayout(
       const ls = { ...layerStyle(layout, L), pass };
       for (const f of L.frames) {
         const row = layout.rows[f.row];
-        if (!(f.rect.w > 0 && f.rect.h > 0)) continue;
+        if (f.hidden || !(f.rect.w > 0 && f.rect.h > 0)) continue;
         // A row shorter than the shortest camera window is drawn wider and clipped to its frame.
         const len = Math.max(1e-9, row.end - row.start);
         const wide = Math.max(1, MIN_WINDOW / len);

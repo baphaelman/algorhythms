@@ -810,6 +810,11 @@ export const PosterSchema = z
             .optional()
             .describe('Per row key: the layer in that row, a fraction of its unmoved place.'),
           hidden: z.boolean().optional(),
+          hiddenRows: z
+            .array(z.string())
+            .max(64)
+            .optional()
+            .describe('Row keys (as `rows`) where the layer is hidden.'),
           colour: colour.optional(),
         }),
       )

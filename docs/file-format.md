@@ -6065,6 +6065,14 @@ This is the *input* form: fields with defaults are optional here.
               "hidden": {
                 "type": "boolean"
               },
+              "hiddenRows": {
+                "description": "Row keys (as `rows`) where the layer is hidden.",
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "colour": {
                 "type": "string",
                 "maxLength": 64
@@ -6668,6 +6676,14 @@ This is the *input* form: fields with defaults are optional here.
               },
               "hidden": {
                 "type": "boolean"
+              },
+              "hiddenRows": {
+                "description": "Row keys (as `rows`) where the layer is hidden.",
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               },
               "colour": {
                 "type": "string",

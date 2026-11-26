@@ -44,9 +44,11 @@ import {
 
 /**
  * What is selected: a music layer (with `row`, that layer in one row only), a row as a block,
- * a text box, a whole label or line group, or one member of a group (Alt-click).
+ * a text box, a whole label or line group, one member of a group (Alt-click), or the background
+ * (a click on the paper where nothing is: its gradient's handles show).
  */
 export type PosterSelection =
+  | { kind: 'background' }
   | { kind: 'layer'; id: string; row?: number }
   | { kind: 'row'; row: number }
   | { kind: 'text'; id: string }
@@ -81,7 +83,7 @@ export function selectionOfHit(
 
 /**
  * What a click at (x, y) selects: the topmost object; else, with two rows or more, the row
- * under it (its empty plot or label zone); else null.
+ * under it (its empty plot or label zone); else the background.
  */
 export function selectionAt(
   layout: PosterLayout,
@@ -93,7 +95,7 @@ export function selectionAt(
   const hit = hitTest(layout, x, y, tolerance);
   if (hit) return selectionOfHit(layout, hit, alt);
   const r = layout.rows.length > 1 ? rowAt(layout, x, y) : null;
-  return r ? { kind: 'row', row: r.index } : null;
+  return r ? { kind: 'row', row: r.index } : { kind: 'background' };
 }
 
 /** A text object's frame (the box its handles sit on). */
@@ -142,6 +144,15 @@ export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null)
   return f ? [f] : [];
 }
 
+/**
+ * The box the selection's outline draws (a text box's outline, else its frame): what it snaps
+ * by. Its edges are the frame's moved by a constant, so a snapped shift of it is the frame's.
+ */
+export function drawnFrame(layout: PosterLayout, sel: PosterSelection | null): Rect | null {
+  if (sel?.kind === 'text') return textOutline(layout, sel.id);
+  return selectionFrame(layout, sel);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Snapping
 // ---------------------------------------------------------------------------------------------
@@ -153,9 +164,10 @@ export interface SnapTargets {
 }
 
 /**
- * The snap lines for moving `sel`: the artboard's edges and centre, the margins (the content
- * box's edges and centre), every other layer's (or, for a layer in one row, its other rows')
- * and text box's edges and centre, and the other rows' (for a row).
+ * The snap lines for moving `sel`, on what the artboard draws: the artboard's edges and centre,
+ * the margins (the content box's edges and centre), every other layer's pieces in each row (for
+ * a layer in one row, its other rows' too), every other text box's outline (`textOutline`), and
+ * the other rows' (for a row). Each box gives its edges and centre.
  */
 export function snapTargets(layout: PosterLayout, sel: PosterSelection | null): SnapTargets {
   const W = layout.width;
@@ -172,11 +184,12 @@ export function snapTargets(layout: PosterLayout, sel: PosterSelection | null): 
     if (L.hidden) continue;
     if (sel?.kind === 'layer' && sel.id === L.id) {
       if (sel.row !== undefined) L.rowBounds.forEach((b, i) => i !== sel.row && add(b));
-    } else if (sel?.kind !== 'row') add(L.bounds);
+    } else if (sel?.kind !== 'row') L.rowBounds.forEach(add);
   }
   if (sel?.kind === 'row') for (const r of layout.rows) if (r.index !== sel.row) add(r.rect);
   for (const o of layout.objects) {
-    if (o.type === 'text' && !(sel?.kind === 'text' && sel.id === o.member)) add(o.frame);
+    if (o.type === 'text' && !(sel?.kind === 'text' && sel.id === o.member))
+      add(textOutline(layout, o.member));
   }
   return { xs, ys };
 }
@@ -443,15 +456,33 @@ export function newTextRect(layout: PosterLayout, x: number, y: number, width?: 
   };
 }
 
-/** The Text tool's ghost at the pointer (x, y): the new box's rect, snapped unless `tol` is 0. */
+/** The side space a new text box's outline adds to its frame (`textOutline`), artboard px. */
+export const newTextPad = (layout: PosterLayout): number =>
+  textPad(textDefaults('free').size * Math.min(layout.width, layout.height));
+
+/** `r` widened by `pad` on the left and right: a text frame's outline. */
+export const outlineOf = (r: Rect, pad: number): Rect => ({
+  x: r.x - pad,
+  y: r.y,
+  w: r.w + 2 * pad,
+  h: r.h,
+});
+
+/**
+ * The Text tool's ghost at the pointer (x, y): the new box's frame and the outline it will draw
+ * (`box`, what the ghost shows), snapped by that outline unless `tol` is 0.
+ */
 export function textGhost(
   layout: PosterLayout,
   x: number,
   y: number,
   tol: number,
-): { box: Rect; guides: SnapGuides } {
+): { box: Rect; frame: Rect; guides: SnapGuides } {
+  const pad = newTextPad(layout);
   const r = newTextRect(layout, x, y);
-  return tol > 0 ? snapMove(r, snapTargets(layout, null), tol) : { box: r, guides: {} };
+  if (!(tol > 0)) return { box: outlineOf(r, pad), frame: r, guides: {} };
+  const s = snapMove(outlineOf(r, pad), snapTargets(layout, null), tol);
+  return { box: s.box, frame: { ...r, x: s.box.x + pad, y: s.box.y }, guides: s.guides };
 }
 
 /**

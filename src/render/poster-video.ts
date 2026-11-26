@@ -491,7 +491,8 @@ function drawPosterThrough(
       if (st.aheadHidden) base.aheadHidden = true;
       for (const f of L.frames) {
         const row = layout.rows[f.row];
-        if (!row || !(f.rect.w > 0 && f.rect.h > 0) || !intersects(f.rect, F, pad)) continue;
+        if (!row || f.hidden || !(f.rect.w > 0 && f.rect.h > 0) || !intersects(f.rect, F, pad))
+          continue;
         const style = { ...base, heads: st.heads && f.row === rowOf };
         drawRowCrop(g, compiled, layout, row, f.rect, F, k, style, tDraw, ch, d);
       }

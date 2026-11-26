@@ -943,6 +943,11 @@ export interface PosterLayer {
    */
   rows?: Record<string, PosterBox>;
   hidden?: boolean;
+  /**
+   * Row keys (as `rows`) where the layer is hidden; `hidden` hides it everywhere. Dropped with
+   * the per-row placements when the row split changes.
+   */
+  hiddenRows?: string[];
   /** Line colour (also used by the video export). */
   colour?: string;
 }

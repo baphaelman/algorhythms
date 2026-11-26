@@ -94,12 +94,13 @@ describe('selecting per row', () => {
     expect(selectionFrame(L, { kind: 'layer', id })).toEqual(layerOf(L, id)!.bounds);
   });
 
-  it('with one row a click picks the whole part and empty space nothing', () => {
+  it('with one row a click picks the whole part and empty space the background', () => {
     const one = lay({});
     const p = pieceAt(one, id, 0);
     expect(selectionAt(one, p.x, p.y, false)).toEqual({ kind: 'layer', id });
     const e = emptyAt(one, 0);
-    expect(selectionAt(one, e.x, e.y, false)).toBeNull();
+    expect(selectionAt(one, e.x, e.y, false)).toEqual({ kind: 'background' });
+    expect(selectionFrame(one, { kind: 'background' })).toBeNull();
   });
 
   it('a piece snaps to its other rows, not to itself', () => {

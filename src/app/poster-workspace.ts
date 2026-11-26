@@ -30,8 +30,31 @@ export interface WorkspaceState {
   editing: string | null;
   /** A size, rows or margins change happened: "Re-fit layout" shows if text covers the music. */
   refit: boolean;
-  /** The background gradient's handles show on the artboard (Colours → Handles on the poster). */
-  gradientHandles: boolean;
+  /** Parts whose per-row eyes are listed (rows that disagree). */
+  rowsOpen: readonly string[];
+  /** The Layers list is up over the artboard (the bottom bar's caret; remembered per viewer). */
+  layersOpen: boolean;
+}
+
+const LAYERS_KEY = 'algorhythms.posterLayersOpen';
+
+function loadLayersOpen(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(LAYERS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Opens or closes the Layers list (remembered). */
+export function setLayersOpen(open: boolean): void {
+  useWorkspace.setState({ layersOpen: open });
+  try {
+    if (open) globalThis.localStorage?.setItem(LAYERS_KEY, '1');
+    else globalThis.localStorage?.removeItem(LAYERS_KEY);
+  } catch {
+    // Not remembered (private mode, blocked storage): still open for this visit.
+  }
 }
 
 export const useWorkspace = create<WorkspaceState>()(() => ({
@@ -43,7 +66,8 @@ export const useWorkspace = create<WorkspaceState>()(() => ({
   guides: null,
   editing: null,
   refit: false,
-  gradientHandles: true,
+  rowsOpen: [],
+  layersOpen: loadLayersOpen(),
 }));
 
 /** Padding around the poster on the artboard, CSS px. */
@@ -93,6 +117,32 @@ export function posterLayers(piece: Pick<Piece, 'voices'>): Layer[] {
     layer.lines.push({ id: v.id, label: v.name || `Line ${i + 1}` });
   });
   return out;
+}
+
+/** A row's name in the layers list: its label and section ("A · Verse"), else "Row 2". */
+export function rowName(layout: PosterLayout, row: number): string {
+  const r = layout.rows[row];
+  const item =
+    r?.section !== undefined ? layout.sectionRows?.find((i) => i.id === r.section) : null;
+  const parts = [r?.name?.trim(), item?.section.trim()].filter((x): x is string => !!x);
+  const uniq = parts.filter((x, i) => parts.indexOf(x) === i);
+  return uniq.length > 0 ? uniq.join(' · ') : `Row ${row + 1}`;
+}
+
+/**
+ * Where layer `id` (as `PosterDoc.layers`) shows, by row: 'shown', 'hidden' (everywhere, or
+ * in every row) or 'mixed' (hidden in some rows), and each row's own state.
+ */
+export function layerRowsState(
+  layout: PosterLayout,
+  layer: { hidden?: boolean; hiddenRows?: readonly string[] } | undefined,
+): { state: 'shown' | 'hidden' | 'mixed'; rows: boolean[] } {
+  const keys = layout.rows.map((r) => r.key);
+  if (layer?.hidden) return { state: 'hidden', rows: keys.map(() => false) };
+  const off = new Set(layer?.hiddenRows ?? []);
+  const rows = keys.map((k) => !off.has(k));
+  const n = rows.filter((x) => !x).length;
+  return { state: n === 0 ? 'shown' : n === rows.length ? 'hidden' : 'mixed', rows };
 }
 
 /** "1 line", "4 lines". */

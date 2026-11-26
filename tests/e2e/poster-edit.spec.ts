@@ -9,7 +9,14 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { chooseSegment, clickExportForDownload, setRange } from './export-diag';
-import { addressSettled, openPoster, switchMode, seekPreview } from './export-open';
+import {
+  addressSettled,
+  closeLayers,
+  openLayers,
+  openPoster,
+  switchMode,
+  seekPreview,
+} from './export-open';
 import type { Piece } from '../../src/core/types';
 import type * as ExportRun from '../../src/app/export-run';
 import type * as Poster from '../../src/app/poster-export';
@@ -345,7 +352,8 @@ test('the Text tool adds a text box edited in place; style; Delete removes it', 
   await expect(page.getByTestId('layer-text')).toHaveCount(3);
   const sel = (await selected(page)) as { kind: string; id: string };
   expect(sel.kind).toBe('text');
-  await expect(page.getByTestId('sel-text')).toHaveValue('Hello {key}');
+  // The panel shows the words drawn: the token filled.
+  await expect(page.getByTestId('sel-text')).toHaveValue(/^Hello [A-G]/);
   // The token is filled on the poster.
   const key = await page.evaluate(
     () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.key,
@@ -439,11 +447,12 @@ test('labels and their lines switch apart: sections, moments, guides', async ({ 
   await expect.poll(() => count('momentLabels')).toBeGreaterThan(0);
   expect(await count('momentLines')).toBe(0);
   // The layers list shows the same switches.
+  await openLayers(page);
   await expect(
     page.locator(
       '[data-testid="layer-group"][data-group="sectionLabels"] [data-testid="layer-eye"]',
     ),
-  ).toHaveAttribute('aria-pressed', 'false');
+  ).toHaveAttribute('aria-checked', 'false');
 });
 
 test('snap guides: on, a dragged text box lands on the centre line; off, it does not; align', async ({
@@ -505,6 +514,7 @@ test('snap guides: on, a dragged text box lands on the centre line; off, it does
 test('the layers list selects, hides and reorders; selecting there selects on the artboard', async ({
   page,
 }) => {
+  await openLayers(page);
   const parts = page.getByTestId('layer-part');
   const n = await parts.count();
   expect(n).toBeGreaterThan(1);
@@ -564,8 +574,16 @@ test('every edit kind is one undo step (M14 acceptance)', async ({ page }) => {
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('inline-text')).toHaveCount(0);
   };
+  /** Something done in the Layers list, which then slides away (it covers the artboard). */
+  const inLayers = async (act: () => Promise<void>) => {
+    await openLayers(page);
+    await act();
+    await closeLayers(page);
+  };
   const selectTitle = () =>
-    page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click();
+    inLayers(() =>
+      page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click(),
+    );
   // [name, set-up (no edit), the edit]
   const edits: [string, (() => Promise<void>) | null, () => Promise<void>][] = [
     [
@@ -637,7 +655,8 @@ test('every edit kind is one undo step (M14 acceptance)', async ({ page }) => {
     [
       'layer order',
       null,
-      () => page.getByTestId('layer-part').nth(0).getByTestId('layer-forward').click(),
+      () =>
+        inLayers(() => page.getByTestId('layer-part').nth(0).getByTestId('layer-forward').click()),
     ],
     ['text add', null, addText],
     [
@@ -762,7 +781,9 @@ test('a recoloured layer shows in the video preview', async ({ page }) => {
   const POSTER = '[data-testid=poster-workspace] [data-testid=preview-canvas]';
   const VIDEO = '[data-testid=video-workspace] [data-testid=preview-canvas]';
   const base = await magenta(page, POSTER);
+  await openLayers(page);
   await page.getByTestId('layer-part').nth(0).locator('.ws-layer-name').click();
+  await closeLayers(page);
   await page.getByTestId('sel-colour-hex').fill('#ff00ff');
   await expect
     .poll(async () => (await posterDoc(page))?.layers?.some((l) => l.colour === '#ff00ff'))

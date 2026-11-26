@@ -596,6 +596,10 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
   await page.getByTestId('look-hud-button').focus();
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('look-hud-button')).toHaveAttribute('aria-expanded', 'true');
+  // The Layers list, up over the artboard, is in the tab order after its caret.
+  await page.getByTestId('layers-toggle').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('layers-toggle')).toHaveAttribute('aria-expanded', 'true');
   await page.getByTestId('export-psize').locator('input:checked').focus();
 
   const stops: { id: string; ring: boolean }[] = [];
@@ -644,6 +648,7 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'look-reset',
     'export-run',
     'tool-select',
+    'layers-toggle',
     'layer-text-row',
     'layer-part-row',
   ];
@@ -654,9 +659,13 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
   ).toBe(true);
   expect(at).toEqual([...at].sort((a, b) => a - b));
   expect(stops.filter((s) => !s.ring).map((s) => s.id)).toEqual([]);
-  // Escape lets go of the focused control, then returns to the music; focus on the menu.
+  // Escape lets go of the focused control, then slides the Layers list away, then returns to the
+  // music; focus on the menu.
   await page.getByTestId('export-prows').focus();
   await page.keyboard.press('Escape');
+  await expect(workspace(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('layers-toggle')).toHaveAttribute('aria-expanded', 'false');
   await expect(workspace(page)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(workspace(page)).toBeHidden();

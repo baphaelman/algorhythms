@@ -11,10 +11,13 @@ import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece, PosterDoc, PosterText } from '../../../src/core/types';
 import {
+  drawnFrame,
   newText,
   newTextRect,
   placeRect,
   selectedBoxes,
+  snapMove,
+  snapTargets,
   textGhost,
   textOutline,
   withTextSize,
@@ -173,13 +176,55 @@ describe('moving and resizing a sized box', () => {
 });
 
 describe('the ghost', () => {
-  it('is the new box at the pointer, snapped to the margins (not with tol 0)', () => {
+  it('is the new box at the pointer, its drawn outline snapped to the margins (not with tol 0)', () => {
     const c = L0.content;
-    const g = textGhost(L0, c.x + 3, 700, 6);
+    const pad = textPad(0.03 * S);
+    const g = textGhost(L0, c.x + 3 + pad, 700, 6);
+    // The ghost shows the outline the box will draw; that outline lands on the guide.
     expect(g.box.x).toBeCloseTo(c.x, 6);
     expect(g.guides.x).toBeCloseTo(c.x, 6);
-    expect(textGhost(L0, c.x + 3, 700, 0).box.x).toBeCloseTo(c.x + 3, 6);
+    expect(g.frame.x).toBeCloseTo(c.x + pad, 6);
+    expect(g.box.w).toBeCloseTo(g.frame.w + 2 * pad, 6);
+    const free = textGhost(L0, c.x + 3, 700, 0);
+    expect(free.frame.x).toBeCloseTo(c.x + 3, 6);
+    expect(free.box.x).toBeCloseTo(c.x + 3 - pad, 6);
     expect(g.box.h).toBeCloseTo(newTextRect(L0, 0, 0).h, 6);
+    // Placed where the ghost was, the box's outline is the ghost.
+    const L = lay(add(newText(L0, 'text1', g.frame.x, g.frame.y)));
+    const o = textOutline(L, 'text1')!;
+    expect(o.x).toBeCloseTo(g.box.x, 3);
+    expect(o.w).toBeCloseTo(g.box.w, 3);
+  });
+});
+
+describe('snapping on the outlines drawn (owner: guides land on the box edges you see)', () => {
+  // Two auto boxes: "Hi" moves, "Other" is the target.
+  let doc = add({ ...newText(L0, 'a', 600, 600), text: 'Hi' });
+  doc = add({ ...newText(L0, 'b', 1500, 900), text: 'Other' }, doc);
+  const L = lay(doc);
+
+  it('targets are the other boxes’ outlines, not their frames', () => {
+    const T = snapTargets(L, { kind: 'text', id: 'a' });
+    const ob = textOutline(L, 'b')!;
+    const fb = textObj(L, 'b').frame;
+    expect(T.xs).toContain(ob.x + ob.w);
+    expect(T.xs).not.toContain(fb.x + fb.w);
+  });
+
+  it('a moved box’s outline edge lands exactly on the guide, as drawn after the move', () => {
+    const sel = { kind: 'text', id: 'a' } as const;
+    const frame = textObj(L, 'a').frame;
+    const drawn = drawnFrame(L, sel)!;
+    expect(drawn).toEqual(selectedBoxes(L, sel)[0]);
+    const ob = textOutline(L, 'b')!;
+    // Drag "Hi" so its outline's right edge is 4 px short of "Other"'s right edge.
+    const dx = ob.x + ob.w - 4 - (drawn.x + drawn.w);
+    const at = { ...drawn, x: drawn.x + dx };
+    const s = snapMove(at, snapTargets(L, sel), 6);
+    expect(s.guides.x).toBeCloseTo(ob.x + ob.w, 6);
+    const to = { ...frame, x: frame.x + dx + (s.box.x - at.x) };
+    const after = textOutline(lay(placeRect(doc, L, sel, frame, to)), 'a')!;
+    expect(after.x + after.w).toBeCloseTo(s.guides.x!, 3);
   });
 });
 

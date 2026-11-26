@@ -137,6 +137,7 @@
 /* The Text tool's ghost: the new box where a click puts it ("Text" at its size and font). */
 .ws-ghost {
   position: absolute;
+  box-sizing: border-box;
   pointer-events: none;
   white-space: pre;
   overflow: visible;
@@ -164,8 +165,9 @@
   position: absolute;
   min-width: 2px;
   min-height: 2px;
+  /* Centred on the box's edge: snap guides land on the line drawn. */
   outline: 1.5px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: -0.75px;
 }
 
 .ws-handle {
@@ -210,12 +212,14 @@
   top: 0;
   bottom: 0;
   width: 1px;
+  margin-left: -0.5px;
 }
 
 .ws-guide-y {
   left: 0;
   right: 0;
   height: 1px;
+  margin-top: -0.5px;
 }
 
 .ws-inline-text {
@@ -241,16 +245,6 @@
 .ws-inline-text::selection {
   color: transparent;
   background: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-
-/* Tokens show as written, on the paper, while typed. */
-.ws-inline-text.raw {
-  color: var(--ink);
-  background: var(--paper);
-}
-
-.ws-inline-text.raw::selection {
-  color: var(--ink);
 }
 
 .ws-refit {
@@ -590,6 +584,65 @@
   background: var(--paper);
 }
 
+/* The poster's bottom bar: the tool row; a click on its empty part opens the Layers list. */
+.ws-bottom.ws-toolbar {
+  position: relative;
+  z-index: 3;
+  max-height: none;
+  cursor: pointer;
+}
+
+.ws-toolbar .ws-tools {
+  border-bottom: 0;
+}
+
+.ws-toolbar :is(.ws-tools > *, .ws-drawer) {
+  cursor: auto;
+}
+
+.ws-caret {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+/* The Layers list slides up out of the bar, over the bottom of the artboard. */
+.ws-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ws-drawer > .ws-layers {
+  max-height: min(40vh, 320px);
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 0.12);
+  pointer-events: auto;
+  transform: translateY(100%);
+  visibility: hidden;
+  transition:
+    transform 0.18s ease,
+    visibility 0s linear 0.18s;
+}
+
+.ws-drawer.open > .ws-layers {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform 0.18s ease,
+    visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-drawer > .ws-layers,
+  .ws-drawer.open > .ws-layers {
+    transition: none;
+  }
+}
+
 .ws-tools {
   flex: none;
   display: flex;
@@ -696,7 +749,8 @@
   padding-left: 0;
 }
 
-.ws-layer-toggle {
+.ws-layer-toggle,
+.ws-rows-toggle {
   min-height: 26px;
   width: 26px;
   padding: 0;
