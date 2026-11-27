@@ -14,13 +14,17 @@ import { editPoster } from '../poster-sync';
 import { useWorkspace } from '../poster-workspace';
 import { usePlayer } from '../store';
 import { Switch } from './export-controls';
+import { useSearchReveal, useSearching } from './PanelSearch';
 import { GroupStyleFields, groupVisible } from './PosterEditing';
 
 const panelId = (id: DetailsId) => `details-${id}-panel`;
 
 /** The disclosure beside a switch: opens its group's style below. */
 export function DetailsButton({ id, disabled }: { id: DetailsId; disabled?: boolean }) {
-  const open = useDetails((s) => s.open.includes(id));
+  const open = useSearchReveal(
+    `details-${id}`,
+    useDetails((s) => s.open.includes(id)),
+  );
   const { name } = DETAILS[id];
   return (
     <button
@@ -44,7 +48,9 @@ export function DetailsPanel({ id }: { id: DetailsId }) {
   const open = useDetails((s) => s.open.includes(id));
   const layout = useWorkspace((s) => s.layout);
   const doc = usePlayer((s) => s.piece.poster);
-  if (!open || !layout) return null;
+  // While searching, closed details render too, so a match inside shows (the search hides the rest).
+  const searching = useSearching();
+  if (!(open || searching) || !layout) return null;
   const { name, groups } = DETAILS[id];
   return (
     <div
@@ -53,6 +59,7 @@ export function DetailsPanel({ id }: { id: DetailsId }) {
       role="group"
       aria-label={`${name} style`}
       data-testid={`details-panel-${id}`}
+      data-search-reveal={`details-${id}`}
     >
       {groups.map((g: PosterGroup) => (
         <div key={g} className="ws-details-group">
@@ -121,9 +128,9 @@ export function LabelLineToggles({ disabled }: { disabled: boolean }) {
     <fieldset className="field ws-split" disabled={disabled} data-testid="label-line-toggles">
       <legend>Labels and lines</legend>
       {SPLIT.map((r) => (
-        <div key={r.name} className="ws-split-block">
+        <div key={r.name} className="ws-split-block" data-search="">
           <div className="ws-split-row">
-            <span>{r.name}</span>
+            <span data-search-label>{r.name}</span>
             {[r.labels, r.lines].map((g) => (
               <span key={g} className="look-switch-row">
                 <Switch

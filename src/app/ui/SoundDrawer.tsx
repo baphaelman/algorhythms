@@ -90,6 +90,7 @@ import { hasParts } from '../editor/parts';
 import { timbreOptions } from '../editor/voices';
 import { pushNotice, usePlayer } from '../store';
 import { useVoicesDrawer } from './VoicesDrawer';
+import { PanelSearch } from './PanelSearch';
 import './sound.css';
 
 // One bottom drawer at a time: opening Notes closes Sound and the other way round.
@@ -212,7 +213,7 @@ function Row({
 }) {
   const value = valueAt(timbre, ctl.path) ?? ctl.fallback;
   return (
-    <label className="sd-row">
+    <label className="sd-row" data-search="">
       <span className="sd-label">{ctl.label}</span>
       <Slider
         ctl={ctl}
@@ -477,7 +478,7 @@ function MixRow({
       ? ctl.label
       : `${title} ${ctl.label.toLowerCase()}`;
   return (
-    <label className="sd-row">
+    <label className="sd-row" data-search="">
       <span className="sd-label">{ctl.label}</span>
       <GestureRange
         position={positionOf(ctl, value)}
@@ -509,7 +510,7 @@ function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; pa
       {parts && (
         <fieldset className="sd-section" data-section="mix-level">
           <legend>Level</legend>
-          <label className="sd-row">
+          <label className="sd-row" data-search="">
             <span className="sd-label">Level normalisation</span>
             <select
               aria-label="Level normalisation"
@@ -537,6 +538,7 @@ function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; pa
             <button
               type="button"
               className="sd-reset"
+              data-search-skip
               data-testid={`mx-${section}-reset`}
               disabled={isSectionDefault(mix, section)}
               title={`Put the default ${title.toLowerCase()} settings back`}
@@ -549,7 +551,7 @@ function Master({ mix, view, parts }: { mix: MixSettings; view: ViewSettings; pa
             <MixRow key={c.id} ctl={c} title={title} mix={mix} view={view} />
           ))}
           {section === 'sends' && (
-            <label className="sd-row">
+            <label className="sd-row" data-search="">
               <span className="sd-label">Auto pan</span>
               <select
                 aria-label="Auto pan"
@@ -783,25 +785,27 @@ export function SoundDrawer() {
           ×
         </button>
       </header>
-      {tab === 'master' ? (
-        <div
-          className="sd-body"
-          id="sound-panel"
-          role="tabpanel"
-          aria-labelledby="sound-tab-master"
-        >
-          <Master mix={piece.mix} view={piece.view} parts={hasParts(piece)} />
-        </div>
-      ) : (
-        <div
-          className="sd-body"
-          id="sound-panel"
-          role="tabpanel"
-          aria-labelledby="sound-tab-timbre"
-        >
-          <TimbreBody timbre={timbre} name={name} />
-        </div>
-      )}
+      <PanelSearch scope="sound" label="the sound drawer" priority={1}>
+        {tab === 'master' ? (
+          <div
+            className="sd-body"
+            id="sound-panel"
+            role="tabpanel"
+            aria-labelledby="sound-tab-master"
+          >
+            <Master mix={piece.mix} view={piece.view} parts={hasParts(piece)} />
+          </div>
+        ) : (
+          <div
+            className="sd-body"
+            id="sound-panel"
+            role="tabpanel"
+            aria-labelledby="sound-tab-timbre"
+          >
+            <TimbreBody timbre={timbre} name={name} />
+          </div>
+        )}
+      </PanelSearch>
     </section>
   );
 }
@@ -940,7 +944,7 @@ function TimbreBody({ timbre, name }: { timbre: Timbre; name: string }) {
         toggle={{ on: timbre.noise !== undefined, set: setNoiseOn }}
       />
       <Section title="Articulation" section="articulation" timbre={timbre} name={name}>
-        <label className="sd-row">
+        <label className="sd-row" data-search="">
           <span className="sd-label">Strike</span>
           <select
             aria-label="Strike"

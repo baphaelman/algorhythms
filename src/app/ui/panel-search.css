@@ -1,0 +1,87 @@
+/* Search in the editors' side panels (PanelSearch.tsx). */
+
+/* The scope wraps the panel's own children without a box of its own. */
+.panel-search-scope {
+  display: contents;
+}
+
+[data-search-hidden] {
+  display: none !important;
+}
+
+/* Pinned at the panel's top while the settings scroll under it. */
+.panel-search {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 14px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.panel-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  font: 13px/1.2 var(--f-sans);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+.panel-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.panel-search-x {
+  flex: none;
+  min-height: 24px;
+  width: 24px;
+  padding: 0;
+}
+
+.panel-search-none {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+::highlight(panel-search) {
+  background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
+}
+
+/* The inspector pads its column: the box spans it. */
+.slot.inspector > .panel-search {
+  margin: 0 -4px 6px -14px;
+}
+
+/* The sound drawer's box sits under its header, as narrow as a side panel. */
+.sound-drawer > .panel-search {
+  padding: 6px 12px;
+  background: var(--panel);
+}
+
+.sound-drawer > .panel-search input {
+  max-width: 300px;
+}
+
+/* Stacked workspace (narrow window): pinned under the sticky artboard. */
+@media (max-width: 1099px) {
+  .ws-side > .panel-search {
+    top: clamp(160px, 34vh, 420px);
+  }
+}

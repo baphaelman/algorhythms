@@ -33,6 +33,8 @@ interface Base {
   label: string;
   /** A tooltip. */
   hint?: string;
+  /** Words that find it in the panel's search but aren't shown. */
+  keywords?: string;
   /** The formats that show it. */
   kinds: readonly LookKind[];
 }
@@ -143,6 +145,7 @@ export const posterAheadControl: LookSlider = {
   apply: (_form, n) =>
     Number.isFinite(n) ? { videoAheadPoster: Math.min(100, Math.max(0, Math.round(n))) } : {},
   text: (n) => (n <= 0 ? 'Hidden' : n >= 100 ? 'Full' : `${Math.round(n)} %`),
+  keywords: 'future reveal draw',
   hint: 'Over the poster: 0 % draws the poster as the music plays; 100 % shows it whole.',
 };
 
@@ -157,12 +160,14 @@ const futureControl: LookSlider = {
   value: (form) => futurePercent(form.look),
   apply: (form, n) => (Number.isFinite(n) ? look(form, futureFromPercent(n)) : {}),
   text: (n) => (n <= 0 ? 'Hidden' : n >= 100 ? 'Full' : `${Math.round(n)} %`),
+  keywords: 'future reveal',
 };
 
 const followAtControl: LookSlider = {
   type: 'slider',
   id: 'follow-at',
   label: 'Playhead at',
+  keywords: 'follow position',
   kinds: VIDEO,
   min: FOLLOW_AT_MIN,
   max: FOLLOW_AT_MAX,
@@ -182,6 +187,7 @@ const widthControl: LookSlider = {
   type: 'slider',
   id: 'width',
   label: 'Line width',
+  keywords: 'thickness stroke',
   kinds: BOTH,
   min: LINE_SCALE_MIN,
   max: LINE_SCALE_MAX,
@@ -223,7 +229,19 @@ function amount(
  * The Look's controls in dialog order (Theme, the HUD and the Colours group, which holds line
  * colours and the poster's transparent background, are separate controls).
  */
-export const LOOK_CONTROLS: readonly LookControl[] = [
+/** Search keywords (the panels' search) of the controls made by `segments` and `onOff`. */
+const KEYWORDS: Readonly<Record<string, string>> = {
+  guides: 'hz pitch grid',
+  beats: 'bars grid tempo',
+  moments: 'markers sections labels',
+  playhead: 'cursor',
+  level: 'loudness brightness opacity',
+  thickness: 'width weight',
+  pulse: 'rhythm hits',
+  'min-opacity': 'brightness',
+};
+
+const CONTROLS: readonly LookControl[] = [
   segments(
     'guides',
     'Guides',
@@ -268,6 +286,7 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     type: 'flags',
     id: 'heads',
     label: 'Heads',
+    keywords: 'readout labels frequency',
     kinds: VIDEO,
     flags: [
       { id: 'dots', label: 'Dots', key: 'dots' },
@@ -276,8 +295,8 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     ],
   },
   widthControl,
-  amount('glow', 'Glow', 'glow', 'Soft light around the lines.'),
-  amount('vignette', 'Vignette', 'vignette', 'Darkens the corners.'),
+  { ...amount('glow', 'Glow', 'glow', 'Soft light around the lines.'), keywords: 'bloom' },
+  { ...amount('vignette', 'Vignette', 'vignette', 'Darkens the corners.'), keywords: 'corners' },
   amount(
     'min-opacity',
     'Minimum line opacity',
@@ -285,6 +304,14 @@ export const LOOK_CONTROLS: readonly LookControl[] = [
     'Sounding lines are drawn at least this bright, so gated parts stay bold between hits.',
   ),
 ];
+
+/**
+ * The Look's controls in dialog order (Theme, the HUD and the Colours group, which holds line
+ * colours and the poster's transparent background, are separate controls).
+ */
+export const LOOK_CONTROLS: readonly LookControl[] = CONTROLS.map((c) =>
+  KEYWORDS[c.id] ? { ...c, keywords: c.keywords ?? KEYWORDS[c.id] } : c,
+);
 
 /** The controls a format shows. */
 export function lookControls(kind: LookKind): LookControl[] {

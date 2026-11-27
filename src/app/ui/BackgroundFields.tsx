@@ -55,7 +55,9 @@ function Slider({
   const id = useId();
   return (
     <>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} data-search="">
+        {label}
+      </label>
       <div className="field-row look-range">
         <input
           id={id}
@@ -196,7 +198,9 @@ function StopRows({
           if (hex) onColor(hex);
         }}
       />
-      <label htmlFor={id}>Position</label>
+      <label htmlFor={id} data-search="">
+        Position
+      </label>
       <div className="field-row look-range">
         <input
           id={id}
@@ -264,7 +268,9 @@ export function PictureFields() {
     editPosterRun(`picture:${key}`, (d) => patchPicture(d, p), 'Background picture');
   return (
     <>
-      <span className="look-label">Picture</span>
+      <span className="look-label" data-search="image photo">
+        Picture
+      </span>
       <div className="field-row" data-testid="bg-picture" data-set={picture ? 'yes' : 'no'}>
         <input
           ref={file}

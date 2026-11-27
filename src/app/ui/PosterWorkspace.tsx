@@ -79,6 +79,7 @@ import {
 import { GradientHandles } from './GradientHandles';
 import { DetailsButton, DetailsPanel, LabelLineToggles } from './PosterDetails';
 import type { DetailsId } from '../poster-details';
+import { PanelSearch } from './PanelSearch';
 import './workspace.css';
 
 /** Back to the editor; focus returns to the menu button (where Export was chosen). */
@@ -579,9 +580,11 @@ export function PosterWorkspace() {
     >
       <Artboard form={form} runtime={runtime} />
       <aside className="ws-side export-panel" aria-label="Poster options">
-        <SelectionPanel>
-          <PosterOptions form={form} disabled={running} />
-        </SelectionPanel>
+        <PanelSearch scope="poster" label="Poster options">
+          <SelectionPanel>
+            <PosterOptions form={form} disabled={running} />
+          </SelectionPanel>
+        </PanelSearch>
         <PosterSaveBar disabled={running} />
         <div className="ws-foot">
           <RunStatus run={run}>
