@@ -229,6 +229,8 @@ export class Graph {
   private loopEnd = -1;
   private pendingPlay = -1;
   private pendingPos = -1;
+  /** Fade-out of the pending pause, frames (`pause(fade)`). */
+  private pauseFadeFrames = 0;
   private pendingSwap: PreparedScore | null = null;
   /** Smoothed g_n per normalisation group (index 0: every voice when not per part). */
   private readonly gnVal = new Float64Array(DSP_MAX_VOICES).fill(1);
@@ -451,9 +453,14 @@ export class Graph {
     return this.pendingPlay >= 0 || this.pendingPos >= 0;
   }
 
-  /** Pauses at the next block with a 5 ms fade-out; FX tails keep ringing. */
-  pause(): void {
+  /**
+   * Pauses at the next block with a 5 ms fade-out (or `fade` seconds, at least that); FX tails
+   * keep ringing.
+   */
+  pause(fade?: number): void {
     this.pendingPlay = 0;
+    this.pauseFadeFrames =
+      fade !== undefined && fade > SEEK_FADE ? Math.round(fade * this.sampleRate) : 0;
   }
 
   /** Moves the playhead; while playing, old and new positions crossfade over 5 ms. */
@@ -1560,7 +1567,9 @@ export class Graph {
     const pos = moving ? this.pendingPos : this.pieceFrame;
     if (this.playing) {
       if (!wantPlay || moving) {
-        if (!this.fadeOutMains(this.seekFadeFrames, false)) return; // retry next block
+        const frames =
+          !wantPlay && this.pauseFadeFrames > 0 ? this.pauseFadeFrames : this.seekFadeFrames;
+        if (!this.fadeOutMains(frames, false)) return; // retry next block
       }
       if (!wantPlay) {
         this.playing = false;
@@ -1582,6 +1591,7 @@ export class Graph {
     this.prevPieceFrame = this.pieceFrame;
     this.pendingPlay = -1;
     this.pendingPos = -1;
+    this.pauseFadeFrames = 0;
   }
 
   private checkLoopAndEnd(): void {

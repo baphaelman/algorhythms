@@ -158,7 +158,7 @@ const targetKey = (t: VoiceSelector | undefined): string => JSON.stringify(t ?? 
 const countText = (n: number): string => (n === 1 ? 'one note' : `${n} notes`);
 
 /** The chord part of a harmony label: "ii7 · Dm7" → "Dm7". */
-function chordPart(label: string): string {
+export function chordPart(label: string): string {
   const dot = label.indexOf(' · ');
   return dot < 0 ? label : label.slice(dot + 3);
 }

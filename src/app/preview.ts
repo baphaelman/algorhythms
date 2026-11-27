@@ -1,8 +1,9 @@
 /**
- * Score previews (PLAN.md §11.3; owner 2026-11-21: silent): hovering a palette item or a next-move
- * suggestion, or dragging a palette item over the score or lane, shows what the moment would do
- * as ghost lines on the score from its time, and as a ghost item on the lane (its marker, label
- * and transition bar). Nothing sounds. Escape, leaving and dropping clear it.
+ * Score previews (PLAN.md §11.3): hovering a palette item or a next-move suggestion, or dragging a
+ * palette item over the score or lane, shows what the moment would do as ghost lines on the score
+ * from its time, and as a ghost item on the lane (its marker, label and transition bar). Escape,
+ * leaving and dropping clear it. A hovered card also sounds (M13 "Hover to hear",
+ * ./hover-sound.ts) from the same compile, after the same dwell.
  *
  * A preview compiles a temporary piece with the moment inserted; the score loop (./loop.ts) draws
  * its lines from `from` on top of the real score. The store, the undo history, the saved piece and
@@ -20,8 +21,8 @@ import { paletteMoment } from './editor/row-palette';
 import { PROBE_ID, addTime } from './editor/palette-effects';
 import { usePlayer } from './store';
 
-/** Hover time before a preview starts, ms. */
-export const PREVIEW_DELAY_MS = 300;
+/** Hover (or focus) time before a card's preview and its sound start, ms (M13: was 300). */
+export const PREVIEW_DELAY_MS = 250;
 
 /** The previewed score and where its ghost lines start. */
 export interface PreviewGhost {
@@ -106,7 +107,17 @@ export function startMomentPreview(
 
 /** Escape clears a hover preview as well as a drag's (../palette-drop.ts also cancels the drop). */
 function onEscape(e: KeyboardEvent): void {
-  if (e.key === 'Escape') stopPreview();
+  if (e.key === 'Escape') {
+    stopPreview();
+    onStop?.();
+  }
+}
+
+let onStop: (() => void) | null = null;
+
+/** Registers what Escape also stops (./hover-sound.ts's sound; avoids an import cycle). */
+export function onPreviewEscape(fn: () => void): void {
+  onStop = fn;
 }
 
 /** Clears the preview (if any). */

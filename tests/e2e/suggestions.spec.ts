@@ -152,7 +152,9 @@ test('appending past an explicit end extends the piece', async ({ page }) => {
   expect(diags).not.toContain('after-end');
 });
 
-test('hovering a suggestion previews it silently without touching the piece', async ({ page }) => {
+test('hovering a suggestion previews and sounds it without touching the piece', async ({
+  page,
+}) => {
   await open(page);
   await seek(page, 1);
   await expect
@@ -168,11 +170,25 @@ test('hovering a suggestion previews it silently without touching the piece', as
   await expect.poll(async () => (await previewOf(page)).label).toBe(label);
   await expect.poll(async () => (await previewOf(page)).shown).toBe(true);
   expect((await previewOf(page)).from).toBeCloseTo(t, 3);
-  // Silent (owner 2026-11-21): the engine is not playing.
-  expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
+  // M13 "Hover to hear" (reverts "silent", owner 2026-11-21): it plays as an audition.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const a = (
+          window.__algorhythms as unknown as { audition: { active: boolean; kind: string } }
+        ).audition;
+        return a.active && a.kind;
+      }),
+    )
+    .toBe('hover');
 
   await page.mouse.move(2, 400);
   await expect.poll(async () => (await previewOf(page)).label).toBeNull();
+  expect(
+    await page.evaluate(
+      () => (window.__algorhythms as unknown as { audition: { active: boolean } }).audition.active,
+    ),
+  ).toBe(false);
   expect(await page.evaluate(() => window.__algorhythms!.store.getState().piece)).toEqual(piece);
 });
 

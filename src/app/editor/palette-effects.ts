@@ -14,7 +14,10 @@ import type { CompiledScore, MomentType, Piece, Seconds } from '../../core/types
 import { usePlayer } from '../store';
 import { addTimeIn } from './new-moment';
 import { paletteMoment } from './row-palette';
-import { playheadTime } from './shortcuts';
+import { PALETTE, playheadTime } from './shortcuts';
+import { cardResult } from './card-result';
+import { extendEnd } from './end';
+import { insertMoments } from './ops';
 
 /** Id of the throwaway moments built for effect checks and previews. */
 export const PROBE_ID = '__probe';
@@ -67,14 +70,50 @@ export function playheadEffect(type: MomentType, at: Seconds = playheadTime()): 
   return momentEffectAt(piece, compiled, paletteMoment(type, t, PROBE_ID, piece, compiled));
 }
 
+/**
+ * Per palette type with an effect: what adding it at `t` lands on, for its card (M13, ./card-result.ts);
+ * the moment is the one the hover preview builds (../preview.ts `startPreview`).
+ */
+export function paletteResults(
+  piece: Piece,
+  score: CompiledScore,
+  t: Seconds,
+  effects: PaletteEffects | null,
+): Partial<Record<MomentType, string>> {
+  const out: Partial<Record<MomentType, string>> = {};
+  for (const e of PALETTE) {
+    if (effects && !effects[e.type]?.effect) continue;
+    try {
+      const m = paletteMoment(e.type, Math.max(0, t), PROBE_ID, piece, score);
+      const label = cardResult(
+        piece,
+        m,
+        e.name,
+        (p, x) => extendEnd(insertMoments(p, [x]), [x]),
+        PROBE_ID,
+      );
+      if (label) out[e.type] = label;
+    } catch {
+      /* no label */
+    }
+  }
+  return out;
+}
+
 interface PaletteEffectsState {
   /** The time the effects were computed for (NaN before the first run). */
   t: Seconds;
   effects: PaletteEffects | null;
+  /** Result labels by type (kept from the last run while playing). */
+  results: Partial<Record<MomentType, string>>;
 }
 
 /** The palette's effects at the playhead, kept current by `watchPaletteEffects`. */
-export const usePaletteEffects = create<PaletteEffectsState>()(() => ({ t: NaN, effects: null }));
+export const usePaletteEffects = create<PaletteEffectsState>()(() => ({
+  t: NaN,
+  effects: null,
+  results: {},
+}));
 
 let last: { t: Seconds; score: CompiledScore | null } = { t: NaN, score: null };
 
@@ -90,7 +129,12 @@ export function refreshPaletteEffects(force = false): void {
   } catch {
     effects = null; // never block the palette on a check
   }
-  usePaletteEffects.setState({ t, effects });
+  // Result labels compile the piece once per chord-like card: not while playing.
+  const playing = usePlayer.getState().transport.status === 'playing';
+  const results = playing
+    ? usePaletteEffects.getState().results
+    : paletteResults(piece, compiled, t, effects);
+  usePaletteEffects.setState({ t, effects, results });
 }
 
 const POLL_MS = 200;

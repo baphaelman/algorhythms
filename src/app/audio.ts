@@ -206,16 +206,20 @@ export function auditionAudio(
   timbres: Record<string, Timbre>,
   current: () => boolean,
   wanted: () => boolean,
+  from = 0,
 ): Promise<boolean> {
   let ok = false;
   return enqueue(async (e) => {
     if (!current()) return;
-    ok = await e.audition(score, timbres);
+    ok = await e.audition(score, timbres, from);
     if (ok && !wanted()) e.endAudition();
   }).then(() => ok);
 }
 
-/** Ends the audition now if the engine exists (sync), so a following play starts on the piece. */
-export function endAuditionAudio(): void {
-  engine?.endAudition();
+/**
+ * Ends the audition now if the engine exists (sync), so a following play starts on the piece;
+ * `fade`: its fade-out, seconds (default 5 ms).
+ */
+export function endAuditionAudio(fade?: number): void {
+  engine?.endAudition(fade);
 }

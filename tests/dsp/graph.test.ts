@@ -97,6 +97,36 @@ describe('graph output', () => {
   });
 });
 
+describe('pause fade', () => {
+  /** RMS of the output in 5 ms windows from `at` seconds. */
+  const tail = (d: Driver, at: number, ms: number): number =>
+    rms(
+      d.out().left,
+      Math.floor((at + ms / 1000) * RATE),
+      Math.floor((at + (ms + 5) / 1000) * RATE),
+    );
+
+  it('fades over `pause(fade)` seconds (hover sound stop, 50 ms), else over 5 ms', () => {
+    const score = makeScore([{ start: 60, born: 0, fadeIn: 0 }], 4);
+    const run = (fade?: number): { d: Driver; at: number; on: number } => {
+      const d = new Driver(score, DRY_MIX);
+      d.graph.play(0);
+      d.run(0.5);
+      const at = d.frames / RATE;
+      const on = rms(d.out().left, Math.floor((at - 0.02) * RATE), d.frames);
+      d.graph.pause(fade);
+      d.run(0.2);
+      return { d, at, on };
+    };
+    const short = run();
+    expect(tail(short.d, short.at, 10)).toBeLessThan(short.on * 0.01);
+    const long = run(0.05);
+    // Still sounding a little over half way, about silent once 50 ms (and a block) have passed.
+    expect(tail(long.d, long.at, 20)).toBeGreaterThan(long.on * 0.3);
+    expect(tail(long.d, long.at, 60)).toBeLessThan(long.on * 0.01);
+  });
+});
+
 describe('detune and phase (§8.4)', () => {
   const score = makeScore(
     Array.from({ length: 32 }, (_, i) => ({ id: `voice-${i}`, start: 60 })),

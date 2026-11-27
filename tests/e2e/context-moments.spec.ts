@@ -145,11 +145,18 @@ test('hovering an enabled item previews it and leaves the piece and history alon
   await chord.hover();
   await expect.poll(async () => (await previewOf(page)).type).toBe('chord');
   await expect.poll(async () => (await previewOf(page)).shown).toBe(true);
-  // Silent (owner 2026-11-21): shown on the score, the engine not playing.
+  // Shown on the score, and heard as a hover audition (M13 "Hover to hear"; was silent).
   await expect
     .poll(() => page.evaluate(() => window.__algorhythms!.frameStats.preview))
     .toBeCloseTo(6, 3);
-  expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window.__algorhythms as unknown as { audition: { kind: string | null } }).audition.kind,
+      ),
+    )
+    .toBe('hover');
 
   // Leaving the item stops it.
   await page.mouse.move(2, 400);
