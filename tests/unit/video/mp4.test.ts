@@ -171,6 +171,30 @@ describe.each(['streaming', 'faststart'] as const)('%s layout', (layout) => {
   });
 });
 
+describe.each(['streaming', 'faststart'] as const)('%s layout, user data', (layout) => {
+  it('writes moov/udta boxes and keeps every sample at its bytes', async () => {
+    const data = new Uint8Array(5000).map((_, i) => (i * 7) & 0xff);
+    const f = await mux({ layout, userData: [{ type: 'algr', data }] });
+    const boxes = parseBoxes(f);
+    const algr = one(boxes, 'moov/udta/algr');
+    expect(body(f, algr)).toEqual(data);
+    checkSamples(f, video(f), 0x56, videoChunks());
+    checkSamples(f, audio(f), 0x41, audioChunks());
+  });
+
+  it('refuses a type that is not four printable characters', () => {
+    expect(
+      () =>
+        new Mp4Muxer({
+          layout,
+          sink: memorySink(),
+          audio: { codec: 'opus', sampleRate: 48000, numberOfChannels: 2 },
+          userData: [{ type: 'toolong', data: new Uint8Array(1) }],
+        }),
+    ).toThrow(/user-data/);
+  });
+});
+
 describe('Mp4Muxer', () => {
   it('writes the same tables in both layouts', async () => {
     const s = await mux({ layout: 'streaming' });

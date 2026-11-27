@@ -115,6 +115,8 @@ export interface Mp4Options {
    * 0xFFFFFFFF; tests lower it to exercise the 64-bit paths on small files.
    */
   largeThreshold?: number;
+  /** Boxes written in `moov/udta` (four-character types), e.g. the piece (M17). */
+  userData?: readonly { type: string; data: Uint8Array }[];
 }
 
 const U32 = 0xffffffff;
@@ -412,6 +414,7 @@ export class Mp4Muxer {
   /** faststart: chunk bytes in mdat order. */
   private readonly parts: Uint8Array[] = [];
   private finished = false;
+  private readonly userData: readonly { type: string; data: Uint8Array }[];
 
   constructor(opts: Mp4Options) {
     if (!opts.video && !opts.audio) throw new Error('mp4: no tracks');
@@ -421,6 +424,10 @@ export class Mp4Muxer {
     this.maxBuffer = opts.maxBufferBytes ?? 32 * 1024 * 1024;
     this.movieTs = opts.movieTimescale ?? 1000;
     this.large = opts.largeThreshold ?? U32;
+    this.userData = opts.userData ?? [];
+    for (const u of this.userData) {
+      if (!/^[\x20-\x7e]{4}$/.test(u.type)) throw new Error(`mp4: bad user-data type ${u.type}`);
+    }
     this.video = opts.video ? { ...opts.video, kind: videoKind(opts.video.codec) } : null;
     this.audio = opts.audio ? { ...opts.audio, kind: audioKind(opts.audio.codec) } : null;
     this.vt = this.video
@@ -706,6 +713,11 @@ export class Mp4Muxer {
         w.u32(this.tracks.length + 1);
       });
       for (const t of this.tracks) this.trak(w, t, timings.get(t)!, co64, base);
+      if (this.userData.length > 0) {
+        w.box('udta', () => {
+          for (const u of this.userData) w.box(u.type, () => w.bytes(u.data));
+        });
+      }
     });
     return w.done();
   }

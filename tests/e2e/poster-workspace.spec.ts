@@ -134,9 +134,11 @@ test('offers Poster: PNG 16:9 with the title, the pixel size, Look without video
   for (const l of ['PNG', '16:9', 'Current']) {
     await expect(d.getByLabel(l, { exact: true })).toBeChecked();
   }
-  // Text boxes replace the Title block switch: a new poster has today's title block as two.
+  // Text boxes replace the Title block switch: a new poster has today's title block as two,
+  // and the drop hint (M17).
   await expect(page.getByTestId('export-ptitle')).toHaveCount(0);
-  await expect(page.getByTestId('layer-text')).toHaveCount(2);
+  await expect(page.getByTestId('layer-text')).toHaveCount(3);
+  await expect(page.locator('[data-testid="layer-text"][data-id="hint"]')).toContainText('Drop');
   await expect(page.locator('[data-testid="layer-text"][data-id="title"]')).toContainText('Title');
   await expect(page.locator('[data-testid="layer-text"][data-id="credit"]')).toContainText(
     'Credits',
@@ -193,7 +195,7 @@ test('every poster option of the old Export dialog is in the workspace', async (
   ];
   for (const id of ids) await expect(d.getByTestId(id), id).toBeVisible();
   await expect(page.getByTestId('export-ptitle')).toHaveCount(0);
-  await expect(page.getByTestId('layer-text')).toHaveCount(2);
+  await expect(page.getByTestId('layer-text')).toHaveCount(3);
   // The piece's pitch range, with a section.
   await choose(page, 'export-section', 'Custom');
   await expect(page.getByTestId('export-prange')).toBeVisible();
@@ -250,7 +252,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   await openLayers(page);
   await page.locator('[data-testid="layer-text"][data-id="title"] .ws-layer-name').click();
   await page.keyboard.press('Delete');
-  await expect(page.getByTestId('layer-text')).toHaveCount(1);
+  await expect(page.getByTestId('layer-text')).toHaveCount(2);
   await choose(page, 'export-vtheme', 'Dark');
   await openLook(page);
   await chooseSegment(page, 'look-guides', 'Lines + labels');
@@ -288,7 +290,7 @@ test('Look and HUD choices reach the poster; remembered after reload; Reset', as
   }
   await expect(page.getByTestId('look-width')).toHaveValue('1.75');
   await expect(page.getByTestId('look-colors')).toHaveAttribute('data-value', 'one');
-  await expect(page.getByTestId('layer-text')).toHaveCount(1);
+  await expect(page.getByTestId('layer-text')).toHaveCount(2);
   await expect(page.getByTestId('swatch-one-hex')).toHaveValue('#336699');
   await openHud(page);
   await expect(page.getByTestId('hud-title')).toBeChecked();

@@ -40,6 +40,7 @@ import {
   blobSink,
   estimateVideoBytes,
   etaText,
+  THUMBNAIL_MAX_BYTES,
   exportThumbnail,
   exportVideo,
   fileSink,
@@ -69,6 +70,9 @@ import {
 } from './poster-export';
 import type { PosterOptions } from './poster-export';
 
+import { embedJpeg, embedPng, embedSvg, mp4PieceBox } from './piece-in-file';
+import { serializePiece } from '../core/schema';
+import { shareablePiece } from './share';
 import { youtubeDescription } from './youtube-description';
 import { loudnessKey } from './youtube-preset';
 
@@ -265,10 +269,22 @@ export async function runPoster(
   // Let the label paint before the (synchronous) drawing.
   await new Promise((r) => setTimeout(r, 0));
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
+  // The file carries the whole piece (M17 "Pictures that open").
+  const json = serializePiece(src.piece);
   const blob =
     format === 'png'
-      ? await renderPosterLayoutPng(src.piece, options, src.compiled)
-      : new Blob([renderPosterLayoutSvg(src.piece, options, src.compiled)], {
+      ? new Blob(
+          [
+            embedPng(
+              new Uint8Array(
+                await (await renderPosterLayoutPng(src.piece, options, src.compiled)).arrayBuffer(),
+              ),
+              json,
+            ) as BlobPart,
+          ],
+          { type: 'image/png' },
+        )
+      : new Blob([embedSvg(renderPosterLayoutSvg(src.piece, options, src.compiled), json)], {
           type: 'image/svg+xml',
         });
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
@@ -401,7 +417,14 @@ export async function runThumbnail(
   at: Seconds | 'whole',
 ): Promise<ExportOutput> {
   const options = optionsOf(src, form, ctx);
-  const blob = await exportThumbnail(src.piece, options, at);
+  const jpeg = await exportThumbnail(src.piece, options, at);
+  // The piece rides along (M17); without its background picture when that would break the cap.
+  const bytes = new Uint8Array(await jpeg.arrayBuffer());
+  let out = embedJpeg(bytes, serializePiece(src.piece));
+  if (out.length >= THUMBNAIL_MAX_BYTES)
+    out = embedJpeg(bytes, serializePiece(shareablePiece(src.piece)));
+  const blob =
+    out.length < THUMBNAIL_MAX_BYTES ? new Blob([out as BlobPart], { type: 'image/jpeg' }) : jpeg;
   return { name: `${fileBase(src.piece)}-thumbnail.jpg`, blob, bytes: blob.size, files: 1 };
 }
 
@@ -561,6 +584,7 @@ export async function runVideo(
   try {
     last.result = await exportVideo(src.piece, opts, sink, {
       signal: hooks.signal,
+      userData: [mp4PieceBox(serializePiece(src.piece))],
       onProgress: (f, phase, eta) =>
         hooks.onProgress?.(
           f,

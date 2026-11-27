@@ -251,10 +251,12 @@ describe('doc updates keep the doc compact', () => {
     const id = newTextId(undefined);
     expect(id).toBe('text1');
     const d = putText(undefined, { id, kind: 'free', text: 'hello' });
-    expect(d!.texts!.map((t) => t.id)).toEqual(['title', 'credit', 'text1']);
+    expect(d!.texts!.map((t) => t.id)).toEqual(['title', 'credit', 'hint', 'text1']);
     expect(newTextId(d)).toBe('text2');
     expect(removeText(d, id)).toBeUndefined();
-    expect(removeText(undefined, 'title')).toEqual({ texts: [DEFAULT_POSTER_TEXTS[1]] });
+    expect(removeText(undefined, 'title')).toEqual({ texts: DEFAULT_POSTER_TEXTS.slice(1) });
+    // The hint (M17) is deletable like any text box.
+    expect(removeText(undefined, 'hint')).toEqual({ texts: DEFAULT_POSTER_TEXTS.slice(0, 2) });
   });
 
   it('group and member styles', () => {

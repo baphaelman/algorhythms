@@ -71,7 +71,7 @@ import {
   type VideoFrameOptions,
   type VideoSize,
 } from '../render/video';
-import { Mp4Muxer, chunkFrom, memorySink, type Mp4Sink } from '../video/mp4';
+import { Mp4Muxer, chunkFrom, memorySink, type Mp4Options, type Mp4Sink } from '../video/mp4';
 import {
   abortError,
   drain,
@@ -221,6 +221,8 @@ export interface VideoHooks {
   config?: Partial<VideoEncoderConfig>;
   /** Tests: the clock (ms) for the time-left estimate. @default performance.now */
   now?: () => number;
+  /** Boxes for the file's `moov/udta` (the piece, M17). */
+  userData?: Mp4Options['userData'];
 }
 
 /**
@@ -979,6 +981,7 @@ export async function exportVideo(
       primingSamples: priming,
       length: audioFrames,
     },
+    ...(hooks.userData ? { userData: hooks.userData } : {}),
   });
   const muxed = (p: Promise<void>) => p.catch(fail);
 

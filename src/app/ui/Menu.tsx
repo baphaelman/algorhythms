@@ -9,7 +9,8 @@ import {
   openMyPieces,
   saveAsFile,
 } from '../persist';
-import { openExample, openFile, usePlayer } from '../store';
+import { openExample, usePlayer } from '../store';
+import { OPEN_ACCEPT, openAnyFile } from '../file-drop';
 import { openCompose } from '../compose';
 import { openAudioExport, openExport } from './export-state';
 import { openGenerate } from './GeneratePanel';
@@ -67,14 +68,14 @@ export function Menu() {
         ref={fileInput}
         type="file"
         className="visually-hidden"
-        accept=".json,.algorhythms.json,application/json"
+        accept={OPEN_ACCEPT}
         aria-label="Open a piece from a file"
         data-testid="file-input"
         tabIndex={-1}
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = '';
-          if (file) void openFile(file);
+          if (file) void openAnyFile(file);
         }}
       />
       <button

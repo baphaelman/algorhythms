@@ -56,6 +56,7 @@ import { ownRecord, parseAddress, readRecord } from './address-rules';
 import { EXAMPLES, featuredExample } from './examples';
 import { clampLoop, type LoopSpan } from './ruler';
 import { decodeSharePayload, sharePayloadOf } from './share';
+import type { FilePiece } from './piece-in-file';
 
 // ---------------------------------------------------------------------------------------------
 // State
@@ -535,7 +536,11 @@ export function setOpenGate(gate: OpenGate): void {
 }
 
 /** Parses piece JSON (text or value) and opens it; shows errors and warnings as notices. */
-export function openPieceJson(json: unknown, label: string, opts: LoadOptions = {}): boolean {
+export function openPieceJson(
+  json: unknown,
+  label: string,
+  { after, ...opts }: LoadOptions & { after?: () => void } = {},
+): boolean {
   const r = parsePiece(json);
   if (!r.ok) {
     pushNotice('error', `Could not open ${label}`, r.errors.slice(0, 8));
@@ -546,22 +551,41 @@ export function openPieceJson(json: unknown, label: string, opts: LoadOptions = 
     notices.push({ kind: 'warning', title: `${label} opened with warnings`, lines: r.warnings });
   }
   const piece = r.piece;
-  runOpen(() => loadPiece(piece, { ...opts, notices }));
+  runOpen(() => {
+    loadPiece(piece, { ...opts, notices });
+    after?.();
+  });
   return true;
 }
 
-/** Opens a `.algorhythms.json` file. */
-export async function openFile(file: File): Promise<boolean> {
-  let text: string;
+/** The notice for a file that carries no piece (M17). */
+export const NO_PIECE_IN_FILE = 'This file has no AlgoRhythms piece in it';
+
+/**
+ * Opens a `.algorhythms.json` file, or a poster PNG / SVG, thumbnail JPEG or MP4 that carries
+ * a piece (M17 "Pictures that open"); `media` reports which (the caller then shows the video).
+ * Errors and a file without a piece are shown as notices.
+ */
+export async function openFile(
+  file: File,
+  opts: { onOpen?: (media: boolean) => void } = {},
+): Promise<boolean> {
+  let read: FilePiece;
   try {
-    text = await file.text();
+    const { readFilePiece } = await import('./piece-in-file');
+    read = await readFilePiece(file);
   } catch (e) {
-    pushNotice('error', `Could not read ${file.name}`, [
+    pushNotice('error', `Could not open ${file.name}`, [
       e instanceof Error ? e.message : String(e),
     ]);
     return false;
   }
-  return openPieceJson(text, file.name);
+  if (read.json === null) {
+    pushNotice('error', NO_PIECE_IN_FILE, [file.name]);
+    return false;
+  }
+  const media = read.kind !== 'json';
+  return openPieceJson(read.json, file.name, { after: () => opts.onOpen?.(media) });
 }
 
 /** Opens a bundled example (`id`: its file stem, so the URL reads `#<id>`). */

@@ -10,7 +10,7 @@ export interface Box {
   children: Box[];
 }
 
-const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'dinf', 'edts']);
+const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'dinf', 'edts', 'udta']);
 /** Bytes of fixed fields before a sample entry's child boxes. */
 const ENTRY_FIELDS: Record<string, number> = { avc1: 78, vp09: 78, mp4a: 28, Opus: 28 };
 

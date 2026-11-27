@@ -347,9 +347,12 @@ test('the Text tool adds a text box edited in place; style; Delete removes it', 
   await expect(edit).toHaveCount(0);
   await expect(page.getByTestId('tool-select')).toHaveAttribute('aria-pressed', 'true');
   await expect
-    .poll(async () => (await posterDoc(page))?.texts?.find((t) => t.kind === 'free')?.text)
+    .poll(
+      async () =>
+        (await posterDoc(page))?.texts?.find((t) => t.kind === 'free' && t.id !== 'hint')?.text,
+    )
     .toBe('Hello {key}');
-  await expect(page.getByTestId('layer-text')).toHaveCount(3);
+  await expect(page.getByTestId('layer-text')).toHaveCount(4);
   const sel = (await selected(page)) as { kind: string; id: string };
   expect(sel.kind).toBe('text');
   // The panel shows the words drawn: the token filled.
@@ -393,7 +396,7 @@ test('the Text tool adds a text box edited in place; style; Delete removes it', 
 
   await page.getByTestId('poster-workspace').focus();
   await page.keyboard.press('Delete');
-  await expect(page.getByTestId('layer-text')).toHaveCount(2);
+  await expect(page.getByTestId('layer-text')).toHaveCount(3);
   expect(await selected(page)).toBeNull();
 });
 

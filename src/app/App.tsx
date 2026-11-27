@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { attachKeys } from './canvas-input';
+import { attachFileDrop } from './file-drop';
 import { attachLiveKeys } from './live-ui';
 import { useCompose } from './compose';
 import './naming';
@@ -117,7 +118,9 @@ export function App() {
     startPlayer();
     const detachLive = attachLiveKeys();
     const detach = attachKeys();
+    const detachDrop = attachFileDrop();
     return () => {
+      detachDrop();
       detach();
       detachLive();
     };

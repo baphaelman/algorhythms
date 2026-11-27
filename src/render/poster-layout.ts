@@ -844,10 +844,17 @@ const validBox = (b: PosterBox | undefined): b is PosterBox =>
 // Text
 // ---------------------------------------------------------------------------------------------
 
-/** The default text boxes: today's title block (the name; length, section and key; the credit). */
+/** The default hint (M17 "Pictures that open"): the poster carries its piece. */
+export const POSTER_HINT = 'Drop this picture on baphaelman.github.io/algorhythms to play it';
+
+/**
+ * The default text boxes: today's title block (the name; length, section and key; the credit)
+ * and the hint, a smaller line under the credit.
+ */
 export const DEFAULT_POSTER_TEXTS: readonly PosterText[] = [
   { id: 'title', kind: 'title', text: '{name}' },
   { id: 'credit', kind: 'credit', text: `{meta} · ${POSTER_CREDIT}` },
+  { id: 'hint', kind: 'free', text: POSTER_HINT, style: { font: 'mono', size: 0.018 } },
 ];
 
 /** Default style by kind; `size` as a fraction of the shorter side. */
