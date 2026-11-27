@@ -166,6 +166,31 @@ describe('canonicalPiece', () => {
     });
   });
 
+  it('rounds placed HUD readouts to 4 significant digits, in the video and the poster (M17)', () => {
+    const noisyLayout = {
+      time: { anchor: 'bl', x: 0.09, y: -0.12476562499999988 },
+      chord: { anchor: 'br', x: -0.040000000000000036, y: -0.114140625 },
+      key: { anchor: 'c', x: 0, y: 0.000123456789 },
+      title: 'not a position',
+    };
+    const want = {
+      time: { anchor: 'bl', x: 0.09, y: -0.1248 },
+      chord: { anchor: 'br', x: -0.04, y: -0.1141 },
+      key: { anchor: 'c', x: 0, y: 0.0001235 },
+      title: 'not a position',
+    };
+    const p: Piece = {
+      ...newPiece({ seed: 1 }),
+      video: { hudLayout: noisyLayout },
+      poster: { look: { theme: 'dark', glow: 0.123456, hudLayout: noisyLayout } },
+    };
+    const c = canonicalPiece(p);
+    expect(c.video?.hudLayout).toEqual(want);
+    // Only the layout: other Look keys stay as written.
+    expect(c.poster?.look).toEqual({ theme: 'dark', glow: 0.123456, hudLayout: want });
+    expect(canonicalPiece(c)).toBe(c);
+  });
+
   it('parsePiece returns canonical pieces', () => {
     const p = noisy();
     expect(parsed(p)).toEqual(parsed(canonicalPiece(p)));

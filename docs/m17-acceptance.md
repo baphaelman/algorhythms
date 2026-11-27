@@ -57,7 +57,7 @@ Status key: **C** covered by a test that runs in CI (unit tests run on every pus
 
 ## Open
 
-- **Placed HUD readouts make links long.** Moving one readout pins every shown readout (by design, hud-place), and placed positions are stored unrounded (`-0.040000000000000036`), in the video record and again in the poster doc's Look. With Kite Day's six readouts and one moved, plus a section and cards, the edited link was 1,622 characters with a code, over the QR limit; the acceptance spec keeps one readout. Rounding `hudLayout` positions in canonical (4 significant digits, as poster boxes) would save about 25 characters a readout per copy. Not changed here: it touches W1's canonical rules and the record ↔ form settling.
+- **Placed HUD readouts made links long** (fixed in the follow-up, build log "shorter links with placed HUD readouts"): positions are canonical (4 significant digits) and the poster's copy of the video's layout packs as one character. Kite Day with six readouts, one moved, a section, cards and a code: 1,607 → 1,491 characters, under the QR limit. Moving one still pins all (by design).
 - The owner checks above: real fullscreen and an iPhone, a phone camera scanning a printed or on-screen code.
 
 ## Runs (2026-11-27, this tree)

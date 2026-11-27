@@ -12,7 +12,8 @@
  *   (M15), the video packed (M17: short names, flat section and placed readouts), and the
  *   poster packed (M14: default
  *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number,
- *   a QR code with only a box as its box); then
+ *   a QR code with only a box as its box; M17: placed readouts as `[anchor, x, y]`, or `1` when
+ *   they equal the video's); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
@@ -253,9 +254,20 @@ function withBox(o: unknown, f: (b: unknown) => unknown): unknown {
   return out;
 }
 
-/** The poster's packing (M14): see the module comment. */
-function packPoster(poster: Rec): Rec {
+/**
+ * A poster Look's HUD layout equal to the video's packs as this (M17): the two are one layout
+ * whenever the video's readout edits wrote the doc too.
+ */
+const SAME_HUD = 1;
+
+/** The poster's packing (M14): see the module comment. `videoHud` is the video's HUD layout. */
+function packPoster(poster: Rec, videoHud: unknown): Rec {
   const out: Rec = { ...poster };
+  const look = out.look;
+  if (isRec(look) && isRec(look.hudLayout)) {
+    const same = isRec(videoHud) && jsonEqual(look.hudLayout, videoHud);
+    out.look = { ...look, hudLayout: same ? SAME_HUD : boxesOf(look.hudLayout, flatPos) };
+  }
   const m = out.margins;
   if (
     isRec(m) &&
@@ -281,8 +293,13 @@ function packPoster(poster: Rec): Rec {
   return out;
 }
 
-function unpackPoster(poster: Rec): Rec {
+function unpackPoster(poster: Rec, videoHud: unknown): Rec {
   const out: Rec = { ...poster };
+  const look = out.look;
+  if (isRec(look) && look.hudLayout === SAME_HUD && isRec(videoHud))
+    out.look = { ...look, hudLayout: cloneJson(videoHud) };
+  else if (isRec(look) && isRec(look.hudLayout))
+    out.look = { ...look, hudLayout: boxesOf(look.hudLayout, posOf) };
   if (typeof out.margins === 'number') {
     const v = out.margins;
     out.margins = { top: v, right: v, bottom: v, left: v };
@@ -336,6 +353,10 @@ function plainPos(p: unknown): p is { anchor: string; x: number; y: number } {
   );
 }
 
+const flatPos = (p: unknown): unknown => (plainPos(p) ? [p.anchor, p.x, p.y] : p);
+const posOf = (p: unknown): unknown =>
+  Array.isArray(p) && p.length === 3 ? { anchor: p[0], x: p[1], y: p[2] } : p;
+
 /**
  * The video's packing (M17): short names, the section as `[start, end]`, the readout list as one
  * comma-separated string and placed readouts as `[anchor, x, y]`. A record with a field this
@@ -353,8 +374,7 @@ function packVideo(video: Rec): Rec {
       v.every((h) => typeof h === 'string' && !h.includes(','))
     )
       x = v.join(',');
-    else if (k === 'hudLayout' && isRec(v))
-      x = boxesOf(v, (p) => (plainPos(p) ? [p.anchor, p.x, p.y] : p));
+    else if (k === 'hudLayout' && isRec(v)) x = boxesOf(v, flatPos);
     out[VIDEO_KEYS[k]] = x;
   }
   return out;
@@ -368,10 +388,7 @@ function unpackVideo(video: Rec): Rec {
     let x: unknown = v;
     if (k === 'section' && Array.isArray(v) && v.length === 2) x = { start: v[0], end: v[1] };
     else if (k === 'hud' && typeof v === 'string') x = v === '' ? [] : v.split(',');
-    else if (k === 'hudLayout' && isRec(v))
-      x = boxesOf(v, (p) =>
-        Array.isArray(p) && p.length === 3 ? { anchor: p[0], x: p[1], y: p[2] } : p,
-      );
+    else if (k === 'hudLayout' && isRec(v)) x = boxesOf(v, posOf);
     out[k] = x;
   }
   return out;
@@ -434,7 +451,8 @@ export function packPiece(piece: Piece): Rec | null {
       cam.posterKeys = cam.posterKeys.flatMap((k) => POSTER_KEY_FIELDS.map((f) => k[f]));
     out.camera = cam;
   }
-  if (isRec(out.poster)) out.poster = packPoster(out.poster);
+  const videoHud = isRec(out.video) ? out.video.hudLayout : undefined;
+  if (isRec(out.poster)) out.poster = packPoster(out.poster, videoHud);
   if (isRec(out.video)) out.video = packVideo(out.video);
   return out;
 }
@@ -506,8 +524,9 @@ export function unpackPiece(packed: unknown): unknown {
     if (posterKeys) cam.posterKeys = posterKeys;
     out.camera = cam;
   }
-  if (isRec(out.poster)) out.poster = unpackPoster(out.poster);
   if (isRec(out.video)) out.video = unpackVideo(out.video);
+  if (isRec(out.poster))
+    out.poster = unpackPoster(out.poster, isRec(out.video) ? out.video.hudLayout : undefined);
   return out;
 }
 
