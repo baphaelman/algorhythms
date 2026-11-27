@@ -5,7 +5,7 @@
  * drawn SVG decoded back by jsQR at the export size and downscaled, on light and dark posters.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import jsQR from 'jsqr';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +14,16 @@ import { newPiece } from '../../../src/core/defaults';
 import { canonicalPiece } from '../../../src/core/canonical';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece, PosterDoc } from '../../../src/core/types';
-import { encodeQr, qrFits, qrLinkLength, qrLinkOf, qrReady } from '../../../src/app/poster-qr';
+import {
+  encodeQr,
+  exampleIdOf,
+  noteQrSeed,
+  qrFits,
+  qrLinkLength,
+  qrLinkOf,
+  qrReady,
+} from '../../../src/app/poster-qr';
+import { loadInfo } from '../../../src/app/store';
 import { nudgeDoc, placeRect, qrObject, selectionAt } from '../../../src/app/poster-select';
 import {
   decodeShareLink,
@@ -29,6 +38,7 @@ import {
   asCtx2D,
   drawPosterLayout,
   layoutPoster,
+  posterIssues,
   qrBoxFor,
   refitPoster,
   removeQr,
@@ -38,8 +48,12 @@ import {
 } from '../../../src/render';
 import { EXPORT_LOOK, type Look } from '../../../src/render/look';
 import {
+  QR_DEFAULT_MAX,
+  QR_DEFAULT_MIN,
   QR_MAX_CHARS,
   QR_MIN_MODULE_PX,
+  qrDefaultSide,
+  qrMinModule,
   qrContrast,
   qrModulePx,
   qrReadable,
@@ -322,7 +336,12 @@ describe('layout', () => {
   it('in the text band when the band holds it', async () => {
     const doc: PosterDoc = {
       texts: [
-        { id: 'title', kind: 'title', text: '{name}\nby the sea\nin May', style: { size: 0.1 } },
+        {
+          id: 'title',
+          kind: 'title',
+          text: '{name}\nby the sea\nin May\nat noon',
+          style: { size: 0.1 },
+        },
       ],
       qr: {},
     };
@@ -385,6 +404,98 @@ describe('editing', () => {
     expect((big?.qr?.box?.w ?? 0) * L.width).toBeCloseTo(700);
     const n1 = nudgeDoc(moved, L, { kind: 'qr' }, 10, 0);
     expect((n1?.qr?.box?.x ?? 0) * L.width).toBeCloseTo(310);
+  });
+});
+
+describe('default size: modules of 1/400 of the shorter side, 12–40 % of it', () => {
+  const m = (n: number) => ({ n, bits: '0'.repeat(n * n) });
+  it('grows with the density, clamped', () => {
+    // 2160 px: modules of 6 px (5.4 rounded up to whole px).
+    expect(qrMinModule(2160)).toBeCloseTo(5.4);
+    expect(qrMinModule(800)).toBe(QR_MIN_MODULE_PX);
+    expect(qrDefaultSide(2160, m(105))).toBe(6 * 113);
+    // Clamped to whole modules: 9 px × 29 ≥ 12 %; 4 px × 185 ≤ 40 %.
+    expect(qrDefaultSide(2160, m(21))).toBe(9 * 29);
+    expect(qrDefaultSide(2160, m(21))).toBeGreaterThanOrEqual(QR_DEFAULT_MIN * 2160);
+    expect(qrDefaultSide(2160, m(177))).toBe(4 * 185);
+    expect(qrDefaultSide(2160, m(177))).toBeLessThanOrEqual(QR_DEFAULT_MAX * 2160);
+  });
+
+  it("Kite Day's code: whole modules of at least 1/400, as laid out at 16:9, square and A4", async () => {
+    const piece = withQr(KITE);
+    const qr = await qrReady(piece);
+    for (const size of [
+      { w: 3840, h: 2160 },
+      { w: 2160, h: 2160 },
+      { w: 2480, h: 3508 },
+    ]) {
+      const L = layoutPoster({ compiled: compile(piece), piece, base: { size }, qr });
+      const o = qrOf(L);
+      const S = Math.min(size.w, size.h);
+      expect(qrModulePx(o.box.w, o.matrix)).toBeGreaterThanOrEqual(S / 400);
+      expect(Number.isInteger(qrModulePx(o.box.w, o.matrix))).toBe(true);
+    }
+  });
+
+  it('every bundled piece with a code: the default poster passes posterIssues', async () => {
+    const root = join(import.meta.dirname, '../../../examples');
+    const files = ['', 'songs', 'experiments'].flatMap((d) =>
+      readdirSync(join(root, d))
+        .filter((f) => f.endsWith('.algorhythms.json'))
+        .map((f) => join(root, d, f)),
+    );
+    expect(files.length).toBeGreaterThanOrEqual(17);
+    for (const f of files) {
+      const piece = withQr(parsed(JSON.parse(readFileSync(f, 'utf8'))));
+      const qr = await qrReady(piece);
+      const compiled = compile(piece);
+      for (const size of [
+        { w: 3840, h: 2160 },
+        { w: 2160, h: 2160 },
+        { w: 2480, h: 3508 },
+      ]) {
+        for (const rows of [1, 3]) {
+          const L = layoutPoster({ compiled, piece, base: { size, rows }, qr });
+          const at = `${f.split('/').pop()} ${size.w}×${size.h} rows ${rows}`;
+          expect(qrObject(L), at).toBeDefined();
+          expect(posterIssues(L), at).toEqual([]);
+        }
+      }
+    }
+  });
+});
+
+describe('short links for unedited examples', () => {
+  it('an unedited example holds `#w&<id>`; an edited one `#w&p=…`', async () => {
+    // As `loadPiece(KITE, { example: 'kite-day' })` records it (the store needs a page to load).
+    const info = loadInfo() as { example?: string; examplePiece?: Piece };
+    Object.assign(info, { example: 'kite-day', examplePiece: KITE });
+    const opened = KITE;
+    const coded: Piece = {
+      ...opened,
+      poster: { ...opened.poster, qr: { box: { x: 0.7, y: 0.6, w: 0.2, h: 0.36 } } },
+    };
+    expect(exampleIdOf(coded)).toBe('kite-day');
+    expect(await qrLinkOf(coded)).toBe(`${SITE_URL}#w&kite-day`);
+    expect(await qrLinkLength(opened)).toBe(`${SITE_URL}#w&kite-day`.length);
+    const q = await qrReady(coded);
+    expect(q.matrix!.n).toBeLessThanOrEqual(33);
+    // The poster settings the first poster edit seeds (the viewer's) still count as unedited.
+    expect(KITE.poster).toBeUndefined();
+    const seeded: Piece = { ...KITE, poster: { look: { theme: 'dark' }, qr: {} } };
+    expect(exampleIdOf(seeded)).toBeUndefined();
+    noteQrSeed(KITE, seeded);
+    expect(exampleIdOf(seeded)).toBe('kite-day');
+    expect(exampleIdOf({ ...seeded, poster: { ...seeded.poster, rows: 2 } })).toBeUndefined();
+    // Edited: the full link.
+    const edited: Piece = { ...coded, meta: { ...coded.meta, title: 'Kite Night' } };
+    expect(exampleIdOf(edited)).toBeUndefined();
+    expect((await qrLinkOf(edited)).startsWith(`${SITE_URL}#w&p=2.`)).toBe(true);
+    const posterEdit: Piece = { ...coded, poster: { ...coded.poster, rows: 2 } };
+    expect(exampleIdOf(posterEdit)).toBeUndefined();
+    // Not opened as an example: the full link.
+    Object.assign(info, { example: undefined, examplePiece: undefined });
+    expect(exampleIdOf(coded)).toBeUndefined();
   });
 });
 

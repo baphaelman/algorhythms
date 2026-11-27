@@ -1,9 +1,9 @@
 /**
  * The poster's QR code (PLAN.md §15 M17 "QR code"): added from the tool row, it is selected,
  * moved, resized (square), deleted and undone like a text box. The exported PNG's code decodes
- * (jsQR in the page) to the piece's watch link on the public site, and that link, opened on this
- * server in a fresh browser, shows the watch view. A piece whose watch link is too long can't
- * add one; a code whose link grows too long shows "too long to scan" and is left out of the PNG.
+ * (jsQR in the page) to the piece's watch link on the public site (an unedited example's short
+ * `#w&<id>`, an edited piece's `#w&p=…`), and that link, opened on this server in a fresh
+ * browser, shows the watch view. A piece whose watch link is too long can't add one; a code whose link grows too long shows "too long to scan" and is left out of the PNG.
  */
 
 import { readFileSync } from 'node:fs';
@@ -170,50 +170,67 @@ test('add, select, move, resize (square), delete, undo', async ({ page }) => {
   await expect.poll(() => stored(page)).toEqual({});
 });
 
-test("the PNG's code is the piece's watch link on the public site, and it opens the watch view", async ({
+test("the PNG's code: an unedited example's short watch link, an edited piece's full one; each opens the watch view", async ({
   page,
   browser,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await open(page, 'kite-day');
   await expect(page.getByTestId('tool-qr')).toBeEnabled();
   await page.getByTestId('tool-qr').click();
-  await expect.poll(async () => (await qr(page))?.state).toBe('ok');
-  const code = (await qr(page))!;
-  const piece = await page.evaluate(
-    () => (window as unknown as HookWindow).__algorhythms.store.getState().piece,
-  );
-  const link = await page.evaluate(
-    ([p, base]) => (window as unknown as HookWindow).__algorhythms.encodeWatchLink(p, { base }),
-    [piece, SITE] as const,
-  );
-  expect(code.link).toBe(link);
-  expect(link.startsWith(`${SITE}#w&p=`)).toBe(true);
-
-  const dl = await clickExportForDownload(page, 60_000);
-  expect(dl.suggestedFilename()).toMatch(/\.png$/);
-  const png = readFileSync(await dl.path());
-  expect(await decodePng(page, png, code.box)).toBe(link);
-
-  // Opened on this server, in a fresh browser: the watch view, the same piece.
   const here = new URL('./', page.url()).href;
-  const ctx = await browser.newContext();
-  const other = await ctx.newPage();
-  await other.goto(link.replace(SITE, here));
-  await expect(other.getByTestId('watch-view')).toBeVisible();
-  await expect
-    .poll(() =>
-      other.evaluate(
-        () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.meta.title,
-      ),
-    )
-    .toBe(piece.meta.title);
-  expect(
-    await other.evaluate(
-      () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.poster?.qr,
-    ),
-  ).toEqual({});
-  await ctx.close();
+  for (const edited of [false, true]) {
+    if (edited) {
+      await page.evaluate(() => {
+        const h = (window as unknown as HookWindow).__algorhythms;
+        const p = structuredClone(h.store.getState().piece);
+        p.meta.title = 'Kite Night';
+        h.actions.setPiece(p);
+      });
+    }
+    const piece = await page.evaluate(
+      () => (window as unknown as HookWindow).__algorhythms.store.getState().piece,
+    );
+    const link = edited
+      ? await page.evaluate(
+          ([p, base]) =>
+            (window as unknown as HookWindow).__algorhythms.encodeWatchLink(p, { base }),
+          [piece, SITE] as const,
+        )
+      : `${SITE}#w&kite-day`;
+    if (edited) expect(link.startsWith(`${SITE}#w&p=`)).toBe(true);
+    await expect.poll(async () => (await qr(page))?.link).toBe(link);
+    await expect.poll(async () => (await qr(page))?.state).toBe('ok');
+    const code = (await qr(page))!;
+    // Default size: modules of at least 1/400 of the 2160 px side (whole px), 12–40 % of it.
+    expect(code.box.w / (code.n + 8)).toBeGreaterThanOrEqual(2160 / 400);
+    expect(code.box.w).toBeGreaterThanOrEqual(0.12 * 2160 - 1);
+    expect(code.box.w).toBeLessThanOrEqual(0.4 * 2160 + 1);
+
+    const dl = await clickExportForDownload(page, 60_000);
+    expect(dl.suggestedFilename()).toMatch(/\.png$/);
+    expect(await decodePng(page, readFileSync(await dl.path()), code.box)).toBe(link);
+
+    // Opened on this server, in a fresh browser: the watch view, the same piece.
+    const ctx = await browser.newContext();
+    const other = await ctx.newPage();
+    await other.goto(link.replace(SITE, here));
+    await expect(other.getByTestId('watch-view')).toBeVisible();
+    await expect
+      .poll(() =>
+        other.evaluate(
+          () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.meta.title,
+        ),
+      )
+      .toBe(piece.meta.title);
+    if (edited)
+      expect(
+        await other.evaluate(
+          () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.poster?.qr,
+        ),
+      ).toEqual({});
+    await ctx.close();
+  }
 });
 
 test('a piece whose watch link is too long: the button is disabled and says why', async ({
@@ -221,6 +238,14 @@ test('a piece whose watch link is too long: the button is disabled and says why'
 }) => {
   await open(page, 'sunday-lane');
   const button = page.getByTestId('tool-qr');
+  // Unedited, the example's short link fits.
+  await expect(button).toBeEnabled();
+  await page.evaluate(() => {
+    const h = (window as unknown as HookWindow).__algorhythms;
+    const p = structuredClone(h.store.getState().piece);
+    p.meta.title = 'Sunday Lane, again';
+    h.actions.setPiece(p);
+  });
   await expect(page.getByTestId('qr-too-long')).toContainText(
     /Link too long for a QR code: 2,\d{3} of 1,500 characters/,
   );

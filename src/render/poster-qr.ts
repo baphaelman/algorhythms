@@ -27,8 +27,13 @@ export interface QrInput {
 export const QR_MAX_CHARS = 1500;
 /** The quiet zone, modules on each side. */
 export const QR_QUIET = 4;
-/** The default card's side, a fraction of the artboard's shorter side. */
+/** The default card's side while its modules are unknown, a fraction of the shorter side. */
 export const QR_SIDE = 0.24;
+/** The default card's side is between these fractions of the shorter side. */
+export const QR_DEFAULT_MIN = 0.12;
+export const QR_DEFAULT_MAX = 0.4;
+/** A module that scans printed: this fraction of the shorter side (≈ 0.5 mm on A4). */
+export const QR_MODULE_FRACTION = 1 / 400;
 /** Smallest card side, a fraction of the shorter side. */
 export const QR_MIN_SIDE = 0.04;
 /** A module smaller than this (export px) may not scan. */
@@ -63,6 +68,24 @@ export function qrSquare(
   if (!(span > 0 && side / span >= QR_MIN_MODULE_PX)) return { x, y, w: side, h: side };
   const s = Math.floor(side / span) * span;
   return { x: Math.round(x), y: Math.round(y), w: s, h: s };
+}
+
+/** The smallest module that scans (px, on a poster whose shorter side is `S` px). */
+export const qrMinModule = (S: number): number =>
+  Math.max(QR_MIN_MODULE_PX, S * QR_MODULE_FRACTION);
+
+/**
+ * The default card's side (px) on a poster whose shorter side is `S` px: whole px per module of
+ * at least `qrMinModule`, so denser codes are larger; between `QR_DEFAULT_MIN` and
+ * `QR_DEFAULT_MAX` of `S` (`QR_SIDE` while the modules are unknown).
+ */
+export function qrDefaultSide(S: number, m: QrMatrix | undefined): number {
+  if (!m) return QR_SIDE * S;
+  const span = qrSpan(m);
+  // Whole px per module: the clamps round inward to the module grid.
+  const lo = Math.ceil((QR_DEFAULT_MIN * S) / span) * span;
+  const hi = Math.floor((QR_DEFAULT_MAX * S) / span) * span;
+  return Math.min(hi, Math.max(lo, Math.ceil(qrMinModule(S)) * span));
 }
 
 /** The doc's code side in px from its box (none: undefined). */

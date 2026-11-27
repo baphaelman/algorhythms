@@ -379,6 +379,8 @@ const lastLoad = {
   count: 0,
   source: 'other' as NonNullable<LoadOptions['source']>,
   example: undefined as string | undefined,
+  /** The bundled example as opened (with `example`), to tell whether it is still unedited. */
+  examplePiece: undefined as Piece | undefined,
   keepHash: false,
   entryId: undefined as string | undefined,
   watch: false,
@@ -428,6 +430,7 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   lastLoad.count++;
   lastLoad.source = opts.source ?? 'other';
   lastLoad.example = opts.example;
+  lastLoad.examplePiece = opts.example !== undefined ? piece : undefined;
   lastLoad.keepHash = opts.keepHash ?? false;
   lastLoad.entryId = opts.entryId;
   lastLoad.watch = opts.watch ?? false;

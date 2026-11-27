@@ -71,7 +71,7 @@ import {
 } from './poster-export';
 import type { PosterOptions } from './poster-export';
 import { qrReady } from './poster-qr';
-import { QR_MAX_CHARS, QR_MIN_MODULE_PX, qrModulePx, type QrInput } from '../render/poster-qr';
+import { QR_MAX_CHARS, qrMinModule, qrModulePx, type QrInput } from '../render/poster-qr';
 
 import { embedJpeg, embedPng, embedSvg, mp4PieceBox } from './piece-in-file';
 import { serializePiece } from '../core/schema';
@@ -314,11 +314,13 @@ function qrNotes(q: QrInput, options: PosterOptions, src: ExportSource): string[
     return [
       `The QR code was left out: the watch link is ${q.link.length.toLocaleString('en')} characters, over the ${QR_MAX_CHARS.toLocaleString('en')} a code that scans easily holds.`,
     ];
-  const o = posterLayoutOf(src.piece, options, src.compiled).objects.find((x) => x.type === 'qr');
+  const L = posterLayoutOf(src.piece, options, src.compiled);
+  const o = L.objects.find((x) => x.type === 'qr');
   const px = o?.type === 'qr' ? qrModulePx(o.box.w, o.matrix) : Infinity;
-  return px < QR_MIN_MODULE_PX
+  const min = qrMinModule(Math.min(L.width, L.height));
+  return px < min - 1e-6
     ? [
-        `The QR code's modules are ${px.toFixed(1)} px: make the code or the poster larger so it scans.`,
+        `The QR code's modules are ${px.toFixed(1)} px, under the ${min.toFixed(1)} px a printed poster needs: make the code larger so it scans.`,
       ]
     : [];
 }

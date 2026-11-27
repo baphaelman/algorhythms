@@ -269,12 +269,14 @@ export interface PosterIssue {
 const nameOf = (o: PosterObject): string => `${o.group}/${o.member}`;
 
 /**
- * Every rule the default poster must keep (§15 M14 acceptance): no text clipped by the artboard,
- * none outside the margins, none over other text, no text box over the music.
+ * Every rule the default poster must keep (§15 M14 acceptance): no text (or QR code) clipped by
+ * the artboard, none outside the margins, none over other text, no text box over the music.
  */
 export function posterIssues(layout: PosterLayout): PosterIssue[] {
   const out: PosterIssue[] = [];
-  const text = layout.objects.filter((o) => o.type === 'text' || o.type === 'label');
+  const text = layout.objects.filter(
+    (o) => o.type === 'text' || o.type === 'label' || o.type === 'qr',
+  );
   const board = artboard(layout);
   for (const o of text) {
     if (!inside(o.box, board)) out.push({ kind: 'clipped', what: [nameOf(o)] });

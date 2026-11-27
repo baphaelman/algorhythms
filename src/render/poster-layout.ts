@@ -68,8 +68,8 @@ import {
 import {
   QR_DEFAULT_CARD,
   QR_DEFAULT_COLOUR,
-  QR_SIDE,
   qrBoxSide,
+  qrDefaultSide,
   qrSquare,
   type QrInput,
   type QrMatrix,
@@ -1956,7 +1956,7 @@ function qrObjectOf(
   let box: Rect;
   if (side0 !== undefined && q.box) box = qrSquare(q.box.x * W, q.box.y * H, side0, matrix);
   else {
-    const side = Math.min(QR_SIDE * Math.min(W, H), content.w, content.h);
+    const side = Math.min(qrDefaultSide(Math.min(W, H), matrix), content.w, content.h);
     const right = content.x + content.w - side;
     const inBand =
       band !== null &&

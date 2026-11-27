@@ -55,8 +55,8 @@ import {
   QR_DEFAULT_CARD,
   QR_DEFAULT_COLOUR,
   QR_MAX_CHARS,
-  QR_MIN_MODULE_PX,
   qrContrast,
+  qrMinModule,
   qrModulePx,
   qrReadable,
 } from '../../render/poster-qr';
@@ -117,7 +117,7 @@ import {
   useWorkspace,
   type WorkspaceTool,
 } from '../poster-workspace';
-import { qrLinkLength } from '../poster-qr';
+import { noteQrSeed, qrLinkLength } from '../poster-qr';
 import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
@@ -199,7 +199,11 @@ export function alignSelection(how: AlignTo): void {
 
 /** Adds the QR code at its default place and selects it (one per poster: else selects it). */
 export function addQrCode(): void {
-  if (!docNow()?.qr) editPoster((d) => setQr(d, {}), 'Add QR code');
+  if (!docNow()?.qr) {
+    const before = usePlayer.getState().piece;
+    editPoster((d) => setQr(d, {}), 'Add QR code');
+    noteQrSeed(before, usePlayer.getState().piece);
+  }
   useWorkspace.setState({ selected: { kind: 'qr' }, tool: 'select', editing: null });
 }
 
@@ -1364,6 +1368,7 @@ function QrPanel({ layout }: { layout: PosterLayout }) {
   const card = q.card ?? QR_DEFAULT_CARD;
   const contrast = qrContrast(colour, card);
   const modulePx = qrModulePx(o.box.w, o.matrix);
+  const minModule = qrMinModule(Math.min(layout.width, layout.height));
   const frame = o.box;
   return (
     <>
@@ -1401,9 +1406,9 @@ function QrPanel({ layout }: { layout: PosterLayout }) {
             : `Contrast ${Math.abs(contrast ?? 0).toFixed(1)}:1 is too low to scan reliably: use darker modules or a lighter card.`}
         </p>
       )}
-      {o.matrix && modulePx < QR_MIN_MODULE_PX && (
+      {o.matrix && modulePx < minModule - 1e-6 && (
         <p className="ws-warn" role="status" data-testid="qr-size-warning">
-          {`Each module is ${modulePx.toFixed(1)} px at this size (${o.matrix.n} across): make the code larger, or the poster, so it scans.`}
+          {`Each module is ${modulePx.toFixed(1)} px (${o.matrix.n} across); printed, it needs ${minModule.toFixed(1)} px (1/400 of the poster's shorter side) to scan: make the code larger.`}
         </p>
       )}
       <BoxFields

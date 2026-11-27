@@ -1,6 +1,6 @@
 /**
  * The poster's QR code (PLAN.md §15 M17 "QR code"): the piece's watch link on the public site
- * (never the dev server's), encoded by `qrcode-generator`, loaded only when a poster has a code.
+ * (never the dev server's): `#w&<id>` for an unedited bundled example, else `#w&p=…`. Encoded by `qrcode-generator`, loaded only when a poster has a code.
  * Byte mode; error correction M when the code stays small enough, else L. Links over
  * `QR_MAX_CHARS` are not encoded (`tooLong`): the artboard says so and exports leave the code out.
  *
@@ -10,9 +10,11 @@
  */
 
 import { create } from 'zustand';
-import type { Piece } from '../core/types';
+import { jsonEqual } from '../core/schema';
+import type { Piece, PosterDoc } from '../core/types';
 import { QR_MAX_CHARS, type QrInput, type QrMatrix } from '../render/poster-qr';
 import { encodeWatchLink } from './share';
+import { loadInfo } from './store';
 import { SITE_URL } from './youtube-description';
 
 /** Error correction M up to this many modules across (version 22), else L: a smaller code. */
@@ -57,8 +59,51 @@ export async function encodeQr(link: string): Promise<QrMatrix & { level: 'M' | 
 }
 
 /** The watch link a poster's code holds: on the public site. */
-export const qrLinkOf = (piece: Piece): Promise<string> =>
-  encodeWatchLink(piece, { base: SITE_URL });
+export const qrLinkOf = (piece: Piece): Promise<string> => {
+  const example = exampleIdOf(piece);
+  return encodeWatchLink(piece, { base: SITE_URL, ...(example ? { example } : {}) });
+};
+
+/** A poster doc without its QR code (undefined when nothing else is left). */
+function docWithoutCode(doc: PosterDoc | undefined): PosterDoc | undefined {
+  if (!doc) return undefined;
+  const { qr: _q, ...rest } = doc;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+/** The piece without its poster and poster save point. */
+function withoutPoster(p: Piece): Piece {
+  const { posterSaved: _s, poster: _p, ...rest } = p;
+  return rest as Piece;
+}
+
+/**
+ * The doc the workspace seeded (the viewer's poster settings) when the code was added to an
+ * example without a doc, for the load it was made in: still unedited.
+ */
+let seed: { load: number; doc: PosterDoc } | null = null;
+
+/** After adding a code: remember the seeded doc if the piece had none before (`before`). */
+export function noteQrSeed(before: Piece, after: Piece): void {
+  const doc = docWithoutCode(after.poster);
+  seed = !before.poster && doc ? { load: loadInfo().count, doc } : seed;
+}
+
+/**
+ * The id of the bundled example `piece` is, unedited apart from its QR code (and the poster
+ * settings a first poster edit writes), else undefined: its watch link is then `#w&<id>`, a
+ * small code.
+ */
+export function exampleIdOf(piece: Piece): string | undefined {
+  const { example, examplePiece, count } = loadInfo();
+  if (example === undefined || !examplePiece) return undefined;
+  if (!jsonEqual(withoutPoster(piece), withoutPoster(examplePiece))) return undefined;
+  const doc = docWithoutCode(piece.poster);
+  const same =
+    jsonEqual(doc, docWithoutCode(examplePiece.poster)) ||
+    (seed !== null && seed.load === count && jsonEqual(doc, seed.doc));
+  return same ? example : undefined;
+}
 
 /** Whether a watch link fits a code that scans easily. */
 export const qrFits = (link: string): boolean => link.length <= QR_MAX_CHARS;
