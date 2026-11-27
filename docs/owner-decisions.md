@@ -4,6 +4,7 @@ Technical calls are the integrator's ("no backend stuff, I trust you fully"). Th
 
 ## Needs you
 - **M13 builder split:** yes to the split sent 2026-11-27? (K1 hover to hear first)
+- **M17 device checks:** play a watch link in real fullscreen on the Mac (and an iPhone if handy), e.g. https://baphaelman.github.io/algorhythms/#w&kite-day; scan a poster's QR code with a phone camera (on screen or printed).
 - **Your reorganization** of the Music, Poster and Video screens: M16 is mapped against it once you send it.
 - **Late Bloom:** the song is on its own branch; push it? (asked 2026-11-26)
 

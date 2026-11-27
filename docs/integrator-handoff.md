@@ -3,11 +3,12 @@
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
 ## Now (2026-11-27)
-- **main:** 24da2de + docs = M17 W1–W4 (video in the piece, watch links, watch view, Share's Opens to, pictures that open, drop hint, poster QR code; libraries `qrcode-generator` 2.0.4 MIT, `jsqr` 1.4.0 Apache-2.0 dev-only). Verified (lint, typecheck, unit 3464, build, 196 e2e chromium+firefox). **Live:** c3b15fa (W1–W3; Pages css `main-CShmQTiG.css`) until this push's CI is green. **Preview artifact:** v93.
-- **In flight:** M17 W5 acceptance (`docs/m17-acceptance.md`; ports 6180/4180).
-- **Queue:** M13 alongside, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
+- **main:** 97f4327 + docs = M17 done (W1–W5; `docs/m17-acceptance.md`: 31 C, 1 P, 2 owner-device gaps, 1 untestable). Verified (lint, typecheck, unit 3464, build, 115 e2e; watch-view phone test flaked under load, 3/3 alone). **Live:** 67d1e82 (W1–W4; Pages css `main-CyrGiJ-z.css`) until this push's CI is green. **Preview artifact:** v93.
+- **In flight:** HUD-position rounding + store-once in share links (M17 follow-up; from 97f4327; ports 6190/4190).
+- **Queue:** M13, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
   - M13 split?
+  - M17 device checks: real fullscreen on the Mac (+ iPhone if handy); a phone camera scanning a poster's QR code.
   - The owner's reorganization of the screens (for M16).
   - Integrator call (veto): the drop hint takes no room and hides when it doesn't fit (hidden on square/A4 for 7 of 13 bundled pieces with long titles).
   - Push the composer's `late-bloom` branch (b27f38c "Songs: add Late Bloom" plus copies of ba08e99/06afce4)?
@@ -20,7 +21,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6180/4180; the next builder gets 6190/4190. The integrator verifies on 5490/4490.
+- **Ports used** up to 6190/4190; the next builder gets 6200/4200. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|
@@ -32,7 +33,8 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
 | M12 | Directed Compose: done 2026-11-25. |
 | M14 | Poster workspace: done 2026-11-25. Owner follow-ups (Save/Revert bar, selection panel, per-row placements, Text tool, round 3 incl. zoom and per-row hiding) live at b871add. |
 | M15 | Play the poster: done 2026-11-26 (`docs/m15-acceptance.md`). |
-| M16, then M13 | Not started; both need mapping and the owner's yes. |
+| M17 | Pieces that travel: done 2026-11-27 (`docs/m17-acceptance.md`); owner device checks open (fullscreen, QR scan). |
+| M13, then M16 | M13 split awaiting the owner's yes; M16 after the owner's screen reorganization. |
 
 ## Standing rules (owner)
 - **Don't write code.** Builders write all of it. You assign, verify, merge, push and report. You own PLAN.md, this file, `docs/owner-decisions.md` and the build log's traps list.
