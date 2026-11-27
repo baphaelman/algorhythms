@@ -151,6 +151,8 @@ interface NumberFieldProps {
    * Absent, a bounded field gets one over its typed range (`sliderPlan`).
    */
   slider?: { min: number; max: number; step?: number } | false;
+  /** The typed value before it commits (null: none, or not a valid value), for previews. */
+  onDraft?: (v: number | null) => void;
 }
 
 /**
@@ -177,7 +179,11 @@ export function NumberField(props: NumberFieldProps) {
   const shown = format(value);
   const [draft, dispatch] = useReducer(draftReduce, { text: shown, dirty: false });
   const text = draft.text;
-  const setText = (t: string): void => dispatch({ type: 'set', text: t });
+  const onDraft = props.onDraft;
+  const setText = (t: string): void => {
+    dispatch({ type: 'set', text: t });
+    onDraft?.(null);
+  };
   const [error, setError] = useState<string | null>(null);
 
   // An outside change (undo, another edit) drops a typed draft: blur must not commit it.
@@ -313,7 +319,10 @@ export function NumberField(props: NumberFieldProps) {
                   setError(null);
                 }
               }}
-              onChange={(e) => dispatch({ type: 'type', text: e.target.value })}
+              onChange={(e) => {
+                dispatch({ type: 'type', text: e.target.value });
+                onDraft?.(parse(e.target.value));
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();

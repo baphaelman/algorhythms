@@ -431,6 +431,27 @@
   color: inherit;
 }
 
+/* Fold axes (M13): one per row, the key and chord each lands in under its name. */
+.chips.insp-fold-axes {
+  flex-direction: column;
+}
+
+.chips.insp-fold-axes button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.insp-fold-axis-lands {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.chips.insp-fold-axes button[aria-pressed='true'] .insp-fold-axis-lands {
+  color: inherit;
+}
+
 /* Fit marks (§11.3 rev 14): a corner dot, out of the flow, so no layout shift. */
 .chips.diatonic .fit-dot {
   position: absolute;

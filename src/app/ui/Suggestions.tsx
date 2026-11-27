@@ -19,6 +19,7 @@ const ICON: Record<Suggestion['kind'], string> = {
   thin: '⋎',
   collapse: '◇',
   level: '◢',
+  loop: '↻',
 };
 
 /** `m:ss.s` for a tooltip. */

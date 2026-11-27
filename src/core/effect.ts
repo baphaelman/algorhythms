@@ -639,6 +639,24 @@ export function momentEffectAt(piece: Piece, score: CompiledScore, m: Moment): M
 }
 
 /**
+ * Where adding `m` to `piece` (compiled as `score`) would decide: the destinations of the voices
+ * it targets there, ascending, and the key in effect (the fold inspector, M13).
+ */
+export function targetsAt(
+  piece: Piece,
+  score: CompiledScore,
+  m: Moment,
+): { dests: Pitch[]; key: Key } {
+  const st0 = stateFor(piece, score, m, new Map());
+  const st = countsLines(m) ? st0 : (st0.stacked ?? st0);
+  const ids = score.voices.map((v) => v.id);
+  for (let u = ids.length; u < st.dest.length; u++) ids.push(`${ids[st.base[u]]}~${u}`);
+  const partAt = (v: number): string => partOf(piece.voices[st.base[v]]);
+  const targeted = resolveTarget(m.target, st, (id) => ids.indexOf(id), partAt);
+  return { dests: targeted.map((v) => st.dest[v]), key: st.key };
+}
+
+/**
  * The state moment `m` decides on: at `m.at`, or for a land moment (revision 9) at its lead-in
  * start with the key in effect at `m.at`; a land moment that finds nothing sounding there acts at
  * `m.at` (compile.ts SUB_LANDED). `cache`: states by time.
