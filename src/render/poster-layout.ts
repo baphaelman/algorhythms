@@ -65,6 +65,16 @@ import {
   posterSpan,
   posterStyle,
 } from './poster';
+import {
+  QR_DEFAULT_CARD,
+  QR_DEFAULT_COLOUR,
+  QR_SIDE,
+  qrBoxSide,
+  qrSquare,
+  type QrInput,
+  type QrMatrix,
+  type QrState,
+} from './poster-qr';
 import { sectionRows, type SectionRowItem } from './poster-rows';
 import { MIN_SECTION, sectionText, type TimeSpan } from './section';
 import type { HudItem, ScoreStyle, View } from './types';
@@ -158,6 +168,8 @@ export interface PosterInput {
   /** OKLCH colours (see `supportsOklch`). @default true */
   oklch?: boolean;
   measure?: Measure;
+  /** The QR code's link and modules (M17), when the doc has a code; absent = still encoding. */
+  qr?: QrInput;
   fontMono?: string;
   fontSerif?: string;
   fontSans?: string;
@@ -626,8 +638,8 @@ export interface TextRun {
 interface ObjectBase {
   /** Ink box in artboard px. */
   box: Rect;
-  /** `layers`, `texts`, or a label or line group. */
-  group: PosterGroup | 'layers' | 'texts';
+  /** `layers`, `texts`, `qr`, or a label or line group. */
+  group: PosterGroup | 'layers' | 'texts' | 'qr';
   /** The member: layer id, text id, moment id, guide pitch, row index, HUD readout, beat time. */
   member: string;
   /** The row it belongs to, if any. */
@@ -691,7 +703,24 @@ export interface LayerObject extends ObjectBase {
   row: number;
 }
 
-export type PosterObject = LabelObject | TextObject | LineObject | LayerObject;
+/**
+ * The QR code (M17): `box` is its card (quiet zone included), a square. Exports draw it only
+ * when `state` is `ok`; the artboard shows the other states.
+ */
+export interface QrObject extends ObjectBase {
+  type: 'qr';
+  group: 'qr';
+  state: QrState;
+  /** The watch link it holds ('' while unknown). */
+  link: string;
+  matrix?: QrMatrix;
+  colour: string;
+  card: string;
+  /** Placed where the layout puts it (no box of its own). */
+  auto: boolean;
+}
+
+export type PosterObject = LabelObject | TextObject | LineObject | LayerObject | QrObject;
 
 /** A row: the time it shows, its whole rect (label zone and gutters included) and its plot. */
 export interface RowLayout {
@@ -1281,6 +1310,9 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     h: Math.max(u, musicBottom - Math.min(musicTop, musicBottom - u)),
   };
 
+  // --- QR code (M17) --------------------------------------------------------------------------------
+  const qr = doc?.qr ? qrObjectOf(doc.qr, input.qr, W, H, content, band, texts, hudBand, u) : null;
+
   // --- rows -----------------------------------------------------------------------------------------
   const A = span ? span.start : 0;
   const B = span ? span.end : compiled.duration;
@@ -1619,6 +1651,8 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   // --- labels -----------------------------------------------------------------------------------------
   // The hint is the lowest-priority text (M17): labels and readouts ignore it; it hides after.
   const placed: Rect[] = texts.filter((t) => t.member !== POSTER_HINT_ID).map((t) => t.box);
+  // Labels and readouts avoid the QR code as they avoid a text box.
+  if (qr) placed.push(qr.box);
   const labelObjs: LabelObject[] = [];
   const hidden: LabelObject[] = [];
   const P = TEXT_PAD * u;
@@ -1869,6 +1903,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     });
   });
   objects.push(...labelObjs, ...texts);
+  if (qr) objects.push(qr);
 
   const voiceColors = posterVoiceColors(doc, piece.voices);
   return {
@@ -1896,6 +1931,56 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     sectionRows: plan ? plan.items : null,
     fonts,
     tokens,
+  };
+}
+
+/**
+ * The QR code's object: its stored box (a square of the smaller side), else its default place,
+ * bottom right inside the margins: in the text band when the band holds the default size beside
+ * its texts (the hint aside), else over the plot's corner, above the HUD band.
+ */
+function qrObjectOf(
+  q: NonNullable<PosterDoc['qr']>,
+  input: QrInput | undefined,
+  W: number,
+  H: number,
+  content: Rect,
+  band: Rect | null,
+  texts: readonly TextObject[],
+  hudBand: Rect | null,
+  u: number,
+): QrObject {
+  const matrix = input?.tooLong ? undefined : input?.matrix;
+  const state: QrState = input?.tooLong ? 'long' : matrix ? 'ok' : 'pending';
+  const side0 = qrBoxSide(q, W, H);
+  let box: Rect;
+  if (side0 !== undefined && q.box) box = qrSquare(q.box.x * W, q.box.y * H, side0, matrix);
+  else {
+    const side = Math.min(QR_SIDE * Math.min(W, H), content.w, content.h);
+    const right = content.x + content.w - side;
+    const inBand =
+      band !== null &&
+      band.h >= side &&
+      texts.every(
+        (t) => !t.auto || t.member === POSTER_HINT_ID || t.box.x + t.box.w + 4 * u <= right,
+      );
+    const bottom = inBand ? band.y + band.h : hudBand ? hudBand.y - 6 * u : content.y + content.h;
+    box = qrSquare(right, bottom - side, side, matrix);
+    // Snapped smaller: keep the bottom-right corner.
+    box = { ...box, x: right + side - box.w, y: bottom - box.h };
+    box = { ...box, x: Math.round(box.x), y: Math.round(box.y) };
+  }
+  return {
+    type: 'qr',
+    group: 'qr',
+    member: 'qr',
+    box,
+    state,
+    link: input?.link ?? '',
+    ...(matrix ? { matrix } : {}),
+    colour: q.colour ?? QR_DEFAULT_COLOUR,
+    card: q.card ?? QR_DEFAULT_CARD,
+    auto: side0 === undefined,
   };
 }
 

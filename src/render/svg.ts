@@ -631,6 +631,20 @@ export class SvgContext {
     this.push(`<path d="${d}" fill="${p.ref}"${extra}/>`);
   }
 
+  /**
+   * Fills SVG path data `d` (user space, as drawn under the current transform) with crisp edges:
+   * a QR code's modules as one compact path (M17). Not a canvas method; callers check for it.
+   */
+  fillPathCrisp(d: string): void {
+    const p = this.paint(this.s.fillStyle);
+    if (!p || d === '') return;
+    const [a, b, c, e, f, g] = this.s.m;
+    const m = [a, b, c, e, f, g].map((v) => String(Math.round(v * 1e4) / 1e4)).join(' ');
+    this.push(
+      `<path d="${d}" transform="matrix(${m})" fill="${p.ref}" shape-rendering="crispEdges"${this.common(this.s.globalAlpha * p.alpha)}/>`,
+    );
+  }
+
   /** Clears everything drawn so far when the rectangle covers the canvas; otherwise a no-op. */
   clearRect(x: number, y: number, w: number, h: number): void {
     const c = [this.tx(x, y), this.tx(x + w, y + h)];

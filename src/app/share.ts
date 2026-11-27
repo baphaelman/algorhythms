@@ -11,7 +11,8 @@
  *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
  *   (M15), the video packed (M17: short names, flat section and placed readouts), and the
  *   poster packed (M14: default
- *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number); then
+ *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number,
+ *   a QR code with only a box as its box); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
@@ -271,6 +272,10 @@ function packPoster(poster: Rec): Rec {
       return d ? d.id : withBox(t, flatBox);
     });
   }
+  // A QR code with only a box packs as the box (M17).
+  const q = out.qr;
+  if (isRec(q) && Object.keys(q).length === 1 && plainBox(q.box)) out.qr = flatBox(q.box);
+  else if (isRec(q)) out.qr = withBox(q, flatBox);
   return out;
 }
 
@@ -288,6 +293,8 @@ function unpackPoster(poster: Rec): Rec {
       return d ? cloneJson(d) : withBox(t, boxOf);
     });
   }
+  if (Array.isArray(out.qr)) out.qr = { box: boxOf(out.qr) };
+  else if (isRec(out.qr)) out.qr = withBox(out.qr, boxOf);
   return out;
 }
 

@@ -604,6 +604,7 @@ export function startExport(): void {
         out = await runtime.runStems(src, form, { ...hooks, target });
       }
       if (out.blob) downloadBlob(out.blob, out.name);
+      if (out.notes) pushNotice('warning', 'QR code', out.notes);
       setRun({
         status: 'done',
         fraction: 1,

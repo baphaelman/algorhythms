@@ -10,8 +10,10 @@
  *   the eight handles resize (`resizeBox`: Shift proportional, Alt from the centre).
  * - A click on the paper where nothing is selects the background (its gradient's handles show
  *   only then). Snapping works on the outlines drawn (`drawnFrame`, `snapTargets`).
+ * - The QR code (M17): added from the tool row when the watch link fits one, then moved,
+ *   resized (always square) and deleted like a text box.
  * - Keys (nothing typed into): arrows nudge (Shift: ten times), Delete removes a text box or
- *   hides the rest (a part in one row: in that row only), Enter edits a text box, V / T pick the
+ *   the QR code, or hides the rest (a part in one row: in that row only), Enter edits a text box, V / T pick the
  *   tool. Escape clears the selection.
  */
 
@@ -33,6 +35,7 @@ import {
   posterTimeAt,
   putText,
   refitPoster,
+  removeQr,
   removeText,
   resizeBox,
   setGroupStyle,
@@ -42,11 +45,21 @@ import {
   setLayerRowHidden,
   setMargins,
   setMemberStyle,
+  setQr,
   setRowBox,
   textBoxFor,
   textsOf,
   type Handle,
 } from '../../render/poster-edit';
+import {
+  QR_DEFAULT_CARD,
+  QR_DEFAULT_COLOUR,
+  QR_MAX_CHARS,
+  QR_MIN_MODULE_PX,
+  qrContrast,
+  qrModulePx,
+  qrReadable,
+} from '../../render/poster-qr';
 import {
   DEFAULT_MARGIN,
   LABEL_GROUPS,
@@ -77,6 +90,7 @@ import {
   newTextRect,
   nudgeDoc,
   placeRect,
+  qrObject,
   resizable,
   selectedBoxes,
   selectionAt,
@@ -103,6 +117,7 @@ import {
   useWorkspace,
   type WorkspaceTool,
 } from '../poster-workspace';
+import { qrLinkLength } from '../poster-qr';
 import { currentTime, usePlayer } from '../store';
 import { Swatch } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
@@ -148,6 +163,9 @@ export function deleteSelection(): void {
   if (sel.kind === 'text') {
     editPoster((d) => removeText(d, sel.id), 'Remove text box');
     select(null);
+  } else if (sel.kind === 'qr') {
+    editPoster((d) => removeQr(d), 'Remove QR code');
+    select(null);
   } else if (sel.kind === 'layer') {
     if (sel.row !== undefined && layout) hideInRow(layout, sel.id, sel.row, true);
     else editPoster((d) => setLayer(d, sel.id, { hidden: true }), 'Hide layer');
@@ -177,6 +195,12 @@ export function alignSelection(how: AlignTo): void {
   const f = layout && selectionFrame(layout, sel);
   if (!sel || !layout || !f || !resizable(sel)) return;
   editPoster((d) => placeRect(d, layout, sel, f, alignBox(f, layout.content, how)), 'Align');
+}
+
+/** Adds the QR code at its default place and selects it (one per poster: else selects it). */
+export function addQrCode(): void {
+  if (!docNow()?.qr) editPoster((d) => setQr(d, {}), 'Add QR code');
+  useWorkspace.setState({ selected: { kind: 'qr' }, tool: 'select', editing: null });
 }
 
 /**
@@ -417,7 +441,8 @@ export function ArtboardOverlay({ width }: { width: number }) {
         g = s.guides;
       }
       to = resizeBox(d.frame, d.handle!, delta, {
-        shift: p.shift,
+        // The QR code stays square.
+        shift: p.shift || d.sel.kind === 'qr',
         alt: p.alt,
         min: 4 * d.layout.unit,
       });
@@ -643,7 +668,36 @@ export function ArtboardOverlay({ width }: { width: number }) {
           Text
         </div>
       )}
+      <QrState layout={layout} pct={pct} />
       {editing && <InlineText key={editing} id={editing} layout={layout} scale={scale} />}
+    </div>
+  );
+}
+
+/**
+ * Over a QR code the poster can't draw: "too long to scan" (left out of exports) or "making" while
+ * it encodes. A ready code is drawn by the canvas itself.
+ */
+function QrState({ layout, pct }: { layout: PosterLayout; pct: (r: Rect) => React.CSSProperties }) {
+  const o = qrObject(layout);
+  if (!o || o.state === 'ok') return null;
+  return (
+    <div
+      className={`ws-qr-state ws-qr-${o.state}`}
+      data-testid="qr-state"
+      data-state={o.state}
+      style={pct(o.box)}
+    >
+      {o.state === 'long' ? (
+        <span>
+          <b>Too long to scan</b>
+          <br />
+          {o.link.length.toLocaleString('en')} of {QR_MAX_CHARS.toLocaleString('en')} characters.
+          Left out of exports.
+        </span>
+      ) : (
+        <span>Making the QR code…</span>
+      )}
     </div>
   );
 }
@@ -996,6 +1050,10 @@ export function SelectionPanel({ children }: { children?: React.ReactNode }) {
     if (!t) return <>{children}</>;
     title = textName(t);
     body = <TextPanel id={sel.id} t={t} layout={layout} />;
+  } else if (sel.kind === 'qr') {
+    if (!doc?.qr) return <>{children}</>;
+    title = 'QR code';
+    body = <QrPanel layout={layout} />;
   } else {
     title = GROUP_NAMES[sel.group];
     body = <GroupPanel sel={sel} layout={layout} doc={doc} />;
@@ -1288,6 +1346,85 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
         }}
       >
         Remove text box
+      </button>
+    </>
+  );
+}
+
+/**
+ * The QR code: what it holds, its colours (warned when too faint to scan), place and size
+ * (square; warned when a module is under a few px at the export size), and Remove.
+ */
+function QrPanel({ layout }: { layout: PosterLayout }) {
+  const q = usePlayer((s) => s.piece.poster?.qr);
+  const o = qrObject(layout);
+  if (!q || !o) return null;
+  const sel: PosterSelection = { kind: 'qr' };
+  const colour = q.colour ?? QR_DEFAULT_COLOUR;
+  const card = q.card ?? QR_DEFAULT_CARD;
+  const contrast = qrContrast(colour, card);
+  const modulePx = qrModulePx(o.box.w, o.matrix);
+  const frame = o.box;
+  return (
+    <>
+      <p className="ws-qr-what" data-testid="qr-what">
+        {o.state === 'long'
+          ? `The watch link is ${o.link.length.toLocaleString('en')} characters, over the ${QR_MAX_CHARS.toLocaleString('en')} a code that scans easily holds: it is left out of exports.`
+          : o.link
+            ? `Opens the piece to watch (${o.link.length.toLocaleString('en')} characters).`
+            : 'Making the code…'}
+      </p>
+      <div className="look-grid">
+        <Swatch
+          label="Modules"
+          value={hex(colour, QR_DEFAULT_COLOUR)}
+          set={q.colour !== undefined}
+          testId="qr-colour"
+          onChange={(c) =>
+            editPosterRun('qr colour', (d) => setQr(d, { colour: c ?? undefined }), 'QR colour')
+          }
+        />
+        <Swatch
+          label="Card"
+          value={hex(card, QR_DEFAULT_CARD)}
+          set={q.card !== undefined}
+          testId="qr-card"
+          onChange={(c) =>
+            editPosterRun('qr card', (d) => setQr(d, { card: c ?? undefined }), 'QR colour')
+          }
+        />
+      </div>
+      {!qrReadable(colour, card) && (
+        <p className="ws-warn" role="status" data-testid="qr-contrast-warning">
+          {contrast !== null && contrast < 0
+            ? 'Lighter modules than card: many phones won’t read it. Use dark modules on a light card.'
+            : `Contrast ${Math.abs(contrast ?? 0).toFixed(1)}:1 is too low to scan reliably: use darker modules or a lighter card.`}
+        </p>
+      )}
+      {o.matrix && modulePx < QR_MIN_MODULE_PX && (
+        <p className="ws-warn" role="status" data-testid="qr-size-warning">
+          {`Each module is ${modulePx.toFixed(1)} px at this size (${o.matrix.n} across): make the code larger, or the poster, so it scans.`}
+        </p>
+      )}
+      <BoxFields
+        frame={frame}
+        onBox={(r) => {
+          // Square: the side typed wins.
+          const side = r.w !== frame.w ? r.w : r.h;
+          const to = { ...r, w: side, h: side };
+          editPosterRun('box qr', (d) => placeRect(d, layout, sel, frame, to), 'Move');
+        }}
+      />
+      <button
+        type="button"
+        className="ws-remove"
+        data-testid="sel-remove"
+        onClick={() => {
+          editPoster((d) => removeQr(d), 'Remove QR code');
+          select(null);
+        }}
+      >
+        Remove QR code
       </button>
     </>
   );
@@ -1640,6 +1777,7 @@ export function ToolRow({ drawer }: { drawer?: string }) {
           </button>
         ))}
       </div>
+      <QrButton />
       {tool === 'text' && (
         <span className="ws-tool-hint" role="status" data-testid="text-tool-hint">
           Click to place text · drag to set its width · Esc to cancel
@@ -1682,6 +1820,72 @@ export function ToolRow({ drawer }: { drawer?: string }) {
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * The watch link's length a QR code would hold for the piece (null while it is measured), a
+ * moment after the piece last changed. With a code, the code's own link.
+ */
+function useQrLinkLength(): number | null {
+  const piece = usePlayer((s) => s.piece);
+  const layout = useWorkspace((s) => s.layout);
+  const own = layout ? qrObject(layout) : undefined;
+  const [len, setLen] = useState<{ of: unknown; n: number } | null>(null);
+  useEffect(() => {
+    if (piece.poster?.qr) return;
+    let live = true;
+    const t = setTimeout(() => {
+      qrLinkLength(piece).then(
+        (n) => live && setLen({ of: piece, n }),
+        () => undefined,
+      );
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [piece]);
+  if (own?.link) return own.link.length;
+  return len ? len.n : null;
+}
+
+/**
+ * Adds the QR code (M17), or selects it. Disabled while the watch link is too long for a code
+ * that scans easily, saying how long it is.
+ */
+function QrButton() {
+  const has = usePlayer((s) => s.piece.poster?.qr !== undefined);
+  const n = useQrLinkLength();
+  const long = !has && n !== null && n > QR_MAX_CHARS;
+  const why = long
+    ? `The watch link is ${n.toLocaleString('en')} characters; a QR code that scans easily holds ${QR_MAX_CHARS.toLocaleString('en')}`
+    : null;
+  return (
+    <>
+      <button
+        type="button"
+        className="ws-qr-add"
+        disabled={long || (!has && n === null)}
+        aria-describedby={long ? 'qr-too-long' : undefined}
+        title={
+          why ??
+          (has
+            ? 'Select the QR code'
+            : 'Add a QR code that opens the piece to watch (point a phone at the poster)')
+        }
+        data-testid="tool-qr"
+        onClick={addQrCode}
+      >
+        QR code
+      </button>
+      {long && (
+        <span className="ws-tool-hint" id="qr-too-long" role="status" data-testid="qr-too-long">
+          Link too long for a QR code: {n.toLocaleString('en')} of{' '}
+          {QR_MAX_CHARS.toLocaleString('en')} characters
+        </span>
+      )}
+    </>
   );
 }
 
@@ -1834,6 +2038,17 @@ export function LayersList() {
             </li>
           );
         })}
+        {doc?.qr && (
+          <li className="ws-layer" data-testid="layer-qr">
+            <Row
+              name="QR code"
+              meta={doc.qr.box ? 'placed' : 'auto'}
+              on={isSel({ kind: 'qr' })}
+              testId="layer-qr-row"
+              onSelect={() => select({ kind: 'qr' })}
+            />
+          </li>
+        )}
       </ul>
       <h4 className="ws-layers-head">Music</h4>
       <ul>

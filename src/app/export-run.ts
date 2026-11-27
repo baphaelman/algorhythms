@@ -64,11 +64,14 @@ import {
 import {
   posterFileName,
   posterHudOf,
+  posterLayoutOf,
   previewPosterLayout,
   renderPosterLayoutPng,
   renderPosterLayoutSvg,
 } from './poster-export';
 import type { PosterOptions } from './poster-export';
+import { qrReady } from './poster-qr';
+import { QR_MAX_CHARS, QR_MIN_MODULE_PX, qrModulePx, type QrInput } from '../render/poster-qr';
 
 import { embedJpeg, embedPng, embedSvg, mp4PieceBox } from './piece-in-file';
 import { serializePiece } from '../core/schema';
@@ -130,6 +133,8 @@ export interface ExportOutput {
   bytes: number;
   /** Files inside (stems zip, MIDI zip), 1 otherwise. */
   files: number;
+  /** Warnings about what the file holds (a QR code left out or too small to scan). */
+  notes?: string[];
 }
 
 export interface RunHooks {
@@ -269,6 +274,8 @@ export async function runPoster(
   // Let the label paint before the (synchronous) drawing.
   await new Promise((r) => setTimeout(r, 0));
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
+  // The QR code is made before the drawing (M17); one that can't scan well is reported.
+  const notes = src.piece.poster?.qr ? qrNotes(await qrReady(src.piece), options, src) : [];
   // The file carries the whole piece (M17 "Pictures that open").
   const json = serializePiece(src.piece);
   const blob =
@@ -288,7 +295,8 @@ export async function runPoster(
           type: 'image/svg+xml',
         });
   if (aborted(hooks.signal)) throw new DOMException('Cancelled', 'AbortError');
-  if (!hooks.target) return { name, blob, bytes: blob.size, files: 1 };
+  const more = notes.length > 0 ? { notes } : {};
+  if (!hooks.target) return { name, blob, bytes: blob.size, files: 1, ...more };
   const w = await hooks.target.createWritable();
   try {
     await w.write(blob);
@@ -297,7 +305,22 @@ export async function runPoster(
     await w.abort().catch(() => undefined);
     throw e;
   }
-  return { name, blob: null, bytes: blob.size, files: 1 };
+  return { name, blob: null, bytes: blob.size, files: 1, ...more };
+}
+
+/** What to tell about the poster's QR code in an export: left out (too long) or modules too small. */
+function qrNotes(q: QrInput, options: PosterOptions, src: ExportSource): string[] {
+  if (q.tooLong)
+    return [
+      `The QR code was left out: the watch link is ${q.link.length.toLocaleString('en')} characters, over the ${QR_MAX_CHARS.toLocaleString('en')} a code that scans easily holds.`,
+    ];
+  const o = posterLayoutOf(src.piece, options, src.compiled).objects.find((x) => x.type === 'qr');
+  const px = o?.type === 'qr' ? qrModulePx(o.box.w, o.matrix) : Infinity;
+  return px < QR_MIN_MODULE_PX
+    ? [
+        `The QR code's modules are ${px.toFixed(1)} px: make the code or the poster larger so it scans.`,
+      ]
+    : [];
 }
 
 /** What the dialog's preview last drew (tests compare it with a direct render). */
@@ -417,6 +440,7 @@ export async function runThumbnail(
   at: Seconds | 'whole',
 ): Promise<ExportOutput> {
   const options = optionsOf(src, form, ctx);
+  if (src.piece.poster?.qr) await qrReady(src.piece);
   const jpeg = await exportThumbnail(src.piece, options, at);
   // The piece rides along (M17); without its background picture when that would break the cap.
   const bytes = new Uint8Array(await jpeg.arrayBuffer());
@@ -565,6 +589,8 @@ export async function runVideo(
   hooks: RunHooks & { target?: VideoFileHandle } = {},
 ): Promise<ExportOutput> {
   const opts = optionsOf(src, form, ctx);
+  // The poster's QR code is made before the frames are drawn (M17).
+  if (src.piece.poster?.qr) await qrReady(src.piece);
   const last = { options: opts, result: null as VideoResult | null };
   lastVideo = last;
   const mem = hooks.target ? null : blobSink();

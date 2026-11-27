@@ -1091,6 +1091,24 @@ export interface PosterDoc {
    * links (they fall back to the background colour).
    */
   picture?: PosterPicture;
+  /** M17: a QR code holding the piece's watch link; absent = none. */
+  qr?: PosterQr;
+}
+
+/**
+ * A QR code on the poster (M17): the piece's watch link, dark modules on a light card that holds
+ * the quiet zone. Absent fields take the defaults.
+ */
+export interface PosterQr {
+  /**
+   * Fractions of the artboard; the card is a square as wide as the smaller of `w` and `h` (in
+   * px), from (x, y). Absent = the default place.
+   */
+  box?: PosterBox;
+  /** The modules' colour. @default '#000000' */
+  colour?: string;
+  /** The card's colour, quiet zone included. @default '#ffffff' */
+  card?: string;
 }
 
 /** One section's row in rows by sections. */

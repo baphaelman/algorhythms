@@ -913,6 +913,14 @@ export const PosterSchema = z
       })
       .optional()
       .describe('Background picture; never in share links.'),
+    qr: z
+      .looseObject({
+        box: PosterBoxSchema.optional(),
+        colour: colour.optional(),
+        card: colour.optional(),
+      })
+      .optional()
+      .describe("QR code holding the piece's watch link (M17)."),
   })
   .superRefine((p, ctx) => {
     for (const key of ['layers', 'texts'] as const) {

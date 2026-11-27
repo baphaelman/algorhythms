@@ -12,7 +12,8 @@ import { fillBackground } from './background';
 import { drawScore, drawVignette, type Ctx2D } from './draw';
 import { PLAYER_LOOK, lookStyle, type Look } from './look';
 import type { CameraState, MomentLabels, MomentTimes, ScoreStyle } from './types';
-import type { LayerLayout, PosterLayout, PosterObject } from './poster-layout';
+import type { LayerLayout, PosterLayout, PosterObject, QrObject } from './poster-layout';
+import { QR_QUIET, qrPathData, qrRuns, qrSpan } from './poster-qr';
 import { barSeconds, isWholeSpan, sectionText, type TimeSpan } from './section';
 import { videoCamera, videoSpan } from './video';
 
@@ -285,6 +286,31 @@ export function drawPosterLayout(
 }
 
 /**
+ * A QR code: its card, then its dark modules as one path of row runs in module units (SVG: one
+ * compact crisp-edged path), so neighbouring modules leave no seams.
+ */
+function drawQr(g: CanvasRenderingContext2D, o: QrObject): void {
+  const m = o.matrix;
+  if (o.state !== 'ok' || !m) return;
+  const { x, y, w } = o.box;
+  const k = w / qrSpan(m);
+  g.globalAlpha = 1;
+  g.fillStyle = o.card;
+  g.fillRect(x, y, w, w);
+  g.save();
+  g.transform(k, 0, 0, k, x + QR_QUIET * k, y + QR_QUIET * k);
+  g.fillStyle = o.colour;
+  const svg = g as unknown as { fillPathCrisp?: (d: string) => void };
+  if (typeof svg.fillPathCrisp === 'function') svg.fillPathCrisp(qrPathData(m));
+  else {
+    g.beginPath();
+    for (const [r, c, n] of qrRuns(m)) g.rect(c, r, n, 1);
+    g.fill();
+  }
+  g.restore();
+}
+
+/**
  * The ScoreStyle layer `L` draws its lines with: the music's style, its voices only, the layers'
  * colours, nothing but the lines (the poster draws guides, markers and labels itself), the plot
  * filling the frame.
@@ -322,12 +348,19 @@ export function layerStyle(layout: PosterLayout, L: LayerLayout): ScoreStyle {
   return s;
 }
 
-/** Draws one line, label or text object of a layout (layers draw through `drawScore`). */
+/**
+ * Draws one line, label, text or QR object of a layout (layers draw through `drawScore`). A QR
+ * code is drawn only when ready (`state: 'ok'`); the artboard shows the other states above it.
+ */
 export function drawObject(
   g: CanvasRenderingContext2D & { letterSpacing?: string },
   o: PosterObject,
 ): void {
   if (o.type === 'layer') return;
+  if (o.type === 'qr') {
+    drawQr(g, o);
+    return;
+  }
   if (o.type === 'line') {
     g.globalAlpha = o.opacity;
     g.strokeStyle = o.colour;
