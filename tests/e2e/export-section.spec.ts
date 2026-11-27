@@ -348,7 +348,11 @@ test('poster of a 45 s section of a 3-minute piece: only the section, fitted, ro
       m.renderPosterLayoutSvg(piece, { ...opts, pieceRange: true }),
     ];
   }, req.options);
-  expect(fit).toBe(svg);
+  // The download carries the piece in <metadata> (M17); the drawing is the direct render's.
+  const meta =
+    /<metadata><algorhythms:piece [^>]*>[A-Za-z0-9+/=]+<\/algorhythms:piece><\/metadata>/;
+  expect(svg).toMatch(meta);
+  expect(fit).toBe(svg.replace(meta, ''));
   expect(piece).not.toBe(fit);
   await setSwitch(page, 'export-prange', true);
   await choose(page, 'export-pformat', 'PNG');

@@ -847,6 +847,9 @@ const validBox = (b: PosterBox | undefined): b is PosterBox =>
 /** The default hint (M17 "Pictures that open"): the poster carries its piece. */
 export const POSTER_HINT = 'Drop this picture on baphaelman.github.io/algorhythms to play it';
 
+/** The hint's text box id: the lowest-priority text on a poster (it hides before anything). */
+export const POSTER_HINT_ID = 'hint';
+
 /**
  * The default text boxes: today's title block (the name; length, section and key; the credit)
  * and the hint, a smaller line under the credit.
@@ -854,7 +857,7 @@ export const POSTER_HINT = 'Drop this picture on baphaelman.github.io/algorhythm
 export const DEFAULT_POSTER_TEXTS: readonly PosterText[] = [
   { id: 'title', kind: 'title', text: '{name}' },
   { id: 'credit', kind: 'credit', text: `{meta} · ${POSTER_CREDIT}` },
-  { id: 'hint', kind: 'free', text: POSTER_HINT, style: { font: 'mono', size: 0.018 } },
+  { id: POSTER_HINT_ID, kind: 'free', text: POSTER_HINT, style: { font: 'mono', size: 0.018 } },
 ];
 
 /** Default style by kind; `size` as a fraction of the shorter side. */
@@ -1090,8 +1093,37 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   const texts: TextObject[] = [];
   let bandBottom = content.y;
   let anyAuto = false;
+  /** Lines laid out in a frame: their runs (anchor x, baseline) and the ink's box. */
+  const runsOf = (
+    lines: readonly string[],
+    frame: Rect,
+    size: number,
+    font: string,
+    align: 'left' | 'center' | 'right',
+  ): { runs: TextRun[]; ink: Rect } => {
+    const lh = LINE_HEIGHT * size;
+    const runs: TextRun[] = [];
+    let ink: Rect | null = null;
+    lines.forEach((text, i) => {
+      const w = measure(text, font, 0);
+      const x =
+        align === 'left' ? frame.x : align === 'right' ? frame.x + frame.w : frame.x + frame.w / 2;
+      const left = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
+      // The first baseline sits so the line box (1.2 × size) holds ascent and descent centred.
+      const y = frame.y + i * lh + (lh - (ASCENT + DESCENT) * size) / 2 + ASCENT * size;
+      runs.push({ text, x, y });
+      ink = union(ink, { x: left, y: y - ASCENT * size, w, h: (ASCENT + DESCENT) * size });
+    });
+    return { runs, ink: ink ?? { x: frame.x, y: frame.y, w: 0, h: 0 } };
+  };
+  // The hint without a box of its own takes no room (M17): it sits in the band beside the others.
+  let hintTx: PosterText | null = null;
   for (const tx of doc?.texts ?? DEFAULT_POSTER_TEXTS) {
     if (tx.hidden) continue;
+    if (tx.id === POSTER_HINT_ID && !validBox(tx.box)) {
+      hintTx = tx;
+      continue;
+    }
     const def = TEXT_DEFAULTS[tx.kind] ?? TEXT_DEFAULTS.free;
     const st = tx.style ?? {};
     const family = fonts[st.font ?? def.font] ?? fonts.sans;
@@ -1134,19 +1166,7 @@ export function layoutPoster(input: PosterInput): PosterLayout {
     }
     const lh = LINE_HEIGHT * size;
     const font = cssFont(weight, size, family, italic);
-    const runs: TextRun[] = [];
-    let ink: Rect | null = null;
-    lines.forEach((text, i) => {
-      const w = measure(text, font, 0);
-      const x =
-        align === 'left' ? frame.x : align === 'right' ? frame.x + frame.w : frame.x + frame.w / 2;
-      const left = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
-      // The first baseline sits so the line box (1.2 × size) holds ascent and descent centred.
-      const y = frame.y + i * lh + (lh - (ASCENT + DESCENT) * size) / 2 + ASCENT * size;
-      runs.push({ text, x, y });
-      ink = union(ink, { x: left, y: y - ASCENT * size, w, h: (ASCENT + DESCENT) * size });
-    });
-    const inkBox: Rect = ink ?? { x: frame.x, y: frame.y, w: 0, h: 0 };
+    const { runs, ink: inkBox } = runsOf(lines, frame, size, font, align);
     if (!box) {
       frame = { ...frame, x: inkBox.x, w: inkBox.w };
       bandBottom += lines.length * lh;
@@ -1176,6 +1196,66 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   const band: Rect | null = anyAuto
     ? { x: content.x, y: content.y, w: content.w, h: bandBottom - content.y }
     : null;
+
+  // The hint: right-aligned at the band's foot, clear of the auto texts (wrapped to fit); hidden
+  // when it fits nowhere there. Without a band (no other auto text) it is not shown.
+  if (hintTx && band) {
+    const def = TEXT_DEFAULTS[hintTx.kind] ?? TEXT_DEFAULTS.free;
+    const st = hintTx.style ?? {};
+    const family = fonts[st.font ?? def.font] ?? fonts.sans;
+    const weight = st.weight ?? def.weight;
+    const italic = st.italic === true;
+    const size = pos(st.size, def.size) * S;
+    const font = cssFont(weight, size, family, italic);
+    const lh = LINE_HEIGHT * size;
+    const auto = texts.filter((t) => t.auto);
+    const text = fillTokens(hintTx.text, tokens);
+    const widthOf = (l: string): number => measure(l, font, 0);
+    /** Wrapped to the room right of the texts beside a strip of the band; null if it won't fit. */
+    const fit = (foot: boolean): (Rect & { lines: string[] }) | null => {
+      let h = lh;
+      for (let k = 0; k < 4; k++) {
+        const y0 = foot ? band.y + band.h - h : band.y;
+        const left = Math.max(
+          band.x,
+          ...auto
+            .filter((t) => t.box.y < y0 + h && y0 < t.box.y + t.box.h)
+            .map((t) => t.box.x + t.box.w + 2 * size),
+        );
+        const avail = band.x + band.w - left;
+        if (avail <= 0) return null;
+        const lines = text.split('\n').flatMap((l) => wrapLine(l, avail, widthOf));
+        const w = Math.max(0, ...lines.map(widthOf));
+        const nh = lines.length * lh;
+        if (w > avail || nh > band.h) return null;
+        if (nh <= h) return { x: band.x + band.w - w, y: y0, w, h: nh, lines };
+        h = nh;
+      }
+      return null;
+    };
+    const at = fit(true) ?? fit(false);
+    if (at) {
+      const { lines, ...frame } = at;
+      const { runs, ink } = runsOf(lines, frame, size, font, 'right');
+      texts.push({
+        type: 'text',
+        group: 'texts',
+        member: hintTx.id,
+        kind: hintTx.kind,
+        box: ink,
+        frame: { ...frame, x: ink.x, w: ink.w },
+        auto: true,
+        runs,
+        font,
+        size,
+        spacing: 0,
+        align: 'right',
+        colour: st.colour ?? style.paint?.title ?? style.tokens.ink2,
+        opacity: unit(st.opacity, 1),
+        ...(hintTx.travels === true ? { travels: true } : {}),
+      });
+    }
+  }
 
   // --- HUD band -----------------------------------------------------------------------------------
   const hudStyle = LS.hud;
@@ -1537,7 +1617,8 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   }
 
   // --- labels -----------------------------------------------------------------------------------------
-  const placed: Rect[] = texts.map((t) => t.box);
+  // The hint is the lowest-priority text (M17): labels and readouts ignore it; it hides after.
+  const placed: Rect[] = texts.filter((t) => t.member !== POSTER_HINT_ID).map((t) => t.box);
   const labelObjs: LabelObject[] = [];
   const hidden: LabelObject[] = [];
   const P = TEXT_PAD * u;
@@ -1755,6 +1836,17 @@ export function layoutPoster(input: PosterInput): PosterLayout {
   hLabel('guideLabels', guidePitches, guideText);
   hLabel('pitchLabels', pgPitches, pitchGuideLabel);
   vLabel('momentLabels', moments);
+
+  // The hint hides where it would meet a label, a readout or another text box.
+  const hintAt = texts.findIndex((t) => t.member === POSTER_HINT_ID);
+  if (hintAt >= 0) {
+    const b = texts[hintAt]!.box;
+    const meets = placed.some(
+      (p) =>
+        b.x < p.x + p.w + P && p.x < b.x + b.w + P && b.y < p.y + p.h + P && p.y < b.y + b.h + P,
+    );
+    if (meets) texts.splice(hintAt, 1);
+  }
 
   // HUD readouts travel with a video's frame unless set to stay (M15).
   for (const o of labelObjs) if (o.group === 'hud' && hudTravels(doc, o.member)) o.travels = true;

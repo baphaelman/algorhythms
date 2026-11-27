@@ -7,6 +7,7 @@ import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece, PosterDoc } from '../../../src/core/types';
 import {
+  DEFAULT_POSTER_TEXTS,
   EXPORT_LOOK,
   POSTER_LOOK,
   fillTokens,
@@ -261,6 +262,54 @@ describe('label and line groups', () => {
     const L = lay({ look: { ...EXPORT_LOOK, momentLabels: true }, size: { w: 1200, h: 800 } });
     expect(L.hidden.length).toBeGreaterThan(0);
     expect(posterIssues(L)).toEqual([]);
+  });
+
+  it('the hint takes no room: the band, music and labels are as without it', () => {
+    const noHint = { texts: DEFAULT_POSTER_TEXTS.filter((t) => t.id !== 'hint') };
+    for (const size of Object.values(SIZES)) {
+      for (const rows of [1, 3]) {
+        const look = { ...EXPORT_LOOK, momentLabels: true, hud: ['time' as const, 'key' as const] };
+        const a = lay({ size, rows, look });
+        const b = lay({ size, rows, look, doc: noHint });
+        expect(a.band).toEqual(b.band);
+        expect(a.music).toEqual(b.music);
+        const rest = (L: PosterLayout) => L.objects.filter((o) => o.member !== 'hint');
+        expect(rest(a)).toEqual(rest(b));
+        expect(a.hidden).toEqual(b.hidden);
+        // Shown at every preset size for Kite Day, inside the band, right-aligned.
+        const h = text(a, 'hint')!;
+        expect(h, `${size.w}×${size.h}`).toBeDefined();
+        expect(h.box.x + h.box.w).toBeCloseTo(a.band!.x + a.band!.w, 0);
+        expect(h.box.y).toBeGreaterThanOrEqual(a.band!.y - 1);
+        expect(h.box.y + h.box.h).toBeLessThanOrEqual(a.band!.y + a.band!.h + 1);
+        expect(posterIssues(a)).toEqual([]);
+      }
+    }
+  });
+
+  it('the hint is the lowest-priority text: it hides before a readout, label or text box', () => {
+    const L0 = lay({ look: { ...EXPORT_LOOK, hud: ['time'] } });
+    const hint = text(L0, 'hint')!;
+    expect(hint).toBeDefined();
+    // A readout placed on the hint keeps its place; the hint goes.
+    const at = { anchor: 'tl' as const, x: hint.box.x / L0.width, y: hint.box.y / L0.height };
+    const L = lay({ look: { ...EXPORT_LOOK, hud: ['time'], hudLayout: { time: at } } });
+    const time = of(L, 'hud').find((o) => o.member === 'time') as LabelObject | undefined;
+    expect(time).toBeDefined();
+    expect(time!.box.x).toBeCloseTo(hint.box.x, 0);
+    expect(L.hidden.map((o) => o.member)).not.toContain('time');
+    expect(text(L, 'hint')).toBeUndefined();
+    expect(text(L, 'credit')).toBeDefined();
+    expect(posterIssues(L)).toEqual([]);
+    // A text box placed over it: the box stays, the hint goes.
+    const box = { x: hint.box.x / L0.width, y: hint.box.y / L0.height, w: 0.2, h: 0.03 };
+    const texts = [
+      ...DEFAULT_POSTER_TEXTS,
+      { id: 'text1', kind: 'free' as const, text: 'Hi', box },
+    ];
+    const T = lay({ doc: { texts } });
+    expect(text(T, 'text1')).toBeDefined();
+    expect(text(T, 'hint')).toBeUndefined();
   });
 
   it('ignores invalid Look overrides', () => {
