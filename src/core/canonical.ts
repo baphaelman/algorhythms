@@ -15,7 +15,9 @@
  *   only removes float noise such as 0.30000000000000004;
  * - **the poster** (M14): boxes, margins and nudges (fractions of the artboard) to 4 significant
  *   digits; style factors, opacities and the picture's position and dimming as levels; its
- *   section as times.
+ *   section as times;
+ * - **the video** (M17): its window, zoom, section, fades and end card as times, the playhead place and
+ *   Ahead as levels.
  *
  * Only the fields listed here change: unknown fields (and timbres and the mix, which have no
  * editor yet) are kept as written. Rounding is idempotent and copy-on-write: unchanged objects
@@ -199,6 +201,17 @@ const PIECE: Spec = obj({
           ),
         ),
     },
+  }),
+  video: obj({
+    followAt: roundLevel,
+    window: roundTime,
+    zoom: roundTime,
+    ahead: roundLevel,
+    section: obj({ start: roundTime, end: roundTime }),
+    fadeIn: roundTime,
+    leadIn: roundTime,
+    fadeOut: roundTime,
+    endCard: roundTime,
   }),
   view: obj({
     window: roundOther,

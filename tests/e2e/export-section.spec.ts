@@ -44,14 +44,21 @@ async function choose(page: Page, testId: string, label: string): Promise<void> 
 /** Reloads the current piece with changes (same piece: same created time and seed). */
 async function editPiece(
   page: Page,
-  edit: { loop?: { start: number; end: number } | null; gridBpm?: number | null; created?: string },
+  edit: {
+    loop?: { start: number; end: number } | null;
+    gridBpm?: number | null;
+    created?: string;
+    video?: null;
+  },
 ): Promise<void> {
   await page.evaluate((e) => {
     const h = (window as unknown as HookWindow).__algorhythms;
     const p = structuredClone(h.store.getState().piece) as {
       view: { loop?: unknown; gridBpm?: number };
       meta: { created: string };
+      video?: unknown;
     };
+    if (e.video === null) delete p.video;
     if (e.loop === null) delete p.view.loop;
     else if (e.loop) p.view.loop = { ...e.loop, on: true };
     if (e.gridBpm === null) delete p.view.gridBpm;
@@ -221,9 +228,7 @@ test('Custom by keyboard: arrows step a bar, Shift four, Alt 0.1 s; without a te
   expect((await previewSection(page))!.start).toBeCloseTo(before + 11, 6);
 });
 
-test('the Section is remembered per piece for the session; another piece starts Whole', async ({
-  page,
-}) => {
+test('the Section is kept with the piece; another piece starts Whole', async ({ page }) => {
   await openExport(page);
   await switchMode(page, 'Video');
   await choose(page, 'export-section', 'Custom');
@@ -241,12 +246,13 @@ test('the Section is remembered per piece for the session; another piece starts 
   expect(await previewSection(page)).toEqual({ start: 20, end: 40 });
   await closeExport(page);
 
-  // Edits keep it (the same piece); a different piece starts at Whole.
+  // Edits keep it (M17: it is in the piece's video); a piece without a video record starts at
+  // Whole.
   await editPiece(page, { loop: { start: 4, end: 8 } });
   await openExport(page);
   expect(await previewSection(page)).toEqual({ start: 20, end: 40 });
   await closeExport(page);
-  await editPiece(page, { created: '2001-01-01T00:00:00.000Z' });
+  await editPiece(page, { created: '2001-01-01T00:00:00.000Z', video: null });
   await openExport(page);
   await expect(
     page.getByTestId('export-section').getByLabel('Whole piece', { exact: true }),

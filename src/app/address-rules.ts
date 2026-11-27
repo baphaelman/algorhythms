@@ -1,6 +1,8 @@
 /**
  * The address bar is the share link (PLAN.md §11.4, owner 2026-11-24), DOM-free:
  * - an unedited bundled example reads `#<example-id>`; anything else reads `#p=<payload>`;
+ * - a watch link (M17: `#w&p=…`, `#w&<example-id>`) opens like its share link, to watch; the bar
+ *   then shows the editor link (the flag is dropped), as for any opened piece;
  * - edits re-encode after a debounce (400 ms) and an idle callback, never per frame;
  * - the URL is written with `replaceState` (by the caller's `write`), so Back is unchanged;
  * - a per-tab record `{ hash, entry }` lets a reload of our own URL reopen the same My pieces
@@ -8,18 +10,28 @@
  */
 
 import type { Piece } from '../core/types';
-import { SHARE_KEY, sharePayloadOf } from './share';
+import { SHARE_KEY, isWatchHash, sharePayloadOf, withoutWatch } from './share';
 
-/** What a URL fragment names. */
+/** What a URL fragment names; `watch` (M17): opened to watch (a watch link). */
 export type Address =
-  { kind: 'example'; id: string } | { kind: 'share'; payload: string } | { kind: 'none' };
+  | { kind: 'example'; id: string; watch?: true }
+  | { kind: 'share'; payload: string; watch?: true }
+  | { kind: 'none' };
 
-/** Reads a fragment (`#kite-day`, `#p=…`, with or without `#`). `isExample` checks an id. */
+/**
+ * Reads a fragment (`#kite-day`, `#p=…`, with or without `#`; either with the watch flag,
+ * `#w&…`). `isExample` checks an id.
+ */
 export function parseAddress(hash: string, isExample: (id: string) => boolean): Address {
-  const payload = sharePayloadOf(hash);
-  if (payload !== null) return { kind: 'share', payload };
-  const name = hash.startsWith('#') ? hash.slice(1) : hash;
-  if (/^[a-z0-9][a-z0-9-]*$/.test(name) && isExample(name)) return { kind: 'example', id: name };
+  const watch = isWatchHash(hash);
+  const flag = watch ? ({ watch: true } as const) : {};
+  const rest = watch ? withoutWatch(hash) : hash;
+  const payload = sharePayloadOf(rest);
+  if (payload !== null) return { kind: 'share', payload, ...flag };
+  const name = rest.startsWith('#') ? rest.slice(1) : rest;
+  if (/^[a-z0-9][a-z0-9-]*$/.test(name) && isExample(name)) {
+    return { kind: 'example', id: name, ...flag };
+  }
   return { kind: 'none' };
 }
 
@@ -100,8 +112,13 @@ export class AddressBar {
     if (o.example !== undefined) {
       this.put(exampleHash(o.example));
     } else if (o.fromUrl) {
-      this.last = this.d.current();
-      this.d.remember({ hash: this.last, entry: this.entry });
+      const cur = this.d.current();
+      const clean = isWatchHash(cur) ? withoutWatch(cur) : cur;
+      if (clean !== cur) this.put(clean);
+      else {
+        this.last = cur;
+        this.d.remember({ hash: this.last, entry: this.entry });
+      }
     } else {
       this.schedule(piece, 0);
     }

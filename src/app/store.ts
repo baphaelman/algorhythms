@@ -55,7 +55,7 @@ import { foldOpeningKeys } from './editor/piece-key';
 import { ownRecord, parseAddress, readRecord } from './address-rules';
 import { EXAMPLES, featuredExample } from './examples';
 import { clampLoop, type LoopSpan } from './ruler';
-import { decodeSharePayload, sharePayloadOf } from './share';
+import { decodeSharePayload, isWatchHash, sharePayloadOf, withoutWatch } from './share';
 import type { FilePiece } from './piece-in-file';
 
 // ---------------------------------------------------------------------------------------------
@@ -370,6 +370,8 @@ export interface LoadOptions {
   keepNotices?: boolean;
   /** Where the piece came from, for autosave (persist/). @default 'other' */
   source?: 'generated' | 'new' | 'library' | 'other';
+  /** Opened to watch (M17: a watch link): it opens in the Video workspace (export-state.ts). */
+  watch?: boolean;
 }
 
 /** Counts `loadPiece` calls, so a `usePlayer.subscribe` listener can tell loads from edits. */
@@ -379,6 +381,7 @@ const lastLoad = {
   example: undefined as string | undefined,
   keepHash: false,
   entryId: undefined as string | undefined,
+  watch: false,
 };
 
 /** The number of loads so far and the latest one's source. */
@@ -427,6 +430,7 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   lastLoad.example = opts.example;
   lastLoad.keepHash = opts.keepHash ?? false;
   lastLoad.entryId = opts.entryId;
+  lastLoad.watch = opts.watch ?? false;
   camera.start = 0;
   set((s) => ({
     piece,
@@ -588,9 +592,12 @@ export async function openFile(
   return openPieceJson(read.json, file.name, { after: () => opts.onOpen?.(media) });
 }
 
-/** Opens a bundled example (`id`: its file stem, so the URL reads `#<id>`). */
-export function openExample(json: unknown, id?: string): void {
-  openPieceJson(json, 'the example', { example: id });
+/**
+ * Opens a bundled example (`id`: its file stem, so the URL reads `#<id>`); `watch`: to watch its
+ * video (M17).
+ */
+export function openExample(json: unknown, id?: string, watch?: boolean): void {
+  openPieceJson(json, 'the example', { example: id, ...(watch ? { watch } : {}) });
 }
 
 const isExample = (id: string): boolean => EXAMPLES.some((e) => e.id === id);
@@ -619,7 +626,8 @@ export function setLinkedEntry(fn: LinkedEntry | null): void {
  * This tab's own URL (a reload) reopens quietly, still saving to its My pieces entry.
  */
 export async function openShareHash(hash: string): Promise<boolean> {
-  const payload = sharePayloadOf(hash);
+  const payload = sharePayloadOf(withoutWatch(hash));
+  const watch = isWatchHash(hash) || undefined;
   if (payload === null) return false;
   let json: unknown;
   try {
@@ -637,12 +645,17 @@ export async function openShareHash(hash: string): Promise<boolean> {
       const entry = own.entry ?? undefined;
       const piece = entry && linkedEntry ? await linkedEntry(entry, r.piece) : r.piece;
       runOpen(() =>
-        loadPiece(piece, { keepHash: true, source: entry ? 'library' : 'other', entryId: entry }),
+        loadPiece(piece, {
+          keepHash: true,
+          source: entry ? 'library' : 'other',
+          entryId: entry,
+          ...(watch ? { watch } : {}),
+        }),
       );
       return true;
     }
   }
-  return openPieceJson(json, 'The shared piece', { keepHash: true });
+  return openPieceJson(json, 'The shared piece', { keepHash: true, ...(watch ? { watch } : {}) });
 }
 
 /**
@@ -657,7 +670,7 @@ export function openAddress(hash: string): boolean {
   }
   const ex = a.kind === 'example' ? EXAMPLES.find((e) => e.id === a.id) : undefined;
   if (!ex) return false;
-  openExample(ex.json, ex.id);
+  openExample(ex.json, ex.id, a.kind === 'example' && a.watch);
   return true;
 }
 
@@ -969,9 +982,15 @@ export function startPlayer(): void {
   applyTheme(get().view.theme);
   const hash = location.hash;
   const featured = featuredExample();
-  const openFeatured = (keepNotices = false): void =>
-    loadPiece(initialPiece, { compiled: initialCompiled, keepNotices, example: featured.id });
   const a = parseAddress(hash, isExample);
+  const watch = a.kind === 'example' && a.watch ? { watch: true } : {};
+  const openFeatured = (keepNotices = false): void =>
+    loadPiece(initialPiece, {
+      compiled: initialCompiled,
+      keepNotices,
+      example: featured.id,
+      ...(a.kind === 'example' && a.id === featured.id ? watch : {}),
+    });
   const named = a.kind === 'example' ? EXAMPLES.find((e) => e.id === a.id) : undefined;
   if (a.kind === 'share') {
     void openShareHash(hash).then((ok) => {
@@ -979,7 +998,7 @@ export function startPlayer(): void {
     });
   } else if (named && named.id !== featured.id) {
     const r = parsePiece(named.json);
-    if (r.ok) loadPiece(r.piece, { example: named.id });
+    if (r.ok) loadPiece(r.piece, { example: named.id, ...watch });
     else openFeatured();
   } else {
     openFeatured();

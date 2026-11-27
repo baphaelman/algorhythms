@@ -14,6 +14,7 @@
  */
 
 import type { Piece, PosterDoc } from '../core/types';
+import type { ExportForm } from './export-options';
 import {
   amend,
   beginGesture,
@@ -58,6 +59,8 @@ let opened: PosterDoc | undefined;
 let lastFields: PosterFields | null = null;
 let baseline: PosterFields | null = null;
 let run: { key: string; at: number; entry: object | null } | null = null;
+/** The form whose change this module last wrote to the piece, and that undo entry. */
+let wrote: { form: ExportForm; entry: object | null } | null = null;
 /** The fields when a form gesture began (`posterFormGesture`); null when none is open. */
 let gestureBase: PosterFields | null = null;
 
@@ -134,7 +137,10 @@ export function startPosterSync(): () => void {
     if (!writing) showDoc(d);
   });
   const offForm = useExportUi.subscribe((s, p) => {
-    if (s.form !== p.form) writeForm(posterFields(s.form));
+    if (s.form === p.form) return;
+    const before = usePlayer.getState().piece;
+    writeForm(posterFields(s.form));
+    if (usePlayer.getState().piece !== before) wrote = { form: s.form, entry: lastEntry() };
   });
   return () => {
     offPiece();
@@ -144,7 +150,16 @@ export function startPosterSync(): () => void {
     baseline = null;
     run = null;
     gestureBase = null;
+    wrote = null;
   };
+}
+
+/**
+ * The undo entry this module wrote `form`'s change to (the video sync joins it: one change of a
+ * shared field, one entry), or null.
+ */
+export function posterEntryFor(form: ExportForm): object | null {
+  return wrote && wrote.form === form && lastEntry() === wrote.entry ? wrote.entry : null;
 }
 
 /** True while the workspace keeps the poster in step. */

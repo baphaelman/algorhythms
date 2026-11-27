@@ -32,6 +32,7 @@ import type { ExportEstimate, ExportOutput } from '../export-run';
 import type { LookKind } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { applyPreset } from '../youtube-preset';
+import { VIDEO_FIELDS, formWithRecord, videoContextFor } from '../video-doc';
 import { useCameraKeys, type CameraCtl } from './CameraKeys';
 import {
   loadExportMode,
@@ -43,7 +44,9 @@ import {
 import {
   cameraOf,
   currentTime,
+  loadInfo,
   loopRegion,
+  onLoadPiece,
   pause,
   play,
   pushNotice,
@@ -124,18 +127,19 @@ export function appDark(): boolean {
 
 /**
  * What the video and poster take from the app now: the editor's zoom, theme and line colours,
- * the piece's length and loop region.
+ * the piece's length and loop region. A piece with a video record (M17) takes the zoom and line
+ * colours from the piece, never the viewer's app (`videoContextFor`).
  */
 export function videoContext(): VideoContext {
-  const { view, compiled } = usePlayer.getState();
+  const { view, compiled, piece } = usePlayer.getState();
   const loop = loopRegion();
-  return {
+  return videoContextFor(piece, {
     window: cameraOf().window,
     duration: compiled.duration,
     dark: appDark(),
     colors: view.colors,
     loop: loop ? { start: loop.start, end: loop.end } : null,
-  };
+  });
 }
 
 /** The span the form's Section shows now, or the whole piece. */
@@ -174,6 +178,18 @@ const PER_PIECE = ['section', 'sectionSpan', 'videoTitle', 'videoSubtitle'] as c
 
 /** Per piece, for the session (integrator call: not remembered on disk). */
 const sections = new Map<string, PerPiece>();
+
+/**
+ * The video fields as the viewer's options show them for the open piece (a piece without a video
+ * record): the remembered choices and this piece's Section and title for the session.
+ */
+export function viewerVideoForm(form: ExportForm): ExportForm {
+  const prefs: Record<string, unknown> = { ...loadExportPrefs(), ...sectionFor(pieceKey()) };
+  const out: Record<string, unknown> = { ...form };
+  for (const k of VIDEO_FIELDS) out[k] = k in prefs ? prefs[k] : DEFAULT_EXPORT_FORM[k];
+  const next = out as unknown as ExportForm;
+  return { ...next, videoCamera: cameraChoice(next, usePlayer.getState().piece) };
+}
 
 /** The piece's remembered Section and title, else Whole and the piece's name. */
 function sectionFor(key: string): PerPiece {
@@ -344,10 +360,14 @@ export function openSurface(surface: ExportSurface): void {
   const remembered = running
     ? s.form
     : { ...s.form, ...loadExportPrefs(), ...sectionFor(pieceKey()), format };
+  // A piece with a video record (M17) shows it in Video, never the viewer's options.
+  const { piece } = usePlayer.getState();
+  const recorded =
+    surface === 'video' && piece.video && !running ? formWithRecord(remembered, piece) : remembered;
   // The Camera is the piece's (Whole piece is the dialog's own).
   const form = {
-    ...remembered,
-    videoCamera: cameraChoice(remembered, usePlayer.getState().piece),
+    ...recorded,
+    videoCamera: cameraChoice(recorded, piece),
   };
   useCameraKeys.setState({ selected: null });
   const b = form.format === 'video' ? bookendsOf(form, usePlayer.getState().piece) : undefined;
@@ -394,6 +414,14 @@ export function switchMode(mode: ExportMode): void {
   useExportSurface.setState({ surface: mode });
 }
 
+/**
+ * A piece opened to watch (a watch link, M17) opens in the Video workspace. W2 turns this into
+ * the full-window watch view.
+ */
+onLoadPiece(() => {
+  if (loadInfo().watch) openSurface('video');
+});
+
 /** Menu → Export: the mode used last (Poster or Video). */
 export function openExport(): void {
   openSurface(loadExportMode());
@@ -417,15 +445,20 @@ export function cancelExport(): void {
 
 export function patch(p: Partial<ExportForm>): void {
   if (p.format && isAudio(p.format)) lastAudio = p.format;
-  useExportUi.setState((s) => ({ form: { ...s.form, ...p }, run: IDLE }));
-  const { form } = useExportUi.getState();
-  saveExportPrefs(form);
+  // The choices as made are remembered (before the video sync pins anything in the form).
+  const made = { ...useExportUi.getState().form, ...p };
+  saveExportPrefs(made);
   if (PER_PIECE.some((k) => k in p)) {
     const keep = {} as Record<string, unknown>;
-    for (const k of PER_PIECE) keep[k] = form[k];
+    for (const k of PER_PIECE) keep[k] = made[k];
     sections.set(pieceKey(), keep as PerPiece);
   }
-  // The preview time stays inside the video's clock (the section, lead-in and end card).
+  useExportUi.setState({ form: made, run: IDLE });
+  clampPreview(useExportUi.getState().form);
+}
+
+/** Keeps the preview time inside the video's clock (the section, lead-in and end card). */
+export function clampPreview(form: ExportForm): void {
   const c = clockNow(form);
   const { previewT, previewPlaying } = useExportUi.getState();
   const t = Math.min(Math.max(previewT, c.from), c.to);

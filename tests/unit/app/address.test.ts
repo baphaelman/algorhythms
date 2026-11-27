@@ -10,6 +10,14 @@ import {
   writeRecord,
   type AddressRecord,
 } from '../../../src/app/address-rules';
+import {
+  encodeShareLink,
+  encodeWatchLink,
+  isWatchHash,
+  sharePayloadOf,
+  watchLinkOf,
+  withoutWatch,
+} from '../../../src/app/share';
 
 const known = (id: string) => id === 'kite-day' || id === 'crease';
 
@@ -22,6 +30,49 @@ describe('parseAddress', () => {
     expect(parseAddress('#Kite-Day', known)).toEqual({ kind: 'none' });
     expect(parseAddress('', known)).toEqual({ kind: 'none' });
     expect(parseAddress('#p=', known)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('watch links (M17)', () => {
+  it('read like their share link or example, with watch', () => {
+    expect(parseAddress('#w&p=2.abc', known)).toEqual({
+      kind: 'share',
+      payload: '2.abc',
+      watch: true,
+    });
+    expect(parseAddress('#p=2.abc&w', known)).toEqual({
+      kind: 'share',
+      payload: '2.abc',
+      watch: true,
+    });
+    expect(parseAddress('#w&kite-day', known)).toEqual({
+      kind: 'example',
+      id: 'kite-day',
+      watch: true,
+    });
+    expect(parseAddress('#w', known)).toEqual({ kind: 'none' });
+    expect(parseAddress('#w&no-such-piece', known)).toEqual({ kind: 'none' });
+  });
+
+  it('build from a share link or an example, idempotently', async () => {
+    const site = 'https://baphaelman.github.io/algorhythms/';
+    expect(watchLinkOf(`${site}#p=2.abc`)).toBe(`${site}#w&p=2.abc`);
+    expect(watchLinkOf(`${site}#w&p=2.abc`)).toBe(`${site}#w&p=2.abc`);
+    expect(watchLinkOf('#kite-day')).toBe('#w&kite-day');
+    expect(isWatchHash('#w&p=x')).toBe(true);
+    expect(isWatchHash(`${site}#p=x`)).toBe(false);
+    expect(withoutWatch('#w&p=x')).toBe('#p=x');
+    expect(withoutWatch('#w')).toBe('');
+    const piece = newPiece({ seed: 3, title: 'Watched' });
+    const link = await encodeWatchLink(piece, { base: site });
+    expect(link.startsWith(`${site}#w&p=2.`)).toBe(true);
+    expect(link).toBe(watchLinkOf(await encodeShareLink(piece, site)));
+    expect(sharePayloadOf(link.slice(link.indexOf('#')))).toBe(
+      sharePayloadOf((await encodeShareLink(piece, site)).split(site)[1]),
+    );
+    expect(await encodeWatchLink(piece, { base: site, example: 'kite-day' })).toBe(
+      `${site}#w&kite-day`,
+    );
   });
 });
 
@@ -147,6 +198,15 @@ describe('AddressBar', () => {
     // The entry it gets later is remembered for a reload.
     bar.entryChanged('e9');
     expect(records.at(-1)).toEqual({ hash: '#p=shared', entry: 'e9' });
+  });
+
+  it('a watch link opened from the URL shows the editor link (the flag dropped)', async () => {
+    hash = '#w&p=shared';
+    bar.loaded(piece('S'), { fromUrl: true, entry: null });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(writes).toEqual(['#p=shared']);
+    expect(encodes).toEqual([]);
+    expect(records).toEqual([{ hash: '#p=shared', entry: null }]);
   });
 
   it('only its own fragment is ignored on hashchange', () => {

@@ -17,7 +17,7 @@ import { composeView } from './compose-view';
 import { useCompose } from './compose';
 import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
-import { encodeShareLink } from './share';
+import { encodeShareLink, encodeWatchLink } from './share';
 import { previewStats, scrubPreview } from './ui/export-state';
 import { useWorkspace } from './poster-workspace';
 import { loadPiece, recompileNow, seekTo, setPiece, usePlayer } from './store';
@@ -44,6 +44,8 @@ export interface AlgoRhythmsDebug {
   };
   /** `encodeShareLink`, for round-trip tests. */
   encodeShareLink: typeof encodeShareLink;
+  /** `encodeWatchLink` (M17). */
+  encodeWatchLink: typeof encodeWatchLink;
   /** Editor state and selection (M4b), for tests that can't use the lane. */
   editor: { state: typeof useEditor; select: typeof select; undo: typeof undo; redo: typeof redo };
   /** Palette hover and drag preview state (revision 6; silent since 2026-11-21). */
@@ -124,6 +126,7 @@ export function installDebug(): void {
     posterWorkspace: useWorkspace,
     actions: { loadPiece, setPiece, recompileNow, select, seek: seekTo },
     encodeShareLink,
+    encodeWatchLink,
     editor: { state: useEditor, select, undo, redo },
     preview: previewState,
     audition: auditionState,
