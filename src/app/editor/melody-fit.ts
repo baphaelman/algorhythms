@@ -9,6 +9,7 @@ import { compile } from '../../core/compiler/compile';
 import { fitMelody, melodyHarmony } from '../../core/melody';
 import { progressionStarts } from '../../core/moments/progression';
 import { isRest } from '../../core/moments/tune';
+import { pitchAt } from '../../core/query';
 import type {
   CompiledScore,
   HarmonyChange,
@@ -81,10 +82,24 @@ function othersExtent(
   return max >= min ? { min, max } : null;
 }
 
+/** The other lines' pitches sounding at t (the chord the melody holds against). */
+function heldBy(score: CompiledScore, skip: number | undefined): (t: Seconds) => Pitch[] {
+  return (t) => {
+    const out: Pitch[] = [];
+    for (const v of score.voices) {
+      if (v.index === skip) continue;
+      const p = pitchAt(v, t);
+      if (p !== null) out.push(p);
+    }
+    return out;
+  };
+}
+
 /**
  * The fitted melody for tune `m` (written pitches, as the tune stores them) from `seed`: over
  * the tune's length (`len`, default its current length), the harmony of `hs` (a `harmonyScore`),
- * on its line, above the other lines when it is the top one (below them otherwise).
+ * on its line, above the other lines when it is the top one (below them otherwise), clear of
+ * rubs against the chord tones they hold (core/melody `rubs`).
  */
 export function fittedNotes(
   piece: Piece,
@@ -126,6 +141,7 @@ export function fittedNotes(
     meter: perBar,
     register: [lo, hi],
     start: line.pitch,
+    held: heldBy(hs, line.voice),
   });
   // Drawn at sounding pitches; written back un-transposed (revision 10).
   return shiftTuneNotes(notes, -tuneShiftIn(hs, m));

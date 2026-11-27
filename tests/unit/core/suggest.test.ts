@@ -96,7 +96,8 @@ describe('suggestNext: theory cards (revision 14)', () => {
       const p = progression(key, syms);
       const t = 4 * syms.length;
       const th = theoryOf(key)!;
-      for (const x of suggestNext(p, compile(p), t)) {
+      // Chord cards (Imaj7–V7–vi7 also gets the closed loop, core/fold-loop.ts).
+      for (const x of suggestNext(p, compile(p), t).filter((y) => y.kind === 'chord')) {
         const sym = symbolOf(x.moment);
         const chord = parseChord(sym, key);
         if (!chord.ok) throw new Error(sym);

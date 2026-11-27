@@ -245,3 +245,37 @@ describe('"Like the video"', () => {
     expect(compile(p).diagnostics).toEqual([]);
   });
 });
+
+describe('fitted melody over a lydian voicing (M13)', () => {
+  it('avoids the notes a semitone above the held chord tones', () => {
+    const p = newPiece({ seed: 7, poolSize: 6 });
+    for (const v of p.voices) v.range = [36, 96];
+    p.key = { tonic: 'Eb', scale: 'lydian' };
+    p.view = { ...p.view, gridBpm: 80, meter: 4 };
+    p.end = { at: 20, fade: 2 };
+    p.moments = [
+      {
+        id: 'c1',
+        type: 'chord',
+        at: 0,
+        notes: { kind: 'pitches', pitches: [51, 55, 62, 69, 74] },
+        voicing: 'even',
+        assign: 'ordered',
+        count: 5,
+      },
+      { id: 'tune01', type: 'tune', at: 0, line: 'high', notes: [{ pitch: 79, len: 4 * BAR }] },
+    ];
+    // The top line plays the tune, so the other four hold.
+    const held = [51, 55, 62, 69];
+    for (const seed of [1, 2, 3, 4, 5, 12345]) {
+      const m = tuneOf(fitTune(p, 'tune01', seed));
+      const ts = tuneNoteStarts(m);
+      m.notes.forEach((n, k) => {
+        const q = n.pitch;
+        if (q === undefined || !(strong(ts[k]) || n.len >= BEAT - 1e-6)) return;
+        const rub = held.some((h) => mod(q - h, 12) === 1 && Math.abs(q - h) <= 13);
+        expect(rub, `seed ${seed} note ${k} (${q})`).toBe(false);
+      });
+    }
+  });
+});

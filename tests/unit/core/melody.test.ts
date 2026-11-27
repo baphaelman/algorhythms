@@ -233,3 +233,39 @@ describe('fitMelody', () => {
     expect(chordFrame([11, 2, 5], 11)).toEqual({ root: 11, stable: [11, 2, 5] }); // B°
   });
 });
+
+describe('rubs against held chord tones (M13, Night Sleeper)', () => {
+  const Eb: Key = { tonic: 'Eb', scale: 'lydian' };
+  // E♭maj7♯11 held as E♭3 G3 D4 A4 D5: E♭ and B♭ rub a semitone (or ninth) above D and A.
+  const held = [51, 55, 62, 69, 74];
+  const lydian = (extra: Partial<MelodyInput>): MelodyInput =>
+    input({
+      chords: [{ t: 0, pcs: [3, 7, 10, 2, 9], bass: 3 }],
+      keys: [{ t: 0, key: Eb }],
+      register: [76, 92],
+      ...extra,
+    });
+  /** Notes of a beat or more, and strong-beat notes, that rub. */
+  const rubbing = (notes: readonly TunePitchNote[]): number =>
+    notes.filter((n, i) => {
+      const b = starts(notes)[i] / BEAT;
+      const onStrong = Math.abs(b - Math.round(b)) < 1e-6 && Math.round(b) % 2 === 0;
+      if (!(onStrong || n.len >= BEAT - 1e-6)) return false;
+      return held.some((h) => mod(n.pitch - h, 12) === 1 && Math.abs(n.pitch - h) <= 13);
+    }).length;
+
+  it('without held lines, lydian melodies rub (the case being fixed)', () => {
+    let total = 0;
+    for (let seed = 1; seed <= 20; seed++) total += rubbing(fitMelody(lydian({ seed })));
+    expect(total).toBeGreaterThan(10);
+  });
+
+  it('with them, no strong-beat note or long note sits a semitone above a held tone', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const notes = fitMelody(lydian({ seed, held: () => held }));
+      expect(rubbing(notes), `seed ${seed}`).toBe(0);
+      const pcs = scalePcs(Eb);
+      for (const n of notes) expect(pcs).toContain(mod(n.pitch, 12));
+    }
+  });
+});

@@ -10,6 +10,9 @@
  * scale steps (a detour, or one third, when there are more notes than steps). A phrase's last
  * note is the root, third or fifth of its chord; the melody's last note prefers the tonic, then
  * the root. Everything stays inside `register`.
+ * Rubs (M13, Night Sleeper's lydian voicings): with `held`, a note a semitone above a chord tone
+ * held within an octave of it (a minor 2nd or 9th up, a major 7th down) is avoided on strong
+ * beats and phrase ends, and a passing note of a beat or more steps past it.
  */
 
 import { clamp, mod } from './math';
@@ -51,6 +54,20 @@ export interface MelodyInput {
   start?: Pitch;
   /** An unhurried tune: mostly quarters and halves, fewer eighths (M12 listening notes). */
   slow?: boolean;
+  /** The other lines' pitches sounding at t (the held chord tones), for avoiding rubs. */
+  held?: (t: Seconds) => readonly Pitch[];
+}
+
+/** Cost of an anchor that rubs against a held chord tone (more than any other preference). */
+const RUB = 10;
+
+/** True if `p` is a semitone above a pitch of `held` in a nearby register (see the module comment). */
+export function rubs(p: Pitch, held: readonly Pitch[]): boolean {
+  for (const h of held) {
+    const d = Math.round(p - h);
+    if (mod(d, 12) === 1 && Math.abs(d) <= 13) return true;
+  }
+  return false;
 }
 
 /** A note before its pitch is chosen. */
@@ -261,10 +278,12 @@ export function fitMelody(input: MelodyInput): TunePitchNote[] {
     const target = lo + (hi - lo) * (s.end ? 0.1 + 0.15 * draw() : arch(s));
     const between = i - prevI;
     const jitter = draw();
+    const held = input.held?.(t) ?? [];
     let best = cands[0];
     let cost = Infinity;
     cands.forEach((p, j) => {
       let c = Math.abs(p - target) * 0.5;
+      if (held.length > 0 && rubs(p, held)) c += RUB;
       if (prev !== null) {
         const d = Math.abs(p - prev);
         // Reachable by steps from the anchor before, no big leaps, not the same note again.
@@ -344,7 +363,21 @@ export function fitMelody(input: MelodyInput): TunePitchNote[] {
       path.length = Math.min(path.length, gap);
       while (path.length < gap) path.push(path.at(-1) ?? ia);
     }
-    for (let q = 0; q < gap; q++) pitch[i + 1 + q] = ladder[clamp(path[q], 0, ladder.length - 1)];
+    for (let q = 0; q < gap; q++) {
+      const s = slots[i + 1 + q];
+      let at = clamp(path[q], 0, ladder.length - 1);
+      const held = s.len >= 2 ? (input.held?.(timeOf(s)) ?? []) : [];
+      if (held.length > 0 && rubs(ladder[at], held)) {
+        // The step toward the next anchor, else away, that doesn't rub; one that doesn't repeat
+        // the note before first.
+        const dir = ib >= at ? 1 : -1;
+        const ok = [at + dir, at - dir].filter(
+          (x) => x >= 0 && x < ladder.length && !rubs(ladder[x], held),
+        );
+        at = ok.find((x) => ladder[x] !== pitch[i + q]) ?? ok[0] ?? at;
+      }
+      pitch[i + 1 + q] = ladder[at];
+    }
   }
 
   const out: TunePitchNote[] = [];

@@ -85,7 +85,9 @@ describe('Next keeps the spread (owner 2026-11-23)', () => {
       const p = linesOf(start);
       const su = suggestNext(p, compile(p), T);
       expect(su.length, name).toBeGreaterThanOrEqual(3);
-      for (const x of su) check(p, x.moment, start, `${name} ${x.label}`);
+      // Chord cards (the closed loop's planes move the whole voicing on purpose).
+      for (const x of su.filter((y) => y.kind !== 'loop'))
+        check(p, x.moment, start, `${name} ${x.label}`);
     }
   });
 

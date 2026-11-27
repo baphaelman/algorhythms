@@ -14,6 +14,9 @@
  *                   (or home to the tonic late in the piece), thin to three notes, split
  *   any           → a level swell (or a dip when already full)
  *
+ * Either way, the closed loop (down a third, down a third, upside down, up a third;
+ * core/fold-loop.ts) takes the last card where the voicing allows it.
+ *
  * Chords are the composer's stacks of thirds on a scale degree, voiced `even` in a register around
  * the voices' centre. Chords and targets are key-relative (degrees, 'tonic') so they follow later
  * key changes. Thin and Collapse (to a note other than the tonic) still write fixed pitches: no
@@ -25,6 +28,7 @@
 
 import { diatonicChords } from './chord-spec';
 import { momentEffectAt, readState, type StateAt } from './effect';
+import { loopStep } from './fold-loop';
 import { splitStages } from './generate';
 import { nameChord, spellPc } from './harmony';
 import { mod } from './math';
@@ -73,7 +77,8 @@ type Draft = Moment extends infer M
 /** Id of a suggested moment; the caller gives it a fresh id before adding it. */
 export const SUGGEST_ID = '__suggest';
 
-export type SuggestionKind = 'open' | 'chord' | 'split' | 'walk' | 'thin' | 'collapse' | 'level';
+export type SuggestionKind =
+  'open' | 'chord' | 'split' | 'walk' | 'thin' | 'collapse' | 'level' | 'loop';
 
 export interface Suggestion {
   kind: SuggestionKind;
@@ -173,12 +178,33 @@ export function suggestNext(
   const st0 = readState(piece, score, at);
   const st = st0.stacked ?? st0;
   const th = theoryOf(st.key);
-  if (th) return theoryNext(piece, score, at, st0, th, count);
-  return composerNext(piece, score, at, st, count).map((s, i) => ({
-    ...s,
-    best: i === 0,
-    tooltip: s.label,
-  }));
+  // The closed loop (M13) takes the last card where the voicing allows it.
+  const loop = count > 1 ? loopSuggestion(piece, score, at, st0) : null;
+  const k = loop ? count - 1 : count;
+  const out = th
+    ? theoryNext(piece, score, at, st0, th, k)
+    : composerNext(piece, score, at, st, k).map((s, i) => ({
+        ...s,
+        best: i === 0,
+        tooltip: s.label,
+      }));
+  if (loop) out.push({ ...loop, best: out.length === 0 });
+  return out;
+}
+
+/** The closed loop's next step (core/fold-loop.ts) as a card, or null. */
+function loopSuggestion(
+  piece: Piece,
+  score: CompiledScore,
+  at: Seconds,
+  st: StateAt,
+): Suggestion | null {
+  const s = loopStep(piece, st, at);
+  if (!s) return null;
+  const seed = hash32(piece.seed >>> 0, 'loop', Math.round(at * 1000), s.step);
+  const moment = { ...s.moment, id: SUGGEST_ID, at, seed } as Moment;
+  if (!momentEffectAt(piece, score, moment).effect) return null;
+  return { kind: 'loop', label: s.label, best: false, tooltip: s.tooltip, moment };
 }
 
 /** The Generate composer's grammar (keys without chord theory). */
