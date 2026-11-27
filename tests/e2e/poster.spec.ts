@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type * as Poster from '../../src/app/poster-export';
-import { EXPORT_LOOK, HUD_ITEMS } from '../../src/render';
+import { DEFAULT_POSTER_TEXTS, EXPORT_LOOK, HUD_ITEMS } from '../../src/render';
 
 const ROOT = join(import.meta.dirname, '../..');
 const OUT = process.env.POSTER_OUT_DIR;
@@ -227,10 +227,11 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
       ...(look ? { look: { ...EXPORT_LOOK, theme, hud: [] } } : {}),
     };
     const r = await page.evaluate(
-      async ({ j, opts }): Promise<SvgResult> => {
+      async ({ j, opts, boxes }): Promise<SvgResult> => {
         const h = (window as unknown as HookWindow).__algorhythms;
         const m = await h.poster();
-        const piece = h.parsePiece(j).piece;
+        const p = h.parsePiece(j).piece;
+        const piece = { ...p, poster: { ...p.poster, texts: boxes } };
         const svg = m.renderPosterLayoutSvg(piece, opts);
         const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
         const err = doc.getElementsByTagName('parsererror')[0];
@@ -298,7 +299,10 @@ test('SVG is well-formed and matches the PNG when rasterised', async ({ page, br
           theme: psnr(svgPx, other),
         };
       },
-      { j: json(name), opts },
+      // Without the drop hint (M17): a second line of mono text adds canvas-vs-SVG residue (an
+      // SVG drawn as an image can't use the page's web font, so Firefox falls back: 33.1 dB on
+      // Tide Pools). Same place, size and font in both; the PNG test covers it.
+      { j: json(name), opts, boxes: DEFAULT_POSTER_TEXTS.filter((t) => t.id !== 'hint') },
     );
     results[`${name}-${theme}${look ? '-look' : ''}`] = r;
     const { texts, ...summary } = r;
