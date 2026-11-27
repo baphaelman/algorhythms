@@ -45,9 +45,19 @@ export function saveExportMode(mode: ExportMode, storage?: ModeStorage | null): 
   }
 }
 
-export const useExportSurface = create<{ surface: ExportSurface | null }>()(() => ({
+export const useExportSurface = create<{
+  surface: ExportSurface | null;
+  /** The Video workspace fills the window to watch (M17 "Watch view"). */
+  watch: boolean;
+}>()(() => ({
   surface: null,
+  watch: false,
 }));
+
+// Watching is the Video workspace's: leaving it (any way) ends the watch view.
+useExportSurface.subscribe((s) => {
+  if (s.watch && s.surface !== 'video') useExportSurface.setState({ watch: false });
+});
 
 /** The workspace (Poster or Video) is showing: the editor's keys stand down. */
 export function workspaceShown(): boolean {

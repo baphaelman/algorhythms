@@ -4,7 +4,8 @@
  * (preset, size, frame rate, quality, the camera, what moves, loudness, opening and ending,
  * thumbnail and description); the look lives in Poster and the video reads it. The bottom panel
  * is the timeline: the section's in and out handles, camera keys, the opening and ending cards,
- * and Export MP4 last.
+ * and Export MP4 last. In the watch view (M17, ./WatchView) the stage fills the window and the
+ * panels hide; the preview stays mounted, so leaving it keeps the time.
  */
 
 import { useEffect, useId, useMemo, useRef, type CSSProperties } from 'react';
@@ -26,7 +27,7 @@ import {
 } from '../export-options';
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
-import { workspaceEscape } from '../export-surface';
+import { useExportSurface, workspaceEscape } from '../export-surface';
 import { cameraOf, usePlayer } from '../store';
 import { formatTime } from '../../render/hud';
 import { timelineCards } from '../video-timeline';
@@ -42,6 +43,7 @@ import { BookendsGroup, LoudnessField, PresetField, PreviewActions } from './Exp
 import { CameraField, KeyButtons, KeyMarkers, useCameraKeys } from './CameraKeys';
 import { RunStatus, SectionField, VideoLookRows } from './ExportFields';
 import { VideoPreview } from './VideoPreview';
+import { WatchView, watchPlayPause } from './WatchView';
 import { backToMusic } from './PosterWorkspace';
 import {
   RUN_LABEL,
@@ -623,11 +625,19 @@ export function VideoWorkspace() {
   const running = useExportUi((s) => s.run.status === 'running');
   const runtime = useRuntime(true);
   const piece = usePlayer((s) => s.piece);
+  const watch = useExportSurface((s) => s.watch);
   const root = useRef<HTMLElement>(null);
+  const stage = useRef<HTMLElement>(null);
   const support = useVideoSupport(form, runtime);
   useFocusRescue(root, true);
-  // Space plays and pauses the preview (a text field still types it).
-  useEffect(() => setDialogSpace(togglePreview), []);
+  // Space plays and pauses the preview (a text field still types it); the watch view's own.
+  useEffect(
+    () =>
+      setDialogSpace(() =>
+        useExportSurface.getState().watch ? watchPlayPause() : togglePreview(),
+      ),
+    [],
+  );
 
   // The Camera follows the piece's (undo and redo change it too).
   const camera = cameraChoice(form, piece);
@@ -638,9 +648,10 @@ export function VideoWorkspace() {
     }
   }, [camera]);
 
-  // Escape: blur a focused control, else back to music.
+  // Escape: blur a focused control, else back to music (the watch view's Escape is its own).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (useExportSurface.getState().watch) return;
       const what = workspaceEscape({
         key: e.key,
         defaultPrevented: e.defaultPrevented,
@@ -660,14 +671,19 @@ export function VideoWorkspace() {
 
   return (
     <main
-      className="poster-ws video-ws"
+      className={watch ? 'poster-ws video-ws watching' : 'poster-ws video-ws'}
       ref={root}
       tabIndex={-1}
       aria-label="Video workspace"
       data-testid="video-workspace"
     >
-      <section className="artboard video-stage" aria-label="Video preview">
-        <VideoPreview form={form} runtime={runtime} disabled={running} />
+      <section
+        className="artboard video-stage"
+        ref={stage}
+        aria-label={watch ? 'Video' : 'Video preview'}
+      >
+        <VideoPreview form={form} runtime={runtime} disabled={running} watch={watch} />
+        {watch && <WatchView form={form} runtime={runtime} stage={stage} />}
       </section>
       <aside className="ws-side export-panel" aria-label="Video options">
         <VideoOptions form={form} runtime={runtime} support={support} disabled={running} />

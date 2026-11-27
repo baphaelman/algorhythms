@@ -33,6 +33,7 @@ import type { LookKind } from '../look-controls';
 import type { VideoSupport } from '../video-export';
 import { applyPreset } from '../youtube-preset';
 import { VIDEO_FIELDS, formWithRecord, videoContextFor } from '../video-doc';
+import { watchFirstFrame } from '../watch';
 import { useCameraKeys, type CameraCtl } from './CameraKeys';
 import {
   loadExportMode,
@@ -415,11 +416,25 @@ export function switchMode(mode: ExportMode): void {
 }
 
 /**
- * A piece opened to watch (a watch link, M17) opens in the Video workspace. W2 turns this into
- * the full-window watch view.
+ * The watch view (M17): the Video workspace filling the window, paused on the video's first frame
+ * (the lead-in's start, when there is one; the view pins it there once the engine room loads).
  */
+export function openWatch(): void {
+  openSurface('video');
+  useExportUi.setState({ previewT: watchFirstFrame(clockNow()) });
+  useExportSurface.setState({ watch: true });
+}
+
+/** Leaves the watch view for the Video workspace, paused at the same time. */
+export function leaveWatch(): void {
+  if (!useExportSurface.getState().watch) return;
+  pausePreview();
+  useExportSurface.setState({ watch: false });
+}
+
+/** A piece opened to watch (a watch link, M17) opens in the watch view. */
 onLoadPiece(() => {
-  if (loadInfo().watch) openSurface('video');
+  if (loadInfo().watch) openWatch();
 });
 
 /** Menu → Export: the mode used last (Poster or Video). */

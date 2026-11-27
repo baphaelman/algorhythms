@@ -112,19 +112,23 @@ test('an edited video opens the same from its share and watch links in a browser
     expect(await previewAt(a, 20)).toBe(frame);
     await a.close();
 
-    // The watch link opens the Video workspace at once, the address bar on the editor link.
+    // The watch link opens the watch view at once, the address bar on the editor link; Escape
+    // lands in the Video workspace, whose preview is the maker's.
     const b = await other.newPage();
     await b.goto(watch);
-    await expect(videoWorkspace(b)).toBeVisible();
+    await expect(b.getByTestId('watch-view')).toBeVisible();
     await expect.poll(() => b.evaluate(() => location.hash.startsWith('#p='))).toBe(true);
     expect(await video(b)).toEqual(want);
+    await b.keyboard.press('Escape');
+    await expect(b.getByTestId('watch-view')).toHaveCount(0);
+    await expect(videoWorkspace(b)).toBeVisible();
     expect(await previewAt(b, 20)).toBe(frame);
     await b.close();
 
     // An unedited example's watch link: #w&<id>.
     const c = await other.newPage();
     await c.goto('./#w&kite-day');
-    await expect(videoWorkspace(c)).toBeVisible();
+    await expect(c.getByTestId('watch-view')).toBeVisible();
     await expect.poll(() => c.evaluate(() => location.hash)).toBe('#kite-day');
     await c.close();
   } finally {

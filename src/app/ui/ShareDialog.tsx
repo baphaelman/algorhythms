@@ -1,13 +1,23 @@
 import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import { saveAsFile } from '../persist';
+import { useExportSurface } from '../export-surface';
 import { LONG_LINK_CHARS, encodeShareLink, linkDropsPicture } from '../share';
 import { usePlayer } from '../store';
+import { linkOpening, type OpensTo } from '../watch';
+import { Radios } from './export-controls';
+
+const OPENS_TO: readonly { id: OpensTo; label: string }[] = [
+  { id: 'music', label: 'Music' },
+  { id: 'video', label: 'Video' },
+];
 
 interface ShareUi {
   open: boolean;
   /** The link for the piece as it was when the dialog opened ('' while it is being made). */
   link: string;
+  /** Opens to: Video where you are in the Video workspace, else Music. */
+  opensTo: OpensTo;
   /** The piece has a poster picture, which the link leaves out. */
   noPicture: boolean;
   error: string;
@@ -17,6 +27,7 @@ interface ShareUi {
 const useShareUi = create<ShareUi>()(() => ({
   open: false,
   link: '',
+  opensTo: 'music',
   noPicture: false,
   error: '',
   copied: false,
@@ -28,6 +39,7 @@ export function openShare(): void {
   useShareUi.setState({
     open: true,
     link: '',
+    opensTo: useExportSurface.getState().surface === 'video' ? 'video' : 'music',
     noPicture: linkDropsPicture(piece),
     error: '',
     copied: false,
@@ -43,12 +55,13 @@ function closeShare(): void {
 }
 
 /**
- * The Share dialog (PLAN.md §11.4): the piece's `#p=` link, ready to copy. A link longer than
- * about 2,000 characters gets a warning, since some chat apps cut long links, and offers the
- * piece as a file instead.
+ * The Share dialog (PLAN.md §11.4): the piece's `#p=` link, ready to copy. Opens to (M17): Music
+ * (the editor) or Video (the watch view, `#w&p=`). A link longer than about 2,000 characters gets
+ * a warning, since some chat apps cut long links, and offers the piece as a file instead.
  */
 export function ShareDialog() {
-  const { open, link, noPicture, error, copied } = useShareUi();
+  const { open, link: made, opensTo, noPicture, error, copied } = useShareUi();
+  const link = linkOpening(made, opensTo);
   const dialog = useRef<HTMLDialogElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const id = useId();
@@ -90,6 +103,14 @@ export function ShareDialog() {
           <p className="dialog-note">
             The whole piece is in the link, and nothing is uploaded. Later edits need a new link.
           </p>
+          <Radios
+            legend="Opens to"
+            name={`${id}-opens`}
+            value={opensTo}
+            options={OPENS_TO}
+            testId="share-opens-to"
+            onChange={(v) => useShareUi.setState({ opensTo: v, copied: false })}
+          />
           <div className="field">
             <label htmlFor={`${id}-link`}>Link</label>
             <textarea

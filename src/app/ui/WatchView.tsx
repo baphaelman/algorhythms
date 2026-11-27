@@ -1,0 +1,335 @@
+/**
+ * The watch view (PLAN.md §15 M17 "Watch view"): the Video workspace's preview filling the
+ * window (VideoWorkspace adds this over its stage), paused on the first frame with a large Play.
+ * Play starts the sound and, with a mouse, real fullscreen of the stage. Controls show on hover
+ * or a tap: play/pause, the seek bar, the time, fullscreen. Escape (or leaving fullscreen with the
+ * browser's own key) lands in the Video workspace at the same time; the corner offers Edit video
+ * and Open the music; the end screen Replay and Open the music. Rules: ../watch.ts.
+ */
+
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { create } from 'zustand';
+import type { ExportForm } from '../export-options';
+import { usePlayer } from '../store';
+import {
+  CONTROLS_IDLE_MS,
+  fullscreenLeaves,
+  playerTime,
+  spokenTime,
+  watchEnded,
+  watchFirstFrame,
+  watchKey,
+  watchTimes,
+} from '../watch';
+import { backToMusic } from './PosterWorkspace';
+import {
+  clockNow,
+  leaveWatch,
+  scrubPreview,
+  togglePreview,
+  useExportUi,
+  type Runtime,
+} from './export-state';
+
+/** Play has been pressed in this watch view (the large Play and the first frame's pin go). */
+const useWatchUi = create<{ played: boolean }>()(() => ({ played: false }));
+
+/** The fullscreen target: the Video workspace's stage. */
+const stageEl = (): HTMLElement | null => document.querySelector('.video-ws .video-stage');
+
+/** The view's own fullscreen button is leaving fullscreen (the view stays). */
+let exitingOurs = false;
+
+/** A mouse (or pen) is the main pointer: Play goes fullscreen. Phones stay in the page. */
+const finePointer = (): boolean => !matchMedia('(pointer: coarse)').matches;
+
+function enterFullscreen(): void {
+  const el = stageEl();
+  if (!el || document.fullscreenElement || !document.fullscreenEnabled) return;
+  if (typeof el.requestFullscreen !== 'function') return;
+  // Refused (no click, a policy) or unsupported: the view stays in the window.
+  void Promise.resolve(el.requestFullscreen()).catch(() => undefined);
+}
+
+function exitFullscreen(ours: boolean): void {
+  if (!document.fullscreenElement) return;
+  exitingOurs = ours;
+  void Promise.resolve(document.exitFullscreen()).catch(() => undefined);
+}
+
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) exitFullscreen(true);
+  else enterFullscreen();
+}
+
+/** Play / Pause in the watch view (Space too); the first Play goes fullscreen with a mouse. */
+export function watchPlayPause(): void {
+  const playing = useExportUi.getState().previewPlaying;
+  if (!playing && !useWatchUi.getState().played) {
+    useWatchUi.setState({ played: true });
+    if (finePointer()) enterFullscreen();
+  }
+  togglePreview();
+}
+
+/** Open the music: the editor, as Back to music. */
+function openMusic(): void {
+  exitFullscreen(false);
+  backToMusic();
+}
+
+/** Edit video: the Video workspace, at the same time. */
+function editVideo(): void {
+  exitFullscreen(false);
+  leaveWatch();
+  requestAnimationFrame(() =>
+    document.querySelector<HTMLElement>('[data-testid="preview-play"]')?.focus(),
+  );
+}
+
+const PlayIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7 4.5v15l12.5-7.5z" />
+  </svg>
+);
+const PauseIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z" />
+  </svg>
+);
+const FullIcon = ({ on }: { on: boolean }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2">
+    {on ? (
+      <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+    ) : (
+      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    )}
+  </svg>
+);
+
+export function WatchView({
+  form,
+  runtime,
+  stage,
+}: {
+  form: ExportForm;
+  runtime: Runtime | null;
+  /** The stage (for pointer movement over the whole window). */
+  stage: RefObject<HTMLElement | null>;
+}) {
+  const title = usePlayer((s) => s.piece.meta.title);
+  const compiled = usePlayer((s) => s.compiled);
+  const t = useExportUi((s) => s.previewT);
+  const playing = useExportUi((s) => s.previewPlaying);
+  const played = useWatchUi((s) => s.played);
+  const clock = useMemo(
+    () => clockNow(form),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form, compiled, runtime],
+  );
+  const v = Math.min(Math.max(clock.from, t), clock.to);
+  const { at, length } = watchTimes(v, clock);
+  const ended = played && watchEnded(v, clock, playing);
+  const [shown, setShown] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
+  const idle = useRef(0);
+  const pointer = useRef('mouse');
+  // iPhone Safari has no element fullscreen: no button.
+  const canFullscreen = document.fullscreenEnabled === true;
+
+  // A new watch view starts unplayed.
+  useEffect(() => {
+    useWatchUi.setState({ played: false });
+  }, []);
+
+  // Until Play, the first frame: the lead-in's start is known once the engine room loads.
+  useEffect(() => {
+    if (useWatchUi.getState().played) return;
+    useExportUi.setState({ previewT: watchFirstFrame(clock) });
+  }, [clock.from]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Controls hide a moment after the pointer stops while playing; paused, they stay.
+  const poke = (): void => {
+    setShown(true);
+    clearTimeout(idle.current);
+    idle.current = window.setTimeout(() => setShown(false), CONTROLS_IDLE_MS);
+  };
+  useEffect(() => {
+    if (!playing) return;
+    clearTimeout(idle.current);
+    idle.current = window.setTimeout(() => setShown(false), CONTROLS_IDLE_MS);
+    return () => clearTimeout(idle.current);
+  }, [playing]);
+
+  // Leaving browser fullscreen leaves the view (its own button keeps it).
+  useEffect(() => {
+    const onChange = (): void => {
+      const fs = document.fullscreenElement !== null;
+      const ours = exitingOurs;
+      if (!fs) exitingOurs = false;
+      setFullscreen(fs);
+      if (fullscreenLeaves({ fullscreen: fs, ours })) leaveWatch();
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      exitFullscreen(false);
+    };
+  }, []);
+
+  // Escape leaves, ←/→ seek, F fullscreen (Space: the shared rule, VideoWorkspace).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const k = watchKey({
+        key: e.key,
+        defaultPrevented: e.defaultPrevented,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+        dialog: document.querySelector('dialog[open]') !== null,
+      });
+      if (!k) return;
+      e.preventDefault();
+      if (k.action === 'leave') editVideo();
+      else if (k.action === 'fullscreen') toggleFullscreen();
+      else {
+        scrubPreview(useExportUi.getState().previewT + (k.by ?? 0));
+        poke();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Pointer movement anywhere on the stage shows the controls.
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const onMove = (e: PointerEvent): void => {
+      pointer.current = e.pointerType;
+      if (e.pointerType === 'mouse') poke();
+    };
+    const onDown = (e: PointerEvent): void => {
+      pointer.current = e.pointerType;
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerdown', onDown);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerdown', onDown);
+    };
+  }, [stage]);
+
+  const visible = shown || !playing;
+  // A click on the picture plays/pauses; a tap shows (or hides) the controls.
+  const onSurface = (): void => {
+    if (pointer.current === 'mouse') {
+      watchPlayPause();
+      poke();
+    } else if (visible && playing) {
+      clearTimeout(idle.current);
+      setShown(false);
+    } else poke();
+  };
+
+  return (
+    <div
+      className="watch"
+      data-testid="watch-view"
+      data-controls={visible ? 'shown' : 'hidden'}
+      data-ended={ended || undefined}
+      role="group"
+      aria-label={`Watch ${title}`}
+    >
+      <div className="watch-surface" data-testid="watch-surface" onClick={onSurface} />
+      {/* Under the corner and the bar, so both stay usable at the end. */}
+      {ended && (
+        <div className="watch-end" role="group" aria-label="The end" data-testid="watch-end">
+          <button
+            type="button"
+            className="primary"
+            data-testid="watch-replay"
+            autoFocus
+            onClick={watchPlayPause}
+          >
+            Replay
+          </button>
+          <button type="button" data-testid="watch-end-music" onClick={openMusic}>
+            Open the music
+          </button>
+        </div>
+      )}
+      <div className="watch-top">
+        <span className="watch-title" data-testid="watch-title">
+          {title}
+        </span>
+        <span className="watch-links">
+          <button type="button" data-testid="watch-edit-video" onClick={editVideo}>
+            Edit video
+          </button>
+          <button type="button" data-testid="watch-open-music" onClick={openMusic}>
+            Open the music
+          </button>
+        </span>
+      </div>
+      {!played && (
+        <button
+          type="button"
+          className="watch-big-play"
+          data-testid="watch-big-play"
+          aria-label="Play the video"
+          autoFocus
+          onClick={watchPlayPause}
+        >
+          <PlayIcon />
+        </button>
+      )}
+      <div className="watch-bar" onPointerDown={poke} onFocus={poke}>
+        <input
+          type="range"
+          className="watch-seek"
+          data-testid="watch-seek"
+          aria-label="Seek"
+          aria-valuetext={`${spokenTime(at)} of ${spokenTime(length)}`}
+          min={0}
+          max={length || 1}
+          step="any"
+          value={at}
+          style={{ '--at': `${length > 0 ? (at / length) * 100 : 0}%` } as CSSProperties}
+          onChange={(e) => scrubPreview(clock.from + Number(e.currentTarget.value))}
+        />
+        <div className="watch-row">
+          <button
+            type="button"
+            className="watch-btn"
+            data-testid="watch-play"
+            data-playing={playing}
+            aria-label={playing ? 'Pause' : 'Play'}
+            aria-keyshortcuts="Space"
+            title={`${playing ? 'Pause' : 'Play'} (Space)`}
+            onClick={watchPlayPause}
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+          </button>
+          <span className="watch-time" data-testid="watch-time">
+            {playerTime(at)} / {playerTime(length)}
+          </span>
+          {canFullscreen && (
+            <button
+              type="button"
+              className="watch-btn watch-full"
+              data-testid="watch-fullscreen"
+              aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
+              aria-keyshortcuts="F"
+              title={`${fullscreen ? 'Exit full screen' : 'Full screen'} (F)`}
+              onClick={toggleFullscreen}
+            >
+              <FullIcon on={fullscreen} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

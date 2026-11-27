@@ -72,6 +72,8 @@ export function App() {
   const wide = useWide();
   const composing = useCompose((s) => s.open);
   const surface = useExportSurface((s) => s.surface);
+  // The watch view (M17) fills the window; the rest of the page hides under it.
+  const watch = useExportSurface((s) => s.watch);
   // The workspace (Poster or Video) shows in the editor's place.
   const poster = surface === 'poster' || surface === 'video';
   const timeline = useRef<HTMLDivElement>(null);
@@ -135,6 +137,7 @@ export function App() {
       className="app"
       data-layout={wide ? 'full' : 'player'}
       data-mode={poster ? surface : undefined}
+      data-watch={watch || undefined}
     >
       <Transport history={poster ? <WorkspaceBar /> : wide && <UndoRedo />}>
         <Menu />

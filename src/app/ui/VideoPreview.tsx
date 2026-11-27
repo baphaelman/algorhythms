@@ -6,7 +6,8 @@
  * silently. A component of its own so the editor's piece panel (M16) can show it too.
  *
  * In Keys, dragging the frame pans the selected key's view and the wheel zooms it
- * (`useKeyView`); the HUD readouts drag on it.
+ * (`useKeyView`); the HUD readouts drag on it. In the watch view (M17) it is the video alone,
+ * fitted to the window at the device's pixels; the view's own controls replace the time row.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -91,7 +92,8 @@ export function VideoPreview({
   form,
   runtime,
   disabled = false,
-  keys = form.videoCamera === 'keys',
+  watch = false,
+  keys = form.videoCamera === 'keys' && !watch,
 }: {
   form: ExportForm;
   runtime: Runtime | null;
@@ -99,6 +101,8 @@ export function VideoPreview({
   disabled?: boolean;
   /** Keys: the frame shapes the selected key's view. */
   keys?: boolean;
+  /** The watch view: no readout boxes, no time row, sharper on dense screens. */
+  watch?: boolean;
 }) {
   const piece = usePlayer((s) => s.piece);
   const compiled = usePlayer((s) => s.compiled);
@@ -141,7 +145,7 @@ export function VideoPreview({
 
   const px = videoSize(form.videoAspect, form.videoSize);
   const fit = previewFit(avail, px.width / px.height);
-  const dpr = Math.min(2, devicePixelRatio || 1);
+  const dpr = Math.min(watch ? 3 : 2, devicePixelRatio || 1);
   const pxW = Math.round(fit.w * dpr);
   const pxH = Math.max(1, Math.round((px.height * pxW) / px.width));
   // The video's clock: the section, less the lead-in before it, plus the end card after it.
@@ -221,11 +225,11 @@ export function VideoPreview({
             data-tau={bookends ? shown.toFixed(3) : undefined}
             style={{ width: `${fit.w}px`, height: `${fit.h}px` }}
           />
-          {!overPoster && <HudOverlay form={form} kind="video" disabled={disabled} />}
+          {!overPoster && !watch && <HudOverlay form={form} kind="video" disabled={disabled} />}
         </div>
       </div>
       {/* The time, and Play / Pause on the right; the timeline's strip moves the time (M15). */}
-      <div className="field-row preview-time">
+      <div className="field-row preview-time" hidden={watch}>
         <output data-testid="preview-time-value" aria-live="off">
           {formatTime(shown)}
         </output>

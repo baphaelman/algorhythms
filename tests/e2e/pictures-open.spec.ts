@@ -1,7 +1,7 @@
 /**
  * Pictures that open (PLAN.md §15 M17): a poster PNG and SVG, and an MP4, exported from the
  * workspace carry the whole piece (its background picture too). Each opens in a fresh browser
- * by Menu → Open and by dropping it on the page, into the Video workspace. A plain picture is
+ * by Menu → Open and by dropping it on the page, into the watch view (M17 W2). A plain picture is
  * refused with a notice; picking a background picture in the Poster workspace still works.
  */
 
@@ -76,9 +76,9 @@ async function drop(page: Page, f: FileBytes, on = 'body'): Promise<void> {
   await page.dispatchEvent(on, 'drop', { dataTransfer: dt });
 }
 
-/** The piece opened in the Video workspace, the same as the maker's, picture included. */
+/** The piece opened in the watch view, the same as the maker's, picture included. */
 async function expectOpened(page: Page, made: Piece): Promise<void> {
-  await expect(videoWorkspace(page)).toBeVisible();
+  await expect(page.getByTestId('watch-view')).toBeVisible();
   await expect.poll(async () => (await pieceOf(page)).meta.title).toBe(made.meta.title);
   const got = await pieceOf(page);
   expect(got.voices.length).toBe(made.voices.length);
@@ -193,7 +193,7 @@ test('an MP4 carries the piece and opens by a drop', async ({ page, browser }) =
 
   const other = await freshPage(browser, start);
   await drop(other, mp4);
-  await expect(videoWorkspace(other)).toBeVisible();
+  await expect(other.getByTestId('watch-view')).toBeVisible();
   await expect.poll(async () => (await pieceOf(other)).end?.at).toBe(3);
   expect((await pieceOf(other)).meta.title).toBe(made.meta.title);
   await other.context().close();

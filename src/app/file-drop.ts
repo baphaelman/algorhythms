@@ -1,19 +1,19 @@
 /**
  * Opening files (PLAN.md §15 M17 "Pictures that open"): Menu → Open and a file dropped anywhere
  * on the page both go through `openFile`. A poster, thumbnail or MP4 carrying a piece opens it in
- * the Video workspace; a `.algorhythms.json` opens in the editor, as before. The palette's own
- * drags (palette-drop.ts) carry no files and are left alone.
+ * the watch view (the Video workspace filling the window); a `.algorhythms.json` opens in the
+ * editor, as before. The palette's own drags (palette-drop.ts) carry no files and are left alone.
  */
 
 import { useExportSurface } from './export-surface';
 import { openFile } from './store';
-import { cancelExport, openSurface } from './ui/export-state';
+import { cancelExport, openWatch } from './ui/export-state';
 
 /** Menu → Open's file types. */
 export const OPEN_ACCEPT =
   '.json,.algorhythms.json,application/json,.png,image/png,.svg,image/svg+xml,.mp4,video/mp4,.jpg,.jpeg,image/jpeg';
 
-/** Opens a file; one that carries a piece in a picture or video shows the Video workspace. */
+/** Opens a file; one that carries a piece in a picture or video opens the watch view. */
 export function openAnyFile(file: File): Promise<boolean> {
   return openFile(file, {
     onOpen: (media) => {
@@ -22,7 +22,7 @@ export function openAnyFile(file: File): Promise<boolean> {
         cancelExport();
         useExportSurface.setState({ surface: null });
       }
-      if (media) openSurface('video');
+      if (media) openWatch();
     },
   });
 }
