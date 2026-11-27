@@ -50,8 +50,9 @@ describe('anchoring', () => {
       const pos = posOfBox(x, y, 40, 14, F169);
       expect(pos.anchor).toBe(a);
       const back = placeBox(pos, 40, 14, F169);
-      expect(back.x).toBeCloseTo(x, 9);
-      expect(back.y).toBeCloseTo(y, 9);
+      // Positions are canonical (4 significant digits): back within 0.05 px.
+      expect(back.x).toBeCloseTo(x, 1);
+      expect(back.y).toBeCloseTo(y, 1);
     }
   });
 
@@ -61,12 +62,12 @@ describe('anchoring', () => {
     expect(br.anchor).toBe('br');
     const at = placeBox(br, 60, 14, F916);
     // Right and bottom edges keep the same fraction of the frame from the corner.
-    expect(400 - (at.x + 60)).toBeCloseTo((20 / 853) * 400, 6);
-    expect(711 - (at.y + 14)).toBeCloseTo((20 / 480) * 711, 6);
+    expect(400 - (at.x + 60)).toBeCloseTo((20 / 853) * 400, 1);
+    expect(711 - (at.y + 14)).toBeCloseTo((20 / 480) * 711, 1);
     expect(posOfBox(at.x, at.y, 60, 14, F916).anchor).toBe('br');
     // Top edge, centred.
     const top = posOfBox(853 / 2 - 30, 25, 60, 14, F169);
-    expect(top).toEqual({ anchor: 't', x: 0, y: 25 / 480 });
+    expect(top).toEqual({ anchor: 't', x: 0, y: 0.05208 });
     const t2 = placeBox(top, 60, 14, F916);
     expect(t2.x + 30).toBeCloseTo(200, 9);
   });
@@ -137,10 +138,32 @@ describe('snapping', () => {
   });
 
   it('finds a free spot: the bottom-left margin corner, then stacked above, then other corners', () => {
+    const near = (a: { x: number; y: number }, x: number, y: number) => {
+      expect(a.x).toBeCloseTo(x, 1);
+      expect(a.y).toBeCloseTo(y, 1);
+    };
     const first = freeSpot(60, 14, F169, 21, []);
-    expect(placeBox(first, 60, 14, F169)).toEqual({ x: 21, y: 480 - 21 - 14 });
+    near(placeBox(first, 60, 14, F169), 21, 480 - 21 - 14);
     const taken = [{ x: 21, y: 445, w: 100, h: 14 }];
-    expect(placeBox(freeSpot(60, 14, F169, 21, taken), 60, 14, F169)).toEqual({ x: 21, y: 431 });
+    near(placeBox(freeSpot(60, 14, F169, 21, taken), 60, 14, F169), 21, 431);
+  });
+
+  it('a readout snapped to a margin stays on it once stored (canonical, 4 significant digits)', () => {
+    const box = { x: 24, y: 300, w: 60, h: 14 };
+    for (const F of [F169, F916, { width: 3840, height: 2160 }]) {
+      const s = snapBox(box, F, 21, [], 6);
+      expect(s.x).toBe(21);
+      const pos = posOfBox(s.x, s.y, box.w, box.h, F);
+      // Stored as 4 significant digits: the same as the piece stores it, no float noise.
+      expect(pos.x).toBe(Number(pos.x.toPrecision(4)));
+      expect(pos.y).toBe(Number(pos.y.toPrecision(4)));
+      const at = placeBox(pos, box.w, box.h, F);
+      // Within 5e-5 of the frame of the margin: under 0.2 px at 4K, invisible.
+      expect(Math.abs(at.x - 21)).toBeLessThanOrEqual(F.width * 5e-5);
+      expect(Math.abs(at.y - s.y)).toBeLessThanOrEqual(F.height * 5e-5);
+      // Dragged again, it still snaps there.
+      expect(snapBox({ ...box, x: at.x, y: at.y }, F, 21, [], 6).x).toBe(21);
+    }
   });
 });
 

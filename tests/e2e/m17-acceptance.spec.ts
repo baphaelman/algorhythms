@@ -246,7 +246,7 @@ test('a video edited in one browser plays the same from its watch link, PNG, SVG
   if (!(await title.isChecked())) await title.click();
   await expect(title).toBeChecked();
   await chooseSegment(m, 'vb-end-card', '5 s');
-  // One readout (the time), moved: six placed readouts would push the link past a QR code's.
+  // One readout (the time), moved (six fit a QR code too since positions are canonical).
   await setHudOpen(m, true);
   for (const it of ['formula', 'notes', 'chord', 'key', 'hz'])
     await setSwitch(m, `hud-${it}`, false);

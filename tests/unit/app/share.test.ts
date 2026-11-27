@@ -8,6 +8,7 @@ import {
   decodeSharePayload,
   encodeShareLink,
   encodeSharePayload,
+  encodeWatchLink,
   linkDropsPicture,
   nextId,
   packPiece,
@@ -402,6 +403,94 @@ describe('the video in the piece (M17)', () => {
     const plain = await encodeShareLink(kite(), BASE);
     const edited = await encodeShareLink(parsed({ ...kite(), video }), BASE);
     expect(edited.length - plain.length).toBeLessThan(160);
+  });
+
+  describe('placed readouts: canonical, stored once (M17 follow-up)', () => {
+    /** Kite Day as W5 made it: 9:16, a window, six readouts with one moved, a section, cards. */
+    const noisy = {
+      formula: { anchor: 'bl', x: 0.04, y: -0.114140625 },
+      notes: { anchor: 'bl', x: 0.04, y: -0.09445312499999992 },
+      time: { anchor: 'bl', x: 0.09, y: -0.12476562499999988 },
+      chord: { anchor: 'br', x: -0.040000000000000036, y: -0.114140625 },
+      key: { anchor: 'br', x: -0.040000000000000036, y: -0.09445312499999992 },
+      hz: { anchor: 'br', x: -0.040000000000000036, y: -0.07476562499999995 },
+    };
+    const w5 = (layout: object, poster: object = { qr: {} }) => ({
+      ...kite(),
+      video: {
+        aspect: '9:16',
+        window: 6.618,
+        hudLayout: layout,
+        section: { start: 10, end: 16 },
+        titleCard: true,
+        endCard: 5,
+        look: { theme: 'light' },
+      },
+      poster,
+    });
+    const withCopy = (layout: object) =>
+      w5(layout, { qr: {}, look: { theme: 'light', hudLayout: layout } });
+
+    it('opening a piece rounds its readouts; the link round-trips', async () => {
+      const piece = parsed(withCopy(noisy));
+      expect(piece.video?.hudLayout?.time).toEqual({ anchor: 'bl', x: 0.09, y: -0.1248 });
+      expect(piece.video?.hudLayout?.chord).toEqual({ anchor: 'br', x: -0.04, y: -0.1141 });
+      expect(piece.poster?.look?.hudLayout).toEqual(piece.video?.hudLayout);
+      const link = await encodeShareLink(piece, BASE);
+      expect(await open(link)).toEqual(piece);
+      expect(await encodeShareLink(await open(link), BASE)).toBe(link);
+    });
+
+    it("the poster's copy of the video's layout packs as 1; a different one as [anchor, x, y]", async () => {
+      const piece = parsed(withCopy(noisy));
+      const packed = packPiece(piece) as { poster: { look: Record<string, unknown> } };
+      expect(packed.poster.look.hudLayout).toBe(1);
+      expect(unpackPiece(JSON.parse(JSON.stringify(packPiece(piece))))).toMatchObject({
+        poster: { look: { hudLayout: piece.video!.hudLayout } },
+      });
+      // A poster layout of its own.
+      const own = parsed(
+        w5(noisy, {
+          look: { theme: 'light', hudLayout: { time: { anchor: 'tl', x: 0.1, y: 0.2 } } },
+        }),
+      );
+      const p2 = packPiece(own) as { poster: { look: Record<string, unknown> } };
+      expect(p2.poster.look.hudLayout).toEqual({ time: ['tl', 0.1, 0.2] });
+      expect(await open(await encodeShareLink(own, BASE))).toEqual(own);
+      // Only the poster has one.
+      const only = parsed({
+        ...kite(),
+        poster: { look: { hudLayout: { time: { anchor: 'tl', x: 0.1, y: 0.2 } } } },
+      });
+      expect(await open(await encodeShareLink(only, BASE))).toEqual(only);
+      // A poster value that isn't a layout (never written by the app) still round-trips.
+      const odd = parsed(w5(noisy, { look: { hudLayout: 1 } }));
+      expect(await open(await encodeShareLink(odd, BASE))).toEqual(odd);
+    });
+
+    it('an old full-precision link (made by 97f4327) opens canonical, and links shorter', async () => {
+      const old = readFileSync(
+        join(import.meta.dirname, 'fixtures/hud-layout-97f4327.link.txt'),
+        'utf8',
+      ).trim();
+      const piece = await open(old);
+      const want = parsed(withCopy(noisy));
+      expect(piece.video).toEqual(want.video);
+      expect(piece.poster).toEqual(want.poster);
+      expect(piece.video?.hudLayout?.hz).toEqual({ anchor: 'br', x: -0.04, y: -0.07477 });
+      const now = await encodeShareLink(piece, BASE);
+      expect(await open(now)).toEqual(piece);
+      // 1,597 → 1,481 characters (W5's case with the poster's copy).
+      expect(old.length - now.length).toBeGreaterThan(100);
+    });
+
+    it("W5's cases now fit a QR code's 1,500 characters as a watch link", async () => {
+      const SITE = 'https://baphaelman.github.io/algorhythms/';
+      for (const json of [w5(noisy), withCopy(noisy)]) {
+        const link = await encodeWatchLink(parsed(json), { base: SITE });
+        expect(link.length).toBeLessThan(1500);
+      }
+    });
   });
 
   it('a piece without a record links as before', async () => {

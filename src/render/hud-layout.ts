@@ -5,6 +5,7 @@
  * poster sizes; a box is always clamped inside the frame. Pure geometry in layout px.
  */
 
+import { roundPlace } from '../core/canonical';
 import type { HudItem } from './types';
 
 /** Corners, edge midpoints and centre: top-left … bottom-right. */
@@ -99,7 +100,8 @@ const third = (v: number): number => (v < 1 / 3 ? 0 : v > 2 / 3 ? 1 : 0.5);
 
 /**
  * The position of a box at top-left (x, y): the anchor nearest its centre (by thirds of the
- * frame) and the offset from it. The box is clamped inside the frame first.
+ * frame) and the offset from it, canonical (4 significant digits, as the piece stores it). The
+ * box is clamped inside the frame first.
  */
 export function posOfBox(x: number, y: number, w: number, h: number, frame: HudSize): HudPos {
   const W = frame.width;
@@ -107,7 +109,11 @@ export function posOfBox(x: number, y: number, w: number, h: number, frame: HudS
   const c = clampBox(x, y, w, h, frame);
   const fx = third((c.x + w / 2) / W);
   const fy = third((c.y + h / 2) / H);
-  return { anchor: anchorAt(fx, fy), x: (c.x + fx * w) / W - fx, y: (c.y + fy * h) / H - fy };
+  return {
+    anchor: anchorAt(fx, fy),
+    x: roundPlace((c.x + fx * w) / W - fx),
+    y: roundPlace((c.y + fy * h) / H - fy),
+  };
 }
 
 /** A snap target hit while dragging: the guide lines to draw (frame px), if any. */

@@ -44,8 +44,9 @@ describe('layout edits', () => {
     const l = fixLayout({}, PLACE);
     for (const b of PLACE.boxes) {
       const p = at(l, b.item, b.w);
-      expect(p.x).toBeCloseTo(b.x, 9);
-      expect(p.y).toBeCloseTo(b.y, 9);
+      // Positions are canonical (4 significant digits): within 0.05 px.
+      expect(p.x).toBeCloseTo(b.x, 1);
+      expect(p.y).toBeCloseTo(b.y, 1);
     }
     expect(l.formula!.anchor).toBe('bl');
     expect(l.chord!.anchor).toBe('br');
@@ -54,8 +55,9 @@ describe('layout edits', () => {
   it('moving one readout leaves the others in place', () => {
     const l = moveReadout({}, PLACE, 'chord', 400, 30);
     expect(l.chord!.anchor).toBe('t');
-    expect(at(l, 'chord', 40)).toEqual({ x: 400, y: 30 });
-    expect(at(l, 'time', 120).y).toBeCloseTo(447.5, 9);
+    expect(at(l, 'chord', 40).x).toBeCloseTo(400, 1);
+    expect(at(l, 'chord', 40).y).toBeCloseTo(30, 1);
+    expect(at(l, 'time', 120).y).toBeCloseTo(447.5, 1);
   });
 
   it('dragging snaps (margin, other edges) unless free; never leaves the frame', () => {
@@ -71,8 +73,8 @@ describe('layout edits', () => {
   it('nudges by a fraction of the frame', () => {
     const l = nudgeReadout({}, PLACE, 'notes', NUDGE, -NUDGE);
     const p = at(l, 'notes', 70);
-    expect(p.x).toBeCloseTo(21.3 + 853 * NUDGE, 9);
-    expect(p.y).toBeCloseTo(433.5 - 480 * NUDGE, 9);
+    expect(p.x).toBeCloseTo(21.3 + 853 * NUDGE, 1);
+    expect(p.y).toBeCloseTo(433.5 - 480 * NUDGE, 1);
   });
 
   it('remove fixes the others; add back finds a free spot once placed', () => {

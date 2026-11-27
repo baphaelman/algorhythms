@@ -17,7 +17,9 @@
  *   digits; style factors, opacities and the picture's position and dimming as levels; its
  *   section as times;
  * - **the video** (M17): its window, zoom, section, fades and end card as times, the playhead place and
- *   Ahead as levels.
+ *   Ahead as levels;
+ * - **placed HUD readouts** (the video's `hudLayout` and the poster Look's): offsets (fractions of
+ *   the frame) to 4 significant digits, as poster boxes.
  *
  * Only the fields listed here change: unknown fields (and timbres and the mix, which have no
  * editor yet) are kept as written. Rounding is idempotent and copy-on-write: unchanged objects
@@ -152,6 +154,12 @@ const posterStyle = obj({
   dy: roundPlace,
 });
 
+/** Placed HUD readouts by item: each position's offsets, fractions of the frame (M17). */
+const hudPos = obj({ x: roundPlace, y: roundPlace });
+const hudLayout: Spec = {
+  pick: (l) => obj(Object.fromEntries(Object.keys(l).map((k) => [k, hudPos]))),
+};
+
 const PIECE: Spec = obj({
   tuning: obj({ referenceHz: roundOther }),
   defaults: obj({ glide }),
@@ -186,6 +194,7 @@ const PIECE: Spec = obj({
     layers: each(obj({ box: posterBox })),
     picture: obj({ x: roundLevel, y: roundLevel, dim: roundLevel }),
     qr: obj({ box: posterBox }),
+    look: obj({ hudLayout }),
     texts: each(obj({ box: posterBox, style: obj({ size: roundPlace, opacity: roundLevel }) })),
     groups: { pick: (g) => obj(Object.fromEntries(Object.keys(g).map((k) => [k, posterStyle]))) },
     members: {
@@ -213,6 +222,7 @@ const PIECE: Spec = obj({
     leadIn: roundTime,
     fadeOut: roundTime,
     endCard: roundTime,
+    hudLayout,
   }),
   view: obj({
     window: roundOther,
