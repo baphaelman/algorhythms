@@ -2,7 +2,8 @@
  * Zoom and pan on the poster artboard (owner, poster notes round 3, items 5 and 7): ⌘/Ctrl-wheel
  * zooms at the pointer; at 200 % the handles sit on the selection and a drag moves it by the
  * poster distance; ⇧1 fits, ⇧0 is 100 %, ⌘+ steps; the readout's menu; a click on the gray area
- * deselects, but a Space-drag pans instead.
+ * deselects, but a Space-drag pans instead. Two fingers (a plain wheel) pan at any zoom, Fit too;
+ * the stacked layout still scrolls.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -344,4 +345,66 @@ test('zoomed in, the canvas is the poster drawn sharp from the part in view', as
   expect(live.scale).toBeCloseTo(3 * dpr, 6);
   const box = (await page.getByTestId('artboard-box').boundingBox())!;
   expect(live.w).toBeLessThanOrEqual(Math.ceil(box.width * dpr) + 1);
+});
+
+test('two fingers pan the poster at Fit, partly off the box but never lost; ⇧1 brings it back', async ({
+  page,
+}) => {
+  const art = page.getByTestId('poster-artboard');
+  const box = (await page.getByTestId('artboard-box').boundingBox())!;
+  await expect(art).toHaveAttribute('data-fit', 'true');
+  const fit = (await page.getByTestId('artboard-overlay').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // A two-finger drag is a plain wheel: the content follows the fingers (scroll down = up).
+  await redrawn(page, () => page.mouse.wheel(60, 40));
+  await expect(art).toHaveAttribute('data-fit', 'false');
+  const moved = (await page.getByTestId('artboard-overlay').boundingBox())!;
+  near(moved.x - fit.x, -60, 2);
+  near(moved.y - fit.y, -40, 2);
+  // Shift turns a vertical wheel sideways.
+  await page.keyboard.down('Shift');
+  await page.mouse.wheel(0, 30);
+  await page.keyboard.up('Shift');
+  await expect
+    .poll(async () => (await page.getByTestId('artboard-overlay').boundingBox())!.x)
+    .toBeCloseTo(moved.x - 30, 0);
+  // Far off (up and left): a third of the poster stays in the box.
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(2000, 2000);
+  await expect
+    .poll(async () => {
+      const o = (await page.getByTestId('artboard-overlay').boundingBox())!;
+      return Math.abs(Math.round(o.x + o.width - box.x - o.width / 3));
+    })
+    .toBe(0);
+  const far = (await page.getByTestId('artboard-overlay').boundingBox())!;
+  near(far.y + far.height - box.y, far.height / 3, 2);
+  // ⇧1: Fit again.
+  await page.getByTestId('poster-workspace').focus();
+  await page.keyboard.press('Shift+Digit1');
+  await expect(art).toHaveAttribute('data-fit', 'true');
+  const back = (await page.getByTestId('artboard-overlay').boundingBox())!;
+  near(back.x, fit.x, 1);
+  near(back.y, fit.y, 1);
+});
+
+test('stacked: the panels scroll the page; over the poster the wheel pans, then scrolls on', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  const ws = page.getByTestId('poster-workspace');
+  const scrollTop = () => ws.evaluate((el) => el.scrollTop);
+  const box = (await page.getByTestId('artboard-box').boundingBox())!;
+  // Over the options: the page scrolls, the poster stays at Fit.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height + 200);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(scrollTop).toBeGreaterThan(100);
+  await expect(page.getByTestId('poster-artboard')).toHaveAttribute('data-fit', 'true');
+  await ws.evaluate((el) => (el.scrollTop = 0));
+  // Over the poster: it pans until two thirds are off; then the page scrolls.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 100);
+  await expect(page.getByTestId('poster-artboard')).toHaveAttribute('data-fit', 'false');
+  expect(await scrollTop()).toBe(0);
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, 400);
+  await expect.poll(scrollTop).toBeGreaterThan(100);
 });

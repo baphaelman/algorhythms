@@ -1,7 +1,8 @@
 /**
  * The poster artboard's zoom and pan (owner, poster notes round 3, items 5 and 7): ⌘/Ctrl-wheel
- * and pinch zoom at the pointer; plain scroll pans a page larger than the box (Shift-wheel
- * sideways); Space-drag or a middle-button drag pans; ⇧1 fits, ⇧0 is 100 %, ⌘+ / ⌘− step; a
+ * and pinch zoom at the pointer; a plain scroll (two fingers) over the artboard pans it at any
+ * zoom, Fit too, like Figma (Shift-wheel sideways); at the pan's limit the wheel passes on, so
+ * the stacked layout's page still scrolls; Space-drag or a middle-button drag pans; ⇧1 fits, ⇧0 is 100 %, ⌘+ / ⌘− step; a
  * click on the gray area deselects. The view is view state (../artboard-view), never the piece's.
  */
 
@@ -92,14 +93,17 @@ export function useArtboardZoom(
         set((v, b, p) => zoomAt(v, v.zoom / w.factor, b, p, at));
         return;
       }
-      const { view: v, avail: b, poster: p } = now.current;
-      // A poster that fits keeps the browser's scroll (the stacked layout scrolls past it).
-      if (!(p.width * v.zoom > b.w + 0.5 || p.height * v.zoom > b.h + 0.5)) return;
       const unit = e.deltaMode === 1 ? 16 : 1;
       let dx = e.deltaX * unit;
       let dy = e.deltaY * unit;
       if (e.shiftKey && dx === 0) [dx, dy] = [dy, 0];
       if (dx === 0 && dy === 0) return;
+      // At the pan's limit the wheel is the page's (the stacked layout scrolls on).
+      const { view: v, avail: b, poster: p } = now.current;
+      const next = panBy(v, -dx, -dy, b, p);
+      if (Math.abs(next.cx - v.cx) * v.zoom < 0.01 && Math.abs(next.cy - v.cy) * v.zoom < 0.01) {
+        return;
+      }
       e.preventDefault();
       set((v1, b1, p1) => panBy(v1, -dx, -dy, b1, p1));
     };

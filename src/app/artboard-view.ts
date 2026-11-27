@@ -41,15 +41,34 @@ export function zoomLimits(box: Size, poster: Poster): { min: number; max: numbe
   return { min: f / 4, max: Math.max(8, f * 4) };
 }
 
-/** `v` with its zoom inside the limits and the box's centre over the poster. */
+/** The least of the page kept in view when panned (CSS px): a third of it, at least 80 px. */
+export const PAN_KEEP_PX = 80;
+
+/** How much of a page `size` CSS px long stays in a box `room` long: see `PAN_KEEP_PX`. */
+export const panKeep = (size: number, room: number): number =>
+  Math.min(size, room, Math.max(PAN_KEEP_PX, size / 3));
+
+/** The centre's range on one axis: the page may leave the box, Figma-style, but `panKeep` of it stays. */
+function centreRange(len: number, zoom: number, room: number): [number, number] {
+  const keep = panKeep(len * zoom, room);
+  return [(keep - room / 2) / zoom, len + (room / 2 - keep) / zoom];
+}
+
+/**
+ * `v` with its zoom inside the limits and enough of the poster in view: at any zoom (Fit too,
+ * once panned) the page may move partly off the box, but `panKeep` of it stays in each axis.
+ */
 export function clampView(v: ArtboardView, box: Size, poster: Poster): ArtboardView {
   if (v.fit) return fitView(box, poster);
   const { min, max } = zoomLimits(box, poster);
+  const zoom = Math.min(max, Math.max(min, v.zoom));
+  const [x0, x1] = centreRange(poster.width, zoom, box.w);
+  const [y0, y1] = centreRange(poster.height, zoom, box.h);
   return {
     fit: false,
-    zoom: Math.min(max, Math.max(min, v.zoom)),
-    cx: Math.min(poster.width, Math.max(0, v.cx)),
-    cy: Math.min(poster.height, Math.max(0, v.cy)),
+    zoom,
+    cx: Math.min(x1, Math.max(x0, v.cx)),
+    cy: Math.min(y1, Math.max(y0, v.cy)),
   };
 }
 
