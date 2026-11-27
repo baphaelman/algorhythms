@@ -3,19 +3,19 @@
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
 ## Now (2026-11-27)
-- **main:** af2933b + docs = M17 done + HUD-position rounding (placed readouts at 4 significant digits; a poster HUD layout equal to the video's packs as `1`; Kite Day with six readouts fits a QR code, 1,607 → 1,491). Verified (lint, typecheck, unit 3470, build, 153 e2e). **Live:** 53f76f6 (CI green; Pages `main-dNc_rbV7.js`). **Preview artifact:** v95.
-- **In flight** (all Opus medium):
-  - M13 K1 hover to hear (from b4e0397, ports 6200/4200);
-  - fullscreen button, Video workspace + watch view, phones included (from d722b3c, 6210/4210); queued on the same thread: two-finger pan on the Poster artboard at any zoom;
-  - side panel search in Music, Poster and Video (from d722b3c, 6220/4220).
-- **Queue:** M13, one builder at a time (owner yes 2026-11-27): K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance. M16 after the owner's screen reorganization.
+- **main:** 7634040 = M13 K1 hover to hear + YouTube-style fullscreen button (Video workspace and watch view; Android/iPad real fullscreen; iPhone via iOS's video player, untested) + two-finger pan on the Poster artboard at any zoom + side panel search (Music Inspector/Sound drawer, Poster, Video; ⌘F). Verified locally (lint, typecheck, unit 3503, build, 193 e2e, test:perf). **CI red:** the search box's layout (poster-workspace:592 and video-dialog:1076/1101 at 375×640; score-min:46 at 1024×600); poster.spec:465 also failed on WebKit only (PNG equality; watch it after the fix). **Live:** 53f76f6 (Pages `main-dNc_rbV7.js`). **Preview artifact:** v96 (7634040).
+- **In flight:**
+  - search layout fix on the search builder's thread (from 7634040, ports 6220/4220);
+  - M13 K2 folds/widths/Next (from 7634040, 6230/4230, Opus high).
+- **Queue:** M13, one builder at a time (owner yes 2026-11-27): K3 shift sequences + walks, K4 sound, K5 acceptance. M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
-  - M17 device checks: real fullscreen on the Mac (+ iPhone if handy); a phone camera scanning a poster's QR code.
+  - Device checks: real fullscreen on the Mac; iPhone fullscreen (iOS's player: does the picture move, does its Play give sound?); a phone camera scanning a poster's QR code; a first listen to hover to hear.
   - The owner's reorganization of the screens (for M16).
   - Integrator call (veto): the drop hint takes no room and hides when it doesn't fit (hidden on square/A4 for 7 of 13 bundled pieces with long titles).
   - Push the composer's `late-bloom` branch (b27f38c "Songs: add Late Bloom" plus copies of ba08e99/06afce4)?
   - Once Late Bloom is settled, put `~/algorhythms` back on `main`, after checking that no session is using it.
 - **Small open items:**
+  - hover to hear: Add-card labels compile once per chord card each time the stopped playhead moves;
   - poster: a split line doesn't follow its part's in-row move;
   - poster: Layers doesn't highlight a row piece's part;
   - poster: old wide text boxes keep their width until edited;
@@ -23,7 +23,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6190/4190; in use up to 6220/4220; the next builder gets 6230/4230. The integrator verifies on 5490/4490.
+- **Ports** in use up to 6230/4230; the next builder gets 6240/4240. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|

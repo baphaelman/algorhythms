@@ -13,6 +13,7 @@ Entries before M14 (M0 to M12, 2026-11-19 to 2026-11-24) are in `docs/archive/bu
 - **Linux CI vs the Mac:** Linux Chromium has no AAC encoder (Opus fallback). Linux Chromium and Firefox draw subpixel text on opaque canvases, so compare canvases drawn with the same alpha setting.
 - **Firefox:** navigating while the worklet warms up logs "Script terminated by timeout" then `uncaught exception: undefined`; the page can't catch it, and `lane-rows.spec` filters only that pair.
 - **Playwright WebKit on macOS:** no real canvas `filter` (glow uses ring passes); Tab skips buttons, so specs use Alt+Tab there.
+- **Side panels, drawers, sticky boxes:** also run `video-dialog.spec`, `poster-workspace.spec` and `score-min.spec`; they check covering, sticky previews and the score's minimum at 375×640 and 1024×600 (the panel search missed them, 2026-11-27).
 - **Export output changes** (anything a poster, SVG, thumbnail or MP4 contains): also run `export-section.spec` and `hud-place.spec`; they compare downloads and layouts (M17 W3 missed them, 2026-11-27).
 - **Merges:** `.gitattributes` gives this file `merge=union`, so parallel appends merge without conflict markers; check the merged entries still read in order.
 
