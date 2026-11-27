@@ -3,11 +3,9 @@
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
 ## Now (2026-11-27)
-- **main:** 7634040 = M13 K1 hover to hear + YouTube-style fullscreen button (Video workspace and watch view; Android/iPad real fullscreen; iPhone via iOS's video player, untested) + two-finger pan on the Poster artboard at any zoom + side panel search (Music Inspector/Sound drawer, Poster, Video; ⌘F). Verified locally (lint, typecheck, unit 3503, build, 193 e2e, test:perf). **CI red:** the search box's layout (poster-workspace:592 and video-dialog:1076/1101 at 375×640; score-min:46 at 1024×600); poster.spec:465 also failed on WebKit only (PNG equality; watch it after the fix). **Live:** 53f76f6 (Pages `main-dNc_rbV7.js`). **Preview artifact:** v96 (7634040).
-- **In flight:**
-  - search layout fix on the search builder's thread (from 7634040, ports 6220/4220);
-  - M13 K2 folds/widths/Next (from 7634040, 6230/4230, Opus high).
-- **Queue:** M13, one builder at a time (owner yes 2026-11-27): K3 shift sequences + walks, K4 sound, K5 acceptance. M16 after the owner's screen reorganization.
+- **main:** d3472a8 = M13 K1–K3 (hover to hear; fold axes, widths, Cross at one point, Next's closed loop, melodies clear of lydian rubs; shift sequences, walk Glide to next tick and Step past a neighbour) + fullscreen button (iPhone via iOS's player, untested) + two-finger poster pan + side panel search (layout fixed: not pinned in the stacked layout; inside the Sound drawer's scroll). Verified (lint, typecheck, unit 3553, build, test:perf 12/12, 197 e2e). **Live:** d3472a8 (CI green; Pages `main-Cbh9S8Mh.js`). **Preview artifact:** v98.
+- **In flight:** M13 K4 sound (from d3472a8, ports 6250/4250, Opus high). Phases and fades by default move goldens (own commits); its report brings A/B share links for the owner.
+- **Queue:** M13, one builder at a time (owner yes 2026-11-27): K5 acceptance (the gallery pieces drop their workarounds, within 0.5 dB per section). M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
   - Device checks: real fullscreen on the Mac; iPhone fullscreen (iOS's player: does the picture move, does its Play give sound?); a phone camera scanning a poster's QR code; a first listen to hover to hear.
   - The owner's reorganization of the screens (for M16).
@@ -23,7 +21,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports** in use up to 6230/4230; the next builder gets 6240/4240. The integrator verifies on 5490/4490.
+- **Ports** in use up to 6250/4250; the next builder gets 6260/4260. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|
@@ -36,7 +34,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
 | M14 | Poster workspace: done 2026-11-25. Owner follow-ups (Save/Revert bar, selection panel, per-row placements, Text tool, round 3 incl. zoom and per-row hiding) live at b871add. |
 | M15 | Play the poster: done 2026-11-26 (`docs/m15-acceptance.md`). |
 | M17 | Pieces that travel: done 2026-11-27 (`docs/m17-acceptance.md`); owner device checks open (fullscreen, QR scan). |
-| M13, then M16 | M13 in progress 2026-11-27 (K1 running); M16 after the owner's screen reorganization. |
+| M13, then M16 | M13 in progress 2026-11-27 (K1–K3 live, K4 running, K5 acceptance next); M16 after the owner's screen reorganization. |
 
 ## Standing rules (owner)
 - **Don't write code.** Builders write all of it. You assign, verify, merge, push and report. You own PLAN.md, this file, `docs/owner-decisions.md` and the build log's traps list.
