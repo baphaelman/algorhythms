@@ -785,27 +785,23 @@ export function SoundDrawer() {
           ×
         </button>
       </header>
-      <PanelSearch scope="sound" label="the sound drawer" priority={1}>
-        {tab === 'master' ? (
-          <div
-            className="sd-body"
-            id="sound-panel"
-            role="tabpanel"
-            aria-labelledby="sound-tab-master"
-          >
+      {/* The search box scrolls with the body (pinned at its top), so it costs the drawer no
+          height. */}
+      <div
+        key={tab}
+        className="sd-body"
+        id="sound-panel"
+        role="tabpanel"
+        aria-labelledby={`sound-tab-${tab}`}
+      >
+        <PanelSearch scope="sound" label="the sound drawer" priority={1}>
+          {tab === 'master' ? (
             <Master mix={piece.mix} view={piece.view} parts={hasParts(piece)} />
-          </div>
-        ) : (
-          <div
-            className="sd-body"
-            id="sound-panel"
-            role="tabpanel"
-            aria-labelledby="sound-tab-timbre"
-          >
+          ) : (
             <TimbreBody timbre={timbre} name={name} />
-          </div>
-        )}
-      </PanelSearch>
+          )}
+        </PanelSearch>
+      </div>
     </section>
   );
 }

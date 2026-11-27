@@ -69,19 +69,27 @@
   margin: 0 -4px 6px -14px;
 }
 
-/* The sound drawer's box sits under its header, as narrow as a side panel. */
-.sound-drawer > .panel-search {
+/* The sound drawer's box heads its scrolling body (a wrapping row), a line of its own. */
+.sd-body > .panel-search-none {
+  flex: 0 0 100%;
+}
+
+/* Across the body's padding. */
+.sd-body > .panel-search {
+  flex: 0 0 calc(100% + 24px);
+  margin: -8px -12px 0;
   padding: 6px 12px;
   background: var(--panel);
 }
 
-.sound-drawer > .panel-search input {
+.sd-body > .panel-search input {
   max-width: 300px;
 }
 
-/* Stacked workspace (narrow window): pinned under the sticky artboard. */
+/* Stacked workspace (narrow window): the page scrolls under the sticky preview, so the box
+   scrolls with the options rather than covering them. */
 @media (max-width: 1099px) {
   .ws-side > .panel-search {
-    top: clamp(160px, 34vh, 420px);
+    position: static;
   }
 }
