@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { soundPreview, stopHoverSound } from '../hover-sound';
+import { hoverSoundState, soundPreview, stopHoverSound } from '../hover-sound';
 import { PREVIEW_DELAY_MS, stopPreview } from '../preview';
 
 /**
@@ -20,6 +20,7 @@ export function useCardHover(): {
   };
   const hover = (start: () => boolean): void => {
     cancel();
+    hoverSoundState.hoverAt = performance.now();
     timer.current = setTimeout(() => {
       timer.current = null;
       if (start()) soundPreview();

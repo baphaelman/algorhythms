@@ -82,7 +82,7 @@ export function Suggestions() {
               data-best={s.best || undefined}
               data-label={s.label}
               data-result={result}
-              title={about}
+              title={result ? `${about}. ${result}` : about}
               aria-describedby={desc}
               onPointerEnter={() => hover(s)}
               onPointerLeave={cancelHover}

@@ -234,6 +234,9 @@ export const hoverSoundState = {
   plan: null as HoverPlan | null,
   /** The latest one's moment type. */
   type: null as MomentType | null,
+  /** `performance.now()` of the latest card hover or focus (its dwell's start), and of the latest start. */
+  hoverAt: NaN,
+  startedAt: NaN,
 };
 
 /**
@@ -258,6 +261,7 @@ export function playHover(
     kind: HOVER_KIND,
   });
   if (ok) {
+    hoverSoundState.startedAt = performance.now();
     hoverSoundState.count++;
     hoverSoundState.plan = plan;
     hoverSoundState.type = type;

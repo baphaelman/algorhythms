@@ -13,6 +13,10 @@ test.skip(
   'Chromium and Firefox (WebKit cannot be muted locally)',
 );
 
+// A loaded runner takes up to ~20 s to load the dev page and Firefox's first play can take as
+// long again (worklet warm-up); the default 30 s isn't enough for a load plus a play or reload.
+test.describe.configure({ timeout: 60_000 });
+
 interface HoverHook {
   audition: {
     count: number;
@@ -22,7 +26,13 @@ interface HoverHook {
     stops: number;
     lastFade: number;
   };
-  hoverSound: { count: number; type: string | null; plan: { mode: string } | null };
+  hoverSound: {
+    count: number;
+    type: string | null;
+    plan: { mode: string } | null;
+    hoverAt: number;
+    startedAt: number;
+  };
 }
 const state = (page: Page) =>
   page.evaluate(() => {
@@ -32,6 +42,8 @@ const state = (page: Page) =>
       hovers: h.hoverSound.count,
       type: h.hoverSound.type,
       mode: h.hoverSound.plan?.mode ?? null,
+      /** ms from the latest hover to the latest sound's start (page clock). */
+      dwell: h.hoverSound.startedAt - h.hoverSound.hoverAt,
     };
   });
 
@@ -48,6 +60,8 @@ async function open(page: Page): Promise<void> {
     const view = { ...p.view };
     delete view.gridBpm;
     p.view = view;
+    // Long enough that playback can't end mid-test on a slow runner.
+    p.end = { ...(p.end as object), at: 60 };
     p.moments = [
       ...(p.moments as { id: string }[]).filter((m) => m.id === 'start0'),
       { id: 'spl001', type: 'split', at: 0, count: 4, voicing: 'even' },
@@ -76,14 +90,17 @@ test('a card sounds after the dwell, names its result, and stops with a 50 ms fa
   const chord = card(page, 'chord');
   await expect(chord).toHaveAttribute('data-result', /^→ \S/);
   await expect(chord.locator('.card-result')).toHaveText(/^→ \S/);
+  // The tooltip has the whole result (a long one is cut off on the card).
+  const result = (await chord.getAttribute('data-result'))!;
+  expect((await chord.getAttribute('title'))!.startsWith(`${result}. `)).toBe(true);
   const s0 = await state(page);
   await chord.hover();
-  // Not before the dwell.
-  await page.waitForTimeout(120);
-  expect((await state(page)).hovers).toBe(s0.hovers);
   await expect.poll(async () => (await state(page)).hovers).toBe(s0.hovers + 1);
   const on = await state(page);
   expect(on).toMatchObject({ active: true, kind: 'hover', type: 'chord', mode: 'transition' });
+  // Not before the dwell (page clock, so a slow runner can't fake it); not long after either.
+  expect(on.dwell).toBeGreaterThanOrEqual(249);
+  expect(on.dwell).toBeLessThan(1500);
 
   // Moving to another card plays that one.
   await card(page, 'level').hover();
@@ -147,7 +164,7 @@ test('Hover sound off makes no sound and is remembered', async ({ page }) => {
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape');
 
-  await page.reload();
+  // A fresh load (`open` navigates again) reads the remembered setting.
   await open(page);
   const s0 = await state(page);
   await card(page, 'chord').hover();
