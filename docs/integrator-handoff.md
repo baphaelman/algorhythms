@@ -3,7 +3,7 @@
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
 ## Now (2026-11-27)
-- **main:** af2933b + docs = M17 done + HUD-position rounding (placed readouts at 4 significant digits; a poster HUD layout equal to the video's packs as `1`; Kite Day with six readouts fits a QR code, 1,607 → 1,491). Verified (lint, typecheck, unit 3470, build, 153 e2e). **Live:** 07f223c (M17; Pages css `main-CyrGiJ-z.css`) until this push's CI is green. **Preview artifact:** v95.
+- **main:** af2933b + docs = M17 done + HUD-position rounding (placed readouts at 4 significant digits; a poster HUD layout equal to the video's packs as `1`; Kite Day with six readouts fits a QR code, 1,607 → 1,491). Verified (lint, typecheck, unit 3470, build, 153 e2e). **Live:** 53f76f6 (CI green; Pages `main-dNc_rbV7.js`). **Preview artifact:** v95.
 - **In flight:** nothing.
 - **Queue:** M13, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
