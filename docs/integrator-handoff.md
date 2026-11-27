@@ -2,12 +2,13 @@
 
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
-## Now (2026-11-26)
-- **main:** 0c1eab9 + the docs-maintenance batch. **Live:** b871add (Pages `main-DzidMlva.js`). **Preview artifact:** v90.
-- **In flight:** nothing.
-- **Queue:** M16 Piece panel with a preview (reuse `ui/VideoPreview.tsx`). Map it and get the owner's yes first. Then M13.
+## Now (2026-11-27)
+- **main:** PLAN rev 21 (M17) on 10c0b32, docs only, not pushed. **Live:** b871add (Pages `main-DzidMlva.js`). **Preview artifact:** v90.
+- **In flight:** M17 W1 (the video in the piece + watch-link format; ports 6140/4140) and W3 (pictures that open; ports 6150/4150).
+- **Queue:** M17 W2 watch view + W4 QR (after W1), W5 acceptance. M13 alongside, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
-  - Map M16?
+  - M13 split?
+  - The owner's reorganization of the screens (for M16).
   - Push the composer's `late-bloom` branch (b27f38c "Songs: add Late Bloom" plus copies of ba08e99/06afce4)?
   - Once Late Bloom is settled, put `~/algorhythms` back on `main`, after checking that no session is using it.
 - **Small open items:**
@@ -18,7 +19,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6130/4130; the next builder gets 6140/4140. The integrator verifies on 5490/4490.
+- **Ports used** up to 6150/4150; the next builder gets 6160/4160. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|

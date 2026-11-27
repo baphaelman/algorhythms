@@ -1,6 +1,6 @@
 # AlgoRhythms: Project Plan
 
-**Status:** the living spec, at revision 20 (2026-11-24; owner-approved, §18). Milestones and their state are in §15; the current state of work is in `docs/integrator-handoff.md` ("Now"). The project is named **AlgoRhythms**.
+**Status:** the living spec, at revision 21 (2026-11-27; owner-approved, §18). Milestones and their state are in §15; the current state of work is in `docs/integrator-handoff.md` ("Now"). The project is named **AlgoRhythms**.
 **Last tidied:** 2026-11-26 (finished milestones cut to one line; the pre-tidy text is `git show 0c1eab9:PLAN.md`).
 **Audience:** the integrator and builder agents. Builders read the sections their task names.
 
@@ -1163,14 +1163,31 @@ These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, C
   - **Fades by default:** an establishing chord from silence fades in (default 0.5 s); tune rests and comebacks fade (about 0.2 s out, 50 ms in) instead of cutting in 20 ms; and `level` with `over: 0` gets a minimum 30 ms ramp. Each is an option.
 - *Accept when:* each item has a test that fails before it, and the gallery pieces that worked around these (Crease, Night Sleeper, Murmuration, Calling Changes) can drop their workarounds and still render within 0.5 dB per section.
 
-**Order (owner, 2026-11-24):** M14 Poster workspace, then M15 Play the poster, then M16 Piece panel, then M13.
+**Order (owner, 2026-11-27):** M17 Pieces that travel, with M13 alongside (different code); then M16, mapped against the owner's reorganization of the Music, Poster and Video screens. (Before: M14, M15, M16, then M13; owner, 2026-11-24.)
 
 **M14. Poster workspace:** done 2026-11-25. Acceptance: `docs/m14-acceptance.md`; the owner's follow-up notes are in `docs/owner-decisions.md`.
 
 **M15. Play the poster:** done 2026-11-26. Acceptance: `docs/m15-acceptance.md`.
 
 **M16. Piece panel with a preview (after M15; owner, 2026-11-24)**
-In Music mode, when no moment is selected, the right panel shows the piece: a live video preview at the playhead, drawn as the export would draw it, so you can change the music and see how it looks. Below it are the piece's actions: New, My pieces, Open, Save, Share, Generate, Export (the menu keeps them too). Details to be mapped with the owner before it starts.
+In Music mode, when no moment is selected, the right panel shows the piece: a live video preview at the playhead, drawn as the export would draw it, so you can change the music and see how it looks. Below it are the piece's actions: New, My pieces, Open, Save, Share, Generate, Export (the menu keeps them too). Details to be mapped with the owner before it starts, against their reorganization of the Music, Poster and Video screens (owner, 2026-11-27).
+
+**M17. Pieces that travel (owner, 2026-11-27)**
+The owner's idea: send a piece as a picture. Drop the picture on the site, or scan its QR code, and it plays: the music, and the video as its maker edited it. Watching is the Video workspace filling the window, not a fourth mode (owner).
+- **The video in the piece (owner: yes).** What a video shows moves from the viewer's remembered export options into the piece, stored only where it differs from the defaults: aspect, camera mode, Follow window and playhead place, HUD readouts and their places, ahead of the playhead, the playhead switch, the section, the opening (fade in, lead-in, title card with its title and subtitle) and the ending (fade out, end card, credit). File settings stay the viewer's: size, frame rate, quality, loudness, thumbnail and description. Each piece keeps its own video; the choices used last become the defaults for new pieces. Edits are on the piece's undo stack; save, reload and share links carry them.
+  - Integrator calls: a piece with a video record plays exactly that. An absent field means the fixed default, never the viewer's remembered option, and the same holds for every other input of a frame (the Look, colours, HUD layout), so a watcher in a fresh browser sees the maker's frames. A piece without a record (old pieces, or never opened in Video) plays with the viewer's remembered options, as today; its first edit in Video writes the record from what is shown.
+- **Watch view.** A watch link, a dropped picture or a scanned QR code opens the piece in the Video workspace filling the window, paused on its first frame (the title card, if any) with a large Play. Play starts the sound and, on desktop, real fullscreen (browsers allow neither without a click). YouTube-like controls on hover: play/pause, seek bar, time, fullscreen. Escape always lands in the Video workspace (also when leaving browser fullscreen), where Export MP4 is. A corner offers Edit video and Open the music; the end screen offers Replay and Open the music.
+  - **Phones (owner: yes):** the watch view, and only it, works properly on a phone: it fills the window and has touch controls (iPhone Safari has no element fullscreen). The editors stay desktop.
+  - **Share** gets "Opens to: Music | Video" (default: where you are). Integrator calls: a watch link is the share link plus a watch flag; the address bar keeps §11.4's rule.
+- **Pictures that open.** Poster PNGs and SVGs, and MP4s, carry the whole piece in their metadata, background picture included (PNG: an ancillary chunk; SVG: `<metadata>`; MP4: a user-data box). Drop one anywhere on the site, or pick it in Menu → Open, and it opens in the watch view; a file without a piece says so. New posters get a default text box, "Drop this picture on baphaelman.github.io/algorhythms to play it", deletable like any text box. Files sent as files (AirDrop, email, Drive) keep the metadata; most social apps strip or re-encode it, which is what the QR code is for.
+- **QR code.** A poster object placed, sized and coloured like a text box (with its quiet zone), holding the watch link. Offered only when the link fits a code that scans easily (about 1,500 characters at poster sizes); otherwise it shows the link's length. Off by default, added from the poster toolbar (integrator call). Dependency (owner: yes): a small MIT-licensed QR encoder, loaded only when a poster has a code; a decoder only in the tests.
+- **Builders (integrator):**
+  - **W1** the video in the piece (core types, schema, canonical rules, share packing; the app's export options and Video workspace) and the watch-link format.
+  - **W3** pictures that open (poster and MP4 export, Open and drop, the default hint text), in parallel with W1; it opens into the Video workspace until W2 lands.
+  - **W2** the watch view and Share's Opens to, after W1.
+  - **W4** the QR code, after W1, in parallel with W2.
+  - **W5** acceptance.
+- *Accept when:* a video edited in one browser plays frame for frame the same in a fresh browser profile with different remembered options, opened from a watch link, from a dropped PNG, SVG and MP4, and from a decoded QR code. Escape lands in the Video workspace, and Open the music in the editor. A dropped file without a piece is refused with a message. Old pieces, files and links open and play as before. The watch view plays by touch in a phone-sized WebKit viewport. The specs pass on all three engines.
 
 **Later, in no order:**
 - the Drift texture;
@@ -1200,6 +1217,7 @@ In Music mode, when no moment is selected, the right panel shows the piece: a li
 
 One line per revision; the full entries are in `git show 0c1eab9:PLAN.md`.
 
+- **Revision 21** (2026-11-27): pieces that travel (M17): the video in the piece, a watch view, pictures and QR codes that open the piece; M17 and M13 before M16.
 - **Revision 20** (2026-11-24): poster workspace first; video workspace; piece panel.
 - **Revision 19** (2026-11-24): export workspace (M14, proposed).
 - **Revision 18** (2026-11-24): the owner's M12 listening notes.
