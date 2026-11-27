@@ -13,9 +13,12 @@ export function Radios<T extends string | number>({
   hint,
   isDisabled,
   className,
+  keywords = '',
   onChange,
 }: {
   legend: string;
+  /** Words that find it in the panel's search but aren't shown; null: part of a bigger one. */
+  keywords?: string | null;
   /** Extra class on the segments. */
   className?: string;
   /** A tooltip on the group. */
@@ -30,8 +33,14 @@ export function Radios<T extends string | number>({
   onChange: (v: T) => void;
 }) {
   return (
-    <fieldset className="field" disabled={disabled} title={hint}>
-      <legend>{legend}</legend>
+    <fieldset
+      className="field"
+      disabled={disabled}
+      title={hint}
+      data-search={keywords ?? undefined}
+      data-search-off={keywords === null || undefined}
+    >
+      <legend data-search-label>{legend}</legend>
       <div className={className ? `seg radios ${className}` : 'seg radios'} data-testid={testId}>
         {options.map((o) => {
           const on = value === o.id;
@@ -49,7 +58,7 @@ export function Radios<T extends string | number>({
                 aria-disabled={off && on ? true : undefined}
                 onChange={() => onChange(o.id)}
               />
-              <span>{o.label}</span>
+              <span data-search-label>{o.label}</span>
             </label>
           );
         })}
@@ -66,10 +75,13 @@ export function Switch({
   label,
   className,
   hint,
+  keywords = '',
   onChange,
   children,
 }: {
   checked: boolean;
+  /** Words that find it in the panel's search but aren't shown. */
+  keywords?: string;
   /** A tooltip. */
   hint?: string;
   disabled?: boolean;
@@ -80,7 +92,11 @@ export function Switch({
   children?: ReactNode;
 }) {
   return (
-    <label className={className ? `look-switch ${className}` : 'look-switch'} title={hint}>
+    <label
+      className={className ? `look-switch ${className}` : 'look-switch'}
+      title={hint}
+      data-search={keywords}
+    >
       <span className="switch-text">
         <span>{label}</span>
         {children}

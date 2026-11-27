@@ -120,7 +120,7 @@ interface RowProps {
 /** A labelled row: label on the left, control on the right. */
 export function Row({ label, htmlFor, children, className }: RowProps) {
   return (
-    <div className={className ? `insp-row ${className}` : 'insp-row'}>
+    <div className={className ? `insp-row ${className}` : 'insp-row'} data-search="">
       {htmlFor ? (
         <label htmlFor={htmlFor}>{label}</label>
       ) : (
@@ -249,7 +249,7 @@ export function NumberField(props: NumberFieldProps) {
   };
 
   return (
-    <div className="insp-row">
+    <div className="insp-row" data-search="">
       <label
         htmlFor={id}
         className="scrub-label"
@@ -546,13 +546,14 @@ export function Chips<T extends string | number>({
 }) {
   return (
     <fieldset className={className ? `chips ${className}` : 'chips'} data-testid={testId}>
-      <legend>{legend}</legend>
+      <legend data-search-label>{legend}</legend>
       {options.map(([v, text]) => (
         <button
           key={v}
           type="button"
           aria-pressed={pressed(v)}
           title={hint?.(v)}
+          data-search-label
           onClick={() => onPick(v)}
         >
           {text}
@@ -610,7 +611,7 @@ export function CheckField({
   title?: string;
 }) {
   return (
-    <label className="insp-check" title={title}>
+    <label className="insp-check" title={title} data-search="">
       <input
         type="checkbox"
         checked={checked}
@@ -671,7 +672,7 @@ export function TextField({
   const error = shownError ?? (live && !live.ok ? live.text : null);
 
   return (
-    <div className="insp-row">
+    <div className="insp-row" data-search="">
       <label htmlFor={id}>{label}</label>
       <div className="insp-ctl">
         <input

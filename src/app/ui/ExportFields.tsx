@@ -64,6 +64,7 @@ import { resetPosterLook } from '../poster-doc';
 import { cameraOf, loopRegion, usePlayer } from '../store';
 import { ColoursGroup } from './ColoursGroup';
 import { Radios, Switch } from './export-controls';
+import { useSearchReveal } from './PanelSearch';
 import { PitchGuidesRow } from './ExportYoutube';
 import {
   IDLE,
@@ -95,19 +96,21 @@ function LookSegmentsRow({
   const id = useId();
   const value = control.value(form);
   const label = (
-    <span className="look-label" id={`${id}-label`}>
+    <span className="look-label" id={`${id}-label`} data-search-label>
       {control.label}
     </span>
   );
   return (
     <>
       {aside ? (
-        <div className="look-label-row">
+        <div className="look-label-row" data-search={control.keywords ?? ''}>
           {label}
           {aside}
         </div>
       ) : (
-        label
+        <span className="look-label" id={`${id}-label`} data-search={control.keywords ?? ''}>
+          {control.label}
+        </span>
       )}
       <div
         className="seg radios look-seg"
@@ -115,6 +118,7 @@ function LookSegmentsRow({
         aria-labelledby={`${id}-label`}
         data-testid={`look-${control.id}`}
         data-value={value}
+        data-search-part
       >
         {control.choices.map((c) => (
           <label key={c.value} className={value === c.value ? 'on' : undefined}>
@@ -147,7 +151,7 @@ function LookFlagsRow({
   const id = useId();
   return (
     <>
-      <span className="look-label" id={`${id}-label`}>
+      <span className="look-label" id={`${id}-label`} data-search={control.keywords ?? ''}>
         {control.label}
       </span>
       <div
@@ -155,6 +159,7 @@ function LookFlagsRow({
         role="group"
         aria-labelledby={`${id}-label`}
         data-testid={`look-${control.id}`}
+        data-search-part
       >
         {control.flags.map((f) => {
           const on = form.look[f.key];
@@ -191,7 +196,7 @@ function LookSliderRow({
   const text = control.text(value);
   return (
     <>
-      <label htmlFor={id} title={control.hint}>
+      <label htmlFor={id} title={control.hint} data-search={control.keywords ?? ''}>
         {control.label}
       </label>
       <div className="field-row look-range">
@@ -238,6 +243,7 @@ function LookRow({
           checked={control.value(form)}
           disabled={disabled}
           testId={`look-${control.id}`}
+          keywords={control.keywords}
           onChange={(on) => patch(control.apply(useExportUi.getState().form, on))}
         />
       );
@@ -274,7 +280,11 @@ function HudSection({
   kind: LookKind;
   aside?: ReactNode;
 }) {
-  const open = useExportUi((s) => s.hudOpen);
+  // A search match inside opens it while searching.
+  const open = useSearchReveal(
+    'hud',
+    useExportUi((s) => s.hudOpen),
+  );
   const pieceName = usePlayer((s) => s.piece.meta.title);
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -287,7 +297,7 @@ function HudSection({
   }, [open]);
 
   return (
-    <div className="hud-section">
+    <div className="hud-section" data-search="readouts overlay">
       {aside ? (
         <div className="look-switch-row">
           <button
@@ -299,7 +309,7 @@ function HudSection({
             data-testid="look-hud-button"
             onClick={() => useExportUi.setState({ hudOpen: !open })}
           >
-            <span>HUD · {hudSummary(hud)}</span>
+            <span data-search-label>HUD · {hudSummary(hud)}</span>
             <span className="hud-chevron" aria-hidden="true" />
           </button>
           {aside}
@@ -314,7 +324,7 @@ function HudSection({
           data-testid="look-hud-button"
           onClick={() => useExportUi.setState({ hudOpen: !open })}
         >
-          <span>HUD · {hudSummary(hud)}</span>
+          <span data-search-label>HUD · {hudSummary(hud)}</span>
           <span className="hud-chevron" aria-hidden="true" />
         </button>
       )}
@@ -325,6 +335,7 @@ function HudSection({
         role="group"
         aria-label="HUD readouts"
         data-testid="look-hud"
+        data-search-reveal="hud"
       >
         <div className="hud-inner">
           <div className="hud-quick">
@@ -676,6 +687,7 @@ export function RangeField({
   text,
   disabled,
   testId,
+  keywords = '',
   onChange,
 }: {
   label: string;
@@ -685,11 +697,13 @@ export function RangeField({
   text: string;
   disabled: boolean;
   testId: string;
+  /** Words that find it in the panel's search but aren't shown. */
+  keywords?: string;
   onChange: (v: number) => void;
 }) {
   const id = useId();
   return (
-    <div className="field">
+    <div className="field" data-search={keywords}>
       <label htmlFor={id}>{label}</label>
       <div className="field-row look-range">
         <input
@@ -1065,8 +1079,9 @@ export function SectionField({
   };
 
   return (
-    <div className="section-field" data-testid="export-section-field">
+    <div className="section-field" data-testid="export-section-field" data-search="range span loop">
       <Radios
+        keywords={null}
         legend="Section"
         name={`${id}-section`}
         value={kind}

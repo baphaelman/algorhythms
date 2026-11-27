@@ -28,6 +28,7 @@ import {
 import type { VideoSupport } from '../video-export';
 import { setDialogSpace } from '../space-key';
 import { useExportSurface, workspaceEscape } from '../export-surface';
+import { PanelSearch } from './PanelSearch';
 import { cameraOf, usePlayer } from '../store';
 import { formatTime } from '../../render/hud';
 import { timelineCards } from '../video-timeline';
@@ -147,7 +148,7 @@ function WindowField({
   const text = poster && onTick ? 'One row' : windowText(shown);
   const tickLabel = poster ? 'One row’s height' : `Editor’s zoom (${windowText(zoom)})`;
   return (
-    <div className="field">
+    <div className="field" data-search="zoom follow">
       <label htmlFor={`${id}-w`}>Window</label>
       <div className="field-row look-range">
         <span className="window-track">
@@ -262,8 +263,11 @@ function TravelsFields({ disabled }: { disabled: boolean }) {
       role="group"
       aria-label="Stays or travels"
       data-testid="video-travels"
+      data-search="stays"
     >
-      <span className="field-label">Travels with the frame</span>
+      <span className="field-label" data-search-label>
+        Travels with the frame
+      </span>
       <Switch
         label="HUD readouts"
         checked={hud}
@@ -361,6 +365,7 @@ function VideoOptions({
       <div className="field-pair">
         <Radios
           legend="Size"
+          keywords="resolution"
           name={`${id}-vsize`}
           value={form.videoSize}
           options={sizeOptions}
@@ -371,6 +376,7 @@ function VideoOptions({
         />
         <Radios
           legend="Frame rate"
+          keywords="fps"
           name={`${id}-fps`}
           value={form.videoFps}
           options={VIDEO_FPS}
@@ -381,6 +387,7 @@ function VideoOptions({
       </div>
       <Radios
         legend="Quality"
+        keywords="bitrate"
         name={`${id}-quality`}
         value={form.videoQuality}
         options={VIDEO_QUALITIES}
@@ -707,7 +714,9 @@ export function VideoWorkspace() {
         {watch && <WatchView form={form} runtime={runtime} stage={stage} />}
       </section>
       <aside className="ws-side export-panel" aria-label="Video options">
-        <VideoOptions form={form} runtime={runtime} support={support} disabled={running} />
+        <PanelSearch scope="video" label="Video options">
+          <VideoOptions form={form} runtime={runtime} support={support} disabled={running} />
+        </PanelSearch>
       </aside>
       <VideoTimeline form={form} runtime={runtime} support={support} />
     </main>

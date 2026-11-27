@@ -51,7 +51,7 @@ export function Segs<T extends string>({
   const id = useId();
   return (
     <>
-      <span className="look-label" id={`${id}-label`}>
+      <span className="look-label" id={`${id}-label`} data-search="">
         {label}
       </span>
       <div
@@ -121,7 +121,9 @@ export function Swatch({
   };
   return (
     <>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} data-search="">
+        {label}
+      </label>
       <div className="field-row swatch" data-testid={testId} data-set={set ? 'yes' : 'no'}>
         <input
           id={id}
@@ -202,7 +204,7 @@ function Schemes({
   };
   return (
     <>
-      <span className="look-label" id={`${id}-label`}>
+      <span className="look-label" id={`${id}-label`} data-search="">
         Scheme
       </span>
       <div
@@ -234,7 +236,9 @@ function Schemes({
           </span>
         )}
       </div>
-      <label htmlFor={`${id}-name`}>Save as</label>
+      <label htmlFor={`${id}-name`} data-search="scheme">
+        Save as
+      </label>
       <div className="field-row scheme-save">
         <input
           id={`${id}-name`}
@@ -293,8 +297,14 @@ export function ColoursGroup({
   const warning = contrastWarning(c, t, transparent);
 
   return (
-    <div className="colours" role="group" aria-labelledby={`${id}-title`} data-testid="colours">
-      <h3 className="colours-title" id={`${id}-title`}>
+    <div
+      className="colours"
+      role="group"
+      aria-labelledby={`${id}-title`}
+      data-testid="colours"
+      data-search="colors palette"
+    >
+      <h3 className="colours-title" id={`${id}-title`} data-search-label>
         Colours
       </h3>
       <div className="look-grid">

@@ -209,7 +209,7 @@ export function CameraField({
         testId="export-camera"
         onChange={(mode) => choose(ctl, mode)}
       />
-      <div className="field-row camera-hint">
+      <div className="field-row camera-hint" data-search-part>
         <small className="export-hint">{hint}</small>
         {value === 'auto' && (
           <button

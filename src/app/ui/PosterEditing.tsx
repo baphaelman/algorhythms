@@ -939,7 +939,7 @@ function NumField({
     else setDraft({ of: shown, text: shown });
   };
   return (
-    <label className="ws-num" htmlFor={id}>
+    <label className="ws-num" htmlFor={id} data-search="">
       <span>{label}</span>
       <input
         id={id}
@@ -973,7 +973,12 @@ function BoxFields({ frame, onBox }: { frame: Rect; onBox: (r: Rect) => void }) 
     onBox(r);
   };
   return (
-    <div className="ws-box-fields" role="group" aria-label="Position and size (px)">
+    <div
+      className="ws-box-fields"
+      role="group"
+      aria-label="Position and size (px)"
+      data-search="position size box"
+    >
       <NumField label="X" value={frame.x} testId="sel-x" onCommit={set('x')} />
       <NumField label="Y" value={frame.y} testId="sel-y" onCommit={set('y')} />
       <NumField label="W" value={frame.w} testId="sel-w" onCommit={set('w')} />
@@ -1005,7 +1010,9 @@ function Slider({
   const id = useId();
   return (
     <>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} data-search="">
+        {label}
+      </label>
       <div className="field-row look-range">
         <input
           id={id}
@@ -1070,7 +1077,7 @@ export function SelectionPanel({ children }: { children?: React.ReactNode }) {
   }
   return (
     <section className="ws-selpanel" aria-label="Selected" data-testid="selection-panel">
-      <header className="ws-selpanel-head">
+      <header className="ws-selpanel-head" data-search-ignore>
         <h3 data-testid="selection-title">
           {title}
           {sel.kind === 'member' && <small> · one</small>}
@@ -1277,7 +1284,7 @@ function TextPanel({ id, t, layout }: { id: string; t: PosterText; layout: Poste
   const colour = o && o.type === 'text' ? o.colour : layout.style.tokens.ink;
   return (
     <>
-      <label className="ws-textfield" htmlFor={fid}>
+      <label className="ws-textfield" htmlFor={fid} data-search="">
         <span>Text</span>
         <textarea
           id={fid}

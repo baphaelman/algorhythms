@@ -31,6 +31,7 @@ import { encodeShareLink } from '../share';
 import { usePlayer } from '../store';
 import { formatPitch, parsePitchList } from './inspector/fields';
 import { Radios, Switch } from './export-controls';
+import { useSearchReveal } from './PanelSearch';
 import {
   LIMIT_WARN_DB,
   SHORTS_MAX,
@@ -43,6 +44,9 @@ import {
 import { timestamp } from '../youtube-description';
 
 type Runtime = typeof import('../export-run');
+
+/** Search keywords of Guide notes. */
+const GUIDE_WORDS = 'pitch hz lines';
 
 /**
  * The video Preset: YouTube / Shorts set their list of options; Custom lights up when one of
@@ -269,6 +273,7 @@ export function PitchGuidesRow({
       className="look-label"
       id={`${id}-label`}
       title="Faint horizontal lines at the notes you choose."
+      data-search={aside ? undefined : GUIDE_WORDS}
     >
       Guide notes
     </span>
@@ -276,7 +281,7 @@ export function PitchGuidesRow({
   return (
     <>
       {aside ? (
-        <div className="look-label-row">
+        <div className="look-label-row" data-search={GUIDE_WORDS}>
           {label}
           {aside}
         </div>
@@ -289,6 +294,7 @@ export function PitchGuidesRow({
         role="group"
         aria-labelledby={`${id}-label`}
         data-testid="look-pitch-guides"
+        data-search-part
       >
         {pg.pitches.map((p) => (
           <button
@@ -381,7 +387,7 @@ function Seconds3({
   const text = value > 0 ? `${value.toFixed(1)} s` : 'Off';
   return (
     <>
-      <label htmlFor={id} title={hint}>
+      <label htmlFor={id} title={hint} data-search="">
         {label}
       </label>
       <div className="field-row look-range">
@@ -426,7 +432,7 @@ function TextRow({
   const id = useId();
   return (
     <>
-      <label htmlFor={id} title={hint}>
+      <label htmlFor={id} title={hint} data-search="">
         {label}
       </label>
       <input
@@ -450,7 +456,7 @@ function TextRow({
  */
 export function BookendsGroup({
   form,
-  open,
+  open: chosen,
   disabled,
   onToggle,
   onPatch,
@@ -464,6 +470,8 @@ export function BookendsGroup({
   const id = useId();
   const pieceTitle = usePlayer((s) => s.piece.meta.title);
   const panel = useRef<HTMLDivElement>(null);
+  // A search match inside opens it while searching.
+  const open = useSearchReveal('bookends', chosen);
   useLayoutEffect(() => {
     if (panel.current) panel.current.inert = !open;
   }, [open]);
@@ -474,9 +482,10 @@ export function BookendsGroup({
   if (form.videoFadeOut > 0) on.push('fade out');
   if (form.videoEndCard > 0) on.push(`end card ${form.videoEndCard} s`);
   return (
-    <div className="export-group" data-testid="bookends">
+    <div className="export-group" data-testid="bookends" data-search="intro outro">
       <button
         type="button"
+        data-search-label
         className="hud-row group-row"
         aria-expanded={open}
         aria-controls={`${id}-panel`}
@@ -497,6 +506,7 @@ export function BookendsGroup({
         className={open ? 'hud-panel open' : 'hud-panel'}
         role="group"
         aria-label="Opening and ending"
+        data-search-reveal="bookends"
       >
         <div className="hud-inner look-grid">
           <Seconds3
@@ -586,6 +596,7 @@ function EndCardRow({
         className="look-label"
         id={`${id}-label`}
         title="After the music, the whole piece drawn finished, held this long (room for YouTube's end screen)."
+        data-search="outro"
       >
         End card
       </span>
@@ -695,7 +706,7 @@ export function PreviewActions({
 
   return (
     <div className="preview-actions">
-      <div className="field-row">
+      <div className="field-row" data-search="youtube image jpeg">
         <button
           type="button"
           disabled={disabled || !runtime || busy}
@@ -727,7 +738,7 @@ export function PreviewActions({
           ))}
         </div>
       </div>
-      <div className="field-row">
+      <div className="field-row" data-search="youtube chapters">
         <button
           type="button"
           disabled={!runtime || (form.descriptionLink && link?.piece !== piece)}

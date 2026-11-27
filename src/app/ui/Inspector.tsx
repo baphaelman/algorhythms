@@ -29,6 +29,7 @@ import { scopeLabel } from '../editor/parts';
 import { formatTime, keyAt } from './inspector/fields';
 import { KeyFields, TypeFields } from './inspector/TypeFields';
 import { Overrides } from './inspector/Overrides';
+import { PanelSearch } from './PanelSearch';
 import './inspector.css';
 
 /** The heading: the block's row (§6.4); note and pin are dots. */
@@ -78,10 +79,12 @@ export function Inspector() {
       aria-label="Inspector"
       data-testid="inspector"
     >
-      {pieceKey && <PieceKey piece={piece} />}
-      {selected.length === 0 && !pieceKey && <Empty />}
-      {selected.length === 1 && <One key={selected[0].id} m={selected[0]} piece={piece} />}
-      {selected.length > 1 && <Many moments={selected} />}
+      <PanelSearch scope="inspector" label="the inspector">
+        {pieceKey && <PieceKey piece={piece} />}
+        {selected.length === 0 && !pieceKey && <Empty />}
+        {selected.length === 1 && <One key={selected[0].id} m={selected[0]} piece={piece} />}
+        {selected.length > 1 && <Many moments={selected} />}
+      </PanelSearch>
     </aside>
   );
 }
@@ -181,7 +184,7 @@ function PieceKey({ piece }: { piece: Piece }) {
       data-moment-type="key"
       data-piece-key=""
     >
-      <header className="insp-head">
+      <header className="insp-head" data-search-ignore>
         <h2>
           Key <span className="insp-at">@ {formatTime(0)}</span>
         </h2>
@@ -257,7 +260,7 @@ function One({ m, piece }: { m: Moment; piece: Piece }) {
 
   return (
     <div className="insp-one" data-moment-id={m.id} data-moment-type={m.type}>
-      <header className="insp-head">
+      <header className="insp-head" data-search-ignore>
         <h2>
           {TYPE_NAMES[m.type]} <span className="insp-at">@ {formatTime(m.at)}</span>
           {scope !== null && (
