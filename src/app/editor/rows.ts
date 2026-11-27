@@ -176,7 +176,8 @@ function relativeLabel(m: ShiftMoment | SpreadMoment): string {
     const sign = m.by > 0 ? '+' : m.by < 0 ? '−' : '';
     return `${sign}${Math.abs(m.by)} ${m.unit === 'scaleSteps' ? 'steps' : 'st'}`;
   }
-  return m.factor === -1 ? 'upside down' : m.factor > 1 ? 'wider' : 'closer';
+  if (m.factor < 0) return m.factor === -1 ? 'upside down' : `upside down ×${-m.factor}`;
+  return m.factor > 1 ? 'wider' : 'closer';
 }
 
 interface Draft extends Omit<Block, 'sub'> {
@@ -450,13 +451,18 @@ export function setNotesCount(m: ChordMoment, n: number, pool: number): ChordMom
 export type RelativeShape =
   | { kind: 'moved'; by: number; unit: 'semitones' | 'scaleSteps' }
   | { kind: 'spacing'; factor: number }
-  | { kind: 'upside-down' };
+  /** Mirrored; `width` (absent = 1) scales the mirror image: factor −width (M13). */
+  | { kind: 'upside-down'; width?: number };
 
 /** A relative chord block's shape, or null for an absolute one. */
 export function relativeShapeOf(m: Moment): RelativeShape | null {
   if (m.type === 'shift') return { kind: 'moved', by: m.by, unit: m.unit };
   if (m.type === 'spread')
-    return m.factor === -1 ? { kind: 'upside-down' } : { kind: 'spacing', factor: m.factor };
+    return m.factor === -1
+      ? { kind: 'upside-down' }
+      : m.factor < 0
+        ? { kind: 'upside-down', width: -m.factor }
+        : { kind: 'spacing', factor: m.factor };
   return null;
 }
 
@@ -469,11 +475,11 @@ function common(m: Moment): Omit<MomentBase, 'type'> {
   return out;
 }
 
-/** A Chords block as a relative one: shift (moved) or spread (spacing; upside down = −1). */
+/** A Chords block as a relative one: shift (moved) or spread (spacing; upside down = −width). */
 export function setRelative(m: Moment, shape: RelativeShape): ShiftMoment | SpreadMoment {
   if (shape.kind === 'moved')
     return { ...common(m), type: 'shift', by: shape.by, unit: shape.unit };
-  const factor = shape.kind === 'upside-down' ? -1 : shape.factor;
+  const factor = shape.kind === 'upside-down' ? -(shape.width ?? 1) : shape.factor;
   const keep = m.type === 'spread' ? { around: m.around, snap: m.snap } : null;
   return {
     ...common(m),
