@@ -1863,22 +1863,24 @@ function QrButton() {
     : null;
   return (
     <>
-      <button
-        type="button"
-        className="ws-qr-add"
-        disabled={long || (!has && n === null)}
-        aria-describedby={long ? 'qr-too-long' : undefined}
-        title={
-          why ??
-          (has
-            ? 'Select the QR code'
-            : 'Add a QR code that opens the piece to watch (point a phone at the poster)')
-        }
-        data-testid="tool-qr"
-        onClick={addQrCode}
-      >
-        QR code
-      </button>
+      <div className="seg">
+        <button
+          type="button"
+          className="ws-qr-add"
+          disabled={long || (!has && n === null)}
+          aria-describedby={long ? 'qr-too-long' : undefined}
+          title={
+            why ??
+            (has
+              ? 'Select the QR code'
+              : 'Add a QR code that opens the piece to watch (point a phone at the poster)')
+          }
+          data-testid="tool-qr"
+          onClick={addQrCode}
+        >
+          QR code
+        </button>
+      </div>
       {long && (
         <span className="ws-tool-hint" id="qr-too-long" role="status" data-testid="qr-too-long">
           Link too long for a QR code: {n.toLocaleString('en')} of{' '}
