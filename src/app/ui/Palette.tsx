@@ -59,12 +59,11 @@ export function Palette() {
             data-no-effect={off || undefined}
             data-result={result}
             aria-disabled={off || undefined}
+            // The result first, so a label cut off on the card reads whole here.
             title={
               off
                 ? `${e.name}: ${reason} (drag to another time)`
-                : e.key
-                  ? `${e.hint} (${e.key})`
-                  : e.hint
+                : `${result ? `${result}. ` : ''}${e.key ? `${e.hint} (${e.key})` : e.hint}`
             }
             aria-keyshortcuts={e.key}
             draggable
