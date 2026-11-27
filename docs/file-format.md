@@ -7120,6 +7120,124 @@ This is the *input* form: fields with defaults are optional here.
         }
       },
       "additionalProperties": {}
+    },
+    "video": {
+      "description": "The video (M17); absent = the viewer's options.",
+      "type": "object",
+      "properties": {
+        "aspect": {
+          "description": "Absent = '16:9'.",
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "whole": {
+          "description": "Camera: Whole piece.",
+          "type": "boolean"
+        },
+        "followAt": {
+          "description": "Follow: the playhead's place, %.",
+          "type": "number",
+          "minimum": 10,
+          "maximum": 90
+        },
+        "window": {
+          "description": "Follow: seconds the frame shows.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "hud": {
+          "description": "HUD readouts.",
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "hudLayout": {
+          "description": "Placed readouts.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "ahead": {
+          "description": "Over the poster: Ahead, %.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "section": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Seconds from the start of the piece."
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": {}
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "leadIn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "titleCard": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "endCard": {
+          "description": "End card, s; 0 = off.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "credit": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "look": {
+          "description": "Export Look overrides.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {}
     }
   },
   "required": [

@@ -13,6 +13,7 @@ import { AudioDialog } from './ui/AudioDialog';
 import { PosterWorkspace, WorkspaceBar } from './ui/PosterWorkspace';
 import { VideoWorkspace } from './ui/VideoWorkspace';
 import { startPosterSync } from './poster-sync';
+import { startVideoSync } from './video-sync';
 import { useExportSurface } from './export-surface';
 import { GeneratePanel } from './ui/GeneratePanel';
 import { Inspector } from './ui/Inspector';
@@ -173,9 +174,17 @@ export function App() {
 
 /**
  * While the workspace shows (either mode), the form's poster options and the piece's poster stay
- * in step (./poster-sync): the video plays the poster, and its section is the poster's.
+ * in step (./poster-sync): the video plays the poster, and its section is the poster's. In Video,
+ * the form's video options and the piece's video record too (./video-sync, M17).
  */
 function WorkspaceSync() {
-  useLayoutEffect(() => startPosterSync(), []);
+  useLayoutEffect(() => {
+    const stopPoster = startPosterSync();
+    const stopVideo = startVideoSync();
+    return () => {
+      stopVideo();
+      stopPoster();
+    };
+  }, []);
   return null;
 }

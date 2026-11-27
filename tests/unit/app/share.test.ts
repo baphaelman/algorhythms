@@ -363,3 +363,62 @@ describe('Play the poster fields (M15)', () => {
       expect(parsePiece({ ...base(), camera: cam }).ok).toBe(false);
   });
 });
+
+describe('the video in the piece (M17)', () => {
+  const kite = () => example('songs/kite-day');
+  const video = {
+    aspect: '9:16' as const,
+    window: 12.5,
+    hud: ['time', 'chord'],
+    hudLayout: { time: { anchor: 'bl', x: 0.03, y: -0.04 } },
+    section: { start: 4, end: 30 },
+    fadeIn: 1,
+    titleCard: true,
+    subtitle: 'for Sam',
+    fadeOut: 1.5,
+    endCard: 10,
+    credit: '',
+    look: { theme: 'dark', glow: 0.4, playhead: false },
+  };
+
+  it('survives save and a share link, packed short; an empty record too', async () => {
+    const piece = parsed({ ...kite(), video });
+    expect(piece.video).toEqual(video);
+    expect(await open(await encodeShareLink(piece, BASE))).toEqual(piece);
+    const packed = packPiece(piece) as { video: Record<string, unknown> };
+    expect(packed.video).toMatchObject({ a: '9:16', s: [4, 30], h: 'time,chord' });
+    expect(packed.video.H).toEqual({ time: ['bl', 0.03, -0.04] });
+    expect(unpackPiece(JSON.parse(JSON.stringify(packed)))).toMatchObject({ video });
+    const empty = parsed({ ...kite(), video: {} });
+    expect(await open(await encodeShareLink(empty, BASE))).toEqual(empty);
+    const none = parsed({ ...kite(), video: { hud: [] } });
+    expect(await open(await encodeShareLink(none, BASE))).toEqual(none);
+    // A field this version doesn't know keeps the record as written.
+    const later = parsed({ ...kite(), video: { ...video, wipe: 'iris' } });
+    expect(await open(await encodeShareLink(later, BASE))).toEqual(later);
+  });
+
+  it('an edited video (aspect, window, HUD, section, cards, Look) adds under 160 characters to Kite Day’s link', async () => {
+    const plain = await encodeShareLink(kite(), BASE);
+    const edited = await encodeShareLink(parsed({ ...kite(), video }), BASE);
+    expect(edited.length - plain.length).toBeLessThan(160);
+  });
+
+  it('a piece without a record links as before', async () => {
+    const piece = kite();
+    expect(piece.video).toBeUndefined();
+    expect(packPiece(piece)).not.toHaveProperty('video');
+  });
+
+  it('the schema refuses a bad aspect, fade, section or playhead place', () => {
+    for (const v of [
+      { aspect: '4:3' },
+      { fadeIn: 4 },
+      { section: { start: 5, end: 5 } },
+      { followAt: 95 },
+      { window: 0 },
+      { hud: 'time' },
+    ])
+      expect(parsePiece({ ...kite(), video: v }).ok).toBe(false);
+  });
+});

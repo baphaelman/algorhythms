@@ -724,6 +724,43 @@ export const CameraSchema = z
   });
 
 // ---------------------------------------------------------------------------------------------
+// Video (§15 M17)
+// ---------------------------------------------------------------------------------------------
+
+const fadeSeconds = z.number().min(0).max(3);
+
+/** `Piece.video` (M17): only what differs from the defaults. */
+export const VideoSchema = z
+  .looseObject({
+    aspect: z.enum(['16:9', '9:16', '1:1']).optional().describe("Absent = '16:9'."),
+    whole: z.boolean().optional().describe('Camera: Whole piece.'),
+    followAt: z.number().min(10).max(90).optional().describe("Follow: the playhead's place, %."),
+    window: z.number().positive().optional().describe('Follow: seconds the frame shows.'),
+    hud: z.array(z.string().max(32)).max(32).optional().describe('HUD readouts.'),
+    hudLayout: z.record(z.string(), z.unknown()).optional().describe('Placed readouts.'),
+    ahead: z.number().min(0).max(100).optional().describe('Over the poster: Ahead, %.'),
+    section: z.looseObject({ start: seconds, end: seconds }).optional(),
+    fadeIn: fadeSeconds.optional(),
+    leadIn: fadeSeconds.optional(),
+    titleCard: z.boolean().optional(),
+    title: z.string().max(500).optional(),
+    subtitle: z.string().max(500).optional(),
+    fadeOut: fadeSeconds.optional(),
+    endCard: z.number().min(0).max(60).optional().describe('End card, s; 0 = off.'),
+    credit: z.string().max(500).optional(),
+    look: z.record(z.string(), z.unknown()).optional().describe('Export Look overrides.'),
+  })
+  .superRefine((v, ctx) => {
+    if (v.section && !(v.section.end > v.section.start)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['section'],
+        message: 'A section must end after it starts.',
+      });
+    }
+  });
+
+// ---------------------------------------------------------------------------------------------
 // Poster (§15 M14)
 // ---------------------------------------------------------------------------------------------
 
@@ -1027,6 +1064,7 @@ export const PieceSchema = z
     camera: CameraSchema.optional().describe('The video camera (M11.5); absent = Follow.'),
     poster: PosterSchema.optional().describe('The poster (M14); absent = the defaults.'),
     posterSaved: PosterSchema.optional().describe("The poster's save point (M14)."),
+    video: VideoSchema.optional().describe("The video (M17); absent = the viewer's options."),
   })
   .superRefine(checkPiece);
 

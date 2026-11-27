@@ -138,6 +138,34 @@ describe('canonicalPiece', () => {
     expect(c).toBe(p);
   });
 
+  it("rounds the video's times and levels (M17)", () => {
+    const p: Piece = {
+      ...newPiece({ seed: 1 }),
+      video: {
+        window: 12.34567,
+        followAt: 33.3333,
+        ahead: 12.3456,
+        section: { start: 1.23456, end: 9.87654 },
+        fadeIn: 1.00004,
+        leadIn: 0.5,
+        fadeOut: 2.99999,
+        endCard: 10,
+        title: '1.23456',
+      },
+    };
+    expect(canonicalPiece(p).video).toEqual({
+      window: 12.346,
+      followAt: 33.3,
+      ahead: 12.3,
+      section: { start: 1.235, end: 9.877 },
+      fadeIn: 1,
+      leadIn: 0.5,
+      fadeOut: 3,
+      endCard: 10,
+      title: '1.23456',
+    });
+  });
+
   it('parsePiece returns canonical pieces', () => {
     const p = noisy();
     expect(parsed(p)).toEqual(parsed(canonicalPiece(p)));

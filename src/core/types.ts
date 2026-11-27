@@ -1118,6 +1118,51 @@ export interface PosterPicture {
   dim?: number;
 }
 
+/**
+ * What the piece's video shows (§15 M17 "The video in the piece"): only what differs from the
+ * defaults below. A piece with this record plays exactly it (an absent field is the default,
+ * never the viewer's remembered option); a piece without one plays with the viewer's options.
+ * File settings (size, frame rate, quality, loudness, thumbnail, description) stay the viewer's.
+ */
+export interface PieceVideo {
+  /** @default '16:9' */
+  aspect?: '16:9' | '9:16' | '1:1';
+  /** Camera: Whole piece (otherwise the piece's `camera.mode`). */
+  whole?: boolean;
+  /** Follow: the playhead's place across the frame, % (10..90). Absent = by Ahead of the playhead. */
+  followAt?: number;
+  /**
+   * Follow: seconds the frame shows at this aspect. Absent = One row: the piece's `view.window`
+   * at this aspect; Over the poster: one row's height.
+   */
+  window?: Seconds;
+  /** HUD readouts (render `HudItem`s). Absent = the player's six; [] = none. */
+  hud?: string[];
+  /** Where each readout sits (render `HudLayout`). Absent = the default slots. */
+  hudLayout?: Record<string, unknown>;
+  /** Over the poster: Ahead of the playhead, 0..100 %. @default 0 */
+  ahead?: number;
+  /** The section shown; absent = the whole piece. */
+  section?: { start: Seconds; end: Seconds };
+  /** Opening: fade in from black and lead-in, s (0..3). @default 0 */
+  fadeIn?: Seconds;
+  leadIn?: Seconds;
+  /** The title card; its title (absent = the piece's name) and subtitle. */
+  titleCard?: boolean;
+  title?: string;
+  subtitle?: string;
+  /** Ending: fade to black, s (0..3), and the end card's length, s (0 = off). @default 0 */
+  fadeOut?: Seconds;
+  endCard?: number;
+  /** The end card's credit line (absent = "Made with AlgoRhythms"; '' = none). */
+  credit?: string;
+  /**
+   * The Look the video draws with, as differences from the export defaults (as `PosterDoc.look`;
+   * the theme always resolved). A piece with a poster takes the poster's Look keys over these.
+   */
+  look?: Record<string, unknown>;
+}
+
 /** A loop region [start, end) in seconds; `on: false` keeps it without looping (§11.3). */
 export interface LoopRegion {
   start: Seconds;
@@ -1171,7 +1216,8 @@ export interface Piece {
   /** The poster (§15 M14); absent = the defaults (the viewer's remembered Look). */
   poster?: PosterDoc;
   /** The poster's save point (M14): Save stores a copy, Revert returns to it. Not in share links. */
-  posterSaved?: PosterDoc;
+  posterSaved?: PosterDoc; /** The video (§15 M17); absent = the viewer's remembered video options. */
+  video?: PieceVideo;
 }
 
 // ---------------------------------------------------------------------------------------------

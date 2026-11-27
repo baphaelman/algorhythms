@@ -9,13 +9,17 @@
  *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
  *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
  *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
- *   (M15), and the poster packed (M14: default
+ *   (M15), the video packed (M17: short names, flat section and placed readouts), and the
+ *   poster packed (M14: default
  *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
  * A poster's background picture (M14) is never in a link (`shareablePiece`): the link's poster
  * falls back to its background colour.
+ *
+ * A watch link (M17) is a share link with the watch flag first: `#w&p=<payload>`, or
+ * `#w&<example-id>` for an unedited bundled example. It opens the piece to watch its video.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
  * `decode(encode(p))` is exactly `p` and `encode(decode(link))` gives the same link back.
@@ -287,6 +291,82 @@ function unpackPoster(poster: Rec): Rec {
   return out;
 }
 
+/** The video record's short names in a link (M17), by field. */
+const VIDEO_KEYS: Readonly<Record<string, string>> = {
+  aspect: 'a',
+  whole: 'W',
+  followAt: 'f',
+  window: 'w',
+  hud: 'h',
+  hudLayout: 'H',
+  ahead: 'A',
+  section: 's',
+  fadeIn: 'i',
+  leadIn: 'L',
+  titleCard: 'T',
+  title: 't',
+  subtitle: 'u',
+  fadeOut: 'o',
+  endCard: 'e',
+  credit: 'c',
+  look: 'l',
+};
+const VIDEO_LONG: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(VIDEO_KEYS).map(([k, v]) => [v, k]),
+);
+
+/** A placed readout `{anchor, x, y}` packs as `[anchor, x, y]`. */
+function plainPos(p: unknown): p is { anchor: string; x: number; y: number } {
+  return (
+    isRec(p) &&
+    Object.keys(p).length === 3 &&
+    typeof p.anchor === 'string' &&
+    typeof p.x === 'number' &&
+    typeof p.y === 'number'
+  );
+}
+
+/**
+ * The video's packing (M17): short names, the section as `[start, end]`, the readout list as one
+ * comma-separated string and placed readouts as `[anchor, x, y]`. A record with a field this
+ * doesn't know stays as it is.
+ */
+function packVideo(video: Rec): Rec {
+  if (!Object.keys(video).every((k) => Object.hasOwn(VIDEO_KEYS, k))) return video;
+  const out: Rec = {};
+  for (const [k, v] of Object.entries(video)) {
+    let x: unknown = v;
+    if (k === 'section' && isRec(v) && Object.keys(v).length === 2) x = [v.start, v.end];
+    else if (
+      k === 'hud' &&
+      Array.isArray(v) &&
+      v.every((h) => typeof h === 'string' && !h.includes(','))
+    )
+      x = v.join(',');
+    else if (k === 'hudLayout' && isRec(v))
+      x = boxesOf(v, (p) => (plainPos(p) ? [p.anchor, p.x, p.y] : p));
+    out[VIDEO_KEYS[k]] = x;
+  }
+  return out;
+}
+
+function unpackVideo(video: Rec): Rec {
+  if (!Object.keys(video).every((k) => Object.hasOwn(VIDEO_LONG, k))) return video;
+  const out: Rec = {};
+  for (const [s, v] of Object.entries(video)) {
+    const k = VIDEO_LONG[s];
+    let x: unknown = v;
+    if (k === 'section' && Array.isArray(v) && v.length === 2) x = { start: v[0], end: v[1] };
+    else if (k === 'hud' && typeof v === 'string') x = v === '' ? [] : v.split(',');
+    else if (k === 'hudLayout' && isRec(v))
+      x = boxesOf(v, (p) =>
+        Array.isArray(p) && p.length === 3 ? { anchor: p[0], x: p[1], y: p[2] } : p,
+      );
+    out[k] = x;
+  }
+  return out;
+}
+
 /** The v2 form of a piece (JSON data), or null when it can't express this piece exactly. */
 export function packPiece(piece: Piece): Rec | null {
   const out = stripDefaults(piece);
@@ -345,6 +425,7 @@ export function packPiece(piece: Piece): Rec | null {
     out.camera = cam;
   }
   if (isRec(out.poster)) out.poster = packPoster(out.poster);
+  if (isRec(out.video)) out.video = packVideo(out.video);
   return out;
 }
 
@@ -416,6 +497,7 @@ export function unpackPiece(packed: unknown): unknown {
     out.camera = cam;
   }
   if (isRec(out.poster)) out.poster = unpackPoster(out.poster);
+  if (isRec(out.video)) out.video = unpackVideo(out.video);
   return out;
 }
 
@@ -524,4 +606,44 @@ export async function decodeShareLink(linkOrHash: string): Promise<unknown | nul
   const hashAt = linkOrHash.indexOf('#');
   const payload = sharePayloadOf(hashAt >= 0 ? linkOrHash.slice(hashAt) : linkOrHash);
   return payload === null ? null : decodeSharePayload(payload);
+}
+
+/** The watch flag (M17): `#w&p=…`, `#w&kite-day`. */
+export const WATCH_FLAG = 'w';
+
+/** The fragment's `&`-separated parts, without the leading `#`. */
+const partsOf = (hash: string): string[] =>
+  (hash.startsWith('#') ? hash.slice(1) : hash).split('&').filter((s) => s !== '');
+
+/** True when a fragment (or a link) carries the watch flag. */
+export function isWatchHash(linkOrHash: string): boolean {
+  const at = linkOrHash.indexOf('#');
+  return partsOf(at >= 0 ? linkOrHash.slice(at) : linkOrHash).includes(WATCH_FLAG);
+}
+
+/** The fragment without the watch flag (`#p=…`, `#kite-day`; '' when nothing is left). */
+export function withoutWatch(hash: string): string {
+  const rest = partsOf(hash).filter((s) => s !== WATCH_FLAG);
+  return rest.length > 0 ? `#${rest.join('&')}` : '';
+}
+
+/** The watch link of a share link or fragment (`…#p=…` → `…#w&p=…`); idempotent. */
+export function watchLinkOf(link: string): string {
+  const at = link.indexOf('#');
+  const base = at >= 0 ? link.slice(0, at) : link;
+  const rest = withoutWatch(at >= 0 ? link.slice(at) : '');
+  return `${base}#${WATCH_FLAG}${rest === '' ? '' : `&${rest.slice(1)}`}`;
+}
+
+/**
+ * The watch link for a piece: its share link with the watch flag (`base#w&p=<payload>`), or for
+ * an unedited bundled example (`example`: its id) `base#w&<id>`.
+ */
+export async function encodeWatchLink(
+  piece: Piece,
+  o: { base?: string; example?: string } = {},
+): Promise<string> {
+  const url = o.base ?? (typeof location === 'undefined' ? '' : location.href.split('#')[0]);
+  if (o.example !== undefined) return watchLinkOf(`${url}#${o.example}`);
+  return watchLinkOf(await encodeShareLink(piece, url));
 }
