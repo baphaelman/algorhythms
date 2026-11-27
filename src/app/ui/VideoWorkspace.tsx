@@ -43,6 +43,8 @@ import { BookendsGroup, LoudnessField, PresetField, PreviewActions } from './Exp
 import { CameraField, KeyButtons, KeyMarkers, useCameraKeys } from './CameraKeys';
 import { RunStatus, SectionField, VideoLookRows } from './ExportFields';
 import { VideoPreview } from './VideoPreview';
+import { fullscreenFromWorkspace } from './watch-fullscreen';
+import { canFullscreen, workspaceFullscreenKey } from '../fullscreen';
 import { WatchView, watchPlayPause } from './WatchView';
 import { backToMusic } from './PosterWorkspace';
 import {
@@ -649,16 +651,35 @@ export function VideoWorkspace() {
   }, [camera]);
 
   // Escape: blur a focused control, else back to music (the watch view's Escape is its own).
+  // F: the watch view in fullscreen at the same time (not while typing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (useExportSurface.getState().watch) return;
+      const dialog = document.querySelector('dialog[open]') !== null;
+      if (
+        canFullscreen() &&
+        workspaceFullscreenKey({
+          key: e.key,
+          defaultPrevented: e.defaultPrevented,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          target: e.target,
+          dialog,
+        })
+      ) {
+        e.preventDefault();
+        fullscreenFromWorkspace();
+        return;
+      }
       const what = workspaceEscape({
         key: e.key,
         defaultPrevented: e.defaultPrevented,
         focused: document.activeElement,
         root: root.current,
         selected: false,
-        dialog: document.querySelector('dialog[open]') !== null,
+        dialog,
       });
       if (!what) return;
       e.preventDefault();

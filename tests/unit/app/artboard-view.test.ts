@@ -4,6 +4,7 @@ import {
   fitView,
   pageRect,
   panBy,
+  panKeep,
   posterPoint,
   stepZoom,
   visibleRegion,
@@ -54,16 +55,18 @@ describe('artboard zoom', () => {
     expect(p.top + q.y * v.zoom).toBeCloseTo(at.y, 6);
   });
 
-  it('clamps the zoom to a quarter of Fit … 800 %, and the centre to the poster', () => {
+  it('clamps the zoom to a quarter of Fit … 800 %, and keeps part of the poster in view', () => {
     const fit = fitView(box, poster).zoom;
     const { min, max } = zoomLimits(box, poster);
     expect(min).toBeCloseTo(fit / 4, 12);
     expect(max).toBe(8);
     expect(zoomAt(fitView(box, poster), 100, box, poster).zoom).toBe(8);
     expect(zoomAt(fitView(box, poster), 0.001, box, poster).zoom).toBeCloseTo(fit / 4, 12);
+    // Panned as far as it goes: a third of the page (at 200 %, larger than the box: the box) stays.
     const far = panBy(zoomAt(fitView(box, poster), 2, box, poster), 1e6, -1e6, box, poster);
-    expect(far.cx).toBe(0);
-    expect(far.cy).toBe(poster.height);
+    const r = pageRect(far, box, poster);
+    expect(r.left).toBeCloseTo(box.w - box.w, 6);
+    expect(r.top + r.h).toBeCloseTo(box.h, 6);
     // A tiny poster can still be zoomed to four times its fit.
     const tiny = { width: 100, height: 100 };
     expect(zoomLimits(box, tiny).max).toBeCloseTo(4 * fitView(box, tiny).zoom, 12);
@@ -76,6 +79,34 @@ describe('artboard zoom', () => {
     const r = clampView(v, big, poster);
     expect(r.zoom).toBe(v.zoom);
     expect([r.cx, r.cy]).toEqual([v.cx, v.cy]);
+  });
+
+  it('at Fit, two fingers pan the page partly off the box; a third of it (80 px at least) stays', () => {
+    const fit = fitView(box, poster);
+    const at = pageRect(fit, box, poster);
+    const v = panBy(fit, 50, -40, box, poster);
+    expect(v.fit).toBe(false);
+    expect(v.zoom).toBe(fit.zoom);
+    const moved = pageRect(v, box, poster);
+    // (Fit's box is artboardFit's, rounded: within half a px.)
+    expect(Math.abs(moved.left - at.left - 50)).toBeLessThan(0.5);
+    expect(Math.abs(moved.top - at.top + 40)).toBeLessThan(0.5);
+    // As far right and up as it goes.
+    const far = pageRect(panBy(fit, 1e6, -1e6, box, poster), box, poster);
+    expect(box.w - far.left).toBeCloseTo(far.w / 3, 6);
+    expect(far.top + far.h).toBeCloseTo(far.h / 3, 6);
+    // ⇧1 (Fit) brings it back.
+    expect(pageRect(clampView(fitView(box, poster), box, poster), box, poster)).toEqual(at);
+    // A small page keeps 80 px (or all of it, when smaller).
+    expect(panKeep(150, 1000)).toBe(80);
+    expect(panKeep(60, 1000)).toBe(60);
+    expect(panKeep(900, 1000)).toBe(300);
+    expect(panKeep(6000, 1000)).toBe(1000);
+    const zoomedOut = zoomAt(fit, zoomLimits(box, poster).min, box, poster);
+    const z = pageRect(panBy(zoomedOut, -1e6, 1e6, box, poster), box, poster);
+    expect(z.left + z.w).toBeCloseTo(Math.max(80, z.w / 3), 6);
+    expect(box.h - z.top).toBeCloseTo(80, 6);
+    expect(z.h / 3).toBeLessThan(80);
   });
 
   it('panning moves the page by the drag', () => {

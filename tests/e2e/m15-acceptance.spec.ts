@@ -486,6 +486,7 @@ test('every video option of the old Export dialog is reachable', async ({ page }
   const video = [
     'preview-canvas',
     'preview-play',
+    'preview-fullscreen',
     'timeline-playhead',
     'export-preset',
     'export-section-field',

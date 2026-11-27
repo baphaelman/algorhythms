@@ -134,11 +134,12 @@ test('the whole video dialog by keyboard alone: order, visible focus, Escape', a
     await page.keyboard.press(TAB);
   }
   const ids = stops.map((s) => s.id);
-  // Every group in order (M15): the stage (HUD boxes, play), the options panel top to bottom
+  // Every group in order (M15): the stage (HUD boxes, play, full screen), the options panel top to bottom
   // (the look is Poster's), then the timeline (its playhead moves the preview), ending on Export MP4.
   const order = [
     'hud-box-formula',
     'preview-play',
+    'preview-fullscreen',
     'export-preset',
     'export-aspect',
     'export-vsize',

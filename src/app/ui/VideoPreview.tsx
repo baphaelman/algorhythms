@@ -19,7 +19,9 @@ import { useQrCodes } from '../poster-qr';
 import { bookendsOf, type ExportForm } from '../export-options';
 import { previewFit } from '../video-timeline';
 import { currentTime, pause, play, seekTo, usePlayer } from '../store';
+import { canFullscreen } from '../fullscreen';
 import { useKeyView } from './CameraKeys';
+import { FullIcon } from './FullIcon';
 import { HudOverlay } from './ExportFields';
 import {
   cameraCtl,
@@ -33,6 +35,7 @@ import {
   videoContext,
   type Runtime,
 } from './export-state';
+import { attachIosPlayer, fullscreenFromWorkspace } from './watch-fullscreen';
 
 /** Follows the player while the preview plays; stops it at the section's end (or a card's). */
 function usePreviewClock(playing: boolean): void {
@@ -129,6 +132,8 @@ export function VideoPreview({
   usePreviewClock(playing);
   // Leaving stops the preview.
   useEffect(() => () => pausePreview(), []);
+  // iPhone: the canvas feeds the hidden video iOS's player shows in fullscreen (no-op elsewhere).
+  useEffect(() => (canvas.current ? attachIosPlayer(canvas.current) : undefined), []);
 
   // The box the frame may fill. State changes only when a number does.
   useLayoutEffect(() => {
@@ -231,7 +236,8 @@ export function VideoPreview({
           {!overPoster && !watch && <HudOverlay form={form} kind="video" disabled={disabled} />}
         </div>
       </div>
-      {/* The time, and Play / Pause on the right; the timeline's strip moves the time (M15). */}
+      {/* The time, then Play / Pause and Full screen on the right, as YouTube's corner; the
+          timeline's strip moves the time (M15). */}
       <div className="field-row preview-time" hidden={watch}>
         <output data-testid="preview-time-value" aria-live="off">
           {formatTime(shown)}
@@ -249,6 +255,19 @@ export function VideoPreview({
         >
           {playing ? 'Pause' : 'Play'}
         </button>
+        {canFullscreen() && (
+          <button
+            type="button"
+            className="preview-full"
+            aria-label="Full screen"
+            aria-keyshortcuts="F"
+            title="Full screen (F)"
+            data-testid="preview-fullscreen"
+            onClick={fullscreenFromWorkspace}
+          >
+            <FullIcon on={false} />
+          </button>
+        )}
       </div>
     </div>
   );
