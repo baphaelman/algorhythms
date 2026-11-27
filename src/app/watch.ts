@@ -48,10 +48,15 @@ export function watchKey(e: {
 
 /**
  * Leaving browser fullscreen leaves the watch view (Escape, the browser's own controls), unless
- * the view's own fullscreen button left it (`ours`): then it stays, in the window.
+ * the view's own fullscreen button left it (`ours`): then it stays, in the window. Opened by the
+ * workspace's fullscreen button (`fromWorkspace`), any way out returns to the workspace.
  */
-export function fullscreenLeaves(e: { fullscreen: boolean; ours: boolean }): boolean {
-  return !e.fullscreen && !e.ours;
+export function fullscreenLeaves(e: {
+  fullscreen: boolean;
+  ours: boolean;
+  fromWorkspace?: boolean;
+}): boolean {
+  return !e.fullscreen && (!e.ours || e.fromWorkspace === true);
 }
 
 /** The first frame: the lead-in's start (the title card, if any), else the section's start. */

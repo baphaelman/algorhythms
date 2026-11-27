@@ -58,6 +58,9 @@ describe('leaving fullscreen', () => {
     expect(fullscreenLeaves({ fullscreen: false, ours: false })).toBe(true);
     expect(fullscreenLeaves({ fullscreen: false, ours: true })).toBe(false);
     expect(fullscreenLeaves({ fullscreen: true, ours: false })).toBe(false);
+    // Opened by the workspace's fullscreen button: any way out returns to the workspace.
+    expect(fullscreenLeaves({ fullscreen: false, ours: true, fromWorkspace: true })).toBe(true);
+    expect(fullscreenLeaves({ fullscreen: true, ours: true, fromWorkspace: true })).toBe(false);
   });
 
   it('the watch view ends with the Video workspace', () => {

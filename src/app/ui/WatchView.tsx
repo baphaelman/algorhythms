@@ -8,12 +8,11 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
-import { create } from 'zustand';
 import type { ExportForm } from '../export-options';
 import { usePlayer } from '../store';
+import { canFullscreen as canGoFullscreen, fullscreenChangeEvent } from '../fullscreen';
 import {
   CONTROLS_IDLE_MS,
-  fullscreenLeaves,
   playerTime,
   spokenTime,
   watchEnded,
@@ -21,6 +20,7 @@ import {
   watchKey,
   watchTimes,
 } from '../watch';
+import { FullIcon } from './FullIcon';
 import { backToMusic } from './PosterWorkspace';
 import {
   clockNow,
@@ -30,37 +30,17 @@ import {
   useExportUi,
   type Runtime,
 } from './export-state';
-
-/** Play has been pressed in this watch view (the large Play and the first frame's pin go). */
-const useWatchUi = create<{ played: boolean }>()(() => ({ played: false }));
-
-/** The fullscreen target: the Video workspace's stage. */
-const stageEl = (): HTMLElement | null => document.querySelector('.video-ws .video-stage');
-
-/** The view's own fullscreen button is leaving fullscreen (the view stays). */
-let exitingOurs = false;
+import {
+  enterFullscreen,
+  exitFullscreen,
+  fullscreenChanged,
+  toggleFullscreen,
+  useWatchUi,
+  watchMounted,
+} from './watch-fullscreen';
 
 /** A mouse (or pen) is the main pointer: Play goes fullscreen. Phones stay in the page. */
 const finePointer = (): boolean => !matchMedia('(pointer: coarse)').matches;
-
-function enterFullscreen(): void {
-  const el = stageEl();
-  if (!el || document.fullscreenElement || !document.fullscreenEnabled) return;
-  if (typeof el.requestFullscreen !== 'function') return;
-  // Refused (no click, a policy) or unsupported: the view stays in the window.
-  void Promise.resolve(el.requestFullscreen()).catch(() => undefined);
-}
-
-function exitFullscreen(ours: boolean): void {
-  if (!document.fullscreenElement) return;
-  exitingOurs = ours;
-  void Promise.resolve(document.exitFullscreen()).catch(() => undefined);
-}
-
-function toggleFullscreen(): void {
-  if (document.fullscreenElement) exitFullscreen(true);
-  else enterFullscreen();
-}
 
 /** Play / Pause in the watch view (Space too); the first Play goes fullscreen with a mouse. */
 export function watchPlayPause(): void {
@@ -97,16 +77,6 @@ const PauseIcon = () => (
     <path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z" />
   </svg>
 );
-const FullIcon = ({ on }: { on: boolean }) => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2">
-    {on ? (
-      <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
-    ) : (
-      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-    )}
-  </svg>
-);
-
 export function WatchView({
   form,
   runtime,
@@ -131,16 +101,14 @@ export function WatchView({
   const { at, length } = watchTimes(v, clock);
   const ended = played && watchEnded(v, clock, playing);
   const [shown, setShown] = useState(true);
-  const [fullscreen, setFullscreen] = useState(false);
+  const fullscreen = useWatchUi((s) => s.fullscreen);
   const idle = useRef(0);
   const pointer = useRef('mouse');
-  // iPhone Safari has no element fullscreen: no button.
-  const canFullscreen = document.fullscreenEnabled === true;
+  // Element fullscreen, or (iPhone) iOS's own player.
+  const canFullscreen = canGoFullscreen();
 
-  // A new watch view starts unplayed.
-  useEffect(() => {
-    useWatchUi.setState({ played: false });
-  }, []);
+  // A new watch view starts unplayed, unless the workspace's fullscreen opened it.
+  useEffect(watchMounted, []);
 
   // Until Play, the first frame: the lead-in's start is known once the engine room loads.
   useEffect(() => {
@@ -161,20 +129,15 @@ export function WatchView({
     return () => clearTimeout(idle.current);
   }, [playing]);
 
-  // Leaving browser fullscreen leaves the view (its own button keeps it).
+  // Leaving browser fullscreen leaves the view (its own button keeps it, unless the workspace's
+  // button opened it).
   useEffect(() => {
+    const ev = fullscreenChangeEvent();
     const onChange = (): void => {
-      const fs = document.fullscreenElement !== null;
-      const ours = exitingOurs;
-      if (!fs) exitingOurs = false;
-      setFullscreen(fs);
-      if (fullscreenLeaves({ fullscreen: fs, ours })) leaveWatch();
+      if (fullscreenChanged()) leaveWatch();
     };
-    document.addEventListener('fullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      exitFullscreen(false);
-    };
+    document.addEventListener(ev, onChange);
+    return () => document.removeEventListener(ev, onChange);
   }, []);
 
   // Escape leaves, ←/→ seek, F fullscreen (Space: the shared rule, VideoWorkspace).
