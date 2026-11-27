@@ -181,6 +181,9 @@ const recipeOf =
     return next === base ? p : withPoster(p, next);
   };
 
+/** The piece as `editPoster(fn)` would make it, without editing (a doc seeded if none). */
+export const posterEditOf = (p: Piece, fn: DocFn): Piece => recipeOf(fn)(p);
+
 /** One poster edit, one undo entry; false when nothing changed. */
 export function editPoster(fn: DocFn, label = 'Poster'): boolean {
   run = null;

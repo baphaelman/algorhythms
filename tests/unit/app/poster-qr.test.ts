@@ -257,6 +257,15 @@ describe('the encoder wrapper', () => {
     // The toolbar's length: the link with a code at its default place.
     expect(await qrLinkLength(KITE)).toBe((await qrLinkOf(withQr(KITE))).length);
     expect(await qrLinkLength(KITE)).toBeLessThan(QR_MAX_CHARS);
+    // Adding a code to a piece without a doc also writes the viewer's poster settings: those count.
+    const edited: Piece = { ...KITE, meta: { ...KITE.meta, title: 'Kite Night' } };
+    const added: Piece = {
+      ...edited,
+      poster: { section: { start: 10, end: 16 }, look: { theme: 'light' }, qr: {} },
+    };
+    const n = await qrLinkLength(edited, added);
+    expect(n).toBe((await qrLinkOf(added)).length);
+    expect(n).toBeGreaterThan(await qrLinkLength(edited));
   });
 });
 

@@ -107,7 +107,13 @@ import {
   type PosterSelection,
   type SnapGuides,
 } from '../poster-select';
-import { editPoster, editPosterRun, posterGesture, type PosterGesture } from '../poster-sync';
+import {
+  editPoster,
+  editPosterRun,
+  posterEditOf,
+  posterGesture,
+  type PosterGesture,
+} from '../poster-sync';
 import {
   layerRowsState,
   linesText,
@@ -1841,7 +1847,8 @@ function useQrLinkLength(): number | null {
     if (piece.poster?.qr) return;
     let live = true;
     const t = setTimeout(() => {
-      qrLinkLength(piece).then(
+      const added = piece.poster ? undefined : posterEditOf(piece, (d) => setQr(d, {}));
+      qrLinkLength(piece, added).then(
         (n) => live && setLen({ of: piece, n }),
         () => undefined,
       );

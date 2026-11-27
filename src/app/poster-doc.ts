@@ -162,6 +162,7 @@ export function docWithForm(
   if (doc?.rowSections) out.rowSections = doc.rowSections;
   if (doc?.rowBoxes) out.rowBoxes = doc.rowBoxes;
   if (doc?.picture) out.picture = doc.picture;
+  if (doc?.qr) out.qr = doc.qr;
   return keepRowPlacements(doc, out) ?? {};
 }
 

@@ -181,8 +181,13 @@ export function qrInputOf(piece: Piece): QrInput | undefined {
   return last;
 }
 
-/** The watch link's length for a piece without a code (the toolbar's QR button). */
-export async function qrLinkLength(piece: Piece): Promise<number> {
+/**
+ * The watch link's length for a piece without a code (the toolbar's QR button). `added` is the
+ * piece as adding the code makes it: without a doc, the first poster edit also writes the
+ * viewer's poster settings, which lengthen a full link (an unedited example's stays short).
+ */
+export async function qrLinkLength(piece: Piece, added?: Piece): Promise<number> {
   const withCode: Piece = { ...piece, poster: { ...piece.poster, qr: piece.poster?.qr ?? {} } };
-  return (await qrLinkOf(withCode)).length;
+  if (!added || exampleIdOf(withCode) !== undefined) return (await qrLinkOf(withCode)).length;
+  return (await qrLinkOf(added)).length;
 }

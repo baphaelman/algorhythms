@@ -82,12 +82,15 @@ describe('the default poster (Revert)', () => {
       rowsBy: 'sections',
       rowSections: { a: { label: 'A' } },
       picture: { src: 'data:image/png;base64,AA', w: 1, h: 1 },
+      qr: { box: { x: 0.7, y: 0.6, w: 0.2, h: 0.36 } },
     };
     // The form keeps P5's fields (a panel change must not drop them) …
     const kept = docWithForm(busy, posterFields(DEFAULT_EXPORT_FORM), ctx)!;
     expect(kept.rowsBy).toBe('sections');
     expect(kept.rowSections).toEqual({ a: { label: 'A' } });
     expect(kept.picture?.w).toBe(1);
+    // The QR code too (M17 W5: a Video edit dropped it).
+    expect(kept.qr).toEqual(busy.qr);
     // … and the default doc has none of them.
     expect(defaultPosterDoc(ctx)).not.toHaveProperty('groups');
   });
