@@ -18,11 +18,13 @@ import {
   layerOf,
   layerRowBoxFor,
   putText,
+  qrBoxFor,
   rowAt,
   rowBoxFor,
   setLayer,
   setLayerRow,
   setMemberStyle,
+  setQr,
   setRowBox,
   textBoxFor,
   textsOf,
@@ -38,20 +40,22 @@ import {
   textFont,
   textPad,
   type PosterLayout,
+  type QrObject,
   type Rect,
   type TextObject,
 } from '../render/poster-layout';
 
 /**
  * What is selected: a music layer (with `row`, that layer in one row only), a row as a block,
- * a text box, a whole label or line group, one member of a group (Alt-click), or the background
- * (a click on the paper where nothing is: its gradient's handles show).
+ * a text box, the QR code, a whole label or line group, one member of a group (Alt-click), or
+ * the background (a click on the paper where nothing is: its gradient's handles show).
  */
 export type PosterSelection =
   | { kind: 'background' }
   | { kind: 'layer'; id: string; row?: number }
   | { kind: 'row'; row: number }
   | { kind: 'text'; id: string }
+  | { kind: 'qr' }
   | { kind: 'group'; group: PosterGroup }
   | { kind: 'member'; group: PosterGroup; member: string };
 
@@ -76,6 +80,7 @@ export function selectionOfHit(
       : { kind: 'layer', id, row: o.row };
   }
   if (o.type === 'text') return { kind: 'text', id: o.member };
+  if (o.type === 'qr') return { kind: 'qr' };
   return alt
     ? { kind: 'member', group: o.group, member: o.member }
     : { kind: 'group', group: o.group };
@@ -98,6 +103,12 @@ export function selectionAt(
   return r ? { kind: 'row', row: r.index } : { kind: 'background' };
 }
 
+/** The QR code's object, if the layout has one. */
+export function qrObject(layout: PosterLayout): QrObject | undefined {
+  for (const o of layout.objects) if (o.type === 'qr') return o;
+  return undefined;
+}
+
 /** A text object's frame (the box its handles sit on). */
 function textFrame(layout: PosterLayout, id: string): Rect | null {
   for (const o of layout.objects) if (o.type === 'text' && o.member === id) return o.frame;
@@ -116,6 +127,7 @@ export function selectionFrame(layout: PosterLayout, sel: PosterSelection | null
   }
   if (sel.kind === 'row') return layout.rows[sel.row]?.rect ?? null;
   if (sel.kind === 'text') return textFrame(layout, sel.id);
+  if (sel.kind === 'qr') return qrObject(layout)?.box ?? null;
   if (sel.kind === 'member' && isLabelGroup(sel.group)) {
     const o = groupObjects(layout, sel.group, sel.member)[0];
     return o ? o.box : null;
@@ -123,9 +135,9 @@ export function selectionFrame(layout: PosterLayout, sel: PosterSelection | null
   return null;
 }
 
-/** Whether the selection has resize handles (layers, rows and text boxes). */
+/** Whether the selection has resize handles (layers, rows, text boxes and the QR code). */
 export const resizable = (sel: PosterSelection | null): boolean =>
-  sel?.kind === 'layer' || sel?.kind === 'row' || sel?.kind === 'text';
+  sel?.kind === 'layer' || sel?.kind === 'row' || sel?.kind === 'text' || sel?.kind === 'qr';
 
 /** The outlines a selection draws: every member of a group, else the selection's frame. */
 export function selectedBoxes(layout: PosterLayout, sel: PosterSelection | null): Rect[] {
@@ -190,6 +202,7 @@ export function snapTargets(layout: PosterLayout, sel: PosterSelection | null): 
   for (const o of layout.objects) {
     if (o.type === 'text' && !(sel?.kind === 'text' && sel.id === o.member))
       add(textOutline(layout, o.member));
+    if (o.type === 'qr' && sel?.kind !== 'qr') add(o.box);
   }
   return { xs, ys };
 }
@@ -332,6 +345,7 @@ export function selectionExists(
     return sel.id.startsWith('line:') || layout.layers.some((l) => l.id === sel.id);
   }
   if (sel.kind === 'text') return textOf(doc, sel.id) !== undefined;
+  if (sel.kind === 'qr') return doc?.qr !== undefined;
   return true;
 }
 
@@ -372,6 +386,7 @@ export function placeRect(
     const t = textOf(doc, sel.id);
     return t ? placeText(doc, layout, t, from, to) : doc;
   }
+  if (sel.kind === 'qr') return doc?.qr ? setQr(doc, { box: qrBoxFor(layout, to) }) : doc;
   if (sel.kind === 'member') {
     const S = Math.min(layout.width, layout.height);
     const m = doc?.members?.[sel.group]?.[sel.member];
@@ -534,6 +549,9 @@ export function nudgeDoc(
   } else if (sel.kind === 'text') {
     const t = textOf(doc, sel.id);
     if (t?.box) return putText(doc, { ...t, box: shift(t.box, layout.width, layout.height) });
+  } else if (sel.kind === 'qr') {
+    const box = doc?.qr?.box;
+    if (box) return setQr(doc, { box: shift(box, layout.width, layout.height) });
   }
   const f = selectionFrame(layout, sel);
   return f ? placeRect(doc, layout, sel, f, { ...f, x: f.x + dx, y: f.y + dy }) : doc;

@@ -11,7 +11,8 @@
  *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
  *   (M15), the video packed (M17: short names, flat section and placed readouts), and the
  *   poster packed (M14: default
- *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number); then
+ *   text boxes as their ids, boxes (per-row ones too) as `[x, y, w, h]`, linked margins as one number,
+ *   a QR code with only a box as its box); then
  *   deflate-raw with a preset dictionary (share-dict.ts) via fflate.
  *   A piece the v2 packing can't express exactly is written as v1 (stripped JSON) instead.
  *
@@ -19,7 +20,9 @@
  * falls back to its background colour.
  *
  * A watch link (M17) is a share link with the watch flag first: `#w&p=<payload>`, or
- * `#w&<example-id>` for an unedited bundled example. It opens the piece to watch its video.
+ * `#w&<example-id>` for an unedited bundled example. It opens the piece to watch its video. An
+ * example's may name the video's frame (`#w&<id>&f=poster` or `f=row`) when its maker's differs
+ * from the bare example's (a poster doc makes it Over the poster); unknown values are ignored.
  *
  * Pieces are canonical (core/canonical.ts, applied on load and on every edit), so
  * `decode(encode(p))` is exactly `p` and `encode(decode(link))` gives the same link back.
@@ -28,7 +31,7 @@
 import { cloneJson } from '../core/defaults';
 import { TimbreSchema, jsonEqual, parsePiece, stripDefaults } from '../core/schema';
 import { BUILTIN_TIMBRES } from '../core/timbres';
-import type { Piece } from '../core/types';
+import type { CameraFrame, Piece } from '../core/types';
 import { DEFAULT_POSTER_TEXTS } from '../render/poster-layout';
 import { SHARE_DICTIONARY_V2 } from './share-dict';
 
@@ -271,6 +274,10 @@ function packPoster(poster: Rec): Rec {
       return d ? d.id : withBox(t, flatBox);
     });
   }
+  // A QR code with only a box packs as the box (M17).
+  const q = out.qr;
+  if (isRec(q) && Object.keys(q).length === 1 && plainBox(q.box)) out.qr = flatBox(q.box);
+  else if (isRec(q)) out.qr = withBox(q, flatBox);
   return out;
 }
 
@@ -288,6 +295,8 @@ function unpackPoster(poster: Rec): Rec {
       return d ? cloneJson(d) : withBox(t, boxOf);
     });
   }
+  if (Array.isArray(out.qr)) out.qr = { box: boxOf(out.qr) };
+  else if (isRec(out.qr)) out.qr = withBox(out.qr, boxOf);
   return out;
 }
 
@@ -622,29 +631,47 @@ export function isWatchHash(linkOrHash: string): boolean {
   return partsOf(at >= 0 ? linkOrHash.slice(at) : linkOrHash).includes(WATCH_FLAG);
 }
 
-/** The fragment without the watch flag (`#p=…`, `#kite-day`; '' when nothing is left). */
+/** The watch link's frame key (`f=poster`, `f=row`). */
+export const WATCH_FRAME_KEY = 'f';
+
+/** The frame a watch link names (`&f=poster` / `&f=row`), or undefined (none, or unknown). */
+export function watchFrameOf(linkOrHash: string): CameraFrame | undefined {
+  const at = linkOrHash.indexOf('#');
+  const parts = partsOf(at >= 0 ? linkOrHash.slice(at) : linkOrHash);
+  if (!parts.includes(WATCH_FLAG)) return undefined;
+  const f = parts.find((s) => s.startsWith(`${WATCH_FRAME_KEY}=`))?.slice(2);
+  return f === 'poster' || f === 'row' ? f : undefined;
+}
+
+/** The fragment without the watch flag and frame (`#p=…`, `#kite-day`; '' when nothing is left). */
 export function withoutWatch(hash: string): string {
-  const rest = partsOf(hash).filter((s) => s !== WATCH_FLAG);
+  const rest = partsOf(hash).filter(
+    (s) => s !== WATCH_FLAG && !s.startsWith(`${WATCH_FRAME_KEY}=`),
+  );
   return rest.length > 0 ? `#${rest.join('&')}` : '';
 }
 
-/** The watch link of a share link or fragment (`…#p=…` → `…#w&p=…`); idempotent. */
-export function watchLinkOf(link: string): string {
+/**
+ * The watch link of a share link or fragment (`…#p=…` → `…#w&p=…`), with `frame` (default: the
+ * one it names) last; idempotent.
+ */
+export function watchLinkOf(link: string, frame?: CameraFrame): string {
   const at = link.indexOf('#');
   const base = at >= 0 ? link.slice(0, at) : link;
+  const f = frame ?? watchFrameOf(link);
   const rest = withoutWatch(at >= 0 ? link.slice(at) : '');
-  return `${base}#${WATCH_FLAG}${rest === '' ? '' : `&${rest.slice(1)}`}`;
+  return `${base}#${WATCH_FLAG}${rest === '' ? '' : `&${rest.slice(1)}`}${f ? `&${WATCH_FRAME_KEY}=${f}` : ''}`;
 }
 
 /**
  * The watch link for a piece: its share link with the watch flag (`base#w&p=<payload>`), or for
- * an unedited bundled example (`example`: its id) `base#w&<id>`.
+ * an unedited bundled example (`example`: its id) `base#w&<id>` (with `&f=<frame>` when given).
  */
 export async function encodeWatchLink(
   piece: Piece,
-  o: { base?: string; example?: string } = {},
+  o: { base?: string; example?: string; frame?: CameraFrame } = {},
 ): Promise<string> {
   const url = o.base ?? (typeof location === 'undefined' ? '' : location.href.split('#')[0]);
-  if (o.example !== undefined) return watchLinkOf(`${url}#${o.example}`);
+  if (o.example !== undefined) return watchLinkOf(`${url}#${o.example}`, o.frame);
   return watchLinkOf(await encodeShareLink(piece, url));
 }

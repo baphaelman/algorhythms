@@ -14,6 +14,7 @@ import type {
   PosterMargins,
   PosterMemberStyle,
   PosterPicture,
+  PosterQr,
   PosterRowSection,
   PosterText,
   Seconds,
@@ -268,12 +269,14 @@ export interface PosterIssue {
 const nameOf = (o: PosterObject): string => `${o.group}/${o.member}`;
 
 /**
- * Every rule the default poster must keep (§15 M14 acceptance): no text clipped by the artboard,
- * none outside the margins, none over other text, no text box over the music.
+ * Every rule the default poster must keep (§15 M14 acceptance): no text (or QR code) clipped by
+ * the artboard, none outside the margins, none over other text, no text box over the music.
  */
 export function posterIssues(layout: PosterLayout): PosterIssue[] {
   const out: PosterIssue[] = [];
-  const text = layout.objects.filter((o) => o.type === 'text' || o.type === 'label');
+  const text = layout.objects.filter(
+    (o) => o.type === 'text' || o.type === 'label' || o.type === 'qr',
+  );
   const board = artboard(layout);
   for (const o of text) {
     if (!inside(o.box, board)) out.push({ kind: 'clipped', what: [nameOf(o)] });
@@ -633,6 +636,35 @@ export function patchPicture(
   return p ? setPicture(doc, { ...p, ...patch }) : doc;
 }
 
+/**
+ * Adds the QR code (M17) or patches it (undefined fields go back to the defaults: the default
+ * place, black on white).
+ */
+export function setQr(
+  doc: PosterDoc | undefined,
+  patch: { box?: PosterBox | undefined; colour?: string | undefined; card?: string | undefined },
+): PosterDoc | undefined {
+  const next: PosterQr = { ...doc?.qr };
+  for (const k of ['box', 'colour', 'card'] as const) {
+    if (!(k in patch)) continue;
+    const v = patch[k];
+    if (v === undefined) delete next[k];
+    else (next as Record<string, unknown>)[k] = v;
+  }
+  return withField(doc, 'qr', next);
+}
+
+/** Removes the QR code. */
+export function removeQr(doc: PosterDoc | undefined): PosterDoc | undefined {
+  return withField(doc, 'qr', undefined);
+}
+
+/** The stored box for a QR card at `r` (artboard px): a square of `r`'s smaller side. */
+export function qrBoxFor(layout: PosterLayout, r: Rect): PosterBox {
+  const s = Math.max(1, Math.min(r.w, r.h));
+  return toFractions({ x: r.x, y: r.y, w: s, h: s }, artboard(layout));
+}
+
 /** A picture without its default fields (cover, centred, no dimming). */
 function compactPicture(p: PosterPicture): PosterPicture {
   const out: PosterPicture = { src: p.src, w: p.w, h: p.h };
@@ -661,6 +693,7 @@ export function refitPoster(
       }),
     );
   }
+  if (doc?.qr?.box) out = setQr(out, { box: undefined });
   if (opts.layers) {
     for (const l of doc?.layers ?? []) out = setLayer(out, l.id, { box: undefined });
     out = withoutRowPlacements(out, true);

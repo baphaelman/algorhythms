@@ -46,6 +46,7 @@ import {
 import { Radios, Switch } from './export-controls';
 import { RowsGroup } from './RowsOrganize';
 import { usePictures } from '../poster-picture';
+import { useQrCodes } from '../poster-qr';
 import { useFocusRescue } from './focus-rescue';
 import { useExportSurface, workspaceEscape } from '../export-surface';
 import { setLayersOpen, useWorkspace } from '../poster-workspace';
@@ -237,6 +238,8 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
   const running = useExportUi((s) => s.run.status === 'running');
   // A background picture decoded after the first draw redraws the artboard.
   const pictures = usePictures((s) => s.decoded);
+  // So does a QR code made after it (M17).
+  const qrCodes = useQrCodes((s) => s.made);
   const box = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -345,6 +348,7 @@ function Artboard({ form, runtime }: { form: ExportForm; runtime: Runtime | null
     appView,
     avail.w,
     pictures,
+    qrCodes,
   ]);
   useEffect(
     () => () => {

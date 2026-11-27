@@ -185,6 +185,7 @@ const PIECE: Spec = obj({
     margins: obj({ top: roundPlace, right: roundPlace, bottom: roundPlace, left: roundPlace }),
     layers: each(obj({ box: posterBox })),
     picture: obj({ x: roundLevel, y: roundLevel, dim: roundLevel }),
+    qr: obj({ box: posterBox }),
     texts: each(obj({ box: posterBox, style: obj({ size: roundPlace, opacity: roundLevel }) })),
     groups: { pick: (g) => obj(Object.fromEntries(Object.keys(g).map((k) => [k, posterStyle]))) },
     members: {

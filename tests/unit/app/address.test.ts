@@ -15,6 +15,7 @@ import {
   encodeWatchLink,
   isWatchHash,
   sharePayloadOf,
+  watchFrameOf,
   watchLinkOf,
   withoutWatch,
 } from '../../../src/app/share';
@@ -72,6 +73,49 @@ describe('watch links (M17)', () => {
     );
     expect(await encodeWatchLink(piece, { base: site, example: 'kite-day' })).toBe(
       `${site}#w&kite-day`,
+    );
+  });
+});
+
+describe("an example's watch link names its frame (M17 W4)", () => {
+  const site = 'https://baphaelman.github.io/algorhythms/';
+  it('parses `&f=poster` / `&f=row`; unknown values and links without the flag ignore it', () => {
+    expect(parseAddress('#w&kite-day&f=poster', known)).toEqual({
+      kind: 'example',
+      id: 'kite-day',
+      watch: true,
+      frame: 'poster',
+    });
+    expect(parseAddress('#w&kite-day&f=row', known)).toMatchObject({ frame: 'row' });
+    expect(parseAddress('#w&kite-day&f=sideways', known)).toEqual({
+      kind: 'example',
+      id: 'kite-day',
+      watch: true,
+    });
+    // Old links unchanged.
+    expect(parseAddress('#w&kite-day', known)).toEqual({
+      kind: 'example',
+      id: 'kite-day',
+      watch: true,
+    });
+    expect(parseAddress('#kite-day&f=poster', known)).toEqual({ kind: 'none' });
+    expect(watchFrameOf(`${site}#w&kite-day&f=poster`)).toBe('poster');
+    expect(watchFrameOf(`${site}#kite-day&f=poster`)).toBeUndefined();
+    expect(withoutWatch('#w&kite-day&f=poster')).toBe('#kite-day');
+    expect(parseAddress('#w&p=2.abc&f=poster', known)).toMatchObject({
+      kind: 'share',
+      payload: '2.abc',
+    });
+  });
+
+  it('builds it, idempotently', async () => {
+    const link = watchLinkOf(`${site}#kite-day`, 'poster');
+    expect(link).toBe(`${site}#w&kite-day&f=poster`);
+    expect(watchLinkOf(link)).toBe(link);
+    expect(isWatchHash(link)).toBe(true);
+    const piece = newPiece({ seed: 3 });
+    expect(await encodeWatchLink(piece, { base: site, example: 'kite-day', frame: 'poster' })).toBe(
+      `${site}#w&kite-day&f=poster`,
     );
   });
 });

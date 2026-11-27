@@ -648,6 +648,7 @@ test('the poster workspace by keyboard alone: order, visible focus, Escape back 
     'look-reset',
     'export-run',
     'tool-select',
+    'tool-qr',
     'layers-toggle',
     'layer-text-row',
     'layer-part-row',

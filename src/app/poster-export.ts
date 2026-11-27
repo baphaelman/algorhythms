@@ -24,6 +24,7 @@ import type { TimeSpan } from '../render/section';
 import { SvgContext, asCtx2D } from '../render/svg';
 import { fileBase } from './export-options';
 import { picturesReady } from './poster-picture';
+import { qrInputOf } from './poster-qr';
 
 export interface PosterOptions {
   /** A preset or explicit pixels. */
@@ -82,6 +83,7 @@ export function posterLayoutOf(
     hud: [],
   };
   const d: PosterDoc | undefined = !opts.title && !doc?.texts ? { ...doc, texts: [] } : doc;
+  const qr = d?.qr ? qrInputOf(piece) : undefined;
   return layoutPoster({
     compiled,
     piece: opts.customColors
@@ -97,6 +99,7 @@ export function posterLayoutOf(
     },
     oklch: supportsOklch(),
     measure,
+    ...(qr ? { qr } : {}),
   });
 }
 

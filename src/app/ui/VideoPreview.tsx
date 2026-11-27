@@ -15,6 +15,7 @@ import { formatTime } from '../../render/hud';
 import { videoSize } from '../../render/video';
 import { pieceVideoFrame } from '../../render/poster-video';
 import { picturesReady, usePictures } from '../poster-picture';
+import { useQrCodes } from '../poster-qr';
 import { bookendsOf, type ExportForm } from '../export-options';
 import { previewFit } from '../video-timeline';
 import { currentTime, pause, play, seekTo, usePlayer } from '../store';
@@ -110,6 +111,8 @@ export function VideoPreview({
   const appView = usePlayer((s) => `${s.view.theme} ${s.view.colors}`);
   // The poster's background picture is decoded on the page before a frame draws it.
   const pictures = usePictures((s) => s.decoded);
+  // So does a QR code made after it (M17).
+  const qrCodes = useQrCodes((s) => s.made);
   useEffect(() => void picturesReady(piece), [piece]);
   // Over the poster the readouts are the poster's (placed in Poster), not boxes on this frame.
   const overPoster = pieceVideoFrame(piece) === 'poster';
@@ -197,7 +200,7 @@ export function VideoPreview({
         run?.();
       });
     }
-  }, [runtime, piece, compiled, form, v, pxW, pxH, px.width, appView, avail.w, pictures]);
+  }, [runtime, piece, compiled, form, v, pxW, pxH, px.width, appView, avail.w, pictures, qrCodes]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);

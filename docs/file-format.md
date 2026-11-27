@@ -6505,6 +6505,47 @@ This is the *input* form: fields with defaults are optional here.
             "h"
           ],
           "additionalProperties": {}
+        },
+        "qr": {
+          "description": "QR code holding the piece's watch link (M17).",
+          "type": "object",
+          "properties": {
+            "box": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "h": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h"
+              ],
+              "additionalProperties": {}
+            },
+            "colour": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "card": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "additionalProperties": {}
         }
       },
       "additionalProperties": {}
@@ -7116,6 +7157,47 @@ This is the *input* form: fields with defaults are optional here.
             "w",
             "h"
           ],
+          "additionalProperties": {}
+        },
+        "qr": {
+          "description": "QR code holding the piece's watch link (M17).",
+          "type": "object",
+          "properties": {
+            "box": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "h": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h"
+              ],
+              "additionalProperties": {}
+            },
+            "colour": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "card": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
           "additionalProperties": {}
         }
       },

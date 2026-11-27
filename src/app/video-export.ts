@@ -83,6 +83,7 @@ import {
 import { ensurePicture } from './poster-picture';
 import { pictureImage } from '../render/background';
 import { posterLayoutOf, type PosterOptions } from './poster-export';
+import { useQrCodes } from './poster-qr';
 import type { VideoWorkerReply, VideoWorkerRequest } from './video.worker';
 
 export interface VideoOptions {
@@ -660,7 +661,8 @@ function videoPosterLayout(
   opts: PosterOptions,
   compiled: CompiledScore,
 ): PosterLayout {
-  const key = JSON.stringify(opts);
+  // A QR code made since (M17) lays out anew.
+  const key = `${JSON.stringify(opts)} ${useQrCodes.getState().made}`;
   const c = lastLayout;
   if (c && c.piece === piece && c.compiled === compiled && c.key === key) return c.layout;
   const layout = posterLayoutOf(piece, opts, compiled);

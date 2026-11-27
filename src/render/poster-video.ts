@@ -366,7 +366,8 @@ function drawRowCrop(
  */
 function drawStaying(g: G, o: PosterObject, F: Rect, k: number, kt: number): void {
   if (o.type === 'layer') return;
-  if (kt >= k) {
+  // A QR code keeps its size (a smaller code would not scan).
+  if (kt >= k || o.type === 'qr') {
     g.setTransform(k, 0, 0, k, -F.x * k, -F.y * k);
     drawObject(g, o);
     return;
@@ -548,6 +549,10 @@ function drawPosterThrough(
     const o = objs[i];
     if (o.type === 'layer' || o.type === 'line') continue;
     if (ahead(layout, o, st)) continue;
+    if (o.type === 'qr') {
+      if (intersects(o.box, F, pad)) drawStaying(g, o, F, k, kt);
+      continue;
+    }
     let obj: LabelObject | TextObject | null = o;
     if (o.type === 'label' && o.group === 'hud' && !st.finished) {
       obj = liveHud(g, compiled, layout, o, view);
