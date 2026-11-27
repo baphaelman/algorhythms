@@ -4,7 +4,10 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
 
 ## Now (2026-11-27)
 - **main:** af2933b + docs = M17 done + HUD-position rounding (placed readouts at 4 significant digits; a poster HUD layout equal to the video's packs as `1`; Kite Day with six readouts fits a QR code, 1,607 → 1,491). Verified (lint, typecheck, unit 3470, build, 153 e2e). **Live:** 53f76f6 (CI green; Pages `main-dNc_rbV7.js`). **Preview artifact:** v95.
-- **In flight:** M13 K1 hover to hear (from b4e0397, ports 6200/4200, Opus medium).
+- **In flight** (all Opus medium):
+  - M13 K1 hover to hear (from b4e0397, ports 6200/4200);
+  - fullscreen button, Video workspace + watch view, phones included (from d722b3c, 6210/4210); queued on the same thread: two-finger pan on the Poster artboard at any zoom;
+  - side panel search in Music, Poster and Video (from d722b3c, 6220/4220).
 - **Queue:** M13, one builder at a time (owner yes 2026-11-27): K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance. M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
   - M17 device checks: real fullscreen on the Mac (+ iPhone if handy); a phone camera scanning a poster's QR code.
@@ -20,7 +23,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6190/4190; K1 has 6200/4200; the next builder gets 6210/4210. The integrator verifies on 5490/4490.
+- **Ports used** up to 6190/4190; in use up to 6220/4220; the next builder gets 6230/4230. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|
