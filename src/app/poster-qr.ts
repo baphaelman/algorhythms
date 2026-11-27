@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import { jsonEqual } from '../core/schema';
 import type { Piece, PosterDoc } from '../core/types';
 import { QR_MAX_CHARS, type QrInput, type QrMatrix } from '../render/poster-qr';
+import { pieceVideoFrame } from '../render/poster-video';
 import { encodeWatchLink } from './share';
 import { loadInfo } from './store';
 import { SITE_URL } from './youtube-description';
@@ -61,7 +62,12 @@ export async function encodeQr(link: string): Promise<QrMatrix & { level: 'M' | 
 /** The watch link a poster's code holds: on the public site. */
 export const qrLinkOf = (piece: Piece): Promise<string> => {
   const example = exampleIdOf(piece);
-  return encodeWatchLink(piece, { base: SITE_URL, ...(example ? { example } : {}) });
+  if (!example) return encodeWatchLink(piece, { base: SITE_URL });
+  // The maker's frame, when the bare example's video would play another (a poster doc makes it
+  // Over the poster).
+  const frame = pieceVideoFrame(piece);
+  const bare = loadInfo().exampleFrame ?? 'row';
+  return encodeWatchLink(piece, { base: SITE_URL, example, ...(frame !== bare ? { frame } : {}) });
 };
 
 /** A poster doc without its QR code (undefined when nothing else is left). */

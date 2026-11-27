@@ -23,6 +23,7 @@ import { createIncrementalCompiler } from '../core/compiler/incremental';
 import { onlyPosterDiffers } from './poster-doc';
 import { parsePiece } from '../core/schema';
 import type {
+  CameraFrame,
   CompiledScore,
   FollowMode,
   LineColors,
@@ -35,6 +36,7 @@ import {
   canvasEnd,
   clampStart,
   clampWindow,
+  pieceVideoFrame,
   zoomAnchor,
   zoomAround,
 } from '../render';
@@ -372,6 +374,8 @@ export interface LoadOptions {
   source?: 'generated' | 'new' | 'library' | 'other';
   /** Opened to watch (M17: a watch link): it opens in the Video workspace (export-state.ts). */
   watch?: boolean;
+  /** M17: the video frame an example's watch link names (`&f=`): the piece plays with it. */
+  frame?: CameraFrame;
 }
 
 /** Counts `loadPiece` calls, so a `usePlayer.subscribe` listener can tell loads from edits. */
@@ -381,6 +385,8 @@ const lastLoad = {
   example: undefined as string | undefined,
   /** The bundled example as opened (with `example`), to tell whether it is still unedited. */
   examplePiece: undefined as Piece | undefined,
+  /** The frame the bare example's video plays (without a watch link's `&f=`). */
+  exampleFrame: undefined as CameraFrame | undefined,
   keepHash: false,
   entryId: undefined as string | undefined,
   watch: false,
@@ -404,7 +410,12 @@ export function onLoadPiece(fn: () => void): void {
  * is pressed, whichever comes first). The theme choice is kept. Key moments opening the piece
  * at 0 are folded into `piece.key` (editor/piece-key.ts).
  */
-export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
+export function loadPiece(given: Piece, opts: LoadOptions = {}): void {
+  const bareFrame = pieceVideoFrame(given);
+  const loaded =
+    opts.frame && opts.frame !== bareFrame
+      ? { ...given, camera: { mode: 'auto' as const, ...given.camera, frame: opts.frame } }
+      : given;
   // The piece key is the key moment at 0:00 (M4.5-39): opening key moments fold into it. Numbers
   // are canonical (core/canonical.ts), so share links round-trip exactly.
   const piece = canonicalPiece(foldOpeningKeys(loaded));
@@ -431,6 +442,7 @@ export function loadPiece(loaded: Piece, opts: LoadOptions = {}): void {
   lastLoad.source = opts.source ?? 'other';
   lastLoad.example = opts.example;
   lastLoad.examplePiece = opts.example !== undefined ? piece : undefined;
+  lastLoad.exampleFrame = opts.example !== undefined ? bareFrame : undefined;
   lastLoad.keepHash = opts.keepHash ?? false;
   lastLoad.entryId = opts.entryId;
   lastLoad.watch = opts.watch ?? false;
@@ -599,8 +611,17 @@ export async function openFile(
  * Opens a bundled example (`id`: its file stem, so the URL reads `#<id>`); `watch`: to watch its
  * video (M17).
  */
-export function openExample(json: unknown, id?: string, watch?: boolean): void {
-  openPieceJson(json, 'the example', { example: id, ...(watch ? { watch } : {}) });
+export function openExample(
+  json: unknown,
+  id?: string,
+  watch?: boolean,
+  frame?: CameraFrame,
+): void {
+  openPieceJson(json, 'the example', {
+    example: id,
+    ...(watch ? { watch } : {}),
+    ...(frame ? { frame } : {}),
+  });
 }
 
 const isExample = (id: string): boolean => EXAMPLES.some((e) => e.id === id);
@@ -673,7 +694,12 @@ export function openAddress(hash: string): boolean {
   }
   const ex = a.kind === 'example' ? EXAMPLES.find((e) => e.id === a.id) : undefined;
   if (!ex) return false;
-  openExample(ex.json, ex.id, a.kind === 'example' && a.watch);
+  openExample(
+    ex.json,
+    ex.id,
+    a.kind === 'example' && a.watch,
+    a.kind === 'example' ? a.frame : undefined,
+  );
   return true;
 }
 
@@ -986,7 +1012,8 @@ export function startPlayer(): void {
   const hash = location.hash;
   const featured = featuredExample();
   const a = parseAddress(hash, isExample);
-  const watch = a.kind === 'example' && a.watch ? { watch: true } : {};
+  const watch =
+    a.kind === 'example' && a.watch ? { watch: true, ...(a.frame ? { frame: a.frame } : {}) } : {};
   const openFeatured = (keepNotices = false): void =>
     loadPiece(initialPiece, {
       compiled: initialCompiled,

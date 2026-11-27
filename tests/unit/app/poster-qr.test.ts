@@ -468,7 +468,7 @@ describe('default size: modules of 1/400 of the shorter side, 12–40 % of it', 
 describe('short links for unedited examples', () => {
   it('an unedited example holds `#w&<id>`; an edited one `#w&p=…`', async () => {
     // As `loadPiece(KITE, { example: 'kite-day' })` records it (the store needs a page to load).
-    const info = loadInfo() as { example?: string; examplePiece?: Piece };
+    const info = loadInfo() as { example?: string; examplePiece?: Piece; exampleFrame?: string };
     Object.assign(info, { example: 'kite-day', examplePiece: KITE });
     const opened = KITE;
     const coded: Piece = {
@@ -476,8 +476,13 @@ describe('short links for unedited examples', () => {
       poster: { ...opened.poster, qr: { box: { x: 0.7, y: 0.6, w: 0.2, h: 0.36 } } },
     };
     expect(exampleIdOf(coded)).toBe('kite-day');
-    expect(await qrLinkOf(coded)).toBe(`${SITE_URL}#w&kite-day`);
-    expect(await qrLinkLength(opened)).toBe(`${SITE_URL}#w&kite-day`.length);
+    // A poster doc (the code's) plays Over the poster; the bare example plays One row.
+    expect(await qrLinkOf(coded)).toBe(`${SITE_URL}#w&kite-day&f=poster`);
+    expect(await qrLinkLength(opened)).toBe(`${SITE_URL}#w&kite-day&f=poster`.length);
+    // An example whose own video is Over the poster needs no frame.
+    Object.assign(info, { exampleFrame: 'poster' });
+    expect(await qrLinkOf({ ...coded, meta: { ...coded.meta } })).toBe(`${SITE_URL}#w&kite-day`);
+    Object.assign(info, { exampleFrame: undefined });
     const q = await qrReady(coded);
     expect(q.matrix!.n).toBeLessThanOrEqual(33);
     // The poster settings the first poster edit seeds (the viewer's) still count as unedited.
@@ -486,6 +491,8 @@ describe('short links for unedited examples', () => {
     expect(exampleIdOf(seeded)).toBeUndefined();
     noteQrSeed(KITE, seeded);
     expect(exampleIdOf(seeded)).toBe('kite-day');
+    // The seeded poster makes the maker's video Over the poster; the bare example's is One row.
+    expect(await qrLinkOf(seeded)).toBe(`${SITE_URL}#w&kite-day&f=poster`);
     expect(exampleIdOf({ ...seeded, poster: { ...seeded.poster, rows: 2 } })).toBeUndefined();
     // Edited: the full link.
     const edited: Piece = { ...coded, meta: { ...coded.meta, title: 'Kite Night' } };

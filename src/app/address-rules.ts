@@ -2,19 +2,23 @@
  * The address bar is the share link (PLAN.md §11.4, owner 2026-11-24), DOM-free:
  * - an unedited bundled example reads `#<example-id>`; anything else reads `#p=<payload>`;
  * - a watch link (M17: `#w&p=…`, `#w&<example-id>`) opens like its share link, to watch; the bar
- *   then shows the editor link (the flag is dropped), as for any opened piece;
+ *   then shows the editor link (the flag is dropped), as for any opened piece; an example's watch
+ *   link may name the video's frame (`#w&<id>&f=poster`), which the example opens with;
  * - edits re-encode after a debounce (400 ms) and an idle callback, never per frame;
  * - the URL is written with `replaceState` (by the caller's `write`), so Back is unchanged;
  * - a per-tab record `{ hash, entry }` lets a reload of our own URL reopen the same My pieces
  *   entry instead of opening it as a shared piece (no duplicate).
  */
 
-import type { Piece } from '../core/types';
-import { SHARE_KEY, isWatchHash, sharePayloadOf, withoutWatch } from './share';
+import type { CameraFrame, Piece } from '../core/types';
+import { SHARE_KEY, isWatchHash, sharePayloadOf, watchFrameOf, withoutWatch } from './share';
 
-/** What a URL fragment names; `watch` (M17): opened to watch (a watch link). */
+/**
+ * What a URL fragment names; `watch` (M17): opened to watch (a watch link); `frame`: the video
+ * frame an example's watch link names.
+ */
 export type Address =
-  | { kind: 'example'; id: string; watch?: true }
+  | { kind: 'example'; id: string; watch?: true; frame?: CameraFrame }
   | { kind: 'share'; payload: string; watch?: true }
   | { kind: 'none' };
 
@@ -30,7 +34,8 @@ export function parseAddress(hash: string, isExample: (id: string) => boolean): 
   if (payload !== null) return { kind: 'share', payload, ...flag };
   const name = rest.startsWith('#') ? rest.slice(1) : rest;
   if (/^[a-z0-9][a-z0-9-]*$/.test(name) && isExample(name)) {
-    return { kind: 'example', id: name, ...flag };
+    const frame = watch ? watchFrameOf(hash) : undefined;
+    return { kind: 'example', id: name, ...flag, ...(frame ? { frame } : {}) };
   }
   return { kind: 'none' };
 }

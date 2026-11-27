@@ -2,8 +2,9 @@
  * The poster's QR code (PLAN.md §15 M17 "QR code"): added from the tool row, it is selected,
  * moved, resized (square), deleted and undone like a text box. The exported PNG's code decodes
  * (jsQR in the page) to the piece's watch link on the public site (an unedited example's short
- * `#w&<id>`, an edited piece's `#w&p=…`), and that link, opened on this server in a fresh
- * browser, shows the watch view. A piece whose watch link is too long can't add one; a code whose link grows too long shows "too long to scan" and is left out of the PNG.
+ * `#w&<id>&f=poster`: its maker's video is Over the poster; an edited piece's `#w&p=…`), and that
+ * link, opened on this server in a fresh browser, shows the watch view in that frame; a plain
+ * `#w&<id>` still plays One row. A piece whose watch link is too long can't add one; a code whose link grows too long shows "too long to scan" and is left out of the PNG.
  */
 
 import { readFileSync } from 'node:fs';
@@ -39,6 +40,12 @@ const qr = (page: Page) =>
     const L = (window as unknown as HookWindow).__algorhythms.posterWorkspace.getState().layout;
     const o = L?.objects.find((x) => x.type === 'qr') as QrObject | undefined;
     return o ? { box: o.box, state: o.state, link: o.link, n: o.matrix?.n ?? 0 } : null;
+  });
+/** The video frame the open piece plays (as `pieceVideoFrame`). */
+const frameOf = (page: Page) =>
+  page.evaluate(() => {
+    const p = (window as unknown as HookWindow).__algorhythms.store.getState().piece;
+    return p.camera?.frame ?? (p.poster ? 'poster' : 'row');
   });
 const stored = (page: Page) =>
   page.evaluate(
@@ -197,7 +204,7 @@ test("the PNG's code: an unedited example's short watch link, an edited piece's 
             (window as unknown as HookWindow).__algorhythms.encodeWatchLink(p, { base }),
           [piece, SITE] as const,
         )
-      : `${SITE}#w&kite-day`;
+      : `${SITE}#w&kite-day&f=poster`;
     if (edited) expect(link.startsWith(`${SITE}#w&p=`)).toBe(true);
     await expect.poll(async () => (await qr(page))?.link).toBe(link);
     await expect.poll(async () => (await qr(page))?.state).toBe('ok');
@@ -229,6 +236,14 @@ test("the PNG's code: an unedited example's short watch link, an edited piece's 
           () => (window as unknown as HookWindow).__algorhythms.store.getState().piece.poster?.qr,
         ),
       ).toEqual({});
+    // Over the poster, as the maker's.
+    expect(await frameOf(other)).toBe('poster');
+    if (!edited) {
+      // A plain example watch link plays as before: One row.
+      await other.goto(`${here}#w&kite-day`);
+      await expect(other.getByTestId('watch-view')).toBeVisible();
+      await expect.poll(() => frameOf(other)).toBe('row');
+    }
     await ctx.close();
   }
 });
