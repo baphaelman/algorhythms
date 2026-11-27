@@ -326,3 +326,12 @@ Decisions in `docs/owner-decisions.md` → "Poster notes, round 3". Zoom (7) and
 **Tests:** unit `app/watch.test.ts` (keys, fullscreen rule, surface drop, first frame with/without lead-in, end, times, Opens to). e2e `watch-view.spec.ts` (watch link: first frame, focus, roles, Play + fullscreen request (stub), controls hide/show, Space, ←/→, seek bar, F, Escape keeps the time; end screen + Replay; Open the music; `fullscreenchange` leaves; dropped poster PNG; 390×844 touch: fills the window, no chrome, tap Play, tap toggles controls, seek; Share's Opens to → fresh context). Updated `video-in-piece` (watch link → watch view, Escape, then the frame compare) and `pictures-open` (opens into the watch view).
 **Runs (2026-11-27):** unit watch, export-workspace, share, address, video-doc (71 passed); lint, typecheck, build pass. e2e chromium-dev + firefox-dev: watch-view, video-in-piece, pictures-open, share (22 passed). WebKit not run (CI).
 **Open:** no real-fullscreen or iPhone check (headless/CI WebKit only); the One-row HUD under the bar at the bottom shows through the gradient while paused.
+## M17 W3 fix: the hint takes no room (2026-11-27)
+- **Rule (integrator):** the hint is the lowest-priority text on a poster. It never moves or hides a readout, a label or another text box; the hint moves or hides first.
+- **Cause of the hud-place failure:** stacked in the band, the hint made the band taller. That pushed the music, and the section labels with it, onto a readout placed by hand, and the readout was hidden.
+- **Now:** a hint without a box of its own takes no band space. It sits right-aligned in the band: first at the band's foot, else at its top beside the title. It wraps to the room right of the texts beside it, and it is not shown when it fits in neither place or when there is no band.
+  - Labels ignore it.
+  - It is dropped when a label or readout meets it.
+  - A hint the user has placed in a box of its own lays out like any text box.
+- **Visibility trade-off (open, owner):** with these sizes it shows on every bundled piece at 16:9. At square and A4 it is hidden for longer titles (Harbour Song, Little Round and all 5 top-level examples: 7 of 13).
+- **Tests:** `export-section.spec` compares the downloaded SVG with the direct render once the `<metadata>` is removed, and checks that the metadata is there. No other spec compares a download with a direct render.
