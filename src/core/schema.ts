@@ -254,6 +254,20 @@ const MOMENT_SCHEMAS = {
     ...momentBase,
     by: finite,
     unit: z.enum(['semitones', 'scaleSteps']).default(D.shift.unit),
+    seq: z
+      .array(
+        z.looseObject({
+          by: finite,
+          len: z
+            .number()
+            .positive()
+            .describe('Seconds the step lasts; the next one starts after it.'),
+        }),
+      )
+      .optional()
+      .describe(
+        'Shift sequence (M13): shift by each step in turn, step k at `at` + the lengths before it; `by` is then ignored (absent or empty: one shift by `by`).',
+      ),
   }),
   spread: z.looseObject({
     type: z.literal('spread'),
@@ -273,6 +287,17 @@ const MOMENT_SCHEMAS = {
       .default(() => [...D.walk.steps])
       .describe('Allowed steps in scale steps.'),
     stepGlide: nonNegative.default(D.walk.stepGlide),
+    glideToTick: z
+      .boolean()
+      .optional()
+      .describe('Each step glides until the next tick; stepGlide is ignored (absent: false).'),
+    stepPast: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        'A step may land past its neighbour line when it ends at least this many semitones beyond it; the lines swap order (absent: never).',
+      ),
     over: z
       .enum(['key', 'chord'])
       .optional()

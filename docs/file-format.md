@@ -2160,6 +2160,28 @@ This is the *input* form: fields with defaults are optional here.
                   "semitones",
                   "scaleSteps"
                 ]
+              },
+              "seq": {
+                "description": "Shift sequence (M13): shift by each step in turn, step k at `at` + the lengths before it; `by` is then ignored (absent or empty: one shift by `by`).",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "by": {
+                      "type": "number"
+                    },
+                    "len": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Seconds the step lasts; the next one starts after it."
+                    }
+                  },
+                  "required": [
+                    "by",
+                    "len"
+                  ],
+                  "additionalProperties": {}
+                }
               }
             },
             "required": [
@@ -2728,6 +2750,15 @@ This is the *input* form: fields with defaults are optional here.
                 "default": 0.3,
                 "type": "number",
                 "minimum": 0
+              },
+              "glideToTick": {
+                "description": "Each step glides until the next tick; stepGlide is ignored (absent: false).",
+                "type": "boolean"
+              },
+              "stepPast": {
+                "description": "A step may land past its neighbour line when it ends at least this many semitones beyond it; the lines swap order (absent: never).",
+                "type": "number",
+                "exclusiveMinimum": 0
               },
               "over": {
                 "description": "What a step counts: scale steps ('key', the default) or chord tones ('chord'; revision 10).",

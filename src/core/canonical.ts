@@ -6,8 +6,8 @@
  * canonical. Rules (by field):
  * - **times** (`at`, `until`, glide length and stagger, ramps, fades, the end, the loop, camera
  *   key times and windows): 1 ms;
- * - **step durations** (tune `len`, pulse `step`, walk `grid`): 1 µs, since they add up over
- *   many steps;
+ * - **step durations** (tune `len`, shift sequence `len`, pulse `step`, walk `grid`): 1 µs,
+ *   since they add up over many steps;
  * - **levels** (gains, pan, sends, pulse accents and floor, weights, jitter, density, a camera
  *   key's playhead place): 3
  *   significant digits;
@@ -113,13 +113,14 @@ const MOMENTS: Record<string, Record<string, Spec>> = {
   unison: { pitch: roundOther },
   split: { notes: noteSet },
   merge: { fade: roundTime },
-  shift: { by: roundOther },
+  shift: { by: roundOther, seq: each(obj({ by: roundOther, len: roundStep })) },
   spread: { factor: roundOther, around: roundOther },
   walk: {
     until: roundTime,
     grid: roundStep,
     density: roundLevel,
     stepGlide: roundTime,
+    stepPast: roundOther,
     bass: obj({ leap: pitches }),
     fixed: each(obj({ tick: roundOther, pitch: roundOther })),
   },

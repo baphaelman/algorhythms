@@ -189,7 +189,9 @@ function walkPatch(
   const refs = ms.map(({ dot, pitch, t }) => {
     const ref = dot.step;
     if (!ref || !moved.some((x) => x.dot === dot)) return ref;
-    const tick = t === dot.t ? ref.tick : (tickAt(w, t - (w.stepGlide ?? 0)) ?? ref.tick);
+    // The dot is where the step arrives: its glide after the tick (M13: the whole tick).
+    const glide = w.glideToTick === true ? w.grid : (w.stepGlide ?? 0);
+    const tick = t === dot.t ? ref.tick : (tickAt(w, t - glide) ?? ref.tick);
     fixed = withNote(fixed, { tick, voice: ref.voice, pitch: Math.min(127, pitch) });
     return { momentId: w.id, tick, voice: ref.voice };
   });

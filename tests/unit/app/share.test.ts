@@ -186,6 +186,46 @@ describe('share links (v2: stripped, packed, preset dictionary)', () => {
     expect(await open(link)).toEqual(p);
   });
 
+  it('round-trips shift sequences (flat) and the M13 walk options; old moments stay as they were', async () => {
+    const piece = withOpening(newPiece({ seed: 9 }));
+    piece.moments.push(
+      {
+        id: 'sq1',
+        type: 'shift',
+        at: 2,
+        by: -2,
+        unit: 'scaleSteps',
+        seq: [
+          { by: -2, len: 2 },
+          { by: -1, len: 1.5 },
+          { by: 1, len: 0.333333 },
+        ],
+      },
+      { id: 'sq2', type: 'shift', at: 9, by: 1, unit: 'semitones' },
+      {
+        id: 'wk1',
+        type: 'walk',
+        at: 10,
+        until: 14,
+        grid: 0.5,
+        density: 0.5,
+        steps: [-1, 1],
+        stepGlide: 0.3,
+        glideToTick: true,
+        stepPast: 1.5,
+      },
+    );
+    const p = parsed(piece);
+    const packed = packPiece(p) as { moments: Record<string, unknown>[] };
+    const [a, b, w] = packed.moments.slice(-3);
+    expect(a.seq).toEqual([-2, 2, -1, 1.5, 1, 0.333333]);
+    expect(b).not.toHaveProperty('seq');
+    expect([w.glideToTick, w.stepPast]).toEqual([true, 1.5]);
+    const link = await encodeShareLink(p, BASE);
+    expect(link).toContain('#p=2.');
+    expect(await open(link)).toEqual(p);
+  });
+
   it('round-trips multi-part targets (revision 10)', async () => {
     const piece = withOpening(newPiece({ seed: 9 }));
     piece.voices[0].part = 'Melody';

@@ -48,6 +48,10 @@ export const DIAGNOSTIC_CODES: Readonly<
     level: 'error',
     meaning: 'A progression needs a list of chords, each with a chord symbol and a length > 0.',
   },
+  'shift-invalid': {
+    level: 'error',
+    meaning: 'A shift sequence needs a list of steps, each with a numeric amount and a length > 0.',
+  },
   'after-end': { level: 'info', meaning: 'The moment is at or after the end of the piece.' },
   'unknown-timbre': {
     level: 'warn',

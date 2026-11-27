@@ -130,6 +130,7 @@ export function WalkFields({
   const grid = field<number>(m.id, 'grid', 'Edit grid');
   const density = fieldSetter<number>(m.id, 'Edit density', (_x, v) => ({ density: v / 100 }));
   const stepGlide = field<number>(m.id, 'stepGlide', 'Edit step glide');
+  const stepPast = field<number>(m.id, 'stepPast', 'Edit step past spacing');
   const leapLo = fieldSetter<number>(m.id, 'Edit bass leap', (x, v) => ({
     bass: { leap: [v, Math.max(v, (x as WalkMoment).bass?.leap[1] ?? v)] },
   }));
@@ -174,16 +175,31 @@ export function WalkFields({
         slider={{ min: 0.05, max: 4 }}
         testId="insp-walk-grid"
       />
-      <NumberField
-        label="Step glide"
-        unit="s"
-        value={m.stepGlide}
-        set={stepGlide}
-        min={0}
-        max={10}
-        step={0.05}
-        slider={{ min: 0, max: 2 }}
-        testId="insp-walk-step-glide"
+      {!m.glideToTick && (
+        <NumberField
+          label="Step glide"
+          unit="s"
+          value={m.stepGlide}
+          set={stepGlide}
+          min={0}
+          max={10}
+          step={0.05}
+          slider={{ min: 0, max: 2 }}
+          testId="insp-walk-step-glide"
+        />
+      )}
+      <CheckField
+        label="Glide to next tick"
+        title="Each step glides the whole tick, so the lines draw curves"
+        checked={m.glideToTick === true}
+        testId="insp-walk-glide-tick"
+        onChange={(on) =>
+          updateMoment(
+            m.id,
+            { glideToTick: on ? true : undefined },
+            on ? 'Glide to next tick' : 'Glide for the step glide',
+          )
+        }
       />
       <fieldset
         className="insp-gen"
@@ -230,6 +246,32 @@ export function WalkFields({
             if (steps) updateMoment(m.id, { steps }, 'Edit steps');
           }}
         />
+        <CheckField
+          label="Step past neighbours"
+          title="A step may land past the line next to it, at least the spacing beyond it; the two lines swap"
+          checked={m.stepPast !== undefined}
+          testId="insp-walk-step-past-on"
+          onChange={(on) =>
+            updateMoment(
+              m.id,
+              { stepPast: on ? 1 : undefined },
+              on ? 'Step past neighbours' : 'Steps stay between neighbours',
+            )
+          }
+        />
+        {m.stepPast !== undefined && (
+          <NumberField
+            label="Past by at least"
+            unit="st"
+            value={m.stepPast}
+            set={stepPast}
+            min={0.5}
+            max={12}
+            step={0.5}
+            slider={{ min: 0.5, max: 7 }}
+            testId="insp-walk-step-past"
+          />
+        )}
         <CheckField
           label="Bass leaps"
           checked={!!m.bass}

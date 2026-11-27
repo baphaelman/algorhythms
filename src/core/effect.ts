@@ -28,6 +28,7 @@ import { countsLines } from './compiler/lines';
 import { keyAt, lifeAt, pitchAt, segmentIndexAt, stackAt } from './query';
 import { isRest, tuneRestrikes, tuneShift } from './moments/tune';
 import { progressionChords } from './moments/progression';
+import { hasShiftSeq, shiftSteps } from './moments/shift';
 import { inPartScope, partOf, partScope, scopeName } from './parts';
 import { hash32, momentSeed, randHashed } from './rng';
 import type {
@@ -171,6 +172,8 @@ export function noEffectReason(m: Moment, c: EffectContext): string {
       }
       return 'the new notes only double their parents';
     case 'shift':
+      if (hasShiftSeq(m))
+        return m.seq!.every((x) => x.by === 0) ? 'every step is 0' : 'no note moves';
       return m.by === 0 ? 'shift by 0' : 'no note moves';
     case 'spread':
       if (c.targeted.length === 1) return 'only one note is sounding';
@@ -305,10 +308,15 @@ export function readState(
   };
   const scheduled = (id: string | undefined): boolean => {
     const m = id === undefined ? undefined : byId.get(id);
-    // Walk steps, tune notes and progression chords are decided where their moves start, so
-    // later ones are not scheduled yet at t.
+    // Walk steps, tune notes, progression chords and shift sequence steps are decided where
+    // their moves start, so later ones are not scheduled yet at t.
     if (!m || !isDecided(m)) return false;
-    return m.type !== 'walk' && m.type !== 'tune' && m.type !== 'progression';
+    return (
+      m.type !== 'walk' &&
+      m.type !== 'tune' &&
+      m.type !== 'progression' &&
+      !(m.type === 'shift' && hasShiftSeq(m))
+    );
   };
   const n = score.voices.length;
   const dest = new Float64Array(n).fill(NaN);
@@ -449,6 +457,13 @@ function effectOn(piece: Piece, score: CompiledScore, st0: StateAt, m: Moment): 
     return first.effect || new Set(m.chords.map((c) => c.notes.trim())).size > 1
       ? { effect: true }
       : first;
+  }
+  if (m.type === 'shift' && hasShiftSeq(m)) {
+    // M13: its first step decides at its time; a later step by a non-zero amount moves something.
+    const steps = shiftSteps(m, piece.seed);
+    if (steps.length === 0) return { effect: false, reason: noEffectReason(m, EMPTY_CONTEXT) };
+    const first = effectOn(piece, score, st0, steps[0]);
+    return first.effect || steps.some((x, k) => k > 0 && x.by !== 0) ? { effect: true } : first;
   }
   // Moments with a count count lines; the others see stacked voices (compiler/lines.ts).
   const st = countsLines(m) ? st0 : (st0.stacked ?? st0);

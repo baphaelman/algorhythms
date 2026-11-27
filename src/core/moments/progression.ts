@@ -16,7 +16,15 @@
  */
 
 import { hash32, momentSeed } from '../rng';
-import type { ChordMoment, Piece, ProgressionMoment, Seconds, Voicing } from '../types';
+import type {
+  ChordMoment,
+  Piece,
+  ProgressionMoment,
+  Seconds,
+  ShiftMoment,
+  Voicing,
+} from '../types';
+import { hasShiftSeq, shiftAmountText, shiftSeqProblem, shiftSteps } from './shift';
 
 /** Why a progression can't run (`progression-invalid`), or null. An empty one does nothing. */
 export function progressionProblem(m: ProgressionMoment): string | null {
@@ -85,17 +93,23 @@ export function progressionChords(m: ProgressionMoment, pieceSeed: Piece['seed']
   });
 }
 
-/** Where an expanded moment came from: chord `k` of the progression at `index`. */
+/**
+ * Where an expanded moment came from: chord `k` of the progression at `index`, or step `k` of the
+ * shift sequence there (M13; `noun` 'Step', `symbol` its amount).
+ */
 export interface ProgressionOrigin {
   index: number;
   k: number;
   symbol: string;
+  /** How diagnostics name it: "Chord 2 (IV): …", "Step 2 (−1): …". */
+  noun: 'Chord' | 'Step';
 }
 
 /**
- * `moments` with every valid progression replaced by its chords (`progressionChords`), and per
- * output moment its origin (null for moments that are not from a progression). Other moments
- * keep their identity; without a progression the input array is returned as is.
+ * `moments` with every valid progression replaced by its chords (`progressionChords`) and every
+ * valid shift sequence by its steps (M13, ./shift `shiftSteps`), and per output moment its origin
+ * (null for moments that are not from either). Other moments keep their identity; without either
+ * the input array is returned as is.
  */
 export function expandProgressions(
   moments: readonly unknown[],
@@ -112,26 +126,30 @@ export function expandProgressions(
       origins.push(null);
       return;
     }
+    if (m.type === 'shift') {
+      shiftSteps(m, pieceSeed).forEach((s, k) => {
+        out.push(s);
+        origins.push({ index, k, symbol: shiftAmountText(s.by), noun: 'Step' });
+      });
+      return;
+    }
     const chords = progressionChords(m, pieceSeed);
     chords.forEach((c, k) => {
       out.push(c);
-      origins.push({ index, k, symbol: m.chords[k].notes });
+      origins.push({ index, k, symbol: m.chords[k].notes, noun: 'Chord' });
     });
   });
   return { moments: out, origins };
 }
 
-/** A valid, unmuted progression with at least one chord at a valid time. */
-function isExpandable(m: unknown): m is ProgressionMoment {
+/**
+ * A valid, unmuted progression with at least one chord, or shift sequence with at least one step,
+ * at a valid time.
+ */
+function isExpandable(m: unknown): m is ProgressionMoment | ShiftMoment {
   if (!m || typeof m !== 'object') return false;
-  const p = m as ProgressionMoment;
-  return (
-    p.type === 'progression' &&
-    !p.muted &&
-    typeof p.at === 'number' &&
-    Number.isFinite(p.at) &&
-    p.at >= 0 &&
-    progressionProblem(p) === null &&
-    p.chords.length > 0
-  );
+  const p = m as ProgressionMoment | ShiftMoment;
+  if (p.muted || !(typeof p.at === 'number' && Number.isFinite(p.at) && p.at >= 0)) return false;
+  if (p.type === 'shift') return hasShiftSeq(p) && shiftSeqProblem(p) === null;
+  return p.type === 'progression' && progressionProblem(p) === null && p.chords.length > 0;
 }

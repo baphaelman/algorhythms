@@ -67,7 +67,8 @@ import {
   tuneStarts,
 } from '../moments/tune';
 import { IntentKind, type Intent, type MomentEnv, type MomentPlan } from '../moments/types';
-import { walkTick } from '../moments/walk';
+import { shiftSeqEnd, shiftSeqProblem } from '../moments/shift';
+import { walkStepGlide, walkTick } from '../moments/walk';
 import { ChordTrack, chordChain, noteSetBassPc, noteSetPcs } from './chord-track';
 import {
   MAX_VOICES,
@@ -552,6 +553,14 @@ export class Compiler {
           this.diag('error', 'invalid-time', `The moment time must be a number ≥ 0.`, m.id);
         return;
       }
+      if (m.type === 'shift' && m.seq !== undefined && !origin) {
+        // A valid sequence with steps was expanded; this one is invalid (empty: one shift by `by`).
+        const why = shiftSeqProblem(m);
+        if (why !== null) {
+          this.diag('error', 'shift-invalid', why, m.id);
+          return;
+        }
+      }
       if (!MOMENT_TYPES.has(m.type)) {
         this.diag('info', 'unknown-moment-type', `Unknown moment type '${String(m.type)}'.`, m.id);
         return;
@@ -701,10 +710,10 @@ export class Compiler {
   // -------------------------------------------------------------------------------------------
 
   diag(level: DiagnosticLevel, code: string, message: string, momentId?: string): void {
-    // A progression's chord names itself by position (revision 10).
+    // A progression's chord (revision 10) or a shift sequence's step (M13) names itself by position.
     const o = this.current >= 0 ? this.origins?.[this.current] : null;
     const chord = o && momentId !== undefined && this.moments[this.current].id === momentId;
-    if (chord) message = `Chord ${o.k + 1} (${o.symbol}): ${message}`;
+    if (chord) message = `${o.noun} ${o.k + 1} (${o.symbol}): ${message}`;
     const d: Diagnostic = { level, code, message };
     if (chord && code === 'no-effect') CHORD_NO_EFFECT.set(d, o);
     if (momentId !== undefined) d.momentId = momentId;
@@ -713,7 +722,8 @@ export class Compiler {
 
   /**
    * The diagnostics with a progression's per-chord `no-effect`s kept (the first one) only when
-   * every chord of it had none: holding a chord on is normal in a progression.
+   * every chord of it had none: holding a chord on is normal in a progression. The same for a
+   * shift sequence's steps (M13).
    */
   private progressionDiags(): Diagnostic[] {
     const none = new Map<number, Set<number>>();
@@ -730,7 +740,8 @@ export class Compiler {
       const o = CHORD_NO_EFFECT.get(d);
       if (!o) return true;
       const p = this.piece.moments[o.index];
-      const all = p.type === 'progression' && none.get(o.index)!.size === p.chords.length;
+      const n = p.type === 'progression' ? p.chords.length : p.type === 'shift' ? p.seq?.length : 0;
+      const all = none.get(o.index)!.size === n;
       if (!all || kept.has(o.index)) return false;
       kept.add(o.index);
       return true;
@@ -966,10 +977,11 @@ export class Compiler {
     const m = this.moments[i];
     const T = late ? m.at : this.eventT[i];
     this.activity(T);
-    // A progression's chord lasts its length (the progression ends after the last one).
+    // A progression's chord, or a shift sequence's step, lasts its length (it ends after the last).
     const o = this.origins?.[i];
     const p = o ? this.piece.moments[o.index] : null;
     if (p?.type === 'progression') this.activity(m.at + p.chords[o!.k].len);
+    else if (p?.type === 'shift' && p.seq) this.activity(m.at + p.seq[o!.k].len);
     switch (m.type) {
       case 'key':
         if (sameKey(m.key, this.key)) this.noEffect(m, [], []);
@@ -3030,8 +3042,11 @@ export class Compiler {
       else to[i] = note.pitch;
     }
     // Revert moving notes that cross or touch a neighbour until none does; reverting only ever
-    // removes moves, so this ends.
-    for (let changed = true; changed;) {
+    // removes moves, so this ends. With stepPast (M13), a tick whose notes only swap lines as the
+    // walk's steps past a neighbour do is kept as it is (Freeze keeps the sound).
+    const past = typeof w.stepPast === 'number' && w.stepPast > 0 ? w.stepPast : 0;
+    const swapsOnly = past > 0 && passesOnly(from, to, past, (i) => inTarget.has(order[i]));
+    for (let changed = !swapsOnly; changed;) {
       changed = false;
       for (let i = 0; i < n; i++) {
         if (to[i] === from[i]) continue;
@@ -3090,7 +3105,8 @@ export class Compiler {
   ): void {
     this.walkSteps.push({ momentId: w.id, tick: k, voice: this.voices[v].id, t, from, to, fixed });
     if (to === from) return;
-    const dur = Number.isFinite(w.stepGlide) && w.stepGlide > MIN_GLIDE ? w.stepGlide : MIN_GLIDE;
+    const g = walkStepGlide(w, k);
+    const dur = Number.isFinite(g) && g > MIN_GLIDE ? g : MIN_GLIDE;
     this.startMove({
       voice: v,
       t0: t,
@@ -3269,7 +3285,8 @@ export class Compiler {
     for (const v of voices)
       for (const l of v.lives) if ((l.died ?? E) > duration) duration = l.died ?? E;
     const momentSpans: MomentSpan[] = [];
-    // A progression's chords make one span, from its first move to its end or its last move.
+    // A progression's chords (a shift sequence's steps) make one span, from its first move to its
+    // end or its last move.
     let prog: { index: number; span: MomentSpan } | null = null;
     this.moments.forEach((m, i) => {
       if (!this.valid[i]) return;
@@ -3295,6 +3312,7 @@ export class Compiler {
       }
       const p = this.piece.moments[o.index];
       if (p.type === 'progression') span.end = Math.max(span.end, progressionEnd(p));
+      else if (p.type === 'shift') span.end = Math.max(span.end, shiftSeqEnd(p));
       prog = { index: o.index, span };
       momentSpans.push(span);
     });
@@ -3319,6 +3337,32 @@ export class Compiler {
       seed: this.piece.seed,
     };
   }
+}
+
+/**
+ * True when the moves `from` → `to` (positions in pitch order) end in distinct pitches whose order
+ * differs from the start only by swaps of neighbours where one moves at least `past` beyond the
+ * other, which holds and passes `holder` (walk `stepPast`, M13).
+ */
+function passesOnly(
+  from: readonly Pitch[],
+  to: readonly Pitch[],
+  past: number,
+  holder: (i: number) => boolean,
+): boolean {
+  const n = to.length;
+  const idx = to.map((_, i) => i).sort((a, b) => to[a] - to[b]);
+  for (let q = 1; q < n; q++) if (!(to[idx[q]] > to[idx[q - 1]])) return false;
+  for (let q = 0; q < n; q++) {
+    if (idx[q] === q) continue;
+    if (!(idx[q] === q + 1 && idx[q + 1] === q)) return false;
+    const aMoves = to[q] !== from[q];
+    const bMoves = to[q + 1] !== from[q + 1];
+    if (aMoves === bMoves || !holder(aMoves ? q + 1 : q)) return false;
+    if (Math.abs(to[q] - to[q + 1]) < past) return false;
+    q++;
+  }
+  return true;
 }
 
 /**

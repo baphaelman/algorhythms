@@ -7,7 +7,7 @@
  *   built-in timbres written as `1`, moment ids that just count up from the previous one omitted,
  *   moment times as whole-millisecond steps from the previous moment, and tune notes as flat
  *   `[pitch, len, …]` lists (a rest's pitch is `null`, revision 10), progression chords as flat
- *   `[notes, len, …]` lists (revision 10), camera keys without an ease as flat
+ *   `[notes, len, …]` lists (revision 10), shift sequences as flat `[by, len, …]` (M13), camera keys without an ease as flat
  *   `[at, window, place, pitch, range, …]` lists (M11.5) and Over-the-poster keys as `[at, x, y, h, …]`
  *   (M15), the video packed (M17: short names, flat section and placed readouts), and the
  *   poster packed (M14: default
@@ -185,6 +185,13 @@ function plainChord(c: unknown): c is { notes: string; len: number } {
     Object.keys(c).length === 2 &&
     typeof c.notes === 'string' &&
     typeof c.len === 'number'
+  );
+}
+
+/** A shift sequence step that packs into a `[by, len]` pair (no other fields, M13). */
+function plainStep(x: unknown): x is { by: number; len: number } {
+  return (
+    isRec(x) && Object.keys(x).length === 2 && typeof x.by === 'number' && typeof x.len === 'number'
   );
 }
 
@@ -434,6 +441,8 @@ export function packPiece(piece: Piece): Rec | null {
           v.every(plainChord)
         )
           m.chords = v.flatMap((c) => [c.notes, c.len]);
+        else if (k === 'seq' && raw.type === 'shift' && Array.isArray(v) && v.every(plainStep))
+          m.seq = v.flatMap((x) => [x.by, x.len]);
         else m[k] = v;
       }
       if (typeof raw.id !== 'string') return null;
@@ -510,6 +519,16 @@ export function unpackPiece(packed: unknown): unknown {
           const chords: Rec[] = [];
           for (let i = 0; i + 1 < v.length; i += 2) chords.push({ notes: v[i], len: v[i + 1] });
           m.chords = chords;
+        } else if (
+          k === 'seq' &&
+          raw.type === 'shift' &&
+          Array.isArray(v) &&
+          v.length % 2 === 0 &&
+          v.every((x) => typeof x === 'number')
+        ) {
+          const seq: Rec[] = [];
+          for (let i = 0; i + 1 < v.length; i += 2) seq.push({ by: v[i], len: v[i + 1] });
+          m.seq = seq;
         } else m[k] = v;
       }
       if (typeof m.id === 'string') prevId = m.id;

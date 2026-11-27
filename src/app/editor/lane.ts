@@ -20,12 +20,14 @@ import type {
   MomentType,
   Piece,
   Seconds,
+  ShiftMoment,
 } from '../../core/types';
 import { keyName } from '../../render/draw';
 import type { MomentPatch } from './ops';
 import { cycleShare, patternSvg } from './pulse';
 import { tuneEnd, tuneEndDrag } from './tune';
 import { progressionEnd, progressionStarts } from '../../core/moments/progression';
+import { hasShiftSeq, shiftSeqEnd } from '../../core/moments/shift';
 import { progressionChordNames, progressionEndDrag } from './progression';
 import { ROW_ORDER, type Block, type RowName, type RowsView } from './rows';
 
@@ -138,10 +140,12 @@ export function effectiveGlide(m: Moment, defaults: Glide): Glide {
 
 /**
  * True when moment `m` lands at its marker (`glide.land`, effective, on a type it applies to). A
- * pulse moves no pitch and a tune's bar is its region (land applies per note), so neither does.
+ * pulse moves no pitch, and the bar of a tune, a progression or a shift sequence is its region
+ * (land applies per note, chord or step), so none of them does.
  */
 export function landsAtMarker(m: Pick<Moment, 'type' | 'glide'>, defaults: Glide): boolean {
   if (m.type === 'pulse' || m.type === 'tune' || m.type === 'progression') return false;
+  if (m.type === 'shift' && hasShiftSeq(m as Pick<ShiftMoment, 'seq'>)) return false;
   return glides(m) && effectiveGlide(m as Moment, defaults).land === true;
 }
 
@@ -158,11 +162,12 @@ export function estimateSpan(m: Moment, defaults: Glide): [Seconds, Seconds] {
     const start = g.land === true ? landing(m.at, g).start : m.at;
     return [start, Math.max(m.at, tuneEnd(m))];
   }
-  if (m.type === 'progression') {
-    // Its chords' span; with land the first chord's glide leads in before `at`.
+  if (m.type === 'progression' || (m.type === 'shift' && hasShiftSeq(m))) {
+    // Its chords' (steps') span; with land the first one's glide leads in before `at`.
     const g = momentGlide(defaults, m);
     const start = g.land === true ? landing(m.at, g).start : m.at;
-    return [start, Math.max(m.at, progressionEnd(m))];
+    const end = m.type === 'progression' ? progressionEnd(m) : shiftSeqEnd(m);
+    return [start, Math.max(m.at, end)];
   }
   if (m.type === 'level') return [m.at, m.at + Math.max(0, m.over)];
   if (m.type === 'timbre') return [m.at, m.at + Math.max(0, m.fade)];

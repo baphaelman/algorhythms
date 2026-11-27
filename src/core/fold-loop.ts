@@ -43,7 +43,7 @@ export interface LoopStep {
 }
 
 const isDown = (m: Moment): boolean =>
-  m.type === 'shift' && m.unit === 'semitones' && m.by === -THIRD;
+  m.type === 'shift' && m.unit === 'semitones' && m.by === -THIRD && !m.seq?.length;
 const isFold = (m: Moment): m is SpreadMoment =>
   m.type === 'spread' && m.factor === -1 && typeof m.around === 'number';
 

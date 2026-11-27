@@ -6,6 +6,7 @@
 
 import { partOf, partScope } from '../../core/parts';
 import { progressionStarts } from '../../core/moments/progression';
+import { hasShiftSeq, shiftSeqStarts } from '../../core/moments/shift';
 import { activeAt, keyAt, pitchAt } from '../../core/query';
 import { pitchClassOf } from '../../core/scales';
 import type {
@@ -63,7 +64,7 @@ export type BlockKind =
 export interface Block {
   /** Moment id (`PIECE_KEY` for the piece key's band). */
   id: MomentId;
-  /** A progression's chord index (one block per chord). */
+  /** A progression's chord index (one block per chord), or a shift sequence's step (M13). */
   index?: number;
   type: MomentType | null;
   row: RowName;
@@ -170,11 +171,12 @@ export function textureOf(m: Moment): TextureKind | null {
   return null;
 }
 
-/** Short label of a relative chord block. */
-function relativeLabel(m: ShiftMoment | SpreadMoment): string {
+/** Short label of a relative chord block (`by`: a shift sequence's step, M13). */
+function relativeLabel(m: ShiftMoment | SpreadMoment, by?: number): string {
   if (m.type === 'shift') {
-    const sign = m.by > 0 ? '+' : m.by < 0 ? '−' : '';
-    return `${sign}${Math.abs(m.by)} ${m.unit === 'scaleSteps' ? 'steps' : 'st'}`;
+    const b = by ?? m.by;
+    const sign = b > 0 ? '+' : b < 0 ? '−' : '';
+    return `${sign}${Math.abs(b)} ${m.unit === 'scaleSteps' ? 'steps' : 'st'}`;
   }
   if (m.factor < 0) return m.factor === -1 ? 'upside down' : `upside down ×${-m.factor}`;
   return m.factor > 1 ? 'wider' : 'closer';
@@ -283,6 +285,29 @@ export function rowsOf(
         });
         break;
       case 'shift':
+        if (hasShiftSeq(m)) {
+          // M13: a shift sequence draws one block per step (as a progression's chords).
+          const starts = shiftSeqStarts(m);
+          m.seq!.forEach((x, k) => {
+            drafts.push({
+              ...base,
+              index: k,
+              start: starts[k],
+              end: starts[k + 1],
+              label: (k === 0 ? label : undefined) ?? relativeLabel(m, x.by),
+              kind: 'relative',
+            });
+          });
+          break;
+        }
+        drafts.push({
+          ...base,
+          start: at,
+          end: at,
+          label: label ?? relativeLabel(m),
+          kind: 'relative',
+        });
+        break;
       case 'spread':
         drafts.push({
           ...base,

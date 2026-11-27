@@ -41,6 +41,13 @@ import {
 import { defaultMoment } from '../../editor/new-moment';
 import { parseProgressionText, progressionSpacing } from '../../editor/progression';
 import {
+  formatShiftSeq,
+  parseShiftSeq,
+  shiftSeqPatch,
+  shiftSeqSummary,
+} from '../../editor/shift-seq';
+import { hasShiftSeq } from '../../../core/moments/shift';
+import {
   arriveOf,
   beatAndBar,
   setAbsolute,
@@ -322,24 +329,27 @@ function RelativeFields({
           write((x) => setRelative(x, SHAPE_DEFAULTS[v]), SHAPES.find((s) => s[0] === v)![1]);
         }}
       />
-      {m.type === 'shift' && <MovedFields m={m} keyAt={keyAt} />}
+      {m.type === 'shift' && <MovedFields m={m} piece={piece} keyAt={keyAt} />}
       {m.type === 'spread' && m.factor >= 0 && <SpacingField m={m} piece={piece} />}
       {m.type === 'spread' && m.factor < 0 && <FoldFields m={m} piece={piece} />}
     </>
   );
 }
 
-function MovedFields({ m, keyAt }: { m: ShiftMoment; keyAt: Key }) {
+function MovedFields({ m, piece, keyAt }: { m: ShiftMoment; piece: Piece; keyAt: Key }) {
   const by = fieldSetter<number>(m.id, 'Edit shift', (_x, v) => ({ by: v }));
   return (
     <>
-      <ShiftSlider
-        label="By"
-        value={m.by}
-        set={by}
-        octave={shiftOctave(m.unit, keyAt)}
-        testId="insp-shift-by"
-      />
+      {!hasShiftSeq(m) && (
+        <ShiftSlider
+          label="By"
+          value={m.by}
+          set={by}
+          octave={shiftOctave(m.unit, keyAt)}
+          testId="insp-shift-by"
+        />
+      )}
+      <ShiftSequence m={m} piece={piece} />
       <SelectField
         label="Unit"
         value={m.unit}
@@ -350,6 +360,43 @@ function MovedFields({ m, keyAt }: { m: ShiftMoment; keyAt: Key }) {
         onChange={(unit) => updateMoment(m.id, { unit }, 'Change shift unit')}
       />
     </>
+  );
+}
+
+/**
+ * The shift sequence (M13): typed steps "−2 −1 −1 +1:2" in the block's unit, lengths in beats (or
+ * seconds) defaulting to the block's spacing; the live feedback counts the steps and says where
+ * the sequence ends. Empty text is one shift (By).
+ */
+function ShiftSequence({ m, piece }: { m: ShiftMoment; piece: Piece }) {
+  const beat = tuneBeat(piece.view);
+  const spacing = progressionSpacing(piece, m);
+  const seq = m.seq ?? [];
+  const parse = (t: string) => parseShiftSeq(t, m.unit, beat, spacing, seq);
+  return (
+    <TextField
+      label="Sequence"
+      value={formatShiftSeq(seq, beat, spacing)}
+      placeholder={beat ? '−2 −1 −1 +1:2 (beats)' : '−2 −1 −1 +1:2 (seconds)'}
+      testId="insp-shift-seq"
+      parse={(t) => {
+        const r = parse(t);
+        return r.ok ? { ok: true } : r;
+      }}
+      feedback={(t) => {
+        const r = parse(t);
+        if (!r.ok) return { ok: false, text: r.error };
+        if (r.seq.length === 0) return null;
+        return {
+          ok: true,
+          text: shiftSeqSummary(r.seq, m.unit, m.at, (x) => whenText(piece, x)),
+        };
+      }}
+      onCommit={(t) => {
+        const r = parse(t);
+        if (r.ok) updateMoment(m.id, shiftSeqPatch(r.seq), 'Edit shift sequence');
+      }}
+    />
   );
 }
 

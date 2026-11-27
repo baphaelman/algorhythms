@@ -5,6 +5,7 @@
  */
 
 import { noteChanges } from '../../core/moments/note';
+import { walkStepGlide } from '../../core/moments/walk';
 import { noteAt } from '../../core/query';
 import type {
   ChordMoment,
@@ -120,7 +121,7 @@ function walkDots(score: CompiledScore, w: WalkMoment): ArrivalDot[] {
     out.push({
       momentId: w.id,
       type: 'walk',
-      t: s.t + (w.stepGlide ?? 0),
+      t: s.t + (walkStepGlide(w, s.tick) ?? 0),
       pitch: s.to,
       voice: voiceIndex(score, s.voice),
       step: { momentId: w.id, tick: s.tick, voice: s.voice },
@@ -225,7 +226,7 @@ export function allArrivals(piece: Piece, score: CompiledScore): ArrivalDot[] {
     out.push({
       momentId: w.id,
       type: 'walk',
-      t: s.t + (w.stepGlide ?? 0),
+      t: s.t + (walkStepGlide(w, s.tick) ?? 0),
       pitch: s.to,
       voice: voiceIndex(score, s.voice),
       step: { momentId: w.id, tick: s.tick, voice: s.voice },

@@ -18,8 +18,26 @@
  *
  * Draws are keyed by (walk seed, voice, tick index, purpose), so a voice's step at tick 12 depends
  * only on its own state (§7.7). All steps of a tick start at the tick with the same duration
- * (`stepGlide`) and ease, and idle voices carry no velocity, so two stepping voices whose start
+ * (`walkStepGlide`) and ease, and idle voices carry no velocity, so two stepping voices whose start
  * and end are in order cannot cross mid-glide (§7.2's algebraic argument).
+ *
+ * M13 "Glide to next tick" (`glideToTick`): every step glides until the next tick, so a line that
+ * steps on every tick draws a curve. The crossing argument still holds: a voice steps only when
+ * idle, and a step's glide ends exactly at the next tick (`walkStepGlide` trims float rounding so
+ * it never runs past it), so glides of different ticks never overlap. Glides that do overlap
+ * started on one tick with one duration and one ease, so each line is (1 − e(u))·from + e(u)·to
+ * for the same e(u) at every instant: two lines in order at the start and at the end stay in order
+ * all the way.
+ *
+ * M13 "Step past a neighbour" (`stepPast`, semitones): a drawn step that does not land strictly
+ * between its neighbours may land past one instead, if it ends at least `stepPast` beyond that
+ * neighbour (and still strictly below the next line on, inside its range), and the neighbour is an
+ * eligible line of this walk that does not step on this tick (one above is held for the tick; one
+ * below must not have stepped). The two lines swap order: they cross once, mid-glide, by design;
+ * every other pair is in order at the start and at the end, so by the argument above no other
+ * pair crosses. The walk's bass (with `bass`) is never passed and never passes, so it stays the
+ * lowest line. Order is pitch order, as everywhere (the next moment sees the swapped lines); the
+ * view's "Keep lines in order" is about hand edits and does not apply.
  */
 
 import { Purpose, randHashed } from '../rng';
@@ -67,11 +85,18 @@ export interface WalkStep {
 
 /** One tick of a walk: the steps to start now, in low-to-high order. */
 export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
-  const order = env.order;
+  // Copied: a step past a neighbour (stepPast) swaps two entries.
+  const order = env.order.slice();
   const n = order.length;
   const d = order.map((v) => env.dest(v));
   const steps = w.steps && w.steps.length > 0 ? w.steps : DEFAULT_WALK_STEPS;
   const density = Number.isFinite(w.density) ? w.density : 0;
+  const past =
+    typeof w.stepPast === 'number' && Number.isFinite(w.stepPast) && w.stepPast > 0
+      ? w.stepPast
+      : 0;
+  // stepPast: per position, the line there stepped this tick.
+  const stepped: boolean[] | null = past > 0 ? new Array<boolean>(n).fill(false) : null;
   let bassVoice = -1;
   if (w.bass) {
     for (const v of order) {
@@ -118,16 +143,52 @@ export function walkTick(w: WalkMoment, env: WalkEnv): WalkStep[] {
         steps[Math.floor(randHashed(env.seed, h, env.tick, Purpose.WalkStep) * steps.length)];
       const p = env.chord ? stepByChord(cur, s, env.chord) : stepByScale(cur, s, env.key);
       if (p > below && p < above && p >= r[0] && p <= r[1] && p !== cur) to = p;
+      else if (past > 0 && v !== bassVoice && p >= r[0] && p <= r[1]) {
+        // Past the neighbour above (it holds this tick) or below (it did not step).
+        const up = p >= above + past && (i + 2 >= n || p < d[i + 2]);
+        const down = p <= below - past && (i < 2 || p > d[i - 2]);
+        const j = up ? i + 1 : down ? i - 1 : -1;
+        const u = j >= 0 ? order[j] : -1;
+        if (u >= 0 && u !== bassVoice && env.eligible(u) && !stepped![j]) {
+          out.push({ voice: v, from: cur, to: p });
+          order[i] = u;
+          order[j] = v;
+          d[i] = d[j];
+          d[j] = p;
+          stepped![j] = true;
+          // Passed upward, the passed line holds for the tick: the next line to visit is above both.
+          if (j > i) i++;
+          continue;
+        }
+      }
     }
     if (!Number.isFinite(to) && env.changed && env.chord && !onChord(cur, env.chord)) {
       to = nearestChordTone(cur, env.chord, r, (q) => q > below && q < above);
     }
     if (Number.isFinite(to)) {
       d[i] = to;
+      if (stepped) stepped[i] = true;
       out.push({ voice: v, from: cur, to });
     }
   }
   return out;
+}
+
+/**
+ * How long a step at tick k glides: `stepGlide`, or with `glideToTick` (M13) until the next whole
+ * tick, trimmed so that `at + k·grid` plus it never passes `at + (⌊k⌋ + 1)·grid` in floating point
+ * (the line is idle again on that tick). The compiler raises it to its minimum glide.
+ */
+export function walkStepGlide(
+  w: Pick<WalkMoment, 'at' | 'grid' | 'stepGlide' | 'glideToTick'>,
+  k: number,
+): Seconds {
+  if (w.glideToTick !== true) return w.stepGlide;
+  const t = w.at + k * w.grid;
+  const next = w.at + (Math.floor(k + 1e-9) + 1) * w.grid;
+  let dur = next - t;
+  while (dur > 0 && t + dur > next) dur -= next * Number.EPSILON;
+  return dur;
 }
 
 /** Pitches within this of an integer count as that integer (on a chord tone). */

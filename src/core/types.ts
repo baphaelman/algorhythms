@@ -361,6 +361,20 @@ export interface ShiftMoment extends MomentBase {
   by: number;
   /** Scale steps count in the key in effect; off-scale pitches snap first (§7.8). */
   unit: 'semitones' | 'scaleSteps';
+  /**
+   * M13 shift sequence: the block planes through these shifts in turn, step k at `at` + the
+   * lengths before it, each exactly as a shift moment with this moment's unit, target and glide
+   * would (core/moments/shift.ts `shiftSteps`). `by` is then ignored (the editor keeps it equal
+   * to the first step's). Absent or empty: one shift by `by`.
+   */
+  seq?: ShiftStep[];
+}
+
+/** One step of a shift sequence (M13): shift by `by` units, then hold `len` seconds. */
+export interface ShiftStep {
+  by: number;
+  /** How long the step lasts (> 0); the next step starts `len` after this one. */
+  len: Seconds;
 }
 
 /** Scales pitches around a centre: p → c + factor·(p − c), then snaps. */
@@ -387,6 +401,17 @@ export interface WalkMoment extends MomentBase {
   steps: number[];
   /** Glide length of each step. */
   stepGlide: Seconds;
+  /**
+   * M13 "Glide to next tick": each step glides until the next tick (the whole grid), so walks
+   * draw curves; `stepGlide` is then ignored. Absent means false.
+   */
+  glideToTick?: boolean;
+  /**
+   * M13 "Step past a neighbour", in semitones (> 0): a step may land past its neighbour line
+   * when it ends at least this far beyond it, and the two lines swap order. Absent: a step must
+   * land strictly between its neighbours.
+   */
+  stepPast?: number;
   /** When present, the lowest voice leaps by a random interval in [min, max] semitones. */
   bass?: { leap: [number, number] };
   /**
