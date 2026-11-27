@@ -16,7 +16,7 @@
  * - **the poster** (M14): boxes, margins and nudges (fractions of the artboard) to 4 significant
  *   digits; style factors, opacities and the picture's position and dimming as levels; its
  *   section as times;
- * - **the video** (M17): its window, section, fades and end card as times, the playhead place and
+ * - **the video** (M17): its window, zoom, section, fades and end card as times, the playhead place and
  *   Ahead as levels.
  *
  * Only the fields listed here change: unknown fields (and timbres and the mix, which have no
@@ -205,6 +205,7 @@ const PIECE: Spec = obj({
   video: obj({
     followAt: roundLevel,
     window: roundTime,
+    zoom: roundTime,
     ahead: roundLevel,
     section: obj({ start: roundTime, end: roundTime }),
     fadeIn: roundTime,

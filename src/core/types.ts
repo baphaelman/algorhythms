@@ -1132,10 +1132,12 @@ export interface PieceVideo {
   /** Follow: the playhead's place across the frame, % (10..90). Absent = by Ahead of the playhead. */
   followAt?: number;
   /**
-   * Follow: seconds the frame shows at this aspect. Absent = One row: the piece's `view.window`
-   * at this aspect; Over the poster: one row's height.
+   * Follow: seconds the frame shows at this aspect. Absent = the editor's zoom (`zoom`) at this
+   * aspect (One row), one row's height (Over the poster).
    */
   window?: Seconds;
+  /** The editor's zoom a Follow window without `window` shows, s at 16:9. Absent = `view.window`. */
+  zoom?: Seconds;
   /** HUD readouts (render `HudItem`s). Absent = the player's six; [] = none. */
   hud?: string[];
   /** Where each readout sits (render `HudLayout`). Absent = the default slots. */

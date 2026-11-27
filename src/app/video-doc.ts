@@ -5,9 +5,9 @@
  *
  * A piece with a record shows the record over the fixed defaults, never over the viewer's
  * remembered options, so a link plays the maker's video frame for frame. That covers every input
- * of a frame: the Look (theme resolved, colours), the HUD and its layout, the Follow window (a
- * One-row record without one shows the piece's `view.window`, not the viewer's zoom) and the
- * app's line colours ('app' lines: the piece's `view.colors`, or the maker's under `appColors`).
+ * of a frame: the Look (theme resolved, colours), the HUD and its layout, the editor's zoom (a
+ * Follow window left to it uses the record's `zoom`, else the piece's `view.window`, never the
+ * viewer's) and the app's line colours ('app' lines: the piece's `view.colors`, or the maker's under `appColors`).
  * With a poster, the poster's settings (section, HUD layout, the Look's poster keys) draw over the
  * record's, as they did before (poster-doc.ts `formWithDoc`). A piece without a record plays with
  * the viewer's options.
@@ -71,24 +71,6 @@ export function changedVideoFields(a: VideoFields, b: VideoFields): string[] {
 type WindowPiece = Pick<Piece, 'camera' | 'poster' | 'view'>;
 
 /**
- * The Follow window a record without one shows (s, at the aspect): One row, the piece's
- * `view.window`; Over the poster, null (one row's height).
- */
-export function defaultVideoWindow(
-  piece: WindowPiece,
-  aspect: ExportForm['videoAspect'],
-  duration: number | undefined,
-): number | null {
-  if (pieceVideoFrame(piece) === 'poster') return null;
-  return roundTime(
-    followWindowOf(
-      { videoWindow: null, videoAspect: aspect },
-      { window: piece.view.window, ...(duration !== undefined ? { duration } : {}) },
-    ),
-  );
-}
-
-/**
  * The record of what the form shows for `piece` (differences from the defaults only). `ctx` is
  * the app now: a null window is the editor's zoom, 'current' the app's theme, 'app' lines the
  * app's colours; each is stored resolved, so the record shows the same anywhere.
@@ -103,10 +85,11 @@ export function recordFromForm(
   if (form.videoAspect !== d.videoAspect) r.aspect = form.videoAspect;
   if (form.videoCamera === 'whole') r.whole = true;
   if (form.videoFollowAt !== null) r.followAt = form.videoFollowAt;
-  const def = defaultVideoWindow(piece, form.videoAspect, ctx.duration);
-  if (form.videoWindow !== null || def !== null) {
-    const shown = roundTime(followWindowOf(form, ctx));
-    if (shown !== def) r.window = shown;
+  if (form.videoWindow !== null) r.window = roundTime(followWindowOf(form, ctx));
+  else if (pieceVideoFrame(piece) === 'row') {
+    // Left to the editor's zoom: the maker's zoom now, unless it is the piece's.
+    const zoom = roundTime(ctx.window);
+    if (zoom !== roundTime(piece.view.window)) r.zoom = zoom;
   }
   if (!same(form.videoHud, d.videoHud)) r.hud = [...form.videoHud];
   if (Object.keys(form.hudLayout).length > 0) {
@@ -166,7 +149,7 @@ export function videoContextFor<C extends VideoContext>(piece: Piece, live: C): 
   return {
     ...live,
     colors,
-    window: piece.view.window,
+    window: num(rec.zoom) && rec.zoom > 0 ? rec.zoom : piece.view.window,
     dark: theme === 'dark' || (theme !== 'light' && live.dark),
   };
 }
@@ -176,13 +159,9 @@ const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinit
 /**
  * The form showing `piece`'s record: the defaults with the record's values over them (validated
  * as stored prefs are), the file settings and the poster's own fields kept. With a poster, its
- * settings then draw over them (`formWithDoc`), as before. `duration`: the piece's length.
+ * settings then draw over them (`formWithDoc`), as before.
  */
-export function formWithRecord(
-  form: ExportForm,
-  piece: Piece,
-  duration: number | undefined,
-): ExportForm {
+export function formWithRecord(form: ExportForm, piece: Piece): ExportForm {
   const rec = piece.video;
   if (!rec) return form;
   const d = DEFAULT_EXPORT_FORM;
@@ -214,12 +193,15 @@ export function formWithRecord(
     videoAspect: aspect,
     videoCamera: cameraChoice({ videoCamera: rec.whole ? 'whole' : 'follow' }, piece),
     videoFollowAt: p.videoFollowAt ?? null,
-    videoWindow: num(rec.window) ? rec.window : defaultVideoWindow(piece, aspect, duration),
+    videoWindow: num(rec.window) ? rec.window : null,
     videoHud: p.videoHud ?? DEFAULT_HUD,
     hudLayout: p.hudLayout ?? {},
     videoAheadPoster: p.videoAheadPoster ?? d.videoAheadPoster,
+    // A remembered Custom span is kept for Whole (as formWithDoc does).
     section: rec.section ? 'custom' : 'whole',
-    sectionSpan: rec.section ? { start: rec.section.start, end: rec.section.end } : null,
+    sectionSpan: rec.section
+      ? { start: rec.section.start, end: rec.section.end }
+      : form.sectionSpan,
     videoFadeIn: p.videoFadeIn ?? 0,
     videoLeadIn: p.videoLeadIn ?? 0,
     videoTitleCard: p.videoTitleCard ?? false,
@@ -242,12 +224,8 @@ export function formWithRecord(
  * The form a video of `piece` draws with, from the viewer's form `base`: the record's (and the
  * poster's) settings when the piece has a record, else `base` (with the poster's, if any).
  */
-export function formForPiece(
-  base: ExportForm,
-  piece: Piece,
-  duration: number | undefined,
-): ExportForm {
-  if (piece.video) return formWithRecord(base, piece, duration);
+export function formForPiece(base: ExportForm, piece: Piece): ExportForm {
+  if (piece.video) return formWithRecord(base, piece);
   return piece.poster ? formWithDoc(base, piece.poster) : base;
 }
 
@@ -255,13 +233,8 @@ export function formForPiece(
  * `formWithRecord` for the form that wrote the record (the Video workspace after an edit): the
  * same, except that a Current theme and a Loop region section stay when they show the record's.
  */
-export function formSettled(
-  form: ExportForm,
-  piece: Piece,
-  duration: number | undefined,
-  ctx: VideoContext,
-): ExportForm {
-  let next = formWithRecord(form, piece, duration);
+export function formSettled(form: ExportForm, piece: Piece, ctx: VideoContext): ExportForm {
+  let next = formWithRecord(form, piece);
   if (form.look.theme === 'current') {
     const name = ctx.dark ? 'dark' : 'light';
     if (next.look.theme === name) next = { ...next, look: { ...next.look, theme: 'current' } };

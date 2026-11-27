@@ -7149,6 +7149,11 @@ This is the *input* form: fields with defaults are optional here.
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "zoom": {
+          "description": "The editor's zoom a Follow window shows.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "hud": {
           "description": "HUD readouts.",
           "maxItems": 32,

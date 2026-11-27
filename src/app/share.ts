@@ -297,6 +297,7 @@ const VIDEO_KEYS: Readonly<Record<string, string>> = {
   whole: 'W',
   followAt: 'f',
   window: 'w',
+  zoom: 'z',
   hud: 'h',
   hudLayout: 'H',
   ahead: 'A',

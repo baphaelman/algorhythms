@@ -363,9 +363,7 @@ export function openSurface(surface: ExportSurface): void {
   // A piece with a video record (M17) shows it in Video, never the viewer's options.
   const { piece } = usePlayer.getState();
   const recorded =
-    surface === 'video' && piece.video && !running
-      ? formWithRecord(remembered, piece, duration)
-      : remembered;
+    surface === 'video' && piece.video && !running ? formWithRecord(remembered, piece) : remembered;
   // The Camera is the piece's (Whole piece is the dialog's own).
   const form = {
     ...recorded,

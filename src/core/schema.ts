@@ -736,6 +736,7 @@ export const VideoSchema = z
     whole: z.boolean().optional().describe('Camera: Whole piece.'),
     followAt: z.number().min(10).max(90).optional().describe("Follow: the playhead's place, %."),
     window: z.number().positive().optional().describe('Follow: seconds the frame shows.'),
+    zoom: z.number().positive().optional().describe("The editor's zoom a Follow window shows."),
     hud: z.array(z.string().max(32)).max(32).optional().describe('HUD readouts.'),
     hudLayout: z.record(z.string(), z.unknown()).optional().describe('Placed readouts.'),
     ahead: z.number().min(0).max(100).optional().describe('Over the poster: Ahead, %.'),

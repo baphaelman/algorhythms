@@ -15,7 +15,6 @@
 
 import type { Piece, PieceVideo } from '../core/types';
 import { jsonEqual } from '../core/schema';
-import { pieceVideoFrame } from '../render/poster-video';
 import { amend, edit, inGesture, lastEntry, useEditor } from './editor/history';
 import { useExportSurface } from './export-surface';
 import { posterEntryFor } from './poster-sync';
@@ -62,14 +61,10 @@ const inVideo = (): boolean => useExportSurface.getState().surface === 'video';
  * newly opened piece (`loaded`), which shows the viewer's remembered options.
  */
 function showRecord(loaded = false): void {
-  const { piece, compiled } = usePlayer.getState();
+  const { piece } = usePlayer.getState();
   const { form } = useExportUi.getState();
   run = null;
-  const next = piece.video
-    ? formWithRecord(form, piece, compiled.duration)
-    : loaded
-      ? viewerVideoForm(form)
-      : form;
+  const next = piece.video ? formWithRecord(form, piece) : loaded ? viewerVideoForm(form) : form;
   lastFields = videoFields(next);
   if (next === form || jsonEqual(next, form)) return;
   mine(() => useExportUi.setState({ form: next }));
@@ -109,15 +104,15 @@ function writeForm(f: VideoFields): void {
 }
 
 /**
- * After a write, the form shows the record as stored (canonical numbers; a null Follow window,
- * the editor's zoom, as the record's window), so the preview draws what a link draws. The
- * Section's Loop region and the theme's Current stay when they show the same.
+ * After a write, the form shows the record as stored (canonical numbers), so the preview draws
+ * what a link draws. The Section's Loop region and the theme's Current stay when they show the
+ * same.
  */
 function settle(): void {
-  const { piece, compiled } = usePlayer.getState();
+  const { piece } = usePlayer.getState();
   const { form } = useExportUi.getState();
   if (!piece.video) return;
-  const next = formSettled(form, piece, compiled.duration, videoContext());
+  const next = formSettled(form, piece, videoContext());
   if (changedVideoFields(videoFields(form), videoFields(next)).length === 0) return;
   lastFields = videoFields(next);
   mine(() => useExportUi.setState({ form: next }));
@@ -167,10 +162,7 @@ export function startVideoSync(): () => void {
     if (s.piece !== p.piece && !writing && inVideo()) {
       if (loaded) showRecord(true);
       else if (s.piece.video !== p.piece.video) showRecord();
-      else if (s.piece.video && pieceVideoFrame(s.piece) !== pieceVideoFrame(p.piece)) {
-        // The frame decides what an absent window means (One row: the piece's; poster: a row).
-        showRecord();
-      } else if (
+      else if (
         s.piece.camera !== p.piece.camera &&
         e &&
         !seen.has(e) &&

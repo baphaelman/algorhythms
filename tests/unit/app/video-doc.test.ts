@@ -9,14 +9,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EXPORT_FORM,
   DEFAULT_LOOK_FORM,
-  followWindowOf,
   videoOptions,
   type ExportForm,
   type VideoContext,
 } from '../../../src/app/export-options';
 import { frameOptions } from '../../../src/app/video-export';
 import {
-  defaultVideoWindow,
   formForPiece,
   formSettled,
   formWithRecord,
@@ -24,7 +22,7 @@ import {
   videoContextFor,
   videoFields,
 } from '../../../src/app/video-doc';
-import { canonicalPiece, roundTime } from '../../../src/core/canonical';
+import { canonicalPiece } from '../../../src/core/canonical';
 import { compile } from '../../../src/core/compiler/compile';
 import { parsePiece } from '../../../src/core/schema';
 import type { Piece, PieceVideo } from '../../../src/core/types';
@@ -90,7 +88,7 @@ const withRecord = (piece: Piece, rec: PieceVideo): Piece =>
 
 /** Frame k of `piece`'s video as a viewer with `base` options and app `live` draws it. */
 function frame(piece: Piece, base: ExportForm, live: VideoContext, k: number): string {
-  const form = formForPiece(base, piece, D);
+  const form = formForPiece(base, piece);
   const ctx = videoContextFor(piece, live);
   const o = { ...videoOptions(form, piece, ctx), size: '720' as const, fps: 30 as const };
   const svg = new SvgContext(1280, 720);
@@ -107,7 +105,7 @@ describe('the video record (M17)', () => {
     expect(rec).toEqual({ look: { theme: 'dark' } });
   });
 
-  it('captures what the form shows: the editor zoom as the window, the section as times', () => {
+  it('captures what the form shows: the editor’s zoom, the section as times', () => {
     const rec = recordFromForm(MAKER, KITE, LIVE_MAKER);
     expect(rec).toMatchObject({
       aspect: '9:16',
@@ -122,10 +120,13 @@ describe('the video record (M17)', () => {
       credit: '',
       look: { theme: 'dark', glow: 0.4, playhead: false, future: 'full' },
     });
-    expect(rec.window).toBe(
-      roundTime(followWindowOf({ videoWindow: null, videoAspect: '9:16' }, LIVE_MAKER)),
+    // A window left to the editor's zoom keeps it: the maker's zoom, not the viewer's.
+    expect(rec.window).toBeUndefined();
+    expect(rec.zoom).toBe(9);
+    expect(videoContextFor(withRecord(KITE, rec), LIVE_A).window).toBe(9);
+    expect(recordFromForm({ ...MAKER, videoWindow: 12.3456 }, KITE, LIVE_MAKER).window).toBe(
+      12.346,
     );
-    expect(rec.window).not.toBe(defaultVideoWindow(KITE, '9:16', D));
     // Whole piece is the record's; Follow, Auto and Keys are the piece's camera.
     expect(recordFromForm({ ...MAKER, videoCamera: 'whole' }, KITE, LIVE_MAKER).whole).toBe(true);
     expect(recordFromForm(MAKER, KITE, LIVE_MAKER).whole).toBeUndefined();
@@ -152,8 +153,8 @@ describe('the video record (M17)', () => {
 
   it('the form shows the record over the defaults, never over the viewer’s options', () => {
     const piece = withRecord(KITE, recordFromForm(MAKER, KITE, LIVE_MAKER));
-    const a = videoFields(formWithRecord(VIEWER_A, piece, D));
-    const b = videoFields(formWithRecord(VIEWER_B, piece, D));
+    const a = videoFields(formWithRecord(VIEWER_A, piece));
+    const b = videoFields(formWithRecord(VIEWER_B, piece));
     expect(a).toEqual(b);
     expect(a.videoAspect).toBe('9:16');
     expect(a.videoHud).toEqual(['time', 'chord']);
@@ -162,21 +163,22 @@ describe('the video record (M17)', () => {
     expect(a.look.guides).toBe(DEFAULT_LOOK_FORM.guides);
     expect(a.videoCredit).toBe('');
     // File settings stay the viewer's.
-    expect(formWithRecord(VIEWER_A, piece, D).videoSize).toBe(VIEWER_A.videoSize);
+    expect(formWithRecord(VIEWER_A, piece).videoSize).toBe(VIEWER_A.videoSize);
     // Written again from what it shows, the record is the same.
     expect(
-      recordFromForm(formWithRecord(VIEWER_A, piece, D), piece, videoContextFor(piece, LIVE_A)),
+      recordFromForm(formWithRecord(VIEWER_A, piece), piece, videoContextFor(piece, LIVE_A)),
     ).toEqual(piece.video);
   });
 
   it('an empty record is the fixed defaults; a piece without one keeps the viewer’s form', () => {
     const piece = withRecord(KITE, {});
-    const f = formWithRecord(VIEWER_A, piece, D);
+    const f = formWithRecord(VIEWER_A, piece);
     expect(f.videoAspect).toBe('16:9');
     expect(f.videoTitleCard).toBe(false);
-    expect(f.videoWindow).toBe(defaultVideoWindow(KITE, '16:9', D));
+    expect(f.videoWindow).toBeNull();
+    expect(videoContextFor(piece, LIVE_A).window).toBe(KITE.view.window);
     expect(f.look).toEqual(DEFAULT_LOOK_FORM);
-    expect(formForPiece(VIEWER_A, KITE, D)).toBe(VIEWER_A);
+    expect(formForPiece(VIEWER_A, KITE)).toBe(VIEWER_A);
   });
 
   it('with a poster, the poster’s section and Look keys draw over the record’s', () => {
@@ -184,13 +186,13 @@ describe('the video record (M17)', () => {
       { ...KITE, poster: { section: { start: 2, end: 12 }, look: { theme: 'light' } } },
       recordFromForm(MAKER, KITE, LIVE_MAKER),
     );
-    const f = formWithRecord(VIEWER_A, piece, D);
+    const f = formWithRecord(VIEWER_A, piece);
     expect(f.sectionSpan).toEqual({ start: 2, end: 12 });
     expect(f.look.theme).toBe('light');
     // The video's own Look keys are the record's.
     expect(f.look.playhead).toBe(false);
-    // Over the poster, a record without a window frames one row.
-    expect(defaultVideoWindow(piece, '16:9', D)).toBeNull();
+    // Over the poster, a window left open frames one row: no zoom is stored.
+    expect(recordFromForm(MAKER, piece, LIVE_MAKER).zoom).toBeUndefined();
   });
 
   it('after a write the form keeps Current and Loop region when they show the record', () => {
@@ -198,10 +200,10 @@ describe('the video record (M17)', () => {
     const form = { ...MAKER, section: 'loop' as const };
     const piece = withRecord(KITE, recordFromForm(form, KITE, live));
     const ctx = videoContextFor(piece, live);
-    const f = formSettled(form, piece, D, ctx);
+    const f = formSettled(form, piece, ctx);
     expect(f.look.theme).toBe('current');
     expect(f.section).toBe('loop');
-    expect(f.videoWindow).toBe(piece.video?.window);
+    expect(f.videoWindow).toBeNull();
   });
 });
 
@@ -218,7 +220,7 @@ describe('frame fidelity (M17)', () => {
     const piece = withRecord(KITE, recordFromForm(MAKER, KITE, LIVE_MAKER));
     const ctx = videoContextFor(piece, LIVE_MAKER);
     // The maker's workspace after the write (`settle`).
-    const maker = formSettled(MAKER, piece, D, ctx);
+    const maker = formSettled(MAKER, piece, ctx);
     for (const k of ks) {
       const o = { ...videoOptions(maker, piece, ctx), size: '720' as const, fps: 30 as const };
       const svg = new SvgContext(1280, 720);
