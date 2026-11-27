@@ -112,7 +112,7 @@ class EngineProcessor extends AudioWorkletProcessor {
           break;
         case 'pause':
           this.seqReceived = msg.seq;
-          g.pause();
+          g.pause(msg.fade);
           break;
         case 'seek':
           this.seqReceived = msg.seq;

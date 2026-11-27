@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef } from 'react';
+import { Fragment, useEffect, useId } from 'react';
 import type { Suggestion } from '../../core/suggest';
 import {
   addSuggestion,
@@ -7,7 +7,8 @@ import {
   useSuggestions,
   watchSuggestions,
 } from '../editor/suggestions';
-import { PREVIEW_DELAY_MS, startMomentPreview, stopPreview } from '../preview';
+import { startMomentPreview } from '../preview';
+import { keyboardFocus, useCardHover } from './card-hover';
 import './palette.css';
 
 const ICON: Record<Suggestion['kind'], string> = {
@@ -32,35 +33,21 @@ function clock(t: number): string {
  * the end of the piece's last moment (core/suggest.ts). In a key with chord theory, one card per
  * chord job: "<Chord> · <Job>", the best fit marked ★; the numeral and a short reason go in the
  * tooltip and the description. Otherwise the composer's moves with their icons. Its own group, styled
- * apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering for
- * 300 ms previews it silently on the score (../preview.ts).
+ * apart from the "Add" palette. Click appends one (one undo entry) and selects it; hovering (or
+ * keyboard-focusing) one for 250 ms previews it on the score (../preview.ts) and plays it (M13,
+ * ../hover-sound.ts). A card that isn't a theory card names its result ("→ Dm7").
  */
 export function Suggestions() {
   const items = useSuggestions((s) => s.items);
   const t = useSuggestions((s) => s.t);
+  const results = useSuggestions((s) => s.results);
   const uid = useId();
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { hover: hoverCard, cancel: cancelHover } = useCardHover();
 
-  useEffect(() => {
-    const stop = watchSuggestions();
-    return () => {
-      stop();
-      if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
-    };
-  }, []);
+  useEffect(() => watchSuggestions(), []);
 
-  const cancelHover = (): void => {
-    if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
-    hoverTimer.current = null;
-    stopPreview();
-  };
-  const hover = (s: Suggestion): void => {
-    cancelHover();
-    hoverTimer.current = setTimeout(() => {
-      hoverTimer.current = null;
-      startMomentPreview(s.moment, s.label, appendMoment);
-    }, PREVIEW_DELAY_MS);
-  };
+  const hover = (s: Suggestion): void =>
+    hoverCard(() => startMomentPreview(s.moment, s.label, appendMoment));
 
   return (
     <div
@@ -84,6 +71,7 @@ export function Suggestions() {
         // A theory card: "G7", " · " (narrow spaces), "Tension"; its numeral "V7" in the tooltip.
         const num = s.job ? /^(.*?) · (.*) \(([^)]+)\)$/.exec(s.label) : null;
         const about = `${num ? `${num[3]}. ` : ''}${s.best ? 'Best fit. ' : ''}${s.tooltip}`;
+        const result = results[i] || undefined;
         return (
           <Fragment key={suggestionKey(t, i, s)}>
             <button
@@ -93,34 +81,44 @@ export function Suggestions() {
               data-job={s.job}
               data-best={s.best || undefined}
               data-label={s.label}
+              data-result={result}
               title={about}
               aria-describedby={desc}
               onPointerEnter={() => hover(s)}
               onPointerLeave={cancelHover}
+              onFocus={(ev) => {
+                if (keyboardFocus(ev.currentTarget)) hover(s);
+              }}
+              onBlur={cancelHover}
               onClick={() => {
                 cancelHover();
                 addSuggestion(s);
               }}
             >
-              {!s.job && (
-                <span className="palette-icon" aria-hidden="true">
-                  {ICON[s.kind]}
+              <span className="card-text">
+                <span className="card-name">
+                  {!s.job && (
+                    <span className="palette-icon" aria-hidden="true">
+                      {ICON[s.kind]}
+                    </span>
+                  )}
+                  {num ? (
+                    <span>
+                      {num[1]}
+                      <span className="suggest-sep"> · </span>
+                      {num[2]}
+                    </span>
+                  ) : (
+                    s.label
+                  )}
+                  {s.best && (
+                    <span className="suggest-best" aria-hidden="true">
+                      ★
+                    </span>
+                  )}
                 </span>
-              )}
-              {num ? (
-                <span>
-                  {num[1]}
-                  <span className="suggest-sep"> · </span>
-                  {num[2]}
-                </span>
-              ) : (
-                s.label
-              )}
-              {s.best && (
-                <span className="suggest-best" aria-hidden="true">
-                  ★
-                </span>
-              )}
+                {result && <span className="card-result">{result}</span>}
+              </span>
             </button>
             <span id={desc} className="visually-hidden">
               {about}. Appends at {clock(s.moment.at)}.

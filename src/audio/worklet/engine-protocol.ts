@@ -40,7 +40,8 @@ export type EngineInMessage =
   | { type: 'forget'; timbres: string[] }
   /** Start playing, from `from` seconds if given. */
   | { type: 'play'; seq: number; from?: number }
-  | { type: 'pause'; seq: number }
+  /** `fade`: fade-out seconds (default the 5 ms seek fade). */
+  | { type: 'pause'; seq: number; fade?: number }
   | { type: 'seek'; seq: number; to: number }
   /** Loop [start, end) seconds, or stop looping. */
   | { type: 'loop'; range: { start: number; end: number } | null }

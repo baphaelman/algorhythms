@@ -17,6 +17,7 @@ import { composeView } from './compose-view';
 import { useCompose } from './compose';
 import type { ComposeBrief } from '../core/compose-brief';
 import { previewState } from './preview';
+import { hoverSoundState } from './hover-sound';
 import { encodeShareLink, encodeWatchLink } from './share';
 import { previewStats, scrubPreview } from './ui/export-state';
 import { useWorkspace } from './poster-workspace';
@@ -48,10 +49,12 @@ export interface AlgoRhythmsDebug {
   encodeWatchLink: typeof encodeWatchLink;
   /** Editor state and selection (M4b), for tests that can't use the lane. */
   editor: { state: typeof useEditor; select: typeof select; undo: typeof undo; redo: typeof redo };
-  /** Palette hover and drag preview state (revision 6; silent since 2026-11-21). */
+  /** Palette hover and drag preview state (revision 6; sounds again since M13). */
   preview: typeof previewState;
   /** Audition state (§11.3 auditioning). */
   audition: typeof auditionState;
+  /** Hover sound state (M13 "Hover to hear"; the sound itself is an audition). */
+  hoverSound: typeof hoverSoundState;
   /** Compose for me's pen and phase (M4.5-38). */
   compose: typeof composeView;
   /** The brief of the last Compose for me build (M12). */
@@ -130,6 +133,7 @@ export function installDebug(): void {
     editor: { state: useEditor, select, undo, redo },
     preview: previewState,
     audition: auditionState,
+    hoverSound: hoverSoundState,
     compose: composeView,
     composeBrief: () => useCompose.getState().brief,
     composeSeed: (seed: number) => useCompose.setState({ seed }),

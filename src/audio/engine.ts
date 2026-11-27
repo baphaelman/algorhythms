@@ -222,11 +222,16 @@ export class AudioEngine {
 
   /**
    * Auditions `score` (a few held notes on the real voice path, PLAN.md §11.3 "Drag preview and
-   * auditioning"): swaps it in and plays it from 0, replacing any audition already sounding. The
+   * auditioning"): swaps it in and plays it from `from` (default 0), replacing any audition
+   * already sounding. The
    * loop range and `ended` are suspended until `endAudition`, which pauses and swaps the last
    * loaded score back. Resolves false (and does nothing) while the transport is playing.
    */
-  async audition(score: CompiledScore, timbres?: Record<string, Timbre>): Promise<boolean> {
+  async audition(
+    score: CompiledScore,
+    timbres?: Record<string, Timbre>,
+    from = 0,
+  ): Promise<boolean> {
     if (!this.auditioning && this.isPlaying) return false;
     const flat = flatten(score);
     const sets = await this.prepareTables(flat, timbres ?? this.timbresValue, false);
@@ -240,7 +245,7 @@ export class AudioEngine {
     const ctx = this.context;
     if (ctx instanceof AudioContext && ctx.state !== 'running') void ctx.resume();
     this.postSwap(flat);
-    this.post({ type: 'play', seq: this.expect(0, true), from: 0 });
+    this.post({ type: 'play', seq: this.expect(from, true), from });
     return true;
   }
 
@@ -249,11 +254,14 @@ export class AudioEngine {
     return this.auditioning;
   }
 
-  /** Ends the audition (if any): pauses, then restores the real score and the loop range. */
-  endAudition(): void {
+  /**
+   * Ends the audition (if any): pauses (fading out over `fade` seconds, default 5 ms), then
+   * restores the real score and the loop range.
+   */
+  endAudition(fade?: number): void {
     if (!this.auditioning) return;
     this.auditioning = false;
-    this.post({ type: 'pause', seq: this.expect(0, false) });
+    this.post({ type: 'pause', seq: this.expect(0, false), fade });
     if (this.real) this.postSwap(flatten(this.real));
     this.post({ type: 'loop', range: this.loopRange });
   }

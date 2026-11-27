@@ -1,7 +1,8 @@
 /**
  * Drag preview and auditioning (PLAN.md §11.3, owner 2026-11-21; M4.5-35): a palette drag shows
- * the moment's ghost lines at the drop time before the drop, and Escape clears them; hover is
- * silent; an inspector chord pick sounds while stopped and not while playing; a dot drag sounds.
+ * the moment's ghost lines at the drop time before the drop, and Escape clears them; hovering a
+ * card sounds (M13 "Hover to hear", more in hover-sound.spec); an inspector chord pick sounds while
+ * stopped and not while playing; a dot drag sounds.
  * Sound is read through the debug hook's analyser. Chromium only.
  */
 
@@ -207,16 +208,21 @@ test('a palette drop still adds the moment, and the ghost goes', async ({ page }
   await expect.poll(async () => Number.isNaN((await hook(page)).ghostAt)).toBe(true);
 });
 
-test('hovering the palette previews on the score and makes no sound', async ({ page }) => {
+test('hovering the palette previews on the score and sounds it; leaving stops it', async ({
+  page,
+}) => {
   await seek(page, 1);
   await waitForSilence(page);
   const before = (await hook(page)).count;
   await page.getByTestId('palette').locator('[data-moment="chord"]').hover();
   await expect.poll(async () => (await hook(page)).preview).toBe('chord');
   await expect.poll(async () => (await hook(page)).ghostAt).toBeCloseTo(1, 3);
-  expect(await peakRms(page, 1200)).toBeLessThan(0.0005);
-  expect(await page.evaluate(() => window.__algorhythms!.engine()?.isPlaying ?? false)).toBe(false);
-  expect((await hook(page)).count).toBe(before);
+  // M13 "Hover to hear" (reverts "hover is silent", 2026-11-21): one audition, audible.
+  await expect.poll(async () => (await hook(page)).count).toBe(before + 1);
+  expect(await waitForSound(page)).toBeGreaterThan(0.002);
+  await page.mouse.move(2, 400);
+  await expect.poll(async () => (await hook(page)).active).toBe(false);
+  await waitForSilence(page);
 });
 
 test('a chord pick sounds while stopped, and not while playing', async ({ page }) => {

@@ -19,6 +19,7 @@ import {
   type ThemePref,
 } from '../store';
 import { setKeepOrder, useLineOrder } from '../editor/line-order';
+import { setHoverSound, useHoverSound } from '../hover-sound';
 import { refreshSuggestions } from '../editor/suggestions';
 import { beatStep } from '../editor/snap';
 import { LiveToggle } from './LiveDrawer';
@@ -46,7 +47,7 @@ const THEMES: readonly (readonly [ThemePref, string])[] = [
 /**
  * The bar under the lanes (PLAN.md §10, §11.2), compact (build-log "Compact view bar"): Add and
  * Next on one row when they fit; then Zoom, Follow, Camera, Snap, the drawer toggles, and the "View ▾"
- * (line colours, theme, HUD, line order) and "?" (help) popovers.
+ * (line colours, theme, HUD, line order, hover sound) and "?" (help) popovers.
  */
 export function ViewBar() {
   const win = usePlayer((s) => s.view.window);
@@ -57,6 +58,7 @@ export function ViewBar() {
   const follow = usePlayer((s) => s.view.follow);
   const cameraPath = usePlayer((s) => s.view.cameraPath);
   const keepOrder = useLineOrder((s) => s.keep);
+  const hoverSound = useHoverSound((s) => s.on);
   const view = usePlayer((s) => s.piece.view);
   // "Snap to beats" shows when the piece has a tempo, on unless the piece turned it off.
   const hasTempo = beatStep({ gridBpm: view.gridBpm }) !== null;
@@ -186,7 +188,7 @@ export function ViewBar() {
           <LiveToggle />
           <BarPopover
             label="View ▾"
-            title="Line colours, theme, HUD, line order"
+            title="Line colours, theme, HUD, line order, hover sound"
             panelLabel="View options"
             testId="view-options"
           >
@@ -245,6 +247,17 @@ export function ViewBar() {
                 onClick={() => setKeepOrder(!keepOrder)}
               >
                 Keep lines in order
+              </button>
+
+              <button
+                type="button"
+                className="toggle hover-sound-toggle"
+                aria-pressed={hoverSound}
+                data-testid="hover-sound-toggle"
+                title="Hovering an Add or Next card plays what it would do (while stopped)"
+                onClick={() => setHoverSound(!hoverSound)}
+              >
+                Hover sound
               </button>
             </div>
           </BarPopover>

@@ -55,6 +55,13 @@ export const auditionState = {
   held: false,
   /** The latest audition's notes. */
   notes: [] as AuditionNote[],
+  /** What started the latest audition ('hover': a card's hover sound), else null. */
+  kind: null as string | null,
+  /** The latest audition's length, seconds. */
+  seconds: 0,
+  /** Auditions stopped so far, and the latest stop's fade-out (seconds; 0 = the engine's 5 ms). */
+  stops: 0,
+  lastFade: 0,
 };
 
 let token = 0;
@@ -225,16 +232,47 @@ export function audition(
     return false;
   }
   if (notes.length === 0) return false;
-  const { compiled, piece } = usePlayer.getState();
+  const { compiled } = usePlayer.getState();
   const length = held ? HOLD_SECONDS : seconds;
   const score = auditionScore(compiled, notes, t, length, melody);
+  return playAudition(score, { notes, held, seconds: length });
+}
+
+/**
+ * Plays a ready-made audition `score` from `from` for `seconds` (then stops it), replacing any
+ * audition sounding; `notes` and `held` are recorded in `auditionState`. False if refused.
+ */
+export function playAudition(
+  score: CompiledScore,
+  {
+    notes,
+    seconds,
+    from = 0,
+    held = false,
+    kind = null,
+  }: {
+    notes: readonly AuditionNote[];
+    seconds: Seconds;
+    from?: Seconds;
+    held?: boolean;
+    /** What started it, for tests ('hover': a card's hover sound). */
+    kind?: string | null;
+  },
+): boolean {
+  if (busy()) {
+    auditionState.suppressed++;
+    return false;
+  }
+  const { piece } = usePlayer.getState();
   const my = ++token;
   auditionState.count++;
   auditionState.active = true;
   auditionState.held = held;
   auditionState.notes = notes.slice();
+  auditionState.kind = kind;
+  auditionState.seconds = seconds;
   if (timer !== null) clearTimeout(timer);
-  timer = setTimeout(stopAudition, length * 1000);
+  timer = setTimeout(() => stopAudition(), seconds * 1000);
   void primeAudio().catch(() => undefined);
   resumeAudio();
   void auditionAudio(
@@ -242,18 +280,24 @@ export function audition(
     piece.timbres,
     () => my === token,
     () => my === token && auditionState.active,
+    from,
   ).catch(() => undefined);
   return true;
 }
 
-/** Stops the audition (a drag's release, or the one-shot's end). */
-export function stopAudition(): void {
+/**
+ * Stops the audition (a drag's release, or the one-shot's end), fading out over `fade` seconds
+ * (default the engine's 5 ms).
+ */
+export function stopAudition(fade?: number): void {
   if (timer !== null) clearTimeout(timer);
   timer = null;
   if (!auditionState.active) return;
   auditionState.active = false;
+  auditionState.stops++;
+  auditionState.lastFade = fade ?? 0;
   token++;
-  endAuditionAudio();
+  endAuditionAudio(fade);
 }
 
 /** Plays what moment `id` moves to in the current score: its resulting notes, once. */

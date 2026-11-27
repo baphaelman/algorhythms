@@ -42,14 +42,15 @@ test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is enough h
 test('palette click adds a moment at the playhead', async ({ page }) => {
   await openNoGrid(page);
   const palette = page.getByTestId('palette');
-  // The rows' palette (§6.4, M10 acceptance): six short labels, explanations in tooltips only.
+  // The rows' palette (§6.4, M10 acceptance): six short labels, explanations in tooltips only;
+  // a card may name its result under its label (M13, "→ Dm7").
   await expect(palette.getByRole('button')).toHaveText([
-    /Chord$/,
-    /Texture$/,
-    /Melody$/,
-    /Level$/,
-    /Sound$/,
-    /Key$/,
+    /Chord(→ .+)?$/,
+    /Texture(→ .+)?$/,
+    /Melody(→ .+)?$/,
+    /Level(→ .+)?$/,
+    /Sound(→ .+)?$/,
+    /Key(→ .+)?$/,
   ]);
   await expect(palette.getByRole('button').first()).toHaveAttribute('title', /\(C\)$/);
   for (const [i, k] of ['C', 'T', 'M', 'L', 'S', 'K'].entries())

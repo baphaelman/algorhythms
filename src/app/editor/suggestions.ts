@@ -15,6 +15,8 @@ import { extendEnd } from './end';
 import { NEXT_HOLD, beatStep, nextBeat } from './snap';
 import { withChordFill } from './new-moment';
 import { insertMoments, newMomentIds } from './ops';
+import { cardResult } from './card-result';
+import { PROBE_ID } from './palette-effects';
 
 const round3 = (t: Seconds): Seconds => Math.round(t * 1000) / 1000;
 
@@ -91,9 +93,24 @@ interface SuggestionsState {
   /** The time the suggestions are for (NaN before the first run). */
   t: Seconds;
   items: Suggestion[];
+  /** Per item: what it lands on, for its card (M13, ./card-result.ts); '' for none. */
+  results: string[];
 }
 
-export const useSuggestions = create<SuggestionsState>()(() => ({ t: NaN, items: [] }));
+export const useSuggestions = create<SuggestionsState>()(() => ({
+  t: NaN,
+  items: [],
+  results: [],
+}));
+
+/**
+ * Suggestion `s`'s result label: none for a theory card (its label names the chord), else what
+ * appending it lands on.
+ */
+export function suggestionResult(piece: Piece, s: Suggestion): string {
+  if (s.job) return '';
+  return cardResult(piece, s.moment, s.label, appendMoment, PROBE_ID);
+}
 
 let last: { t: Seconds; score: CompiledScore | null } = { t: NaN, score: null };
 
@@ -109,7 +126,7 @@ export function refreshSuggestions(force = false): void {
   } catch {
     items = [];
   }
-  useSuggestions.setState({ t, items });
+  useSuggestions.setState({ t, items, results: items.map((s) => suggestionResult(piece, s)) });
 }
 
 /**
