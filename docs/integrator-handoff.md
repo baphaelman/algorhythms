@@ -4,10 +4,9 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
 
 ## Now (2026-11-27)
 - **main:** af2933b + docs = M17 done + HUD-position rounding (placed readouts at 4 significant digits; a poster HUD layout equal to the video's packs as `1`; Kite Day with six readouts fits a QR code, 1,607 → 1,491). Verified (lint, typecheck, unit 3470, build, 153 e2e). **Live:** 53f76f6 (CI green; Pages `main-dNc_rbV7.js`). **Preview artifact:** v95.
-- **In flight:** nothing.
-- **Queue:** M13, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
+- **In flight:** M13 K1 hover to hear (from b4e0397, ports 6200/4200, Opus medium).
+- **Queue:** M13, one builder at a time (owner yes 2026-11-27): K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance. M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
-  - M13 split?
   - M17 device checks: real fullscreen on the Mac (+ iPhone if handy); a phone camera scanning a poster's QR code.
   - The owner's reorganization of the screens (for M16).
   - Integrator call (veto): the drop hint takes no room and hides when it doesn't fit (hidden on square/A4 for 7 of 13 bundled pieces with long titles).
@@ -21,7 +20,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6190/4190; the next builder gets 6200/4200. The integrator verifies on 5490/4490.
+- **Ports used** up to 6190/4190; K1 has 6200/4200; the next builder gets 6210/4210. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|
@@ -34,7 +33,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
 | M14 | Poster workspace: done 2026-11-25. Owner follow-ups (Save/Revert bar, selection panel, per-row placements, Text tool, round 3 incl. zoom and per-row hiding) live at b871add. |
 | M15 | Play the poster: done 2026-11-26 (`docs/m15-acceptance.md`). |
 | M17 | Pieces that travel: done 2026-11-27 (`docs/m17-acceptance.md`); owner device checks open (fullscreen, QR scan). |
-| M13, then M16 | M13 split awaiting the owner's yes; M16 after the owner's screen reorganization. |
+| M13, then M16 | M13 in progress 2026-11-27 (K1 running); M16 after the owner's screen reorganization. |
 
 ## Standing rules (owner)
 - **Don't write code.** Builders write all of it. You assign, verify, merge, push and report. You own PLAN.md, this file, `docs/owner-decisions.md` and the build log's traps list.
