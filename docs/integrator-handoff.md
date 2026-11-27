@@ -3,9 +3,9 @@
 For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep **Now** current: overwrite it, don't append. Also read `CLAUDE.md` (the rules for every agent) and the traps list at the top of `docs/build-log.md`. `PLAN.md` is the spec; read only the sections a task needs. Owner rulings are in `docs/owner-decisions.md` and PLAN; older text is in git.
 
 ## Now (2026-11-27)
-- **main:** aef8294 + docs = M17 W1 (video in the piece, watch links), W2 (watch view, Share's Opens to), W3 (pictures that open, the drop hint); verified (lint, typecheck, unit 3438, build, 313 e2e chromium+firefox). d739d4b (W3 alone) failed CI on export-section:302 + hud-place:236, fixed in ad6938e. **Live:** b871add (Pages `main-DzidMlva.js`) until this push's CI is green. **Preview artifact:** v92.
-- **In flight:** M17 W4 QR code on posters (from aef8294; ports 6170/4170).
-- **Queue:** M17 W5 acceptance after W4. M13 alongside, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
+- **main:** 24da2de + docs = M17 W1–W4 (video in the piece, watch links, watch view, Share's Opens to, pictures that open, drop hint, poster QR code; libraries `qrcode-generator` 2.0.4 MIT, `jsqr` 1.4.0 Apache-2.0 dev-only). Verified (lint, typecheck, unit 3464, build, 196 e2e chromium+firefox). **Live:** c3b15fa (W1–W3; Pages css `main-CShmQTiG.css`) until this push's CI is green. **Preview artifact:** v93.
+- **In flight:** M17 W5 acceptance (`docs/m17-acceptance.md`; ports 6180/4180).
+- **Queue:** M13 alongside, one builder at a time, once the owner OKs the split (K1 hover to hear, K2 folds/widths/Next, K3 shift sequences + walks, K4 sound, K5 acceptance). M16 after the owner's screen reorganization.
 - **Open owner questions** (also in owner-decisions "Needs you"):
   - M13 split?
   - The owner's reorganization of the screens (for M16).
@@ -20,7 +20,7 @@ For the T3 thread that orchestrates AlgoRhythms. Read it before acting, and keep
   - poster: gradient handles have no keyboard path;
   - poster: in the Poster section strip, a press moves the nearer handle;
   - video: the One-row camera hides only whole parts.
-- **Ports used** up to 6170/4170; the next builder gets 6180/4180. The integrator verifies on 5490/4490.
+- **Ports used** up to 6180/4180; the next builder gets 6190/4190. The integrator verifies on 5490/4490.
 
 | Milestone | State |
 |---|---|

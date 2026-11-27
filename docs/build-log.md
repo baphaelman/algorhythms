@@ -7,7 +7,7 @@ Entries before M14 (M0 to M12, 2026-11-19 to 2026-11-24) are in `docs/archive/bu
 ## Traps and known flakes (keep this list current; delete what gets fixed)
 - **Fail on this Mac even on main; don't chase:** `mp4-mux` h264+aac, `touch-edit:239`, `tune-ui:345`, poster-edit "the playhead moves on the artboard while the music plays" (the audio clock stalls), and `render.spec`'s 4 ms budget (software raster; CI's guard is 12 ms).
 - **Load timeouts:** in a full `pnpm test` on a busy Mac, `live-take-random` and other files hit the 5 s timeout. They pass alone; report, don't chase.
-- **CI:** the WebKit playback-speed test on the macOS runner fails now and then; rerun that shard.
+- **CI:** the WebKit playback-speed test and `live.spec` @latency ("play() returned null", webkit-dev) on the macOS runner fail now and then; rerun that job.
 - **Worktree base:** T3 starts a worktree from the main checkout's current branch. Check `git log --oneline -1` against `main` before working.
 - **Video worker:** anything posted to `video.worker.ts` (e.g. `PosterLayout`) must stay structured-cloneable, so no functions (the Text tool broke video export this way, 2026-11-25).
 - **Linux CI vs the Mac:** Linux Chromium has no AAC encoder (Opus fallback). Linux Chromium and Firefox draw subpixel text on opaque canvases, so compare canvases drawn with the same alpha setting.
