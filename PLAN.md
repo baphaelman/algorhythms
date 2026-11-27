@@ -1,23 +1,8 @@
 # AlgoRhythms: Project Plan
 
-**Status:** revision 2, approved by the owner on 2026-11-19 (answers in §16); revision 5 (editor view, §18) drafted 2026-11-20, awaiting the owner's go. Implementation is under way, milestone by milestone (§15). The project is named **AlgoRhythms**.
-**Date:** 2026-11-19 (revision 2: 2026-11-19)
-**Audience:** an engineer or agent reviewing this plan before implementation starts.
-
----
-
-## 0. How to review this document
-
-This is a plan, not a spec that has been tested. The owner's decisions in §2 are fixed unless you find a strong technical reason against one; say so explicitly if you do. Everything else is the author's proposal and open to challenge.
-
-The most useful feedback is concrete:
-- contradictions between sections;
-- missing pieces a builder would hit;
-- technical assumptions that are wrong (browser APIs, audio DSP, MIDI);
-- risks that are underestimated;
-- scope that doesn't serve the goals in §1.
-
-Please propose a fix with each problem. §17 lists the reviewer questions, with the first review's resolutions and the questions still open. §18 is the changelog, so a second reviewer can focus on what is new.
+**Status:** the living spec, at revision 20 (2026-11-24; owner-approved, §18). Milestones and their state are in §15; the current state of work is in `docs/integrator-handoff.md` ("Now"). The project is named **AlgoRhythms**.
+**Last tidied:** 2026-11-26 (finished milestones cut to one line; the pre-tidy text is `git show 0c1eab9:PLAN.md`).
+**Audience:** the integrator and builder agents. Builders read the sections their task names.
 
 ---
 
@@ -66,7 +51,7 @@ The engine works out every voice's path from those moments. You can also play it
 | D7 | License: **MIT**. | Author, based on the owner's priority of being "most easily accessible" | Confirmed by the owner (§16). There are no copyleft constraints now that the plugin is gone. The owner does not expect outside contributors. |
 | D8 | Static site with no backend. | Author | Pieces are small JSON documents (§5), so local storage and share-by-URL are enough. |
 | D9 | The model's time unit is seconds. A BPM grid is optional and used only for snapping. | Owner | Confirmed (§16). |
-| D10 | React + Vite + Zustand for the UI. | Author, open | The reviewer is invited to challenge this (§17). |
+| D10 | React + Vite + Zustand for the UI. | Author, open | Settled in the 2026-11-19 reviews. |
 
 ---
 
@@ -375,7 +360,7 @@ Sort the active targeted voices by committed destination (§7.1), breaking ties 
 - **Rule:** after stagger and jitter are drawn, the compiler checks each adjacent pair of moving targeted voices for a mid-glide crossing by sampling both curves (64 points). If they would cross, the overtaking voice adopts the overtaken voice's start time and duration. Repeat until no pair crosses. This converges, since in the worst case the whole group shares one timing.
 - **Why this works:** two voices with the same timing and the same ease, whose endpoints are in order, cannot cross. Their difference is (b₀ − a₀)(1 − e) + (b₁ − a₁)·e, which is ≥ 0. The interruption velocity term (§7.5) can break this, so the sampled check, not the algebra, is the authority. Where adopting timing doesn't remove a crossing caused by carried velocity, the overshoot clamp in §7.5 is tightened to the gap.
 - **Scope:** the guarantee covers the targeted voices only. A `rank` or `voices` selector may move a subset through a voice outside the target; the compiler reports that as an `info` diagnostic. `pin` and `free` are exempt.
-- **Musical cost:** merged timings make staggered fan-outs more uniform where voices are close together. This is an open question for the second review (§17).
+- **Musical cost:** merged timings make staggered fan-outs more uniform where voices are close together. The second review kept it.
 
 ### 7.3 Voicing: from a NoteSet to k target pitches
 - **`pitches`:**
@@ -662,7 +647,7 @@ Garbage-collection pauses on the audio thread cause dropouts, especially on Safa
 - **Recording:**
   - With Record armed, the transport runs over the timeline (silent where nothing is written) and each live change is written as a `chord` or `unison` moment at its time, with the glide settings in effect.
   - Recorded moments are ordinary, editable moments.
-  - v1 does not layer live playing over playback of existing moments. "Record into silence" is the v1 scope (resolved in review, §17).
+  - v1 does not layer live playing over playback of existing moments. "Record into silence" is the v1 scope (resolved in review).
 - **Latency:** worklet-side latency is ≤ one block (128 samples) plus message latency, on top of the device's output latency. Live mode uses an `'interactive'` context (§8.3). Glides tolerate latency well.
 
 ---
@@ -1113,178 +1098,39 @@ algorhythms/
 
 ## 15. Milestones
 
-Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site.
+Sizes are relative: S < M < L < XL. Every milestone ends with a deployable site. Finished milestones are one line each; their full plan text is in `git show 0c1eab9:PLAN.md`.
 
 **Ordering rationale (revision 2).** D4 makes audio export a high priority. MIDI export needs only `core` (M1), stems need only the engine (M2), and Generate already exists in the prototype. So Generate and all audio exports ship in M3, before the editor. The first public release is then useful on its own: generate a piece, hear and see it, and take it into a DAW. The former XL editor milestone is split in two (M4, M5).
 
-**M0. Scaffold (S)**
-- Repo, LICENSE, README stub, CI (including a macOS runner for WebKit), and a GitHub Pages deploy of a placeholder page; the prototype is committed.
-- The AudioWorklet build pipeline is proven (§14).
-- *Accept when:* CI is green, the site is live, and a TypeScript AudioWorklet plays a sine in both `vite dev` and the deployed site on Chromium, Firefox and WebKit.
+**M0. Scaffold (S):** done 2026-11-20. CI green on all three engines; site live.
 
-**M1. Core compiler (L)**
-- Types, schema (passthrough objects, version policy), tuning (12-TET), scales, chord parser, counter-based RNG (§7.7), portable math (§7.11).
-- The event-simulation compiler with overlap rules (§7.1).
-- Voice leading: ordered injective and surjective, plus free; crossing enforcement (§7.2).
-- Interruption with carried velocity and the overshoot clamp (§7.5).
-- Voicings; moments chord, unison, split, merge, shift, spread, walk, pin, key and level; diagnostics; query API; flattening to typed arrays (§8.11).
-- The prototype composer ported as `generate(seed, opts) → Piece`.
-- **Example pieces:** 4–6 pieces, made with `generate()` and then hand-edited as JSON, released as CC0. They feed the golden tests and the M3 gallery, so they can't wait for the editor.
-- *Accept when:*
-  - the property and golden tests pass, including the cross-engine golden test;
-  - the compile target in §7.10 is met;
-  - for 20 seeds, `generate()` produces the same section sequence and the same active-voice count per section as the prototype's `compose()`, and compiles with no `error` diagnostics;
-  - the owner listens to five generated pieces (rendered with a temporary Web Audio harness) and judges them at least as musical as the prototype's.
+**M1. Core compiler (L):** done 2026-11-20. The owner's listening test passed. The strict §7.10 5 ms target is missed (~8 ms full compile); incremental compile keeps edits cheap.
 
-**M2. Sound engine and WAV export (L)**
-- The DSP graph (§8.4) with always-on detune, the six M2 presets (§8.5), the send-based FX (§8.6), tone and limiter.
-- The worklet host and bridge: play, pause, seek, loop, hot-swap, clock anchors and latency hint (§8.3), the allocation-free discipline and wavetable worker (§8.11).
-- The export worker with WAV output (16-bit, 24-bit, 32-bit float).
-- An internal fixture page for listening tests (not linked publicly).
-- *Accept when:*
-  - the DSP tests pass, including the unison/merge level and no-GC tests;
-  - the real-time factor is ≥ 10× in Node with 24 voices and FX (§8.9);
-  - two exports of the same piece are byte-identical, and so are exports with different chunk sizes;
-  - there are no audible clicks on seek, loop or swap, checked both with the click detector and by ear on fixtures.
+**M2. Sound engine and WAV export (L):** done 2026-11-21. The owner's listening check passed.
 
-**M3. Player, Generate and audio export: first public release (L)**
-- The renderer, camera, window, colors, scrubber and HUD.
-- Transport with a meter; examples gallery; load from a file or link; themes; phone layout; the iOS audio session (§11.5).
-- The Generate panel (§11.3).
-- Exports: stems with exact sums, streamed (§12); MIDI as per-voice tracks, MPE and notes-only; export options and progress UI.
-- *Accept when:*
-  - 60 fps at 1080p with 24 voices on a mid-range laptop;
-  - the Playwright suites pass on all three engines;
-  - a first-time visitor can press play and hear a piece within 3 s of the page loading;
-  - on an iPhone with the silent switch on, playback is audible, or the hint is shown where the audio session API is missing;
-  - 32-bit float stems plus the FX return sum to the mix with a residual ≤ −90 dBFS;
-  - the per-voice-track MIDI and the MPE file both play their glides correctly in at least two DAWs (an MPE synth for the MPE file), using whichever DAWs the owner has;
-  - a 5-minute, 24-voice stems export stays under about 500 MB of peak memory on Chromium.
+**M3. Player, Generate and audio export: first public release (L):** feature-complete 2026-11-20 (player, Generate, WAV/stems/MIDI export, HUD chord).
 
-**M4. Editor core (L)**
-- The lane as DOM/SVG with direct-transform drags (§11.3a), palette, shortcuts, inspector (with Reroll), voices drawer.
-- Undo/redo, autosave and My pieces with the eviction safeguards (§11.4), JSON import/export.
-- *Accept when:*
-  - a new user can build a 1-minute piece from the empty template with the mouse alone;
-  - every action can be undone;
-  - an edit made during playback is heard within 50 ms, with no clicks;
-  - persistent storage is requested and its status shown, and "Download all" exports every piece.
+**M4. Editor core (L):** done 2026-11-20. Acceptance: `docs/archive/build-log-to-m12.md`, "M4 acceptance checks".
 
-**M4.5. Editor view redesign (M; revision 5, owner direction 2026-11-20)**
-- One time axis with a ruler and one playhead; Follow modes; zoom slider and Fit; future dimmed (§10).
-- The rows: Moments, Transitions, Level (Effects with M6) (§11.2).
-- The inspector's chord picker, transition, level and voice controls, and walk controls and step editing that freezes the walk (`fixed`, `walkSteps`) (§6.2, §7.9, §11.3).
-- *Accept when:*
-  - at any zoom and while following, a moment's marker, its transition bar's start and the start of its glide on the lines sit within 1 px of each other;
-  - during playback Smooth holds the playhead at 35% (±1%) away from the piece's ends, Page jumps at 92%, and Off never moves the view;
-  - clicking or dragging the ruler seeks, and the playhead line spans the ruler, the score and every row;
-  - picking a chord (from the key, or root, quality, bass and voicing) is heard within 50 ms, and the header shows its name, numeral and notes;
-  - every walk control (density, allowed steps, grid, glide, bass leap) is heard within 50 ms;
-  - moving a walk step freezes the walk and changes only that note; the frozen walk survives save, load and undo, ignores earlier edits, and Unfreeze restores the generated walk;
-  - Generate asks before replacing an edited piece;
-  - (revision 6) a dragged loop region loops playback without clicks, survives save/load, and the toggle keeps the region;
-  - (revision 6) double-clicking a line and dragging adds a note point; the chord label updates; lines cross only when "Keep lines in order" is off (the default); `back` returns the note;
-  - (revision 6) every arrival dot can be dragged to change that note; changing a chord's Notes: n never makes lines cross or start or stop in mid-air (born voices emerge from a sounding neighbour, dying voices glide into a neighbour before fading);
-  - (revision 6) by default all voices moved by one moment arrive within 1 ms of each other; a chord with `count` changes the voice count; a per-voice chord edit freezes only that chord and Unfreeze restores it; a merge on a unison shows `no-effect`, its marker is dimmed, and the palette greys merge out there; palette hover previews are silent (owner 2026-11-21) and inspector edits are auditioned;
-  - 60 fps at 1080p with 24 voices while following;
-  - the M4 acceptance checks still pass.
+**M4.5. Editor view redesign (M):** done 2026-11-21. Acceptance: `docs/m4.5-acceptance.md`.
 
-**M5. Editor completion (M)**
-- Piano ruler; multi-select, marquee, copy and paste; Freeze (§11.3).
-- Share links with default stripping (§11.4).
-- Touch editing for tablets (§11.3b).
-- *Accept when:*
-  - share links round-trip exactly;
-  - every example piece's share link is ≤ 2,000 characters;
-  - adding, moving, editing and deleting moments works by touch alone on iPad Safari.
+**M5. Editor completion (M):** feature-complete 2026-11-21. Acceptance: `docs/m5-acceptance.md`.
 
-**M6. Timbre depth (M)**
-- FM with a separate modulator phase, noise, the stretch/additive path, the harmonic editor, per-voice timbre, the `timbre` moment, preset save and load, bell and more presets.
-- *Accept when:* preset changes during playback cause no clicks; preset files round-trip; and the click detector passes on FM fixtures with non-integer ratios.
+**M6. Timbre depth (M):** feature-complete 2026-11-22. Acceptance: `docs/m6-acceptance.md`.
 
-**M7. Live instrument (M)**
-- Musical typing mode, Web MIDI input, live voice leading with no debounce delay, the live panel, the switch to an `'interactive'` context, and recording into silence with chord merging (§9).
-- *Accept when:*
-  - key-to-glide start is ≤ 10 ms plus device output latency;
-  - a recorded take plays back with pitch paths matching the live ones within 1 cent and 1 block;
-  - while musical typing is on, no editor shortcut fires from a letter key.
+**M7. Live instrument (M):** done 2026-11-22. Acceptance: `docs/m7-acceptance.md`.
 
-**M8. Video export (M)** (revision 11)
-- §12 "Video export": offline frames + mix audio through WebCodecs into an in-house MP4 muxer, the three aspects, Follow and Whole-piece cameras, options, streaming save, progress and cancel.
-- *Accept when:*
-  - the file plays in Chromium, Firefox and Safari `<video>` elements with duration within one frame of the WAV export's length;
-  - decoded frame k matches a direct `drawScore` render at t = k / fps (codec tolerance), and the decoded audio matches the WAV export within codec tolerance, so sync is exact by construction (no drift over a 10-minute piece);
-  - a 1080p30 export of a 3-minute piece finishes faster than real time on a desktop, and cancel stops it within 1 s;
-  - the muxer's output passes a box-structure check (and `ffprobe` where available in CI).
+**M8. Video export (M):** feature-complete 2026-11-22. Acceptance: `docs/m8-acceptance.md`.
 
-**M9. Poster export (S)** (revision 12)
-- §12 "Poster export": PNG and SVG from the one renderer, sizes, theme, transparent background, title block, in the Export dialog.
-- *Accept when:*
-  - the PNG equals a direct `drawScore` render with the same camera and style (pixel-identical in the same browser);
-  - the SVG, rasterised by the browser at the same size, matches the PNG within an anti-aliasing tolerance in Chromium, Firefox and WebKit, and is well-formed XML with text as `<text>`;
-  - a 3-minute piece renders in under 2 s at 4K (PNG) on a desktop, and its SVG is under 10 MB.
+**M9. Poster export (S):** feature-complete 2026-11-23. Acceptance: `docs/m9-acceptance.md`.
 
-**M10. Editor overhaul (L)** (revision 14, owner 2026-11-22)
-- **M10a, first, in today's editor:** the theory-aware Next, the Add → Chord default, the chord picker marks, and the palette without note and pin (§11.3).
-- **M10b:** rows and blocks (§6.4): the row model, the lane's rows, per-row inspectors and palette, textures that read the Chords row, melodies that re-fit when the chords change, the "Like the video" template.
-- *Accept when:*
-  - in C major, after I–V–vi–IV Next's best fit is I, and after V it is I; in A minor, after i–♭VII–♭VI it is V; each card's moment compiles to the chord it names and follows a later key change;
-  - every built-in scale either gets job cards with no two of one job, or falls back to the old grammar, and Next never offers a no-op;
-  - every example and composition compiles to the same score (render goldens unchanged), and each of its moments shows as a block (or a dot) on exactly one row;
-  - the "Like the video" template is six chord blocks and one Wander texture, with no split, merge or unison;
-  - the palette has no note, pin, split, merge, unison, shift, spread, walk, pulse or progression button.
+**M10. Editor overhaul (L):** done 2026-11-23 (rows and blocks, §6.4). Acceptance: `docs/m10-acceptance.md`.
 
-**M11. Exports you can shape (next after M10; owner 2026-11-23)**
-- Poster and video exports become truly customisable, and the Export dialog's UI and interactions are fixed (§12 "Exports you can shape").
-- **Viewing window (owner):** both exports take a section: a poster can zoom in on one stretch of the piece, and a video can export one section of the song (a start and end time), not only the whole piece.
-- **HUD layout (owner):** the owner places each readout where it goes on the frame, instead of ticking readouts into a list in a fixed order.
-- *Accept when:*
-  - a poster of a 45 s section of a 3-minute piece draws only that section, with its pitch range fit to it, Rows splitting it, and the section's times in the title block;
-  - a video of that section lasts its length to within one frame, its first frame is the section's start, and its audio matches the offline render of that span (fades aside) with no click at either cut;
-  - every HUD readout can be dragged, moved by keyboard, removed and re-added; the exported video frame and poster put each readout within 1 px (at export scale) of where the preview shows it; a layout made at 16:9 keeps each readout on its corner or edge at 9:16 and 1:1; Reset layout restores the default;
-  - a custom background (solid and gradient) and a custom colour for every listed element draw the same in the preview, the video frame and the poster (PNG and SVG); a saved scheme reapplies exactly; with every colour on its default, exports draw exactly as before;
-  - the Export dialog works by keyboard alone, and its preview stays in sync with every control.
-- **Ready for YouTube (revision 16, owner 2026-11-23):** loudness, glue and width; 1440p and 4K, quality and AAC; glow, vignette and guide lines; title card, fades and the end card; thumbnail; description with chapters; the YouTube and Shorts presets (§12 "Ready for YouTube"). *Accept when:*
-  - a WAV and a video exported at −14 LUFS measure −14 ± 0.5 LUFS integrated (BS.1770-4), with a true peak ≤ −1 dBTP (4× oversampled; for a video, measured after decoding), on Crease, Night Sleeper and one example;
-  - with glue 0 and width 1 every render golden is unchanged; with glue or width on, the stems plus the FX return still sum to the mix (the §12 tolerance);
-  - a 4K60 16:9 YouTube-preset export of a 2-minute piece plays in Chromium, Firefox and WebKit at 3840×2160, 60 fps, with a decoded quality of at least 40 dB PSNR against the rendered frames on a dense piece (integrator call 2026-11-23: browser encoders spend far less than the target on these frames and more bits barely raise quality, so the target is a cap, not a goal); its audio is AAC wherever the browser offers it;
-  - glow, vignette, guide lines and minimum line opacity draw the same in the preview, the video frame and the poster (PNG and SVG; SVG may approximate the glow), and all-off draws exactly as before;
-  - the title card, fades, lead-in and end card appear at their times; the end card shows the whole-piece view and lasts its length to within one frame;
-  - the thumbnail is 1280×720 JPEG under 2 MB; the copied description has chapters only when YouTube's rules allow them;
-  - choosing YouTube or Shorts sets every option listed, and changing one shows Custom.
+**M11. Exports you can shape + Ready for YouTube:** done 2026-11-23. Acceptance: `docs/m11-acceptance.md`.
 
-**M11.5. Camera path (follow-up to M11; owner 2026-11-23)**
-- The video camera moves with the music, as the gallery's per-frame cameras do (Crease, Night Sleeper): it starts tight on the first note, opens as the chord widens, leans in where lines meet, and pulls back over the whole piece at the end.
-- **Keyframes** in the Export dialog: time, window (seconds shown), playhead position, and pitch centre and range, eased between keys and edited on the preview's timeline.
-- **Auto camera:** keys made from the piece. The pitch range follows the sounding lines, smoothed, and the camera leans in at one-point crossings and pulls back at the end. You can edit the result.
-- **Openings:** the camera may start before 0, on blank paper, so the first notes appear at the playhead's place instead of entering from the left edge (Murmuration, revision 17).
-- This replaces "camera moments" in Later.
-- **Decided (owner, 2026-11-23):** keys are stored **in the piece** (an optional `camera` field: mode `follow` | `auto` | `keys`, plus the keys), so the camera travels with saving, share links and exports; a piece without one behaves exactly as before (Follow). New videos default to **Auto**; Follow stays one click away. Video only: posters keep Section.
-- **In the editor (owner, 2026-11-23):** while a piece plays in the editor, a **Camera** toggle switches the view between pure Follow (the default, as now) and the piece's camera path, so you watch the camera moves as the video will show them. Off by default; editing still uses the normal view.
-- **Builders:** C1 camera path (keys, easing, the piece field, start before 0; preview = video frame) → C2 auto camera (keys made from the piece, tuned against the Crease and Night Sleeper gallery cameras) and C3 dialog (Camera Follow / Auto / Keys; key markers on the preview's timeline; drag or scroll on the preview sets the view at that time; keyboard; the editor's Camera toggle) in parallel → C4 acceptance.
-- **Acceptance:** the preview matches the video frame (±1 px) at and between keys; Auto starts tight on the first note and ends on the whole piece; an opening can start on blank paper with the first note at the playhead's place; a piece's camera survives save, reload and a share link; a piece without a camera, exported with Follow, draws exactly as before (goldens unchanged; the dialog defaults it to Auto, as decided); with the editor's Camera toggle on, the playing view matches the video's camera at the same time, and off it follows exactly as today.
+**M11.5. Camera path:** done 2026-11-23. Acceptance: `docs/m11.5-acceptance.md`.
 
-**M12. Compose for me, directed (after M11; owner 2026-11-23)**
-- "Compose for me" asks the user what to compose before it starts (§11.3 "Compose for me, directed"), then builds it with the theory-aware rows.
-- **Decided (owner, 2026-11-23):**
-  - **One setup screen**, five questions, each with **Surprise me** (the default): **Mood** (Calm, Bright, Dreamy, Dark, Driving: sets scale, tempo, sounds and density), **Length** (1, 2, 3, 5 min), **Shape** (Build up; Arc, rising then falling; Steady; Journey, A–B–A), **Parts** (chords, bass, melody, pulse, bells), **Start from** (nothing; a named chord progression; the open piece's melody). **More:** key and scale, tempo (from the mood unless set). Then **Compose**, and the build show as in §11.3.
-  - The old inputs (seed, mode, note count, density) are removed from the panel. **Compose again** reopens the setup with the last answers and a new seed.
-  - **Variety (integrator, answering the owner's worry that lists limit variation):** an answer narrows a *region*; it never picks a template. The seed still draws everything inside it (motifs, progressions, voicings, rhythms, sounds, the exact tempo and density). **Surprise me** samples the *whole continuous range* (any mode, tempo, density, sound mix and energy curve, including blends between the named moods), not one of the five labels. So all-Surprise is at least as varied as today's Generate. Measured: over 50 seeds, all-Surprise pieces spread at least as widely as today's Generate on mode, tempo, density, note count and pitch range, and two pieces with the same answers but different seeds share no 4-bar span.
-  - **Generate** uses the same composer with every answer on Surprise me (one composer to keep good).
-  - **Listening check:** before it ships, the owner gets about five links to the live site with a composed piece open (share links), not WAV files.
-  - **Listening notes (owner, 2026-11-24; D3 tuning):**
-    - **Watch the composer** is a checkbox next to **Compose** on the setup screen (ticked by default, remembered per browser); unticked, the finished piece opens at once. It replaces the Skip button during the build; Stop stays.
-    - **Transitions:** a section never changes everything on one beat. Its changes spread over at least a bar around the boundary, line by line or part by part, something carries across (a held note, the bass, part of the texture), and the harmony leads into the new section.
-    - **Detail is optional:** the closing note-level sweep happens only when the composer judges it helps the piece, and may be empty (amends "Detail edits come last", 2026-11-21, which still holds when there are details).
-    - **A lone part leads:** when one part is chosen, or no part carries a tune, the lead part drives the piece instead of looping: its progression develops across repeats (variations, substitutions, a new turn at section ends), its top line moves like a tune, and its texture evolves. Loops stay fine for a backing part.
-  - **Listening notes, round 2 (owner, 2026-11-24):**
-    - **Arpeggios are one texture among several,** used where they suit (brighter moods, rising energy), not the composer's default. Arpeggiated notes gliding through a chord change are a good effect, but only an occasional one.
-    - **Mood is instruments and time, not only the scale.** Dark (and Calm, Dreamy) means unhurried note rates, held and slow-moving textures, darker sounds and a lower register: no bouncy chords, quick arpeggios or chirpy high tunes, even over dark chords. Fast, bouncy figures belong to Bright and Driving. A Surprise piece is coherent: the mood word in its title matches its sounds and pace.
-    - **Sounds:** the composer no longer uses Wobble (integrator's reading of "remove the 'wobble' sound"; the preset stays for existing pieces). The built-in flute's breath noise is turned well down everywhere, so bundled songs that use the flute get the cleaner flute too.
-  - **Speed (owner, 2026-11-24, after round 2: "I like the generated songs"):** a sixth question, **Speed** (Slow, Medium, Fast; Surprise me by default), sets the *pace of change*: how long chords are held, how long transitions (glides, staggers, crossfades between sections) take, how long phrases and sections are, and how often parts come and go. It is not the tempo (More → Tempo) and not the note figures, which stay with the mood (a fast Dark piece still has no bouncy figures). Surprise draws it from the mood's range (Dark and Dreamy lean slow, Driving leans fast). Length stays as asked, so a slower piece has fewer, longer sections. Integrator calls: three steps plus Surprise, like the other questions; the brief stores `speed?: 'slow' | 'medium' | 'fast'`.
-- **Builders:** D1 directed composer (core: `ComposeBrief` → ordered compose steps, deterministic) and D2 setup screen + build show (app) in parallel, sharing the `ComposeBrief` type below → D3 tuning (renders analysed numerically, then the owner's listening links) → D4 acceptance (and Generate switched over).
-- **`ComposeBrief`** (in `src/core/compose-brief.ts`): `{ seed: number; mood?: 'calm'|'bright'|'dreamy'|'dark'|'driving'; length?: 60|120|180|300; shape?: 'build'|'arc'|'steady'|'journey'; parts?: ('chords'|'bass'|'melody'|'pulse'|'bells')[]; start?: { kind: 'none' } | { kind: 'progression'; name: string } | { kind: 'melody'; notes: { at: number; pitch: number; dur: number }[] }; key?: { tonic: number; mode: string }; tempo?: number; speed?: 'slow'|'medium'|'fast' }` — a missing field means Surprise me.
-- **Acceptance:** every answer changes what it should (mood → mode/tempo/sound ranges; length ±5 %; shape → the energy curve; parts → only those rows; a progression → those chords in order; a melody → kept and harmonised); chords fit the key, the melody fits the chords, the bass sits on chord roots at changes; same brief + seed → identical piece; the variety measures above; the build show places moments in play order; Generate = all Surprise; the owner's listening check. From the listening notes: at every section boundary the lines' changes spread over at least a bar; a lone part never plays the same 4 bars (chords and top line) more than twice in a row; unticking Watch the composer opens the finished piece at once. From round 2: over 50 seeds per mood, no Dark, Calm or Dreamy piece uses bouncy sounds (pluck, marimba, epiano) for chords or pulse, or any figure faster than eighth notes, and Dark tempos stay at or below 80 bpm; arpeggio textures fill at most a third of any piece; no piece uses Wobble. Speed: over 50 seeds per mood, mean chord length, mean transition length and mean section length all order Slow > Medium > Fast, with the round-2 mood rules still holding.
+**M12. Compose for me, directed:** done 2026-11-25. Acceptance: `docs/m12-acceptance.md`.
 
 **M13. Composer's toolkit (after M12; owner 2026-11-23)**
 These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, Crease, Murmuration and Calling Changes (gallery notes, "Findings"). Integrator calls, except "Hover to hear". The owner may veto any.
@@ -1319,62 +1165,12 @@ These are the composers' unaddressed findings from Sleeper Car, Night Sleeper, C
 
 **Order (owner, 2026-11-24):** M14 Poster workspace, then M15 Play the poster, then M16 Piece panel, then M13.
 
-**M14. Poster workspace (owner, 2026-11-24: split the export workspace, poster first)**
-Export turns the editor into a poster workspace. The demo (`docs/design/export-workspace.html`, v2) sets the look; the owner's notes add depth: "if I'm giving this its own screen I really want customization", and the defaults must hold up at any size and setting.
-- **Entry:** Menu → Export opens the workspace with a Poster | Video choice at the top (it remembers the last one). "Back to music" (or Escape with nothing selected) returns to the editor with the playhead and zoom kept. No permanent Music | Poster | Video switch. Until M15, Video opens today's Export dialog on its video options. Audio exports (WAV, stems, MIDI) become a small dialog (Menu → Export audio…).
-- **Layout:** the score area becomes the artboard, which opens showing the whole poster (not the editor's zoom). The **right panel** is how it looks: size, rows, margins, theme and colours, glow, vignette, line options, and the selected object's style. The **bottom panel** is what's on it: tools (select, text, align, snap, undo/redo) and layers. The last button is Export PNG / SVG. Every poster option of today's dialog moves here; none is lost.
-- **Everything drawn is an object you can select:**
-  - **Music layers:** parts and lines. Move, resize, hide, recolour. Changing the music updates them; single notes aren't dragged here.
-  - **Text boxes** (title, subtitle, credits, free text): add, drag, edit in place. They replace the Title block switch (owner); a new poster starts with today's title block as text boxes.
-  - **Label groups:** section labels, moment labels, row time labels, octave-guide Hz labels, pitch-guide labels and the HUD readouts. **Clicking any member selects its group, and a style change applies to every member (owner: "the Hz text is the same across the lines, changing one changes them all").** Style: visible, size, weight, colour, opacity, and placement against its line (side and offset). Alt-click selects one member, to move, hide or restyle just that one.
-  - **Line groups:** section lines, moment lines, octave guides, pitch guides, bar and beat lines. Style: visible, colour, width, opacity, dashed, full height or a short tick.
-  - **Labels and their lines toggle separately (owner),** for sections, moments and guides.
-- **Resizing (owner):** eight handles. A corner scales both axes and an edge stretches one, from the opposite side; Shift keeps the proportions, Alt scales from the centre. X, Y, W and H are also typed numbers. Stretching music keeps the line thickness.
-- **Margins (owner):** top, right, bottom and left, linked by default; drawn as guides on the artboard (not exported). Music and text keep inside them.
-- **Defaults that hold up at any setup (owner: the Hz text's position and size were "obviously bad by default"):**
-  - every text size, offset and line width scales with the artboard (a type scale from its shorter side), so 16:9, square and A4 portrait look alike;
-  - no text is clipped, leaves the margins, or overlaps other text: labels that would collide shift, and a label that still can't fit is hidden;
-  - the default layout reserves a band for the text boxes and fits the music into the rest, at every size and row count. Moves you make are kept, as fractions of the artboard; when a size change makes your boxes overlap the music, a hint offers to re-fit.
-- **Colours are shared:** a layer's colour applies in the video too (owner). Position and size are poster-only.
-- **Stored in the piece** (integrator): the poster's layout and style overrides live in the piece, like camera keys, stored compactly (only what differs from the defaults). Save, reload and share links carry them. A piece without one starts from the viewer's remembered Look, as today. Every edit is on the piece's undo stack. PNG and SVG both draw exactly what the artboard shows.
-- **The owner's notes on the first workspace (2026-11-24, evening):**
-  - **Rows by sections ("organize by moments"):** Rows is either Equal (today) or By sections. With By sections, each labelled moment shown on the poster starts a row. An Organize list in the Rows group shows the sections, each with a "New row" switch and an editable **row label**, so you can write A / B / A′ / B′. Row labels are a label group drawn left of each row. Integrator calls: rows share one time scale and are left-aligned, so a repeated section lines up under its first appearance; a row label defaults to its section's label.
-  - **Every switch with details opens in place** (owner: "dropdown on toggle"): a switch whose thing has a style (pulse marks, guides, labels, lines, heads…) has a disclosure that shows its style controls below it (size, width, opacity, colour…), the same controls as selecting it on the artboard. Pulse marks become a styled group: size, width, opacity, colour.
-  - **Revert, always visible:** a Revert button that doesn't scroll away (in the workspace's top bar) returns the poster to its defaults. It is one undo step.
-  - **The playhead on the poster (owner):** while the music plays in the workspace, the artboard shows the playhead moving through the rows (P1's `posterTimeAt`); it is never exported.
-  - **Backgrounds:** gradients you place, with two or more colour stops, linear at any angle or radial with a centre, set in the panel and by dragging handles on the artboard; and **any picture** as the background (fit: cover, contain or tile; position; dimming). Integrator calls: a picture is stored in the saved piece file but not in share links (the link falls back to the background colour and says so); the background drawing is shared code, so M15's video can use it.
-- **Builders (integrator):**
-  - **P1** the poster model and layout engine in `core`/`render`: the piece field, schema and share link; groups and styles; margins; the type scale, label placement and collision rules; the text band and default fit; separate label and line toggles; drawing transformed layers (PNG and SVG).
-  - **P2** the workspace shell in `app`, in parallel with P1: entry, panels, Back to music, today's poster options in the right panel, the audio dialog, and the poster e2e specs rewritten.
-  - **P3** editing on the artboard, on P1 + P2: selection and hit-testing, groups and Alt-click, handles, text boxes, snapping, layers list, number fields, undo, the re-fit hint.
-  - **P5** (in parallel with P3) rows by sections with row labels, pulse marks as a styled group, and backgrounds (placed gradients, pictures) in the model, renderer and panel.
-  - **P6** (after P3) a disclosure on every switch with details, the sticky Revert, and the gradient handles on the artboard.
-  - **P4** acceptance.
-- *Accept when:* every poster option of today's Export dialog is reachable in the workspace. At 16:9, square and A4 portrait, rows 1–8, whole piece and a section, every Song's default poster has no clipped text, no text outside the margins, no text over other text and no text box over the music (an automated check). Labels and lines toggle separately. Styling one Hz label restyles them all, and Alt-click styles one. Corner, edge, Shift and Alt resizing work by mouse and by typed numbers. Margins move everything inside them. Every edit undoes. The poster survives save, reload and a share link. PNG and SVG match the artboard. A poster layer's colour shows in the video export. Back to music restores the playhead and zoom. The specs pass on all three engines.
+**M14. Poster workspace:** done 2026-11-25. Acceptance: `docs/m14-acceptance.md`; the owner's follow-up notes are in `docs/owner-decisions.md`.
 
-**M15. Play the poster (after M14; owner, 2026-11-24: "make the music, then its presentation")**
-The video plays the poster. The Poster workspace (M14) sets how the music is presented: colours, labels, text, margins, rows and layers. The video adds only what moves: the camera, timing, the frame, opening and ending, and encoding. It replaces the earlier Video workspace idea, in the same shell.
-- **Camera (owner: both):**
-  - **Over the poster:** the frame is a window that travels over the poster and follows the playhead's slice row by row, like reading a score. Follow, Whole (the whole poster in frame) and Keys work in poster space.
-  - **One row:** today's single long row at the video's shape, with the poster's styles.
-- **Stays or travels (owner: a setting):** each text box and HUD readout either stays on the poster or travels with the frame. Defaults: HUD readouts travel, text boxes stay. The title can be switched.
-- **Row breaks (owner: smooth pan by default, as a setting):** a smooth pan that lands as the next row starts, a scroll, or a cut.
-- **Moved layers (owner: ok):** a part moved away from the others lights up in its own place; the camera follows the main group.
-- **Ahead of the playhead (owner: one slider, all options):** the existing 0–100 % slider: 0 % means the poster draws itself (default), values in between show the future dimmed, and 100 % shows the whole poster. The playhead line (the slice) is its own switch.
-- **Panels:** the right panel holds the video-only options (preset, size, frame rate, quality, loudness, camera, opening and ending, thumbnail, description). The look options live in Poster, and the video reads them. The bottom panel is a timeline: the section's in and out handles, camera keys (add, drag, delete), opening and ending cards. The preview plays as today's does. The last button is Export MP4. Today's Export dialog then goes away.
-- **Integrator calls (veto if wrong):** Over the poster frames one row's height by default, with the Window slider still setting how many seconds show. A piece with a poster plays that poster; a piece without one plays the defaults or the viewer's remembered Look, as today. The end card becomes the finished poster itself. Moved layers, text boxes and label groups keep their poster styles in both camera modes; One row re-lays them at the video's shape.
-- **Storage (integrator, 2026-11-25):** `Piece.camera` gains `frame` (`'poster'` = Over the poster, `'row'` = One row; absent = Over the poster when the piece has a poster, One row otherwise, so old pieces play as before) and `rowBreak` (`'pan'` | `'scroll'` | `'cut'`; absent = pan). Over the poster's camera keys are stored in poster space; One row's keys stay as they are. Stays or travels is a `travels` switch on each text box and on the HUD readouts' label group (default: readouts travel, text boxes stay), stored in the poster. The ahead-of-the-playhead slider and the playhead switch stay in the viewer's remembered video options, as today. Share links carry the piece fields.
-- **V1's calls (integrator accepted, 2026-11-25):** Scroll is the pan at a constant speed (Pan eases and lands as the next row starts; Cut jumps). Zoomed in on a row, line widths and text sizes are capped at the video's own scale (otherwise lines draw ~3.5× thicker and section labels ~100 px tall); every position still comes from the poster, and Whole and the end card draw exactly as the poster. At 0 % ahead, lines and labels ahead of the playhead stay hidden too. Auto over the poster plays as Follow.
-- **V3's calls (integrator accepted, 2026-11-25):** over the poster the ending zooms out from the last frame to the finished poster (the credit fades in once there's room); the preview runs on past the music into the ending. With the ending off there is no zoom-out (it belongs to the ending; Auto stays Follow). The Keys timeline spans the section only.
-- **Builders (integrator):**
-  - **V1** the renderer, in `render`: the frame as a window over the poster layout (Follow along the slice with `posterTimeAt`, Whole, Keys in poster space), the row-break transitions, the stays-or-travels drawing, the ahead-of-the-playhead slider and the playhead switch on the poster; One row with the poster's styles; frame cost within today's export budget.
-  - **V2** the Video side of the workspace, in `app`, in parallel with V1: the right panel with the video-only options moved from the dialog, the bottom timeline (section handles, camera keys, opening and ending cards, thumbnail), the playing preview and Export MP4; then the dialog goes and the video specs are rewritten.
-  - **V3** acceptance.
-- *Accept when:* with One row and today's settings, a video draws the same frames as today's. Over the poster follows the slice across rows at every poster size and video aspect. The stays-or-travels setting and the row-break setting work. Every video option of today's dialog is reachable. Camera keys and the section edit on the timeline. The video specs pass on all three engines.
+**M15. Play the poster:** done 2026-11-26. Acceptance: `docs/m15-acceptance.md`.
 
 **M16. Piece panel with a preview (after M15; owner, 2026-11-24)**
 In Music mode, when no moment is selected, the right panel shows the piece: a live video preview at the playhead, drawn as the export would draw it, so you can change the music and see how it looks. Below it are the piece's actions: New, My pieces, Open, Save, Share, Generate, Export (the menu keeps them too). Details to be mapped with the owner before it starts.
-
 
 **Later, in no order:**
 - the Drift texture;
@@ -1400,148 +1196,24 @@ In Music mode, when no moment is selected, the right panel shows the piece: a li
 
 ---
 
-## 17. Reviewer questions
-
-### 17.1 Resolved in the first review
-
-1. **Moment abstraction.** The set was missing a way to change key, and dynamics were too late. Added the `key` moment and moved `level` into v1 (§6.2). Nothing was found redundant.
-2. **Cascading edits.** Acceptable, since it's inherent to state-dependent moments. Added Freeze (§11.3), counter-based draws (§7.7), and duplicates that keep their seed.
-3. **Interruption semantics.** Keep velocity carry-over, but as an additive term on the chosen ease, so the ease is kept and p₁ = p₀ works. Overshoot is clamped to min(1 semitone, gap to neighbour) (§7.5).
-4. **TypeScript DSP.** The budget is realistic; the op estimate was corrected to 50–100 per sample. One RTF target is set (§8.9) and the allocation-free discipline is spelled out (§8.11).
-5. **Wavetables vs additive.** Keep wavetables. With ≤ 32 harmonics, only the top few octaves need distinct mips. Per-sample additive with `Math.sin` would be too expensive (§8.4).
-6. **Inharmonic timbres.** Keep `stretch`, on a 16-partial additive path using the shared sine table, in M6 (§8.5).
-7. **Clock.** Derive the playhead from context-time anchors; `pos` only corrects drift. Avoiding SharedArrayBuffer is right for GitHub Pages (§8.2–§8.3).
-8. **Stems memory.** One pass per voice plus a streaming zip is sound, with a per-sample limiter gain curve for exact sums and a ZIP64 check (§12).
-9. **MIDI export.** Per-voice tracks with a user-chosen bend range are now the default. MPE is an option and gains the MPE Configuration Message and bend-before-note-on (§12).
-10. **React.** Keep React for panels only. The score is a canvas drawn outside React, and the lane is DOM/SVG with direct-transform drags (§11.3a).
-11. **Live mode scope.** "Record into silence" is enough for v1 (§9).
-12. **Scope.** M4 was split into M4 (editor core) and M5 (editor completion) (§15).
-
-### 17.2 Second-review questions: integrator defaults (2026-11-19)
-
-The owner approved implementation without a second review. The integrator settled each question below by keeping the plan as written. Each is revisited at the point named, by ear where it is about sound:
-1. Keep timing merges. Listen in M1; if fan-outs sound too uniform, add a per-moment `crossings: 'allow'` option.
-2. Keep the ordering. M1's property tests cover the overlap cases.
-3. Keep min(1 semitone, gap). Tune in M7.
-4. Keep the 1-cent floor. Judge the `sine` preset by ear in M2.
-5. Keep ±24.
-6. Keep the ban. It is cheap and already specified.
-
-The original questions follow for reference.
-
-1. **Crossing enforcement** (§7.2). Merging the timings of voices that would cross makes staggered fan-outs more uniform where voices are close. Is that musically acceptable, or should `ordered` moments get a "let lines cross mid-glide" toggle instead?
-2. **Event ordering** (§7.1). At equal times, moment events come before move starts, which come before walk ticks. Is there a case where this gives a surprising result?
-3. **Overshoot limit** (§7.5). Is min(1 semitone, gap) the right limit for live play, where fast re-targeting is common?
-4. **Detune floor** (§8.4). Does a mandatory ≥ 1 cent detune keep the `sine` preset sounding pure enough?
-5. **MIDI default** (§12). Is ±24 semitones the right default bend range for per-voice tracks?
-6. **Portable math** (§7.11). Is banning native transcendental functions in `core/` the cheapest way to guarantee cross-engine compiles, or is rounding before comparison enough?
-7. **Anything** that contradicts the owner's decisions (§2) or the goals (§1).
-
----
-
 ## 18. Changelog
 
-### Revision 20 (2026-11-24): poster workspace first; video workspace; piece panel
-- **M14 becomes the Poster workspace** (owner, after demo v2): label and line groups styled as one (changing one Hz label changes all), labels and their lines toggled separately, margins, text styles and colours, defaults that hold up at every size; started.
-- **M15 Play the poster** (owner: the video plays the poster; camera over the poster or one row; text stays or travels; row-break setting) and **M16 Piece panel with a preview** (owner) follow, then M13.
+One line per revision; the full entries are in `git show 0c1eab9:PLAN.md`.
 
-### Revision 19 (2026-11-24): export workspace (M14, proposed)
-- **M14:** the owner's Export workspace idea, after the demo: Export opens a Poster or Video workspace (no permanent three-mode switch), poster layers with corner/edge resizing, text boxes instead of the Title block switch, no text over the music by default, layer colours shared with the video.
-
-### Revision 18 (2026-11-24): the owner's M12 listening notes
-- **Compose (M12 D3):** a Watch the composer checkbox replaces Skip; staggered section transitions; the detail sweep is optional; a lone part leads instead of looping.
-- **Editor:** Next cards drop the numeral and narrow (Add widens); a trackpad pinch over a line zooms the editor, not the page.
-- **Examples (§11.1, owner):** the menu splits into Songs, Experiments and Originals.
-- **Compose, round 2 (M12 D3):** fewer arpeggios; mood sets sounds and pace (Dark is slow and held); no Wobble; a quieter flute.
-- **Compose Speed (M12):** a sixth question sets how fast things change (chord holds, transitions, sections).
-- **Share (§11.4):** the address bar always holds the open piece (`#<example-id>` for an unedited example, else `#p=`).
-
-### Revision 17 (2026-11-23): composer's toolkit (M13), hover to hear
-- **M13:** the composers' unaddressed findings, with the `over: 'chord'` walk bug to fix now.
-- **Hover to hear (owner):** Add and Next cards sound their result on hover, reverting "hover previews are silent" (2026-11-21).
-- **M11 and M11.5:** a minimum line opacity in the Look; a camera that can start before 0.
-
-### Revision 16 (2026-11-23): ready for YouTube (owner; M11), camera path (M11.5)
-- **Ready for YouTube (§12, §8.8):** LUFS normalisation with a true-peak ceiling, glue and width on the master; 1440p and 4K, quality presets, AAC; glow, vignette, guide lines; title card, fades, end card on the whole-piece view; thumbnail; description with chapters; YouTube and Shorts presets.
-- **Camera path (M11.5):** keyframed and auto camera for video, after M11; replaces Later's "camera moments".
-
-### Revision 15 (2026-11-23): exports you can shape (owner; M11), directed Compose (M12)
-- **Section (§12):** video and poster exports take a section (whole, loop region or custom range); the poster's pitch range fits the section.
-- **HUD placement (§12):** readouts are placed freely on the frame (anchored to corners and edges so a layout carries across sizes), not ticked into a fixed list.
-- **Compose for me, directed (§11.3, M12):** the user directs the composer before it starts.
-
-### Revision 14 (2026-11-22): editor overhaul (owner chose option B)
-- **Rows and blocks (§6.4, M10b):** a moment is a block on the Key, Chords, Texture, Melody, Level or Sound row, lasting until the next block on its row; unison, split, merge, shift, spread, walk, pulse and progression fold into chord blocks and textures; stored as today's moments (no new file format).
-- **Theory-aware Next (§11.3, M10a, first):** one card per chord job (Home, Near home, Lift, Tension, Surprise), little text; Add → Chord picks the best chord for the spot; the chord picker marks the best fits lightly; note and pin leave the palette.
-
-### Revision 13 (2026-11-22): export look (owner)
-- **Export look (§12):** every visual decision is an export option; export defaults drop the octave guides, beat lines and the future (moment markers stay on); the HUD becomes a checklist of readouts, with new ones (spread, note names, gaps).
-
-### Revision 12 (2026-11-22): poster export next (owner)
-- **Poster export (§12, §15 M9):** moved from Later to M9. Whole-piece render as PNG or SVG (recording context), 4K-class sizes, theme, transparent background, title block; integrator defaults.
-
-### Revision 11 (2026-11-22): video export next (owner)
-- **Video export (§12, §15 M8):** moved from Later to M8. Offline WebCodecs pipeline, in-house MP4 muxer, 16:9 / 9:16 / 1:1, Follow or Whole-piece camera; integrator defaults for sizes, fps, codecs and options.
-
-### Revision 10 (2026-11-22): composing suggestions (owner: "I like your suggestions", docs/composing.md §3)
-- **Tunes (§6.2):** rests, re-struck repeated notes (`strike`), and transposing with the key (`writtenIn`).
-- **Pulse (§6.2):** `mode: 'order'` with a typed note order.
-- **Targets (§11.3):** several parts (`{ parts }`) and all but some parts (`{ exceptParts }`).
-- **Progression (§6.2):** a new region moment, a typed chord sequence.
-- **Walk over chord (§6.2):** `over: 'chord'` steps through chord tones.
-- **Pulse drawing (§10):** pulsed lines drawn by envelope with hit marks.
-- **Per-part normalisation (§8.4):** a joining part doesn't lower the others (owner approved).
-- Already landed: root in the bass, parts entering from silence (warning when nothing happens), range folding that never merges a part's lines.
-
-### Revision 9 (2026-11-20): owner notes after the compositions
-- **Examples (§11.1):** two groups, Originals and Compositions (three songs: Harbour Song, Night Ferry, Kite Day); Kite Day is the featured piece; `?example=<id>`.
-- **Parts (§5, §11.3):** `VoiceDef.part`, `{ part }` selector; distinct notes applies within a part only.
-- **New moments (§6.2):** `pulse` (repeating volume pattern, gate or arpeggio, re-strikes articulation) and `tune` (a melody as one moment). The planned arpeggio moment can become a pulse mode.
-- **Land on the beat (§5, §11.3):** `glide.land`.
-- **Snap to beats (§11.3)** when the piece has a tempo.
-- **Silent lines vanish (§10):** lines drawn at their audible level.
-- **Split and merge honour stagger and order** like the other moments (they ignored them).
-- After these land, the compositions are rewritten with parts, pulse, tune and land (far fewer moments, share links ≤ 2,000 characters, §11.4).
-- All in M4.5 (owner: go-ahead 2026-11-20).
-
-### Revision 6 (2026-11-20): owner notes on the M4.5 demo
-- **Arrive together (§5, §7.2):** `glide.arrive`, default `'together'`.
-- **Chord notes (§6.2, §11.3):** `count` on chord shown as "Notes: n"; per-note editing freezes the chord; voice targeting (Top/Bottom n) removed from the main inspector (owner).
-- **Context (§7.9, §11.3):** `no-effect` diagnostic; dimmed markers; a palette that greys out no-op moments and previews on hover. Next-move suggestions follow.
-- **Loop region (§11.3):** drag on the ruler to loop a span.
-- **Note points (§6.2, §11.3):** new `note` moment (`from` → `to`, optional `back`), added by double-clicking a line.
-- All in M4.5.
-
-### Revision 5 (2026-11-20): editor view redesign (owner direction; approved 2026-11-20)
-- **View (§10):** one time axis shared by a new time ruler, the score, the lanes and a single playhead; the bottom scrubber goes (phones keep it). Follow: Smooth (35%, default), Page, Off. Zoom slider with Fit; no overview blend. The whole piece is drawn, the future dimmed.
-- **Layout (§11.2, §11.3a):** rows Moments, Transitions, Level and Effects (M6) under the score on the same axis.
-- **Inspector (§11.3):** chords picked (from the key, or root, quality, bass, voicing) with numeral and live notes; transition, level and voice controls.
-- **Walks (§6.2, §7.9):** all generator settings editable; moving a step freezes the walk into absolute `fixed` notes (owner); Unfreeze; the compiler reports `walkSteps`.
-- **Generate (§11.3):** confirms before replacing an edited piece (owner).
-- **Milestones (§15):** new M4.5 before M5.
-
-### Revision 4 (2026-11-20): owner rulings after the first M3 release
-- **Unisons (§8.4):** glides into and out of a unison are warped (up to ~60 cents) so approach and parting stay steady.
-- **Colors (§10):** "Per voice" removed; "By pitch" is the default. **HUD (§10, §7.9):** shows the current chord (`chordAt`). **Generate (§11.3):** 30–900 s, default 2:30.
-
-### Revision 3 (2026-11-20): unison lock
-- **Unisons (P2, §3, §7.4, §8.4, §8.5, §8.7, §12):** converged voices are steady by default (owner decision). A per-block group pass locks pitch and phase and holds the group at the chord level; detune is no longer mandatory as the safeguard. A new Timbre field `wobble` and preset `wobble` give the old beating as an opt-in. Stem passes run every voice silently.
-
-### Revision 2 (2026-11-19): first review incorporated
-- **Compiler (§7.1):** replaced the one-pass loop with an event simulation, covering committed destinations, cancellation of pending moves, and walk/moment overlap rules.
-- **Crossings (§7.2):** voices are sorted by committed destination and tie-broken by pool index. Mid-glide crossings are enforced against by timing merges, and the guarantee is scoped to the targeted voices.
-- **Interruption (§7.5, §7.9):** velocity carry-over is an additive term on the chosen ease, which handles p₁ = p₀. `Segment` gains `m0` and `clamped`; the `HermiteEase` type is gone. Overshoot clamp added.
-- **Randomness (§7.7):** counter-based draws keyed by moment, voice, step and purpose. Duplicates keep the original's seed.
-- **Determinism (P2, §7.11, §8.1, §8.10):** added portable-math rules for `core/` and a cross-engine golden test. Both hosts use fixed 128-frame blocks. The "preview = export" claim is narrowed to playback from t = 0.
-- **Moments (§6.2):** added `key`; moved `level` from M6 into v1.
-- **Unisons (§3, §7.4, §8.4):** detune is always on, with a 1-cent floor; the seeded starting phase is no longer claimed to prevent phase-summing.
-- **DSP (§8.4–§8.6):** fixed the FM modulator phase, added the shared sine table, moved FX to a send-based topology, and resolved inharmonic timbres with the additive path. Presets are named per milestone.
-- **Worklet (§8.2, §8.3, §8.11):** typed-array scores sent as transferables, wavetables built in a worker, clock anchors, `latencyHint`, and allocation-free rules.
-- **Performance (§8.9):** a single RTF target (≥ 10×) replaces two inconsistent ones. The op estimate is corrected, and the no-op "32-voice cap" fallback becomes a 16-voice cap.
-- **Live mode (§9):** musical typing is a mode, so it can't collide with editor shortcuts. The debounce delay is removed; chord grouping now happens through re-targeting. Firefox Web MIDI prompt noted.
-- **Editor (§11.3–§11.5):** added Freeze, the React/canvas split, touch editing for tablets, storage-eviction safeguards, share-link default stripping, and the iOS silent-switch fix.
-- **Export (§12):** added 32-bit float. Stems sum exactly via a shared limiter gain curve. MIDI defaults to per-voice tracks, and MPE gains the configuration message and bend-before-note-on. Added a ZIP64 check.
-- **Repository and testing (§14):** M0 proves the worklet build pipeline, WebKit tests run on macOS, and the property and DSP tests were updated to match the above.
-- **Milestones (§15):** Generate, stems and MIDI move into M3. The editor is split into M4 and M5. Example pieces are made in M1. Every acceptance criterion is measurable; the "visually equivalent" criterion was replaced.
-- **Owner decisions (§16):** added item 7 on milestone order.
-- Fixed a dangling reference to §7.12.
+- **Revision 20** (2026-11-24): poster workspace first; video workspace; piece panel.
+- **Revision 19** (2026-11-24): export workspace (M14, proposed).
+- **Revision 18** (2026-11-24): the owner's M12 listening notes.
+- **Revision 17** (2026-11-23): composer's toolkit (M13), hover to hear.
+- **Revision 16** (2026-11-23): ready for YouTube (owner; M11), camera path (M11.5).
+- **Revision 15** (2026-11-23): exports you can shape (owner; M11), directed Compose (M12).
+- **Revision 14** (2026-11-22): editor overhaul (owner chose option B).
+- **Revision 13** (2026-11-22): export look (owner).
+- **Revision 12** (2026-11-22): poster export next (owner).
+- **Revision 11** (2026-11-22): video export next (owner).
+- **Revision 10** (2026-11-22): composing suggestions (owner: "I like your suggestions", docs/composing.md §3).
+- **Revision 9** (2026-11-20): owner notes after the compositions.
+- **Revision 6** (2026-11-20): owner notes on the M4.5 demo.
+- **Revision 5** (2026-11-20): editor view redesign (owner direction; approved 2026-11-20).
+- **Revision 4** (2026-11-20): owner rulings after the first M3 release.
+- **Revision 3** (2026-11-20): unison lock.
+- **Revision 2** (2026-11-19): first review incorporated.
